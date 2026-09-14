@@ -71,9 +71,8 @@ namespace Nethermind.TxPool
         private readonly PendingPaymasterCache _pendingPaymasters = new();
         private readonly FrameTxDependencyIndex _frameDependencies = new();
         private readonly HashSet<ValueHash256> _frameTxsToRevalidate = [];
-        // Heads each deferred transaction has already been carried across. Both are written only under the head
-        // write lock, and swapped rather than copied at each head, so a transaction that stops being re-deferred
-        // (or leaves the pool) drops out on its own.
+        // Consecutive heads each deferred transaction has been carried across. Written only under the head write
+        // lock, and swapped rather than copied at each head, so one that stops being re-deferred drops out itself.
         private Dictionary<ValueHash256, int> _frameTxsDeferredToNextHead = [];
         private Dictionary<ValueHash256, int> _frameTxDeferralsCarried = [];
         private readonly int _frameRevalidationDeferralBudget;
@@ -367,6 +366,8 @@ namespace Nethermind.TxPool
         {
             if (!filterToReadyTx) return bySender;
 
+            // Dictionary.Remove does not invalidate an in-flight enumerator (.NET Core 3.0+); taking the
+            // concrete type rather than the IDictionary the caller returns is what holds us to that guarantee.
             foreach ((AddressAsKey sender, Transaction[] bucket) in bySender)
             {
                 if (bucket.Length == 0 || !HasReadyTransaction(bucket, sender, baseFee)) bySender.Remove(sender);
@@ -1150,12 +1151,15 @@ namespace Nethermind.TxPool
             _frameTxsToRevalidate.UnionWith(_frameTxDeferralsCarried.Keys);
         }
 
-        /// <summary>Queues <paramref name="hash"/> for the next head's revalidation sweep, unless it has spent
-        /// <see cref="ITxPoolConfig.FrameTxRevalidationDeferralBudget"/> heads already.</summary>
+        /// <summary>Queues <paramref name="hash"/> for the next head's revalidation sweep, unless it has already
+        /// been carried across <see cref="ITxPoolConfig.FrameTxRevalidationDeferralBudget"/> consecutive heads.</summary>
         /// <remarks>Bounded because each deferral costs a validation-prefix simulation under the head write lock:
         /// left unbounded, a backlog larger than one head's simulation budget never drains and every later head
-        /// spends that whole budget holding the lock again. Exhausting the budget leaves the transaction pending
-        /// and unjudged, the same standing a one-off dependency change already leaves it in.</remarks>
+        /// spends that whole budget holding the lock again. Only the carry is bounded — the count is read from the
+        /// previous head's map alone, so a head that revalidates without re-deferring clears it and a later block
+        /// naming the transaction's dependencies re-arms the full budget. That block would have triggered a
+        /// revalidation regardless, so what stays bounded is the self-feeding backlog. Exhausting the budget leaves
+        /// the transaction pending and unjudged, the same standing a one-off dependency change already leaves it in.</remarks>
         private bool TryDeferToNextHead(in ValueHash256 hash)
         {
             _frameTxDeferralsCarried.TryGetValue(hash, out int spentHeads);
