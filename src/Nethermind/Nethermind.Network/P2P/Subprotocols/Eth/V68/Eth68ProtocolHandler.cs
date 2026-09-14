@@ -279,12 +279,14 @@ public class Eth68ProtocolHandler(ISession session,
     /// <remarks>Reads the same head spec as the ingress filter, so the gate opens exactly when the pool starts accepting frame txs.</remarks>
     private bool FrameTxsEnabled() => specProvider.GetCurrentHeadSpec().IsEip8141Enabled;
 
-    /// <remarks>Blob-sized for every type-6 while blobs are enabled: tracks NotSupportedTxFilter, since an
-    /// announcement cannot tell a blob carrier from a blobless one that SizeTxFilter caps lower.</remarks>
+    /// <remarks>An announcement cannot tell a blob-carrying type-6 from a blobless one, so it is admitted up to
+    /// the larger of the two SizeTxFilter caps; either alone would drop valid announcements of the other kind.</remarks>
     private protected long MaxAnnouncedSize(TxType txType) =>
-        txType.SupportsBlobs() || (txType is TxType.FrameTx && _blobSupportEnabled)
+        txType.SupportsBlobs()
             ? _configuredMaxBlobTxSize
-            : _configuredMaxTxSize;
+            : txType is TxType.FrameTx && _blobSupportEnabled
+                ? Math.Max(_configuredMaxTxSize, _configuredMaxBlobTxSize)
+                : _configuredMaxTxSize;
 
     private static bool ShouldSendCurrentRequest(
         int txSize,
