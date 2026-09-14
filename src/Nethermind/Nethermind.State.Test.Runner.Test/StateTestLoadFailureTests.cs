@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.Json;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Test.Runner;
@@ -28,10 +30,10 @@ public class StateTestLoadFailureTests
     [TearDown]
     public void TearDown() => Directory.Delete(_directory, true);
 
-    [TestCase("{\"broken\": ", TestName = "Malformed JSON")]
-    [TestCase("{\"t\":{\"transaction\":{\"value\":[\"0x\"]}}}", TestName = "Deserializer rejects a quantity")]
-    [TestCase("{\"t\":{\"env\":{},\"pre\":{},\"transaction\":{}}}", TestName = "Conversion to a test case throws")]
-    public void Fixture_that_fails_to_parse_survives_the_state_test_type_filter(string content)
+    [TestCase("{\"broken\": ", nameof(JsonException), TestName = "Malformed JSON")]
+    [TestCase("{\"t\":{\"transaction\":{\"value\":[\"0x\"]}}}", nameof(JsonException), TestName = "Deserializer rejects a quantity")]
+    [TestCase("{\"t\":{\"env\":{},\"pre\":{},\"transaction\":{}}}", nameof(NullReferenceException), TestName = "Conversion to a test case throws")]
+    public void Fixture_that_fails_to_parse_survives_the_state_test_type_filter(string content, string expectedException)
     {
         string file = Path.Combine(_directory, "fixture.json");
         File.WriteAllText(file, content);
@@ -39,7 +41,8 @@ public class StateTestLoadFailureTests
         List<GeneralStateTest> tests = [.. new TestsSourceLoader(new LoadGeneralStateTestFileStrategy(), file).LoadTests<GeneralStateTest>()];
 
         Assert.That(tests, Has.Count.EqualTo(1));
-        Assert.That(tests[0].LoadFailure, Is.Not.Null);
+        Assert.That(tests[0].Name, Is.EqualTo(file));
+        Assert.That(tests[0].LoadFailure, Does.Contain(expectedException));
     }
 
     [Test]
