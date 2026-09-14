@@ -31,20 +31,13 @@ namespace Nethermind.Blockchain
         /// <summary>Covers the whole EIP-2935 window (the next power of two above
         /// <see cref="Eip2935Constants.RingBufferSize"/> = 8191), so a contract sweeping BLOCKHASH across
         /// the full servable range takes at most one miss per distinct number per block instead of
-        /// conflict-missing on every call. 8192 references = 64 KB per provider, allocated lazily on the
+        /// conflict-missing on every call. 8192 references = 64 KB per armed block, allocated lazily on the
         /// first armed resolution so the forks that never reach this path pay nothing.</summary>
         private const int StateHashCacheSize = 8192;
-        private CachedBlockhash?[]? _stateHashCache;
 
-        // The memo is armed by Prefetch, which branch processing calls once per block: only the armed
-        // block is served, and arming clears the table. A pooled RPC env that applies state overrides
-        // never prefetches, so on its own scoped provider it can neither populate nor read the memo. The
-        // arming gate is keyed (number, hash), not by reference, because BlockProcessor executes a
-        // CloneForProcessing of the suggested header — same number and hash, a different instance — so a
-        // reference gate would never hit in real processing. The per-entry check below is the separate,
-        // reference-based half: it decides whether a stored slot belongs to this exact header instance.
-        private ulong _armedNumber = ulong.MaxValue;
-        private Hash256? _armedHash;
+        // The block the memo is armed for, with the table it guards, published as one reference so the gate
+        // and the entries it admits can never be observed out of step. See TryGetCachedBlockHashFromState.
+        private ArmedBlock? _armed;
 
         // The header whose EIP-2935 ring-buffer write has been observed. Until that write lands the slot
         // the block is about to overwrite still holds the occupant from a ring-size earlier, so nothing
@@ -91,14 +84,13 @@ namespace Nethermind.Blockchain
 
         /// <summary>Serves EIP-2935 lookups from a per-block memo of what state already returned.</summary>
         /// <remarks>
-        /// Two independent checks guard a hit. The <b>arming gate</b>, keyed (number, hash), decides whether
-        /// the caller is a prefetching block processor at all: only <see cref="Prefetch"/> arms it, so an env
-        /// that never prefetches (the pooled RPC envs, which may execute under state overrides on their own
-        /// scoped provider) reads the store directly — the same block can back different states there. It is
-        /// keyed by value, not reference, so it survives the <c>CloneForProcessing</c> that BlockProcessor
-        /// executes with. The <b>per-entry check</b> is separate and reference-based: a stored slot is served
-        /// only to the exact header instance it was resolved against, which keeps the prewarmer's
-        /// suggested-header run and a sequential-retry re-run from reading each other's entries.
+        /// Two independent checks guard a hit. The <b>arming gate</b>, keyed (number, hash) by
+        /// <see cref="ArmedBlock"/>, decides whether the caller is a prefetching block processor at all: only
+        /// <see cref="Prefetch"/> arms it, so an env that never prefetches (the pooled RPC envs, which may
+        /// execute under state overrides on their own scoped provider) reads the store directly — the same
+        /// block can back different states there. The <b>per-entry check</b> is separate and reference-based:
+        /// a stored slot is served only to the exact header instance it was resolved against, which keeps the
+        /// prewarmer's suggested-header run and a sequential-retry re-run from reading each other's entries.
         /// <para>
         /// Why the values cannot be stale: the ring buffer is written once per block by the system call
         /// before any transaction runs, and <see cref="RingBufferWritten"/> holds the memo shut until that
@@ -110,7 +102,8 @@ namespace Nethermind.Blockchain
         /// </remarks>
         private bool TryGetCachedBlockHashFromState(BlockHeader currentBlock, ulong number, IReleaseSpec spec, out ReadOnlySpan<byte> hash)
         {
-            if (currentBlock.Number != Volatile.Read(ref _armedNumber) || currentBlock.Hash != Volatile.Read(ref _armedHash)
+            ArmedBlock? armed = Volatile.Read(ref _armed);
+            if (armed is null || armed.Number != currentBlock.Number || armed.Hash != currentBlock.Hash
                 || !RingBufferWritten(currentBlock, spec))
             {
                 // Unarmed caller (an RPC env that never prefetches, possibly executing under state
@@ -121,8 +114,7 @@ namespace Nethermind.Blockchain
                 return unmemoized is not null;
             }
 
-            CachedBlockhash?[] cache = _stateHashCache ?? InitializeStateHashCache();
-            ref CachedBlockhash? slot = ref cache[(int)(number & (StateHashCacheSize - 1))];
+            ref CachedBlockhash? slot = ref armed.Cache[(int)(number & (StateHashCacheSize - 1))];
 
             CachedBlockhash? entry = Volatile.Read(ref slot);
             if (entry is not null && entry.Number == number && ReferenceEquals(entry.Header, currentBlock))
@@ -170,12 +162,28 @@ namespace Nethermind.Blockchain
             return true;
         }
 
-        private CachedBlockhash?[] InitializeStateHashCache()
+        /// <summary>The memo table for one armed block, together with the identity it may be served to.</summary>
+        /// <remarks>The identity is (number, hash) rather than the header reference because BlockProcessor
+        /// executes a <c>CloneForProcessing</c> of the suggested header — same number and hash, a different
+        /// instance — so a reference gate would never hit in real processing. Arming publishes a new instance,
+        /// which is what bounds an entry's life to its block: a late writer from the previous block writes
+        /// into a table nothing reads any more.</remarks>
+        private sealed class ArmedBlock(ulong number, Hash256? hash)
         {
-            // Racing initialisers may each publish an empty table; the worst case is a dropped memo
-            // entry, never a wrong answer.
-            CachedBlockhash?[] fresh = new CachedBlockhash?[StateHashCacheSize];
-            return Interlocked.CompareExchange(ref _stateHashCache, fresh, null) ?? fresh;
+            private CachedBlockhash?[]? _cache;
+
+            public ulong Number { get; } = number;
+            public Hash256? Hash { get; } = hash;
+
+            public CachedBlockhash?[] Cache => _cache ?? Initialize();
+
+            private CachedBlockhash?[] Initialize()
+            {
+                // Racing initialisers may each publish an empty table; the worst case is a dropped memo
+                // entry, never a wrong answer.
+                CachedBlockhash?[] fresh = new CachedBlockhash?[StateHashCacheSize];
+                return Interlocked.CompareExchange(ref _cache, fresh, null) ?? fresh;
+            }
         }
 
         /// <summary>One resolved ring-buffer entry, immutable so that a racing reader sees all of it or none.</summary>
@@ -199,14 +207,10 @@ namespace Nethermind.Blockchain
 
         public async Task Prefetch(BlockHeader currentBlock, CancellationToken token)
         {
-            // Arm the state memo for this block and drop the previous block's entries. A late writer from
-            // the previous block can still publish after the clear, but its entry carries the old header
-            // and misses the reference check, so the stale window closes itself.
-            CachedBlockhash?[]? stateCache = Volatile.Read(ref _stateHashCache);
-            if (stateCache is not null) Array.Clear(stateCache);
+            // Arm the state memo for this block, which drops the previous block's entries with the table
+            // they lived in.
             Volatile.Write(ref _ringBufferWrittenFor, null);
-            Volatile.Write(ref _armedHash, currentBlock.Hash);
-            Volatile.Write(ref _armedNumber, currentBlock.Number);
+            Volatile.Write(ref _armed, new ArmedBlock(currentBlock.Number, currentBlock.Hash));
 
             long prefetchVersion = Interlocked.Increment(ref _prefetchVersion);
             Volatile.Write(ref _hashes, null);
