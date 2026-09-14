@@ -18,10 +18,17 @@ namespace Nethermind.Logging.NLog.Test
     [TestFixture]
     public class NLogManagerTests
     {
+        /// <remarks>
+        /// Every test in this fixture mutates the ambient <see cref="LogManager.Configuration"/>, so each one
+        /// starts from a freshly loaded copy of the shipped config rather than from whatever its predecessor left.
+        /// </remarks>
+        [SetUp]
+        public void SetUp() => LogManager.Configuration = ShippedConfiguration();
+
         [Test]
         public void Logger_name_is_set_to_full_class_name()
         {
-            NLogManager manager = new("test", null);
+            using NLogManager manager = new("test", null);
             NLogLogger logger = (NLogLogger)manager.GetClassLogger<NLogManagerTests>().UnderlyingLogger;
             Assert.That(logger.Name, Is.EqualTo(GetType().FullName.Replace("Nethermind.", string.Empty)));
         }
@@ -49,23 +56,19 @@ namespace Nethermind.Logging.NLog.Test
             string[] rulePatterns = { "Abc.*", "Cdf.efg" };
             CheckRules(rulePatterns, false);
             string logRules = string.Join(";", rulePatterns.Select(r => $"{r}:Warn"));
-            _ = new NLogManager("test", null, logRules);
+            using (new NLogManager("test", null, logRules)) { }
             CheckRules(rulePatterns, true);
         }
 
         [Test]
         public void Create_removes_overwritten_rules()
         {
-            LogManager.Configuration = ShippedConfiguration();
-
             using (new NLogManager("test", null, "*:Error")) { }
 
-            // The shipped catch-all rule writing to seq survives alongside the synthesised "*" rule;
-            // every other shipped rule matches "*" and is overridden.
-            Assert.That(LogManager.Configuration.LoggingRules, Has.Count.EqualTo(2));
-
+            // Every shipped rule that does not reach seq matches "*" and is replaced by the synthesised one,
+            // so exactly one non-seq rule is left however many rules NLog.config grows.
             LoggingRule seqRule = LogManager.Configuration.LoggingRules.Single(r => r.Targets.Any(t => t.Name == "seq"));
-            LoggingRule synthesisedRule = LogManager.Configuration.LoggingRules.Single(r => r != seqRule);
+            LoggingRule synthesisedRule = LogManager.Configuration.LoggingRules.Single(r => r.Targets.All(t => t.Name != "seq"));
 
             using (Assert.EnterMultipleScope())
             {
@@ -86,8 +89,6 @@ namespace Nethermind.Logging.NLog.Test
         [Test]
         public void Log_rules_do_not_write_to_seq_target()
         {
-            LogManager.Configuration = ShippedConfiguration();
-
             using (new NLogManager("test", null, "Synchronization.*:Trace"))
             {
                 LoggingRule rule = LogManager.Configuration.LoggingRules.Single(r => r.LoggerNamePattern == "Synchronization.*");
@@ -102,10 +103,7 @@ namespace Nethermind.Logging.NLog.Test
             }
         }
 
-        /// <remarks>
-        /// Reloads the linked NLog.config into a fresh configuration so a test's outcome does not
-        /// depend on rule mutations left behind by other tests in this fixture.
-        /// </remarks>
+        /// <summary>Loads the linked <c>NLog.config</c> into a fresh configuration.</summary>
         private static LoggingConfiguration ShippedConfiguration() =>
             new XmlLoggingConfiguration(Path.Combine(AppContext.BaseDirectory, "NLog.config"));
 
@@ -134,10 +132,8 @@ namespace Nethermind.Logging.NLog.Test
             using (new NLogManager("test", null, logRules))
             {
                 IList<LoggingRule> rules = LogManager.Configuration.LoggingRules;
-                // Identified by pattern and by not writing to seq, rather than "not one of the known
-                // pre-set rules": other fixtures in this class leave undisposed NLogManager instances
-                // subscribed to LogManager.ConfigurationChanged, which can inject unrelated rules into
-                // this configuration too.
+                // The synthesised rule shares its pattern with a pre-set seq rule in the catch-all case,
+                // so it is identified by not writing to seq as well as by pattern.
                 string expectedPattern = logRules.Split(':')[0];
                 LoggingRule synthesised = rules.Single(r => r.LoggerNamePattern == expectedPattern && r.Targets.All(t => t.Name != "seq"));
 
