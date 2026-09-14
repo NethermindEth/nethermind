@@ -77,6 +77,38 @@ public class StorageStridePrefetcherTests
     }
 
     [Test]
+    public void HoldsReaderSlot_ReleasesWhenStarterTaskCompletes()
+    {
+        using CancellationTokenSource cts = new();
+        int engagements = 0;
+        using StorageStridePrefetcher prefetcher = new(
+            () => EmptyStorageTree.Instance,
+            new SeqlockCache<StorageCell, byte[]>(),
+            TestItem.AddressA,
+            cts.Token,
+            readerConcurrency: 1,
+            tryReserveEngagement: () =>
+            {
+                engagements++;
+                return true;
+            });
+
+        try
+        {
+            UInt256 index = 1;
+            for (int i = 0; i < 12; i++, index++)
+                prefetcher.OnRead(in index);
+
+            Assert.That(engagements, Is.EqualTo(1));
+            Assert.That(SpinWait.SpinUntil(() => !prefetcher.HoldsReaderSlot, 5000), Is.True);
+        }
+        finally
+        {
+            cts.Cancel();
+        }
+    }
+
+    [Test]
     public void Dispose_DoesNotThrowWhenLookaheadOverflowsUInt256()
     {
         using CancellationTokenSource cts = new();

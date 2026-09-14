@@ -153,19 +153,7 @@ public class PrewarmerScopeProvider(
             // would only grow the map — and the scan below — for nothing.
             if (Volatile.Read(ref _stridePrefetcherEngagements) >= MaxStridePrefetcherEngagements) return null;
 
-            // Only prefetchers that actually hold reader threads count against the concurrency cap: a
-            // detector that never engaged owns nothing, and a broken one has stopped reading but stays in
-            // the map so its exited readers are still joined before the shared scope is disposed. Counting
-            // either would let the first contracts to touch storage hold every slot for the whole block and
-            // refuse the striding one. The scan is skipped until enough engagements have happened to fill
-            // the cap, and is bounded by the detector limit.
             if (_stridePrefetchers.Count >= MaxStridePrefetcherDetectors)
-            {
-                return null;
-            }
-
-            if (Volatile.Read(ref _stridePrefetcherEngagements) >= MaxStridePrefetchers
-                && CountReaderSlotHolders() >= MaxStridePrefetchers)
             {
                 return null;
             }

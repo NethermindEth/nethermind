@@ -252,13 +252,13 @@ internal sealed class StorageStridePrefetcher(
     /// <inheritdoc cref="TryBeginPublish"/>
     internal void EndPublish() => Interlocked.Decrement(ref _publishing);
 
-    /// <summary>True while this prefetcher's readers are running, i.e. it engaged and has not broken.</summary>
+    /// <summary>True while this prefetcher's starter task still owns running readers.</summary>
     /// <remarks>
     /// A detector that never engaged owns no reader threads and no scope, so it must not count against the
     /// owner's concurrency cap - otherwise the first contracts to touch storage hold every slot for the whole
     /// block and a later striding contract is refused.
     /// </remarks>
-    internal bool HoldsReaderSlot => _engaged && !_broken;
+    internal bool HoldsReaderSlot => _engaged && !_broken && (_readers is not { Length: > 0 } || !_readers[0].IsCompleted);
 
     /// <summary>True once a sustained off-pattern run has disengaged this prefetcher.</summary>
     /// <remarks>
