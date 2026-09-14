@@ -294,7 +294,13 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
-        private bool RemoveFromBucket([DisallowNull] TValue value, out EnhancedSortedSet<TValue>? bucketSet)
+        /// <summary>Removes <paramref name="value"/> from its group bucket.</summary>
+        /// <remarks>The only place bucket membership shrinks, so per-bucket accounting belongs here rather than on
+        /// <see cref="Removed"/>, which <see cref="RemoveLast"/> bypasses when it falls back to the bucket.</remarks>
+        /// <param name="value">Element to remove.</param>
+        /// <param name="bucketSet">Bucket the element was mapped to, or null when the group is unknown.</param>
+        /// <returns>Whether the bucket held the element.</returns>
+        protected virtual bool RemoveFromBucket([DisallowNull] TValue value, out EnhancedSortedSet<TValue>? bucketSet)
         {
             TGroupKey groupMapping = MapToGroup(value);
             if (_buckets.TryGetValue(groupMapping, out bucketSet))

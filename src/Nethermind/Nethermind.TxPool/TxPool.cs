@@ -1167,9 +1167,11 @@ namespace Nethermind.TxPool
                 if (!TryRevalidateFrameTransaction(tx, state))
                 {
                     // The record is untouched, so the Removed handler releases exactly what admission took.
-                    if (RemoveTransaction(tx.Hash))
+                    // The blob pool reconstitutes the full transaction above, so the events must carry the
+                    // pooled record the removal returned rather than that copy.
+                    if (RemoveTransaction(tx.Hash, out Transaction? pooled))
                     {
-                        EvictedPending?.Invoke(this, new TxEventArgs(tx));
+                        EvictedPending?.Invoke(this, new TxEventArgs(pooled));
                         // Unlike expiry, invalidity here is relative to this head and reverses (the payer
                         // refunds, a reorg restores the state), so the hash must stay resubmittable.
                         _hashCache.DeleteFromLongTerm(tx.Hash!);
@@ -2357,8 +2359,16 @@ namespace Nethermind.TxPool
             return UpdateGasBottleneckAndMarkForEviction(transactions, currentNonce, balance, lastElement, updateTx, revalidation);
         }
 
-        public bool RemoveTransaction(Hash256? hash)
+        public bool RemoveTransaction(Hash256? hash) => RemoveTransaction(hash, out _);
+
+        /// <summary>Removes <paramref name="hash"/> from whichever of the pending and blob pools holds it, and raises
+        /// <see cref="RemovedPending"/>.</summary>
+        /// <param name="hash">Hash of the transaction to remove.</param>
+        /// <param name="removed">The record the pool held — the instance the events carry, not a re-decoded copy.</param>
+        /// <returns>Whether either pool held the transaction.</returns>
+        private bool RemoveTransaction(Hash256? hash, [NotNullWhen(true)] out Transaction? removed)
         {
+            removed = null;
             if (hash is null)
             {
                 return false;
@@ -2371,6 +2381,8 @@ namespace Nethermind.TxPool
             {
                 return false;
             }
+
+            removed = transaction;
 
             RemovedPending?.Invoke(this, new TxEventArgs(transaction));
 
