@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Module = Autofac.Module;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Container;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Config;
 using Nethermind.Blockchain.Blocks;
@@ -9,6 +12,8 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Tracing;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
@@ -54,6 +59,153 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class BlockProcessorTests
 {
+    public static IEnumerable<TestCaseData> TransactionTraceBoundaryCases()
+    {
+        foreach (string tracerName in new[] { "callTracer", "prestateTracer" })
+        {
+            for (int targetIndex = -1; targetIndex <= 2; targetIndex++)
+            {
+                yield return new TestCaseData(targetIndex, tracerName, false, false);
+                yield return new TestCaseData(targetIndex, tracerName, true, false);
+            }
+        }
+
+        yield return new TestCaseData(0, "callTracer", false, true);
+        yield return new TestCaseData(0, "callTracer", true, true);
+    }
+
+    [TestCaseSource(nameof(TransactionTraceBoundaryCases))]
+    public async Task TransactionTraceBoundary_WhenTargetCompletes_PreservesTraceAndSkipsSuffix(
+        int targetIndex, string tracerName, bool useBal, bool forceFullBal)
+    {
+        IReleaseSpec spec = useBal ? Amsterdam.Instance : Prague.Instance;
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false })
+            .AddSingleton<IBlockValidationModule, PrefixReplayValidationModule>());
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce((ulong)i)
+                .WithValue((UInt256)(i + 1)).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        }
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions.Length, Is.EqualTo(3), "precondition: the block must contain the complete test sequence");
+        Hash256 target = targetIndex < 0 ? TestItem.KeccakA : block.Transactions[targetIndex].Hash!;
+        GethTraceOptions traceOptions = new() { TxHash = target, Tracer = tracerName };
+
+        string expected = Replay(false, out int fullCount);
+        byte[][] executionRequests = [[0, 1, 2]];
+        GeneratedBlockAccessList generatedBlockAccessList = new();
+        byte[] encodedBlockAccessList = [0xc0];
+        using ArrayPoolList<AddressAsKey> accountChanges = new(1);
+        accountChanges.Add(TestItem.AddressA);
+        block.AccountChanges = accountChanges;
+        block.ExecutionRequests = executionRequests;
+        block.GeneratedBlockAccessList = generatedBlockAccessList;
+        block.EncodedBlockAccessList = encodedBlockAccessList;
+        string actual = Replay(true, out int prefixCount);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fullCount, Is.EqualTo(3), "the unbounded replay is the full-block oracle");
+            Assert.That(prefixCount, Is.EqualTo(targetIndex < 0 || forceFullBal ? 3 : targetIndex + 1), "replay must stop only after the target completes unless full BAL construction is required");
+            Assert.That(actual, Is.EqualTo(expected), "the selected trace must match full-block replay including its prestate");
+            Assert.That(block.Transactions.Length, Is.EqualTo(3), "the original block body must not be truncated");
+            Assert.That(block.AccountChanges, Is.SameAs(accountChanges), "read-only replay must not overwrite cached account changes");
+            Assert.That(block.ExecutionRequests, Is.SameAs(executionRequests), "read-only replay must not overwrite cached execution requests");
+            Assert.That(block.GeneratedBlockAccessList, Is.SameAs(generatedBlockAccessList), "read-only replay must not overwrite the cached generated BAL");
+            Assert.That(block.EncodedBlockAccessList, Is.SameAs(encodedBlockAccessList), "read-only replay must not overwrite the cached encoded BAL");
+        }
+
+        string Replay(bool stopAtTarget, out int count)
+        {
+            using IDisposable scope = chain.MainWorldState.BeginScope(parent);
+            IBlockTracer<GethLikeTxTrace> tracer = GethStyleTracer.CreateOptionsTracer(block.Header, traceOptions, chain.MainWorldState, chain.SpecProvider);
+            RecordingPrefixTracer recording = new(tracer);
+            IBlockTracer executionTracer = stopAtTarget ? TransactionTraceBoundary.Wrap(recording, target) : recording;
+            ((MainProcessingContext)chain.MainProcessingContext).LifetimeScope.Resolve<IBlockAccessListManager>()
+                .ForceConstructGeneratedBlockAccessList = forceFullBal;
+            chain.BlockProcessor.ProcessOne(block, ProcessingOptions.Trace | ProcessingOptions.ForceSequentialBlockAccessList,
+                executionTracer, spec, CancellationToken.None);
+            count = recording.Started;
+            Assert.That(recording.Ended, Is.EqualTo(count), "each executed transaction must finish its tracer lifecycle");
+            Assert.That(recording.BlockEnded, Is.True, "early completion must still close the block tracer");
+            using GethLikeTxTraceCollection result = new(tracer.BuildResult());
+            return chain.JsonSerializer.Serialize(result);
+        }
+    }
+
+    [Test]
+    public void TransactionTraceBoundary_WhenOptionsAreNotReadOnlyReplay_IsIgnored(
+        [Values(ProcessingOptions.None, ProcessingOptions.NoValidation, ProcessingOptions.ProducingBlock,
+            ProcessingOptions.Trace | ProcessingOptions.StoreReceipts)] ProcessingOptions options)
+    {
+        IBlockTracer tracer = TransactionTraceBoundary.Wrap(NullBlockTracer.Instance, TestItem.KeccakA);
+        Assert.That(TransactionTraceBoundary.Get(tracer, options), Is.Null,
+            "prefix completion must not affect validation, production, simulated calls or receipt persistence");
+    }
+
+    [Test]
+    public void TransactionTraceBoundary_WhenReused_ResetsCompletion()
+    {
+        Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        TransactionTraceBoundary boundary = (TransactionTraceBoundary)TransactionTraceBoundary.Wrap(NullBlockTracer.Instance, tx.Hash!);
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        boundary.StartNewBlockTrace(block);
+        boundary.StartNewTxTrace(tx);
+        Assert.That(boundary.IsComplete, Is.False, "starting the target is not completion");
+        boundary.EndTxTrace();
+        Assert.That(boundary.IsComplete, Is.True, "completion follows EndTxTrace");
+        boundary.StartNewBlockTrace(block);
+        Assert.That(boundary.IsComplete, Is.False, "a new block must reset the boundary");
+    }
+
+    private sealed class PrefixReplayValidationModule : Module, IBlockValidationModule
+    {
+        public bool SupportsTransactionTracePrefix => true;
+
+        protected override void Load(ContainerBuilder builder) => builder
+            .AddScoped<IBlockProcessor, TransactionTraceBlockProcessor>()
+            .AddScoped<TransactionTraceExecutor>();
+    }
+
+    [Test]
+    public void TransactionTraceBoundary_WhenRewardsEnabledAfterWrapping_DoesNotComplete()
+    {
+        CancellationBlockTracer tracer = new(NullBlockTracer.Instance);
+        Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        TransactionTraceBoundary boundary = (TransactionTraceBoundary)TransactionTraceBoundary.Wrap(tracer, tx.Hash!);
+        boundary.StartNewBlockTrace(Build.A.Block.WithTransactions(tx).TestObject);
+        boundary.StartNewTxTrace(tx);
+        tracer.IsTracingRewards = true;
+        boundary.EndTxTrace();
+        Assert.That(boundary.IsComplete, Is.False);
+    }
+
+    [Test]
+    public void TransactionTraceBoundary_WhenRewardsAreRequested_LeavesTracerUnwrapped()
+    {
+        IBlockTracer tracer = Substitute.For<IBlockTracer>();
+        tracer.IsTracingRewards.Returns(true);
+        Assert.That(TransactionTraceBoundary.Wrap(tracer, TestItem.KeccakA), Is.SameAs(tracer),
+            "reward traces depend on processing the complete block");
+    }
+
+    [Test]
+    public void TransactionTraceBoundary_WhenCancelledAtEnd_DoesNotComplete()
+    {
+        using CancellationTokenSource cancellation = new();
+        Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        TransactionTraceBoundary boundary = (TransactionTraceBoundary)TransactionTraceBoundary.Wrap(
+            NullBlockTracer.Instance.WithCancellation(cancellation.Token), tx.Hash!);
+        boundary.StartNewBlockTrace(Build.A.Block.WithTransactions(tx).TestObject);
+        boundary.StartNewTxTrace(tx);
+        cancellation.Cancel();
+        Assert.That(boundary.EndTxTrace, Throws.InstanceOf<OperationCanceledException>(), "cancellation must not become successful completion");
+        Assert.That(boundary.IsComplete, Is.False, "a failed inner callback must not mark completion");
+    }
+
     [Test]
     public void Read_coverage_validates_system_slices_and_preserves_read_budget(
         [Values] bool omitRead, [Values] bool revertWrite, [ValueSource(nameof(ReadCoverageBlockCounts))] int blockCount)
@@ -99,12 +251,12 @@ public class BlockProcessorTests
             TracedAccessWorldState pre = workers.Find(worker => worker.GetGeneratingBlockAccessList() is not null)!;
             CheckWorkerCoverage(pre, blockNumber);
             previousCoverage = pre.ReadCoverage;
-            pre.Get(new StorageCell(TestItem.AddressA, 1));
-            pre.Get(new StorageCell(TestItem.AddressA, 3));
+            pre.Get(new StorageCell(TestItem.AddressA, 1), out _);
+            pre.Get(new StorageCell(TestItem.AddressA, 3), out _);
             if (revertWrite)
             {
                 Snapshot snapshot = pre.TakeSnapshot();
-                pre.Set(new StorageCell(TestItem.AddressA, 1), [99]);
+                pre.Set(new StorageCell(TestItem.AddressA, 1), (UInt256)99);
                 pre.Restore(snapshot);
             }
             manager.NextTransaction();
@@ -113,9 +265,9 @@ public class BlockProcessorTests
             manager.GetTxProcessor(uint.MaxValue);
             TracedAccessWorldState post = workers.Find(worker => worker.GetGeneratingBlockAccessList() is not null)!;
             CheckWorkerCoverage(post, blockNumber);
-            post.Set(new StorageCell(TestItem.AddressA, 3), [7]);
+            post.Set(new StorageCell(TestItem.AddressA, 3), (UInt256)7);
             bool skipRead = omitRead && blockNumber == blockCount;
-            if (!skipRead) post.Get(new StorageCell(TestItem.AddressA, 2));
+            if (!skipRead) post.Get(new StorageCell(TestItem.AddressA, 2), out _);
             if (skipRead)
                 Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(() => manager.SetBlockAccessList(block));
             else
@@ -209,7 +361,8 @@ public class BlockProcessorTests
                 {
                     Assert.That(stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)150));
                     Assert.That(stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(3ul));
-                    Assert.That(new UInt256(stateProvider.Get(storageCell), isBigEndian: true), Is.EqualTo((UInt256)0x2Au));
+                    stateProvider.Get(storageCell, out UInt256 storageValue1);
+                    Assert.That(storageValue1, Is.EqualTo((UInt256)0x2Au));
                 }
             });
     }
@@ -1967,6 +2120,31 @@ public class BlockProcessorTests
         }
 
         public void Dispose() => _parallelExecutionStarted.Dispose();
+    }
+
+    private sealed class RecordingPrefixTracer(IBlockTracer inner) : IBlockTracer
+    {
+        public int Started { get; private set; }
+        public int Ended { get; private set; }
+        public bool BlockEnded { get; private set; }
+        public bool IsTracingRewards => inner.IsTracingRewards;
+        public void ReportReward(Address author, string rewardType, UInt256 rewardValue) => inner.ReportReward(author, rewardType, rewardValue);
+        public void StartNewBlockTrace(Block block) => inner.StartNewBlockTrace(block);
+        public ITxTracer StartNewTxTrace(Transaction? tx)
+        {
+            Started++;
+            return inner.StartNewTxTrace(tx);
+        }
+        public void EndTxTrace()
+        {
+            inner.EndTxTrace();
+            Ended++;
+        }
+        public void EndBlockTrace()
+        {
+            inner.EndBlockTrace();
+            BlockEnded = true;
+        }
     }
 
     private sealed class RecordingParallelSafeBlockTracer : IParallelSafeBlockTracer
