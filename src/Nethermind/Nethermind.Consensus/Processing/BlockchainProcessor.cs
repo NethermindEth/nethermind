@@ -82,9 +82,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly Stopwatch _stopwatch = new();
     private readonly BlockProcessingPauseGate _pauseGate = new();
 
-    public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
-    public event EventHandler<BlockStatistics>? NewProcessingStatistics;
-
     /// <summary>
     ///
     /// </summary>
@@ -475,6 +472,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public event EventHandler? ProcessingQueueEmpty;
     public event EventHandler<BlockRemovedEventArgs>? BlockRemoved;
     public event EventHandler<BlockEventArgs>? BlockAdded;
+    public event EventHandler<IBlockProcessingQueue.InvalidBlockEventArgs>? InvalidBlock;
+    public event EventHandler<BlockStatistics>? NewProcessingStatistics;
     public bool IsEmpty => Volatile.Read(ref _queueCount) == 0;
     public int Count => Volatile.Read(ref _queueCount);
 
@@ -630,7 +629,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 {
                     Metrics.BadBlocksByNethermindNodes++;
                 }
-                InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = invalidBlock, });
+                InvalidBlock?.Invoke(this, new IBlockProcessingQueue.InvalidBlockEventArgs { InvalidBlock = invalidBlock, });
 
                 BlockTraceDumper.LogDiagnosticRlp(invalidBlock, _logger,
                     (_options.DumpOptions & DumpOptions.Rlp) != 0,

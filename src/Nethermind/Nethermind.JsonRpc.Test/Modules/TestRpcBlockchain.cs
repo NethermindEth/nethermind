@@ -254,7 +254,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public Task<string> TestEthRpc(string method, params object?[]? parameters) =>
             RpcTest.TestSerializedRequest(EthRpcModule, method, parameters);
 
-        private IBlockchainProcessor? _currentBlockchainProcessor;
+        private IBlockProcessingQueue? _currentBlockchainProcessor;
 
         public async Task RestartBlockchainProcessor()
         {
@@ -264,13 +264,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
             else
             {
-                await BlockchainProcessor.StopAsync();
+                await BlockProcessingQueue.StopAsync();
             }
 
             // simulating restarts - we stopped the old blockchain processor and create the new one
-            _currentBlockchainProcessor = new BlockchainProcessor(BlockTree, BranchProcessor,
+            BlockchainProcessor newProcessor = new(BlockTree, BranchProcessor,
                 SpecProvider, BlockPreprocessorSteps, StateReader, LimboLogs.Instance, Nethermind.Consensus.Processing.BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
-            _currentBlockchainProcessor.Start();
+            _currentBlockchainProcessor = newProcessor;
+            newProcessor.Start();
         }
     }
 }

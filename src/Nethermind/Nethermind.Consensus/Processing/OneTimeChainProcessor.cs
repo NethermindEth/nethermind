@@ -85,14 +85,8 @@ public sealed class OneTimeChainProcessor : IBlockchainProcessor
         _stats.NewProcessingStatistics += OnNewProcessingStatistics;
     }
 
-    public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
+    public event EventHandler<IBlockProcessingQueue.InvalidBlockEventArgs>? InvalidBlock;
     public event EventHandler<BlockStatistics>? NewProcessingStatistics;
-
-    public void Start() { }
-
-    public Task StopAsync(bool processRemainingBlocks = false) => Task.CompletedTask;
-
-    public bool IsProcessingBlocks(ulong? maxProcessingInterval) => false;
 
     public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default) =>
         Process(suggestedBlock, options, tracer, token, out string? _);
@@ -247,7 +241,7 @@ public sealed class OneTimeChainProcessor : IBlockchainProcessor
                 {
                     Metrics.BadBlocksByNethermindNodes++;
                 }
-                InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = invalidBlock, });
+                InvalidBlock?.Invoke(this, new IBlockProcessingQueue.InvalidBlockEventArgs { InvalidBlock = invalidBlock, });
 
                 BlockTraceDumper.LogDiagnosticRlp(invalidBlock, _logger,
                     (_options.DumpOptions & DumpOptions.Rlp) != 0,
