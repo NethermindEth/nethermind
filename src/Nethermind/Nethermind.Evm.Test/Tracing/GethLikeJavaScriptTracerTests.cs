@@ -244,7 +244,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 MainnetSpecProvider.CancunActivation);
         using GethLikeTxTrace traces = tracer.BuildResult().First();
 
-        string[] counts = ((JsonElement)traces.CustomTracerResult!.Value).GetString()!.Split(':');
+        string[] counts = ResultJson(traces).Trim('"').Split(':');
         int steps = int.Parse(counts[0]);
         Assert.That(steps, Is.GreaterThan(0));
         Assert.That(int.Parse(counts[1]), Is.EqualTo(steps + 1), "postStep must fire once per step, plus the CALL's own report");
@@ -453,6 +453,17 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void noop_tracer_legacy()
+    {
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
+                GetTracer("noopTracer_legacy"),
+                MStore(),
+                MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace traces = tracer.BuildResult().First();
+        AssertResult(traces, new { });
+    }
+
+    [Test]
     public void opcount_tracer()
     {
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
@@ -609,9 +620,9 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 }";
         using GethLikeBlockJavaScriptTracer tracer = ExecuteTwoTransactionBlock(GetTracer(countingTracer));
 
-        int[] results = tracer.BuildResult().Select(static trace => ((JsonElement)trace.CustomTracerResult!.Value).GetInt32()).ToArray();
+        string[] results = tracer.BuildResult().Select(ResultJson).ToArray();
 
-        Assert.That(results, Is.EqualTo(new[] { 1, 1 }));
+        Assert.That(results, Is.EqualTo(new[] { "1", "1" }));
     }
 
     [Test]
@@ -661,9 +672,9 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         byte[] failingCode = Prepare.EvmCode.Op(Instruction.REVERT).Done;
         using GethLikeBlockJavaScriptTracer tracer = ExecuteTwoTransactionBlock(GetTracer(errorTracer), failingCode, MStore());
 
-        string[] results = tracer.BuildResult().Select(static trace => ((JsonElement)trace.CustomTracerResult!.Value).GetString()!).ToArray();
+        string[] results = tracer.BuildResult().Select(ResultJson).ToArray();
 
-        Assert.That(results, Is.EqualTo(new[] { "error", "none" }));
+        Assert.That(results, Is.EqualTo(new[] { "\"error\"", "\"none\"" }));
     }
 
     private GethLikeBlockJavaScriptTracer ExecuteTwoTransactionBlock(GethLikeBlockJavaScriptTracer tracer) =>
@@ -707,9 +718,11 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
     private static readonly JsonSerializerOptions ExpectedResultOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
+    private static string ResultJson(GethLikeTxTrace trace) => JsonSerializer.Serialize(trace.CustomTracerResult, EthereumJsonSerializer.JsonOptions);
+
     private static void AssertResult(GethLikeTxTrace trace, object expected) =>
         Assert.That(
-            JsonSerializer.Serialize(trace.CustomTracerResult, EthereumJsonSerializer.JsonOptions),
+            ResultJson(trace),
             Is.EqualTo(JsonSerializer.Serialize(expected, ExpectedResultOptions)));
 
     private static EthereumJsonSerializer GetEthereumJsonSerializer() => new();

@@ -225,7 +225,12 @@ public class DebugRpcModule(
             return headerError;
         }
 
-        Hash256 blockHash = header!.Hash!;
+        Hash256? blockHash = header!.Hash;
+        if (blockHash is null)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot resolve block hash for {blockParameter}", ErrorCodes.ResourceNotFound);
+        }
+
         if (CanStreamStructLogs(options))
         {
             GethTraceOptions effective = options ?? GethTraceOptions.Default;

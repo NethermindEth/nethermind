@@ -94,6 +94,22 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceTransactionByBlockAndIndex_with_pending_tag_returns_a_well_formed_response()
+    {
+        using Context context = await Context.Create();
+
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA))
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        await context.Blockchain.AddBlock(transaction);
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", "pending", "0x0");
+
+        Assert.That(response, Does.Contain("\"jsonrpc\"").And.Not.Contain("Internal error"));
+    }
+
+    [Test]
     public async Task Debug_traceTransactionByBlockAndIndex_with_block_hash_parameter_matches_numeric_request()
     {
         using Context context = await Context.Create();

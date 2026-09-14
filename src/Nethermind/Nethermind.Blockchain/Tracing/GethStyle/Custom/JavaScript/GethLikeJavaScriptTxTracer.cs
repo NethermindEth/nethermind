@@ -83,20 +83,20 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     }
 
     /// <summary>
-    /// Converts the script result to JSON while its engine is alive, so the engine can go right after and the
-    /// trace keeps nothing in the V8 heap.
+    /// Renders the script result to UTF-8 JSON while its engine is alive, so the engine can go right after and
+    /// the trace keeps nothing in the V8 heap. The bytes are written to the response verbatim.
     /// </summary>
     /// <remarks>
     /// Uses the static <see cref="EthereumJsonSerializer.JsonOptions"/>: the request's serializer instance is not
     /// reachable from the tracer, so its configured depth limit does not apply to script results.
     /// </remarks>
-    private static JsonElement MaterializeResult(object? scriptResult)
+    private static RenderedJson MaterializeResult(object? scriptResult)
     {
         NumberConversion previousConversion = ForcedNumberConversion.Value;
         ForcedNumberConversion.Value = NumberConversion.Raw;
         try
         {
-            return JsonSerializer.SerializeToElement(scriptResult, EthereumJsonSerializer.JsonOptions);
+            return new RenderedJson(JsonSerializer.SerializeToUtf8Bytes(scriptResult, EthereumJsonSerializer.JsonOptions));
         }
         finally
         {
@@ -106,7 +106,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
     /// <summary>
     /// Disposes the tracer proxy, which roots its script object in the V8 heap until then whatever happens to
-    /// the engine, and then the engine itself.
+    /// the engine, and then the engine itself. The engine goes even if the proxy refuses, so the runtime's heap
+    /// limit is always re-armed.
     /// </summary>
     private void ReleaseEngine()
     {
@@ -116,8 +117,14 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         }
 
         _engineReleased = true;
-        ((object)_tracer as IDisposable)?.Dispose();
-        _engine.Dispose();
+        try
+        {
+            ((object)_tracer as IDisposable)?.Dispose();
+        }
+        finally
+        {
+            _engine.Dispose();
+        }
     }
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
@@ -310,10 +317,16 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         }
 
         _disposed = true;
-        base.Dispose();
-        _ctsRegistration.Dispose();
-        _cts.Dispose();
-        ReleaseEngine();
+        try
+        {
+            base.Dispose();
+            _ctsRegistration.Dispose();
+            _cts.Dispose();
+        }
+        finally
+        {
+            ReleaseEngine();
+        }
     }
 
     // ReSharper disable InconsistentNaming
