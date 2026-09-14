@@ -60,6 +60,18 @@ public class InclusionListBuilderTests
         return TxDecoder.Instance.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
     }
 
+    /// <summary>A synthetic floor: a zero-valued legacy contract creation, smaller than any pool-admissible
+    /// transaction, since gasLimit 0 is below the 21000 intrinsic floor a real one must clear.</summary>
+    private static Transaction MinimalTx(PrivateKey sender) => Build.A.Transaction
+        .WithNonce(0)
+        .WithValue(0)
+        .WithGasPrice(0)
+        .WithGasLimit(0)
+        .WithTo(null)
+        .WithData([])
+        .SignedAndResolved(sender)
+        .TestObject;
+
     [Test]
     public void Empty_pool_yields_empty_inclusion_list() =>
         Assert.That(BuildBuilder(PoolOf()).GetInclusionList(), Is.Empty);
@@ -139,8 +151,10 @@ public class InclusionListBuilderTests
         Assert.That(il.Select(b => senderByHash[Decode(b).Hash!]).Distinct().Count(), Is.EqualTo(senderCount));
     }
 
+    // 255 signers is below the sample capacity, so the cap is reached through second nonces rather than
+    // through reservoir eviction, which no fixture here exercises.
     [Test]
-    public void Handles_more_senders_than_the_sample_capacity()
+    public void Handles_more_transactions_than_the_sample_capacity()
     {
         Transaction[] txs = [.. Enumerable.Range(0, TestItem.PrivateKeys.Length)
             .SelectMany(i => new[] { TxOfSize(0, 0, TestItem.PrivateKeys[i]), TxOfSize(0, 1, TestItem.PrivateKeys[i]) })];
@@ -149,6 +163,35 @@ public class InclusionListBuilderTests
 
         Assert.That(il.Count, Is.LessThanOrEqualTo(Eip7805Constants.MaxTransactionsPerInclusionList));
         Assert.That(il.Sum(t => t.Count), Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+    }
+
+    private static IEnumerable<TestCaseData> ReservoirCases()
+    {
+        yield return new TestCaseData(0).SetName("Reservoir_saturates_the_byte_budget_at_the_smallest_encoded_transaction_size");
+        yield return new TestCaseData(TestItem.PrivateKeys.Length / 2).SetName("Reservoir_saturates_the_byte_budget_when_half_the_senders_are_skipped_for_size");
+    }
+
+    // A reservoir holding only what the byte cap can emit under-fills every list, silently shrinking it: an
+    // entry skipped for size spends a draw without spending budget, leaving no spare sender to refill it.
+    [TestCaseSource(nameof(ReservoirCases))]
+    public void Reservoir_saturates_the_byte_budget(int sendersSkippedForSize)
+    {
+        // Minimal legacy txs encode to 74-75 bytes, so 255 senders is barely enough to fill 8 KiB; the
+        // skipped ones are headed by a transaction larger than the whole list, so they can never contribute.
+        // The fixture tops out below the sample capacity, so reservoir eviction is not exercised here.
+        Transaction[] txs = [.. TestItem.PrivateKeys.Select((key, i) => i < sendersSkippedForSize
+            ? TxOfSize(Eip7805Constants.MaxBytesPerInclusionList, 0, key)
+            : MinimalTx(key))];
+
+        using InclusionListBytes il = BuildBuilder(PoolOf(txs)).GetInclusionList();
+        int totalBytes = il.Sum(t => t.Count);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The encode loop only stops once nothing could fit, so a saturated list has under one entry of slack.
+            Assert.That(totalBytes, Is.GreaterThan(Eip7805Constants.MaxBytesPerInclusionList - 100));
+            Assert.That(totalBytes, Is.LessThanOrEqualTo(Eip7805Constants.MaxBytesPerInclusionList));
+        }
     }
 
     [Test]
