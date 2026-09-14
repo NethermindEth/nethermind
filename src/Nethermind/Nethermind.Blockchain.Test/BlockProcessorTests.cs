@@ -598,7 +598,11 @@ public class BlockProcessorTests
     [TestCase(ProcessingOptions.None)]
     [TestCase(ProcessingOptions.EthereumMerge)]
     [TestCase(ProcessingOptions.DoNotUpdateHead)]
-    public void BranchProcessor_normal_options_open_target_scope(ProcessingOptions options)
+    [TestCase(ProcessingOptions.Trace)]
+    [TestCase(ProcessingOptions.ProducingBlock)]
+    [TestCase(ProcessingOptions.ForceProcessing)]
+    [TestCase(ProcessingOptions.NoValidation)]
+    public void BranchProcessor_opens_target_scope_for_all_options(ProcessingOptions options)
     {
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
         (_, BranchProcessor branchProcessor, _, TestStateHeaderProvider stateHeaderProvider) = CreateProcessorAndBranch(parentHeader: parent);
@@ -606,18 +610,6 @@ public class BlockProcessorTests
 
         Assert.DoesNotThrow(() => branchProcessor.Process(null, [block], options, NullBlockTracer.Instance));
         Assert.That(stateHeaderProvider.LastTarget, Is.SameAs(block.Header));
-    }
-
-    [TestCase(ProcessingOptions.Trace)]
-    [TestCase(ProcessingOptions.ProducingBlock)]
-    [TestCase(ProcessingOptions.ForceProcessing)]
-    public void BranchProcessor_legacy_options_use_base_scope(ProcessingOptions options)
-    {
-        (_, BranchProcessor branchProcessor, _, TestStateHeaderProvider stateHeaderProvider) = CreateProcessorAndBranch();
-        Block block = Build.A.Block.TestObject;
-
-        Assert.DoesNotThrow(() => branchProcessor.Process(null, [block], options, NullBlockTracer.Instance));
-        Assert.That(stateHeaderProvider.LastTarget, Is.Null);
     }
 
     [Test]

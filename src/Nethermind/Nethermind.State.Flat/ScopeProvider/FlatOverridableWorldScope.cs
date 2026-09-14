@@ -43,13 +43,13 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         _resourcePool = resourcePool;
         _flatDbManager = flatDbManager;
         _trieNodeCache = trieNodeCache;
-        WorldState = new OverridableFlatScopeProvider(
+        WorldState = new LastScopeHeaderScopeProvider(stateHeaderProvider, headerProvider => new OverridableFlatScopeProvider(
             this,
             configuration,
             new NoopTrieWarmer(),
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(_codeDbOverlay),
-            stateHeaderProvider,
-            logManager);
+            headerProvider,
+            logManager));
     }
 
     public IWorldStateScopeProvider WorldState { get; }

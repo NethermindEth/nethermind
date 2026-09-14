@@ -46,13 +46,6 @@ public class BranchProcessor(
         stateProvider.CommitTree(block.Number);
     }
 
-    private static bool CanOpenTargetAwareScope(ProcessingOptions options) =>
-        // Only normal main-chain processing can resolve a target from the block tree. Forced and
-        // post-state modes open an explicit base instead (e.g. trace, block production, BAL retry).
-        !options.ContainsFlag(ProcessingOptions.ReadOnlyChain)
-        && !options.ContainsFlag(ProcessingOptions.ForceProcessing)
-        && !options.ContainsFlag(ProcessingOptions.NoValidation);
-
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
     {
         if (suggestedBlocks.Count == 0) return [];
@@ -74,16 +67,9 @@ public class BranchProcessor(
                 throw new InvalidOperationException($"State must not be handled from outside of {nameof(IBranchProcessor)} except for genesis block.");
             }
         }
-        else if (CanOpenTargetAwareScope(options))
+        else if (!stateProvider.TryBeginScope(suggestedBlock.Header, out worldStateCloser))
         {
-            if (!stateProvider.TryBeginScope(suggestedBlock.Header, out worldStateCloser))
-            {
-                throw new InvalidOperationException($"Parent state is unavailable for target block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}.");
-            }
-        }
-        else
-        {
-            worldStateCloser = stateProvider.BeginScope(baseBlock);
+            throw new InvalidOperationException($"Parent state is unavailable for target block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}.");
         }
 
         CancellationTokenSource? backgroundCancellation = new();

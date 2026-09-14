@@ -21,7 +21,8 @@ public class OverridableWorldStateManager : IOverridableWorldScope
         _dbProvider = readOnlyDbProvider;
         OverlayTrieStore overlayTrieStore = new(readOnlyDbProvider.StateDb, trieStore);
         _reader = new(overlayTrieStore, readOnlyDbProvider.CodeDb, logManager);
-        WorldState = new TrieStoreScopeProvider(overlayTrieStore, readOnlyDbProvider.CodeDb, stateHeaderProvider, logManager, codeDbIsPersistent: false);
+        WorldState = new LastScopeHeaderScopeProvider(stateHeaderProvider,
+            headerProvider => new TrieStoreScopeProvider(overlayTrieStore, readOnlyDbProvider.CodeDb, headerProvider, logManager, codeDbIsPersistent: false));
     }
 
     public IWorldStateScopeProvider WorldState { get; }
