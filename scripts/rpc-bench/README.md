@@ -373,6 +373,47 @@ amd64 runner, `/data/expb-data` on arm64, selected by the `arch` input. A
 single-node `jsonbench` uses the default `eth-call-corpus.jsonl.gz` only.
 `corpus_dir` (sweep tool_config) overrides the directory.
 
+**Replaying the corpus as a tracing method.** The same captured calls can drive a tracing method
+instead of `eth_call`. Two dispatch checkboxes, mutually exclusive, each requiring
+`eth_call_corpus: true` — a run replays the corpus as exactly one method, so comparing them means
+dispatching more than once:
+
+| checkbox | method | module | params |
+|---|---|---|---|
+| `debug_trace_call_corpus` | `debug_traceCall` (geth-style) | `Debug` | `[tx, block, {tracer, stateOverrides, blockOverrides}]` |
+| `trace_call_corpus` | `trace_call` (Parity-style) | `Trace` | `[tx, traceTypes, block, stateOverride]` |
+
+Both build the transaction exactly as `eth_call` does (same validation, same gas cap), so every
+record the corpus already replays is accepted unchanged. Note the parameter orders differ:
+`debug_traceCall` nests both overrides in its options object, while `trace_call` takes the
+trace-type array *second*, which pushes the block to third and the state override to fourth.
+
+**`trace_call` has no block-override parameter at all.** A record carrying `blockOverrides` is
+refused at validation, naming its line, rather than replayed against a different block context —
+silently dropping it would still produce timings, and they would not be measuring the captured
+call. If a capture uses block overrides, only the `debug_traceCall` mode can replay it faithfully.
+
+The rewrite is not per request. It happens once per run, in the two places the corpus is read:
+`prepare-eth-call-corpus.py` when the k6 fixture is built, and `corpus_parity.load_corpus` for
+the parity and timings replays. k6 therefore sends bodies that are already rewritten, and a trace
+cell costs exactly what an eth_call cell costs to set up. The corpus file on disk is never
+modified.
+
+`tool_config.trace_call_tracer` selects the geth tracer — `callTracer` (default),
+`prestateTracer`, `4byteTracer`, or `""` for the struct logger. `tool_config.trace_call_types`
+selects the Parity types — `trace` (default), `vmTrace`, `stateDiff`, `rewards`, `all`,
+space- or comma-separated. Prefer the cheap selections: struct logs and `vmTrace` on a corpus of
+heavy simulation records run to enormous responses, at which point the cell measures response
+serialization rather than execution (`RPC_BENCH_MAX_RESPONSE_BYTES` raises the 16 MB per-response
+ceiling in the replay if you need it anyway).
+
+Parity still runs, and still compares two clients exactly — an outcome becomes a SHA-256 digest
+of the canonicalized trace instead of the returned bytes, which keeps the state file small and
+the privacy boundary intact. Two caveats: the word-level `parity_diffs` characterisation is
+refused in these modes (it would describe the hash), and only a **same-client** A/B is meaningful,
+since trace formatting legitimately differs between Nethermind, geth and reth — on a cross-client
+trace sweep expect divergence counts that are formatting, not defects.
+
 **Sizing a cell by request count.** By default a corpus cell runs for `duration` at each
 `rps_list` rate. `corpus_requests` (absolute) or `corpus_passes` (a multiple of that
 corpus's record count) instead size the cell by how many requests it should issue: the

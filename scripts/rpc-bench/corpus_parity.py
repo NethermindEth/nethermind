@@ -4,6 +4,11 @@
 
 """Replay a private eth_call corpus against a node and compare clients by response bytes.
 
+RPC_BENCH_CORPUS_METHOD replays the same captured calls as debug_traceCall (geth-style, tracer from
+RPC_BENCH_CORPUS_TRACER) or trace_call (Parity-style, types from RPC_BENCH_CORPUS_TRACE_TYPES). The
+rewrite happens once, at load, so the measured request path is identical to the eth_call one; only
+the method and the response differ.
+
 Privacy contract: request and response contents never appear in output — errors and
 reports carry only record indexes, counts, and category names. The baseline state file
 (response hex strings) is written to VM-local scratch and must not be artifacted.
@@ -15,6 +20,7 @@ import argparse
 import concurrent.futures
 import csv
 import gzip
+import hashlib
 import http.client
 import json
 import os
@@ -46,8 +52,26 @@ def _env_int(name: str, default: int) -> int:
 # capture needs a deliberate raise (and a runner with the RAM for it) rather than discovering the
 # cost mid-sweep. Override with RPC_BENCH_MAX_CORPUS_RECORDS.
 MAX_CORPUS_RECORDS = _env_int("RPC_BENCH_MAX_CORPUS_RECORDS", 10000)
-MAX_RESPONSE_BYTES = 16 * 1024 * 1024
+# A trace response is orders of magnitude larger than the eth_call return it is derived from, so
+# this ceiling is reached in trace mode long before it is on the calls themselves. Override with
+# RPC_BENCH_MAX_RESPONSE_BYTES; a response above it is recorded as a transport failure.
+MAX_RESPONSE_BYTES = _env_int("RPC_BENCH_MAX_RESPONSE_BYTES", 16 * 1024 * 1024)
 REQUEST_TIMEOUT_SECONDS = 120
+
+# Trace modes: replay the same captured calls as a tracing method instead of eth_call. The corpus
+# on disk stays an eth_call capture — the rewrite happens once, at load, so the measured request
+# path is unchanged (k6 and the replay both send an already-rewritten body).
+DEBUG_TRACE_CALL_METHOD = "debug_traceCall"   # geth-style, Debug module
+PARITY_TRACE_CALL_METHOD = "trace_call"       # Parity-style, Trace module
+CORPUS_METHODS = ("eth_call", DEBUG_TRACE_CALL_METHOD, PARITY_TRACE_CALL_METHOD)
+# Native tracers Nethermind implements, plus "" for the built-in struct logger. Closed on purpose:
+# an unknown name is accepted by nothing and would fail every record of a run that takes hours.
+TRACE_CALL_TRACERS = frozenset({"callTracer", "prestateTracer", "4byteTracer", ""})
+DEFAULT_TRACE_CALL_TRACER = "callTracer"
+# ParityTraceTypes, parsed case-insensitively by the client. "trace" alone is the cheapest useful
+# selection; vmTrace and stateDiff multiply the response size.
+PARITY_TRACE_TYPES = frozenset({"vmtrace", "statediff", "trace", "rewards", "all"})
+DEFAULT_PARITY_TRACE_TYPES = ("trace",)
 
 # Fixed numeric report schema; corpus_results.stage validates staged reports against this.
 # "matched" = identical result bytes; "both_rpc_errors" = both clients reject the call (also
@@ -86,9 +110,97 @@ def _reject_non_json_constant(value: str) -> None:
     raise ValueError(f"invalid JSON constant {value!r}")
 
 
+def corpus_rewrite() -> tuple[str, dict]:
+    """Return the method the corpus is replayed as, and the options that rewrite it.
+
+    Read from the environment (RPC_BENCH_CORPUS_METHOD, plus RPC_BENCH_CORPUS_TRACER or
+    RPC_BENCH_CORPUS_TRACE_TYPES) so every entry point — validate, baseline, compare, timings and
+    the k6 fixture converter — agrees on what the corpus is being replayed as without threading a
+    flag through each of them. An eth_call corpus returns empty options and is not rewritten.
+    """
+    method = os.environ.get("RPC_BENCH_CORPUS_METHOD", "") or "eth_call"
+    if method not in CORPUS_METHODS:
+        raise CorpusParityError(f"unknown corpus method (expected one of: {', '.join(CORPUS_METHODS)})")
+    if method == "eth_call":
+        return method, {}
+    if method == DEBUG_TRACE_CALL_METHOD:
+        tracer = os.environ.get("RPC_BENCH_CORPUS_TRACER", DEFAULT_TRACE_CALL_TRACER)
+        if tracer not in TRACE_CALL_TRACERS:
+            known = ", ".join(sorted(name for name in TRACE_CALL_TRACERS if name))
+            raise CorpusParityError(f"unknown tracer (expected one of: {known}, or empty for struct logs)")
+        return method, {"tracer": tracer}
+    raw = os.environ.get("RPC_BENCH_CORPUS_TRACE_TYPES", "")
+    trace_types = tuple(raw.replace(",", " ").split()) or DEFAULT_PARITY_TRACE_TYPES
+    for name in trace_types:
+        if name.lower() not in PARITY_TRACE_TYPES:
+            known = ", ".join(sorted(PARITY_TRACE_TYPES))
+            raise CorpusParityError(f"unknown trace type (expected any of: {known})")
+    return method, {"trace_types": trace_types}
+
+
+def corpus_method() -> str:
+    """RPC method the corpus is replayed as under the current setting."""
+    return corpus_rewrite()[0]
+
+
+def to_debug_trace_call(params: list, tracer: str) -> list:
+    """Rewrite one eth_call param list as debug_traceCall params.
+
+    eth_call takes the overrides positionally — ``[tx, block, stateOverride, blockOverride]`` —
+    while debug_traceCall nests both in its options object alongside the tracer selection. Both
+    methods build the transaction the same way (same validation, same gas cap), so a call the
+    corpus replays as eth_call is accepted unchanged here.
+    """
+    if not params:
+        raise CorpusParityError("record has no params — cannot rewrite as debug_traceCall")
+    options: dict = {}
+    if tracer:
+        options["tracer"] = tracer
+    # Absent and explicit-null are both "not overridden"; forwarding a null would be rejected.
+    if len(params) > 2 and params[2] is not None:
+        options["stateOverrides"] = params[2]
+    if len(params) > 3 and params[3] is not None:
+        options["blockOverrides"] = params[3]
+    block = params[1] if len(params) > 1 and params[1] is not None else "latest"
+    return [params[0], block, options]
+
+
+def to_parity_trace_call(params: list, trace_types: Sequence[str]) -> list:
+    """Rewrite one eth_call param list as Parity-style trace_call params.
+
+    trace_call orders its parameters ``[tx, traceTypes, block, stateOverride]`` — the trace-type
+    array comes second, which pushes the block to third and the state override to fourth.
+
+    It has no block-override parameter at all, so a record carrying one cannot be replayed
+    faithfully. That is refused rather than dropped: silently executing against a different block
+    context would still produce timings, and they would not be measuring the captured call.
+    """
+    if not params:
+        raise CorpusParityError("record has no params — cannot rewrite as trace_call")
+    if len(params) > 3 and params[3] is not None:
+        raise CorpusParityError("record has blockOverrides, which trace_call cannot express")
+    block = params[1] if len(params) > 1 and params[1] is not None else "latest"
+    rewritten = [params[0], list(trace_types), block]
+    if len(params) > 2 and params[2] is not None:
+        rewritten.append(params[2])
+    return rewritten
+
+
+def rewrite_record(params: list, method: str, options: dict) -> list:
+    """Rewrite one eth_call param list for the method the corpus is being replayed as."""
+    if method == DEBUG_TRACE_CALL_METHOD:
+        return to_debug_trace_call(params, options["tracer"])
+    return to_parity_trace_call(params, options["trace_types"])
+
+
 def load_corpus(path: str | Path) -> list[list]:
-    """Return the params of each corpus record, in file order."""
+    """Return the params of each corpus record, in file order.
+
+    In a trace mode every record is rewritten here — once, before any request is sent — so the
+    rewrite never sits in the measured path.
+    """
     path = Path(path)
+    method, options = corpus_rewrite()
     load_started = time.perf_counter()
     # The latency cells convert the same file with prepare-eth-call-corpus.py, which requires one
     # of these suffixes. Enforcing it here too keeps both readers agreeing on what a legal corpus
@@ -115,7 +227,13 @@ def load_corpus(path: str | Path) -> list[list]:
                 if not isinstance(record, dict) or record.get("method") != "eth_call" \
                         or not isinstance(record.get("params"), list):
                     raise CorpusParityError(f"corpus line {number}: not an eth_call record")
-                params.append(record["params"])
+                if method == "eth_call":
+                    params.append(record["params"])
+                else:
+                    try:
+                        params.append(rewrite_record(record["params"], method, options))
+                    except CorpusParityError as error:
+                        raise CorpusParityError(f"corpus line {number}: {error}") from None
     # EOFError/zlib.error (truncated or corrupt gzip) and UnicodeError (invalid UTF-8) are not
     # OSError, so they previously escaped as tracebacks — which print the offending corpus bytes.
     except (OSError, EOFError, UnicodeError, zlib.error) as error:
@@ -206,10 +324,10 @@ def _fetch(url: str, body: bytes) -> tuple[int, bytes] | None:
     return None
 
 
-def _post(url: str, index: int, params: list) -> tuple[str | None, str]:
-    """POST one eth_call; return (category, result_hex). category is None on success."""
+def _post(url: str, index: int, params: list, method: str) -> tuple[str | None, str]:
+    """POST one record; return (category, comparison key). category is None on success."""
     body = json.dumps(
-        {"jsonrpc": "2.0", "id": index, "method": "eth_call", "params": params},
+        {"jsonrpc": "2.0", "id": index, "method": method, "params": params},
         separators=(",", ":"),
     ).encode()
     fetched = _fetch(url, body)
@@ -241,6 +359,17 @@ def _post(url: str, index: int, params: list) -> tuple[str | None, str]:
         # distinguishes "this call legitimately reverts" from "the node is shedding load".
         return (f"rpc_error:{code}" if isinstance(code, int) else "rpc_error"), ""
     result = envelope.get("result")
+    if method != "eth_call":
+        # A tracer answers with a JSON document, not return data. Store its digest: the comparison
+        # only ever asks whether two clients produced the same bytes, and a trace is both far too
+        # large to keep one per record and far too revealing of the captured call.
+        if result is None:
+            return "invalid_response", ""
+        try:
+            canonical = json.dumps(result, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        except (TypeError, ValueError):
+            return "invalid_response", ""
+        return None, "0x" + hashlib.sha256(canonical.encode()).hexdigest()
     if not isinstance(result, str) or not result.startswith("0x") or len(result) % 2 != 0:
         return "invalid_response", ""
     try:
@@ -260,7 +389,7 @@ REPLAY_CONCURRENCY = _env_int("RPC_BENCH_PARITY_CONCURRENCY", 16)
 RETRYABLE_CATEGORIES = frozenset({"transport_failure", "invalid_response"})
 
 
-def _replay(rpc_url: str, params_list: list[list], what: str) -> list[tuple[str | None, str]]:
+def _replay(rpc_url: str, params_list: list[list], what: str, method: str) -> list[tuple[str | None, str]]:
     """Replay every record and return (category, result) per record, in corpus order."""
     outcomes: list[tuple[str | None, str] | None] = [None] * len(params_list)
     started = time.perf_counter()
@@ -269,7 +398,7 @@ def _replay(rpc_url: str, params_list: list[list], what: str) -> list[tuple[str 
 
     def one(position: int) -> None:
         nonlocal done
-        outcomes[position] = _post(rpc_url, position + 1, params_list[position])
+        outcomes[position] = _post(rpc_url, position + 1, params_list[position], method)
         with lock:
             done += 1
             _progress(done, len(params_list), started, what)
@@ -288,7 +417,7 @@ def _replay(rpc_url: str, params_list: list[list], what: str) -> list[tuple[str 
         print(f"  {what}: re-running {len(suspect)} non-clean record(s) serially", flush=True)
         recovered = 0
         for position in suspect:
-            retried = _post(rpc_url, position + 1, params_list[position])
+            retried = _post(rpc_url, position + 1, params_list[position], method)
             if _base_category(retried[0]) not in RETRYABLE_CATEGORIES:
                 recovered += 1
             settled[position] = retried
@@ -309,7 +438,7 @@ def baseline(corpus: str, rpc_url: str, state_path: str) -> None:
     results: list[str] = []
     failures: dict[str, int] = {}
     error_count = 0
-    for category, result in _replay(rpc_url, params_list, "baseline"):
+    for category, result in _replay(rpc_url, params_list, "baseline", corpus_method()):
         if _base_category(category) == "rpc_error":
             error_count += 1
             results.append(ERROR_MARKER)
@@ -378,6 +507,10 @@ def _describe_divergence(index: int, expected: str, actual: str) -> dict:
 def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
             baseline_client: str, candidate_client: str, diffs_path: str | None = None) -> bool:
     """Replay the corpus against a candidate node and diff against the stored baseline."""
+    # In a trace mode an outcome is a digest of the whole trace, so the word-level characterisation
+    # would describe the hash rather than the response and read as "everything differs".
+    if diffs_path and corpus_method() != "eth_call":
+        raise CorpusParityError("--diffs cannot characterise trace responses (outcomes are digests)")
     params_list = load_corpus(corpus)
     try:
         with gzip.open(state_path, "rt", encoding="utf-8") as source:
@@ -412,7 +545,8 @@ def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
         if len(divergences) < MAX_DIVERGENCE_INDEXES:
             divergences.append({"index": index, "kind": kind})
 
-    replayed = _replay(rpc_url, params_list, "compare")
+    method = corpus_method()
+    replayed = _replay(rpc_url, params_list, "compare", method)
 
     # Second gate: anything that disagrees with the baseline is re-run unloaded before it is
     # counted. A real semantic divergence reproduces; a load artifact does not. Cheap because
@@ -426,7 +560,7 @@ def compare(corpus: str, rpc_url: str, state_path: str, report_path: str,
         print(f"  compare: re-verifying {len(disputed)} disagreement(s) serially", flush=True)
         settled = 0
         for position in disputed:
-            retried = _post(rpc_url, position + 1, params_list[position])
+            retried = _post(rpc_url, position + 1, params_list[position], method)
             if retried != replayed[position]:
                 settled += 1
             replayed[position] = retried
@@ -520,11 +654,11 @@ def _base_category(category: str | None) -> str | None:
     return category.split(":", 1)[0] if category else category
 
 
-def _timed_post(url: str, index: int, params: list) -> tuple[float, str]:
-    """POST one eth_call and return (elapsed_ms, outcome). Never raises."""
+def _timed_post(url: str, index: int, params: list, method: str) -> tuple[float, str]:
+    """POST one record and return (elapsed_ms, outcome). Never raises."""
     started = time.perf_counter()
     try:
-        category, _ = _post(url, index, params)
+        category, _ = _post(url, index, params, method)
     except Exception:  # a replay must never lose the whole matrix to one bad record
         category = "transport_failure"
     return (time.perf_counter() - started) * 1000.0, category or "ok"
@@ -539,6 +673,7 @@ def timings(corpus: str, rpc_url: str, out_path: str, passes: int, rps: float, c
     carries record indexes and milliseconds only — no request or response content.
     """
     params_list = load_corpus(corpus)
+    method = corpus_method()
     total_records = len(params_list)
     if passes < 1:
         raise CorpusParityError("passes must be >= 1")
@@ -557,7 +692,7 @@ def timings(corpus: str, rpc_url: str, out_path: str, passes: int, rps: float, c
             delay = due - time.perf_counter()
             if delay > 0:
                 time.sleep(delay)
-        elapsed, outcome = _timed_post(rpc_url, record + 1, params_list[record])
+        elapsed, outcome = _timed_post(rpc_url, record + 1, params_list[record], method)
         with lock:
             grid[record][current_pass] = elapsed
             status[record][current_pass] = outcome
@@ -654,7 +789,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     try:
         if arguments.command == "validate":
-            print(f"corpus OK: {len(load_corpus(arguments.corpus))} records")
+            # The sweep reads the record count from field 3 — only ever append here.
+            method, options = corpus_rewrite()
+            if method == DEBUG_TRACE_CALL_METHOD:
+                detail = f" (replayed as {method}, tracer={options['tracer'] or 'structLog'})"
+            elif method == PARITY_TRACE_CALL_METHOD:
+                detail = f" (replayed as {method}, types={'+'.join(options['trace_types'])})"
+            else:
+                detail = ""
+            print(f"corpus OK: {len(load_corpus(arguments.corpus))} records{detail}")
             return 0
         if arguments.command == "timings":
             timings(arguments.corpus, arguments.rpc_url, arguments.out,

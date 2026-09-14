@@ -38,6 +38,15 @@ JB_ETH_CALL_CORPUS="${JB_ETH_CALL_CORPUS:-false}"
 CORPUS_DIR="${CORPUS_DIR:-/data/expb-data/rpc-bench}"   # the workflow passes the selected runner's dir
 # Filename filter within CORPUS_DIR — set to an exact filename to run a single corpus.
 CORPUS_GLOB="${CORPUS_GLOB:-eth-call-corpus*.jsonl.gz}"
+# Replay every corpus as debug_traceCall (geth-style) or trace_call (Parity-style) instead of
+# eth_call. Each record is rewritten once, when the corpus is loaded (parity/timings) or converted
+# into the k6 fixture — never per request — so the cells measure the node, not the rewrite. Parity
+# still holds: an outcome becomes a digest of the trace instead of the returned bytes, which
+# compares two clients exactly as before.
+CORPUS_METHOD="${CORPUS_METHOD:-eth_call}"
+# '-' not ':-': an explicitly empty tracer selects the struct logger.
+CORPUS_TRACER="${CORPUS_TRACER-callTracer}"
+CORPUS_TRACE_TYPES="${CORPUS_TRACE_TYPES-trace}"
 # Size a corpus cell by request count instead of wall time. CORPUS_REQUESTS is absolute;
 # CORPUS_PASSES is a multiple of the corpus's own record count (2 = every record drawn twice on
 # average). Either one derives the cell duration from the rate, so the rate stays what was asked
@@ -189,6 +198,8 @@ run_cell() {
     JB_BENCHMARK_CONFIG="$cfg" JB_RPS="$rps" JB_DURATION="$dur" \
     JB_DEEP_CHECK="$deep" JB_HTML_REPORT="false" \
     JB_ETH_CALL_CORPUS="$is_corpus" JB_ETH_CALL_CORPUS_FILE="$corpus" \
+    CORPUS_METHOD="$CORPUS_METHOD" CORPUS_TRACER="$CORPUS_TRACER" \
+    CORPUS_TRACE_TYPES="$CORPUS_TRACE_TYPES" \
     RESOURCE_SAMPLER_CONTAINER="$sampler_container" RESOURCE_SAMPLER_OUT="$sampler_out" \
     "$here/run-jsonbench.sh"
 }
@@ -293,6 +304,25 @@ case "$JB_ETH_CALL_CORPUS" in
   true|false) ;;
   *) echo "::error::JB_ETH_CALL_CORPUS must be true or false"; exit 1 ;;
 esac
+case "$CORPUS_METHOD" in
+  eth_call|debug_traceCall|trace_call) ;;
+  *) echo "::error::CORPUS_METHOD must be eth_call, debug_traceCall or trace_call"; exit 1 ;;
+esac
+if [[ "$CORPUS_METHOD" != "eth_call" ]]; then
+  if [[ "$JB_ETH_CALL_CORPUS" != "true" ]]; then
+    echo "::error::CORPUS_METHOD=$CORPUS_METHOD requires eth_call_corpus — there are no captured calls to rewrite"; exit 1
+  fi
+  # A trace outcome is a digest of the whole response, so the word-level characterisation would
+  # describe the hash. corpus_parity refuses the combination; say so before the sweep starts.
+  if [[ "$CORPUS_PARITY_DIFFS" == "true" ]]; then
+    echo "::error::parity_diffs cannot characterise trace responses — drop it or run the corpus as eth_call"; exit 1
+  fi
+fi
+# corpus_parity.py runs as its own process for validate/baseline/compare/timings; export the
+# resolved values rather than relying on inheritance so every one of them sees the same mode.
+export RPC_BENCH_CORPUS_METHOD="$CORPUS_METHOD"
+export RPC_BENCH_CORPUS_TRACER="$CORPUS_TRACER"
+export RPC_BENCH_CORPUS_TRACE_TYPES="$CORPUS_TRACE_TYPES"
 if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   for f in "$CORPUS_DIR"/$CORPUS_GLOB; do
     [[ -f "$f" ]] && CORPORA+=("$f")

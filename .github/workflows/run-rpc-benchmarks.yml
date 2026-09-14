@@ -104,6 +104,33 @@ on:
         required: false
         type: boolean
         default: false
+      debug_trace_call_corpus:
+        description: >-
+          Replay the private eth_call corpus as debug_traceCall — the geth-style Debug-module
+          method, NOT Parity's trace_call (see trace_call_corpus for that). Requires
+          tool_config.eth_call_corpus=true, and is mutually exclusive with trace_call_corpus.
+          eth_call's positional overrides move into debug_traceCall's options object
+          ([tx, block, {tracer, stateOverrides, blockOverrides}]); both methods build the
+          transaction identically (same validation, same gas cap), so every record the corpus
+          replays as eth_call is accepted unchanged. Defaults to callTracer;
+          tool_config.trace_call_tracer selects another (prestateTracer, 4byteTracer, or "" for
+          the struct logger, whose responses are orders of magnitude larger).
+        required: false
+        type: boolean
+        default: false
+      trace_call_corpus:
+        description: >-
+          Replay the private eth_call corpus as trace_call — the Parity-style Trace-module method,
+          NOT geth's debug_traceCall (see debug_trace_call_corpus for that). Requires
+          tool_config.eth_call_corpus=true, and is mutually exclusive with debug_trace_call_corpus.
+          trace_call orders its parameters [tx, traceTypes, block, stateOverride], so the trace-type
+          array comes second. It has no block-override parameter: a record carrying blockOverrides
+          is REFUSED at validation rather than replayed against a different block context.
+          Defaults to the "trace" type; tool_config.trace_call_types selects others
+          (vmTrace, stateDiff, rewards, all — each multiplies the response size).
+        required: false
+        type: boolean
+        default: false
       state_layout:
         description: State layout — picks the Nethermind DB snapshot and layout flags (expb convention); ignored for geth/reth
         required: true
@@ -126,8 +153,8 @@ on:
           (3) single-node jsonbench: {"benchmark_config":"ethcall-contracts-head","rps":"50","duration":"60s"} (add "eth_call_corpus":true to use the default private corpus instead of the config's calls);
           (4) flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30};
           (5) ethcallchaos: {"rate":50,"parallel":8,"duration":300}.
-          All jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/corpus_file (corpus for this path; the sweep equivalent is corpus_glob)/corpus_warmup_duration (discarded warm-up before the measured cell, profilers start after it; default 0)/corpus_warmup_rps (default 400)/extra_args.
-          All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file)/corpus_requests (absolute requests per corpus cell, replaces duration)/corpus_passes (requests as a multiple of the corpus record count)/max_corpus_records (raise the 10k parity guard rail)/timings_passes+timings_rps+timings_concurrency (per-record latency matrix; empty rps_list skips the k6 cells)/parity_diffs (characterise each divergence word by word — response-derived, opt in)/max_divergence_indexes (raise the 200 cap on recorded divergence indexes)/db_isolation_all (force one isolation mode for every client — copy|overlay, so storage counters are comparable; direct is refused unless db_isolation_allow_snapshot_mutation=true because it rewrites the shared snapshot)/db_isolation_allow_snapshot_mutation (consent flag for direct on a private snapshot)/node_env_vars (extra docker -e KEY=VALUE assignments applied to every swept node, space-separated — for opt-in experiment gates like NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1)/corpus_warmup_duration (discarded warm-up per corpus per client, default 60s; 0 measures cold — cold p99 runs ~60% high)/corpus_warmup_rps (rate floor for that warm-up, default 400 — decoupled from rps_list so the window stays short while the delivered request count holds; a run measuring a higher rate warms at that rate instead)/resource_sampling (cgroup counters per cell, default true)/deep_check (capture full responses on non-corpus cells for cross-arm comparison, default true; set false on a box with a small root disk).
+          All jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/corpus_file (corpus for this path; the sweep equivalent is corpus_glob)/corpus_warmup_duration (discarded warm-up before the measured cell, profilers start after it; default 0)/corpus_warmup_rps (default 400)/trace_call_tracer (geth tracer for debug_trace_call_corpus: callTracer (default), prestateTracer, 4byteTracer, or "" for struct logs)/trace_call_types (Parity types for trace_call_corpus: trace (default), vmTrace, stateDiff, rewards, all)/extra_args.
+          All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file)/corpus_requests (absolute requests per corpus cell, replaces duration)/corpus_passes (requests as a multiple of the corpus record count)/max_corpus_records (raise the 10k parity guard rail)/timings_passes+timings_rps+timings_concurrency (per-record latency matrix; empty rps_list skips the k6 cells)/parity_diffs (characterise each divergence word by word — response-derived, opt in)/max_divergence_indexes (raise the 200 cap on recorded divergence indexes)/db_isolation_all (force one isolation mode for every client — copy|overlay, so storage counters are comparable; direct is refused unless db_isolation_allow_snapshot_mutation=true because it rewrites the shared snapshot)/db_isolation_allow_snapshot_mutation (consent flag for direct on a private snapshot)/node_env_vars (extra docker -e KEY=VALUE assignments applied to every swept node, space-separated — for opt-in experiment gates like NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1)/corpus_warmup_duration (discarded warm-up per corpus per client, default 60s; 0 measures cold — cold p99 runs ~60% high)/corpus_warmup_rps (rate floor for that warm-up, default 400 — decoupled from rps_list so the window stays short while the delivered request count holds; a run measuring a higher rate warms at that rate instead)/resource_sampling (cgroup counters per cell, default true)/deep_check (capture full responses on non-corpus cells for cross-arm comparison, default true; set false on a box with a small root disk)/trace_call_tracer (geth tracer for debug_trace_call_corpus: callTracer (default), prestateTracer, 4byteTracer, or "" for struct logs)/trace_call_types (Parity types for trace_call_corpus: trace (default), vmTrace, stateDiff, rewards, all) — parity_diffs is refused in either trace mode.
           In sweep mode the single-client inputs above (client, reference_client, snapshot_block, state_layout, docker_image) are superseded by tool_config.
         required: false
         default: ""
@@ -187,6 +214,9 @@ jobs:
       node_cpuset: ${{ steps.resolve.outputs.node_cpuset }}
       node_memory: ${{ steps.resolve.outputs.node_memory }}
       eth_call_corpus: ${{ steps.resolve.outputs.eth_call_corpus }}
+      corpus_method: ${{ steps.resolve.outputs.corpus_method }}
+      trace_call_tracer: ${{ steps.resolve.outputs.trace_call_tracer }}
+      trace_call_types: ${{ steps.resolve.outputs.trace_call_types }}
       warmup_seconds: ${{ steps.resolve.outputs.warmup_seconds }}
       warmup_rps: ${{ steps.resolve.outputs.warmup_rps }}
       tool_config: ${{ steps.resolve.outputs.tool_config }}
@@ -206,6 +236,8 @@ jobs:
           IN_DOTTRACE: ${{ inputs.dottrace }}
           IN_PERF: ${{ inputs.perf }}
           IN_DOTNET_TRACE: ${{ inputs.dotnet_trace }}
+          IN_TRACE_CALL_CORPUS: ${{ inputs.trace_call_corpus }}
+          IN_DEBUG_TRACE_CALL_CORPUS: ${{ inputs.debug_trace_call_corpus }}
           IN_STATE_LAYOUT: ${{ inputs.state_layout }}
           IN_ARCH: ${{ inputs.arch }}
           IN_FLAGS: ${{ inputs.additional_nethermind_flags }}
@@ -224,6 +256,8 @@ jobs:
             dottrace="${IN_DOTTRACE:-false}"
             perf="${IN_PERF:-false}"
             dotnet_trace="${IN_DOTNET_TRACE:-false}"
+            trace_call_corpus="${IN_TRACE_CALL_CORPUS:-false}"
+            debug_trace_call_corpus="${IN_DEBUG_TRACE_CALL_CORPUS:-false}"
             state_layout="${IN_STATE_LAYOUT:-flat}"
             additional_flags="${IN_FLAGS:-}"
             tool_config="${IN_TOOL_CONFIG:-}"
@@ -239,6 +273,8 @@ jobs:
             dottrace="false"
             perf="false"
             dotnet_trace="false"
+            trace_call_corpus="false"
+            debug_trace_call_corpus="false"
             state_layout="flat"
             additional_flags=""
             tool_config='{"tests":"eth_call eth_getBalance eth_getCode eth_getStorageAt eth_getTransactionCount eth_getBlockByNumber","rates":"10 100 500","duration":30}'
@@ -364,6 +400,37 @@ jobs:
               exit 1
             fi
           fi
+          # Which method the captured calls are replayed as. One corpus drives one method per run,
+          # and the corpus is the only source of calls either checkbox can rewrite.
+          if [[ "${trace_call_corpus}" == "true" && "${debug_trace_call_corpus}" == "true" ]]; then
+            echo "trace_call_corpus and debug_trace_call_corpus are mutually exclusive — a run replays the corpus as one method. Dispatch twice to compare them."
+            exit 1
+          fi
+          corpus_method="eth_call"
+          [[ "${trace_call_corpus}" == "true" ]] && corpus_method="trace_call"
+          [[ "${debug_trace_call_corpus}" == "true" ]] && corpus_method="debug_traceCall"
+          if [[ "${corpus_method}" != "eth_call" && "${eth_call_corpus}" != "true" ]]; then
+            echo "${corpus_method} replay requires tool_config.eth_call_corpus=true — there are no captured calls to rewrite."
+            exit 1
+          fi
+          # Empty selects the struct logger; anything else must be a tracer the client implements,
+          # or every record of a run that takes hours fails identically.
+          trace_call_tracer="callTracer"
+          if echo "${tool_config}" | jq -e 'has("trace_call_tracer")' >/dev/null 2>&1; then
+            trace_call_tracer="$(echo "${tool_config}" | jq -r '.trace_call_tracer')"
+            case "${trace_call_tracer}" in
+              callTracer|prestateTracer|4byteTracer|"") ;;
+              *) echo "trace_call_tracer must be callTracer, prestateTracer, 4byteTracer, or \"\" (struct logs), got '${trace_call_tracer}'."; exit 1;;
+            esac
+          fi
+          # Parity trace types, space- or comma-separated; the client parses them case-insensitively.
+          trace_call_types="$(echo "${tool_config}" | jq -r '.trace_call_types // "trace"')"
+          for trace_type in ${trace_call_types//,/ }; do
+            case "$(echo "${trace_type}" | tr '[:upper:]' '[:lower:]')" in
+              vmtrace|statediff|trace|rewards|all) ;;
+              *) echo "trace_call_types must be any of vmTrace, stateDiff, trace, rewards, all; got '${trace_type}'."; exit 1;;
+            esac
+          done
           # Single-node jsonbench warm-up (discarded load before the measured cell, after which the
           # profilers start). The sweep reads the same key itself (default 240s there); here the
           # default stays 0 so an unconfigured run measures what it always did.
@@ -490,8 +557,14 @@ jobs:
           network="$(nc '.network')";               [[ -z "${network}" ]] && network="mainnet"
           jsonrpc_modules="$(nc '.jsonrpc_modules')"
           [[ -z "${jsonrpc_modules}" ]] && jsonrpc_modules="Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug"
-          # Corpus runs only ever issue eth_call — serve the minimal module set.
-          [[ "${eth_call_corpus}" == "true" ]] && jsonrpc_modules="Eth"
+          # Corpus runs issue exactly one method — serve the minimal module set that carries it.
+          if [[ "${eth_call_corpus}" == "true" ]]; then
+            case "${corpus_method}" in
+              debug_traceCall) jsonrpc_modules="Eth,Debug" ;;
+              trace_call)      jsonrpc_modules="Eth,Trace" ;;
+              *)               jsonrpc_modules="Eth" ;;
+            esac
+          fi
           health_min="$(nc '.health_timeout_minutes')"; [[ -z "${health_min}" ]] && health_min="30"
           node_cpuset="$(nc '.cpuset')"
           node_memory="$(nc '.memory')"
@@ -633,6 +706,9 @@ jobs:
             echo "node_cpuset=${node_cpuset}"
             echo "node_memory=${node_memory}"
             echo "eth_call_corpus=${eth_call_corpus}"
+            echo "corpus_method=${corpus_method}"
+            echo "trace_call_tracer=${trace_call_tracer}"
+            echo "trace_call_types=${trace_call_types}"
             echo "warmup_seconds=${warmup_seconds}"
             echo "warmup_rps=${warmup_rps}"
             echo "tool_config<<TOOLCFG"
@@ -640,7 +716,7 @@ jobs:
             echo "TOOLCFG"
           } >> "${GITHUB_OUTPUT}"
 
-          echo "Resolved: tool=${benchmark_tool} client=${client} reference=${reference_client} branch=${branch} layout=${state_layout} snapshot_block=${snapshot_block:-<expb default>} image_mode=${image_mode} image=${image_ref} dottrace=${dottrace} dottrace_mode=${dottrace_mode:-none} perf=${perf} dotnet_trace=${dotnet_trace} warmup=${warmup_seconds}s@${warmup_rps}rps"
+          echo "Resolved: tool=${benchmark_tool} client=${client} reference=${reference_client} branch=${branch} layout=${state_layout} snapshot_block=${snapshot_block:-<expb default>} image_mode=${image_mode} image=${image_ref} dottrace=${dottrace} dottrace_mode=${dottrace_mode:-none} perf=${perf} dotnet_trace=${dotnet_trace} corpus=${eth_call_corpus} corpus_method=${corpus_method} warmup=${warmup_seconds}s@${warmup_rps}rps"
 
   # Run the benchmark on the self-hosted runner that holds the DB snapshot.
   benchmark:
@@ -895,6 +971,9 @@ jobs:
           SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
           RESOLVED_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
+          CORPUS_METHOD: ${{ needs.resolve.outputs.corpus_method }}
+          CORPUS_TRACER: ${{ needs.resolve.outputs.trace_call_tracer }}
+          CORPUS_TRACE_TYPES: ${{ needs.resolve.outputs.trace_call_types }}
           RESOLVED_CORPUS_DIR: ${{ needs.resolve.outputs.corpus_dir }}
           CLIENT_TYPE: ${{ needs.resolve.outputs.client }}
           WARMUP_SECONDS: ${{ needs.resolve.outputs.warmup_seconds }}
@@ -956,6 +1035,9 @@ jobs:
           SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
           RESOLVED_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
+          CORPUS_METHOD: ${{ needs.resolve.outputs.corpus_method }}
+          CORPUS_TRACER: ${{ needs.resolve.outputs.trace_call_tracer }}
+          CORPUS_TRACE_TYPES: ${{ needs.resolve.outputs.trace_call_types }}
           RESOLVED_CORPUS_DIR: ${{ needs.resolve.outputs.corpus_dir }}
           CLIENT_TYPE: ${{ needs.resolve.outputs.client }}
           COMPARISON: ${{ needs.resolve.outputs.comparison }}
@@ -1050,6 +1132,9 @@ jobs:
           NETWORK: ${{ needs.resolve.outputs.network }}
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
           RESOLVED_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
+          CORPUS_METHOD: ${{ needs.resolve.outputs.corpus_method }}
+          CORPUS_TRACER: ${{ needs.resolve.outputs.trace_call_tracer }}
+          CORPUS_TRACE_TYPES: ${{ needs.resolve.outputs.trace_call_types }}
           RESOLVED_CORPUS_DIR: ${{ needs.resolve.outputs.corpus_dir }}
           SNAPSHOT_ROOT: ${{ needs.resolve.outputs.snapshot_root }}
           # The arm64 box keeps one snapshot directory per client, so the sweep needs the box, not just the root.
