@@ -12,7 +12,6 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
@@ -32,15 +31,13 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     private uint _blockAccessIndex = 0;
     private Address? _contextAccount;
     private ReadOnlyAccountChanges? _contextChanges;
-    private readonly Dictionary<StorageCell, byte[]> _pureReadValues = [];
+    private readonly Dictionary<StorageCell, UInt256> _pureReadValues = [];
     private StorageCell _lastPureRead;
-    private byte[]? _lastPureReadValue;
+    private UInt256 _lastPureReadValue;
     private bool _hasPureRead;
     private Address? _lastPureAccountAddress;
     private Account? _lastPureAccount;
     private BalReadCoverage? _readCoverage;
-    private EvmWord _readScratch;
-    private EvmWord _originalScratch;
     private UInt256 _scratchBalance;
     private ValueHash256 _scratchCodeHash;
     private readonly TransientStorageProvider _transientStorageProvider = new(logManager);
@@ -60,12 +57,12 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         _readCoverage = readCoverage;
         _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
         _suggestedBlockHeader = suggestedBlock.Header;
-        _codeChangesByHash = _suggestedBlockAccessList?.GetCodeChangesByHash();
         _pureReadValues.ClearAndTrim();
         _hasPureRead = false;
-        _lastPureReadValue = null;
+        _lastPureReadValue = default;
         _lastPureAccountAddress = null;
         _lastPureAccount = null;
+        _codeChangesByHash = _suggestedBlockAccessList?.GetCodeChangesByHash();
         _transientStorageProvider.Reset();
     }
 
@@ -90,7 +87,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         _contextChanges = null;
         _pureReadValues.ClearAndTrim();
         _hasPureRead = false;
-        _lastPureReadValue = null;
+        _lastPureReadValue = default;
         _lastPureAccountAddress = null;
         _lastPureAccount = null;
     }
@@ -105,7 +102,18 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         return !AccountExists(address);
     }
 
-    public override ReadOnlySpan<byte> Get(in StorageCell storageCell)
+    public override void Get(in StorageCell storageCell, out UInt256 value)
+    {
+        if (TryGetCachedDeclaredRead(in storageCell, out value))
+        {
+            _readCoverage?.TryMark(in storageCell);
+            return;
+        }
+        GetStorageSlow(in storageCell, out value);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void GetStorageSlow(in StorageCell storageCell, out UInt256 value)
     {
         ReadOnlyAccountChanges accountChanges = ResolveContext(storageCell.Address);
 
@@ -114,22 +122,27 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
             if (slotChanges is null) _readCoverage?.TryMark(storageCell);
             if (slotChanges is not null && slotChanges.TryGetLastBefore(_blockAccessIndex, out StorageChange storageChange))
             {
-                // Copy the BE bytes into per-instance scratch; span valid until the next Get on this instance.
-                _readScratch = storageChange.Value;
-                return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref _readScratch), 32)
-                    .WithoutLeadingZeros();
+                value = storageChange.Value;
+                return;
             }
 
-            return slotChanges is null && TryReadDeclaredStorage(_parentReader!, storageCell, out byte[]? value)
-                ? value
-                : _parentReader!.Get(storageCell);
+            if (slotChanges is null && ReadDeclaredStorageSlow(_parentReader!, in storageCell, out value)) return;
+            _parentReader!.Get(in storageCell, out value);
+            return;
         }
 
         ThrowMissingStorage(storageCell);
-        return default;
+        value = default;
     }
 
-    public override ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
+    public override void GetOriginal(in StorageCell storageCell, out UInt256 value)
+    {
+        if (TryGetCachedDeclaredRead(in storageCell, out value)) return;
+        GetOriginalStorageSlow(in storageCell, out value);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void GetOriginalStorageSlow(in StorageCell storageCell, out UInt256 value)
     {
         ReadOnlyAccountChanges accountChanges = ResolveContext(storageCell.Address);
 
@@ -137,40 +150,46 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         {
             if (slotChanges is not null && slotChanges.TryGetLastBefore(_blockAccessIndex, out StorageChange storageChange))
             {
-                _originalScratch = storageChange.Value;
-                return MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<EvmWord, byte>(ref _originalScratch), 32)
-                    .WithoutLeadingZeros();
+                value = storageChange.Value;
+                return;
             }
 
-            return slotChanges is null && TryReadDeclaredStorage(_parentReader!, storageCell, out byte[]? value)
-                ? value
-                : _parentReader!.GetOriginal(storageCell);
+            if (slotChanges is null && ReadDeclaredStorageSlow(_parentReader!, in storageCell, out value)) return;
+            _parentReader!.GetOriginal(in storageCell, out value);
+            return;
         }
 
         ThrowMissingStorage(storageCell);
-        return default;
+        value = default;
     }
 
     public override void IncrementNonce(Address address, ulong delta, out ulong oldNonce) => oldNonce = GetNonce(address);
 
+    /// <remarks>
+    /// Only read-only declarations against an immutable parent enter this cache; Setup and ClearParentReader invalidate it.
+    /// On a miss, the caller must overwrite the output through the slow path.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool TryReadDeclaredStorage(IWorldState parentReader, in StorageCell cell, out byte[]? value)
+    private bool TryGetCachedDeclaredRead(in StorageCell cell, out UInt256 value)
     {
         if (_hasPureRead && _lastPureRead.Index == cell.Index && _lastPureRead.Address == cell.Address)
         {
             value = _lastPureReadValue;
             return true;
         }
-        return ReadDeclaredStorageSlow(parentReader, cell, out value);
+        Unsafe.SkipInit(out value);
+        return false;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private bool ReadDeclaredStorageSlow(IWorldState parentReader, in StorageCell cell, out byte[]? value)
+    private bool ReadDeclaredStorageSlow(IWorldState parentReader, in StorageCell cell, out UInt256 value)
     {
-        value = null;
+        value = default;
         if (parentReader is not WorldState worldState) return false;
-        ref byte[]? cached = ref CollectionsMarshal.GetValueRefOrAddDefault(_pureReadValues, cell, out _);
-        value = cached ??= worldState.GetPureReadStorage(cell);
+        ref UInt256 cached = ref CollectionsMarshal.GetValueRefOrAddDefault(_pureReadValues, cell, out bool exists);
+        // The concrete parent reads its own caches and cannot resize this worker's dictionary.
+        if (!exists) worldState.GetPureReadStorage(in cell, out cached);
+        value = cached;
         _lastPureRead = cell;
         _lastPureReadValue = value;
         _hasPureRead = true;
@@ -192,7 +211,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         => true;
 
-    public override void Set(in StorageCell storageCell, byte[] newValue) { }
+    public override void Set(in StorageCell storageCell, in UInt256 newValue) { }
+
+    public override void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue) { }
 
     public override ref readonly UInt256 GetBalance(Address address)
     {
@@ -407,10 +428,10 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         return result;
     }
 
-    public override ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
-        => _transientStorageProvider.Get(in storageCell);
+    public override void GetTransientState(in StorageCell storageCell, out UInt256 value)
+        => _transientStorageProvider.Get(in storageCell, out value);
 
-    public override void SetTransientState(in StorageCell storageCell, byte[] newValue)
+    public override void SetTransientState(in StorageCell storageCell, in UInt256 newValue)
         => _transientStorageProvider.Set(in storageCell, newValue);
 
     public override void ResetTransient()
