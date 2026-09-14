@@ -157,17 +157,17 @@ public class ColumnsDbTests
         column.PutSpan(TestItem.KeccakA.Bytes, original);
 
         using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot();
-        long baseline = _db._allocatedSpan.Value;
+        long baseline = _db._allocatedSpan.Sum;
         MemoryManager<byte>? owned = snapshot.GetColumn(ReceiptsColumns.Blocks).GetOwnedMemory(TestItem.KeccakA.Bytes);
         Assert.That(owned, Is.Not.Null);
-        Assert.That(_db._allocatedSpan.Value, Is.EqualTo(baseline + 1));
+        Assert.That(_db._allocatedSpan.Sum, Is.EqualTo(baseline + 1));
 
         column.PutSpan(TestItem.KeccakA.Bytes, TestItem.KeccakB.Bytes);
         snapshot.Dispose();
 
         Assert.That(owned!.GetSpan().ToArray(), Is.EqualTo(original));
         ((IDisposable)owned).Dispose();
-        Assert.That(_db._allocatedSpan.Value, Is.EqualTo(baseline));
+        Assert.That(_db._allocatedSpan.Sum, Is.EqualTo(baseline));
     }
 
     [Test]

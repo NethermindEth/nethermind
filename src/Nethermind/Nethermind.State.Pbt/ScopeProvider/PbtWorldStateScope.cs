@@ -260,10 +260,9 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
     private sealed class StorageWriteBatch(PbtWorldStateScope scope, Address address) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        public void Set(in UInt256 index, byte[] value)
+        public void Set(in UInt256 index, in UInt256 value)
         {
-            EvmWord word = EvmWordSlot.FromStripped(value);
-            scope.Bundle.SetSlot(address, index, word);
+            scope.Bundle.SetSlot(address, index, EvmWordSlot.FromUInt256(in value));
             scope._rootDirty = true;
         }
 

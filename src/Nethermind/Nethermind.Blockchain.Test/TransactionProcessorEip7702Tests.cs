@@ -185,7 +185,8 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        ReadOnlySpan<byte> cell = _stateProvider.Get(new StorageCell(signer.Address, 0));
+        _stateProvider.Get(new StorageCell(signer.Address, 0), out UInt256 storageValue1);
+        ReadOnlySpan<byte> cell = storageValue1.ToMinimalBigEndian();
 
         Assert.That(new Address(cell), Is.EqualTo(sender.Address));
     }
@@ -266,7 +267,8 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        ReadOnlySpan<byte> cellValue = _stateProvider.Get(new StorageCell(signer.Address, 0));
+        _stateProvider.Get(new StorageCell(signer.Address, 0), out UInt256 storageValue2);
+        ReadOnlySpan<byte> cellValue = storageValue2.ToMinimalBigEndian();
 
         Assert.That(cellValue.ToArray(), Is.EqualTo(sender.Address.Bytes.ToArray()));
     }
@@ -369,6 +371,39 @@ internal class TransactionProcessorEip7702Tests
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
 
         Assert.That(tracer.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.NewAccount * count));
+    }
+
+    [Test]
+    public void Execute_ExistingAuthorityRefundIsReportedBeforeFirstOpcodeWhenExecutionReverts()
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        PrivateKey authority = TestItem.PrivateKeyB;
+        Address codeSource = TestItem.AddressC;
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
+        _stateProvider.CreateAccount(authority.Address, 1);
+        DeployCode(codeSource, Prepare.EvmCode
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.PUSH0)
+            .Op(Instruction.REVERT)
+            .Done);
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(codeSource)
+            .WithGasLimit(100_000)
+            .WithAuthorizationCode(_ethereumEcdsa.Sign(authority, _specProvider.ChainId, codeSource, 0))
+            .SignedAndResolved(_ethereumEcdsa, sender, true)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(ulong.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(10_000_000)
+            .TestObject;
+        InitialRefundTracer tracer = new();
+
+        _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
+
+        Assert.That(tracer.RefundAtFirstOperation, Is.EqualTo(GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost));
     }
 
     public void Execute_TxHasDifferentAmount()
@@ -541,7 +576,8 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EqualTo(new[] { expectedStoredValue }));
+        _stateProvider.Get(new StorageCell(signer.Address, 0), out UInt256 storageValue3);
+        Assert.That(storageValue3.ToMinimalBigEndian(), Is.EqualTo(new[] { expectedStoredValue }));
     }
 
     [TestCase]
@@ -591,7 +627,8 @@ internal class TransactionProcessorEip7702Tests
         _transactionProcessor.Execute(tx1, blkCtx, NullTxTracer.Instance);
         _transactionProcessor.Execute(tx2, blkCtx, NullTxTracer.Instance);
 
-        Assert.That(_stateProvider.Get(new StorageCell(signer.Address, 0)).ToArray(), Is.EqualTo(new[] { 1 }));
+        _stateProvider.Get(new StorageCell(signer.Address, 0), out UInt256 storageValue4);
+        Assert.That(storageValue4.ToMinimalBigEndian(), Is.EqualTo(new[] { 1 }));
     }
 
     public static IEnumerable<TestCaseData> OpcodesWithEXTCODE()
@@ -738,7 +775,8 @@ internal class TransactionProcessorEip7702Tests
             .WithGasLimit(10000000).TestObject;
         _ = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        ReadOnlySpan<byte> actual = _stateProvider.Get(new StorageCell(codeSource, 0));
+        _stateProvider.Get(new StorageCell(codeSource, 0), out UInt256 storageValue5);
+        ReadOnlySpan<byte> actual = storageValue5.ToMinimalBigEndian();
         Assert.That(actual.ToArray(), Is.EqualTo(expected));
     }
     public static IEnumerable<TestCaseData> AccountAccessGasCases()
@@ -1100,5 +1138,23 @@ internal class TransactionProcessorEip7702Tests
     {
         _stateProvider.CreateAccountIfNotExists(codeSource, 0);
         _stateProvider.InsertCode(codeSource, ValueKeccak.Compute(code), code, _specProvider.GetSpec(MainnetSpecProvider.PragueActivation));
+    }
+
+    private sealed class InitialRefundTracer : TxTracer
+    {
+        private long _refund;
+
+        public InitialRefundTracer()
+        {
+            IsTracingInstructions = true;
+            IsTracingRefunds = true;
+        }
+
+        public long? RefundAtFirstOperation { get; private set; }
+
+        public override void ReportRefund(long refund) => _refund += refund;
+
+        public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
+            => RefundAtFirstOperation ??= _refund;
     }
 }

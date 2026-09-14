@@ -59,7 +59,7 @@ public class PbtMirrorScopeProviderTests
         IWorldStateScopeProvider.IScope authoritativeScope = Substitute.For<IWorldStateScopeProvider.IScope>();
         authoritativeScope.Get(Eoa).Returns(new Account(1, 100));
         IWorldStateScopeProvider.IStorageTree storageTree = Substitute.For<IWorldStateScopeProvider.IStorageTree>();
-        storageTree.Get(in Arg.Any<UInt256>()).Returns([0xAB]);
+        storageTree.When(tree => tree.Get(in Arg.Any<UInt256>(), out Arg.Any<UInt256>())).Do(call => call[1] = (UInt256)0xAB);
         authoritativeScope.CreateStorageTree(Eoa).Returns(storageTree);
 
         IWorldStateScopeProvider authoritative = Substitute.For<IWorldStateScopeProvider>();
@@ -97,8 +97,8 @@ public class PbtMirrorScopeProviderTests
             worldState.CreateAccount(Eoa, 100, 1);
             worldState.CreateAccount(Contract, 42);
             worldState.InsertCode(Contract, ValueKeccak.Compute(code), code, Spec);
-            worldState.Set(new StorageCell(Contract, 5), [0xAB]);       // header-region slot
-            worldState.Set(new StorageCell(Contract, 1000), Bytes.FromHexString("0x1234")); // storage-zone slot
+            worldState.Set(new StorageCell(Contract, 5), (UInt256)0xAB);       // header-region slot
+            worldState.Set(new StorageCell(Contract, 1000), (UInt256)0x1234); // storage-zone slot
             worldState.Commit(Spec);
             worldState.CommitTree(1);
             root1 = worldState.StateRoot;
@@ -109,8 +109,8 @@ public class PbtMirrorScopeProviderTests
         using (worldState.BeginScope(header1))
         {
             // Storage-only changes patch the account's storage root when the authoritative batch disposes.
-            worldState.Set(new StorageCell(Contract, 5), [0]);
-            worldState.Set(new StorageCell(Contract, 70), [0x07]);
+            worldState.Set(new StorageCell(Contract, 5), UInt256.Zero);
+            worldState.Set(new StorageCell(Contract, 70), (UInt256)0x07);
             worldState.AddToBalance(Eoa, 5, Spec, out _);
             worldState.Commit(Spec);
             worldState.CommitTree(2);
@@ -124,9 +124,9 @@ public class PbtMirrorScopeProviderTests
             Assert.That(worldState.GetBalance(Eoa), Is.EqualTo((UInt256)105));
             Assert.That(worldState.GetBalance(Contract), Is.EqualTo((UInt256)42));
             Assert.That(worldState.GetCode(Contract), Is.EqualTo(code));
-            Assert.That(worldState.Get(new StorageCell(Contract, 5)).ToArray(), Is.EqualTo(StorageTree.ZeroBytes));
-            Assert.That(worldState.Get(new StorageCell(Contract, 70)).ToArray(), Is.EqualTo((byte[])[0x07]));
-            Assert.That(worldState.Get(new StorageCell(Contract, 1000)).ToArray(), Is.EqualTo(Bytes.FromHexString("0x1234")));
+            Assert.That(worldState.Get(new StorageCell(Contract, 5)), Is.EqualTo(UInt256.Zero));
+            Assert.That(worldState.Get(new StorageCell(Contract, 70)), Is.EqualTo((UInt256)0x07));
+            Assert.That(worldState.Get(new StorageCell(Contract, 1000)), Is.EqualTo((UInt256)0x1234));
 
             worldState.IncrementNonce(Eoa, 1, out _);
             worldState.Commit(Spec);

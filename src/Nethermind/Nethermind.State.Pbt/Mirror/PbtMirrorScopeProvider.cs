@@ -9,7 +9,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Pbt;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Pbt.ScopeProvider;
 
@@ -152,18 +151,16 @@ public class PbtMirrorScopeProvider(
 
         public bool IsKnownEmpty => authoritative.IsKnownEmpty;
 
-        public byte[] Get(in UInt256 index)
+        public void Get(in UInt256 index, out UInt256 value)
         {
-            byte[] value = authoritative.Get(in index);
-            byte[] mirrored = pbt.Get(in index);
-            if (!Bytes.AreEqual(value, mirrored))
+            authoritative.Get(in index, out value);
+            pbt.Get(in index, out UInt256 mirrored);
+            if (value != mirrored)
                 throw new PbtMirrorMismatchException(
-                    $"Slot {index} of {address} differs: authoritative {value.ToHexString(withZeroX: true)} vs pbt {mirrored.ToHexString(withZeroX: true)}");
-
-            return value;
+                    $"Slot {index} of {address} differs: authoritative 0x{value.ToHexString(skipLeadingZeros: true)} vs pbt 0x{mirrored.ToHexString(skipLeadingZeros: true)}");
         }
 
-        public void HintSet(in UInt256 index, byte[]? value) => authoritative.HintSet(in index, value);
+        public void HintSet(in UInt256 index) => authoritative.HintSet(in index);
     }
 
     /// <remarks>
@@ -222,10 +219,10 @@ public class PbtMirrorScopeProvider(
         IWorldStateScopeProvider.IStorageWriteBatch authoritative,
         IWorldStateScopeProvider.IStorageWriteBatch pbt) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        public void Set(in UInt256 index, byte[] value)
+        public void Set(in UInt256 index, in UInt256 value)
         {
-            authoritative.Set(in index, value);
-            pbt.Set(in index, value);
+            authoritative.Set(in index, in value);
+            pbt.Set(in index, in value);
         }
 
         public void Clear()

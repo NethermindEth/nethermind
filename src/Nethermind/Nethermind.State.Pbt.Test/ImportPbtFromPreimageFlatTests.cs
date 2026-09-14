@@ -73,9 +73,9 @@ public class ImportPbtFromPreimageFlatTests
             batch.SetAccount(TestItem.AddressA, new Account(1, 100));
             // A non-empty flat storage root triggers storage fan-out; PBT omits it.
             batch.SetAccount(TestItem.AddressB, new Account(3, 42).WithChangedCodeHash(bigCodeHash).WithChangedStorageRoot(TestItem.KeccakA));
-            batch.SetStorage(TestItem.AddressB, 5, SlotValue.FromSpanWithoutLeadingZero([0xAB]));
-            batch.SetStorage(TestItem.AddressB, 70, SlotValue.FromSpanWithoutLeadingZero([0x07]));
-            batch.SetStorage(TestItem.AddressB, 1000, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("0x1234")));
+            batch.SetStorage(TestItem.AddressB, 5, (UInt256)0xAB);
+            batch.SetStorage(TestItem.AddressB, 70, (UInt256)0x07);
+            batch.SetStorage(TestItem.AddressB, 1000, (UInt256)0x1234);
             batch.SetAccount(TestItem.AddressC, new Account(9, 5).WithChangedCodeHash(bigCodeHash));
             batch.SetAccount(TestItem.AddressD, new Account(1, 0).WithChangedCodeHash(delegationHash));
             batch.SetAccount(TestItem.AddressE, new Account(1, 0).WithChangedCodeHash(delegationHash));
@@ -237,7 +237,7 @@ public class ImportPbtFromPreimageFlatTests
                 PbtReferenceModel.SetAccount(model, address, 1, 100, code);
                 for (uint slot = 0; slot < slotsPerAccount; slot++)
                 {
-                    batch.SetStorage(address, slot, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("0x01")));
+                    batch.SetStorage(address, slot, (UInt256)0x01);
                     PbtReferenceModel.SetSlot(model, address, slot, 1);
                 }
             }
@@ -300,8 +300,8 @@ public class ImportPbtFromPreimageFlatTests
         {
             batch.SetAccount(TestItem.AddressA, new Account(1, 100));
             batch.SetAccount(TestItem.AddressB, new Account(2, 200).WithChangedStorageRoot(TestItem.KeccakA));
-            batch.SetStorage(TestItem.AddressB, 0, SlotValue.FromSpanWithoutLeadingZero([0x11]));
-            batch.SetStorage(TestItem.AddressB, 63, SlotValue.FromSpanWithoutLeadingZero([0x22]));
+            batch.SetStorage(TestItem.AddressB, 0, (UInt256)0x11);
+            batch.SetStorage(TestItem.AddressB, 63, (UInt256)0x22);
         }
 
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
@@ -344,10 +344,10 @@ public class ImportPbtFromPreimageFlatTests
         {
             batch.SetAccount(first, new Account(1, 100).WithChangedStorageRoot(TestItem.KeccakA));
             batch.SetAccount(second, new Account(2, 200).WithChangedStorageRoot(TestItem.KeccakB));
-            batch.SetStorage(first, 1, SlotValue.FromSpanWithoutLeadingZero([0x11]));
-            batch.SetStorage(first, 1000, SlotValue.FromSpanWithoutLeadingZero([0x22]));
-            batch.SetStorage(second, 1, SlotValue.FromSpanWithoutLeadingZero([0x33]));
-            batch.SetStorage(second, 1000, SlotValue.FromSpanWithoutLeadingZero([0x44]));
+            batch.SetStorage(first, 1, (UInt256)0x11);
+            batch.SetStorage(first, 1000, (UInt256)0x22);
+            batch.SetStorage(second, 1, (UInt256)0x33);
+            batch.SetStorage(second, 1000, (UInt256)0x44);
         }
 
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
@@ -387,8 +387,8 @@ public class ImportPbtFromPreimageFlatTests
         {
             batch.SetAccount(TestItem.AddressA, new Account(1, 100));
             batch.SetAccount(TestItem.AddressB, new Account(3, 42).WithChangedStorageRoot(TestItem.KeccakA));
-            batch.SetStorage(TestItem.AddressB, 5, SlotValue.FromSpanWithoutLeadingZero([0xAB]));
-            batch.SetStorage(TestItem.AddressB, 1000, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("0x1234")));
+            batch.SetStorage(TestItem.AddressB, 5, (UInt256)0xAB);
+            batch.SetStorage(TestItem.AddressB, 1000, (UInt256)0x1234);
         }
 
         using RecordingColumnsDb pbtDb = new();
@@ -684,8 +684,8 @@ public class ImportPbtFromPreimageFlatTests
         {
             batch.SetAccount(TestItem.AddressA, new Account(1, 100).WithChangedStorageRoot(TestItem.KeccakA));
             // Slots 100 and 101 share a storage stem.
-            batch.SetStorage(TestItem.AddressA, 100, SlotValue.FromSpanWithoutLeadingZero([0xAA]));
-            batch.SetStorage(TestItem.AddressA, 101, SlotValue.FromSpanWithoutLeadingZero([0xBB]));
+            batch.SetStorage(TestItem.AddressA, 100, (UInt256)0xAA);
+            batch.SetStorage(TestItem.AddressA, 101, (UInt256)0xBB);
         }
 
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
@@ -736,11 +736,11 @@ public class ImportPbtFromPreimageFlatTests
         {
             batch.SetAccount(TestItem.AddressA, new Account(1, 100));
             batch.SetAccount(TestItem.AddressB, new Account(3, 42).WithChangedCodeHash(bigCodeHash).WithChangedStorageRoot(TestItem.KeccakA));
-            batch.SetStorage(TestItem.AddressB, 5, SlotValue.FromSpanWithoutLeadingZero([0xAB]));
-            batch.SetStorage(TestItem.AddressB, 70, SlotValue.FromSpanWithoutLeadingZero([0x07]));
-            batch.SetStorage(TestItem.AddressB, 1000, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("0x1234")));
+            batch.SetStorage(TestItem.AddressB, 5, (UInt256)0xAB);
+            batch.SetStorage(TestItem.AddressB, 70, (UInt256)0x07);
+            batch.SetStorage(TestItem.AddressB, 1000, (UInt256)0x1234);
             batch.SetAccount(TestItem.AddressC, new Account(9, 5).WithChangedCodeHash(bigCodeHash).WithChangedStorageRoot(TestItem.KeccakB));
-            batch.SetStorage(TestItem.AddressC, 2000, SlotValue.FromSpanWithoutLeadingZero([0x55]));
+            batch.SetStorage(TestItem.AddressC, 2000, (UInt256)0x55);
         }
 
         MemDb codeDb = new();
@@ -944,7 +944,7 @@ public class ImportPbtFromPreimageFlatTests
             batch.SetAccount(TestItem.AddressA, new Account(1, 100).WithChangedCodeHash(codeHash).WithChangedStorageRoot(TestItem.KeccakA));
             for (uint slot = 0; slot < 100; slot++)
             {
-                batch.SetStorage(TestItem.AddressA, slot, SlotValue.FromSpanWithoutLeadingZero(Bytes.FromHexString("0x01")));
+                batch.SetStorage(TestItem.AddressA, slot, (UInt256)0x01);
                 PbtReferenceModel.SetSlot(model, TestItem.AddressA, slot, 1);
             }
         }

@@ -5,7 +5,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
 
@@ -23,11 +22,11 @@ public sealed class PbtStorageTree(
     /// </remarks>
     public bool IsKnownEmpty => false;
 
-    public byte[] Get(in UInt256 index)
+    public void Get(in UInt256 index, out UInt256 value)
     {
-        EvmWord value = scope.Bundle.GetSlot(address, index);
-        return EvmWordSlot.IsZero(value) ? StorageTree.ZeroBytes : EvmWordSlot.ToStrippedBytes(value);
+        EvmWord word = scope.Bundle.GetSlot(address, index);
+        value = EvmWordSlot.ToUInt256(in word);
     }
 
-    public void HintSet(in UInt256 index, byte[]? value) => scope.HintSet(address, in index);
+    public void HintSet(in UInt256 index) => scope.HintSet(address, in index);
 }

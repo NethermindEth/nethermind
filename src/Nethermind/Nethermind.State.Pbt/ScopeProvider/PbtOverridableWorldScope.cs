@@ -10,7 +10,6 @@ using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Int256;
 using Nethermind.Monitoring.Config;
-using Nethermind.Pbt;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 
@@ -145,11 +144,11 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
             return false;
         }
 
-        public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
+        public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value)
         {
             using PbtSnapshotBundle bundle = outer.GatherBundle(new StateId(baseBlock));
-            EvmWord value = bundle.GetSlot(address, index);
-            return EvmWordSlot.IsZero(value) ? [] : EvmWordSlot.ToStrippedBytes(value);
+            EvmWord word = bundle.GetSlot(address, index);
+            value = EvmWordSlot.ToUInt256(in word);
         }
 
         public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : outer._codeDbOverlay[codeHash.Bytes];

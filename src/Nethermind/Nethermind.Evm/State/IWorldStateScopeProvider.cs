@@ -178,7 +178,7 @@ public interface IWorldStateScopeProvider
         /// </summary>
         /// <param name="storageCell">The storage cell (address + slot index).</param>
         /// <param name="value">The storage value bytes.</param>
-        void OnStorageRead(in StorageCell storageCell, byte[] value);
+        void OnStorageRead(in StorageCell storageCell, in UInt256 value);
 
         /// <summary>
         /// Returns whether the BAL reader should still fetch the given account.
@@ -236,13 +236,13 @@ public interface IWorldStateScopeProvider
         /// </remarks>
         bool IsKnownEmpty => RootHash == Keccak.EmptyTreeHash;
 
-        byte[] Get(in UInt256 index);
+        void Get(in UInt256 index, out UInt256 value);
 
         /// <summary>
         /// Hint that a slot is being written. Backends may use this to start asynchronous
         /// trie warm-up for the slot path.
         /// </summary>
-        void HintSet(in UInt256 index, byte[]? value);
+        void HintSet(in UInt256 index);
     }
 
     /// <summary>
@@ -293,7 +293,8 @@ public interface IWorldStateScopeProvider
 
     public interface IStorageWriteBatch : IDisposable
     {
-        void Set(in UInt256 index, byte[] value);
+        /// <summary>Writes the slot value.</summary>
+        void Set(in UInt256 index, in UInt256 value);
 
         /// <summary>
         /// Self-destruct. Maybe costly. Must be called first.

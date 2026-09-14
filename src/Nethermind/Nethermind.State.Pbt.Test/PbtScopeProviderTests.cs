@@ -88,8 +88,8 @@ public class PbtScopeProviderTests
             worldState.CreateAccount(TestItem.AddressA, 100, 1);
             worldState.CreateAccount(TestItem.AddressB, 42);
             worldState.InsertCode(TestItem.AddressB, ValueKeccak.Compute(bigCode), bigCode, Spec);
-            worldState.Set(new StorageCell(TestItem.AddressB, 5), [0xAB]);
-            worldState.Set(new StorageCell(TestItem.AddressB, 1000), Bytes.FromHexString("0x1234"));
+            worldState.Set(new StorageCell(TestItem.AddressB, 5), (UInt256)0xAB);
+            worldState.Set(new StorageCell(TestItem.AddressB, 1000), (UInt256)0x1234);
             worldState.Commit(Spec);
             worldState.CommitTree(1);
             root1 = worldState.StateRoot;
@@ -109,8 +109,8 @@ public class PbtScopeProviderTests
             // a contract receiving ETH is dirty with unchanged code — its BASIC_DATA is rewritten
             // and its code size must be preserved (read back, not recomputed from the code)
             worldState.AddToBalance(TestItem.AddressB, 10, Spec);
-            worldState.Set(new StorageCell(TestItem.AddressB, 5), [0]);
-            worldState.Set(new StorageCell(TestItem.AddressB, 70), [0x07]);
+            worldState.Set(new StorageCell(TestItem.AddressB, 5), UInt256.Zero);
+            worldState.Set(new StorageCell(TestItem.AddressB, 70), (UInt256)0x07);
             worldState.Commit(Spec);
             worldState.CommitTree(2);
             root2 = worldState.StateRoot;
@@ -130,9 +130,9 @@ public class PbtScopeProviderTests
         Assert.That(ctx.StateReader.TryGetAccount(header2, TestItem.AddressB, out AccountStruct accountBAt2), Is.True);
         Assert.That(accountBAt2.Balance, Is.EqualTo((UInt256)52));
         Assert.That(accountBAt2.CodeHash, Is.EqualTo(ValueKeccak.Compute(bigCode)));
-        Assert.That(ctx.StateReader.GetStorage(header1, TestItem.AddressB, 5).ToArray(), Is.EqualTo((byte[])[0xAB]));
-        Assert.That(ctx.StateReader.GetStorage(header2, TestItem.AddressB, 5).IsZero());
-        Assert.That(ctx.StateReader.GetStorage(header2, TestItem.AddressB, 1000).ToArray(), Is.EqualTo((byte[])[0x12, 0x34]));
+        Assert.That(ctx.StateReader.GetStorage(header1, TestItem.AddressB, 5), Is.EqualTo((UInt256)0xAB));
+        Assert.That(ctx.StateReader.GetStorage(header2, TestItem.AddressB, 5).IsZero);
+        Assert.That(ctx.StateReader.GetStorage(header2, TestItem.AddressB, 1000), Is.EqualTo((UInt256)0x1234));
     }
 
     /// <summary>
@@ -146,9 +146,9 @@ public class PbtScopeProviderTests
         await using PbtTestContext ctx = NewContext();
         WorldState worldState = new(ctx.WorldStateManager.GlobalWorldState, LimboLogs.Instance);
 
-        byte[] firstValue = Bytes.FromHexString("0xab");
-        byte[] secondValue = Bytes.FromHexString("0x1234");
-        byte[] writtenAfterRead = Bytes.FromHexString("0x5678");
+        UInt256 firstValue = 0xab;
+        UInt256 secondValue = 0x1234;
+        UInt256 writtenAfterRead = 0x5678;
 
         Hash256 root1;
         using (worldState.BeginScope(IWorldState.PreGenesis))
@@ -165,9 +165,9 @@ public class PbtScopeProviderTests
         Hash256 root2;
         using (worldState.BeginScope(header1))
         {
-            Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 5)).ToArray(), Is.EqualTo(firstValue));
-            Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(secondValue));
-            Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 5)).ToArray(), Is.EqualTo(firstValue));
+            Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 5)), Is.EqualTo(firstValue));
+            Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 1000)), Is.EqualTo(secondValue));
+            Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 5)), Is.EqualTo(firstValue));
 
             worldState.Set(new StorageCell(TestItem.AddressB, 70), writtenAfterRead);
             worldState.Commit(Spec);
@@ -178,9 +178,9 @@ public class PbtScopeProviderTests
         BlockHeader header2 = Build.A.BlockHeader.WithNumber(2).WithStateRoot(root2).TestObject;
         using (worldState.BeginScope(header2))
         {
-            Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 5)).ToArray(), Is.EqualTo(firstValue));
-            Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(secondValue));
-            Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 70)).ToArray(), Is.EqualTo(writtenAfterRead));
+            Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 5)), Is.EqualTo(firstValue));
+            Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 1000)), Is.EqualTo(secondValue));
+            Assert.That(worldState.Get(new StorageCell(TestItem.AddressB, 70)), Is.EqualTo(writtenAfterRead));
         }
     }
 
@@ -190,7 +190,7 @@ public class PbtScopeProviderTests
         await using PbtTestContext ctx = NewContext();
         PbtScopeProvider provider = ctx.CreateScopeProvider();
         Address address = TestItem.AddressC;
-        byte[] slotValue = Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000099");
+        UInt256 slotValue = 0x99;
 
         Dictionary<string, byte[]> model = [];
         using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics());
@@ -234,7 +234,7 @@ public class PbtScopeProviderTests
                 {
                     batch.Set(address, new Account(1, 100));
                     using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, slots);
-                    for (int s = 0; s < slots; s++) storageBatch.Set(Slot(s), [(byte)(s + 1)]);
+                    for (int s = 0; s < slots; s++) storageBatch.Set(Slot(s), (UInt256)(s + 1));
                 }
             }
 
@@ -263,7 +263,7 @@ public class PbtScopeProviderTests
                 {
                     batch.Set(address, new Account(2, 150));
                     using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, slots);
-                    for (int s = 0; s < slots; s++) storageBatch.Set(Slot(s), [(byte)(s + 1)]);
+                    for (int s = 0; s < slots; s++) storageBatch.Set(Slot(s), (UInt256)(s + 1));
                 }
             }
 
@@ -290,8 +290,8 @@ public class PbtScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(0))
         {
             using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, 2);
-            storageBatch.Set(3, [0x11]);    // header-region slot on the account header stem
-            storageBatch.Set(500, [0x11]);  // storage-zone slot on its own stem
+            storageBatch.Set(3, (UInt256)0x11);    // header-region slot on the account header stem
+            storageBatch.Set(500, (UInt256)0x11);  // storage-zone slot on its own stem
         }
         scope.UpdateRootHash();
 
@@ -300,8 +300,8 @@ public class PbtScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(0))
         {
             using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, 2);
-            storageBatch.Set(4, [0x22]);
-            storageBatch.Set(500, [0x22]);
+            storageBatch.Set(4, (UInt256)0x22);
+            storageBatch.Set(500, (UInt256)0x22);
         }
         scope.Commit(1);
 

@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 
 namespace Nethermind.State.Pbt;
 
@@ -25,6 +26,14 @@ public static class EvmWordSlot
     }
 
     public static bool IsZero(in EvmWord word) => word == default;
+
+    public static EvmWord FromUInt256(in UInt256 value) => value.ToBigEndianWord();
+
+    public static UInt256 ToUInt256(in EvmWord word)
+    {
+        EvmWord littleEndian = word.ByteSwap();
+        return Unsafe.As<EvmWord, UInt256>(ref littleEndian);
+    }
 
     /// <summary>A 32-byte view over the word. Only valid over an lvalue (local/field), never a temporary.</summary>
     public static ReadOnlySpan<byte> AsReadOnlySpan(in EvmWord word) =>

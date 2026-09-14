@@ -28,7 +28,7 @@ public class PbtStateReaderTests
             {
                 using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, 1))
                 {
-                    storageBatch.Set(1, [(byte)number]);
+                    storageBatch.Set(1, (UInt256)number);
                 }
 
                 batch.Set(address, new Account(number, number * 100));
@@ -47,7 +47,7 @@ public class PbtStateReaderTests
             {
                 using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, 1))
                 {
-                    storageBatch.Set(1, [(byte)number]);
+                    storageBatch.Set(1, (UInt256)number);
                 }
 
                 batch.Set(address, new Account(number, number * 100));
@@ -63,14 +63,14 @@ public class PbtStateReaderTests
         Assert.That(ctx.StateReader.HasStateForBlock(header2), Is.True);
         Assert.That(ctx.StateReader.TryGetAccount(header2, address, out AccountStruct accountAt2), Is.True);
         Assert.That(accountAt2.Balance, Is.EqualTo((UInt256)200));
-        Assert.That(ctx.StateReader.GetStorage(header2, address, 1).ToArray(), Is.EqualTo((byte[])[2]));
+        Assert.That(ctx.StateReader.GetStorage(header2, address, 1), Is.EqualTo((UInt256)2));
 
         // in-memory layered read above the floor
         BlockHeader header3 = Build.A.BlockHeader.WithNumber(3).WithStateRoot(roots[3]).TestObject;
         BlockHeader header4 = Build.A.BlockHeader.WithNumber(4).WithStateRoot(roots[4]).TestObject;
         Assert.That(ctx.StateReader.TryGetAccount(header3, address, out AccountStruct accountAt3), Is.True);
         Assert.That(accountAt3.Balance, Is.EqualTo((UInt256)300));
-        Assert.That(ctx.StateReader.GetStorage(header4, address, 1).ToArray(), Is.EqualTo((byte[])[4]));
+        Assert.That(ctx.StateReader.GetStorage(header4, address, 1), Is.EqualTo((UInt256)4));
 
         BlockHeader unknown = Build.A.BlockHeader.WithNumber(9).WithStateRoot(TestItem.KeccakA).TestObject;
         Assert.That(ctx.StateReader.HasStateForBlock(unknown), Is.False);

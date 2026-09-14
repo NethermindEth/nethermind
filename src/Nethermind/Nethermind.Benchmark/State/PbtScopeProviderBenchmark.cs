@@ -164,7 +164,7 @@ public class PbtScopeProviderBenchmark
                     batch.CreateStorageWriteBatch(_addresses[i], estimatedEntries: StorageSlotsPerAccount);
                 for (int s = 0; s < StorageSlotsPerAccount; s++)
                 {
-                    storageBatch.Set(SlotKey(s), new byte[] { (byte)((s + 1) & 0xFF) });
+                    storageBatch.Set(SlotKey(s), (UInt256)(uint)((s + 1) & 0xFF));
                 }
             }
         }

@@ -25,13 +25,17 @@ public class PbtStateReader([KeyFilter(DbNames.Code)] IDb codeDb, IPbtDbManager 
         return false;
     }
 
-    public ReadOnlySpan<byte> GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index)
+    public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value)
     {
         using PbtReadOnlySnapshotBundle? bundle = manager.TryGatherReadOnlyBundle(new StateId(baseBlock));
-        if (bundle is null) return [];
+        if (bundle is null)
+        {
+            value = default;
+            return;
+        }
 
-        EvmWord value = bundle.GetSlot(address, index);
-        return EvmWordSlot.IsZero(value) ? [] : EvmWordSlot.ToStrippedBytes(value);
+        EvmWord word = bundle.GetSlot(address, index);
+        value = EvmWordSlot.ToUInt256(in word);
     }
 
     public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : codeDb[codeHash.Bytes];
