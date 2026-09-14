@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -15,10 +16,12 @@ internal sealed class ChangesetBlockTracer(TransactionChangesetStore store, IWri
     private readonly ChangesetCollector _collector = new();
     private ulong _block;
     private int _transactionIndex = -1;
+    private int _expectedTransactions;
 
     public bool IsTracingRewards => false;
 
-    public ushort TransactionsWritten { get; private set; }
+    /// <summary>Every transaction of the block was seen, so the rows describe the whole prefix of any of them.</summary>
+    public bool Complete => _transactionIndex + 1 == _expectedTransactions;
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) { }
 
@@ -26,7 +29,8 @@ internal sealed class ChangesetBlockTracer(TransactionChangesetStore store, IWri
     {
         _block = (ulong)block.Number;
         _transactionIndex = -1;
-        TransactionsWritten = 0;
+        _expectedTransactions = block.Transactions.Length;
+        store.WriteBlockHash(_block, block.Hash ?? ThrowUnsealed(block), batch);
     }
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
@@ -41,12 +45,14 @@ internal sealed class ChangesetBlockTracer(TransactionChangesetStore store, IWri
         if (_transactionIndex > ChangesetKeyLayout.MaxTransactionIndex) ThrowTooManyTransactions();
 
         store.Write(_block, (ushort)_transactionIndex, _collector.IsEmpty ? [] : _collector.Pack(), batch);
-        TransactionsWritten++;
     }
 
     public void EndBlockTrace() { }
 
     public void Dispose() => _collector.Release();
+
+    private static Hash256 ThrowUnsealed(Block block) =>
+        throw new InvalidOperationException($"Block {block.Number} has no hash; the changeset index records which block its rows describe.");
 
     private void ThrowTooManyTransactions() =>
         throw new InvalidOperationException(

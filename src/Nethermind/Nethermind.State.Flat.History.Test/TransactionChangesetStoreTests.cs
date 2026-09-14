@@ -35,7 +35,7 @@ public class TransactionChangesetStoreTests
         WriteTransaction(block: 11, transactionIndex: 0, TestItem.AddressD);
 
         List<(ulong Block, ushort Index)> seen = [];
-        using (ISortedView view = _store.OpenBefore(block: 10, beforeTransaction: 2))
+        using (ISortedView view = _store.OpenBetween(10, 0, 2))
         {
             while (view.MoveNext()) seen.Add((ChangesetKeyLayout.BlockOf(view.CurrentKey), ChangesetKeyLayout.TransactionIndexOf(view.CurrentKey)));
         }
@@ -96,7 +96,7 @@ public class TransactionChangesetStoreTests
     private int Rows(ulong block)
     {
         int rows = 0;
-        using ISortedView view = _store.OpenBefore(block, ushort.MaxValue);
+        using ISortedView view = _store.OpenBetween(block, 0, ushort.MaxValue);
         while (view.MoveNext()) rows++;
         return rows;
     }

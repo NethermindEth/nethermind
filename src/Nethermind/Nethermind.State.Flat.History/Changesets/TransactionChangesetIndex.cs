@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 
@@ -38,16 +39,15 @@ public sealed class TransactionChangesetIndex
     /// nothing left to serve.</summary>
     public void PruneBelow(ulong floor) => _store.PruneBelow(floor);
 
-    internal bool TryRentOverlay(ulong block, ushort beforeTransaction, out MidBlockOverlayCache.Lease lease)
+    /// <summary>Only for the very block the rows were built from, and only when the rows hold every transaction
+    /// before the one asked for; anything else is answered by the replay the node did before the index existed.</summary>
+    internal bool TryRentOverlay(ulong block, Hash256 blockHash, ushort beforeTransaction, out MidBlockOverlayCache.Lease lease)
     {
-        if (!Covers(block))
-        {
-            lease = default;
-            return false;
-        }
-
-        lease = _overlays.Rent(block, beforeTransaction);
-        return true;
+        lease = default;
+        return Covers(block)
+            && _store.TryGetBlockHash(block, out ValueHash256 indexed)
+            && indexed == blockHash
+            && _overlays.TryRent(block, beforeTransaction, out lease);
     }
 
     /// <summary>One block's rows, written into a batch of their own. Coverage moves only once that batch is
@@ -70,15 +70,15 @@ public sealed class TransactionChangesetIndex
 
         public IBlockTracer Tracer => _tracer;
 
-        public ushort TransactionsWritten => _tracer.TransactionsWritten;
-
+        /// <summary>False when the tracer did not see the whole block: the rows are written but never claimed, and
+        /// the next pass builds the block again.</summary>
         public bool Commit()
         {
             if (_written) throw new InvalidOperationException($"The changeset capture of block {_block} was already committed.");
 
             _written = true;
             _batch.Dispose();
-            return _index._store.TryExtendCoverage(_block, _block);
+            return _tracer.Complete && _index._store.TryExtendCoverage(_block, _block);
         }
 
         public void Dispose()

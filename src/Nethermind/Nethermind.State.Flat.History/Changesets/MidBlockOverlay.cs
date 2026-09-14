@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -20,8 +21,6 @@ internal sealed class MidBlockOverlay
     public ushort Folded { get; private set; }
 
     public int AccountCount => _accounts.Count;
-
-    public int StorageCount => _storage.Count;
 
     internal int Pins { get; set; }
 
@@ -49,11 +48,11 @@ internal sealed class MidBlockOverlay
         Folded = (ushort)(transactionIndex + 1);
     }
 
-    public bool TryGetAccount(Address address, out AccountOverlay overlay) => _accounts.TryGetValue(address, out overlay!);
+    public bool TryGetAccount(Address address, [NotNullWhen(true)] out AccountOverlay? overlay) => _accounts.TryGetValue(address, out overlay);
 
-    /// <summary>An empty value is a zeroed slot, which a wiped account answers even where the overlay holds no write
-    /// for the slot: the wipe applies to every slot the account held, not only to those the block touched.</summary>
-    public bool TryGetStorage(in StorageCell cell, out ReadOnlySpan<byte> value)
+    /// <summary>A wiped account answers zero even where the overlay holds no write for the slot: the wipe applies to
+    /// every slot the account held, not only to those the block touched.</summary>
+    public bool TryGetStorage(in StorageCell cell, out UInt256 value)
     {
         int clearedAt = _accounts.TryGetValue(cell.Address, out AccountOverlay? account) ? account.StorageClearedAt : NeverCleared;
         if (_storage.TryGetValue(cell, out StorageWrite write) && write.Transaction >= clearedAt)
@@ -62,7 +61,7 @@ internal sealed class MidBlockOverlay
             return true;
         }
 
-        value = default;
+        value = UInt256.Zero;
         return clearedAt != NeverCleared;
     }
 
@@ -71,7 +70,7 @@ internal sealed class MidBlockOverlay
     private void FoldStorage(ref ChangesetCodec.Enumerator entries, ushort transactionIndex)
     {
         StorageCell cell = new(new Address(entries.Address), new UInt256(entries.Index, isBigEndian: true));
-        _storage[cell] = new StorageWrite(transactionIndex, entries.Value.ToArray());
+        _storage[cell] = new StorageWrite(transactionIndex, new UInt256(entries.Value, isBigEndian: true));
     }
 
     private void FoldAccount(ref ChangesetCodec.Enumerator entries, ushort transactionIndex)
@@ -112,11 +111,11 @@ internal sealed class MidBlockOverlay
         overlay.Exists = true;
     }
 
-    internal readonly struct StorageWrite(ushort transaction, byte[] value)
+    internal readonly struct StorageWrite(ushort transaction, in UInt256 value)
     {
         public int Transaction { get; } = transaction;
 
-        public byte[] Value { get; } = value;
+        public UInt256 Value { get; } = value;
     }
 
     /// <summary>The fields a transaction changed. A field left null takes the value the account had at the previous

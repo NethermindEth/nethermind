@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -35,62 +36,88 @@ public class MidBlockOverlayCacheTests
     public void TracingTheNextTransactionOfABlock_ExtendsTheOverlayInsteadOfRebuildingIt()
     {
         MidBlockOverlay first;
-        using (MidBlockOverlayCache.Lease lease = _cache.Rent(Block, 2))
+        Assert.That(_cache.TryRent(Block, 2, out MidBlockOverlayCache.Lease lease), Is.True);
+        using (lease)
         {
             first = lease.Overlay;
         }
 
-        using MidBlockOverlayCache.Lease second = _cache.Rent(Block, 5);
-
-        using (Assert.EnterMultipleScope())
+        _cache.TryRent(Block, 5, out MidBlockOverlayCache.Lease second);
+        using (second)
         {
-            Assert.That(second.Overlay, Is.SameAs(first), "tracing a block transaction by transaction must fold each changeset once, not once per transaction");
-            Assert.That(second.Overlay.Folded, Is.EqualTo(5));
-            Assert.That(BalanceOf(second.Overlay), Is.EqualTo((UInt256)5));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(second.Overlay, Is.SameAs(first), "tracing a block transaction by transaction must fold each changeset once, not once per transaction");
+                Assert.That(second.Overlay.Folded, Is.EqualTo(5));
+                Assert.That(BalanceOf(second.Overlay), Is.EqualTo((UInt256)5));
+            }
         }
     }
 
     [Test]
     public void AnOverlayAnotherRequestStillHolds_IsNotExtendedUnderIt()
     {
-        using MidBlockOverlayCache.Lease held = _cache.Rent(Block, 2);
-        using MidBlockOverlayCache.Lease other = _cache.Rent(Block, 6);
-
-        using (Assert.EnterMultipleScope())
+        _cache.TryRent(Block, 2, out MidBlockOverlayCache.Lease held);
+        _cache.TryRent(Block, 6, out MidBlockOverlayCache.Lease other);
+        using (held)
+        using (other)
         {
-            Assert.That(other.Overlay, Is.Not.SameAs(held.Overlay));
-            Assert.That(held.Overlay.Folded, Is.EqualTo(2), "the holder is reading the state before transaction 2 and must not see what a later transaction wrote");
-            Assert.That(other.Overlay.Folded, Is.EqualTo(6));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(other.Overlay, Is.Not.SameAs(held.Overlay));
+                Assert.That(held.Overlay.Folded, Is.EqualTo(2), "the holder is reading the state before transaction 2 and must not see what a later transaction wrote");
+                Assert.That(other.Overlay.Folded, Is.EqualTo(6));
+            }
         }
     }
 
     [Test]
     public void AnEarlierTransactionOfTheSameBlock_FoldsTheBlockAgain()
     {
-        using (_cache.Rent(Block, 6))
-        {
-        }
+        _cache.TryRent(Block, 6, out MidBlockOverlayCache.Lease later);
+        later.Dispose();
 
-        using MidBlockOverlayCache.Lease earlier = _cache.Rent(Block, 1);
-
-        using (Assert.EnterMultipleScope())
+        _cache.TryRent(Block, 1, out MidBlockOverlayCache.Lease earlier);
+        using (earlier)
         {
-            Assert.That(earlier.Overlay.Folded, Is.EqualTo(1));
-            Assert.That(BalanceOf(earlier.Overlay), Is.EqualTo((UInt256)1));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(earlier.Overlay.Folded, Is.EqualTo(1));
+                Assert.That(BalanceOf(earlier.Overlay), Is.EqualTo((UInt256)1));
+            }
         }
     }
 
     [Test]
     public void TheFirstTransactionOfABlock_SeesNothing()
     {
-        using MidBlockOverlayCache.Lease lease = _cache.Rent(Block, 0);
+        _cache.TryRent(Block, 0, out MidBlockOverlayCache.Lease lease);
+        using (lease)
+        {
+            Assert.That(lease.Overlay.AccountCount, Is.Zero);
+        }
+    }
 
-        Assert.That(lease.Overlay.AccountCount, Is.Zero);
+    [Test]
+    public void APrefixTheRowsDoNotReach_IsNotLent() =>
+        Assert.That(_cache.TryRent(Block, 12, out _), Is.False, "eight transactions are written; a twelfth cannot be seeded from them and must be replayed");
+
+    [Test]
+    public void APrefixWithARowMissing_IsNotLent()
+    {
+        Span<byte> key = stackalloc byte[ChangesetKeyLayout.RowKeyLength];
+        ChangesetKeyLayout.WriteRowKey(key, Block, 3);
+        _columns.GetColumnDb(FlatHistoryColumns.TransactionChangesets).Remove(key);
+
+        Assert.That(_cache.TryRent(Block, 6, out _), Is.False, "a gap in the prefix would be folded over silently and change the target's state");
     }
 
     private static UInt256? BalanceOf(MidBlockOverlay overlay)
     {
-        overlay.TryGetAccount(TestItem.AddressA, out MidBlockOverlay.AccountOverlay account);
+        overlay.TryGetAccount(TestItem.AddressA, out MidBlockOverlay.AccountOverlay? account);
         return account?.Balance;
     }
 

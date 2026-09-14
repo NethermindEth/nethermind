@@ -18,12 +18,15 @@ public sealed class TransactionChangesetBuilder(
     ILogManager logManager) : IDisposable
 {
     private static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(30);
 
     private readonly int _dutyCyclePercent = Math.Clamp(config.HistoryTransactionIndexDutyCyclePercent, 1, 100);
     private readonly ulong _retrofitFromBlock = config.HistoryTransactionIndexRetrofitFromBlock;
     private readonly ILogger _logger = logManager.GetClassLogger<TransactionChangesetBuilder>();
     private readonly CancellationTokenSource _cancellation = new();
     private Thread? _thread;
+    private long _progressReportedAt;
+    private long _builtSinceReport;
 
     public void Start()
     {
@@ -74,15 +77,42 @@ public sealed class TransactionChangesetBuilder(
             }
             catch (Exception exception)
             {
-                // A block that will not re-execute is not a reason to lose the thread: coverage stops where it
-                // stopped, every read below it stays correct, and the next pass tries again.
                 if (_logger.IsWarn) _logger.Warn($"Transaction changeset build failed, retrying: {exception.Message}");
                 built = false;
             }
 
-            if (built) Throttle(startedAt, token);
+            if (built)
+            {
+                _builtSinceReport++;
+                ReportProgress();
+                Throttle(startedAt, token);
+            }
             else token.WaitHandle.WaitOne(IdleDelay);
         }
+    }
+
+    private void ReportProgress()
+    {
+        if (!_logger.IsInfo) return;
+
+        long now = Stopwatch.GetTimestamp();
+        if (_progressReportedAt == 0)
+        {
+            _progressReportedAt = now;
+            return;
+        }
+
+        TimeSpan elapsed = Stopwatch.GetElapsedTime(_progressReportedAt, now);
+        if (elapsed < ProgressInterval) return;
+
+        double blocksPerSecond = _builtSinceReport / elapsed.TotalSeconds;
+        string coverage = index.TryGetCoverage(out ulong from, out ulong to) ? $"{from}-{to}" : "none";
+        string remaining = _retrofitFromBlock != 0 && from > _retrofitFromBlock
+            ? $", {from - _retrofitFromBlock} blocks to {_retrofitFromBlock}, about {TimeSpan.FromSeconds((from - _retrofitFromBlock) / Math.Max(blocksPerSecond, 0.001)):d\\.hh\\:mm}"
+            : "";
+        _logger.Info($"Transaction changeset index covers {coverage}, {blocksPerSecond:F1} blocks/s{remaining}");
+        _progressReportedAt = now;
+        _builtSinceReport = 0;
     }
 
     private void Throttle(long startedAt, CancellationToken token)

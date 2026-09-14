@@ -19,6 +19,16 @@ internal static class PrefixStateSeeder
     {
         if (!CodeIsResolvable(overlay, state)) return false;
 
+        ApplyWipes(overlay, state);
+        state.Commit(spec);
+        ApplyAccounts(overlay, state, spec);
+        ApplyStorage(overlay, state);
+        state.Commit(spec);
+        return true;
+    }
+
+    private static void ApplyWipes(MidBlockOverlay overlay, IWorldState state)
+    {
         Dictionary<AddressAsKey, MidBlockOverlay.AccountOverlay>.Enumerator accounts = overlay.Accounts;
         while (accounts.MoveNext())
         {
@@ -29,10 +39,11 @@ internal static class PrefixStateSeeder
             state.ClearStorage(address);
             if (account.Emptied) state.DeleteAccount(address);
         }
+    }
 
-        state.Commit(spec);
-
-        accounts = overlay.Accounts;
+    private static void ApplyAccounts(MidBlockOverlay overlay, IWorldState state, IReleaseSpec spec)
+    {
+        Dictionary<AddressAsKey, MidBlockOverlay.AccountOverlay>.Enumerator accounts = overlay.Accounts;
         while (accounts.MoveNext())
         {
             (AddressAsKey address, MidBlockOverlay.AccountOverlay account) = accounts.Current;
@@ -40,22 +51,22 @@ internal static class PrefixStateSeeder
 
             ApplyAccount(address, account, state, spec);
         }
+    }
 
+    private static void ApplyStorage(MidBlockOverlay overlay, IWorldState state)
+    {
         Dictionary<StorageCell, MidBlockOverlay.StorageWrite>.Enumerator writes = overlay.Writes;
         while (writes.MoveNext())
         {
             (StorageCell cell, MidBlockOverlay.StorageWrite write) = writes.Current;
-            if (overlay.TryGetAccount(cell.Address, out MidBlockOverlay.AccountOverlay account))
+            if (overlay.TryGetAccount(cell.Address, out MidBlockOverlay.AccountOverlay? account))
             {
                 if (account.Emptied && !account.Exists) continue;
                 if (write.Transaction < account.StorageClearedAt) continue;
             }
 
-            state.Set(cell, new UInt256(write.Value, isBigEndian: true));
+            state.Set(cell, write.Value);
         }
-
-        state.Commit(spec);
-        return true;
     }
 
     private static void ApplyAccount(Address address, MidBlockOverlay.AccountOverlay account, IWorldState state, IReleaseSpec spec)

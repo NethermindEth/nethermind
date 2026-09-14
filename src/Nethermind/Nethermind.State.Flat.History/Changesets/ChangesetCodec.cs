@@ -20,6 +20,8 @@ internal static class ChangesetCodec
     public const byte DeletedField = 0x08;
     public const byte StorageClearedField = 0x10;
 
+    private const int AddressSize = Address.Size;
+
     public const int MaxAccountEntryLength = 1 + Address.Size + 1 + (1 + Hash256.Size) * 2 + Hash256.Size;
     public const int MaxStorageEntryLength = 1 + Address.Size + 1 + Hash256.Size + 1 + Hash256.Size;
 
@@ -119,7 +121,7 @@ internal static class ChangesetCodec
             if (_position >= _changeset.Length) return false;
 
             Kind = _changeset[_position++];
-            Address = Take(Nethermind.Core.Address.Size);
+            Address = Take(AddressSize);
             Fields = 0;
             Index = default;
             Value = default;

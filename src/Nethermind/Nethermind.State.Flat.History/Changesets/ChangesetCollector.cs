@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -16,19 +17,18 @@ internal sealed class ChangesetCollector
     private readonly Dictionary<AddressAsKey, AccountChange> _accounts = [];
     private readonly Dictionary<StorageCell, byte[]> _storage = [];
     private byte[] _packed = [];
-    private int _packedLength;
 
     public bool IsEmpty => _accounts.Count == 0 && _storage.Count == 0;
 
-    public void Balance(Address address, in UInt256 after) => Field(address).Balance = after.ToBigEndian().WithoutLeadingZeros().ToArray();
+    public void Balance(Address address, in UInt256 after) => ChangeFor(address).Balance = after;
 
-    public void Nonce(Address address, in UInt256 after) => Field(address).Nonce = after.ToBigEndian().WithoutLeadingZeros().ToArray();
+    public void Nonce(Address address, in UInt256 after) => ChangeFor(address).Nonce = after;
 
-    public void Code(Address address, byte[] after) => Field(address).CodeHash = after.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(after);
+    public void Code(Address address, byte[] after) => ChangeFor(address).CodeHash = after.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(after);
 
-    public void Deleted(Address address) => Field(address).IsDeleted = true;
+    public void Deleted(Address address) => ChangeFor(address).IsDeleted = true;
 
-    public void StorageCleared(Address address) => Field(address).IsStorageCleared = true;
+    public void StorageCleared(Address address) => ChangeFor(address).IsStorageCleared = true;
 
     public void Storage(in StorageCell cell, byte[]? after) => _storage[cell] = after ?? [];
 
@@ -37,18 +37,21 @@ internal sealed class ChangesetCollector
         int capacity = _accounts.Count * ChangesetCodec.MaxAccountEntryLength + _storage.Count * ChangesetCodec.MaxStorageEntryLength;
         if (_packed.Length < capacity)
         {
-            if (_packed.Length > 0) ArrayPool<byte>.Shared.Return(_packed);
+            byte[] previous = _packed;
             _packed = ArrayPool<byte>.Shared.Rent(capacity);
+            if (previous.Length > 0) ArrayPool<byte>.Shared.Return(previous);
         }
 
         int position = 0;
+        Span<byte> balance = stackalloc byte[Hash256.Size];
+        Span<byte> nonce = stackalloc byte[Hash256.Size];
         foreach ((AddressAsKey address, AccountChange change) in _accounts)
         {
             position += ChangesetCodec.WriteAccount(
                 _packed.AsSpan(position),
                 address.Value,
-                change.Balance ?? [],
-                change.Nonce ?? [],
+                Trim(change.Balance, balance),
+                Trim(change.Nonce, nonce),
                 change.CodeHash is null ? [] : change.CodeHash.Bytes,
                 change.IsDeleted,
                 change.IsStorageCleared);
@@ -61,15 +64,21 @@ internal sealed class ChangesetCollector
             position += ChangesetCodec.WriteStorage(_packed.AsSpan(position), cell.Address, index.WithoutLeadingZeros(), value.WithoutLeadingZeros());
         }
 
-        _packedLength = position;
-        return _packed.AsSpan(0, _packedLength);
+        return _packed.AsSpan(0, position);
+    }
+
+    private static ReadOnlySpan<byte> Trim(in UInt256? value, Span<byte> buffer)
+    {
+        if (value is not { } number) return [];
+
+        number.ToBigEndian(buffer);
+        return buffer.WithoutLeadingZeros();
     }
 
     public void Reset()
     {
         _accounts.Clear();
         _storage.Clear();
-        _packedLength = 0;
     }
 
     public void Release()
@@ -81,18 +90,18 @@ internal sealed class ChangesetCollector
         _packed = [];
     }
 
-    private AccountChange Field(Address address)
+    private AccountChange ChangeFor(Address address)
     {
-        ref AccountChange? change = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(_accounts, address, out bool existed);
+        ref AccountChange? change = ref CollectionsMarshal.GetValueRefOrAddDefault(_accounts, address, out bool existed);
         if (!existed) change = new AccountChange();
         return change!;
     }
 
     private sealed class AccountChange
     {
-        public byte[]? Balance { get; set; }
+        public UInt256? Balance { get; set; }
 
-        public byte[]? Nonce { get; set; }
+        public UInt256? Nonce { get; set; }
 
         public Hash256? CodeHash { get; set; }
 

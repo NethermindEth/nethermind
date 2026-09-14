@@ -86,13 +86,7 @@ public class BlockProcessorTests
             .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false })
             .AddSingleton<IBlockValidationModule, PrefixReplayValidationModule>());
         BlockHeader parent = chain.BlockTree.Head!.Header;
-        Transaction[] transactions = new Transaction[3];
-        for (int i = 0; i < transactions.Length; i++)
-        {
-            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce((ulong)i)
-                .WithValue((UInt256)(i + 1)).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        }
-        Block block = await chain.AddBlock(transactions);
+        Block block = await chain.AddBlock(ThreeTransfers());
         Assert.That(block.Transactions.Length, Is.EqualTo(3), "precondition: the block must contain the complete test sequence");
         Hash256 target = targetIndex < 0 ? TestItem.KeccakA : block.Transactions[targetIndex].Hash!;
         GethTraceOptions traceOptions = new() { TxHash = target, Tracer = tracerName };

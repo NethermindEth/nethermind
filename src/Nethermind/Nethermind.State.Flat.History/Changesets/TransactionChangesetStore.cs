@@ -3,6 +3,7 @@
 
 using System.Buffers.Binary;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 
 namespace Nethermind.State.Flat.History.Changesets;
@@ -32,8 +33,29 @@ internal sealed class TransactionChangesetStore
         batch.PutSpan(key, changeset);
     }
 
-    /// <summary>The changesets of transactions below <paramref name="beforeTransaction"/>, in execution order.</summary>
-    public ISortedView OpenBefore(ulong block, ushort beforeTransaction) => OpenBetween(block, 0, beforeTransaction);
+    /// <summary>The hash of the block the rows were built from, so that a block that merely shares the height, a
+    /// reorged sibling or a caller-supplied body, is never served another block's prefix.</summary>
+    public void WriteBlockHash(ulong block, Hash256 hash, IWriteBatch batch)
+    {
+        Span<byte> key = stackalloc byte[ChangesetKeyLayout.BlockKeyLength];
+        ChangesetKeyLayout.WriteBlockKey(key, block);
+        batch.PutSpan(key, hash.Bytes);
+    }
+
+    public bool TryGetBlockHash(ulong block, out ValueHash256 hash)
+    {
+        Span<byte> key = stackalloc byte[ChangesetKeyLayout.BlockKeyLength];
+        ChangesetKeyLayout.WriteBlockKey(key, block);
+        byte[]? value = _column.Get(key);
+        if (value is not { Length: Hash256.Size })
+        {
+            hash = default;
+            return false;
+        }
+
+        hash = new ValueHash256(value);
+        return true;
+    }
 
     /// <summary>The changesets of transactions in <c>[fromTransaction, beforeTransaction)</c>, in execution order.</summary>
     public ISortedView OpenBetween(ulong block, ushort fromTransaction, ushort beforeTransaction)
@@ -64,7 +86,6 @@ internal sealed class TransactionChangesetStore
 
     public bool Covers(ulong block) => TryGetCoverage(out ulong from, out ulong to) && block >= from && block <= to;
 
-    /// <summary>Extends the covered range when the new one touches it, so a gap can never be claimed as covered.</summary>
     /// <summary>Drops every row below <paramref name="floor"/>. Coverage is trimmed first, so a crash between the two
     /// leaves rows nothing claims rather than a claim nothing backs.</summary>
     public void PruneBelow(ulong floor)
@@ -82,6 +103,17 @@ internal sealed class TransactionChangesetStore
         Span<byte> upper = stackalloc byte[ChangesetKeyLayout.RowKeyLength];
         ChangesetKeyLayout.WriteBlockBound(lower, 0, 0);
         ChangesetKeyLayout.WriteBlockBound(upper, floor, 0);
+        RemoveRange(lower, upper);
+
+        Span<byte> lowerBlock = stackalloc byte[ChangesetKeyLayout.BlockKeyLength];
+        Span<byte> upperBlock = stackalloc byte[ChangesetKeyLayout.BlockKeyLength];
+        ChangesetKeyLayout.WriteBlockKey(lowerBlock, 0);
+        ChangesetKeyLayout.WriteBlockKey(upperBlock, floor);
+        RemoveRange(lowerBlock, upperBlock);
+    }
+
+    private void RemoveRange(ReadOnlySpan<byte> lower, ReadOnlySpan<byte> upper)
+    {
         if (_column is IRangeRemovableKeyValueStore ranged)
         {
             ranged.RemoveRange(lower, upper);
@@ -93,6 +125,7 @@ internal sealed class TransactionChangesetStore
         while (view.MoveNext()) batch.Remove(view.CurrentKey);
     }
 
+    /// <summary>Extends the covered range when the new one touches it, so a gap can never be claimed as covered.</summary>
     public bool TryExtendCoverage(ulong fromInclusive, ulong toInclusive)
     {
         lock (_coverageLock)
@@ -118,7 +151,11 @@ internal sealed class TransactionChangesetStore
         _column.PutSpan(CoverageKey(), value);
     }
 
-    private static byte[] CoverageKey()
+    private static readonly byte[] CoverageKeyBytes = BuildCoverageKey();
+
+    private static byte[] CoverageKey() => CoverageKeyBytes;
+
+    private static byte[] BuildCoverageKey()
     {
         byte[] key = new byte[2];
         ChangesetKeyLayout.WriteCoverageKey(key);

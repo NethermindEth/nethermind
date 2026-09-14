@@ -208,8 +208,9 @@ public class GethStyleTracer(
 
         try
         {
+            bool unaltered = options.StateOverrides is null && options.BlockOverrides is null && !options.NoBaseFee;
             IBlockTracer executionTracer = TransactionTraceBoundary.Wrap(
-                tracer.WithCancellation(cancellationToken), useBlockAsBase ? null : txHash, options.StateOverrides is null ? prefixSeeds : null);
+                tracer.WithCancellation(cancellationToken), useBlockAsBase ? null : txHash, unaltered ? prefixSeeds : null);
             scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, executionTracer, cancellationToken);
             return tracer.BuildResult().SingleOrDefault();
         }

@@ -27,8 +27,6 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     internal bool IsComplete { get; private set; }
     internal IBlockTracer Inner => _inner;
 
-    /// <summary>Where the state before the target may come from instead of replaying the transactions ahead of it;
-    /// null keeps the replay.</summary>
     internal IPrefixStateSeedSource? Seeds => _seeds;
 
     /// <summary>Wraps a transaction tracer for early completion in a supported read-only replay environment.</summary>

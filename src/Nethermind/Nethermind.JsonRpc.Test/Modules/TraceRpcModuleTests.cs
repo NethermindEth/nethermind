@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Evm.Tracing;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
@@ -31,6 +30,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;

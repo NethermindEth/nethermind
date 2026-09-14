@@ -11,8 +11,10 @@ internal static class ChangesetKeyLayout
 {
     public const int MaxTransactionIndex = ushort.MaxValue;
     public const int RowKeyLength = 1 + sizeof(ulong) + sizeof(ushort);
+    public const int BlockKeyLength = 1 + sizeof(ulong);
 
     private const byte RowMarker = 0x00;
+    private const byte BlockMarker = 0x01;
     private const byte MetadataMarker = 0xFF;
     private const byte CoverageDiscriminator = 0x01;
 
@@ -33,6 +35,13 @@ internal static class ChangesetKeyLayout
     public static ulong BlockOf(scoped ReadOnlySpan<byte> rowKey) => BinaryPrimitives.ReadUInt64BigEndian(rowKey[1..]);
 
     public static bool IsRowKey(scoped ReadOnlySpan<byte> key) => key.Length == RowKeyLength && key[0] == RowMarker;
+
+    public static int WriteBlockKey(Span<byte> destination, ulong block)
+    {
+        destination[0] = BlockMarker;
+        BinaryPrimitives.WriteUInt64BigEndian(destination[1..], block);
+        return BlockKeyLength;
+    }
 
     public static int WriteCoverageKey(Span<byte> destination)
     {

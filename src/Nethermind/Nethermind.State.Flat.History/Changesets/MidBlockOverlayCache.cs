@@ -8,7 +8,7 @@ namespace Nethermind.State.Flat.History.Changesets;
 
 /// <summary>Keeps the overlay of a block being traced so that tracing its transactions one by one folds each
 /// changeset once rather than once per transaction. An overlay another request still holds is never extended under
-/// it: that request gets the block folded fresh instead.</summary>
+/// it: that request gets the block folded fresh instead. A prefix with a row missing is not lent at all.</summary>
 internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int blocks)
 {
     public const int DefaultBlocks = 4;
@@ -20,7 +20,7 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
     {
     }
 
-    public Lease Rent(ulong block, ushort beforeTransaction)
+    public bool TryRent(ulong block, ushort beforeTransaction, out Lease lease)
     {
         lock (_lock)
         {
@@ -33,8 +33,15 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
             }
 
             Extend(overlay, beforeTransaction);
+            if (overlay.Folded != beforeTransaction)
+            {
+                lease = default;
+                return false;
+            }
+
             overlay.Pins++;
-            return new Lease(this, overlay);
+            lease = new Lease(this, overlay);
+            return true;
         }
     }
 
@@ -54,8 +61,9 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
         while (view.MoveNext())
         {
             if (!ChangesetKeyLayout.IsRowKey(view.CurrentKey)) continue;
+            if (ChangesetKeyLayout.TransactionIndexOf(view.CurrentKey) != overlay.Folded) return;
 
-            overlay.Fold(ChangesetKeyLayout.TransactionIndexOf(view.CurrentKey), view.CurrentValue);
+            overlay.Fold(overlay.Folded, view.CurrentValue);
         }
     }
 

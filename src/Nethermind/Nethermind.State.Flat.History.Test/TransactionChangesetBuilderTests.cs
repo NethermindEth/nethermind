@@ -104,10 +104,11 @@ public class TransactionChangesetBuilderTests
     public void TheRowsOfABuiltBlock_AreReadableThroughTheOverlay()
     {
         Capture(upTo: 20);
+        Block block = Build.A.Block.WithNumber(20).WithTransactions(Build.A.Transaction.TestObject).TestObject;
         _executor.Writes = (tracer) =>
         {
-            tracer.StartNewBlockTrace(Build.A.Block.WithNumber(20).TestObject);
-            ITxTracer txTracer = tracer.StartNewTxTrace(null);
+            tracer.StartNewBlockTrace(block);
+            ITxTracer txTracer = tracer.StartNewTxTrace(block.Transactions[0]);
             txTracer.ReportBalanceChange(TestItem.AddressA, 0, 7);
             tracer.EndTxTrace();
             tracer.EndBlockTrace();
@@ -117,14 +118,14 @@ public class TransactionChangesetBuilderTests
         using TransactionChangesetBuilder builder = Builder(index);
         builder.TryBuildNext();
 
-        bool rented = index.TryRentOverlay(20, beforeTransaction: 1, out MidBlockOverlayCache.Lease lease);
+        bool rented = index.TryRentOverlay(20, block.Hash!, beforeTransaction: 1, out MidBlockOverlayCache.Lease lease);
         using (lease)
         {
-            lease.Overlay.TryGetAccount(TestItem.AddressA, out MidBlockOverlay.AccountOverlay account);
+            lease.Overlay.TryGetAccount(TestItem.AddressA, out MidBlockOverlay.AccountOverlay? account);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(rented, Is.True);
-                Assert.That(account.Balance, Is.EqualTo((UInt256)7));
+                Assert.That(account!.Balance, Is.EqualTo((UInt256)7));
             }
         }
     }

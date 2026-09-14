@@ -14,8 +14,8 @@ public sealed class ChangesetPrefixStateSeedSource(TransactionChangesetIndex ind
 {
     public bool TrySeed(Block block, int transactionIndex, IWorldState state, IReleaseSpec spec)
     {
-        if (transactionIndex <= 0 || transactionIndex > ChangesetKeyLayout.MaxTransactionIndex) return false;
-        if (!index.TryRentOverlay((ulong)block.Number, (ushort)transactionIndex, out MidBlockOverlayCache.Lease lease)) return false;
+        if (transactionIndex <= 0 || transactionIndex > ChangesetKeyLayout.MaxTransactionIndex || block.Hash is null) return false;
+        if (!index.TryRentOverlay((ulong)block.Number, block.Hash, (ushort)transactionIndex, out MidBlockOverlayCache.Lease lease)) return false;
 
         using (lease)
         {
