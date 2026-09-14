@@ -28,6 +28,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
@@ -41,7 +42,7 @@ using ValidationCompletion = TaskCompletionSource<(NewPayloadHandler.ValidationR
 /// <a href="https://github.com/ethereum/execution-apis/blob/main/src/engine/shanghai.md#engine_newpayloadv2">
 /// Shanghai</a> specification.
 /// </summary>
-public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>, IDisposable
+public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1>, IInclusionListComplianceEvaluator, IDisposable
 {
     private readonly IPayloadPreparationService _payloadPreparationService;
     private readonly IBlockValidator _blockValidator;
@@ -346,11 +347,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// </remarks>
     private ResultWrapper<PayloadStatusV1> EvaluateInclusionListFromState(Block block)
     {
-        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
-        _senderRecovery.RecoverData(block.InclusionListTransactions!, spec, skipErrors: true);
-
-        ValidationResult result = InclusionListValidator.IsSatisfied(
-            block, new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header), spec, _txValidator)
+        ValidationResult result = IsInclusionListSatisfied(block, block.InclusionListTransactions!)
             ? ValidationResult.Valid
             : ValidationResult.InclusionListUnsatisfied;
 
@@ -358,6 +355,26 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return result == ValidationResult.Valid
             ? NewPayloadV1Result.Valid(block.Hash)
             : NewPayloadV1Result.InclusionListUnsatisfied(block.Hash);
+    }
+
+    /// <inheritdoc/>
+    public bool? TryEvaluate(Hash256 blockHash, byte[][] inclusionListTransactions)
+    {
+        Block? block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        if (block is null || !_stateReader.HasStateForBlock(block.Header)) return null;
+
+        // Undecodable entries are dropped rather than failing the answer: a censoring proposer must not be
+        // able to escape the check by having one bad entry gossiped into the aggregate.
+        return IsInclusionListSatisfied(block, TxsDecoder.DecodeTxs(inclusionListTransactions, skipErrors: true).Transactions);
+    }
+
+    private bool IsInclusionListSatisfied(Block block, Transaction[] inclusionList)
+    {
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+        _senderRecovery.RecoverData(inclusionList, spec, skipErrors: true);
+
+        return InclusionListValidator.IsSatisfied(
+            block, inclusionList, new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header), spec, _txValidator);
     }
 
     // Only a "valid block" outcome short-circuits: never resurrect a stale Invalid/Syncing for a block
