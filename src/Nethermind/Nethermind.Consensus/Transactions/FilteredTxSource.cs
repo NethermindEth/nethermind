@@ -44,5 +44,5 @@ public class FilteredTxSource<T>(ITxSource innerSource, ITxFilter txFilter, ILog
         }
     }
 
-    public override string ToString() => $"{nameof(FilteredTxSource<T>)} [ {innerSource} ]";
+    public override string ToString() => $"{nameof(FilteredTxSource<>)} [ {innerSource} ]";
 }

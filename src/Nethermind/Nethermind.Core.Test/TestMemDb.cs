@@ -110,7 +110,7 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
     {
         ArrayPoolList<(byte[], byte[]?)> sortedValue = new(1);
 
-        foreach (KeyValuePair<byte[], byte[]?> keyValuePair in GetAll())
+        foreach (KeyValuePair<byte[], byte[]> keyValuePair in GetAll())
         {
             if (Bytes.BytesComparer.Compare(keyValuePair.Key, firstKeyInclusive) < 0)
             {

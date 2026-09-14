@@ -85,7 +85,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                                 {
                                     using (privateKey)
                                     {
-                                        bytes = _eciesCipher.Decrypt(privateKey, cipher).PlainText;
+                                        bytes = DecryptOrThrow(privateKey, cipher);
                                     }
                                 }
                                 else
@@ -99,10 +99,10 @@ namespace Nethermind.Consensus.AuRa.Transactions
                                 // But we need to fallback to node key here when we upgrade version.
                                 // This is temporary code after all validators are upgraded we can remove it.
                                 using PrivateKey privateKey = _previousCryptoKey.Unprotect();
-                                bytes = _eciesCipher.Decrypt(privateKey, cipher).PlainText;
+                                bytes = DecryptOrThrow(privateKey, cipher);
                             }
 
-                            if (bytes?.Length != 32)
+                            if (bytes.Length != 32)
                             {
                                 // This can only happen if there is a bug in the smart contract, or if the entire network goes awry.
                                 throw new AuRaException("Decrypted random number has the wrong length.");
@@ -129,8 +129,23 @@ namespace Nethermind.Consensus.AuRa.Transactions
             {
                 if (_logger.IsError) _logger.Error($"RANDAO Failed on block {parent.ToString(BlockHeader.Format.FullHashAndNumber)} {new StackTrace()}", e);
             }
+            catch (InvalidCipherTextException e)
+            {
+                if (_logger.IsError) _logger.Error($"RANDAO Failed on block {parent.ToString(BlockHeader.Format.FullHashAndNumber)} {new StackTrace()}", e);
+            }
 
             return null;
+
+            byte[] DecryptOrThrow(PrivateKey privateKey, byte[] cipher)
+            {
+                (bool success, byte[]? plainText) = _eciesCipher.Decrypt(privateKey, cipher);
+                if (!success || plainText is null)
+                {
+                    throw new InvalidCipherTextException("Could not decrypt random contract cipher text.");
+                }
+
+                return plainText;
+            }
         }
 
         public override string ToString() => $"{nameof(RandomContractTxSource)}";

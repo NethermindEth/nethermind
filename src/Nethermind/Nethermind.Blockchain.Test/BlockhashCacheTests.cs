@@ -296,9 +296,8 @@ public class BlockhashCacheTests
         Assert.That(cache.GetStats(), Is.EqualTo(new BlockhashCache.Stats(200, 1, 1)));
     }
 
-    [TestCase(300ul)]
-    [TestCase(50ul)]
-    public async Task Prefetch_reuses_parent_data(ulong chainDepth)
+    [Test]
+    public async Task Prefetch_reuses_parent_data([Values(300ul, 50ul)] ulong chainDepth)
     {
         (BlockTree tree, BlockhashCache cache) = BuildTest(chainDepth);
         BlockHeader head = tree.FindHeader(chainDepth - 1ul, BlockTreeLookupOptions.None)!;

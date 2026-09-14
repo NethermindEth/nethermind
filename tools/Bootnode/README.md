@@ -39,10 +39,14 @@ The tool is a discovery-only bootnode. It advertises TCP port `0` in the enode a
 
 ## Release Assets
 
-Bootnode side releases use `bootnode-*` tags and the `Release Bootnode` GitHub workflow. The workflow builds signed standalone binaries for Linux x64/arm64, macOS x64/arm64, and Windows x64, then publishes a Docker image:
+Bootnode maintains an independent version line starting at `1.0.0`. Its separate GitHub Release tag includes the `bootnode-` prefix, for example `bootnode-1.0.0`; package archive names and Docker tags use the same unprefixed Bootnode version, for example `nethermind-bootnode-1.0.0-linux-x64.tar.gz` and `nethermind/bootnode:1.0.0`. The `Release Bootnode` workflow always marks its GitHub release as not latest, so it does not replace the Nethermind client release in the repository sidebar.
+
+To publish a new version, update `VersionPrefix` in `tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj` and dispatch `Release Bootnode` from a ref containing that change. To re-upload an existing published version, dispatch from its `bootnode-<version>` tag; delete a stale untagged draft before re-cutting that version at another commit. An existing Git tag determines the release commit even when the release is a draft or has been deleted. Each release includes `SHA256SUMS` and detached `.asc` signatures. The `nethermind/bootnode` image name replaces `nethermind/nethermind-bootnode`.
+
+The workflow builds signed standalone binaries for Linux x64/arm64, macOS x64/arm64, and Windows x64, then publishes a Docker image. For the highest published Bootnode version, select `publish_latest` to also refresh the Bootnode `latest` image tag; an older version still publishes its versioned image but leaves `latest` unchanged.
 
 ```powershell
-docker pull nethermind/nethermind-bootnode:bootnode-r1
+docker pull nethermind/bootnode:latest
 ```
 
 The default container command stores state in `/nethermind-bootnode/data` and binds REST and Prometheus to all interfaces:
@@ -53,7 +57,7 @@ docker run --rm -it `
   -p 127.0.0.1:8546:8546 `
   -p 127.0.0.1:6060:6060 `
   -v bootnode-data:/nethermind-bootnode/data `
-  nethermind/nethermind-bootnode:bootnode-r1
+  nethermind/bootnode:latest
 ```
 
 Pass CLI options after the image name to override the defaults, for example:
@@ -64,7 +68,7 @@ docker run --rm -it `
   -p 127.0.0.1:8546:8546 `
   -p 127.0.0.1:6060:6060 `
   -v bootnode-data:/nethermind-bootnode/data `
-  nethermind/nethermind-bootnode:bootnode-r1 `
+  nethermind/bootnode:latest `
   --local-ip :: `
   --external-ip-v4 203.0.113.10 `
   --external-ip-v6 2001:db8::10
@@ -91,7 +95,7 @@ dotnet run --project tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.cspr
   --external-ip-v6 2001:db8::10
 ```
 
-`--external-ip-v4` writes the ENR `ip`/`udp` entries, `--external-ip-v6` writes `ip6`/`udp6`, and using both publishes both families in the same ENR. `--external-ip` remains available for a single primary address and for backward-compatible simple setups.
+`--external-ip-v4` writes the ENR `ip`/`udp` entries when the listener enables IPv4, and `--external-ip-v6` writes `ip6`/`udp6` when it enables IPv6. Use both with `--local-ip ::` to publish both families in the same ENR. On an IPv6-only host, use `--external-ip` so existing consumers also use IPv6. `--external-ip` remains available for other single-address and backward-compatible setups.
 
 ## Options
 
@@ -102,8 +106,8 @@ dotnet run --project tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.cspr
 | `--addr` | unset | Bootnode-compatible UDP listen address such as `:30303`, `0.0.0.0:30303`, or `[::]:30303`; overrides `--local-ip` and `--discovery-port` parts that are present. |
 | `--local-ip` | auto-detected (`0.0.0.0` in Docker) | Local IP address to bind the UDP discovery socket. |
 | `--external-ip` | auto-detected | Single advertised external IP address. |
-| `--external-ip-v4` | unset | Advertised external IPv4 address for ENR `ip`/`udp`. |
-| `--external-ip-v6` | unset | Advertised external IPv6 address for ENR `ip6`/`udp6`. |
+| `--external-ip-v4` | unset | External IPv4 address for ENR `ip`/`udp`; advertised only when the listener enables IPv4. |
+| `--external-ip-v6` | unset | External IPv6 address for ENR `ip6`/`udp6`; advertised only when the listener enables IPv6. |
 | `--protocols` | `all` | Discovery protocols to enable: `v4`, `v5`, or `all`. |
 | `--bootnode`, `--bootnodes` | none | Bootstrap enode/ENR values; may be repeated or comma-separated. |
 | `--use-default-discv5-bootnodes` | `true` | Use Nethermind's embedded well-known discv5 bootnodes in addition to configured bootnodes. |

@@ -54,9 +54,8 @@ namespace Nethermind.Evm.Test
             AssertEip1014(expectedAddress, _defaultDeployedCode);
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Test_out_of_gas_existing_account(bool withStorage)
+        [Test]
+        public void Test_out_of_gas_existing_account([Values] bool withStorage)
         {
             (Address expectedAddress, byte[] callCode) = PrepareCreate2(_defaultSalt, _defaultInitCode, callGas: 32100);
 
@@ -64,7 +63,7 @@ namespace Nethermind.Evm.Test
 
             if (withStorage)
             {
-                TestState.Set(new StorageCell(expectedAddress, 1), [1, 2, 3, 4, 5]);
+                TestState.Set(new StorageCell(expectedAddress, 1), new UInt256((ReadOnlySpan<byte>)[1, 2, 3, 4, 5], isBigEndian: true));
                 TestState.Commit(Spec);
                 TestState.CommitTree(0);
             }
@@ -76,7 +75,8 @@ namespace Nethermind.Evm.Test
             AssertEip1014(expectedAddress, []);
             if (withStorage)
             {
-                Assert.That(TestState.Get(new StorageCell(expectedAddress, 1)).ToArray(), Is.EqualTo(new byte[] { 1, 2, 3, 4, 5 }));
+                TestState.Get(new StorageCell(expectedAddress, 1), out UInt256 storageValue1);
+                Assert.That(storageValue1.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 1, 2, 3, 4, 5 }));
             }
         }
 
@@ -93,7 +93,7 @@ namespace Nethermind.Evm.Test
         {
             (Address expectedAddress, byte[] callCode) = PrepareCreate2(_defaultSalt, _defaultInitCode);
             TestState.CreateAccount(expectedAddress, 1.Ether);
-            TestState.Set(new StorageCell(expectedAddress, 1), [1]);
+            TestState.Set(new StorageCell(expectedAddress, 1), (UInt256)1);
             TestState.Commit(Spec);
             TestState.CommitTree(0);
 

@@ -192,7 +192,7 @@ public class SnapStateServer : ISnapStateServer
                 break;
             }
 
-            Account accountNeth = GetAccountByPath(tree, rootHash, accounts[i].Path.Bytes.ToArray());
+            Account? accountNeth = GetAccountByPath(tree, rootHash, accounts[i].Path.Bytes.ToArray());
             if (accountNeth is null)
             {
                 break;

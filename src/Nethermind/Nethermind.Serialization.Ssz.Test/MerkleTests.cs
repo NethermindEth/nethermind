@@ -24,6 +24,77 @@ public static class UInt256Extensions
 [TestFixture]
 public class MerkleTests
 {
+    [Test]
+    public void Merkleize_matches_padded_binary_tree([Values(0, 1, 2, 3, 4, 7, 8, 9, 31, 32, 33)] int count)
+    {
+        UInt256[] chunks = new UInt256[count];
+        for (int i = 0; i < count; i++) chunks[i] = (UInt256)(i + 1);
+        int width = 1;
+        while (width < count) width *= 2;
+        UInt256[] tree = new UInt256[width];
+        chunks.CopyTo(tree, 0);
+        for (int length = width; length > 1; length /= 2)
+        {
+            for (int i = 0; i < length / 2; i++)
+            {
+                byte[] left = new byte[32];
+                byte[] right = new byte[32];
+                tree[i * 2].ToLittleEndian(left);
+                tree[i * 2 + 1].ToLittleEndian(right);
+                tree[i] = new UInt256(HashUtility.Hash(left, right));
+            }
+        }
+        Merkle.Merkleize(out UInt256 actual, chunks, (ulong)width);
+        Assert.That(actual, Is.EqualTo(tree[0]));
+    }
+
+    [Test]
+    public void Merkleizer_does_not_read_scratch_it_has_not_written(
+        [Values(0, 1, 2, 3, 4, 7, 8, 9, 31, 32, 33)] int count, [Values(2, 1024)] int minimumWidth)
+    {
+        UInt256[] chunks = new UInt256[count];
+        for (int i = 0; i < count; i++) chunks[i] = (UInt256)(i + 1);
+        int width = minimumWidth;
+        while (width < count) width *= 2;
+
+        Span<UInt256> scratch = stackalloc UInt256[Merkle.NextPowerOfTwoExponent((ulong)width) + 1];
+        scratch.Fill(UInt256.MaxValue);
+        Merkleizer merkleizer = new(scratch);
+        for (int i = 0; i < count; i++) merkleizer.Feed(chunks[i]);
+        merkleizer.CalculateRoot(out UInt256 actual);
+
+        Merkle.Merkleize(out UInt256 expected, chunks, (ulong)width);
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Partial_byte_chunks_match_poisoned_scratch([Values(1, 31, 33, 65)] int length, [Values(0UL, 1024UL)] ulong limit)
+    {
+        byte[] bytes = new byte[length];
+        for (int i = 0; i < bytes.Length; i++) bytes[i] = (byte)(i + 1);
+        int count = (length + 31) / 32;
+        Span<UInt256> scratch = stackalloc UInt256[Merkle.NextPowerOfTwoExponent(limit == 0 ? (ulong)count : limit) + 1];
+        scratch.Fill(UInt256.MaxValue);
+        Merkleizer merkleizer = new(scratch);
+        for (int i = 0; i < count; i++)
+        {
+            byte[] chunk = new byte[32];
+            bytes.AsSpan(i * 32, Math.Min(32, length - i * 32)).CopyTo(chunk);
+            merkleizer.Feed(new UInt256(chunk));
+        }
+        merkleizer.CalculateRoot(out UInt256 expected);
+
+        Merkle.Merkleize(out UInt256 actual, bytes.AsSpan(), limit);
+        Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Merkleize_empty_is_the_zero_chunk([Values(0UL, 1UL)] ulong limit)
+    {
+        Merkle.Merkleize(out UInt256 root, ReadOnlySpan<UInt256>.Empty, limit);
+        Assert.That(root, Is.EqualTo(UInt256.Zero));
+    }
+
     [TestCase(ulong.MinValue, 0UL)]
     [TestCase(1UL, 0UL)]
     [TestCase(2UL, 1UL)]
@@ -35,6 +106,25 @@ public class MerkleTests
 
     [Test]
     public void Zero_hashes_0_is_correct() => Assert.That(Merkle.ZeroHashes[0], Is.EqualTo(UInt256.Zero));
+
+    /// <remarks>
+    /// The table is baked-in constant data, and the zero-subtree tests below cannot check it:
+    /// <see cref="Merkle.HashConcatenation"/> short-circuits an all-zero pair straight back to the
+    /// table, so they never run SHA-256 and compare it against itself. Rebuild the chain here.
+    /// </remarks>
+    [Test]
+    public void Zero_hashes_match_an_independently_computed_chain()
+    {
+        byte[] expected = new byte[32];
+        Span<byte> actual = stackalloc byte[32];
+
+        for (int level = 0; level < 64; level++)
+        {
+            Merkle.ZeroHashes[level].ToLittleEndian(actual);
+            Assert.That(actual.ToArray(), Is.EqualTo(expected), $"ZeroHashes[{level}]");
+            expected = HashUtility.Hash(expected, expected);
+        }
+    }
 
     [Test]
     public void Can_merkleize_bool()

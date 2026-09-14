@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
@@ -82,6 +83,7 @@ public class FlatRocksDbConfigAdjusterTests
     public void FlatHistoryDatabase_WithRetention_EnablesCompactOnDeletions_ForTheNameTheDatabaseActuallyPasses()
     {
         _flatDbConfig.Layout.Returns(FlatLayout.Flat);
+        _flatDbConfig.HistoryRetention.Returns(HistoryRetentionMode.Rolling);
         _flatDbConfig.HistoryRetentionBlocks.Returns(450_000UL);
 
         FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
@@ -96,6 +98,7 @@ public class FlatRocksDbConfigAdjusterTests
     public void FlatHistoryDatabase_WithoutRetention_LeavesCompactOnDeletionsOff()
     {
         _flatDbConfig.Layout.Returns(FlatLayout.Flat);
+        _flatDbConfig.HistoryRetention.Returns(HistoryRetentionMode.None);
         _flatDbConfig.HistoryRetentionBlocks.Returns(0UL);
 
         FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
@@ -103,6 +106,20 @@ public class FlatRocksDbConfigAdjusterTests
         IRocksDbConfig result = adjuster.GetForDatabase(Nethermind.Init.Modules.ContainerBuilderExtensions.GetTitleDbName(DbNames.FlatHistory), nameof(FlatHistoryColumns.AccountHistory));
 
         Assert.That(result.CompactOnDeletions, Is.False);
+    }
+
+    [Test]
+    public void FlatHistoryDatabase_SinceBlock_LeavesCompactOnDeletionsOff()
+    {
+        _flatDbConfig.Layout.Returns(FlatLayout.Flat);
+        _flatDbConfig.HistoryRetention.Returns(HistoryRetentionMode.SinceBlock);
+        _flatDbConfig.HistoryRetentionSinceBlock.Returns(15_000_000UL);
+
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+
+        IRocksDbConfig result = adjuster.GetForDatabase(Nethermind.Init.Modules.ContainerBuilderExtensions.GetTitleDbName(DbNames.FlatHistory), nameof(FlatHistoryColumns.AccountHistory));
+
+        Assert.That(result.CompactOnDeletions, Is.False, "a mode that never deletes has nothing for the deletion collector to see");
     }
 
     [Test]
@@ -116,5 +133,18 @@ public class FlatRocksDbConfigAdjusterTests
         adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Account));
 
         _baseFactory.Received(1).GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Account));
+    }
+
+    [TestCase(0UL, TestName = "FlatDatabase_WithZeroCacheBudget_ReportsConfigurationError")]
+    [TestCase(2UL, TestName = "FlatDatabase_WithCacheBudgetTooSmallToSplit_ReportsConfigurationError")]
+    public void FlatDatabase_WithUnusableCacheBudget_ReportsConfigurationError(ulong budget)
+    {
+        _flatDbConfig.Layout.Returns(FlatLayout.Flat);
+        _flatDbConfig.BlockCacheSizeBudget.Returns(budget);
+
+        FlatRocksDbConfigAdjuster adjuster = new(_baseFactory, _flatDbConfig, _disposeStack, LimboLogs.Instance);
+
+        Assert.That(() => adjuster.GetForDatabase(nameof(DbNames.Flat), nameof(FlatDbColumns.Account)),
+            Throws.TypeOf<InvalidConfigurationException>());
     }
 }

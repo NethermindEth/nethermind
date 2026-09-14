@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using Nethermind.Api;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
@@ -34,7 +36,7 @@ public partial class EngineRpcModule(
     IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?> getBlobsHandlerV4,
     IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
     IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
-    IHandler<InclusionListBytes> getInclusionListTransactionsHandler,
+    IHandler<Hash256?, InclusionListBytes> getInclusionListTransactionsHandler,
     IInclusionListTxSource inclusionListTxSource,
     IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV4,
     IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV5,
@@ -65,7 +67,7 @@ public partial class EngineRpcModule(
         IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?> getBlobsHandlerV4,
         IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
         IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
-        IHandler<InclusionListBytes> getInclusionListTransactionsHandler,
+        IHandler<Hash256?, InclusionListBytes> getInclusionListTransactionsHandler,
         IInclusionListTxSource inclusionListTxSource,
         IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV4,
         IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV5,
@@ -115,4 +117,28 @@ public partial class EngineRpcModule(
 
     public ResultWrapper<ClientVersionV1[]> engine_getClientVersionV1(ClientVersionV1 clientVersionV1) =>
         ResultWrapper<ClientVersionV1[]>.Success(string.IsNullOrEmpty(clientVersionV1.Code) ? [new()] : [new(), clientVersionV1]);
+
+    /// <summary>Validates a custody-column update carried by a forkchoice call, and applies it
+    /// (execution-apis#793).</summary>
+    /// <remarks>Shared by every forkchoice version that accepts the field, so the validation and the
+    /// tracker update cannot drift apart between them. Applying is best-effort per execution-apis#793 —
+    /// a failure is logged and swallowed; only a malformed bitfield is reported back to the caller.</remarks>
+    /// <returns><c>null</c> when there is nothing to reject, otherwise the <c>InvalidParams</c> message.</returns>
+    private string? ValidateAndApplyCustodyColumns(BitArray? custodyColumns)
+    {
+        if (custodyColumns is null) return null;
+        if (custodyColumns.Length != BlobCellMask.CellCount)
+            return $"Custody columns must be exactly {BlobCellMask.FixedByteLength} bytes.";
+
+        try
+        {
+            _blobCustodyTracker.Update(BlobCellBits.ToMask(custodyColumns));
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Failed to update blob custody columns: {ex.Message}");
+        }
+
+        return null;
+    }
 }

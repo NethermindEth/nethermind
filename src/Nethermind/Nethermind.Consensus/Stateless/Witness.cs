@@ -7,7 +7,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -35,25 +34,15 @@ public static class WitnessExtensions
 
     extension(Witness witness)
     {
-        public INodeStorage CreateNodeStorage()
-        {
-            IKeyValueStore db = new MemDb();
-            foreach (byte[] stateElement in witness.State)
-            {
-                ReadOnlySpan<byte> hash = ValueKeccak.Compute(stateElement).Bytes;
-                db.PutSpan(hash, stateElement);
-            }
-
-            return new NodeStorage(db, INodeStorage.KeyScheme.Hash);
-        }
+        public INodeStorage CreateNodeStorage() => WitnessNodeStorage.Create(witness.State);
 
         public IKeyValueStoreWithBatching CreateCodeDb()
         {
-            IKeyValueStoreWithBatching db = new MemDb();
+            IKeyValueStoreWithBatching db = MemDb.WithCapacity(witness.Codes.Count);
             foreach (byte[] code in witness.Codes)
             {
                 ReadOnlySpan<byte> hash = ValueKeccak.Compute(code).Bytes;
-                db.PutSpan(hash, code);
+                db.Set(hash, code);
             }
 
             return db;
@@ -86,7 +75,10 @@ public static class WitnessExtensions
                     if (i > 0 && (decodedHeaders[i].ParentHash is null || decodedHeaders[i].ParentHash.ValueHash256 != previousHeaderHash))
                         throw new InvalidOperationException("Witness headers are not contiguous");
 
-                    previousHeaderHash = ValueKeccak.Compute(headers[i]);
+                    if (i + 1 < headersSpan.Length)
+                    {
+                        previousHeaderHash = ValueKeccak.Compute(headers[i]);
+                    }
                 }
 
                 return decodedHeaders;

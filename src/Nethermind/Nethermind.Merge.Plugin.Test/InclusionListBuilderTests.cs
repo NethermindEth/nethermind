@@ -96,6 +96,18 @@ public class InclusionListBuilderTests
         pool.Received().GetPendingTransactionsBySender(true, (UInt256)17);
     }
 
+    // The named parent, not the head, fixes the fee the candidates are filtered against.
+    [Test]
+    public void Requests_transactions_ready_at_the_named_parents_base_fee()
+    {
+        ITxPool pool = PoolOf();
+        BlockHeader parent = Build.A.BlockHeader.WithBaseFee(23).TestObject;
+
+        BuildBuilder(pool, baseFee: 17).GetInclusionList(parent).Dispose();
+
+        pool.Received().GetPendingTransactionsBySender(true, (UInt256)23);
+    }
+
     // A later nonce only becomes appendable once the block includes the earlier one, so a gap ends the run.
     [Test]
     public void Stops_a_sender_run_at_a_nonce_gap()

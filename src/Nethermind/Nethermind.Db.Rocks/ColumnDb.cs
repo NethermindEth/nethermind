@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
-using RocksDbSharp;
+using Nethermind.RocksDbBindings;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
@@ -16,7 +16,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 {
     private readonly RocksDb _rocksDb;
     internal readonly DbOnTheRocks _mainDb;
-    internal readonly ColumnFamilyHandle _columnFamily;
+    internal readonly IColumnFamilyHandle _columnFamily;
 
     private readonly DisposableLazy<DbOnTheRocks.IteratorManager>? _iteratorManager;
     private readonly DisposableLazy<DbOnTheRocks.IteratorManager> _seekIteratorManager;
@@ -77,13 +77,13 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
             _mainDb.ThrowIfDisposing();
             _mainDb.UpdateReadMetrics(keys.Length);
 
-            ColumnFamilyHandle[] columnFamilies = new ColumnFamilyHandle[keys.Length];
+            IColumnFamilyHandle[] columnFamilies = new IColumnFamilyHandle[keys.Length];
             Array.Fill(columnFamilies, _columnFamily);
             try
             {
                 return _rocksDb.MultiGet(keys, columnFamilies);
             }
-            catch (RocksDbSharpException e)
+            catch (RocksDbException e)
             {
                 _mainDb.HandleFatalDbError(e);
                 throw;
@@ -91,7 +91,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         }
     }
 
-    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
+    public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
     {
         _mainDb.ThrowIfDisposing();
         return _mainDb.GetAllCore(ordered, _columnFamily);
@@ -147,7 +147,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public void Flush(bool onlyWal) => _mainDb.FlushWithColumnFamily(_columnFamily);
 
-    public void Compact() => _mainDb.CompactOpenRange(_columnFamily.Handle, forceBottommost: false);
+    public void Compact() => _mainDb.CompactOpenRange(_columnFamily, forceBottommost: false);
 
     /// <inheritdoc/>
     public bool CompactIfDeadWeightExceeds(double deadRatio)
@@ -161,7 +161,7 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         }
 
         _mainDb.LogColumnDeadWeightCompaction(Name);
-        _mainDb.CompactOpenRange(_columnFamily.Handle, forceBottommost: true);
+        _mainDb.CompactOpenRange(_columnFamily, forceBottommost: true);
         return true;
     }
 
@@ -178,10 +178,12 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     public void SetWriteBuffer(long sizeBytes)
     {
-        string[] keys = ["write_buffer_size", "max_bytes_for_level_base"];
-        string[] values = [sizeBytes.ToString(), (sizeBytes * 4).ToString()];
-        Native.Instance.rocksdb_set_options_cf(
-            _rocksDb.Handle, _columnFamily.Handle, keys.Length, keys, values);
+        KeyValuePair<string, string>[] options =
+        [
+            new("write_buffer_size", sizeBytes.ToString()),
+            new("max_bytes_for_level_base", (sizeBytes * 4).ToString()),
+        ];
+        _rocksDb.SetOptions(_columnFamily, options);
     }
 
     public byte[]? FirstKey

@@ -245,6 +245,10 @@ namespace Nethermind.Blockchain
         /// </summary>
         (ulong BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
 
+        /// <summary>Publishes the served-history floor surfaced by <see cref="IBlockFinder.LowestServedBlock"/>.
+        /// A no-op everywhere except the live tree - read-only and overlay trees never own the floor.</summary>
+        void UpdateLowestServedBlock(ulong lowestServed) { }
+
         public readonly struct ForkChoiceUpdateEventArgs(Block? head, ulong safe, ulong finalized)
         {
             public Block? Head => head;

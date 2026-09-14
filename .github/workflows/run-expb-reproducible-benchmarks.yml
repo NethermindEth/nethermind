@@ -123,6 +123,18 @@ on:
           - tracing
           - timeline
         default: "false"
+      perf:
+        description: >-
+          Record a Linux perf profile of the client alongside the run. perf samples on the host and
+          resolves both managed frames (via the runtime's perf map) and native frames (via the
+          container's shared objects), so time inside RocksDB, the allocator and the GC is attributed
+          instead of collapsing into dotTrace's single '[Native or optimized code]' node. Produces
+          a folded-stack perf.folded readable with scripts/perf-report.sh.
+          Independent of the dottrace input; enabling both samples the process twice, which perturbs
+          timings - use perf runs for attribution, not for A/B numbers.
+        required: false
+        type: boolean
+        default: false
       trace_blocks:
         description: >-
           Comma-separated block numbers to profile with dotTrace (e.g. 22360451,22360454). When set,
@@ -186,6 +198,7 @@ jobs:
       state_layout: ${{ steps.resolve.outputs.state_layout }}
       payload_sets: ${{ steps.resolve.outputs.payload_sets }}
       dottrace: ${{ steps.resolve.outputs.dottrace }}
+      perf: ${{ steps.resolve.outputs.perf }}
       dottrace_mode: ${{ steps.resolve.outputs.dottrace_mode }}
       trace_blocks: ${{ steps.resolve.outputs.trace_blocks }}
       client_env: ${{ steps.resolve.outputs.client_env }}
@@ -217,6 +230,7 @@ jobs:
           DISPATCH_RETROSPECTIVE_LAST: ${{ inputs.retrospective_last }}
           DISPATCH_RETROSPECTIVE_STEP: ${{ inputs.retrospective_step }}
           DISPATCH_DOTTRACE: ${{ inputs.dottrace }}
+          DISPATCH_PERF: ${{ inputs.perf }}
           DISPATCH_TRACE_BLOCKS: ${{ inputs.trace_blocks }}
           DISPATCH_CLIENT_ENV: ${{ inputs.client_env }}
         run: |
@@ -261,6 +275,7 @@ jobs:
             retrospective_last="${DISPATCH_RETROSPECTIVE_LAST:-100}"
             retrospective_step="${DISPATCH_RETROSPECTIVE_STEP:-10}"
             dottrace="${DISPATCH_DOTTRACE:-false}"
+            perf="${DISPATCH_PERF:-false}"
             # Normalize the profiling selector: legacy boolean 'true' means sampling.
             case "${dottrace}" in
               true|sampling) dottrace_mode="sampling" ;;
@@ -309,6 +324,7 @@ jobs:
             rebuild_docker="true"
             run_count="1"
             dottrace="false"
+            perf="false"
             dottrace_mode=""
             trace_blocks=""
             client_env=""
@@ -327,6 +343,7 @@ jobs:
             rebuild_docker="true"
             run_count="1"
             dottrace="false"
+            perf="false"
             dottrace_mode=""
             trace_blocks=""
             client_env=""
@@ -468,6 +485,7 @@ jobs:
             echo "state_layout=${state_layout}"
             echo "payload_sets=${payload_sets}"
             echo "dottrace=${dottrace}"
+            echo "perf=${perf:-false}"
             echo "dottrace_mode=${dottrace_mode}"
             echo "trace_blocks=${trace_blocks}"
             echo "client_env=${client_env}"
@@ -843,6 +861,7 @@ jobs:
         env:
           EXPB_REPO: ${{ needs.resolve.outputs.expb_repo }}
           EXPB_BRANCH: ${{ needs.resolve.outputs.expb_branch }}
+          PERF: ${{ needs.resolve.outputs.perf }}
         run: |
           set -euo pipefail
 
@@ -851,7 +870,12 @@ jobs:
             export PATH="${HOME}/.local/bin:${PATH}"
           fi
 
-          if [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
+          # Remove this temporary pin once default main advertises --perf in execute-scenarios --help (execution-payloads-benchmarks#27); the help probe below is the runtime guard.
+          expb_perf_revision="ec133a2871165fa039c5c12cec6b047fdce05572"
+          if [[ "${PERF}" == "true" && "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
+            expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks@${expb_perf_revision}"
+            echo "perf=true with the default expb main selection; pinning to ${expb_perf_revision}."
+          elif [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
             expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks"
           elif [[ -n "${EXPB_BRANCH}" ]]; then
             expb_source="git+https://github.com/${EXPB_REPO}@${EXPB_BRANCH}"
@@ -861,7 +885,136 @@ jobs:
 
           echo "Installing expb from ${expb_source}"
           uv tool install --force --from "${expb_source}" expb
+          expb_bin="$(uv tool dir --bin)/expb"
+          if [[ "${PERF}" == "true" ]]; then
+            expb_help="$("${expb_bin}" execute-scenarios --help 2>&1)" || {
+              echo "::error::Installed expb from ${expb_source} could not print execute-scenarios help for --perf verification."
+              exit 1
+            }
+            if [[ "${expb_help}" != *"--perf"* ]]; then
+              echo "::error::Installed expb from ${expb_source} does not support --perf. Use the default expb selection (pinned to ${expb_perf_revision}) or select an expb revision that implements --perf."
+              exit 1
+            fi
+          fi
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
+
+      - name: Reap leftover benchmark containers and networks
+        shell: bash
+        run: |
+          set -uo pipefail
+          # A hard-cancelled run leaves its container running: it holds the snapshot overlay the next
+          # step unmounts - so the plain umount there would fall back to a lazy detach that leaves the
+          # filesystem alive - and it holds the deterministic name, network and ports the replacement
+          # run needs. arm-runner-maintenance.yml reaps containers ahead of the same sweep for this
+          # reason; expb names and labels every container and network it creates `expb`. The rest of
+          # the filter list matches that file, because the sweep is anchored on the whole benchmark
+          # data dir and rpc-bench parks its scratch overlays under it too.
+          for filter in name=expb label=expb name=rpcbench- name=nethermind-rpcbench name=ethcallchaos-bench name=jsonbench-; do
+            docker ps -aq --filter "${filter}" | xargs -r docker rm -f || true
+            # Orphaned expb networks fail scenario re-runs with a 409 on the name collision.
+            docker network ls -q --filter "${filter}" | xargs -r docker network rm >/dev/null 2>&1 || true
+          done
+          exit 0
+
+      - name: Reap stale expb overlay mounts
+        shell: bash
+        run: |
+          set -uo pipefail
+          # A cancelled run never unmounts its snapshot overlay, so the next `mount -t overlay` over the
+          # same path fails with exit status 32 and the benchmark dies ~90s in; container, network and
+          # volume pruning all leave the mount in place. Anchored on the benchmark data dir rather than on
+          # expb's `paths.work` leaf, so renaming that cannot silently turn this into a no-op, and
+          # rpc-bench's scratch overlays on the same box get swept too.
+          #
+          # This body is duplicated verbatim in arm-runner-maintenance.yml and in both benchmark jobs of
+          # run-expb-reproducible-benchmarks.yml. Sharing it would take a composite action and therefore
+          # actions/checkout, which none of the three jobs has and which arm-runner-maintenance.yml must
+          # not depend on - it is the workflow you dispatch when the disk is full.
+          # scripts/ci/test_reap_stale_overlays.py asserts the three copies are byte-identical and drives
+          # this body against synthetic mount tables.
+          # Positional, not an env var: GitHub invokes a `run:` block with no arguments after the
+          # script path, so only that test can point this at a table it wrote.
+          MOUNTS="${1:-/proc/self/mounts}"
+          as_root() { if [[ "$(id -u)" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
+          # Any mount left on this target, whatever its type - the check that an unmount actually took.
+          still_mounted() { awk -v t="$1" '$2 == t { found = 1 } END { exit !found }' "${MOUNTS}"; }
+
+          # The sweep root is what every rm -rf below is bounded by, so canonicalize it - '..' or a
+          # trailing slash must not widen it - and refuse '/' or a single top-level component outright.
+          root="${EXPB_DATA_DIR:-}"
+          [[ -n "${root}" ]] || { echo "::warning::EXPB_DATA_DIR is empty - skipping overlay reap."; exit 0; }
+          root="$(realpath -m -- "${root}")" || { echo "::warning::cannot canonicalize EXPB_DATA_DIR - skipping overlay reap."; exit 0; }
+          case "${root}" in
+            /?*/?*) ;;
+            *) echo "::warning::EXPB_DATA_DIR '${root}' is too shallow for a recursive sweep - skipping."; exit 0 ;;
+          esac
+
+          # Deepest first, so nested mounts unwind. Options are kept per mount line rather than per target:
+          # stacked overlays share a target and `umount` pops one layer at a time, so a target's scratch
+          # dirs must not be deleted until every layer on it is gone.
+          declare -A scratch=()
+          targets=()
+          while IFS=$'\t' read -r mp opts; do
+            [[ -n "${scratch[${mp}]+set}" ]] || targets+=("${mp}")
+            scratch["${mp}"]+="${opts}"$'\n'
+          done < <(awk -v d="${root}" -v OFS='\t' '$3 == "overlay" && index($2, d "/") == 1 { print $2, $4 }' "${MOUNTS}" | sort -r)
+
+          if [[ "${#targets[@]}" -eq 0 ]]; then
+            echo "No stale expb overlay mounts under ${root}."
+            # Surface what we did not match, so layout drift shows up in the log instead of a reassuring
+            # "clean"; docker's own overlays live under /var/lib and are not ours. Capped inside awk
+            # rather than piped into `head`, whose early exit would SIGPIPE awk and - under the errexit
+            # GitHub runs this body with - abort the step before the trailing `exit 0`.
+            awk '$3 == "overlay" && index($2, "/var/lib/") != 1 && ++n <= 20 { print "  unmatched overlay: " $2 }' "${MOUNTS}"
+            exit 0
+          fi
+
+          for mp in "${targets[@]}"; do
+            # An octal-escaped target is unusable twice over: `awk -v` decodes the escape back, so
+            # still_mounted cannot find the line and would report a phantom success, and `umount`
+            # cannot address the literal path either. Refuse it like an escaped scratch path.
+            if [[ "${mp}" == *"\\"* ]]; then
+              echo "::warning::refusing escaped overlay mount target: ${mp}"
+              continue
+            fi
+            # Plain unmount first: `umount -l` can report success while a container-held reference still
+            # blocks the next mount. Lazy is the fallback for that case. The loop is bounded so that
+            # stacked layers unwind and a `umount` that returns 0 without detaching cannot spin the step.
+            for _ in 1 2 3 4 5 6 7 8; do
+              still_mounted "${mp}" || break
+              as_root umount "${mp}" 2>/dev/null || as_root umount -l "${mp}" 2>/dev/null || break
+            done
+            if still_mounted "${mp}"; then
+              echo "::warning::${mp} is still mounted - leaving its overlay scratch dirs in place"
+              continue
+            fi
+            echo "unmounted ${mp}"
+            # upper/work hold the cancelled run's writes: the GB the unmount alone leaves behind, and state
+            # the next overlay would silently layer on top of its snapshot. The paths come from the kernel's
+            # own mount options rather than being guessed.
+            while IFS= read -r d; do
+              [[ -n "${d}" ]] || continue
+              # /proc/self/mounts octal-escapes space, tab and backslash in paths; refuse rather than point
+              # rm -rf at a path whose decoding we would have to assume.
+              if [[ "${d}" == *"\\"* ]]; then
+                echo "::warning::refusing escaped overlay scratch path: ${d}"
+                continue
+              fi
+              c="$(realpath -m -- "${d}")" || { echo "::warning::cannot canonicalize scratch path: ${d}"; continue; }
+              # Strict descendant only - a plain '$root/*' glob also matches the data dir itself, which
+              # holds the snapshots this box exists for.
+              if [[ "${c}" != "${root}"/?* ]]; then
+                echo "::warning::refusing overlay scratch path outside ${root}: ${d}"
+                continue
+              fi
+              if as_root rm -rf -- "${c}"; then
+                echo "removed ${c}"
+              else
+                echo "::warning::failed to remove ${c}"
+              fi
+            done < <(printf '%s' "${scratch[${mp}]}" | tr ',' '\n' | sed -n 's/^\(upperdir\|workdir\)=//p' | sort -u)
+          done
+          exit 0
 
       - name: Run expb scenarios
         id: run-expb
@@ -871,6 +1024,7 @@ jobs:
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run.log
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          PERF: ${{ needs.resolve.outputs.perf }}
           DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
           EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
         run: |
@@ -918,15 +1072,28 @@ jobs:
 
           trap on_terminate TERM INT
 
-          dottrace_flag=""
+          profiling_flags=()
           if [[ "${DOTTRACE}" == "true" ]]; then
             # dotnet-trace (EventPipe runtime events: gc/contention/threading/exception)
             # always rides along with dotTrace - different channel, adds the GC/lock story
             # the CPU profile cannot show. Requires expb with --dotnet-trace support.
-            dottrace_flag="--dottrace --dottrace-mode ${DOTTRACE_MODE:-sampling} --dotnet-trace"
+            profiling_flags+=(--dottrace --dottrace-mode "${DOTTRACE_MODE:-sampling}" --dotnet-trace)
+          fi
+          if [[ "${PERF}" == "true" ]]; then
+            # perf samples on the host; the client only needs the perf-map env, which
+            # expb sets on the container. Nothing extra is required in the image.
+            profiling_flags+=(--perf)
           fi
 
-          # Marker for dottrace artifact collection — only files newer than this
+          if [[ "${#profiling_flags[@]}" -eq 0 ]]; then
+            echo "expb profiling flags: none"
+          else
+            printf 'expb profiling flags:'
+            printf ' %q' "${profiling_flags[@]}"
+            printf '\n'
+          fi
+
+          # Marker for profiling artifact collection — only files newer than this
           touch "${RUNNER_TEMP}/.expb-run-marker"
 
           fifo="${RUNNER_TEMP}/expb-pipe"
@@ -939,7 +1106,7 @@ jobs:
             --per-payload-metrics \
             --per-payload-metrics-logs \
             --print-logs \
-            ${dottrace_flag} \
+            ${profiling_flags[@]+"${profiling_flags[@]}"} \
             > "${fifo}" 2>&1 &
           expb_pid=$!
 
@@ -1180,41 +1347,88 @@ jobs:
             exit 1
           fi
 
-      - name: Collect and upload dotTrace snapshots
-        if: always() && needs.resolve.outputs.dottrace == 'true'
+      - name: Collect and upload profiling artifacts
+        id: collect-profiling
+        if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
         shell: bash
         env:
-          ARCHIVE: ${{ runner.temp }}/dottrace-${{ matrix.payload_set }}-run${{ matrix.run }}.zip
+          ARTIFACT_SUFFIX: ${{ matrix.payload_set }}-run${{ matrix.run }}
           MARKER: ${{ runner.temp }}/.expb-run-marker
+          DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          PERF: ${{ needs.resolve.outputs.perf }}
         run: |
           set -euo pipefail
 
-          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name 'dottrace' -o -name 'dotnet-trace' \) -newer "${MARKER}" 2>/dev/null)
-          if [[ "${#dottrace_dirs[@]}" -eq 0 ]]; then
-            echo "No dottrace output directories found for this run."
+          if [[ "${PERF}" == "true" ]]; then
+            artifact_prefix="profiling"
+          else
+            artifact_prefix="dottrace"
+          fi
+          artifact_name="${artifact_prefix}-${ARTIFACT_SUFFIX}"
+          archive="${RUNNER_TEMP}/${artifact_name}.zip"
+          {
+            echo "artifact_name=${artifact_name}"
+            echo "archive=${archive}"
+          } >> "${GITHUB_OUTPUT}"
+
+          mapfile -t profiling_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name 'dottrace' -o -name 'dotnet-trace' -o -name 'perf' \) -newer "${MARKER}" 2>/dev/null)
+          if [[ "${#profiling_dirs[@]}" -eq 0 ]]; then
+            if [[ "${PERF}" == "true" ]]; then
+              echo "::error::perf was requested but no profiling output directories were produced."
+              exit 1
+            fi
+            echo "::warning::Profiling was requested (dottrace=${DOTTRACE}, perf=${PERF}) but no profiling output directories were produced."
             exit 0
           fi
 
-          echo "Collecting from ${#dottrace_dirs[@]} dottrace director(ies):"
-          printf '  %s\n' "${dottrace_dirs[@]}"
+          echo "Collecting from ${#profiling_dirs[@]} profiling director(ies):"
+          printf '  %s\n' "${profiling_dirs[@]}"
 
           file_count=0
-          for d in "${dottrace_dirs[@]}"; do
+          for d in "${profiling_dirs[@]}"; do
             file_count=$(( file_count + $(find "${d}" -type f | wc -l) ))
           done
           if [[ "${file_count}" -eq 0 ]]; then
-            echo "Dottrace directories are empty, skipping zip."
+            if [[ "${PERF}" == "true" ]]; then
+              echo "::error::perf was requested but profiling output directories are empty."
+              exit 1
+            fi
+            echo "::warning::Profiling output directories are empty, skipping zip."
             exit 0
           fi
 
-          zip -9r "${ARCHIVE}" "${dottrace_dirs[@]}"
+          perf_validation_failed=false
+          if [[ "${PERF}" == "true" ]]; then
+            mapfile -t folded_profiles < <(find "${profiling_dirs[@]}" -type f -name 'perf.folded' -newer "${MARKER}" 2>/dev/null)
+            valid_folded_profiles=()
+            for folded_profile in "${folded_profiles[@]}"; do
+              if bash scripts/validate-folded-profile.sh "${folded_profile}"; then
+                valid_folded_profiles+=("${folded_profile}")
+              else
+                echo "::warning::Ignoring invalid perf.folded profile: ${folded_profile}"
+              fi
+            done
+            if [[ "${#valid_folded_profiles[@]}" -eq 0 ]]; then
+              echo "::error::perf was requested but no perf.folded profile with a positive sample count was produced."
+              perf_validation_failed=true
+            else
+              echo "Validated positive-sample perf.folded profile(s):"
+              printf '  %s\n' "${valid_folded_profiles[@]}"
+            fi
+          fi
 
-      - name: Upload dotTrace artifact
-        if: always() && needs.resolve.outputs.dottrace == 'true'
+          zip -9r "${archive}" "${profiling_dirs[@]}" -x '*/perf.data'
+
+          if [[ "${perf_validation_failed}" == "true" ]]; then
+            exit 1
+          fi
+
+      - name: Upload profiling artifact
+        if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
         uses: actions/upload-artifact@v4
         with:
-          name: dottrace-${{ matrix.payload_set }}-run${{ matrix.run }}
-          path: ${{ runner.temp }}/dottrace-${{ matrix.payload_set }}-run${{ matrix.run }}.zip
+          name: ${{ steps.collect-profiling.outputs.artifact_name }}
+          path: ${{ steps.collect-profiling.outputs.archive }}
           retention-days: 30
           if-no-files-found: ignore
 
@@ -1990,13 +2204,19 @@ jobs:
         env:
           EXPB_REPO: ${{ needs.resolve.outputs.expb_repo }}
           EXPB_BRANCH: ${{ needs.resolve.outputs.expb_branch }}
+          PERF: ${{ needs.resolve.outputs.perf }}
         run: |
           set -euo pipefail
           if ! command -v uv >/dev/null 2>&1; then
             curl -LsSf https://astral.sh/uv/install.sh | sh
             export PATH="${HOME}/.local/bin:${PATH}"
           fi
-          if [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
+          # Remove this temporary pin once default main advertises --perf in execute-scenarios --help (execution-payloads-benchmarks#27); the help probe below is the runtime guard.
+          expb_perf_revision="ec133a2871165fa039c5c12cec6b047fdce05572"
+          if [[ "${PERF}" == "true" && "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
+            expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks@${expb_perf_revision}"
+            echo "perf=true with the default expb main selection; pinning to ${expb_perf_revision}."
+          elif [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
             expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks"
           elif [[ -n "${EXPB_BRANCH}" ]]; then
             expb_source="git+https://github.com/${EXPB_REPO}@${EXPB_BRANCH}"
@@ -2005,7 +2225,136 @@ jobs:
           fi
           echo "Installing expb from ${expb_source}"
           uv tool install --force --from "${expb_source}" expb
+          expb_bin="$(uv tool dir --bin)/expb"
+          if [[ "${PERF}" == "true" ]]; then
+            expb_help="$("${expb_bin}" execute-scenarios --help 2>&1)" || {
+              echo "::error::Installed expb from ${expb_source} could not print execute-scenarios help for --perf verification."
+              exit 1
+            }
+            if [[ "${expb_help}" != *"--perf"* ]]; then
+              echo "::error::Installed expb from ${expb_source} does not support --perf. Use the default expb selection (pinned to ${expb_perf_revision}) or select an expb revision that implements --perf."
+              exit 1
+            fi
+          fi
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
+
+      - name: Reap leftover benchmark containers and networks
+        shell: bash
+        run: |
+          set -uo pipefail
+          # A hard-cancelled run leaves its container running: it holds the snapshot overlay the next
+          # step unmounts - so the plain umount there would fall back to a lazy detach that leaves the
+          # filesystem alive - and it holds the deterministic name, network and ports the replacement
+          # run needs. arm-runner-maintenance.yml reaps containers ahead of the same sweep for this
+          # reason; expb names and labels every container and network it creates `expb`. The rest of
+          # the filter list matches that file, because the sweep is anchored on the whole benchmark
+          # data dir and rpc-bench parks its scratch overlays under it too.
+          for filter in name=expb label=expb name=rpcbench- name=nethermind-rpcbench name=ethcallchaos-bench name=jsonbench-; do
+            docker ps -aq --filter "${filter}" | xargs -r docker rm -f || true
+            # Orphaned expb networks fail scenario re-runs with a 409 on the name collision.
+            docker network ls -q --filter "${filter}" | xargs -r docker network rm >/dev/null 2>&1 || true
+          done
+          exit 0
+
+      - name: Reap stale expb overlay mounts
+        shell: bash
+        run: |
+          set -uo pipefail
+          # A cancelled run never unmounts its snapshot overlay, so the next `mount -t overlay` over the
+          # same path fails with exit status 32 and the benchmark dies ~90s in; container, network and
+          # volume pruning all leave the mount in place. Anchored on the benchmark data dir rather than on
+          # expb's `paths.work` leaf, so renaming that cannot silently turn this into a no-op, and
+          # rpc-bench's scratch overlays on the same box get swept too.
+          #
+          # This body is duplicated verbatim in arm-runner-maintenance.yml and in both benchmark jobs of
+          # run-expb-reproducible-benchmarks.yml. Sharing it would take a composite action and therefore
+          # actions/checkout, which none of the three jobs has and which arm-runner-maintenance.yml must
+          # not depend on - it is the workflow you dispatch when the disk is full.
+          # scripts/ci/test_reap_stale_overlays.py asserts the three copies are byte-identical and drives
+          # this body against synthetic mount tables.
+          # Positional, not an env var: GitHub invokes a `run:` block with no arguments after the
+          # script path, so only that test can point this at a table it wrote.
+          MOUNTS="${1:-/proc/self/mounts}"
+          as_root() { if [[ "$(id -u)" -eq 0 ]]; then "$@"; else sudo "$@"; fi; }
+          # Any mount left on this target, whatever its type - the check that an unmount actually took.
+          still_mounted() { awk -v t="$1" '$2 == t { found = 1 } END { exit !found }' "${MOUNTS}"; }
+
+          # The sweep root is what every rm -rf below is bounded by, so canonicalize it - '..' or a
+          # trailing slash must not widen it - and refuse '/' or a single top-level component outright.
+          root="${EXPB_DATA_DIR:-}"
+          [[ -n "${root}" ]] || { echo "::warning::EXPB_DATA_DIR is empty - skipping overlay reap."; exit 0; }
+          root="$(realpath -m -- "${root}")" || { echo "::warning::cannot canonicalize EXPB_DATA_DIR - skipping overlay reap."; exit 0; }
+          case "${root}" in
+            /?*/?*) ;;
+            *) echo "::warning::EXPB_DATA_DIR '${root}' is too shallow for a recursive sweep - skipping."; exit 0 ;;
+          esac
+
+          # Deepest first, so nested mounts unwind. Options are kept per mount line rather than per target:
+          # stacked overlays share a target and `umount` pops one layer at a time, so a target's scratch
+          # dirs must not be deleted until every layer on it is gone.
+          declare -A scratch=()
+          targets=()
+          while IFS=$'\t' read -r mp opts; do
+            [[ -n "${scratch[${mp}]+set}" ]] || targets+=("${mp}")
+            scratch["${mp}"]+="${opts}"$'\n'
+          done < <(awk -v d="${root}" -v OFS='\t' '$3 == "overlay" && index($2, d "/") == 1 { print $2, $4 }' "${MOUNTS}" | sort -r)
+
+          if [[ "${#targets[@]}" -eq 0 ]]; then
+            echo "No stale expb overlay mounts under ${root}."
+            # Surface what we did not match, so layout drift shows up in the log instead of a reassuring
+            # "clean"; docker's own overlays live under /var/lib and are not ours. Capped inside awk
+            # rather than piped into `head`, whose early exit would SIGPIPE awk and - under the errexit
+            # GitHub runs this body with - abort the step before the trailing `exit 0`.
+            awk '$3 == "overlay" && index($2, "/var/lib/") != 1 && ++n <= 20 { print "  unmatched overlay: " $2 }' "${MOUNTS}"
+            exit 0
+          fi
+
+          for mp in "${targets[@]}"; do
+            # An octal-escaped target is unusable twice over: `awk -v` decodes the escape back, so
+            # still_mounted cannot find the line and would report a phantom success, and `umount`
+            # cannot address the literal path either. Refuse it like an escaped scratch path.
+            if [[ "${mp}" == *"\\"* ]]; then
+              echo "::warning::refusing escaped overlay mount target: ${mp}"
+              continue
+            fi
+            # Plain unmount first: `umount -l` can report success while a container-held reference still
+            # blocks the next mount. Lazy is the fallback for that case. The loop is bounded so that
+            # stacked layers unwind and a `umount` that returns 0 without detaching cannot spin the step.
+            for _ in 1 2 3 4 5 6 7 8; do
+              still_mounted "${mp}" || break
+              as_root umount "${mp}" 2>/dev/null || as_root umount -l "${mp}" 2>/dev/null || break
+            done
+            if still_mounted "${mp}"; then
+              echo "::warning::${mp} is still mounted - leaving its overlay scratch dirs in place"
+              continue
+            fi
+            echo "unmounted ${mp}"
+            # upper/work hold the cancelled run's writes: the GB the unmount alone leaves behind, and state
+            # the next overlay would silently layer on top of its snapshot. The paths come from the kernel's
+            # own mount options rather than being guessed.
+            while IFS= read -r d; do
+              [[ -n "${d}" ]] || continue
+              # /proc/self/mounts octal-escapes space, tab and backslash in paths; refuse rather than point
+              # rm -rf at a path whose decoding we would have to assume.
+              if [[ "${d}" == *"\\"* ]]; then
+                echo "::warning::refusing escaped overlay scratch path: ${d}"
+                continue
+              fi
+              c="$(realpath -m -- "${d}")" || { echo "::warning::cannot canonicalize scratch path: ${d}"; continue; }
+              # Strict descendant only - a plain '$root/*' glob also matches the data dir itself, which
+              # holds the snapshots this box exists for.
+              if [[ "${c}" != "${root}"/?* ]]; then
+                echo "::warning::refusing overlay scratch path outside ${root}: ${d}"
+                continue
+              fi
+              if as_root rm -rf -- "${c}"; then
+                echo "removed ${c}"
+              else
+                echo "::warning::failed to remove ${c}"
+              fi
+            done < <(printf '%s' "${scratch[${mp}]}" | tr ',' '\n' | sed -n 's/^\(upperdir\|workdir\)=//p' | sort -u)
+          done
+          exit 0
 
       - name: Run expb scenarios
         id: run-expb
@@ -2015,6 +2364,7 @@ jobs:
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          PERF: ${{ needs.resolve.outputs.perf }}
           DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
           EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
         run: |
@@ -2060,15 +2410,28 @@ jobs:
 
           trap on_terminate TERM INT
 
-          dottrace_flag=""
+          profiling_flags=()
           if [[ "${DOTTRACE}" == "true" ]]; then
             # dotnet-trace (EventPipe runtime events: gc/contention/threading/exception)
             # always rides along with dotTrace - different channel, adds the GC/lock story
             # the CPU profile cannot show. Requires expb with --dotnet-trace support.
-            dottrace_flag="--dottrace --dottrace-mode ${DOTTRACE_MODE:-sampling} --dotnet-trace"
+            profiling_flags+=(--dottrace --dottrace-mode "${DOTTRACE_MODE:-sampling}" --dotnet-trace)
+          fi
+          if [[ "${PERF}" == "true" ]]; then
+            # perf samples on the host; the client only needs the perf-map env, which
+            # expb sets on the container. Nothing extra is required in the image.
+            profiling_flags+=(--perf)
           fi
 
-          # Marker for dottrace artifact collection — only files newer than this
+          if [[ "${#profiling_flags[@]}" -eq 0 ]]; then
+            echo "expb profiling flags: none"
+          else
+            printf 'expb profiling flags:'
+            printf ' %q' "${profiling_flags[@]}"
+            printf '\n'
+          fi
+
+          # Marker for profiling artifact collection — only files newer than this
           touch "${RUNNER_TEMP}/.expb-run-marker"
 
           fifo="${RUNNER_TEMP}/expb-pipe"
@@ -2081,7 +2444,7 @@ jobs:
             --per-payload-metrics \
             --per-payload-metrics-logs \
             --print-logs \
-            ${dottrace_flag} \
+            ${profiling_flags[@]+"${profiling_flags[@]}"} \
             > "${fifo}" 2>&1 &
           expb_pid=$!
 
@@ -2305,41 +2668,88 @@ jobs:
             echo "Invalid block lines were detected for ${{ matrix.tag }} run ${{ matrix.run }}."
           fi
 
-      - name: Collect and upload dotTrace snapshots
-        if: always() && needs.resolve.outputs.dottrace == 'true'
+      - name: Collect and upload profiling artifacts
+        id: collect-profiling
+        if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
         shell: bash
         env:
-          ARCHIVE: ${{ runner.temp }}/dottrace-${{ matrix.tag }}-run${{ matrix.run }}.zip
+          ARTIFACT_SUFFIX: ${{ matrix.tag }}-run${{ matrix.run }}
           MARKER: ${{ runner.temp }}/.expb-run-marker
+          DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
+          PERF: ${{ needs.resolve.outputs.perf }}
         run: |
           set -euo pipefail
 
-          mapfile -t dottrace_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name 'dottrace' -o -name 'dotnet-trace' \) -newer "${MARKER}" 2>/dev/null)
-          if [[ "${#dottrace_dirs[@]}" -eq 0 ]]; then
-            echo "No dottrace output directories found for this run."
+          if [[ "${PERF}" == "true" ]]; then
+            artifact_prefix="profiling"
+          else
+            artifact_prefix="dottrace"
+          fi
+          artifact_name="${artifact_prefix}-${ARTIFACT_SUFFIX}"
+          archive="${RUNNER_TEMP}/${artifact_name}.zip"
+          {
+            echo "artifact_name=${artifact_name}"
+            echo "archive=${archive}"
+          } >> "${GITHUB_OUTPUT}"
+
+          mapfile -t profiling_dirs < <(find "${EXPB_DATA_DIR}/outputs" -type d \( -name 'dottrace' -o -name 'dotnet-trace' -o -name 'perf' \) -newer "${MARKER}" 2>/dev/null)
+          if [[ "${#profiling_dirs[@]}" -eq 0 ]]; then
+            if [[ "${PERF}" == "true" ]]; then
+              echo "::error::perf was requested but no profiling output directories were produced."
+              exit 1
+            fi
+            echo "::warning::Profiling was requested (dottrace=${DOTTRACE}, perf=${PERF}) but no profiling output directories were produced."
             exit 0
           fi
 
-          echo "Collecting from ${#dottrace_dirs[@]} dottrace director(ies):"
-          printf '  %s\n' "${dottrace_dirs[@]}"
+          echo "Collecting from ${#profiling_dirs[@]} profiling director(ies):"
+          printf '  %s\n' "${profiling_dirs[@]}"
 
           file_count=0
-          for d in "${dottrace_dirs[@]}"; do
+          for d in "${profiling_dirs[@]}"; do
             file_count=$(( file_count + $(find "${d}" -type f | wc -l) ))
           done
           if [[ "${file_count}" -eq 0 ]]; then
-            echo "Dottrace directories are empty, skipping zip."
+            if [[ "${PERF}" == "true" ]]; then
+              echo "::error::perf was requested but profiling output directories are empty."
+              exit 1
+            fi
+            echo "::warning::Profiling output directories are empty, skipping zip."
             exit 0
           fi
 
-          zip -9r "${ARCHIVE}" "${dottrace_dirs[@]}"
+          perf_validation_failed=false
+          if [[ "${PERF}" == "true" ]]; then
+            mapfile -t folded_profiles < <(find "${profiling_dirs[@]}" -type f -name 'perf.folded' -newer "${MARKER}" 2>/dev/null)
+            valid_folded_profiles=()
+            for folded_profile in "${folded_profiles[@]}"; do
+              if bash scripts/validate-folded-profile.sh "${folded_profile}"; then
+                valid_folded_profiles+=("${folded_profile}")
+              else
+                echo "::warning::Ignoring invalid perf.folded profile: ${folded_profile}"
+              fi
+            done
+            if [[ "${#valid_folded_profiles[@]}" -eq 0 ]]; then
+              echo "::error::perf was requested but no perf.folded profile with a positive sample count was produced."
+              perf_validation_failed=true
+            else
+              echo "Validated positive-sample perf.folded profile(s):"
+              printf '  %s\n' "${valid_folded_profiles[@]}"
+            fi
+          fi
 
-      - name: Upload dotTrace artifact
-        if: always() && needs.resolve.outputs.dottrace == 'true'
+          zip -9r "${archive}" "${profiling_dirs[@]}" -x '*/perf.data'
+
+          if [[ "${perf_validation_failed}" == "true" ]]; then
+            exit 1
+          fi
+
+      - name: Upload profiling artifact
+        if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
         uses: actions/upload-artifact@v4
         with:
-          name: dottrace-${{ matrix.tag }}-run${{ matrix.run }}
-          path: ${{ runner.temp }}/dottrace-${{ matrix.tag }}-run${{ matrix.run }}.zip
+          name: ${{ steps.collect-profiling.outputs.artifact_name }}
+          path: ${{ steps.collect-profiling.outputs.archive }}
           retention-days: 30
           if-no-files-found: ignore
 
@@ -2528,7 +2938,7 @@ jobs:
       - name: Download snapshot artifacts
         uses: actions/download-artifact@v8
         with:
-          pattern: dottrace-*
+          pattern: ${{ needs.resolve.outputs.perf == 'true' && 'profiling-*' || 'dottrace-*' }}
           path: snapshots/
           merge-multiple: true
 

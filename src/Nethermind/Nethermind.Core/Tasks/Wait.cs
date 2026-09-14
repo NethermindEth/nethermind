@@ -4,7 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Logging;
 
 namespace Nethermind.Core.Tasks;
 
@@ -17,31 +19,74 @@ public static class Wait
     /// <param name="tasks"></param>
     /// <typeparam name="T"></typeparam>
     /// <returns></returns>
+    /// <remarks>
+    /// Only the forwarded result reaches the caller; every other result stays owned by this method.
+    /// Results implementing <see cref="IDisposable"/> are disposed when rejected by <paramref name="cond"/>.
+    /// Tasks abandoned on return or failure have their results disposed when they complete.
+    /// This method does not wait for abandoned tasks, so their disposal may happen after it returns.
+    /// Callers must arrange cancellation of the supplied tasks; this method waits until one completes.
+    /// </remarks>
     public static async Task<T> AnyWhere<T>(Func<T, bool> cond, params IEnumerable<Task<T>> tasks)
     {
         HashSet<Task<T>> taskSet = [.. tasks];
-        while (taskSet.Count != 0)
+        try
         {
-            Task<T> resolved = await Task.WhenAny<T>(taskSet);
-            taskSet.Remove(resolved);
-
-            T result = await resolved;
-
-            if (cond(result))
+            while (taskSet.Count != 0)
             {
-                // Its ok, then immediately return.
-                return result;
+                Task<T> resolved = await Task.WhenAny<T>(taskSet);
+                T result = await resolved;
+
+                // Kept in the set until forwarded, so a throwing `cond` still discards this result.
+                if (cond(result) || taskSet.Count == 1)
+                {
+                    taskSet.Remove(resolved);
+                    return result;
+                }
+
+                taskSet.Remove(resolved);
+
+                TryDiscard(result);
             }
 
-            if (taskSet.Count == 0)
-            {
-                // No more tasks, just return the last one.
-                return result;
-            }
-
-            // Otherwise, we try WhenAny again.
+            throw new UnreachableException();
         }
+        finally
+        {
+            DiscardRemaining(taskSet);
+        }
+    }
 
-        throw new UnreachableException();
+    private static void TryDiscard<T>(T result)
+    {
+        try
+        {
+            if (result is IDisposable disposable) disposable.Dispose();
+        }
+        catch (Exception exception)
+        {
+            // A failing diagnostic must neither delay the completing thread nor escape cleanup.
+            _ = ReportDiscardFailure(exception);
+        }
+    }
+
+    internal static Task ReportDiscardFailure(Exception exception) =>
+        Task.Run(() => Static.LogManager.GetLogger(nameof(Wait)).Error("Failed to dispose a task result", exception))
+            .ContinueWith(static completed => { _ = completed.Exception; }, CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+
+    private static void DiscardRemaining<T>(HashSet<Task<T>> tasks)
+    {
+        foreach (Task<T> task in tasks)
+        {
+            _ = task.ContinueWith(static abandoned =>
+            {
+                if (abandoned.IsCompletedSuccessfully)
+                {
+                    TryDiscard(abandoned.Result);
+                }
+                // Observe a failure too, so abandoning it does not raise UnobservedTaskException.
+                else _ = abandoned.Exception;
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
     }
 }

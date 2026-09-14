@@ -306,13 +306,36 @@ public class DebugRpcModule(
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
         IReadOnlyCollection<GethLikeTxTrace>? blockTrace = debugBridge.GetBlockTrace(block, cancellationToken, options);
-        GethLikeTxTrace? transactionTrace = blockTrace?.ElementAtOrDefault(txIndex);
+
+        // Not disposing blockTrace: GethLikeTxTraceCollection.Dispose() disposes every item,
+        // including the one we return. The collection holds no pooled or unmanaged resource of
+        // its own, so abandoning it leaks nothing.
+        GethLikeTxTrace? transactionTrace = blockTrace is null ? null : SelectTraceDisposingTheRest(blockTrace, txIndex);
+
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transaction index {txIndex}", ErrorCodes.ResourceNotFound);
         }
 
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
+    }
+
+    private static GethLikeTxTrace? SelectTraceDisposingTheRest(IReadOnlyCollection<GethLikeTxTrace> blockTrace, int txIndex)
+    {
+        GethLikeTxTrace? selected = null;
+        int index = 0;
+        foreach (GethLikeTxTrace trace in blockTrace)
+        {
+            if (index++ == txIndex)
+            {
+                selected = trace;
+                continue;
+            }
+
+            trace.Dispose();
+        }
+
+        return selected;
     }
 
     public async Task<ResultWrapper<bool>> debug_migrateReceipts(ulong from, ulong to) =>
@@ -547,7 +570,7 @@ public class DebugRpcModule(
         RlpBehaviors behavior =
             (specProvider.GetReceiptSpec(receipts[0].BlockNumber).IsEip658Enabled ?
                 RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
-        IRlpDecoder<TxReceipt> receiptDecoder = Rlp.GetDecoder<TxReceipt>()!;
+        IRlpDecoder<TxReceipt> receiptDecoder = Rlp.GetDecoderOrThrow<TxReceipt>();
 
         ArrayPoolList<ArrayPoolList<byte>> encoded = new(receipts.Length);
         try
@@ -606,7 +629,7 @@ public class DebugRpcModule(
         Block? block = debugBridge.GetBlock(blockParameter);
         return block is null
             ? ResultWrapper<ArrayPoolList<byte>>.Fail($"Block {blockParameter} was not found", ErrorCodes.ResourceNotFound)
-            : ResultWrapper<ArrayPoolList<byte>>.Success(Rlp.GetDecoder<BlockHeader>()!.EncodeToArrayPoolList(block.Header));
+            : ResultWrapper<ArrayPoolList<byte>>.Success(Rlp.GetDecoderOrThrow<BlockHeader>().EncodeToArrayPoolList(block.Header));
     }
 
     public Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage() => ResultWrapper<SyncReportSummary>.Success(debugBridge.GetCurrentSyncStage());

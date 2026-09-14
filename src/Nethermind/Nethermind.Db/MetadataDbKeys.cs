@@ -28,5 +28,6 @@ namespace Nethermind.Db
         public const int HistoryPruningSliceCleanupCursor = 21;
         public const int RetiredHistorySliceLogsRetainedFrom = 22;
         public const int RetiredHistorySliceLogsSliceSet = 23;
+        public const int AncientBodiesDownloadComplete = 24;
     }
 }

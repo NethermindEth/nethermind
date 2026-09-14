@@ -143,5 +143,9 @@ namespace Nethermind.Blockchain.Find
         }
 
         public ulong GetLowestBlock();
+
+        /// <summary>The oldest block this node can actually serve - the published boundary floored by the
+        /// download frontier while a backfill is still descending. What eth/69 advertises as earliest.</summary>
+        public ulong LowestServedBlock => GetLowestBlock();
     }
 }

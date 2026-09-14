@@ -70,4 +70,16 @@ internal static class XdcConstants
     public const string RpcAccountStatusMasternode = "MasterNode";
     public const string RpcAccountStatusProtector = "ProtectorNode";
     public const string RpcAccountStatusObserver = "ObserverNode";
+
+    public const string RpcCandidateStatusMasternode = "MASTERNODE";
+    public const string RpcCandidateStatusProposed = "PROPOSED";
+    public const string RpcCandidateStatusSlashed = "SLASHED";
+
+    // Blocks after a signed block that are scanned for the sign transactions referencing it.
+    public const ulong LimitTimeFinality = 30;
+
+    // Epochs of checkpoint headers scanned for penalties when reporting candidate status.
+    public const ulong PenaltyEpochLookback = 4;
+
+    public const ulong SecondsPerYear = 365 * 86400;
 }

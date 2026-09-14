@@ -161,9 +161,8 @@ public class FlatDbManagerTests
         Assert.That(result, Is.False);
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    public async Task DisposeAsync_CallsFlushOnce(int disposeCalls)
+    [Test]
+    public async Task DisposeAsync_CallsFlushOnce([Values(1, 2)] int disposeCalls)
     {
         _persistenceManager.FlushToPersistence(CancellationToken.None).Returns(CreateStateId(10));
 
@@ -173,10 +172,9 @@ public class FlatDbManagerTests
         _persistenceManager.Received(1).FlushToPersistence(CancellationToken.None);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
+    [Test]
     public async Task AddSnapshot_QueuedCompactionAndPersistence_AreDrainedBeforeFlushOnDispose(
-        bool processExitAlreadyCancelled)
+        [Values] bool processExitAlreadyCancelled)
     {
         (FlatDbManager manager, StateId snapshotTo) =
             CreateManagerWithQueuedSnapshot(processExitAlreadyCancelled);
@@ -343,7 +341,8 @@ public class FlatDbManagerTests
         using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(historicalBlock);
 
         Account? account = bundle.GetAccount(HistoryAddr);
-        byte[]? slot = bundle.GetSlot(HistoryAddr, HistorySlot, bundle.DetermineSelfDestructSnapshotIdx(HistoryAddr));
+        bundle.GetSlot(HistoryAddr, HistorySlot, bundle.DetermineSelfDestructSnapshotIdx(HistoryAddr), out UInt256? stored);
+        byte[]? slot = stored is { } slotValue ? slotValue.ToMinimalBigEndian() : null;
 
         using (Assert.EnterMultipleScope())
         {
@@ -590,7 +589,7 @@ public class FlatDbManagerTests
         Span<byte> value = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
         int written = rawValue.IsEmpty
             ? 0
-            : BaseFlatPersistence.EncodeSlotValue(SlotValue.FromSpanWithoutLeadingZero(rawValue), rlpWrapSlots: true, value);
+            : BaseFlatPersistence.EncodeSlotValue(BaseFlatPersistence.DecodeSlotValue(rawValue), rlpWrapSlots: true, value);
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
         _storageStore.RecordChange(block, flatKey, value[..written], batch.GetColumnBatch(FlatHistoryColumns.StorageHistory));

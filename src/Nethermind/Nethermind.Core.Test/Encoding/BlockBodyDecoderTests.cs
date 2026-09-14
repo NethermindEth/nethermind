@@ -19,7 +19,7 @@ public class BlockBodyDecoderTests
         RlpWriter writer = new(bytes);
         BlockBodyDecoder.Instance.Encode(ref writer, body);
         RlpReader ctx = new(bytes);
-        BlockBody decodedBody = BlockBodyDecoder.Instance.Decode(ref ctx);
+        BlockBody decodedBody = BlockBodyDecoder.Instance.DecodeGuardNotNull(ref ctx);
 
         Assert.That(decodedBody, Is.EqualTo(body).UsingBlockBodyComparer());
     }

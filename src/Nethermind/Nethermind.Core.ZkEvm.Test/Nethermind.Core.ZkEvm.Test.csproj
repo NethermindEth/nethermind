@@ -10,6 +10,10 @@
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Nethermind.Core.Test\Threading\ParallelUnbalancedWorkTests.cs" Link="Threading\ParallelUnbalancedWorkTests.cs" />
+  </ItemGroup>
+
   <Target Name="RequireZkEvm" BeforeTargets="PrepareForBuild" Condition="'$(EnableZkEvm)' != 'true'">
     <Error Text="Build this project with EnableZkEvm=true." />
   </Target>
