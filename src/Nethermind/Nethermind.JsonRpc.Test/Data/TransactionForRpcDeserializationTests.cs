@@ -119,6 +119,8 @@ public class TransactionForRpcDeserializationTests
 
             // Discriminator-matched type is not defaulted → preserved
             yield return Make(TxType.AccessList, """{"accessList":[]}""", Istanbul.Instance);
+            yield return Make(TxType.AccessList, """{"gasPrice":"0x1","accessList":[]}""", Istanbul.Instance);
+            yield return Make(TxType.AccessList, """{"gasPrice":"0x1","accessList":[]}""", London.Instance);
             yield return Make(TxType.EIP1559, """{"maxFeePerGas":"0x0"}""", Istanbul.Instance);
 
             // gasPrice → Legacy: defaulted, but downgrade is a no-op so result is Legacy on any spec
