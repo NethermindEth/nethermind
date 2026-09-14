@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Utils;
@@ -18,14 +20,17 @@ internal sealed class FlatTrieWarmupSession :
     IWorldStateScopeProvider.ITrieWarmupSession,
     ITrieWarmer.IAddressWarmer
 {
+    private const int DrainWarnMilliseconds = 1000;
+
     private readonly SnapshotBundle _snapshotBundle;
+    private readonly FlatWorldStateScope? _owningScope;
     private readonly ReadOnlySnapshotBundle _readOnlySnapshotBundle;
     private readonly ITrieNodeCache _trieNodeCache;
     private readonly ITrieWarmer _trieWarmer;
     private readonly PatriciaTree _stateTree;
     private readonly ILogManager _logManager;
     private readonly ConcurrentDictionary<AddressAsKey, StorageWarmer?> _storageWarmers = [];
-    private int _hintSequenceId;
+    private volatile int _hintSequenceId;
     private volatile TransientResource _transientResource;
     private bool _isStopped;
     private long _leases = RefCountingLease.Single;
@@ -34,6 +39,7 @@ internal sealed class FlatTrieWarmupSession :
     public FlatTrieWarmupSession(
         in StateId baseState,
         SnapshotBundle snapshotBundle,
+        FlatWorldStateScope? owningScope,
         ReadOnlySnapshotBundle readOnlySnapshotBundle,
         TransientResource transientResource,
         ITrieNodeCache trieNodeCache,
@@ -41,6 +47,7 @@ internal sealed class FlatTrieWarmupSession :
         ILogManager logManager)
     {
         _snapshotBundle = snapshotBundle;
+        _owningScope = owningScope;
         _readOnlySnapshotBundle = readOnlySnapshotBundle;
         _transientResource = transientResource;
         _trieNodeCache = trieNodeCache;
@@ -57,6 +64,9 @@ internal sealed class FlatTrieWarmupSession :
     {
         if (!RefCountingLease.TryAcquire(ref _leases)) throw new ObjectDisposedException(nameof(FlatTrieWarmupSession));
     }
+
+    /// <summary>Whether admissions are stopped; a stopped session tears its resources down once drained.</summary>
+    internal bool IsStopped => Volatile.Read(ref _isStopped);
 
     internal void StopWarming()
     {
@@ -80,6 +90,8 @@ internal sealed class FlatTrieWarmupSession :
     /// previous generation's drain reached its terminal <see cref="RefCountingLease.Disposing"/> state
     /// (not merely zero — <see cref="RefCountingLease.ReleaseOnce"/> CASes 0 → Disposing after the last
     /// release, so a reader that only saw zero could not tell whether teardown had completed).
+    /// <see cref="_storageWarmers"/> is deliberately not reset: each contract's storage root stays the
+    /// one read from the base state for the whole session, matching the frozen-view design above.
     /// </remarks>
     internal void ResumeWarming(TransientResource transientResource)
     {
@@ -93,8 +105,17 @@ internal sealed class FlatTrieWarmupSession :
 
     private void DrainOperations()
     {
+        long startTimestamp = Stopwatch.GetTimestamp();
         SpinWait spinWait = default;
         while (Volatile.Read(ref _operations) > RefCountingLease.NoAccessors) spinWait.SpinOnce();
+
+        // In-flight warm-up can be several cold RocksDB reads deep; waiting is intentional, this is only a diagnostic.
+        ILogger logger = _logManager.GetClassLogger<FlatTrieWarmupSession>();
+        if (logger.IsWarn && Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds > DrainWarnMilliseconds)
+        {
+            logger.Warn($"In-flight trie warm-up operations did not drain within {DrainWarnMilliseconds}ms; still waiting");
+        }
+
         while (Volatile.Read(ref _operations) != RefCountingLease.Disposing) spinWait.SpinOnce();
     }
 
@@ -103,8 +124,15 @@ internal sealed class FlatTrieWarmupSession :
         if (!TryEnterOperation(_hintSequenceId)) return;
         try
         {
-            if (_transientResource.ShouldPrewarm(in address, null))
-                _trieWarmer.PushAddressJob(this, address.ToAddress(), _hintSequenceId);
+            // Dedupe first, so the Address allocation below happens at most once per account per block.
+            if (!_transientResource.ShouldPrewarm(in address, null)) return;
+
+            // With a BAL present, only accounts it lists as state-changing need their trie path warmed.
+            Address accountAddress = address.ToAddress();
+            ReadOnlyBlockAccessList? writeSet = _owningScope?.WarmupWriteSet;
+            if (writeSet is not null && writeSet.GetAccountChanges(accountAddress)?.HasStateChanges != true) return;
+
+            _trieWarmer.PushAddressJob(this, accountAddress, _hintSequenceId);
         }
         finally
         {
@@ -154,8 +182,9 @@ internal sealed class FlatTrieWarmupSession :
         }
     }
 
+    // A job's id is captured from the field itself, so only the bundle's id can diverge from it.
     private bool ShouldStopWarming(int sequenceId) =>
-        Volatile.Read(ref _isStopped) || _hintSequenceId != sequenceId || _snapshotBundle.HintSequenceId != sequenceId;
+        Volatile.Read(ref _isStopped) || _snapshotBundle.HintSequenceId != sequenceId;
 
     private bool TryEnterOperation(int sequenceId)
     {
@@ -252,7 +281,7 @@ internal sealed class FlatTrieWarmupSession :
             ValidateRlp(session._readOnlySnapshotBundle.TryLoadStorageRlp(address, in path, hash, flags), address, in path, hash);
     }
 
-    private sealed class StorageWarmer(
+    internal sealed class StorageWarmer(
         FlatTrieWarmupSession session,
         Hash256 addressHash,
         Hash256 storageRoot,
@@ -262,6 +291,8 @@ internal sealed class FlatTrieWarmupSession :
         {
             RootHash = storageRoot
         };
+
+        internal bool IsStopped => session.IsStopped;
 
         public bool WarmUpStorageTrie(UInt256 index, int sequenceId)
         {

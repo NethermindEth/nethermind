@@ -1145,7 +1145,7 @@ public class FlatWorldStateScopeProviderTests
             initialBorrow.HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes));
         }
         if (commit) scope.Commit(1);
-        await scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressB)));
+        await scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressB), WrittenAccount(TestItem.AddressD)));
         scope.HintWarmAccount(new ValueAddress(TestItem.AddressC.Bytes));
         scope.HintWarmSlot(new ValueAddress(TestItem.AddressC.Bytes), UInt256.Zero);
         scope.CreateStorageTree(TestItem.AddressC).HintSet(UInt256.One);
@@ -1496,7 +1496,7 @@ public class FlatWorldStateScopeProviderTests
         }
 
         public IWorldStateScopeProvider.ITrieWarmupSession Borrow() =>
-            Bundle.CreateTrieWarmupSession(new StateId(0, TestItem.KeccakA), TrieWarmer, LimboLogs.Instance);
+            Bundle.CreateTrieWarmupSession(new StateId(0, TestItem.KeccakA), null, TrieWarmer, LimboLogs.Instance);
 
         public void Dispose()
         {

@@ -77,7 +77,7 @@ public class SnapshotBundleWarmerTests
     }
 
     [Test]
-    public void Newest_snapshot_node_takes_priority_over_a_cached_unknown([Values] bool storage)
+    public void Snapshot_node_takes_priority_over_a_cached_unknown_placeholder([Values] bool storage)
     {
         (byte[] rlp, Hash256 hash) = EncodedLeaf();
         TrieNode committed = new(NodeType.Unknown, hash, rlp);
@@ -103,15 +103,10 @@ public class SnapshotBundleWarmerTests
         });
         context.Bundle._snapshots.Add(snapshot);
 
-        // With the hash-checked transient/cache fast path, the cached placeholder wins the probe; it stays
-        // unresolved rather than shadowing the snapshot node, which main processing reaches through its
-        // own lookup order.
+        // The snapshot layer is probed first and the placeholder is not promoted into the cache, so the
+        // committed snapshot instance wins; the cached placeholder never shadows it.
         TrieNode live = context.FindLiveNode(hash);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(live.NodeType, Is.EqualTo(NodeType.Unknown));
-            Assert.That(live.FullRlp.IsNull, Is.True);
-        }
+        Assert.That(live, Is.SameAs(committed));
     }
 
     [Test]
@@ -225,7 +220,7 @@ public class SnapshotBundleWarmerTests
             _warmer.PushAddressJob(Arg.Any<ITrieWarmer.IAddressWarmer>(), Arg.Any<Address>(), Arg.Do<int>(id => _sequenceId = id)).Returns(true);
             _warmer.PushSlotJobMpmc(Arg.Do<ITrieWarmer.IStorageWarmer>(warmer => _storageWarmer = warmer),
                 Arg.Any<UInt256>(), Arg.Do<int>(id => _sequenceId = id)).Returns(true);
-            _session = Bundle.CreateTrieWarmupSession(new StateId(0, hash), _warmer, LimboLogs.Instance);
+            _session = Bundle.CreateTrieWarmupSession(new StateId(0, hash), null, _warmer, LimboLogs.Instance);
         }
 
         public void Hint()

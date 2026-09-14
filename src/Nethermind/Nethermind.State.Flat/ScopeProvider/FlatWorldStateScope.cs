@@ -41,6 +41,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope
     private CancellationTokenSource? _hintBalCts;
     private Task? _hintBalTask;
 
+    // The per-block write-set handed to the warm-up session's account filter. Set by HintBal on the
+    // block-processing thread; a null value (or a zero-account BAL) disables the filter.
     private volatile ReadOnlyBlockAccessList? _warmupWriteSet;
 
     internal bool IsDisposed => Volatile.Read(ref _isDisposed);
@@ -83,7 +85,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope
                 RootHash = currentStateId.StateRoot.ToCommitment()
             };
 
-            _warmupSession = CreateTrieWarmupSession();
+            _warmupSession = !isReadOnly
+                ? CreateTrieWarmupSession()
+                : IWorldStateScopeProvider.ITrieWarmupSession.Noop.Instance;
             _warmer.OnEnterScope();
         }
         catch
@@ -124,10 +128,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope
         return bal is null || bal.GetAccountChanges(address)?.HasStateChanges == true;
     }
 
+    internal ReadOnlyBlockAccessList? WarmupWriteSet => _warmupWriteSet;
+
     public Hash256 RootHash => _stateTree.RootHash;
 
     public IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession() =>
-        _snapshotBundle.CreateTrieWarmupSession(_baseStateId, _warmer, _logManager);
+        _snapshotBundle.CreateTrieWarmupSession(_baseStateId, this, _warmer, _logManager);
 
     public void UpdateRootHash()
     {
@@ -301,9 +307,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope
 
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
 
+    // HintBal writes are already gated on HasStateChanges, so only the populator's consumer route
+    // (bloom-filtered) reaches this filter.
     public void HintWarmAccount(in ValueAddress address)
     {
-        if (IsDisposed || _pausePrewarmer || (_warmupWriteSet is not null && !NeedsStateTrieWarmup(address.ToAddress()))) return;
+        if (IsDisposed || _pausePrewarmer) return;
         _warmupSession.HintWarmAccount(in address);
     }
 

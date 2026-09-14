@@ -133,7 +133,8 @@ public sealed class TrieNodeCache : ITrieNodeCache
             (int hashCode, TrieNode? node)[] shard = transientResource.Nodes.Shards[i];
             for (int j = 0; j < shard.Length; j++)
             {
-                if (shard[j].node is { } newNode)
+                // Unresolved placeholders warm nothing and would evict the bucket's resolved node.
+                if (shard[j].node is { } newNode and not { NodeType: NodeType.Unknown, HasRlp: false })
                 {
                     AddToCacheWithHashCode(i, shard[j].hashCode, newNode);
                 }

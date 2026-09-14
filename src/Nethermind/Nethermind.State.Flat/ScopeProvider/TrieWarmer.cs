@@ -175,15 +175,15 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         catch (NodeHashMismatchException) { }
         // Because it runs in parallel, it could be that the scope is disposed of early.
         catch (ObjectDisposedException) { }
-        // Scope disposal can null pooled snapshot maps while a queued warmup is already inside trie traversal.
-        catch (NullReferenceException) when (IsDisposedJobTarget(in job)) { }
+        // Session teardown can null pooled snapshot maps while a queued warmup is already inside trie traversal.
+        catch (NullReferenceException) when (IsStoppedJobTarget(in job)) { }
     }
 
-    private static bool IsDisposedJobTarget(in Job job) =>
+    private static bool IsStoppedJobTarget(in Job job) =>
         job.scopeOrStorageTree switch
         {
-            FlatWorldStateScope scope => scope.IsDisposed,
-            FlatStorageTree storageTree => storageTree.IsDisposed,
+            FlatTrieWarmupSession session => session.IsStopped,
+            FlatTrieWarmupSession.StorageWarmer storageWarmer => storageWarmer.IsStopped,
             _ => false
         };
 

@@ -194,15 +194,6 @@ public sealed class SnapshotBundle : IDisposable
     {
         HashedKey<TreePath> key = new(path);
 
-        // The transient resource and node cache are hash checked automatically: TryGet matches on the node's
-        // Keccak, so a hit here always serves the requested node, and they are probed before the snapshot
-        // layers as a fast path for recently warmed nodes.
-        if (_transientResource.TryGetStateNode(path, hash, out node) || _trieNodeCache.TryGet(null, path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return true;
-        }
-
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
             if (_snapshots[i].TryGetStateNode(key, out node))
@@ -213,6 +204,18 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         if (_readOnlySnapshotBundle.TryFindStateNodes(key, out node)) return true;
+
+        // The transient resource and node cache are hash checked: TryGet matches on the node's Keccak, so a
+        // hit serves the requested node. An unresolved placeholder (Unknown with no RLP) does not — it is
+        // treated as a miss so it cannot shadow a node that the snapshot layers above do not hold either.
+        if (_transientResource.TryGetStateNode(path, hash, out node) || _trieNodeCache.TryGet(null, path, hash, out node))
+        {
+            if (node is not { NodeType: NodeType.Unknown, HasRlp: false })
+            {
+                Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+                return true;
+            }
+        }
 
         return false;
     }
@@ -246,14 +249,6 @@ public sealed class SnapshotBundle : IDisposable
     {
         HashedKey<(Hash256, TreePath)> key = new((address, path));
 
-        // Same hash-checked fast path as the state lookup: a transient/cache hit always serves the
-        // requested node's Keccak, so it is probed before the snapshot layers.
-        if (_transientResource.TryGetStorageNode(address, path, hash, out node) || _trieNodeCache.TryGet(address, path, hash, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-            return true;
-        }
-
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
             if (_snapshots[i].TryGetStorageNode(key, out node))
@@ -264,6 +259,17 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         if (_readOnlySnapshotBundle.TryFindStorageNodes(key, out node)) return true;
+
+        // Same as the state lookup: the transient/cache hit is hash checked, but an unresolved
+        // placeholder is a miss.
+        if (_transientResource.TryGetStorageNode(address, path, hash, out node) || _trieNodeCache.TryGet(address, path, hash, out node))
+        {
+            if (node is not { NodeType: NodeType.Unknown, HasRlp: false })
+            {
+                Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+                return true;
+            }
+        }
 
         return false;
     }
@@ -418,12 +424,17 @@ public sealed class SnapshotBundle : IDisposable
 
     internal void StopWarming()
     {
+        FlatTrieWarmupSession? session;
         lock (_warmupSessionLock)
         {
             _warmingStopped = true;
             Interlocked.Increment(ref _hintSequenceId);
-            _warmupSession?.StopWarming();
+            session = _warmupSession;
         }
+
+        // Drained outside the lock: the sequence id is already bumped, so no queued job can start a new
+        // operation, and prewarm BeginScope — which needs this lock — is not convoyed behind the drain.
+        session?.StopWarming();
     }
 
     /// <summary>
@@ -443,6 +454,7 @@ public sealed class SnapshotBundle : IDisposable
 
     internal IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession(
         in StateId baseState,
+        FlatWorldStateScope? owningScope,
         ITrieWarmer trieWarmer,
         ILogManager logManager)
     {
@@ -462,7 +474,7 @@ public sealed class SnapshotBundle : IDisposable
                     transientLeased = transientResource.TryAcquireLease();
                     if (!transientLeased) throw new ObjectDisposedException(nameof(SnapshotBundle));
                     _warmupSession = new FlatTrieWarmupSession(
-                        baseState, this, _readOnlySnapshotBundle, transientResource, _trieNodeCache, trieWarmer, logManager);
+                        baseState, this, owningScope, _readOnlySnapshotBundle, transientResource, _trieNodeCache, trieWarmer, logManager);
                 }
                 catch
                 {
