@@ -71,7 +71,12 @@ namespace Nethermind.TxPool
         private readonly PendingPaymasterCache _pendingPaymasters = new();
         private readonly FrameTxDependencyIndex _frameDependencies = new();
         private readonly HashSet<ValueHash256> _frameTxsToRevalidate = [];
-        private readonly HashSet<ValueHash256> _frameTxsDeferredToNextHead = [];
+        // Heads each deferred transaction has already been carried across. Both are written only under the head
+        // write lock, and swapped rather than copied at each head, so a transaction that stops being re-deferred
+        // (or leaves the pool) drops out on its own.
+        private Dictionary<ValueHash256, int> _frameTxsDeferredToNextHead = [];
+        private Dictionary<ValueHash256, int> _frameTxDeferralsCarried = [];
+        private readonly int _frameRevalidationDeferralBudget;
         private readonly ConcurrentDictionary<ValueHash256, (long Head, int Heads)> _frameEvictionAttempts = new();
         // Above one is the predicate for "the retry ledger can hold an entry", read by insert, removal and
         // eviction alike, so it is snapshot here rather than dispatched through the config interface.
@@ -191,6 +196,7 @@ namespace Nethermind.TxPool
             AcceptTxWhenNotSynced = txPoolConfig.AcceptTxWhenNotSynced;
             _blobReorgsSupportEnabled = txPoolConfig.BlobsSupport.SupportsReorgs();
             _frameEvictionRetryBudget = txPoolConfig.FrameTxEvictionRetryBudget;
+            _frameRevalidationDeferralBudget = txPoolConfig.FrameTxRevalidationDeferralBudget;
             _frameTxPrefixSimulator = frameTxPrefixSimulator;
             _accounts = _accountCache = new AccountCache(_headInfo.ReadOnlyStateProvider);
             _specProvider = _headInfo.SpecProvider;
@@ -346,9 +352,28 @@ namespace Nethermind.TxPool
         public int GetPendingTransactionsCount() => _transactions.Count;
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender(bool filterToReadyTx = false, UInt256 baseFee = default) =>
-            _transactions.GetBucketSnapshot(filterToReadyTx ?
-                (data => HasReadyTransaction(data.bucket, data.key, baseFee)) :
-                null);
+            DropUnreadySenders(_transactions.GetBucketSnapshot(), filterToReadyTx, baseFee);
+
+        /// <summary>Drops from a taken bucket snapshot the senders with nothing includable in the next block.</summary>
+        /// <remarks>Judged on the taken snapshot rather than while the pool is walked: readiness reads head state —
+        /// an account nonce, plus a <c>NONCE_MANAGER</c> slot per key an EIP-8250 entry selects — and judging it
+        /// during the walk pays for that under the pool-wide lock every insert and removal contends on. The cost
+        /// moved rather than went away: filtering afterwards copies the buckets it then discards.
+        /// Safe to judge late because the scan reads only what is fixed for a pooled transaction — nonce, nonce
+        /// keys, fee cap — never the gas bottleneck a concurrent bucket update reprices, and because it walks the
+        /// taken array rather than the live set, so a moved ordering key cannot make it skip an entry.</remarks>
+        private Dictionary<AddressAsKey, Transaction[]> DropUnreadySenders(
+            Dictionary<AddressAsKey, Transaction[]> bySender, bool filterToReadyTx, in UInt256 baseFee)
+        {
+            if (!filterToReadyTx) return bySender;
+
+            foreach ((AddressAsKey sender, Transaction[] bucket) in bySender)
+            {
+                if (bucket.Length == 0 || !HasReadyTransaction(bucket, sender, baseFee)) bySender.Remove(sender);
+            }
+
+            return bySender;
+        }
 
         /// <summary>Whether <paramref name="tx"/> carries the nonce its sender can consume in the next block.</summary>
         /// <remarks>An EIP-8250 keyed set does not use the account nonce, so readiness is per-key currency instead.</remarks>
@@ -365,7 +390,7 @@ namespace Nethermind.TxPool
         /// the way down. Judging one reads a NONCE_MANAGER slot per key it selects, so the whole scan is bounded by
         /// the pool's configured size times <see cref="Eip8250Constants.MaxNonceKeys"/>; a per-sender limit spreads
         /// that same total over more buckets rather than lowering it.</remarks>
-        private bool HasReadyTransaction(IReadOnlySortedSet<Transaction> bucket, Address sender, in UInt256 baseFee)
+        private bool HasReadyTransaction(ReadOnlySpan<Transaction> bucket, Address sender, in UInt256 baseFee)
         {
             ulong accountNonce = _accounts.GetNonce(sender);
             bool accountNonceBlocked = false;
@@ -387,9 +412,7 @@ namespace Nethermind.TxPool
             _blobTransactions.GetBucketSnapshot();
 
         public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender(bool filterToReadyTx, UInt256 baseFee = default) =>
-            _blobTransactions.GetBucketSnapshot(filterToReadyTx
-                ? data => HasReadyTransaction(data.bucket, data.key, baseFee)
-                : null);
+            DropUnreadySenders(_blobTransactions.GetBucketSnapshot(), filterToReadyTx, baseFee);
 
         public Transaction[] GetPendingTransactionsBySender(Address address) =>
             _transactions.GetBucketSnapshot(address);
@@ -1122,8 +1145,24 @@ namespace Nethermind.TxPool
             // Carried from the previous head: a bound this node spent judged nothing, and a one-off change
             // leaves no later change list that would name the transaction's dependencies again. Unioned last,
             // so a saturated budget spends on this head's changes before the previous head's backlog.
-            _frameTxsToRevalidate.UnionWith(_frameTxsDeferredToNextHead);
+            (_frameTxDeferralsCarried, _frameTxsDeferredToNextHead) = (_frameTxsDeferredToNextHead, _frameTxDeferralsCarried);
             _frameTxsDeferredToNextHead.Clear();
+            _frameTxsToRevalidate.UnionWith(_frameTxDeferralsCarried.Keys);
+        }
+
+        /// <summary>Queues <paramref name="hash"/> for the next head's revalidation sweep, unless it has spent
+        /// <see cref="ITxPoolConfig.FrameTxRevalidationDeferralBudget"/> heads already.</summary>
+        /// <remarks>Bounded because each deferral costs a validation-prefix simulation under the head write lock:
+        /// left unbounded, a backlog larger than one head's simulation budget never drains and every later head
+        /// spends that whole budget holding the lock again. Exhausting the budget leaves the transaction pending
+        /// and unjudged, the same standing a one-off dependency change already leaves it in.</remarks>
+        private bool TryDeferToNextHead(in ValueHash256 hash)
+        {
+            _frameTxDeferralsCarried.TryGetValue(hash, out int spentHeads);
+            if (spentHeads >= _frameRevalidationDeferralBudget) return false;
+
+            _frameTxsDeferredToNextHead[hash] = spentHeads + 1;
+            return true;
         }
 
         /// <summary>
@@ -1232,8 +1271,8 @@ namespace Nethermind.TxPool
                         // node spent: a prefix that trips its own wall clock would re-queue forever.
                         if (simulated.NodeBound)
                         {
-                            _frameTxsDeferredToNextHead.Add(tx.Hash!.ValueHash256);
-                            Interlocked.Increment(ref Metrics.FrameTxRevalidationsDeferred);
+                            if (TryDeferToNextHead(tx.Hash!.ValueHash256)) Interlocked.Increment(ref Metrics.FrameTxRevalidationsDeferred);
+                            else Interlocked.Increment(ref Metrics.FrameTxRevalidationDeferralsExhausted);
                         }
 
                         return simulated.Indeterminate;

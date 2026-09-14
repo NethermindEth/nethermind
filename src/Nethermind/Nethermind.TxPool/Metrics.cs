@@ -105,6 +105,10 @@ namespace Nethermind.TxPool
         public static long FrameTxRevalidationsDeferred;
 
         [CounterMetric]
+        [Description("Number of EIP-8141 revalidations left unjudged because the transaction had already been deferred across `TxPool.FrameTxRevalidationDeferralBudget` heads. Each one is a transaction this node never reached a verdict on; a sustained count means the per-head simulation budget is too small for the deferral backlog.")]
+        public static long FrameTxRevalidationDeferralsExhausted;
+
+        [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions shed because they were close to expiry while the pool was full.")]
         public static long FrameTxExpiryShedEvictions;
 
