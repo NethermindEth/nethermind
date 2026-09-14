@@ -53,7 +53,11 @@ namespace Nethermind.Serialization.Rlp
         internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
 
         internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes);
-        static Rlp() => RegisterDecoders(typeof(Rlp).Assembly);
+        static Rlp()
+        {
+            RegisterDecoders(typeof(Rlp).Assembly);
+            RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
+        }
 
         /// <summary>
         /// This is not encoding - just a creation of an RLP object, e.g. passing 192 would mean an RLP of an empty sequence.
@@ -278,12 +282,26 @@ namespace Nethermind.Serialization.Rlp
                 return OfZero;
             }
 
-            return value < 0 ? Encode(new BigInteger(value), 4) : Encode((long)value);
+            // A negative value is its four-byte two's complement, which is what the BigInteger path
+            // produced after padding with 0xff.
+            if (value >= 0) return Encode((long)value);
+
+            byte[] bytes = new byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32BigEndian(bytes, value);
+            return Encode(bytes);
+        }
+
+        // The eight-byte two's complement, which is what the BigInteger path produced after padding.
+        private static Rlp EncodeNegative(long value)
+        {
+            byte[] bytes = new byte[sizeof(long)];
+            BinaryPrimitives.WriteInt64BigEndian(bytes, value);
+            return Encode(bytes);
         }
 
         public static Rlp Encode(long value) => value switch
         {
-            < 0 => Encode(new BigInteger(value), 8),
+            < 0 => EncodeNegative(value),
             0L => OfZero,
             < 0x80 => new((byte)value),
             < 0x100 => new([129, (byte)value]),
@@ -481,6 +499,7 @@ namespace Nethermind.Serialization.Rlp
             return 1 + lengthOfLength + length;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int SerializeLength(int value, Span<byte> destination)
         {
             // We assume 0 <= value <= int.MaxValue
@@ -509,11 +528,9 @@ namespace Nethermind.Serialization.Rlp
             return 4;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int LengthOfLength(int value)
-        {
-            int bits = 32 - BitOperations.LeadingZeroCount((uint)value | 1);
-            return (bits + 7) / 8;
-        }
+            => sizeof(ulong) - Core.Extensions.Bytes.LeadingZeroBytes((uint)value | 1);
 
         public static Rlp Encode(Hash256? keccak)
         {
@@ -657,7 +674,7 @@ namespace Nethermind.Serialization.Rlp
                 size = 1 + sizeof(ulong);
             }
 
-            return size - (BitOperations.LeadingZeroCount(value) / 8);
+            return size - Core.Extensions.Bytes.LeadingZeroBytes(value);
         }
 
         public static int LengthOfByteArrayList(IByteArrayList? list)
@@ -704,7 +721,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 // everything has a length prefix
-                return 1 + sizeof(ulong) - (BitOperations.LeadingZeroCount(value) / 8);
+                return 1 + sizeof(ulong) - Core.Extensions.Bytes.LeadingZeroBytes(value);
             }
         }
 
@@ -770,6 +787,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOf(Bloom? bloom) => bloom is null ? 1 : 259;
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int LengthOfSequence(int contentLength)
         {
             if (contentLength < RlpHelpers.SmallPrefixBarrier)
@@ -799,6 +817,7 @@ namespace Nethermind.Serialization.Rlp
         public static int LengthOf(ReadOnlySpan<byte> array) => array.Length == 0 ? 1 : LengthOfByteString(array.Length, array[0]);
 
         // Assumes that length is greater then 0
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int LengthOfByteString(int length, byte firstByte)
         {
             if (length == 0)

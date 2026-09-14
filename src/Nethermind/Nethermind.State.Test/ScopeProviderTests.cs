@@ -88,9 +88,8 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
-    [TestCase(1)]
-    [TestCase(TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH + 1)]
-    public void Test_CanSaveToStorage(int estimatedEntries)
+    [Test]
+    public void Test_CanSaveToStorage([Values(1, TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH + 1)] int estimatedEntries)
     {
         using Context ctx = new(useFlat);
 
@@ -232,9 +231,8 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
-    [TestCase(10)]
-    [TestCase(1500)]
-    public void Test_HintBalWithSink_BulkSlotReads_MatchesIndividualReads(int slotCount)
+    [Test]
+    public void Test_HintBalWithSink_BulkSlotReads_MatchesIndividualReads([Values(10, 1500)] int slotCount)
     {
         using Context ctx = new(useFlat);
 
@@ -1189,9 +1187,8 @@ public class ScopeProviderTests(bool useFlat)
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Test_MainScope_RegisteredForConsumerScopeLifetime(bool isPrewarmer)
+    [Test]
+    public void Test_MainScope_RegisteredForConsumerScopeLifetime([Values] bool isPrewarmer)
     {
         using Context ctx = new(useFlat);
 
@@ -1434,6 +1431,43 @@ public class ScopeProviderTests(bool useFlat)
         Assert.That(consumerMetrics.PreBlockAccountMisses, Is.EqualTo(1));
         Assert.That(consumerMetrics.PreBlockStorageHits, Is.EqualTo(1));
         Assert.That(consumerMetrics.PreBlockStorageMisses, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Test_NullStorageCacheEntry_FallsBackToBackingTree()
+    {
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                using IWorldStateScopeProvider.IStorageWriteBatch storage = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storage.Set(1, [10, 20]);
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        PreBlockCaches caches = NewCaches();
+        StorageCell cell = new(TestItem.AddressA, 1);
+        caches.StorageCache.Set(in cell, null);
+        LocalMetrics metrics = new();
+        PrewarmerScopeProvider consumer = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
+
+        using IWorldStateScopeProvider.IScope readScope = consumer.BeginScope(baseBlock, metrics);
+        byte[] value = readScope.CreateStorageTree(TestItem.AddressA).Get(1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(value, Is.EqualTo(new byte[] { 10, 20 }));
+            Assert.That(metrics.PreBlockStorageHits, Is.Zero);
+            Assert.That(metrics.PreBlockStorageMisses, Is.EqualTo(1));
+        }
     }
 
     [Test]

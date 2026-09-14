@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -117,9 +118,8 @@ public class SnapshotBundleWarmerTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Unresolved_warmer_miss_does_not_reach_trie_node_cache(bool storage)
+    [Test]
+    public void Unresolved_warmer_miss_does_not_reach_trie_node_cache([Values] bool storage)
     {
         TrieNodeCache cache = new(new FlatDbConfig { TrieCacheMemoryBudget = MemorySizes.MiB }, LimboLogs.Instance);
         using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
@@ -149,9 +149,8 @@ public class SnapshotBundleWarmerTests
     }
 
     // A repeated warmer miss is served by the owned placeholder, not by another persistence lookup.
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Repeated_warmer_miss_is_served_from_the_negative_cache(bool storage)
+    [Test]
+    public void Repeated_warmer_miss_is_served_from_the_negative_cache([Values] bool storage)
     {
         NullTrieNodeCache cache = new();
         using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), cache, _pool, ResourcePool.Usage.MainBlockProcessing);
@@ -170,9 +169,8 @@ public class SnapshotBundleWarmerTests
         Assert.That(cache.TryGetCount, Is.EqualTo(1));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Returned_transient_resource_clears_warmer_nodes(bool storage)
+    [Test]
+    public void Returned_transient_resource_clears_warmer_nodes([Values] bool storage)
     {
         ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
         TreePath path = TreePath.FromHexString("12");
@@ -216,9 +214,8 @@ public class SnapshotBundleWarmerTests
     }
 
     // Live reads see the warmer's instance only once resolved; retirement promotes a detached copy of it.
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Resolved_warmer_node_is_reused_by_live_reads_and_promoted_detached(bool storage)
+    [Test]
+    public void Resolved_warmer_node_is_reused_by_live_reads_and_promoted_detached([Values] bool storage)
     {
         Hash256 address = TestItem.KeccakC;
         TreePath path = TreePath.FromHexString("12");
@@ -262,9 +259,8 @@ public class SnapshotBundleWarmerTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Concurrent_owned_warmer_resolution_loads_once(bool storage)
+    [Test]
+    public void Concurrent_owned_warmer_resolution_loads_once([Values] bool storage)
     {
         Hash256 address = TestItem.KeccakC;
         TreePath path = TreePath.FromHexString("12");
@@ -408,9 +404,8 @@ public class SnapshotBundleWarmerTests
 
     // The warmer's persistence read is path-keyed, so it can return another node; reader guards compare the node's
     // own claimed Keccak, so publishing those bytes under the requested hash would poison live reads and the cache.
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Warmer_hash_mismatch_does_not_become_resolved_or_poison_live_reads(bool storage)
+    [Test]
+    public void Warmer_hash_mismatch_does_not_become_resolved_or_poison_live_reads([Values] bool storage)
     {
         Hash256 address = TestItem.KeccakC;
         TreePath path = TreePath.FromHexString("12");
@@ -494,6 +489,66 @@ public class SnapshotBundleWarmerTests
             Assert.That(live.NodeType, Is.EqualTo(NodeType.Unknown));
             Assert.That(cache.TryGet(cacheAddress, in path, hash, out _), Is.False);
         }
+    }
+
+    [Test]
+    public void Live_read_of_shared_parent_uses_snapshot_child_after_warmer_miss(
+        [Values] bool storage, [Values] bool iterator, [Values] bool staleSnapshot)
+    {
+        Hash256 address = TestItem.KeccakC;
+        TreePath rootPath = TreePath.Empty;
+        TreePath childPath = TreePath.FromHexString("0");
+        TrieNode child = TrieNodeFactory.CreateLeaf([0x3, 0x4], new byte[33]);
+        child.ResolveKey(NullTrieNodeResolver.Instance, ref childPath);
+        child.Seal();
+        TrieNode branch = new(NodeType.Branch);
+        branch.SetChild(0, child);
+        branch.ResolveKey(NullTrieNodeResolver.Instance, ref rootPath);
+        TrieNode sharedParent = new(NodeType.Unknown, branch.Keccak!, branch.FullRlp);
+        sharedParent.ResolveNode(NullTrieNodeResolver.Instance, rootPath);
+
+        (byte[] oldRlp, Hash256 oldHash) = EncodedLeaf();
+        Assert.That(oldHash, Is.Not.EqualTo(child.Keccak));
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(oldRlp);
+        reader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(oldRlp);
+        using SnapshotBundle bundle = new(
+            FlatTestHelpers.MakeBundle(_pool, reader, content =>
+            {
+                if (storage) content.StorageNodes[(address, rootPath)] = sharedParent;
+                else content.StateNodes[rootPath] = sharedParent;
+                if (staleSnapshot)
+                {
+                    TrieNode staleChild = new(NodeType.Unknown, oldHash, oldRlp);
+                    if (storage) content.StorageNodes[(address, childPath)] = staleChild;
+                    else content.StateNodes[childPath] = staleChild;
+                }
+            }), new NullTrieNodeCache(), _pool, ResourcePool.Usage.MainBlockProcessing);
+        if (storage) bundle.SetStorageNode(address, childPath, child);
+        else bundle.SetStateNode(childPath, child);
+        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), returnSnapshot: false);
+
+        ITrieNodeResolver warmer = WarmerResolver(bundle, storage ? address : null);
+        TrieNode warmedParent = warmer.FindCachedOrUnknown(rootPath, branch.Keccak!);
+        TrieNode ReadWarmedChild() => (iterator
+            ? warmedParent.CreateChildIterator().GetChildWithChildPath(warmer, ref childPath, 0)
+            : warmedParent.GetChildWithChildPath(warmer, ref childPath, 0))!;
+        if (staleSnapshot)
+        {
+            Assert.Throws<NodeHashMismatchException>(() => ReadWarmedChild());
+        }
+        else
+        {
+            Assert.That(ReadWarmedChild().TryResolveNode(warmer, ref childPath), Is.False);
+        }
+
+        StateTrieStoreAdapter state = new(bundle, new ConcurrencyController(1));
+        ITrieNodeResolver live = storage ? state.GetStorageTrieNodeResolver(address) : state;
+        Assert.That(live.FindCachedOrUnknown(childPath, child.Keccak!), Is.SameAs(child));
+        TrieNode liveParent = live.FindCachedOrUnknown(rootPath, branch.Keccak!);
+        TrieNode liveChild = liveParent.GetChildWithChildPath(live, ref childPath, 0)!;
+        Assert.That(() => liveChild.ResolveNode(live, childPath), Throws.Nothing);
+        Assert.That(liveChild.FullRlp.ToArray(), Is.EqualTo(child.FullRlp.ToArray()));
     }
 
     private static ITrieNodeResolver WarmerResolver(SnapshotBundle bundle, Hash256? address)

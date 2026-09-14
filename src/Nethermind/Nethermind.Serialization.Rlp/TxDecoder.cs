@@ -22,7 +22,6 @@ public sealed class TxDecoder : TxDecoder<Transaction>
     {
         TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), Environment.ProcessorCount * 4);
         Instance = new TxDecoder(static () => TxObjectPool.Get());
-        Rlp.RegisterDecoder(typeof(Transaction), Instance);
     }
 
     /// <summary>
@@ -89,38 +88,38 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
 
     public void Decode(ref RlpReader decoderContext, ref T? transaction, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemEmptyList())
+        if (decoderContext.TryConsumeNull(out LiteRlpReader rlp, out int position))
         {
-            decoderContext.ReadByte();
             transaction = null;
             return;
         }
 
-        int txSequenceStart = decoderContext.Position;
-        ReadOnlySpan<byte> transactionSequence = decoderContext.PeekNextItem();
+        int txSequenceStart = position;
+        ReadOnlySpan<byte> transactionSequence = rlp.Data.Slice(position, rlp.PeekNextRlpLength(position));
 
         TxType txType = TxType.Legacy;
         if (rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping))
         {
-            if (decoderContext.PeekByte() <= Transaction.MaxTxType) // it is typed transactions
+            if (rlp.Data[position] <= Transaction.MaxTxType) // it is typed transactions
             {
-                txSequenceStart = decoderContext.Position;
-                transactionSequence = decoderContext.Peek(decoderContext.Length);
-                txType = (TxType)decoderContext.ReadByte();
+                transactionSequence = rlp.Data.Slice(position);
+                txType = (TxType)rlp.Data[position++];
                 ThrowIfLegacy(txType);
             }
         }
         else
         {
-            if (!decoderContext.IsSequenceNext())
+            if (!rlp.IsSequenceNext(position))
             {
-                (_, int contentLength) = decoderContext.ReadPrefixAndContentLength();
-                txSequenceStart = decoderContext.Position;
-                transactionSequence = decoderContext.Peek(contentLength);
-                txType = (TxType)decoderContext.ReadByte();
+                rlp.ReadPrefixAndContentLength(ref position, out _, out int contentLength);
+                txSequenceStart = position;
+                transactionSequence = rlp.Data.Slice(position, contentLength);
+                txType = (TxType)rlp.Data[position++];
                 ThrowIfLegacy(txType);
             }
         }
+
+        decoderContext.Position = position;
 
         Transaction? decodedTransaction = transaction;
         GetDecoder(txType).Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);

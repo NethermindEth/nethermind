@@ -845,10 +845,8 @@ public class PersistedSnapshotTests
 
     // Round-trips account / self-destruct / slot / storage-node across a range of slot counts,
     // including a multi-page snapshot, then re-reads after AdviseDontNeed drops the kernel pages.
-    [TestCase(4)]
-    [TestCase(400)]
-    [TestCase(4000)]
-    public void RoundTrips_AcrossSlotCounts(int slotCount)
+    [Test]
+    public void RoundTrips_AcrossSlotCounts([Values(4, 400, 4000)] int slotCount)
     {
         StateId from = new(0, Keccak.EmptyTreeHash);
         StateId to = new(1, Keccak.Compute("warmup"));

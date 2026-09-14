@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core.Collections;
 
@@ -9,17 +10,32 @@ namespace Nethermind.State.Snap
 {
     public class SlotsAndProofs : IDisposable
     {
-        public IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> PathsAndSlots { get; set; }
+        private IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> _pathsAndSlots =
+            IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty;
 
-        public IByteArrayList Proofs { get; set; }
+        private IByteArrayList _proofs = EmptyByteArrayList.Instance;
+
+        [AllowNull]
+        public IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> PathsAndSlots
+        {
+            get => _pathsAndSlots;
+            set => _pathsAndSlots = value ?? IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty;
+        }
+
+        [AllowNull]
+        public IByteArrayList Proofs
+        {
+            get => _proofs;
+            set => _proofs = value ?? EmptyByteArrayList.Instance;
+        }
 
         private int _disposed;
 
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-            PathsAndSlots?.DisposeRecursive();
-            Proofs?.Dispose();
+            PathsAndSlots.DisposeRecursive();
+            Proofs.Dispose();
         }
     }
 }

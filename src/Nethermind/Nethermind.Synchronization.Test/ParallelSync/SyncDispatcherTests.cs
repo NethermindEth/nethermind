@@ -35,12 +35,13 @@ public class SyncDispatcherTests
             CancellationToken cancellationToken = default)
         {
             // Mirrors SyncPeerPool.Allocate: a cancelled token reports a failed allocation, it does not throw.
-            if (cancellationToken.IsCancellationRequested) return SyncPeerAllocation.FailedAllocation;
+            if (cancellationToken.IsCancellationRequested) return new SyncPeerAllocation(contexts);
 
             await Task.Yield();
             await _peerSemaphore.WaitAsync(cancellationToken);
             ISyncPeer syncPeer = new MockSyncPeer("Nethermind", UInt256.One);
-            SyncPeerAllocation allocation = new(new PeerInfo(syncPeer), contexts, _lock);
+            SyncPeerAllocation allocation = new(contexts, _lock, () => _peerSemaphore.Release());
+            allocation.AllocatePeer(new PeerInfo(syncPeer));
             return allocation;
         }
 
@@ -51,9 +52,6 @@ public class SyncDispatcherTests
         }
 
         public int AvailablePeers => _peerSemaphore.CurrentCount;
-
-        public void Free(SyncPeerAllocation syncPeerAllocation) =>
-            _peerSemaphore.Release();
 
         public void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts contexts)
         {
@@ -320,11 +318,11 @@ public class SyncDispatcherTests
     }
 
     [Test, CancelAfter(30_000)]
-    public async Task Cancelled_in_flight_dispatch_skips_its_response_and_frees_its_allocation(CancellationToken cancellationToken)
+    public async Task Cancelled_in_flight_dispatch_skips_its_response_and_disposes_its_allocation(CancellationToken cancellationToken)
     {
         // The dispatch loop cancels its token on every exit, including the routine feed-finish exit
         // on a live node. The cancelled dispatch must not handle its response into a finishing feed,
-        // and it must still free its allocation - a leaked slot retires the peer for the lifetime
+        // and it must still dispose its allocation - a leaked slot retires the peer for the lifetime
         // of the connection.
         TestSyncPeerPool pool = new(peerCount: 2);
         TestSyncFeed syncFeed = new(max: 16);

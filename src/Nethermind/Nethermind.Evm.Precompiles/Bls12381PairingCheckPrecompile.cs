@@ -20,7 +20,7 @@ public partial class Bls12381PairingCheckPrecompile : IPrecompile<Bls12381Pairin
 
     public static Address Address { get; } = Address.FromNumber(0xf);
 
-    public static string Name => "BLS12_PAIRING_CHECK";
+    public string Name => "BLS12_PAIRING_CHECK";
 
     public ulong BaseGasCost(IReleaseSpec _) => 37700UL;
 

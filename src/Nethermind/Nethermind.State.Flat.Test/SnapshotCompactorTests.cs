@@ -583,12 +583,8 @@ public class SnapshotCompactorTests
         targetSnapshot!.Dispose();
     }
 
-    [TestCase(1)]
-    [TestCase(3)]
-    [TestCase(5)]
-    [TestCase(7)]
-    [TestCase(9)]
-    public void GetSnapshotsToCompact_OddBlock_ReturnsEmpty(int blockNumber)
+    [Test]
+    public void GetSnapshotsToCompact_OddBlock_ReturnsEmpty([Values(1, 3, 5, 7, 9)] int blockNumber)
     {
         BuildSnapshotChain(0, (ulong)blockNumber);
 

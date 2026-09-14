@@ -394,7 +394,7 @@ public class HistoryWindowPrunerTests
         pruner.RunOnePass(CancellationToken.None);
         pruner.Dispose();
 
-        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetentionBlocks = 8 });
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 8 });
         HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
 
         using (Assert.EnterMultipleScope())
@@ -417,13 +417,14 @@ public class HistoryWindowPrunerTests
         FlatDbConfig config = new()
         {
             HistoryEnabled = true,
+            HistoryRetention = retentionBlocks > 0 ? HistoryRetentionMode.Rolling : HistoryRetentionMode.None,
             HistoryRetentionBlocks = retentionBlocks,
             HistoryPruneIntervalBlocks = 1,
             HistoryPrunePassBudgetSeconds = passBudgetSeconds
         };
         configure?.Invoke(config);
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        _writer = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance);
+        _writer = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
         _reader = new HistoryReader(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
         return new HistoryWindowPruner(
             _writer, _historyColumns, config,

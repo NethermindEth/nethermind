@@ -78,9 +78,8 @@ namespace Nethermind.Evm.Test
             AssertGas(tracer, uGasUsed + GasCostOf.Transaction - Math.Min((uGasUsed + GasCostOf.Transaction) / (eip3529Enabled ? RefundHelper.MaxRefundQuotientEIP3529 : RefundHelper.MaxRefundQuotient), uRefund));
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void After_3529_self_destruct_has_zero_refund(bool eip3529Enabled)
+        [Test]
+        public void After_3529_self_destruct_has_zero_refund([Values] bool eip3529Enabled)
         {
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether);
             TestState.Commit(SpecProvider.GenesisSpec);

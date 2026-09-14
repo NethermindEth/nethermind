@@ -420,7 +420,7 @@ public class BlockValidator(
         return true;
     }
 
-    public virtual bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
+    public bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
     {
         // n.b. block BAL body is a side-channel property only set by engine API or local production.
         // It is NOT part of block RLP, so blocks from p2p/fixtures will have null BlockAccessList
@@ -550,7 +550,7 @@ public class BlockValidator(
             return header.WithdrawalsRoot is null;
         }
 
-        return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
+        return (withdrawalsRoot = WithdrawalTrie.CalculateRoot(body.Withdrawals)) == header.WithdrawalsRoot;
     }
 
     public static bool ValidateBlockLevelAccessListHashMatches(Block block, out Hash256? balRoot)

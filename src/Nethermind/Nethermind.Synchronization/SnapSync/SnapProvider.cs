@@ -30,6 +30,18 @@ namespace Nethermind.Synchronization.SnapSync
         // This is actually close to 97% effective.
         private readonly AssociativeKeyCache<ValueHash256> _codeExistKeyCache = new(1024 * 16);
 
+        // How many consecutive empty storage-range responses for one account are treated as "this account really has
+        // no storage at the pivot" rather than "this peer is behind". Per account, not per queued range: the partitions
+        // of a split account share the counter, because the question the promotion answers is one about the account.
+        // Scaled off SnapSyncFeed.AllowedInvalidResponses, but it is a heuristic about the account, not a proof that a
+        // fresh pivot has been seen - RefreshAccounts retries a still-stale root rather than dropping the account.
+        internal const int MaxConsecutiveEmptyStorageResponses = 2 * (SnapSyncFeed.AllowedInvalidResponses + 1);
+
+        // One empty response bumps the counter on every account of the request, and a storage batch holds up to
+        // ProgressTracker.STORAGE_BATCH_SIZE (1200) of them, so an unguarded promotion could hand over a whole batch at
+        // once. Past this many the account goes back to the storage queue with its streak intact, to be promoted later.
+        internal const int MaxQueuedEmptyStreakRefreshes = 64;
+
         public bool CanSync() => _progressTracker.CanSync();
 
         public bool IsFinished(out SnapSyncBatch? nextBatch) => _progressTracker.IsFinished(out nextBatch);
@@ -132,7 +144,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 _logger.Trace($"SNAP - GetStorageRange - expired BlockNumber:{request.BlockNumber}, RootHash:{request.RootHash}, (Accounts:{request.Accounts.Count}), {request.StartingHash}");
 
-                _progressTracker.RequeueStorageRange(request.Copy());
+                RequeueAfterEmptyResponse(request);
                 Metrics.SnapRangeResult.Increment(new SnapRangeResult(isStorage: true, result: AddRangeResult.ExpiredRootHash));
 
                 return AddRangeResult.ExpiredRootHash;
@@ -177,10 +189,90 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
+        /// <summary>
+        /// An empty storage-range response (no slots, no proof) is what a peer sends when it no longer has the requested
+        /// state root - but it is also what geth sends for an account that has no storage at that root. Re-queueing
+        /// cannot tell the two apart, and a pivot move does not help an account whose storage is gone, so after a streak
+        /// the account is re-proven at the current pivot: the refresh resumes the range from the same starting hash if
+        /// the storage still exists and drops it if it does not.
+        /// </summary>
+        private void RequeueAfterEmptyResponse(StorageRange request)
+        {
+            ReadOnlySpan<PathWithAccount> accounts = request.Accounts.AsSpan();
+            if (accounts.Length == 1)
+            {
+                PathWithAccount account = accounts[0];
+                // Only a large-storage continuation carries a non-zero origin, and only it is unreachable by any other
+                // request, so a stall there stalls the account for good - the lane #13155 was reproduced on, and the
+                // only one worth an operator warning. A one-account batch is an ordinary account and stays on Debug.
+                bool isLargeStorageContinuation = request.StartingHash is { } origin && origin > ValueKeccak.Zero;
+                if (Interlocked.Increment(ref account.EmptyStorageResponses) < MaxConsecutiveEmptyStorageResponses
+                    || !TryRefreshAfterEmptyStreak(account, request.StartingHash, request.LimitHash, request.BlockNumber, warn: isLargeStorageContinuation))
+                {
+                    _progressTracker.RequeueStorageRange(request.Copy());
+                }
+                else
+                {
+                    // Without this the account is past the threshold for good and is promoted once per empty response
+                    // instead of once per streak. Not inside TryRefreshAfterEmptyStreak, whose queue-full early return
+                    // has to keep the streak.
+                    Interlocked.Exchange(ref account.EmptyStorageResponses, 0);
+                }
+
+                return;
+            }
+
+            // A multi-account request is not a continuation: each account goes back to the batching queue on its own,
+            // and a whole batch can cross the threshold on one response, so these stay on the Debug lane.
+            foreach (PathWithAccount account in accounts)
+            {
+                if (Interlocked.Increment(ref account.EmptyStorageResponses) < MaxConsecutiveEmptyStorageResponses
+                    || !TryRefreshAfterEmptyStreak(account, null, null, request.BlockNumber, warn: false))
+                {
+                    _progressTracker.EnqueueAccountStorage(account);
+                }
+                else
+                {
+                    Interlocked.Exchange(ref account.EmptyStorageResponses, 0);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Hands an account whose storage range keeps coming back empty to an account refresh, unless the refresh
+        /// queue is already at <see cref="MaxQueuedEmptyStreakRefreshes"/>.
+        /// </summary>
+        /// <returns><c>false</c> when the caller must re-queue the range itself instead.</returns>
+        private bool TryRefreshAfterEmptyStreak(PathWithAccount account, in ValueHash256? startingHash, in ValueHash256? limitHash, ulong? blockNumber, bool warn)
+        {
+            if (_progressTracker.AccountsToRefreshCount >= MaxQueuedEmptyStreakRefreshes)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Snap - {MaxQueuedEmptyStreakRefreshes} accounts are already queued for re-verification; re-queueing the storage range of {account.Path} instead.");
+                return false;
+            }
+
+            string message = $"Snap - storage range of account {account.Path} came back empty {account.EmptyStorageResponses} times in a row (start: {startingHash ?? ValueKeccak.Zero}, pivot: {blockNumber}). Re-verifying the account at the current pivot instead of retrying.";
+            if (warn)
+            {
+                if (_logger.IsWarn) _logger.Warn(message);
+            }
+            else if (_logger.IsDebug)
+            {
+                _logger.Debug(message);
+            }
+
+            Interlocked.Increment(ref Metrics.SnapStorageRangesRefreshedAfterEmptyResponses);
+            _progressTracker.EnqueueAccountRefresh(account, startingHash, limitHash);
+            return true;
+        }
+
         public AddRangeResult AddStorageRangeForAccount(StorageRange request, int accountIndex, IReadOnlyList<PathWithStorageSlot> slots, IByteArrayList? proofs = null)
         {
             ReadOnlySpan<PathWithAccount> accounts = request.Accounts.AsSpan();
             PathWithAccount pathWithAccount = accounts[accountIndex];
+            // Peers are serving this account's storage again, so the empty streak is over. Interlocked because the
+            // split path in EnqueueNextSlot queues both halves with the same PathWithAccount instance.
+            Interlocked.Exchange(ref pathWithAccount.EmptyStorageResponses, 0);
 
             try
             {
@@ -247,6 +339,17 @@ namespace Nethermind.Synchronization.SnapSync
                 case RefreshVerifyResult.Verified:
                     result = AddRangeResult.OK;
                     requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(account!.StorageRoot);
+                    // Read and reset in one step, for the same reason as above.
+                    int emptyResponses = Interlocked.Exchange(ref requestedPath.PathAndAccount.EmptyStorageResponses, 0);
+
+                    if (!account.HasStorage)
+                    {
+                        // The storage was emptied after the account was discovered. There is nothing left to fetch, and
+                        // asking for it would only draw more empty responses; the account stays tracked for healing.
+                        if (_logger.IsInfo) _logger.Info($"Snap - account {path} has no storage at the current pivot anymore (empty responses: {emptyResponses}, start: {requestedPath.StorageStartingHash}), dropping its storage range.");
+                        _progressTracker.DropLargeStorageProgress(requestedPath.PathAndAccount);
+                        break;
+                    }
 
                     if (requestedPath.StorageStartingHash > ValueKeccak.Zero)
                     {
@@ -259,6 +362,9 @@ namespace Nethermind.Synchronization.SnapSync
                     }
                     else
                     {
+                        // Back to the batching queue at origin 0, so whatever large-storage progress this account had
+                        // is obsolete and nothing on that queue will ever retire it.
+                        _progressTracker.DropLargeStorageProgress(requestedPath.PathAndAccount);
                         _progressTracker.EnqueueAccountStorage(requestedPath.PathAndAccount);
                     }
                     break;
@@ -267,6 +373,8 @@ namespace Nethermind.Synchronization.SnapSync
                     // The account no longer exists at the pivot, so there is no storage to retrieve. It remains
                     // tracked for healing. Terminal success - must not retry or the refresh would loop forever.
                     result = AddRangeResult.OK;
+                    // Terminal like the !HasStorage branch above, so it owes the same bookkeeping.
+                    _progressTracker.DropLargeStorageProgress(requestedPath.PathAndAccount);
                     break;
 
                 case RefreshVerifyResult.Expired:

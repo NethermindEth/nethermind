@@ -8,15 +8,14 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
-using System.Threading;
-using Nethermind.Core.Threading;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.ZkEvm.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis = false)
+public sealed partial class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis = false)
 {
     private const int PUSH1 = (int)Instruction.PUSH1;
     private const int PUSHx = PUSH1 - 1;
@@ -24,65 +23,27 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     private const int PUSH32 = (int)Instruction.PUSH32;
     private const int BitShiftPerInt64 = 6;
 
-    private static readonly long[]? _emptyJumpDestinationBitmap = new long[1];
-    private long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
-
-    private object? _analysisComplete;
+    private static readonly long[] _emptyJumpDestinationBitmap = new long[1];
+    /// <summary>A bitmap with no valid jump destination, for code that has no analyzer.</summary>
+    internal static long[] EmptyBitmap => _emptyJumpDestinationBitmap;
     public ReadOnlyMemory<byte> MachineCode => codeInfo.Code;
 
+    /// <summary>The jump-destination bitmap, built on first use; one bit per code byte.</summary>
+    internal long[] JumpDestinationBitmap
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _jumpDestinationBitmap ??= CreateOrWaitForJumpDestinationBitmap();
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool ValidateJump(int destination)
     {
-        _jumpDestinationBitmap ??= CreateOrWaitForJumpDestinationBitmap();
+        long[] bitmap = JumpDestinationBitmap;
 
         // Cast to uint to change negative numbers to very int high numbers
         // Then do length check, this both reduces check by 1 and eliminates the bounds
         // check from accessing the span.
-        return (uint)destination < (uint)MachineCode.Length && IsJumpDestination(_jumpDestinationBitmap, destination);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private long[] CreateOrWaitForJumpDestinationBitmap()
-    {
-        object? previous = Volatile.Read(ref _analysisComplete);
-        if (previous is null)
-        {
-            AnalyzeJumpDestinations(out previous);
-        }
-
-        if (previous is ManualResetEventSlim resetEvent)
-        {
-            WaitForAnalysisToComplete(resetEvent);
-
-            return _jumpDestinationBitmap;
-        }
-
-        // Must be the bitmap, and lost check->create benign data race
-        return (long[])previous;
-    }
-
-    private static void WaitForAnalysisToComplete(ManualResetEventSlim resetEvent)
-    {
-        // We are waiting, so drop priority to normal (BlockProcessing runs at higher priority).
-        using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetNormalPriority();
-        // Already in progress, wait for completion.
-        resetEvent.Wait();
-    }
-
-    private void AnalyzeJumpDestinations(out object previous)
-    {
-        ManualResetEventSlim analysisComplete = new(initialState: false);
-        previous = Interlocked.CompareExchange(ref _analysisComplete, analysisComplete, null);
-        if (previous is null)
-        {
-            // Not already in progress, so start it.
-            long[] bitmap = CreateJumpDestinationBitmap();
-            _jumpDestinationBitmap = bitmap;
-            // Release the MRES to be GC'd
-            Volatile.Write(ref _analysisComplete, bitmap);
-            // Signal complete.
-            analysisComplete.Set();
-            previous = bitmap;
-        }
+        return (uint)destination < (uint)MachineCode.Length && IsJumpDestination(bitmap, destination);
     }
 
     /// <summary>
@@ -123,65 +84,6 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
 
     internal static long[] CreateBitmap(int codeLength)
         => new long[GetInt64ArrayLengthFromBitLength(codeLength)];
-
-    [SkipLocalsInit]
-    internal static long[] PopulateJumpDestinationBitmap_Scalar(long[] bitmap, ReadOnlySpan<byte> code)
-    {
-        ProcessJumpDestinationBitmap_Scalar(programCounter: 0, bitmap, code);
-        return bitmap;
-    }
-
-    [SkipLocalsInit]
-    private static void ProcessJumpDestinationBitmap_Scalar(nuint programCounter, Span<long> bitmap, ReadOnlySpan<byte> code)
-    {
-        // Flags for the 64-bit bitmap segment holding the last JUMPDEST seen; flushed only when a
-        // later JUMPDEST lands in a different segment (and once at the end), so the common bytes -
-        // neither JUMPDEST nor PUSH - pay a single unsigned range check and nothing else.
-        long currentFlags = 0;
-        nuint flagsPosition = 0;
-        nuint length = (nuint)code.Length;
-        ref byte codeRef = ref MemoryMarshal.GetReference(code);
-        while (programCounter < length)
-        {
-            int op = Unsafe.AddByteOffset(ref codeRef, programCounter);
-
-            // Everything outside [JUMPDEST, PUSH32] advances by one; this covers ~3/4 of real bytecode.
-            if ((uint)(op - JUMPDEST) > PUSH32 - JUMPDEST)
-            {
-                programCounter++;
-                continue;
-            }
-
-            if (op == JUMPDEST)
-            {
-                if ((programCounter ^ flagsPosition) >> BitShiftPerInt64 != 0 && currentFlags != 0)
-                {
-                    MarkJumpDestinations(bitmap, flagsPosition, currentFlags);
-                    currentFlags = 0;
-                }
-
-                // Shift wraps at 64, matching the bit's position within its segment.
-                currentFlags |= 1L << (int)programCounter;
-                flagsPosition = programCounter;
-                programCounter++;
-            }
-            else if (op >= PUSH1)
-            {
-                // Fast forward past the push data; it holds no jump destinations.
-                programCounter += (nuint)op - PUSH1 + 2;
-            }
-            else
-            {
-                // 0x5c-0x5f (TLOAD/TSTORE/MCOPY/PUSH0): no immediate data, single-byte advance.
-                programCounter++;
-            }
-        }
-
-        if (currentFlags != 0)
-        {
-            MarkJumpDestinations(bitmap, flagsPosition, currentFlags);
-        }
-    }
 
     [SkipLocalsInit]
     internal static long[] PopulateJumpDestinationBitmap_Vector512(long[] bitmap, ReadOnlySpan<byte> code)
@@ -257,7 +159,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
         if (programCounter + skip < (nuint)code.Length)
         {
             // Scalar tail for the final (length % 64) bytes
-            ProcessJumpDestinationBitmap_Scalar(skip, bitmap.AsSpan((int)programCounter >> BitShiftPerInt64), code.Slice((int)programCounter));
+            ProcessJumpDestinationBitmap_Byte(skip, bitmap.AsSpan((int)programCounter >> BitShiftPerInt64), code.Slice((int)programCounter));
         }
 
         return bitmap;
@@ -354,7 +256,7 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
     /// Checks if the position is in a code segment.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsJumpDestination(long[] bitvec, int pos)
+    internal static bool IsJumpDestination(long[] bitvec, int pos)
     {
         int vecIndex = pos >> BitShiftPerInt64;
         // Check if in bounds, Jit will add slightly more expensive exception throwing check if we don't.
@@ -385,25 +287,6 @@ public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis
         nuint offset = pos >> BitShiftPerInt64;
         ref long segment = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(jumpDestinationBitmap), offset);
         segment = segment | flags;
-    }
-
-    public void Execute()
-    {
-        if (_jumpDestinationBitmap is null && Volatile.Read(ref _analysisComplete) is null)
-        {
-            ManualResetEventSlim analysisComplete = new(initialState: false);
-            if (Interlocked.CompareExchange(ref _analysisComplete, analysisComplete, null) is null)
-            {
-                // Boost the priority of the thread as block processing may be waiting on this.
-                using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
-
-                _jumpDestinationBitmap ??= CreateJumpDestinationBitmap();
-                // Release the MRES to be GC'd
-                _analysisComplete = _jumpDestinationBitmap;
-                // Signal complete.
-                analysisComplete.Set();
-            }
-        }
     }
 
     public bool RequiresAnalysis => _jumpDestinationBitmap is null;

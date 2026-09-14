@@ -431,9 +431,8 @@ public class XdcProtocolHandlerTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void SendNewTransactions_UsesTransactionsMessage_NotNewPooledTransactionHashes(bool sendFullTx)
+    [Test]
+    public void SendNewTransactions_UsesTransactionsMessage_NotNewPooledTransactionHashes([Values] bool sendFullTx)
     {
         // In XdcProtocolHandler tx gossip must go via TransactionsMessage (0x02),
         // never via NewPooledTransactionHashesMessage (0x08 from Eth65) which conflicts with XDC OrderTxMsg.

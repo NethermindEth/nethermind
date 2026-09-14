@@ -877,4 +877,21 @@ public partial class EthRpcModuleTests
         Assert.That(parsed["error"]!["code"]!.Value<int>(), Is.EqualTo(-32602));
     }
 
+    [Test]
+    public async Task Eth_estimateGas_self_recursive_call_until_exhaustion_does_not_return_internal_error()
+    {
+        // 0x5f5f5f5f5f305af1 = PUSH0 x5, ADDRESS, GAS, CALL: the contract CALLs itself with all remaining gas
+        // until the 63/64 rule or the depth limit stops the recursion. Every frame must be reported to the
+        // EstimateGasTracer in balance; a stray ReportActionError surfaced as -32603 "Stack empty." on 2.0.0-rc.
+        object? transaction = JsonSerializer.Deserialize<object>("""{"to":"0x00000000000000000000000000000000000000aa"}""");
+        object? stateOverride = JsonSerializer.Deserialize<object>("""{"0x00000000000000000000000000000000000000aa":{"code":"0x5f5f5f5f5f305af1"}}""");
+
+        TestSpecProvider specProvider = new(Prague.Instance);
+        using Context ctx = await Context.Create(specProvider);
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
+
+        Assert.That(serialized, Does.Not.Contain("-32603"), serialized);
+        Assert.That(serialized, Does.Contain("\"result\":\"0x"), serialized);
+    }
 }

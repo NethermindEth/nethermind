@@ -54,7 +54,7 @@ namespace Nethermind.State
 
         public WorldState(
             IWorldStateScopeProvider scopeProvider,
-            ILogManager? logManager)
+            ILogManager logManager)
         {
             ScopeProvider = scopeProvider;
             _stateProvider = new StateProvider(logManager, _localMetrics);
@@ -68,6 +68,7 @@ namespace Nethermind.State
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MemberNotNull(nameof(_currentScope))]
         private void GuardInScope()
         {
             if (_currentScope is null) ThrowOutOfScope();
@@ -121,6 +122,22 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             _persistentStorageProvider.Set(storageCell, newValue);
+        }
+
+        /// <summary>Reads a parent-state slot without recording a journal entry.</summary>
+        /// <remarks>Only for immutable BAL parent readers. The returned bytes must not be mutated.</remarks>
+        internal byte[] GetPureReadStorage(in StorageCell cell)
+        {
+            DebugGuardInScope();
+            return _persistentStorageProvider.GetPureRead(cell);
+        }
+
+        /// <summary>Reads a parent-state account without recording a journal entry.</summary>
+        /// <remarks>Only for immutable BAL parent readers.</remarks>
+        internal Account? GetPureReadAccount(Address address)
+        {
+            DebugGuardInScope();
+            return _stateProvider.GetPureRead(address);
         }
         public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
         {
@@ -226,7 +243,7 @@ namespace Nethermind.State
 
         public void CommitTree(ulong blockNumber)
         {
-            DebugGuardInScope();
+            GuardInScope();
             _stateProvider.UpdateStateRootIfNeeded();
             _currentScope.Commit(blockNumber);
             // The scope may cache the state it reads; it takes the block's final values before the providers drop them.
@@ -281,6 +298,7 @@ namespace Nethermind.State
                     _localMetrics.Flush();
                     Reset();
                     _stateProvider.SetScope(null);
+                    _persistentStorageProvider.SetBackendScope(null);
                     _currentScope.Dispose();
                 }
             }
@@ -297,7 +315,7 @@ namespace Nethermind.State
         public Task HintBal(ReadOnlyBlockAccessList bal)
         {
             GuardInScope();
-            return _currentScope!.HintBal(bal);
+            return _currentScope.HintBal(bal);
         }
 
         public ref readonly UInt256 GetBalance(Address address)
@@ -342,7 +360,7 @@ namespace Nethermind.State
             DebugGuardInScope();
             Account? account = _stateProvider.GetThroughCache(address);
             accountExists = account is not null;
-            return accountExists && (account!.IsContract || account.Nonce != 0);
+            return account is not null && (account.IsContract || account.Nonce != 0);
         }
 
         public bool IsDeadAccount(Address address)
@@ -355,7 +373,7 @@ namespace Nethermind.State
 
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
-            DebugGuardInScope();
+            GuardInScope();
             _transientStorageProvider.Commit(tracer);
             _persistentStorageProvider.Commit(tracer);
             _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);

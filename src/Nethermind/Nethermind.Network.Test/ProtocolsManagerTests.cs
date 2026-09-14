@@ -582,9 +582,8 @@ public class ProtocolsManagerTests
             .ReceiveHelloWrongEth()
             .VerifyDisconnected();
 
-    [TestCase(TestBlockchainIds.NetworkId + 1)]
-    [TestCase(TestBlockchainIds.ChainId)]
-    public void Disconnects_on_wrong_network_id(ulong networkId) => When
+    [Test]
+    public void Disconnects_on_wrong_network_id([Values(TestBlockchainIds.NetworkId + 1, TestBlockchainIds.ChainId)] ulong networkId) => When
             .CreateIncomingSession()
             .ActivateChannel()
             .Handshake()

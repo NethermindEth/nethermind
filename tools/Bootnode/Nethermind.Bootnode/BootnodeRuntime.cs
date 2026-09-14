@@ -66,7 +66,7 @@ internal sealed class BootnodeRuntime(
             await foreach (Node node in source.NodeSource.DiscoverNodes(cancellationToken))
             {
                 metrics.RecordSeen(source.Protocol);
-                metrics.UpdateSnapshot(nodeStore.AddOrUpdate(node, source.Protocol, isActive: true));
+                nodeStore.AddOrUpdate(node, source.Protocol, isActive: true);
                 if (_logger.IsDebug) _logger.Debug($"Discovered {source.Protocol} node {node:s}");
             }
 
@@ -94,12 +94,14 @@ internal sealed class BootnodeRuntime(
             metrics.UpdateDiscoveryMessageCounters();
             metrics.UpdateDiscoveryTrafficCounters();
             metrics.UpdateKademliaBucketStats(bucketRegistry.CreateSnapshot());
+            metrics.UpdateSnapshot(nodeStore.CreateSnapshot());
 
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
                 metrics.UpdateDiscoveryMessageCounters();
                 metrics.UpdateDiscoveryTrafficCounters();
                 metrics.UpdateKademliaBucketStats(bucketRegistry.CreateSnapshot());
+                metrics.UpdateSnapshot(nodeStore.CreateSnapshot());
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -114,7 +116,7 @@ internal sealed class BootnodeRuntime(
     private void OnNodeRemoved(string protocol, NodeEventArgs args)
     {
         metrics.RecordRemoved(protocol);
-        metrics.UpdateSnapshot(nodeStore.Remove(args.Node, protocol));
+        nodeStore.Remove(args.Node, protocol);
         if (_logger.IsDebug) _logger.Debug($"Removed discovery node {args.Node:s}");
     }
 

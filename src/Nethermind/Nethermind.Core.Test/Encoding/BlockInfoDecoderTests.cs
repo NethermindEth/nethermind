@@ -11,9 +11,8 @@ namespace Nethermind.Core.Test.Encoding;
 
 public class BlockInfoDecoderTests
 {
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Can_do_roundtrip(bool valueDecode) => Roundtrip(valueDecode);
+    [Test]
+    public void Can_do_roundtrip([Values] bool valueDecode) => Roundtrip(valueDecode);
 
     [TestCase(true, true, true)]
     [TestCase(true, true, false)]

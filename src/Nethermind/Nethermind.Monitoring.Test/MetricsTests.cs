@@ -170,9 +170,8 @@ public class MetricsTests
         }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Load_DetailedMetric(bool enableDetailedMetric)
+    [Test]
+    public void Load_DetailedMetric([Values] bool enableDetailedMetric)
     {
         MetricsConfig metricsConfig = new()
         {

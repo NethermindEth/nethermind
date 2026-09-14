@@ -28,7 +28,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     private int _destroyListSnapshots;
     private int _logsSnapshots;
 
-    public readonly bool IsCold(Address? address) => !_trackingState.AccessedAddresses.Contains(address);
+    public readonly bool IsCold(Address? address) => address is null || !_trackingState.AccessedAddresses.Contains(address);
 
     public readonly bool IsCold(in StorageCell storageCell) => !_trackingState.AccessedStorageCells.Contains(storageCell);
 
@@ -81,7 +81,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     public void Dispose()
     {
         TrackingState state = _trackingState;
-        _trackingState = null;
+        _trackingState = null!;
         TrackingState.ResetAndReturn(state);
     }
 
@@ -93,7 +93,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
 
         public static TrackingState RentState()
         {
-            if (_trackerPool.TryDequeue(out TrackingState tracker)) return tracker;
+            if (_trackerPool.TryDequeue(out TrackingState? tracker)) return tracker;
             return new TrackingState();
         }
 

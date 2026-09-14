@@ -14,6 +14,10 @@ namespace Nethermind.Core.Test.Encoding;
 public class RlpDecoderTests
 {
     [Test]
+    public void Transaction_decoder_is_registered() =>
+        Assert.That(Rlp.GetDecoder<Transaction>(), Is.SameAs(TxDecoder.Instance));
+
+    [Test]
     public void Decode_complete_not_null_decodes_item()
     {
         WithdrawalDecoder decoder = new();

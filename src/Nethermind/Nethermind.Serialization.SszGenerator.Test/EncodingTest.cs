@@ -596,10 +596,8 @@ public class EncodingTest
     /// container holding a <c>byte[]</c> or a converter-backed value type, so replacing the
     /// former with the latter to drop the per-item allocation is a wire-compatible refactor.
     /// </summary>
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(3)]
-    public void Converter_item_list_encodes_identically_to_wrapped_byte_vector_list(int itemCount)
+    [Test]
+    public void Converter_item_list_encodes_identically_to_wrapped_byte_vector_list([Values(0, 1, 3)] int itemCount)
     {
         const int itemLength = TestBytes48SszVectorTypeConverter.Length;
 

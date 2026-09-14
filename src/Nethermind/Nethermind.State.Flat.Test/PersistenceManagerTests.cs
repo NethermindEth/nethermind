@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -13,6 +15,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -39,6 +42,7 @@ public class PersistenceManagerTests
         _config = new FlatDbConfig
         {
             CompactSize = 16,
+            CompactionOffset = 0,
             MinReorgDepth = 64,
             MaxInMemoryBaseSnapshotCount = 128 + 32,
             MaxReorgDepth = 256,
@@ -51,7 +55,7 @@ public class PersistenceManagerTests
         // SnapshotRepository owns both tiers over a real temp-dir-backed persisted store, wired the
         // production way through FlatWorldStateModule; the container pairs it with its loader (load on
         // build, teardown on dispose).
-        _tier = new FlatTestContainer();
+        _tier = new FlatTestContainer(_config, finalizedStateProvider: _finalizedStateProvider);
         _snapshotRepository = _tier.Repository;
         _persistence = Substitute.For<IPersistence>();
 
@@ -63,7 +67,7 @@ public class PersistenceManagerTests
 
         _persistenceManager = new PersistenceManager(
             _config,
-            ScheduleHelper.CreateWithOffset(_config, 0),
+            _tier.Resolve<ICompactionSchedule>(),
             _finalizedStateProvider,
             _persistence,
             _snapshotRepository,
@@ -89,10 +93,11 @@ public class PersistenceManagerTests
         return new StateId(blockNumber, new ValueHash256(bytes));
     }
 
-    private Snapshot CreateSnapshot(StateId from, StateId to, bool compacted = false)
+    private Snapshot CreateSnapshot(StateId from, StateId to, bool compacted = false, Action<Snapshot>? populate = null)
     {
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
         snapshot.Content.Accounts[TestItem.AddressA] = new Account(1, 100);
+        populate?.Invoke(snapshot);
 
         if (compacted)
         {
@@ -122,6 +127,276 @@ public class PersistenceManagerTests
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
         snapshot.Content.SelfDestructedStorageAddresses[TestItem.AddressA] = false; // false = should be processed
         return snapshot;
+    }
+
+    [Test]
+    public async Task AddToPersistence_PinnedHead_RetainsUnfinalizedPersistedForks()
+    {
+        const int ForkCount = 400;
+        StateId latest = Block0;
+        for (int i = 1; i <= ForkCount; i++)
+        {
+            StateId setup = new(1, Keccak.Compute($"setup-{i}"));
+            latest = new(2, Keccak.Compute($"test-{i}"));
+            CreateSnapshot(Block0, setup);
+            _snapshotRepository.SetLastCommittedStateId(setup);
+            await _persistenceManager.AddToPersistence(setup);
+            CreateSnapshot(setup, latest);
+            _snapshotRepository.SetLastCommittedStateId(latest);
+            await _persistenceManager.AddToPersistence(latest);
+        }
+
+        using AssembledSnapshotResult assembled = _snapshotRepository.AssembleSnapshots(latest, Block0, 2);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(Block0));
+            Assert.That(_snapshotRepository.SnapshotCount, Is.EqualTo(_config.MaxInMemoryBaseSnapshotCount));
+            Assert.That(assembled.InMemory.Count + assembled.Persisted.Count, Is.EqualTo(2));
+            Assert.That(_snapshotRepository.PersistedSnapshotCount,
+                Is.EqualTo(ForkCount * 2 - _config.MaxInMemoryBaseSnapshotCount));
+        }
+    }
+
+    [Test]
+    public async Task AddToPersistence_PrunesOnlyKnownFinalizedPersistedForks(
+        [Values(0ul, 1ul, 2ul)] ulong finalizedBlock,
+        [Values(0ul, 1ul, 2ul)] ulong rootLookupCeiling,
+        [Values] bool pruneDirectly)
+    {
+        StateId canonical1 = CreateStateId(1, 1);
+        StateId canonical2 = CreateStateId(2, 1);
+        StateId orphan1 = CreateStateId(1, 2);
+        StateId orphan2 = CreateStateId(2, 2);
+        StateId tip = CreateStateId(3, 1);
+        StateId sibling = CreateStateId(3, 2);
+        PersistBase(Block0, canonical1);
+        PersistBase(canonical1, canonical2);
+        PersistBase(Block0, orphan1);
+        PersistBase(orphan1, orphan2);
+        PersistBase(canonical2, tip);
+        PersistBase(canonical2, sibling);
+        _snapshotRepository.SetLastCommittedStateId(tip);
+        _finalizedStateProvider.SetFinalizedBlockNumber(finalizedBlock);
+        _finalizedStateProvider.RootLookupCeiling = rootLookupCeiling;
+        _finalizedStateProvider.SetFinalizedStateRootAt(1, new Hash256(canonical1.StateRoot));
+        _finalizedStateProvider.SetFinalizedStateRootAt(2, new Hash256(canonical2.StateRoot));
+
+        Assert.That(_snapshotRepository.TryLeaseBasePersistedSnapshot(orphan1, out PersistedSnapshot? reader), Is.True);
+        ArenaReservation reservation = reader!.Reservation;
+        bool pruneParent = finalizedBlock >= 1 && rootLookupCeiling >= 1;
+        bool pruneChild = finalizedBlock >= 2 && rootLookupCeiling >= 2;
+        int expectedCount = 6 - (pruneParent ? 1 : 0) - (pruneChild ? 1 : 0);
+        using (reader)
+        {
+            if (pruneDirectly) _snapshotRepository.RemoveFinalizedPersistedForks(Block0);
+            else await _persistenceManager.AddToPersistence(tip);
+
+            using AssembledSnapshotResult assembled = _snapshotRepository.AssembleSnapshots(tip, Block0, 3);
+            List<CatalogEntry> catalog = [.. _tier.Resolve<ISnapshotCatalog>().Load()];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(Block0));
+                Assert.That(_snapshotRepository.PersistedSnapshotCount, Is.EqualTo(expectedCount));
+                Assert.That(catalog, Has.Count.EqualTo(expectedCount));
+                Assert.That(_snapshotRepository.HasBasePersistedSnapshot(orphan1), Is.EqualTo(!pruneParent));
+                Assert.That(_snapshotRepository.HasBasePersistedSnapshot(orphan2), Is.EqualTo(!pruneChild));
+                Assert.That(_snapshotRepository.HasBasePersistedSnapshot(sibling), Is.True);
+                Assert.That(assembled.Persisted.Count, Is.EqualTo(3), "canonical ancestry is still needed above the RocksDB state");
+                Assert.That(reader.TryGetAccount(TestItem.AddressA, out Account? account), Is.True);
+                Assert.That(account, Is.EqualTo(new Account(1, 100)), "an existing reader survives pruning");
+            }
+        }
+
+        if (pruneParent)
+            Assert.That(reservation.AcquireLease, Throws.TypeOf<System.InvalidOperationException>(),
+                "the orphan's arena reservation is released after its last reader");
+
+        if (finalizedBlock == 2 && rootLookupCeiling < 2)
+        {
+            _finalizedStateProvider.RootLookupCeiling = 2;
+            await _persistenceManager.AddToPersistence(tip);
+            Assert.That(_snapshotRepository.PersistedSnapshotCount, Is.EqualTo(4),
+                "missing roots must be retried even when the finalized height has not advanced");
+        }
+        _persistence.DidNotReceive().CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+    }
+
+    [TestCase(true, false, true)]
+    [TestCase(false, false, true)]
+    [TestCase(false, true, true)]
+    [TestCase(true, false, false)]
+    public async Task AddToPersistence_CachesFinalizedRootsUntilHeightsExpire(bool connectedToPersistedState, bool hasFork, bool pruneSnapshots)
+    {
+        StateId parent = CreateStateId(1);
+        StateId tip = CreateStateId(2);
+        StateId from = connectedToPersistedState ? Block0 : CreateStateId(0, 2);
+        PersistBase(from, parent);
+        PersistBase(parent, tip);
+        StateId orphan = CreateStateId(1, 2);
+        if (hasFork) PersistBase(from, orphan);
+        _snapshotRepository.SetLastCommittedStateId(tip);
+        _finalizedStateProvider.SetFinalizedBlockNumber(2);
+        _finalizedStateProvider.SetFinalizedStateRootAt(1, new Hash256(parent.StateRoot));
+        _finalizedStateProvider.SetFinalizedStateRootAt(2, new Hash256(tip.StateRoot));
+
+        await _persistenceManager.AddToPersistence(tip);
+        await _persistenceManager.AddToPersistence(tip);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_finalizedStateProvider.GetLookupCount(1), Is.EqualTo(1));
+            Assert.That(_finalizedStateProvider.GetLookupCount(2), Is.EqualTo(1));
+            Assert.That(_snapshotRepository.HasBasePersistedSnapshot(orphan), Is.EqualTo(hasFork));
+        }
+
+        if (pruneSnapshots)
+        {
+            _snapshotRepository.RemovePersistedStatesUntil(2);
+            PersistBase(Block0, parent);
+        }
+        else
+        {
+            _snapshotRepository.RemoveFinalizedPersistedForks(tip);
+        }
+        await _persistenceManager.AddToPersistence(tip);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_finalizedStateProvider.GetLookupCount(1), Is.EqualTo(2), "the expired height must be evicted from the cache");
+            Assert.That(_finalizedStateProvider.GetLookupCount(2), Is.EqualTo(1));
+        }
+    }
+
+    [TestCase(2ul, false)]
+    [TestCase(2ul, true)]
+    [TestCase(100ul, false)]
+    public async Task AddToPersistence_DefersFinalizedForkPruningWhenLocalChainDisagrees(ulong finalizedBlock, bool anchorMatches)
+    {
+        StateId parent = CreateStateId(1, 1);
+        StateId tip = CreateStateId(2, 1);
+        PersistBase(Block0, parent);
+        PersistBase(parent, tip);
+        _snapshotRepository.SetLastCommittedStateId(tip);
+        _finalizedStateProvider.SetFinalizedBlockNumber(finalizedBlock);
+        _finalizedStateProvider.SetFinalizedStateRootAt(1, TestItem.KeccakA);
+        _finalizedStateProvider.SetFinalizedStateRootAt(2, anchorMatches ? new Hash256(tip.StateRoot) : TestItem.KeccakB);
+
+        await _persistenceManager.AddToPersistence(tip);
+        using (AssembledSnapshotResult assembled = _snapshotRepository.AssembleSnapshots(tip, Block0, 2))
+            Assert.That(assembled.Persisted.Count, Is.EqualTo(2), "the branch being built must retain its ancestry");
+
+        _finalizedStateProvider.SetFinalizedBlockNumber(2);
+        _finalizedStateProvider.SetFinalizedStateRootAt(1, new Hash256(parent.StateRoot));
+        _finalizedStateProvider.SetFinalizedStateRootAt(2, new Hash256(tip.StateRoot));
+        StateId orphan = CreateStateId(1, 2);
+        PersistBase(Block0, orphan);
+        await _persistenceManager.AddToPersistence(tip);
+        Assert.That(_snapshotRepository.HasBasePersistedSnapshot(orphan), Is.False,
+            "pruning resumes after finality agrees with the local chain");
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task AddToPersistence_FinalizedPruningPreservesCurrentPersistedBase(bool rootMatches)
+    {
+        StateId persisted = CreateStateId(1, 1);
+        StateId tip = CreateStateId(2, 1);
+        PersistBase(Block0, persisted);
+        PersistBase(persisted, tip);
+        StateId sibling = CreateStateId(1, 2);
+        PersistBase(Block0, sibling);
+        _persistence.CreateReader().CurrentState.Returns(persisted);
+        _persistenceManager.ResetPersistedStateId();
+        _snapshotRepository.SetLastCommittedStateId(tip);
+        _finalizedStateProvider.SetFinalizedBlockNumber(2);
+        _finalizedStateProvider.SetFinalizedStateRootAt(1, rootMatches ? new Hash256(persisted.StateRoot) : TestItem.KeccakA);
+        _finalizedStateProvider.SetFinalizedStateRootAt(2, new Hash256(tip.StateRoot));
+
+        await _persistenceManager.AddToPersistence(tip);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_snapshotRepository.HasBasePersistedSnapshot(persisted), Is.True);
+            Assert.That(_snapshotRepository.HasBasePersistedSnapshot(sibling), Is.False);
+        }
+    }
+
+    [Test]
+    public void RemoveFinalizedPersistedForks_PrunesAcrossPruneBatches()
+    {
+        const ulong TipBlock = 1001;
+        StateId parent = Block0;
+        for (ulong block = 1; block <= TipBlock; block++)
+        {
+            StateId canonical = CreateStateId(block, 1);
+            PersistBase(parent, canonical);
+            _finalizedStateProvider.SetFinalizedStateRootAt(block, new Hash256(canonical.StateRoot));
+            parent = canonical;
+        }
+        StateId firstBatchOrphan = CreateStateId(1, 2);
+        StateId secondBatchOrphan = CreateStateId(1000, 2);
+        PersistBase(Block0, firstBatchOrphan);
+        PersistBase(CreateStateId(999, 1), secondBatchOrphan);
+        _snapshotRepository.SetLastCommittedStateId(parent);
+        _finalizedStateProvider.SetFinalizedBlockNumber(TipBlock);
+
+        // Direct call: at this depth AddToPersistence would also take the finalized RocksDB persist path.
+        _snapshotRepository.RemoveFinalizedPersistedForks(Block0);
+
+        using AssembledSnapshotResult assembled = _snapshotRepository.AssembleSnapshots(parent, Block0, (int)TipBlock);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_snapshotRepository.HasBasePersistedSnapshot(firstBatchOrphan), Is.False);
+            Assert.That(_snapshotRepository.HasBasePersistedSnapshot(secondBatchOrphan), Is.False);
+            Assert.That(_snapshotRepository.PersistedSnapshotCount, Is.EqualTo((int)TipBlock));
+            Assert.That(assembled.Persisted.Count, Is.EqualTo((int)TipBlock));
+        }
+    }
+
+    [Test]
+    public async Task AddToPersistence_ReusesVerifiedAncestryUntilReorg([Values] bool reorg, [Values] bool orphanRootAboveParent)
+    {
+        // Same-height states enumerate by root, so one variant evaluates the orphan after the parent invalidated the height's root.
+        StateId parent = CreateStateId(1, orphanRootAboveParent ? (byte)1 : (byte)3);
+        StateId orphan = CreateStateId(1, orphanRootAboveParent ? (byte)3 : (byte)1);
+        StateId tip = CreateStateId(2, 1);
+        PersistBase(Block0, parent);
+        PersistBase(parent, tip);
+        PersistBase(Block0, orphan);
+        _snapshotRepository.SetLastCommittedStateId(tip);
+        _finalizedStateProvider.SetFinalizedBlockNumber(2);
+        _finalizedStateProvider.SetFinalizedStateRootAt(1, TestItem.KeccakA);
+        _finalizedStateProvider.SetFinalizedStateRootAt(2, new Hash256(tip.StateRoot));
+        await _persistenceManager.AddToPersistence(tip);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_snapshotRepository.HasBasePersistedSnapshot(parent), Is.True, "a locally committed ancestor outranks a lagging canonical root");
+            Assert.That(_snapshotRepository.HasBasePersistedSnapshot(orphan), Is.False, "a sibling at the same height is still pruned");
+        }
+
+        StateId next;
+        if (reorg)
+        {
+            StateId altParent = CreateStateId(1, 2);
+            next = CreateStateId(2, 2);
+            PersistBase(Block0, altParent);
+            PersistBase(altParent, next);
+            _finalizedStateProvider.SetFinalizedStateRootAt(1, new Hash256(altParent.StateRoot));
+            _finalizedStateProvider.SetFinalizedStateRootAt(2, new Hash256(next.StateRoot));
+        }
+        else
+        {
+            next = CreateStateId(3, 1);
+            PersistBase(tip, next);
+        }
+        _snapshotRepository.SetLastCommittedStateId(next);
+        // The first pass after a reorg only invalidates the stale cached root at the finalized tip.
+        await _persistenceManager.AddToPersistence(next);
+        await _persistenceManager.AddToPersistence(next);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_snapshotRepository.HasBasePersistedSnapshot(parent), Is.EqualTo(!reorg));
+            Assert.That(_snapshotRepository.HasBasePersistedSnapshot(tip), Is.EqualTo(!reorg));
+        }
     }
 
     [Test]
@@ -471,6 +746,66 @@ public class PersistenceManagerTests
             Assert.That(_snapshotRepository.TryLeaseInMemoryState(baseB, SnapshotTier.InMemoryBase, out _), Is.False, "baseB removed from the in-memory tier");
             Assert.That(_snapshotRepository.TryLeaseInMemoryState(compactedTo, SnapshotTier.InMemoryCompacted, out _), Is.False, "boundary compacted removed");
         });
+    }
+
+    [TestCase(1)]
+    [TestCase(8)]
+    public async Task AddToPersistence_RepeatedForks_ReleasesConvertedCompactedSnapshots(int forkCount)
+    {
+        // Keep the conversion threshold reached while each fork stays below a full compaction boundary.
+        for (int i = 0; i < _config.MaxInMemoryBaseSnapshotCount; i++)
+            CreateSnapshot(Block0, CreateStateId(3, (byte)i));
+
+        ISnapshotCompactor compactor = _tier.Resolve<ISnapshotCompactor>();
+        List<Snapshot> convertedCompacts = [];
+        List<int> compactedCountsAtHandoff = [];
+        StateId latest = Block0;
+        _persistedSnapshotCompactor
+            .EnqueueAsync(Arg.Any<ArrayPoolList<StateId>>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                using ArrayPoolList<StateId> batch = call.Arg<ArrayPoolList<StateId>>();
+                if (batch[0] == latest)
+                    compactedCountsAtHandoff.Add(_snapshotRepository.CompactedSnapshotCount);
+                return ValueTask.CompletedTask;
+            });
+
+        for (int i = 1; i <= forkCount; i++)
+        {
+            StateId setup = CreateStateId(1, (byte)i);
+            latest = CreateStateId(2, (byte)i);
+            Account setupAccount = new(1, (UInt256)i);
+            CreateSnapshot(Block0, setup, populate: snapshot => snapshot.Content.Accounts[TestItem.AddressB] = setupAccount);
+            CreateSnapshot(setup, latest);
+
+            Assert.That(compactor.DoCompactSnapshot(latest), Is.True);
+            Assert.That(_snapshotRepository.TryLeaseInMemoryState(latest, SnapshotTier.InMemoryCompacted, out Snapshot? compacted), Is.True);
+            using (compacted)
+            {
+                convertedCompacts.Add(compacted!);
+                await _persistenceManager.AddToPersistence(latest);
+
+                Assert.That(compacted!.TryGetAccount(TestItem.AddressB, out Account? account), Is.True);
+                Assert.That(account, Is.EqualTo(setupAccount), "an active reader must survive conversion");
+            }
+        }
+
+        using AssembledSnapshotResult assembled = _snapshotRepository.AssembleSnapshots(latest, Block0, 2);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_snapshotRepository.SnapshotCount, Is.EqualTo(_config.MaxInMemoryBaseSnapshotCount));
+            Assert.That(_snapshotRepository.CompactedSnapshotCount, Is.Zero, "converted forks must not retain compacted snapshots");
+            Assert.That(compactedCountsAtHandoff, Has.Count.EqualTo(forkCount));
+            Assert.That(compactedCountsAtHandoff, Is.All.Zero, "compacted snapshots must be released before the potentially blocking handoff");
+            Assert.That(assembled.InMemory.Count, Is.Zero);
+            Assert.That(assembled.Persisted.Count, Is.EqualTo(2), "the persisted bases must still cover the fork");
+            foreach (Snapshot compacted in convertedCompacts)
+            {
+                bool retained = compacted.TryAcquire();
+                if (retained) compacted.Dispose();
+                Assert.That(retained, Is.False, "compacted data must be released after the last reader exits");
+            }
+        }
     }
 
     [Test]
@@ -1290,15 +1625,24 @@ public class PersistenceManagerTests
     {
         private ulong _finalizedBlockNumber;
         private readonly Dictionary<ulong, Hash256> _finalizedStateRoots = [];
+        private readonly Dictionary<ulong, int> _lookupCounts = [];
 
         public ulong FinalizedBlockNumber => _finalizedBlockNumber;
+
+        public ulong RootLookupCeiling { get; set; } = ulong.MaxValue;
 
         public void SetFinalizedBlockNumber(ulong blockNumber) => _finalizedBlockNumber = blockNumber;
 
         public void SetFinalizedStateRootAt(ulong blockNumber, Hash256 stateRoot) => _finalizedStateRoots[blockNumber] = stateRoot;
 
-        public Hash256? GetFinalizedStateRootAt(ulong blockNumber) =>
-            _finalizedStateRoots.TryGetValue(blockNumber, out Hash256? root) ? root : null;
+        public int GetLookupCount(ulong blockNumber) => _lookupCounts.GetValueOrDefault(blockNumber);
+
+        public Hash256? GetFinalizedStateRootAt(ulong blockNumber)
+        {
+            _lookupCounts[blockNumber] = GetLookupCount(blockNumber) + 1;
+            if (blockNumber > RootLookupCeiling) return null;
+            return _finalizedStateRoots.TryGetValue(blockNumber, out Hash256? root) ? root : null;
+        }
     }
 
     private sealed class RecordingCaptureHook : IFlatPersistenceCaptureHook

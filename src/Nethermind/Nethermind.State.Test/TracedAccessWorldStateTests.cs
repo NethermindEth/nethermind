@@ -54,6 +54,30 @@ public class TracedAccessWorldStateTests(bool parallel)
         return (tws, scope);
     }
 
+    [Test]
+    public void Mutation_without_generating_block_access_list_throws_actionable_exception()
+    {
+        IWorldState inner = TestWorldStateFactory.CreateForTest();
+        Hash256 stateRoot;
+        using (inner.BeginScope(IWorldState.PreGenesis))
+        {
+            inner.CreateAccount(TestItem.AddressA, 0);
+            inner.Commit(Spec, isGenesis: true);
+            inner.CommitTree(0);
+            stateRoot = inner.StateRoot;
+        }
+
+        TracedAccessWorldState tws = new(inner, parallel);
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
+        using IDisposable scope = tws.BeginScope(baseBlock);
+
+        Assert.That(
+            () => tws.SetNonce(TestItem.AddressA, 1),
+            Throws.InvalidOperationException.With.Message.EqualTo(
+                "Block access list tracing requires a generating block access list to be set."));
+        Assert.That(inner.GetNonce(TestItem.AddressA), Is.Zero);
+    }
+
     [TestCase(true, 50u, 100u, 150u, TestName = "AddToBalance")]
     [TestCase(false, 30u, 100u, 70u, TestName = "SubtractFromBalance")]
     public void BalanceOp_RecordsBalanceChange(
@@ -515,7 +539,9 @@ public class TracedAccessWorldStateTests(bool parallel)
         using (scope)
         {
             tws.Set(cell, [0x01]);
+            Assert.That(new UInt256(tws.Get(cell), isBigEndian: true), Is.EqualTo(UInt256.One));
             tws.Set(cell, [0x02]);
+            Assert.That(new UInt256(tws.Get(cell), isBigEndian: true), Is.EqualTo((UInt256)2));
 
             AccountChangesAtIndex? ac = tws.GetGeneratingBlockAccessList()!.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())

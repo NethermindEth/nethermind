@@ -26,6 +26,7 @@ public static class StatelessExecutor
 
         try
         {
+            // Also installs the run's hash seed, which every hash-keyed container below depends on.
             payload = InputDecoder.Decode(data);
         }
         catch (Exception ex)
@@ -124,7 +125,7 @@ public static class StatelessExecutor
         }
 
         StatelessBlockProcessingEnv blockProcessingEnv = new(
-            witness, specProvider, Always.Valid, NullLogManager.Instance);
+            witness, specProvider, Always.Valid, NullLogManager.Instance, blockTree);
 
         using IDisposable scope = blockProcessingEnv.WorldState.BeginScope(parentHeader);
 
