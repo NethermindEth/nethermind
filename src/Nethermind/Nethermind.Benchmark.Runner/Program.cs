@@ -14,6 +14,7 @@ using System.Linq;
 using BenchmarkDotNet.Columns;
 using Nethermind.Merge.Plugin.Benchmark;
 using Nethermind.Precompiles.Benchmark;
+using Nethermind.State.Flat.History.Test.Archive;
 
 namespace Nethermind.Benchmark.Runner
 {
@@ -46,8 +47,17 @@ namespace Nethermind.Benchmark.Runner
 
     public static class Program
     {
+        /// <summary>Builds the archive-index benchmark database and exits, instead of running any benchmark.</summary>
+        private const string GenerateArchiveDbArgument = "--generate-archive-db";
+
         public static void Main(string[] args)
         {
+            if (args.Contains(GenerateArchiveDbArgument))
+            {
+                GenerateArchiveDb();
+                return;
+            }
+
             bool quickMode = args.Contains("--quick");
             string[] benchmarkArgs = args.Where(static arg => arg != "--quick").ToArray();
             Job benchmarkJob = (quickMode ? Job.ShortRun : Job.MediumRun).WithRuntime(CoreRuntime.Core10_0);
@@ -80,6 +90,26 @@ namespace Nethermind.Benchmark.Runner
                     .FromAssemblies(releaseAssemblies)
                     .Run(benchmarkArgs, new PrecompileBenchmarkConfig(benchmarkJob));
             }
+        }
+
+        /// <summary>
+        /// Generates the chain <see cref="JsonRpc.Benchmark.ArchiveEthCallBenchmarks"/> measures, overwriting whatever
+        /// is at the target path. Running this first keeps the multi-minute build out of the benchmark's own timing,
+        /// and lets the same database be reused by a run on the other branch.
+        /// </summary>
+        private static void GenerateArchiveDb()
+        {
+            ArchiveChainShape shape = ArchiveChainShape.FromEnvironment();
+            using ArchiveChainFixture fixture = new(shape);
+
+            Console.WriteLine($"Generating {shape} into '{fixture.DbPath}' (overwriting anything already there)...");
+
+            Stopwatch elapsed = Stopwatch.StartNew();
+            fixture.RegenerateAsync().GetAwaiter().GetResult();
+
+            Console.WriteLine(
+                $"Done in {elapsed.Elapsed}. Head block {fixture.HeadBlock}, query block {fixture.QueryBlock}, " +
+                $"{shape.HistoryRows} history rows written.");
         }
     }
 }

@@ -11,6 +11,9 @@
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
+    <!-- ArchiveChainFixture lives there: the generated chain is a state/history fixture and the benchmark is only
+         its eth_call entry point. -->
+    <ProjectReference Include="..\Nethermind.State.Flat.History.Test\Nethermind.State.Flat.History.Test.csproj" />
   </ItemGroup>
 
 </Project>
