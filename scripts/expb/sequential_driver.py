@@ -127,7 +127,7 @@ def run_sample(base: dict, image: dict, run: int, root: Path) -> dict:
     finally:
         if watchdog is not None: watchdog.cancel()
         current = None
-    text = log_path.read_text(encoding="utf-8", errors="replace")
+    text = ANSI.sub("", log_path.read_text(encoding="utf-8", errors="replace"))
     parsed, exceptions, invalid, severe = collect_metrics(text)
     try:
         verify_clean(config)
