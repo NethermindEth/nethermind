@@ -15,9 +15,16 @@ public class XdcSubnetChainSpecEngineParameters : XdcChainSpecEngineParameters
     /// honours a gasless node, which its <c>--gasprice 0</c> enables. A subnet chainspec therefore states
     /// <see cref="XdcChainSpecEngineParameters.MinGasPrice"/> as zero to run gasless, and
     /// <see cref="Gas50xBlock"/> is not consulted at all.
+    /// <para>
+    /// A subnet chainspec must not activate EIP-1559: the subnet fork's header type carries no base fee field at all,
+    /// which <see cref="RLP.XdcSubnetHeaderDecoder"/> mirrors, so the value could not round-trip. Were it activated
+    /// anyway, <see cref="XdcBaseFeeCalculator"/>'s constant would apply on top of a zero floor and strand zero-price
+    /// transactions that no peer can mine.
+    /// </para>
     /// </remarks>
     internal override UInt256 ResolveMinGasPrice(ulong blockNumber) =>
-        MinGasPrice == UInt256.Zero
+        // Unset is not zero: only an explicit zero means gasless.
+        MinGasPrice is { IsZero: true }
             ? UInt256.Zero
             : ConfiguredMinGasPrice * XdcConstants.Gas50xMultiplier;
 }

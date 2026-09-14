@@ -228,6 +228,7 @@ public class XdcTestBlockchain : TestBlockchain
         xdcSpec.MasternodeReward = (UInt256)2 * Unit.Ether; // 2 Ether in Wei per masternode
         xdcSpec.ProtectorReward = Unit.Ether;               // 1 Ether in Wei per protector
         xdcSpec.ObserverReward = Unit.Ether / 2;            // 0.5 Ether in Wei per observer
+        xdcSpec.MinimumGasPrice = XdcConstants.DefaultMinGasPrice * XdcConstants.Gas50xMultiplier;
         xdcSpec.MinimumMinerBlockPerEpoch = 1;
         xdcSpec.MinimumSigningTx = 1;
         xdcSpec.GasLimitBoundDivisor = 1024UL;
@@ -605,8 +606,7 @@ public class XdcTestBlockchain : TestBlockchain
 
     public TransactionBuilder<Transaction> CreateTransactionBuilder()
     {
-        // MinGasPriceFilter keeps anything cheaper out of the pool, so a transaction below the floor would never
-        // reach a block.
+        // The harness sets a real floor, so anything cheaper is rejected on pool admission as it would be on a live node.
         TransactionBuilder<Transaction> txBuilder = BuildSimpleTransaction.WithGasPrice(XdcConstants.DefaultMinGasPrice * XdcConstants.Gas50xMultiplier);
 
         Block? head = BlockFinder.Head;

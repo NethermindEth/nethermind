@@ -89,14 +89,16 @@ internal class MinGasPriceFilterTests
     }
 
     [Test]
-    public void Accept_SpecialTransactions_AreAcceptedWithoutPayingAnything()
+    [TestCase(0ul, TestName = "Special transaction at zero")]
+    [TestCase(1ul, TestName = "Special transaction under the minimum but not zero")]
+    public void Accept_SpecialTransactions_AreExemptAtAnyPrice(ulong gasPrice)
     {
         MinGasPriceFilter filter = CreateFilter();
 
         Assert.Multiple(() =>
         {
-            Assert.That(Accept(filter, Build.A.Transaction.WithGasPrice(0).WithTo(BlockSigner).TestObject), Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(Accept(filter, Build.A.Transaction.WithGasPrice(0).WithTo(Randomize).TestObject), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(Accept(filter, Build.A.Transaction.WithGasPrice(gasPrice).WithTo(BlockSigner).TestObject), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(Accept(filter, Build.A.Transaction.WithGasPrice(gasPrice).WithTo(Randomize).TestObject), Is.EqualTo(AcceptTxResult.Accepted));
         });
     }
 
@@ -122,7 +124,6 @@ internal class MinGasPriceFilterTests
     public async Task SubmitTx_UnderMinGasPrice_IsRejectedOnPoolAdmission(ulong gasPrice, bool expectedAccepted)
     {
         using XdcTestBlockchain chain = await XdcTestBlockchain.Create(5, false);
-        chain.ChangeReleaseSpec(spec => spec.MinimumGasPrice = MinGasPrice);
 
         Transaction tx = Build.A.Transaction
             .WithSenderAddress(TestItem.AddressB)

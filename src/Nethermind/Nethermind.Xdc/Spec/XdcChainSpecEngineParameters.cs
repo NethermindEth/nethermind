@@ -97,7 +97,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
             : ConfiguredMinGasPrice;
 
     /// <summary>The stated floor, never below <see cref="XdcConstants.DefaultMinGasPrice"/>.</summary>
-    protected UInt256 ConfiguredMinGasPrice =>
+    private protected UInt256 ConfiguredMinGasPrice =>
         UInt256.Max(MinGasPrice.GetValueOrDefault(), XdcConstants.DefaultMinGasPrice);
 
     private readonly struct V2ConfigBySwitchRoundComparer : IComparer<V2ConfigParams>

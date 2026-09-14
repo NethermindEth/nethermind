@@ -195,6 +195,15 @@ public class XdcSpecProviderTests
     }
 
     [Test]
+    public void MinimumGasPrice_is_never_raised_without_a_Gas50xBlock()
+    {
+        XdcChainSpecBasedSpecProvider specProvider =
+            BuildProvider(new XdcChainSpecEngineParameters { SwitchBlock = 1, Gas50xBlock = null });
+
+        Assert.That(specProvider.GetXdcSpec(10_000_000).MinimumGasPrice, Is.EqualTo((UInt256)XdcConstants.DefaultMinGasPrice));
+    }
+
+    [Test]
     public void MinimumGasPrice_on_a_subnet_is_raised_from_genesis_and_zero_means_gasless()
     {
         XdcChainSpecBasedSpecProvider raised =
