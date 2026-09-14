@@ -353,6 +353,25 @@ namespace Nethermind.Core.Test
             Assert.That(h.Bytes.ToHexString(), Is.EqualTo(expected));
         }
 
+        [Test]
+        public void Partial_word_absorption_matches_reference(
+            [Range(0, 7)] int tailLength, [Values(0, 1, 7)] int offset, [Values(32, 64)] int hashLength)
+        {
+            // One rate block and one ulong are absorbed first, leaving exactly tailLength bytes for
+            // the 4/2/1-byte path. Nonzero offsets also exercise unaligned reads.
+            int inputLength = 200 - 2 * hashLength + sizeof(ulong) + tailLength;
+            byte[] input = FilledInput(offset + inputLength);
+            byte[] expected = new byte[hashLength];
+            Org.BouncyCastle.Crypto.Digests.KeccakDigest reference = new(hashLength * 8);
+            reference.BlockUpdate(input, offset, inputLength);
+            reference.DoFinal(expected, 0);
+            byte[] actual = new byte[hashLength];
+
+            KeccakHash.ComputeHash(input.AsSpan(offset, inputLength), actual);
+
+            Assert.That(actual, Is.EqualTo(expected));
+        }
+
         [TestCaseSource(nameof(KeccakCases))]
         public void Sanity_checks(string hexString, string expected)
         {
