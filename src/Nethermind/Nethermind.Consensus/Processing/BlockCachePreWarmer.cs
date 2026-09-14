@@ -427,7 +427,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         if (((i - range.Item1) & 0x3F) == 0 && cancellationToken.IsCancellationRequested) return;
                         try
                         {
-                            worldState.Get(in cells[i]);
+                            worldState.Get(in cells[i], out _);
                         }
                         catch (MissingTrieNodeException)
                         {

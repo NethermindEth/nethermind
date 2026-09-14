@@ -49,8 +49,8 @@ namespace Nethermind.Core.Extensions
         public static partial void SeedHashes(in Int256.UInt256 seed)
         {
             InstanceRandom = seed;
-            HashLaneMask = uint.MaxValue;
             // Installed before anything mixes, which CreateShortHashSeeds below does.
+            HashLaneMask = uint.MaxValue;
             HashFinalizerKey = MultiplyFold(seed.u0 ^ FinalizerDomain, seed.u3 ^ ~FinalizerDomain) | 1UL;
             ShortHashSeeds = CreateShortHashSeeds(in InstanceRandom);
             AddressSeeds = [DeriveAddressSeed(seed.u0), DeriveAddressSeed(seed.u1),
