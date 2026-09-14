@@ -76,8 +76,9 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             builder
                 .AddSingleton<ILogIndexStorage, LogIndexStorage>()
                 .AddSingleton<ILogFinder, IndexedLogFinder>()
-                // do not use range-limited version when index is enabled, regardless of queried range being covered
-                .AddSingleton<IRpcLogFinder>(ctx => ctx.Resolve<IndexedLogFinder>());
+                // do not use range-limited version when index is enabled; regardless of query being covered by index
+                // any additional ILogFinder decorator to be used by RPC should be marked with IRpcLogFinder
+                .AddSingleton<IRpcLogFinder>(ctx => (IRpcLogFinder)ctx.Resolve<ILogFinder>());
         }
         else
         {
