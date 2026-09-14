@@ -70,7 +70,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IBlockhashStore, BlockhashStore>()
             .AddScoped<IBranchProcessor, BranchProcessor>()
             .AddScoped<IInclusionListSatisfactionChecker, InclusionListSatisfactionChecker>()
-            .AddScoped<IBlockProcessor, BlockProcessor>()
+            .AddScoped<IBlockProcessor, StandardBlockProcessor>()
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
             .AddSingleton<IWithdrawalProcessorFactory, WithdrawalProcessorFactory>()
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
@@ -165,6 +165,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 
     private class StandardBlockValidationModule : Module, IBlockValidationModule
     {
+        public bool SupportsTransactionTracePrefix => true;
+
         protected override void Load(ContainerBuilder builder) => builder
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
             .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.ParallelBlockValidationTransactionsExecutor>();

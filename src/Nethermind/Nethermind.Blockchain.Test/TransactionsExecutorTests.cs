@@ -693,7 +693,7 @@ namespace Nethermind.Blockchain.Test
 
             public bool IsDeadAccount(Address address) => false;
 
-            public ReadOnlySpan<byte> Get(in StorageCell storageCell) => [];
+            public void Get(in StorageCell storageCell, out UInt256 value) => value = default;
         }
     }
 }

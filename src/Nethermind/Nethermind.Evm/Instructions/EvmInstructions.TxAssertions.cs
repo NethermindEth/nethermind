@@ -82,9 +82,8 @@ public static partial class EvmInstructions
         AccountChangesAtIndex account = view.Slice.GetAccountChanges(slot.Address)!;
         if (param == 0x08)
             return stack.PushUInt256<TTracingInst>(account.TryGetPreTxStorage(slot.Key, out UInt256 before) ? before : default);
-        if (!account.TryGetStorageChange(slot.Key, out StorageChange? change)) return EvmExceptionType.BadInstruction;
-        EvmWord after = change.Value.Value;
-        return stack.Push32Bytes<TTracingInst, OnFlag>(ref Unsafe.As<EvmWord, byte>(ref after));
+        if (!account.StorageChanges.TryGetValue(slot.Key, out StorageChange change)) return EvmExceptionType.BadInstruction;
+        return stack.PushUInt256<TTracingInst>(change.Value);
     }
 
     // 0x0A deployed address / 0x0B deployed code hash, indexed by deployment position.
@@ -155,13 +154,13 @@ public static partial class EvmInstructions
         if (param == 0x00 && account is not null && account.TryGetPreTxStorage(key, out UInt256 before))
             return stack.PushUInt256<TTracingInst>(before);
         // "after", or an unmodified slot's "before": the current live value.
-        ReadOnlySpan<byte> value = vm.WorldState.Get(in cell);
-        EvmExceptionType pushResult = value.Length == 1 && value[0] == 0 ? stack.PushZero<TTracingInst, OnFlag>() : stack.PushBytes<TTracingInst>(value);
+        vm.WorldState.Get(in cell, out UInt256 value);
+        EvmExceptionType pushResult = stack.PushUInt256<TTracingInst>(value);
 
         // Reported like SLOAD, so a trace over a failed assertion shows the slot it read.
         if (vm.TxTracer.IsTracingOpLevelStorage)
         {
-            vm.TxTracer.LoadOperationStorage(address, key, value);
+            TraceStorageLoad(vm, in cell, in value, transient: false);
         }
 
         return pushResult;

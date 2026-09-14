@@ -17,6 +17,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -44,6 +45,93 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Tracer = NativeCallTracer.CallTracer,
         TracerConfig = config is not null ? JsonSerializer.Deserialize<JsonElement>(config) : null
     };
+
+    [Test]
+    public void Call_tracer_does_not_request_opcode_capture([Values] bool enableCapture)
+    {
+        Transaction tx = Build.A.Transaction.TestObject;
+        GethTraceOptions options = GetGethTraceOptions(WithLog) with
+        {
+            DisableStack = !enableCapture,
+            DisableStorage = !enableCapture,
+            EnableMemory = enableCapture,
+            EnableReturnData = enableCapture
+        };
+        using NativeCallTracer tracer = new(tx, CancunSpec, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.IsTracingInstructions, Is.False);
+            Assert.That(tracer.IsTracingStack, Is.False);
+            Assert.That(tracer.IsTracingOpLevelStorage, Is.False);
+            Assert.That(tracer.IsTracingMemory, Is.False);
+            Assert.That(tracer.IsTracingReturnData, Is.False);
+            Assert.That(tracer.IsTracingActions, Is.True);
+            Assert.That(tracer.IsTracingLogs, Is.True);
+        }
+    }
+
+    public enum GasCheckpointCase { InvalidOpcode, StackUnderflow, OutOfGas, Revert, InvalidDeposit, DepositOutOfGas, PrecompileFailure }
+
+    [Test]
+    public void Action_gas_matches_instruction_gas([Values] GasCheckpointCase scenario)
+    {
+        byte[] childCode = scenario switch
+        {
+            GasCheckpointCase.InvalidOpcode => Prepare.EvmCode.Op(Instruction.INVALID).Done,
+            GasCheckpointCase.StackUnderflow => Prepare.EvmCode.Op(Instruction.POP).Done,
+            GasCheckpointCase.OutOfGas => Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done,
+            GasCheckpointCase.Revert => Prepare.EvmCode.Revert(0, 0).Done,
+            GasCheckpointCase.InvalidDeposit => Prepare.EvmCode.ForInitOf([0xEF]).Done,
+            GasCheckpointCase.DepositOutOfGas => Prepare.EvmCode.ForInitOf(new byte[1024]).Done,
+            _ => []
+        };
+        TestState.CreateAccount(TestItem.AddressC, 0);
+        TestState.InsertCode(TestItem.AddressC, childCode, Spec);
+        byte[] code = scenario switch
+        {
+            GasCheckpointCase.InvalidDeposit or GasCheckpointCase.DepositOutOfGas => Prepare.EvmCode.Create(childCode, 0).STOP().Done,
+            GasCheckpointCase.PrecompileFailure => Prepare.EvmCode.Call(new Address("0x0000000000000000000000000000000000000009"), 50000).STOP().Done,
+            _ => Prepare.EvmCode.Call(TestItem.AddressC, 10000).STOP().Done
+        };
+        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
+        using NativeCallTracer native = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
+        using CancellationTxTracer optimized = new(native);
+        _processor.CallAndRestore(tx, block.Header, optimized);
+        using GethLikeTxTrace actual = native.BuildResult();
+
+        using NativeCallTracer tracedNative = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
+        GasCheckpointTracer checkpoints = new();
+        using CompositeTxTracer traced = new(tracedNative, checkpoints);
+        _processor.CallAndRestore(tx, block.Header, traced);
+        using GethLikeTxTrace expected = tracedNative.BuildResult();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JsonSerializer.Serialize(actual.CustomTracerResult?.Value, SerializerOptions),
+                Is.EqualTo(JsonSerializer.Serialize(expected.CustomTracerResult?.Value, SerializerOptions)));
+            Assert.That(checkpoints.GasMatches, Is.True);
+            Assert.That(checkpoints.Errors, Is.EqualTo(scenario == GasCheckpointCase.Revert ? 0 : 1));
+        }
+    }
+
+    private sealed class GasCheckpointTracer : TxTracer
+    {
+        private ulong _instructionGas;
+        private ulong _actionGas;
+        public override bool IsTracingInstructions => true;
+        public override bool IsTracingActions => true;
+        public bool GasMatches { get; private set; } = true;
+        public int Errors { get; private set; }
+        public override void ReportOperationRemainingGas(ulong gas) => _instructionGas = gas;
+        public override void ReportActionRemainingGas(ulong gas) => _actionGas = gas;
+
+        public override void ReportActionError(EvmExceptionType evmExceptionType)
+        {
+            GasMatches &= _instructionGas == _actionGas;
+            Errors++;
+        }
+    }
 
     [Test]
     public void Test_CallTrace_SingleCall()

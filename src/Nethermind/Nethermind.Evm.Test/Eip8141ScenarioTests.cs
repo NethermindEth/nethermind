@@ -289,7 +289,7 @@ public class Eip8141ScenarioTests
     {
         DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
         DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
-        _stateProvider.Set(new StorageCell(Recipient, UInt256.Zero), new byte[] { 1 });
+        _stateProvider.Set(new StorageCell(Recipient, UInt256.Zero), UInt256.One);
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
 
@@ -322,7 +322,7 @@ public class Eip8141ScenarioTests
         DeployContract(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), 1.Ether);
         // The frame target clears a pre-existing storage slot (non-zero -> zero), earning a refund.
         DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
-        _stateProvider.Set(new StorageCell(Recipient, UInt256.Zero), new byte[] { 1 });
+        _stateProvider.Set(new StorageCell(Recipient, UInt256.Zero), UInt256.One);
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
 
@@ -858,7 +858,7 @@ public class Eip8141ScenarioTests
 
     private void AssertStorage(Address address, int slot, UInt256 expected, string message)
     {
-        UInt256 actual = new(_stateProvider.Get(new StorageCell(address, (UInt256)slot)), isBigEndian: true);
+        _stateProvider.Get(new StorageCell(address, (UInt256)slot), out UInt256 actual);
         Assert.That(actual, Is.EqualTo(expected), message);
     }
 

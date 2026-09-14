@@ -65,7 +65,7 @@ public class GethStyleTracer(
 
         try
         {
-            return TraceImpl(block, tx.Hash, cancellationToken, options, ProcessingOptions.TraceTransactions, writer, pipeWriter);
+            return TraceImpl(block, tx.Hash, cancellationToken, options, useBlockAsBase: true, writer, pipeWriter);
         }
         finally
         {
@@ -179,22 +179,18 @@ public class GethStyleTracer(
     }
 
     private GethLikeTxTrace? TraceImpl(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options,
-        ProcessingOptions processingOptions = ProcessingOptions.Trace, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
+        bool useBlockAsBase = false, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
     {
         ArgumentNullException.ThrowIfNull(txHash);
 
-        // Previously, when the processing options is not `TraceTransaction`, the base block is the parent of the block
-        // which is set by the `BranchProcessor`, which mean the state override probably does not take affect.
-        // However, when it is `TraceTransaction`, it applies `ForceSameBlock` to `BlockchainProcessor`, which will send the same
-        // block as the baseBlock, which is important as the stateroot of the baseblock is modified in `BuildAndOverride`.
+        // For a synthetic tx trace (`debug_traceCall`), the base block must be the block itself rather than
+        // its parent, so that state overrides applied in `BuildAndOverride` bind to the correct state root.
         if (options.BlockOverrides is not null || options.NoBaseFee)
         {
             block = block.WithReplacedBodyCloned(block.Body);
         }
 
-        BlockHeader baseBlockHeader = (processingOptions & ProcessingOptions.ForceSameBlock) == 0
-            ? FindParent(block)
-            : block.Header;
+        BlockHeader baseBlockHeader = useBlockAsBase ? block.Header : FindParent(block);
 
         options.BlockOverrides?.ApplyOverrides(block.Header);
         if (options.NoBaseFee)
@@ -211,7 +207,8 @@ public class GethStyleTracer(
 
         try
         {
-            scope.Component.BlockchainProcessor.Process(block, processingOptions, tracer.WithCancellation(cancellationToken), cancellationToken);
+            IBlockTracer executionTracer = TransactionTraceBoundary.Wrap(tracer.WithCancellation(cancellationToken), useBlockAsBase ? null : txHash);
+            scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, executionTracer, cancellationToken);
             return tracer.BuildResult().SingleOrDefault();
         }
         catch

@@ -46,6 +46,12 @@ namespace Nethermind.Evm.Test;
 [TestFixture]
 public class FrameTxProcessorTests
 {
+    private UInt256 StorageAt(in StorageCell cell)
+    {
+        _stateProvider.Get(in cell, out UInt256 value);
+        return value;
+    }
+
     private ISpecProvider _specProvider;
     private OverridableReleaseSpec _spec;
     private ITransactionProcessor _transactionProcessor;
@@ -269,7 +275,7 @@ public class FrameTxProcessorTests
         Assert.That(result.TransactionExecuted, Is.True, "the CallAndRestore run executes the self-destructing frame");
 
         _stateProvider.CreateAccount(child, 0);
-        _stateProvider.Set(new StorageCell(child, 0), [7]);
+        _stateProvider.Set(new StorageCell(child, 0), (UInt256)7);
         _stateProvider.Commit(Spec);
 
         AssertStorage(child, 0, 7, "CallAndRestore runs with Commit|Restore, so the frame destroy must journal rather than take the un-committed O(1) mark; otherwise the destroyed-this-round set survives the restore and silently drops this later write to the same address");
@@ -761,7 +767,7 @@ public class FrameTxProcessorTests
         TransactionResult result = Process(tx);
 
         Assert.That(result.TransactionExecuted, Is.True);
-        UInt256 observed = new(_stateProvider.Get(new StorageCell(Observer, UInt256.Zero)), isBigEndian: true);
+        _stateProvider.Get(new StorageCell(Observer, UInt256.Zero), out UInt256 observed);
         UInt256 stateGasUsed = (UInt256)(ulong)GasCostOf.SSetState;
         if (param == 0x0B)
         {
@@ -1936,7 +1942,7 @@ public class FrameTxProcessorTests
             Assert.That(_stateProvider.GetNonce(Sender), Is.Zero, "a keyed transaction leaves the account nonce alone");
             foreach (UInt256 key in keys)
             {
-                Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                Assert.That(StorageAt(KeyedNonceManager.StorageSlot(Sender, key)),
                     Is.EqualTo(UInt256.One), "the consumed nonce set stays spent across the assertion revert");
             }
         }
@@ -2709,7 +2715,7 @@ public class FrameTxProcessorTests
 
     private void AssertStorage(Address address, int slot, UInt256 expected, string? message = null)
     {
-        UInt256 actual = new(_stateProvider.Get(new StorageCell(address, (UInt256)slot)), isBigEndian: true);
+        UInt256 actual = StorageAt(new StorageCell(address, (UInt256)slot));
         Assert.That(actual, Is.EqualTo(expected), message ?? $"storage slot {slot} of {address}");
     }
 
@@ -2732,7 +2738,7 @@ public class FrameTxProcessorTests
         }
         foreach (UInt256 key in keys)
         {
-            Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+            Assert.That(StorageAt(KeyedNonceManager.StorageSlot(Sender, key)),
                 Is.EqualTo(UInt256.One));
         }
 
@@ -2904,7 +2910,7 @@ public class FrameTxProcessorTests
             Assert.That(_stateProvider.GetNonce(Sender), Is.Zero, "a keyed transaction leaves the account nonce alone");
             foreach (UInt256 key in keys)
             {
-                Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                Assert.That(StorageAt(KeyedNonceManager.StorageSlot(Sender, key)),
                     Is.EqualTo(UInt256.One), "the nonce set stays consumed");
             }
         }
@@ -2937,7 +2943,7 @@ public class FrameTxProcessorTests
                 "a reused key adds no frame gas, so the transaction owes only its floor");
             foreach (UInt256 key in keys)
             {
-                Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                Assert.That(StorageAt(KeyedNonceManager.StorageSlot(Sender, key)),
                     Is.EqualTo((UInt256)2), $"key {key} advanced once per transaction");
             }
         }
@@ -2972,7 +2978,7 @@ public class FrameTxProcessorTests
                 "EIP-8250: the charge does not consume execution gas, so no part of it leaks into that dimension");
             foreach (UInt256 key in keys)
             {
-                Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                Assert.That(StorageAt(KeyedNonceManager.StorageSlot(Sender, key)),
                     Is.EqualTo((UInt256)2), $"key {key} was consumed by both transactions");
             }
         }
@@ -2996,7 +3002,7 @@ public class FrameTxProcessorTests
                 "an execution surplus cannot pay for the slots the approval creates");
             foreach (UInt256 key in keys)
             {
-                Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                Assert.That(StorageAt(KeyedNonceManager.StorageSlot(Sender, key)),
                     Is.EqualTo(UInt256.Zero), $"key {key} stays unconsumed");
             }
         }
@@ -3026,7 +3032,7 @@ public class FrameTxProcessorTests
                 "the assertion rewinds the body down to the prefix, which the charge sits inside");
             foreach (UInt256 key in keys)
             {
-                Assert.That(new UInt256(_stateProvider.Get(KeyedNonceManager.StorageSlot(Sender, key)), isBigEndian: true),
+                Assert.That(StorageAt(KeyedNonceManager.StorageSlot(Sender, key)),
                     Is.EqualTo(UInt256.One), $"key {key} stays consumed, so its slot stays paid for");
             }
         }
@@ -3121,7 +3127,7 @@ public class FrameTxProcessorTests
         if (keyed) tx.NonceKeys = [3, 9];
 
         Assert.That(Process(tx).TransactionExecuted, Is.True);
-        return (ulong)new UInt256(_stateProvider.Get(new StorageCell(Observer, 0)), isBigEndian: true);
+        return (ulong)StorageAt(new StorageCell(Observer, 0));
     }
 
     // Authenticating only the first key would accept a set an attacker extended with keys approval
@@ -3183,7 +3189,7 @@ public class FrameTxProcessorTests
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
 
         Assert.That(Process(tx).TransactionExecuted, Is.True);
-        return (ulong)new UInt256(_stateProvider.Get(new StorageCell(Observer, 0)), isBigEndian: true);
+        return (ulong)StorageAt(new StorageCell(Observer, 0));
     }
 
     private static UInt256 AddressAsWord(Address address) => new(address.Bytes, isBigEndian: true);
@@ -3265,7 +3271,7 @@ public class FrameTxProcessorTests
         ValueHash256 sourceId = RecentRootStore.SourceId(Observer, salt);
         ValueHash256 root = TestItem.KeccakB.ValueHash256;
         _stateProvider.Set(RecentRootStore.ReferenceCell(sourceId, committedSlot),
-            RecentRootStore.EntryHash(sourceId, committedSlot, root).Bytes.WithoutLeadingZeros().ToArray());
+            RecentRootStore.EntryHash(sourceId, committedSlot, root).ToUInt256());
         _stateProvider.Commit(Spec);
 
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
@@ -3443,7 +3449,7 @@ public class FrameTxProcessorTests
         _stateProvider.InsertCode(Sender, ApproveCode(TxFrame.ApproveExecutionAndPayment), Spec);
         _stateProvider.CreateAccount(Eip8272Constants.RecentRootAddress, UInt256.Zero, 1);
         _stateProvider.Set(RecentRootStore.ReferenceCell(sourceId, committedSlot),
-            RecentRootStore.EntryHash(sourceId, committedSlot, root).Bytes.WithoutLeadingZeros().ToArray());
+            RecentRootStore.EntryHash(sourceId, committedSlot, root).ToUInt256());
         _stateProvider.Commit(Spec);
         _stateProvider.CommitTree(0);
 
@@ -4193,7 +4199,7 @@ public class FrameTxProcessorTests
         ValueHash256 sourceId = RecentRootStore.SourceId(Observer, TestItem.KeccakA.ValueHash256);
         ValueHash256 root = TestItem.KeccakB.ValueHash256;
         _stateProvider.Set(RecentRootStore.ReferenceCell(sourceId, slot),
-            RecentRootStore.EntryHash(sourceId, slot, root).Bytes.WithoutLeadingZeros().ToArray());
+            RecentRootStore.EntryHash(sourceId, slot, root).ToUInt256());
         _stateProvider.Commit(Spec);
         return new RecentRootReference(sourceId, slot, root);
     }
@@ -4276,7 +4282,7 @@ public class FrameTxProcessorTests
         Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(TxFrame.ModeDefault, target: Observer));
 
         Assert.That(Process(tx, slotNumber: HeadSlot).TransactionExecuted, Is.True);
-        return (ulong)_stateProvider.Get(new StorageCell(Observer, 0)).ToUnsignedBigInteger();
+        return (ulong)StorageAt(new StorageCell(Observer, 0));
     }
 
     [TestCase(Instruction.APPROVE, (byte)0xAA, TestName = "RegistryByte_APPROVE_0xAA")]

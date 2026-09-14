@@ -520,10 +520,10 @@ public static partial class EvmInstructions
     /// <summary>
     /// Returns the chain identifier.
     /// </summary>
-    public struct OpChainId<TGasPolicy> : IOpEnv32Bytes<TGasPolicy>
+    public struct OpChainId<TGasPolicy> : IOpBlkUInt256<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        public static ref readonly ValueHash256 Operation(VirtualMachine<TGasPolicy> vm)
+        public static ref readonly UInt256 Operation(VirtualMachine<TGasPolicy> vm)
             => ref vm.ChainId;
     }
 
