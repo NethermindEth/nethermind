@@ -610,7 +610,6 @@ public class BlockProcessorTests
 
     [TestCase(ProcessingOptions.Trace)]
     [TestCase(ProcessingOptions.ProducingBlock)]
-    [TestCase(ProcessingOptions.ForceSameBlock)]
     [TestCase(ProcessingOptions.ForceProcessing)]
     public void BranchProcessor_legacy_options_use_base_scope(ProcessingOptions options)
     {

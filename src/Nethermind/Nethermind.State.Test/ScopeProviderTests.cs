@@ -1502,7 +1502,7 @@ public class ScopeProviderTests(bool useFlat)
     [Test]
     public void Test_PopulatorSlotHint_IsRenewedAfterScopeReuse([Values] bool resetTransactionChanges)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, TestParentHeaderProvider.Unavailable);
         Hash256 baseRoot = CommitBaseState(ctx);
         PreBlockCaches caches = NewCaches();
         IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
