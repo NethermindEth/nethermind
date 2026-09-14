@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using NLog;
+using NLog.Common;
 using NLog.Config;
 using NLog.Targets;
 using NLog.Targets.Wrappers;
@@ -55,10 +56,7 @@ namespace Nethermind.Logging.NLog.Test
         [Test]
         public void Create_removes_overwritten_rules()
         {
-            // Reload the linked NLog.config into a fresh configuration so this test's outcome
-            // does not depend on rule mutations left behind by other tests in this fixture.
-            string configPath = Path.Combine(AppContext.BaseDirectory, "NLog.config");
-            LogManager.Configuration = new XmlLoggingConfiguration(configPath);
+            LogManager.Configuration = ShippedConfiguration();
 
             using (new NLogManager("test", null, "*:Error")) { }
 
@@ -88,10 +86,7 @@ namespace Nethermind.Logging.NLog.Test
         [Test]
         public void Log_rules_do_not_write_to_seq_target()
         {
-            // Reload the linked NLog.config into a fresh configuration so this test's outcome
-            // does not depend on rule mutations left behind by other tests in this fixture.
-            string configPath = Path.Combine(AppContext.BaseDirectory, "NLog.config");
-            LogManager.Configuration = new XmlLoggingConfiguration(configPath);
+            LogManager.Configuration = ShippedConfiguration();
 
             using (new NLogManager("test", null, "Synchronization.*:Trace"))
             {
@@ -106,6 +101,13 @@ namespace Nethermind.Logging.NLog.Test
                 }
             }
         }
+
+        /// <remarks>
+        /// Reloads the linked NLog.config into a fresh configuration so a test's outcome does not
+        /// depend on rule mutations left behind by other tests in this fixture.
+        /// </remarks>
+        private static LoggingConfiguration ShippedConfiguration() =>
+            new XmlLoggingConfiguration(Path.Combine(AppContext.BaseDirectory, "NLog.config"));
 
         private static LoggingConfiguration ConfigurationWith(params LoggingRule[] rules)
         {
@@ -214,6 +216,160 @@ namespace Nethermind.Logging.NLog.Test
             });
 
             Assert.That(LogManager.Configuration.LoggingRules.Any(r => r.LoggerNamePattern == "Synchronization.*"), Is.False);
+        }
+
+        [Test]
+        public void Init_LogRules_that_cannot_be_applied_are_reported()
+        {
+            MemoryTarget seq = new() { Name = "seq" };
+            LogManager.Configuration = ConfigurationWith(new LoggingRule("*", Level.Trace, Level.Fatal, seq));
+
+            TextWriter previousWriter = InternalLogger.LogWriter;
+            Level previousLevel = InternalLogger.LogLevel;
+            using StringWriter internalLog = new();
+            InternalLogger.LogWriter = internalLog;
+            InternalLogger.LogLevel = Level.Warn;
+            try
+            {
+                using (new NLogManager("test", null, "Synchronization.*:Trace")) { }
+            }
+            finally
+            {
+                InternalLogger.LogWriter = previousWriter;
+                InternalLogger.LogLevel = previousLevel;
+            }
+
+            Assert.That(internalLog.ToString(), Does.Contain("Synchronization.*:Trace"));
+        }
+
+        [Test]
+        public void Wrapper_target_around_seq_is_excluded_from_Init_LogRules()
+        {
+            MemoryTarget seq = new() { Name = "seq" };
+            MemoryTarget file = new() { Name = "file" };
+            BufferingTargetWrapper buffered = new("seq-buffer", seq);
+            LogManager.Configuration = ConfigurationWith(
+                new LoggingRule("*", Level.Trace, Level.Fatal, buffered),
+                new LoggingRule("*", Level.Trace, Level.Fatal, file));
+
+            using (new NLogManager("test", null, "Synchronization.*:Trace"))
+            {
+                LoggingRule synthesised = LogManager.Configuration.LoggingRules.Single(r => r.LoggerNamePattern == "Synchronization.*");
+                string[] targetNames = synthesised.Targets.Select(t => t.Name).ToArray();
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(targetNames, Does.Not.Contain("seq-buffer"));
+                    Assert.That(targetNames, Does.Not.Contain("seq"));
+                    Assert.That(targetNames, Does.Contain("file"));
+                }
+            }
+        }
+
+        [Test]
+        public void Target_graph_with_a_cycle_is_walked_once()
+        {
+            MemoryTarget file = new() { Name = "file" };
+            MemoryTarget seq = new() { Name = "seq" };
+            SplitGroupTarget cyclic = new() { Name = "cyclic" };
+            cyclic.Targets.Add(file);
+            cyclic.Targets.Add(seq);
+            cyclic.Targets.Add(cyclic);
+            LogManager.Configuration = ConfigurationWith(new LoggingRule("*", Level.Trace, Level.Fatal, cyclic));
+
+            try
+            {
+                using (new NLogManager("test", null, "Synchronization.*:Trace"))
+                {
+                    LoggingRule synthesised = LogManager.Configuration.LoggingRules.Single(r => r.LoggerNamePattern == "Synchronization.*");
+                    string[] targetNames = synthesised.Targets.Select(t => t.Name).ToArray();
+
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(targetNames, Does.Contain("file"));
+                        Assert.That(targetNames, Does.Not.Contain("seq"));
+                    }
+                }
+            }
+            finally
+            {
+                // NLog closes the outgoing configuration when the next one is installed, and closing a
+                // target graph that still contains the cycle overflows the stack and kills the test host.
+                cyclic.Targets.Remove(cyclic);
+                LogManager.Configuration = new LoggingConfiguration();
+            }
+        }
+
+        [Test]
+        public void Init_LogRules_reach_the_non_seq_members_of_a_group_target()
+        {
+            MemoryTarget seq = new() { Name = "seq", Layout = "${level}|${message}" };
+            MemoryTarget file = new() { Name = "file", Layout = "${level}|${message}" };
+            SplitGroupTarget all = new() { Name = "all" };
+            all.Targets.Add(seq);
+            all.Targets.Add(file);
+            LogManager.Configuration = ConfigurationWith(new LoggingRule("*", Level.Info, Level.Fatal, all) { Final = true });
+
+            using (new NLogManager("test", null, "Synchronization.*:Trace"))
+            {
+                Logger logger = LogManager.GetLogger("Synchronization.Foo");
+                logger.Trace("raised");
+                logger.Info("baseline");
+                LogManager.Flush();
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(file.Logs, Is.EqualTo(new[] { "Trace|raised", "Info|baseline" }));
+                    Assert.That(seq.Logs, Is.EqualTo(new[] { "Info|baseline" }));
+                }
+            }
+        }
+
+        [Test]
+        public void Non_final_group_rule_writes_shared_levels_twice()
+        {
+            MemoryTarget seq = new() { Name = "seq", Layout = "${level}|${message}" };
+            MemoryTarget file = new() { Name = "file", Layout = "${level}|${message}" };
+            SplitGroupTarget all = new() { Name = "all" };
+            all.Targets.Add(seq);
+            all.Targets.Add(file);
+            LogManager.Configuration = ConfigurationWith(new LoggingRule("*", Level.Info, Level.Fatal, all));
+
+            using (new NLogManager("test", null, "Synchronization.*:Trace"))
+            {
+                Logger logger = LogManager.GetLogger("Synchronization.Foo");
+                logger.Trace("raised");
+                logger.Info("baseline");
+                LogManager.Flush();
+
+                // Without final="true" on the group rule (contrast Init_LogRules_reach_the_non_seq_members_of_a_group_target
+                // above), its own Info-and-above delivery and the synthesised rule's both reach `file`, so the
+                // Info level they share is written twice; `seq` still gets it once, since the synthesised rule
+                // excludes seq entirely.
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(file.Logs, Is.EqualTo(new[] { "Trace|raised", "Info|baseline", "Info|baseline" }));
+                    Assert.That(seq.Logs, Is.EqualTo(new[] { "Info|baseline" }));
+                }
+            }
+        }
+
+        [Test]
+        public void Group_target_of_the_shipped_config_contributes_no_target_of_its_own()
+        {
+            LoggingConfiguration configuration = ShippedConfiguration();
+            Target all = configuration.FindTargetByName("all");
+            configuration.LoggingRules.Add(new LoggingRule("Network.*", Level.Trace, Level.Fatal, all));
+            LogManager.Configuration = configuration;
+
+            using (new NLogManager("test", null, "Synchronization.*:Trace"))
+            {
+                LoggingRule synthesised = LogManager.Configuration.LoggingRules.Single(r => r.LoggerNamePattern == "Synchronization.*");
+
+                // The group's members are the very targets the shipped catch-all rules already name, so
+                // descending into it must neither add a target nor repeat one.
+                Assert.That(synthesised.Targets.Select(t => t.Name), Is.EquivalentTo(new[] { "file-async", "auto-colored-console-async" }));
+            }
         }
     }
 }
