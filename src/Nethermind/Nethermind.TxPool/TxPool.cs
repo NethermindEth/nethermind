@@ -354,10 +354,8 @@ namespace Nethermind.TxPool
             DropUnreadySenders(_transactions.GetBucketSnapshot(), filterToReadyTx, baseFee);
 
         /// <summary>Drops from a taken bucket snapshot the senders with nothing includable in the next block.</summary>
-        /// <remarks>Judged on the taken snapshot rather than while the pool is walked: readiness reads head state —
-        /// an account nonce, plus a <c>NONCE_MANAGER</c> slot per key an EIP-8250 entry selects — and judging it
-        /// during the walk pays for that under the pool-wide lock every insert and removal contends on. The cost
-        /// moved rather than went away: filtering afterwards copies the buckets it then discards.
+        /// <remarks>Judged after the pool walk rather than during it, to keep the head-state reads readiness needs
+        /// off the pool-wide lock; the cost moves rather than goes away, as buckets later discarded are copied first.
         /// Safe to judge late because the scan reads only what is fixed for a pooled transaction — nonce, nonce
         /// keys, fee cap — never the gas bottleneck a concurrent bucket update reprices, and because it walks the
         /// taken array rather than the live set, so a moved ordering key cannot make it skip an entry.</remarks>
@@ -1154,12 +1152,9 @@ namespace Nethermind.TxPool
         /// <summary>Queues <paramref name="hash"/> for the next head's revalidation sweep, unless it has already
         /// been carried across <see cref="ITxPoolConfig.FrameTxRevalidationDeferralBudget"/> consecutive heads.</summary>
         /// <remarks>Bounded because each deferral costs a validation-prefix simulation under the head write lock:
-        /// left unbounded, a backlog larger than one head's simulation budget never drains and every later head
-        /// spends that whole budget holding the lock again. Only the carry is bounded — the count is read from the
-        /// previous head's map alone, so a head that revalidates without re-deferring clears it and a later block
-        /// naming the transaction's dependencies re-arms the full budget. That block would have triggered a
-        /// revalidation regardless, so what stays bounded is the self-feeding backlog. Exhausting the budget leaves
-        /// the transaction pending and unjudged, the same standing a one-off dependency change already leaves it in.</remarks>
+        /// left unbounded, a backlog larger than one head's simulation budget never drains and stalls every later
+        /// head. The count is read from the previous head's map alone, so a head that revalidates without
+        /// re-deferring clears it; what stays bounded is the carry feeding itself, not the total.</remarks>
         private bool TryDeferToNextHead(in ValueHash256 hash)
         {
             _frameTxDeferralsCarried.TryGetValue(hash, out int spentHeads);
