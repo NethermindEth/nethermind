@@ -82,6 +82,7 @@
     "eip7934TransitionTimestamp": "0x68edfd60",
     "eip7939TransitionTimestamp": "0x68edfd60",
     "eip7951TransitionTimestamp": "0x68edfd60",
+    "amsterdam": "0x6ac4fd60",
     "depositContractAddress": "0x7f02c3e3c98b133055b8b348b2ac625669ed295d",
     "blobSchedule": [
       {
