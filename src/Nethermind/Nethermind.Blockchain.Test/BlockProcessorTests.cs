@@ -537,7 +537,7 @@ public class BlockProcessorTests
     [TestCase(ProcessingOptions.None)]
     [TestCase(ProcessingOptions.EthereumMerge)]
     [TestCase(ProcessingOptions.DoNotUpdateHead)]
-    [TestCase(ProcessingOptions.Trace)]
+    [TestCase(ProcessingOptions.ReadOnlyChain)]
     [TestCase(ProcessingOptions.ProducingBlock)]
     [TestCase(ProcessingOptions.ForceProcessing)]
     [TestCase(ProcessingOptions.NoValidation)]
