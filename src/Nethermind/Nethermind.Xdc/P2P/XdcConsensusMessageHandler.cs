@@ -113,9 +113,10 @@ internal sealed class XdcConsensusMessageHandler(
 
     private void Handle(SyncInfoMsg syncInfoMsg)
     {
-        SyncInfo syncInfo = syncInfoMsg.SyncInfo;
-        LogSkippedCertificate(syncInfoManager.ProcessTimeoutCertificate(syncInfo.HighestTimeoutCert));
-        LogSkippedCertificate(syncInfoManager.ProcessQuorumCertificate(syncInfo.HighestQuorumCert));
+        // The message itself decodes to null from an empty RLP list, just like either certificate does.
+        SyncInfo? syncInfo = syncInfoMsg.SyncInfo;
+        LogSkippedCertificate(syncInfoManager.ProcessTimeoutCertificate(syncInfo?.HighestTimeoutCert));
+        LogSkippedCertificate(syncInfoManager.ProcessQuorumCertificate(syncInfo?.HighestQuorumCert));
     }
 
     private void LogSkippedCertificate(string? error)

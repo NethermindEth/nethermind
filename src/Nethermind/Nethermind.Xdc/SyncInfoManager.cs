@@ -15,10 +15,11 @@ internal class SyncInfoManager(
 {
     public SyncInfo GetSyncInfo() => new(xdcContext.HighestQC, xdcContext.HighestTC);
 
-    public string? ProcessQuorumCertificate(QuorumCertificate quorumCert)
+    public string? ProcessQuorumCertificate(QuorumCertificate? quorumCert)
     {
-        if (quorumCert is null)
-            return "QC is missing";
+        // A peer can omit the certificate or its block info; an empty RLP list decodes to null for both.
+        if (quorumCert?.ProposedBlockInfo is null)
+            return "QC is missing or carries no block info";
 
         ulong knownRound = xdcContext.HighestQC.ProposedBlockInfo.Round;
         if (quorumCert.ProposedBlockInfo.Round <= knownRound)
@@ -40,7 +41,7 @@ internal class SyncInfoManager(
         return null;
     }
 
-    public string? ProcessTimeoutCertificate(TimeoutCertificate timeoutCert)
+    public string? ProcessTimeoutCertificate(TimeoutCertificate? timeoutCert)
     {
         if (timeoutCert is null)
             return "TC is missing";

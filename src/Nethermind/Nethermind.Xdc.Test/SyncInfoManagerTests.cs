@@ -64,6 +64,17 @@ public class SyncInfoManagerTests
         Assert.That(manager.ProcessQuorumCertificate(qc), Is.Not.Null);
     }
 
+    // A peer can leave out the QC's block info just as it can leave out the certificate itself.
+    [Test]
+    public void ProcessQuorumCertificate_WithoutBlockInfo_IsSkippedInsteadOfThrowing()
+    {
+        IQuorumCertificateManager qcManager = Substitute.For<IQuorumCertificateManager>();
+        SyncInfoManager manager = CreateManager(qcManager, Substitute.For<ITimeoutCertificateManager>());
+
+        Assert.That(manager.ProcessQuorumCertificate(new QuorumCertificate(null!, [], 0)), Is.Not.Null);
+        qcManager.DidNotReceive().CommitCertificate(Arg.Any<QuorumCertificate>());
+    }
+
     private static SyncInfoManager CreateManager(IQuorumCertificateManager qcManager, ITimeoutCertificateManager timeoutManager)
     {
         IXdcConsensusContext xdcContext = Substitute.For<IXdcConsensusContext>();

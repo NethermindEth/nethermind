@@ -161,6 +161,25 @@ public class XdcProtocolHandlerTests
         }
     }
 
+    // An empty RLP list decodes to a null SyncInfo, so a peer can send a message carrying nothing at all.
+    [Test]
+    public void HandleMessage_SyncInfoMsgWithoutContent_IsSkippedInsteadOfThrowing()
+    {
+        (XdcProtocolHandler handler, IMessageSerializationService serializer, _,
+            _, _, ISyncInfoManager syncInfoManager) = CreateAll();
+        using (handler)
+        {
+            ZeroPacket packet = CreatePacket(XdcMessageCode.SyncInfoMsg);
+            serializer.Deserialize<SyncInfoMsg>(packet.Content).Returns(new SyncInfoMsg { SyncInfo = null });
+
+            HandleIncomingStatus(handler, serializer);
+            Assert.DoesNotThrow(() => handler.HandleMessage(packet));
+
+            syncInfoManager.Received(1).ProcessQuorumCertificate(null);
+            syncInfoManager.Received(1).ProcessTimeoutCertificate(null);
+        }
+    }
+
     [Test]
     public void SendVote_FirstVote_IsDelivered()
     {
