@@ -31,6 +31,7 @@ namespace Nethermind.TxPool.Collections
         {
             _poolCapacity = capacity;
             _updateTx = UpdateTransaction;
+            Removed += OnRemovedFromBucket;
         }
 
         protected override IComparer<Transaction> GetUniqueComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparer();
@@ -55,30 +56,29 @@ namespace Nethermind.TxPool.Collections
             return true;
         }
 
-        protected override bool Remove(ValueHash256 key, out Transaction? value)
+        /// <summary>Drops the keyed-entry count the bucket no longer holds.</summary>
+        /// <remarks>Raised only once the bucket removal is confirmed. Decrementing earlier would strand the count
+        /// below the bucket's real keyed content whenever the group comparer fails to locate an entry whose
+        /// ordering key moved, and <see cref="GetAccountDomainBucketCount"/> would over-report from then on.</remarks>
+        private void OnRemovedFromBucket(object? sender, SortedPoolRemovedEventArgs args)
         {
-            if (!base.Remove(key, out value))
+            if (!KeyedNonceManager.UsesKeyedNonce(args.Value))
             {
-                return false;
+                return;
             }
 
-            if (value is not null && KeyedNonceManager.UsesKeyedNonce(value))
+            AddressAsKey groupKey = MapToGroup(args.Value);
+            if (_keyedNonceCounts.TryGetValue(groupKey, out int keyedCount))
             {
-                AddressAsKey groupKey = MapToGroup(value);
-                if (_keyedNonceCounts.TryGetValue(groupKey, out int keyedCount))
+                if (keyedCount > 1)
                 {
-                    if (keyedCount > 1)
-                    {
-                        _keyedNonceCounts[groupKey] = keyedCount - 1;
-                    }
-                    else
-                    {
-                        _keyedNonceCounts.Remove(groupKey);
-                    }
+                    _keyedNonceCounts[groupKey] = keyedCount - 1;
+                }
+                else
+                {
+                    _keyedNonceCounts.Remove(groupKey);
                 }
             }
-
-            return true;
         }
 
         /// <summary>Number of a sender's pending transactions that consume its account nonce.</summary>
