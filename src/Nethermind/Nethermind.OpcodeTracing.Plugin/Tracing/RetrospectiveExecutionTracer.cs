@@ -119,8 +119,8 @@ public sealed class RetrospectiveExecutionTracer
     /// <summary>
     /// Processes a single block by replaying all its transactions with the EVM.
     /// This method is synchronous and thread-safe for parallel execution.
-    /// State availability is checked via exception handling rather than pre-checking,
-    /// matching the pattern used by debug_traceBlock.
+    /// Parent state availability is checked when the scope opens; nodes missing mid-execution surface as
+    /// <see cref="MissingTrieNodeException"/>, matching the pattern used by debug_traceBlock.
     /// </summary>
     /// <param name="blockNumber">The block number to process.</param>
     /// <param name="progress">The progress tracker.</param>
@@ -142,15 +142,25 @@ public sealed class RetrospectiveExecutionTracer
         }
 
         // Process the block with our opcode counting tracer
-        // State availability is determined by catching MissingTrieNodeException during processing
         try
         {
-            long[] blockOpcodes = ProcessBlock(block, cancellationToken);
-            _counter.AccumulateFrom(blockOpcodes);
+            long[]? blockOpcodes = ProcessBlock(block, cancellationToken);
+            if (blockOpcodes is null)
+            {
+                // State is genuinely unavailable (pruned or not synced)
+                if (_logger.IsWarn)
+                {
+                    _logger.Warn($"State unavailable for block {blockNumber}");
+                }
+                _skippedBlocks.Enqueue(blockNumber);
+            }
+            else
+            {
+                _counter.AccumulateFrom(blockOpcodes);
+            }
         }
         catch (MissingTrieNodeException ex)
         {
-            // State is genuinely unavailable (pruned or not synced)
             if (_logger.IsWarn)
             {
                 _logger.Warn($"State unavailable for block {blockNumber}: {ex.Message}");
@@ -181,8 +191,8 @@ public sealed class RetrospectiveExecutionTracer
     /// </summary>
     /// <param name="block">The block to process.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>Array of opcode counts (256 elements, one per possible opcode byte).</returns>
-    private long[] ProcessBlock(Block block, CancellationToken cancellationToken)
+    /// <returns>Array of opcode counts (256 elements, one per possible opcode byte), or <c>null</c> when the block's parent state is unavailable.</returns>
+    private long[]? ProcessBlock(Block block, CancellationToken cancellationToken)
     {
         long[] blockOpcodes = new long[256];
 
@@ -191,7 +201,8 @@ public sealed class RetrospectiveExecutionTracer
         try
         {
             // Create isolated processing scope based on parent state
-            using IReadOnlyTxProcessingScope scope = txProcessorSource.BuildAtTarget(block.Header);
+            if (!txProcessorSource.TryBuildAtTarget(block.Header, out IReadOnlyTxProcessingScope? scope)) return null;
+            using IDisposable _ = scope;
 
             // Clone the header to avoid mutating the shared cached instance from BlockTree
             BlockHeader tracingHeader = block.Header.Clone();
