@@ -4868,6 +4868,47 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // EIP-8141: the persistent blob pool takes the light record before it writes the body, so a throwing
+        // storage leaves the record pooled. The reservations are the pooled record's from that point on, and
+        // releasing them on the way out would free a slot the record still holds.
+        [Test]
+        public async Task Blob_carrying_frame_tx_pooled_by_a_throwing_storage_write_keeps_its_reservations()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs };
+            ThrowingBlobTxStorage blobTxStorage = new();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.PrivateKeyC.Address, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressD);
+
+            Transaction Sponsored(PrivateKey sender) =>
+                BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, paymaster: TestItem.AddressD, sender: sender);
+
+            Transaction pooled = Sponsored(TestItem.PrivateKeyA);
+            blobTxStorage.ThrowOnAdd = true;
+            Assert.That(() => _txPool.SubmitTx(pooled, TxHandlingOptions.None), Throws.InstanceOf<InvalidOperationException>());
+            blobTxStorage.ThrowOnAdd = false;
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the failed write leaves the record pooled");
+
+            // The ledgers are only checked against pool membership on a head change.
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            AcceptTxResult whilePooled = _txPool.SubmitTx(Sponsored(TestItem.PrivateKeyB), TxHandlingOptions.None);
+
+            _txPool.RemoveTransaction(pooled.Hash);
+            AcceptTxResult afterRemoval = _txPool.SubmitTx(Sponsored(TestItem.PrivateKeyC), TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(whilePooled, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached),
+                    "the pooled record still holds its sponsor's slot");
+                Assert.That(afterRemoval, Is.EqualTo(AcceptTxResult.Accepted), "and frees it once, on removal");
+            }
+        }
+
         // EIP-8141: the cap is summed over the pending set, so a record that survived a restart has to keep
         // holding its sponsor's slot, and to free it on removal.
         [Test]
@@ -5572,6 +5613,41 @@ namespace Nethermind.TxPool.Test
             };
             tx.Hash = tx.CalculateHash();
             return tx;
+        }
+
+        /// <summary>A blob tx storage whose body write can be made to fail, standing in for a disk error.</summary>
+        /// <remarks>A decorator rather than a subclass: the pool reaches the write through the interface, and
+        /// deliberately not an <see cref="IAtomicBlobTxStorage"/>, so a fresh insert takes the plain add path.</remarks>
+        private sealed class ThrowingBlobTxStorage : IBlobTxStorage
+        {
+            private readonly BlobTxStorage _inner = new();
+
+            public bool ThrowOnAdd { get; set; }
+
+            public void Add(Transaction transaction)
+            {
+                if (ThrowOnAdd) throw new InvalidOperationException("blob tx storage write failed");
+
+                _inner.Add(transaction);
+            }
+
+            public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction) =>
+                _inner.TryGet(hash, sender, timestamp, out transaction);
+
+            public int TryGetMany(TxLookupKey[] keys, int count, Transaction[] results) =>
+                _inner.TryGetMany(keys, count, results);
+
+            public IEnumerable<LightTransaction> GetAll() => _inner.GetAll();
+
+            public void Delete(in ValueHash256 hash, in UInt256 timestamp) => _inner.Delete(hash, timestamp);
+
+            public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, out Transaction[] blockBlobTransactions) =>
+                _inner.TryGetBlobTransactionsFromBlock(blockNumber, out blockBlobTransactions);
+
+            public void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions) =>
+                _inner.AddBlobTransactionsFromBlock(blockNumber, in blockBlobTransactions);
+
+            public void DeleteBlobTransactionsFromBlock(ulong blockNumber) => _inner.DeleteBlobTransactionsFromBlock(blockNumber);
         }
     }
 }
