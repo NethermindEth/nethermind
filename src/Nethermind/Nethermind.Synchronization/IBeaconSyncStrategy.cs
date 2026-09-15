@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -25,6 +26,7 @@ namespace Nethermind.Synchronization
         public ulong? GetTargetBlockHeight() => null;
         public Hash256? GetFinalizedHash() => null;
         public Hash256? GetHeadBlockHash() => null;
+        public event Action? BeaconSyncStopped { add { } remove { } }
 
         public Task EnsureSyncPivot(CancellationToken cancellationToken) => Task.CompletedTask;
     }
@@ -40,6 +42,12 @@ namespace Nethermind.Synchronization
         public ulong? GetTargetBlockHeight();
         public Hash256? GetFinalizedHash();
         public Hash256? GetHeadBlockHash();
+
+        /// <summary>
+        /// Raised when beacon sync stops and the beacon pivot is removed, signalling that cached payload blocks
+        /// may be discarded.
+        /// </summary>
+        event Action? BeaconSyncStopped;
     }
 
     /// <summary>

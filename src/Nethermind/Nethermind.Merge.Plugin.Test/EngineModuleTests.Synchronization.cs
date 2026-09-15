@@ -211,13 +211,12 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
 
-        IBlockCacheService blockCacheService = chain.Container.Resolve<IBlockCacheService>();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatusV1.Syncing).ToUpper()));
             Assert.That(chain.BeaconSync!.ShouldBeInBeaconHeaders(), Is.False);
-            Assert.That(blockCacheService.FinalizedHash, Is.EqualTo(TestItem.KeccakC));
-            Assert.That(blockCacheService.HeadBlockHash, Is.EqualTo(block.Hash));
+            Assert.That(chain.BeaconSync!.GetFinalizedHash(), Is.EqualTo(TestItem.KeccakC));
+            Assert.That(chain.BeaconSync!.GetHeadBlockHash(), Is.EqualTo(block.Hash));
             // The cache is in-memory only; a node killed here must find the hash again after restart,
             // so it must also reach the block tree's persisted forkchoice slots.
             Assert.That(chain.BlockTree.FinalizedHash, Is.EqualTo(TestItem.KeccakC));

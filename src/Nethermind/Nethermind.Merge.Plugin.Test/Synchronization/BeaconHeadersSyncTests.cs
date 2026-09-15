@@ -69,7 +69,7 @@ public class BeaconHeadersSyncTests
         }
 
         private BeaconSync? _beaconSync;
-        public BeaconSync BeaconSync => _beaconSync ??= new(BeaconPivot, BlockTree, SyncConfig, BlockCacheService, PoSSwitcher, LimboLogs.Instance);
+        public BeaconSync BeaconSync => _beaconSync ??= new(BeaconPivot, BlockTree, SyncConfig, PoSSwitcher, LimboLogs.Instance);
 
         private IDb? _metadataDb;
         public IDb MetadataDb => _metadataDb ??= new MemDb();
