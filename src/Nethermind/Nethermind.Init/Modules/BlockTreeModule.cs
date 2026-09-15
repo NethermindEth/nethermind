@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using System.Threading;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
@@ -15,6 +17,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.LogIndex;
+using Nethermind.Facade.Filters;
 using Nethermind.Facade.Find;
 using Nethermind.History;
 using Nethermind.Logging;
@@ -77,8 +80,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
                 .AddSingleton<ILogIndexStorage, LogIndexStorage>()
                 .AddSingleton<ILogFinder, IndexedLogFinder>()
                 // do not use range-limited version when index is enabled; regardless of query being covered by index
-                // any additional ILogFinder decorator to be used by RPC should be marked with IRpcLogFinder
-                .AddSingleton<IRpcLogFinder>(ctx => (IRpcLogFinder)ctx.Resolve<ILogFinder>());
+                .AddSingleton<IRpcLogFinder, ILogFinder>(logFinder => new UnlimitedRpcLogFinder(logFinder));
         }
         else
         {
@@ -115,4 +117,18 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
 
     private IBlockAccessListStore CreateBalStore([KeyFilter(DbNames.BlockAccessLists)] IDb balDb, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>
         new BlockAccessListStore(balDb, deferredWriter: deferredWriter, persistenceBarrier: persistenceBarrier);
+
+    /// <summary> Serves RPC logs queries straight from <see cref="ILogFinder"/>, without a block-range limit. </summary>
+    /// <remarks>
+    /// Forwards rather than casting so that a plugin decorator registered on <see cref="ILogFinder"/> keeps working;
+    /// such a decorator implements the plain interface only.
+    /// </remarks>
+    private sealed class UnlimitedRpcLogFinder(ILogFinder logFinder) : IRpcLogFinder
+    {
+        public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default) =>
+            logFinder.FindLogs(filter, cancellationToken);
+
+        public IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default) =>
+            logFinder.FindLogs(filter, fromBlock, toBlock, cancellationToken);
+    }
 }

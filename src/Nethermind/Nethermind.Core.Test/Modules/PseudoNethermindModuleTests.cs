@@ -3,11 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Receipts;
 using Nethermind.Config;
@@ -15,6 +17,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.LogIndex;
+using Nethermind.Facade.Filters;
+using Nethermind.Facade.Filters.Topics;
 using Nethermind.Facade.Find;
 using Nethermind.Init.Modules;
 using Nethermind.Db;
@@ -174,8 +178,6 @@ public class PseudoNethermindModuleTests
         Assert.That(container.Resolve<IPersistedSnapshotCompactor>(), Is.SameAs(NullPersistedSnapshotCompactor.Instance));
     }
 
-    // The indexed branch casts the ILogFinder registration to IRpcLogFinder, so a decorator that drops the
-    // marker fails at resolve time rather than silently bypassing the RPC path.
     [Test]
     public void Rpc_log_finder_is_range_limited_only_without_the_log_index([Values] bool logIndexEnabled)
     {
@@ -183,10 +185,42 @@ public class PseudoNethermindModuleTests
             .AddModule(new TestNethermindModule(new LogIndexConfig { Enabled = logIndexEnabled }))
             .Build();
 
-        IRpcLogFinder rpcLogFinder = container.Resolve<IRpcLogFinder>();
-
-        Assert.That(rpcLogFinder, logIndexEnabled
-            ? Is.SameAs(container.Resolve<ILogFinder>())
+        Assert.That(container.Resolve<IRpcLogFinder>(), logIndexEnabled
+            ? Is.Not.InstanceOf<RangeLimitedLogFinder>()
             : Is.InstanceOf<RangeLimitedLogFinder>());
+    }
+
+    [Test]
+    public void Rpc_log_finder_goes_through_a_plain_log_finder_decorator([Values] bool logIndexEnabled)
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new LogIndexConfig { Enabled = logIndexEnabled }))
+            .AddDecorator<ILogFinder, RecordingLogFinder>()
+            .Build();
+
+        BlockHeader head = Build.A.BlockHeader.WithNumber(1).TestObject;
+        LogFilter filter = new(0, new BlockParameter(1UL), new BlockParameter(1UL),
+            new AddressFilter(TestItem.AddressA), SequenceTopicsFilter.AnyTopic);
+        _ = container.Resolve<IRpcLogFinder>().FindLogs(filter, head, head);
+
+        Assert.That(((RecordingLogFinder)container.Resolve<ILogFinder>()).Calls, Is.EqualTo(1),
+            "a plugin decorator implements ILogFinder only, so the RPC finder has to forward to it rather than cast");
+    }
+
+    private sealed class RecordingLogFinder(ILogFinder logFinder) : ILogFinder
+    {
+        public int Calls { get; private set; }
+
+        public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return logFinder.FindLogs(filter, cancellationToken);
+        }
+
+        public IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return logFinder.FindLogs(filter, fromBlock, toBlock, cancellationToken);
+        }
     }
 }
