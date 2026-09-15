@@ -67,6 +67,19 @@ public class InvalidBlockInterceptorTest
         }
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public void TestValidateHeaderForwardsValidateHash(bool validateHash)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+        _baseValidator.Validate(header, parent, false, out Arg.Any<string?>(), validateHash).Returns(true);
+
+        Assert.That(_invalidBlockInterceptor.Validate(header, parent, false, out _, validateHash), Is.True);
+
+        _baseValidator.Received().Validate(header, parent, false, out Arg.Any<string?>(), validateHash);
+    }
+
     [TestCase(true, false)]
     [TestCase(false, true)]
     public void TestValidateProcessedBlock(bool baseReturnValue, bool isInvalidBlockReported)

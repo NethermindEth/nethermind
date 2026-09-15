@@ -64,10 +64,11 @@ public class BlockValidator(
     /// <param name="parent">Parent of the block</param>
     /// <param name="errorMessage">Message detailing a validation failure.</param>
     /// <param name="validateHashes">
-    /// <c>false</c> to skip recomputing hashes the caller has already verified: the header hash, the uncles hash,
-    /// the transactions root and the withdrawals root. Only pass <c>false</c> after verifying the header hash
-    /// (see <see cref="HeaderValidator.ValidateHash(BlockHeader)"/>); otherwise a block whose hash
-    /// does not match its contents is accepted, and that hash is what the block tree and the consensus layer see.
+    /// <c>false</c> to skip recomputing the header hash and the transactions, uncles and withdrawals roots,
+    /// including validation of fork-specific withdrawal presence rules. Only pass <c>false</c> after independently
+    /// validating the block body, deriving its roots and verifying the header hash
+    /// (see <see cref="HeaderValidator.ValidateHash(BlockHeader)"/>); otherwise a block whose body or header hash
+    /// does not match its contents can be accepted.
     /// </param>
     /// <returns>
     /// <c>true</c> if the <paramref name="block"/> is valid; otherwise, <c>false</c>.
