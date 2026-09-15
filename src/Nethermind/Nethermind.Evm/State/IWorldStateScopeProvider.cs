@@ -30,7 +30,7 @@ public interface IWorldStateScopeProvider
     /// <param name="targetBlock">The block that will be executed.</param>
     /// <param name="scope">The acquired scope, or <c>null</c> when acquisition fails.</param>
     /// <returns><c>true</c> when a scope was acquired; otherwise <c>false</c>.</returns>
-    bool TryBeginScope(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IScope? scope) => throw new NotSupportedException();
+    bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IScope? scope) => throw new NotSupportedException();
 
     /// <summary>
     /// Checks whether the parent state required to execute <paramref name="targetBlock"/> is available.

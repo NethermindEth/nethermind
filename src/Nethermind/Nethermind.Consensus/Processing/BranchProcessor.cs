@@ -47,7 +47,7 @@ public class BranchProcessor(
     }
 
     private IDisposable BeginTargetScope(Block targetBlock) =>
-        stateProvider.TryBeginScope(targetBlock.Header, out IDisposable? worldStateCloser)
+        stateProvider.TryBeginScopeAtTarget(targetBlock.Header, out IDisposable? worldStateCloser)
             ? worldStateCloser
             : throw new InvalidOperationException($"Parent state is unavailable for target block {targetBlock.ToString(Block.Format.FullHashAndNumber)}.");
 

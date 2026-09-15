@@ -58,12 +58,12 @@ public class WorldStateManagerTests
 
         IWorldStateScopeProvider resettable = manager.CreateResettableWorldState();
         Assert.That(resettable.HasStateForTarget(target), Is.True);
-        Assert.That(resettable.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope resettableScope), Is.True);
+        Assert.That(resettable.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope resettableScope), Is.True);
         resettableScope!.Dispose();
 
         using IOverridableWorldScope overridable = manager.CreateOverridableWorldScope();
         Assert.That(overridable.WorldState.HasStateForTarget(target), Is.True);
-        Assert.That(overridable.WorldState.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope overridableScope), Is.True);
+        Assert.That(overridable.WorldState.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope overridableScope), Is.True);
         overridableScope!.Dispose();
     }
 
@@ -80,13 +80,13 @@ public class WorldStateManagerTests
         BlockHeader child = Build.A.BlockHeader.WithParent(overriddenBase).TestObject;
 
         Assert.That(worldState.HasStateForTarget(child), Is.True);
-        Assert.That(worldState.TryBeginScope(child, new LocalMetrics(), out IWorldStateScopeProvider.IScope childScope), Is.True);
+        Assert.That(worldState.TryBeginScopeAtTarget(child, new LocalMetrics(), out IWorldStateScopeProvider.IScope childScope), Is.True);
         Assert.That(childScope!.Get(TestItem.AddressA), Is.Not.Null);
         child.StateRoot = CommitAccount(childScope, child.Number, TestItem.AddressB);
         BlockHeader grandchild = Build.A.BlockHeader.WithParent(child).TestObject;
 
         Assert.That(worldState.HasStateForTarget(grandchild), Is.True);
-        Assert.That(worldState.TryBeginScope(grandchild, new LocalMetrics(), out IWorldStateScopeProvider.IScope grandchildScope), Is.True);
+        Assert.That(worldState.TryBeginScopeAtTarget(grandchild, new LocalMetrics(), out IWorldStateScopeProvider.IScope grandchildScope), Is.True);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(grandchildScope!.Get(TestItem.AddressA), Is.Not.Null);

@@ -37,7 +37,7 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
 
         public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
         {
-            if (!worldState.TryBeginScope(targetBlock, out IDisposable? closer))
+            if (!worldState.TryBeginScopeAtTarget(targetBlock, out IDisposable? closer))
             {
                 scope = null;
                 return false;

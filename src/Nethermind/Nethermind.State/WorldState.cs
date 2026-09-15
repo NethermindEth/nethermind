@@ -291,7 +291,7 @@ namespace Nethermind.State
             });
         }
 
-        public bool TryBeginScope(BlockHeader targetBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
+        public bool TryBeginScopeAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
         {
             ArgumentNullException.ThrowIfNull(targetBlock);
             if (Interlocked.CompareExchange(ref _isInScope, true, false))
@@ -303,7 +303,7 @@ namespace Nethermind.State
 
             try
             {
-                if (!ScopeProvider.TryBeginScope(targetBlock, _localMetrics, out IWorldStateScopeProvider.IScope? scope))
+                if (!ScopeProvider.TryBeginScopeAtTarget(targetBlock, _localMetrics, out IWorldStateScopeProvider.IScope? scope))
                 {
                     EndScope();
                     scopeCloser = null;
