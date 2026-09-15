@@ -198,7 +198,11 @@ expect tar-fifo v3.0.7 1 'link or special-file member'
 expect tar-newline-name v3.0.8 1 'unexpected path or prefix'
 expect tar-over-16mib v3.0.9 1 'expands to 1677[0-9]+ bytes, over the 16777216-byte limit'
 expect tar-missing-gas v3.0.10 1 'has no sweep-236k/gas.txt'
-check no-escaped-files "[[ ! -e /tmp/fetch-artifacts-test-escape && -z \$(find '${root}/runs' -name gas.txt -path '*/temp/gas.txt') ]]"
+# Only the absolute-path escape is checkable here: validation runs on the tar listing before any
+# mkdir/extract for that sweep (see fetch-artifacts.sh), so a rejected dotdot member is never written
+# anywhere to begin with, and fetch-artifacts.sh's own work-dir trap would remove it regardless — the
+# regression that matters is already caught by tar-dotdot's own exit-code and message assertion above.
+check no-escaped-files "[[ ! -e /tmp/fetch-artifacts-test-escape ]]"
 expect verifier-no-precompile v4.0.0 1 'rejected sweep-236k/verifier.hex \(precompile-push check\): no PUSH1 of 0x06 ecAdd, 0x07 ecMul, 0x08 ecPairing'
 check verifier-no-precompile:names-heuristic "grep -q 'plausibility heuristic in scripts/frame-verify-gas/check-verifiers.py rejected release v4.0.0' '${LAST_RUN}/out'"
 expect verifier-push-data-only v4.0.1 1 'rejected sweep-236k/verifier.hex \(precompile-push check\)'

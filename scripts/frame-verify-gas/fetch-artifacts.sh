@@ -127,10 +127,13 @@ fi
 
 sums="${RUNNER_TEMP}/frame-verify-gas-groth16.SHA256SUMS"
 cp "${assets}/SHA256SUMS" "${sums}" || exit 1
-{
+if ! {
   echo "FRAME_GROTH16_ARTIFACTS=${artifacts}"
   echo "GROTH16_ARTIFACTS_SHA256SUMS=${sums}"
   echo "GROTH16_ARTIFACTS_VERSION=${version}"
   echo "GROTH16_ARTIFACTS_SHA256SUMS_DIGEST=$(sha256sum "${assets}/SHA256SUMS" | cut -d ' ' -f 1)"
-} >> "${GITHUB_ENV}"
+} >> "${GITHUB_ENV}"; then
+  echo "::error::Failed to write artifact paths to GITHUB_ENV; the measurement step would otherwise run without FRAME_GROTH16_ARTIFACTS set and self-ignore the privacy cases silently."
+  exit 1
+fi
 echo "Groth16 artifacts of ${REPO}@${version} extracted to ${artifacts}."
