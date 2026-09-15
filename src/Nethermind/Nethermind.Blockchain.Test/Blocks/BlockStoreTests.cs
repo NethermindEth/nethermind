@@ -59,7 +59,11 @@ public class BlockStoreTests
         db[block.Hash!.Bytes] = new BlockDecoder().Encode(block).Bytes;
 
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached);
-        Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
+            Assert.That(store.HasBlock(block.Number, block.Hash!), Is.True);
+        }
     }
 
     [Test]

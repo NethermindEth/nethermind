@@ -47,7 +47,7 @@ internal class XdcBlockTree(
             // During sync, already-finalized blocks may be re-suggested (e.g. gap filling).
             // Accept them as AlreadyKnown instead of treating them as invalid reorg attempts. The base returns
             // AlreadyKnown from this same predicate, and persists a body arriving for an already-known header.
-            return IsKnownBlock(header.Number, header.Hash) && (BestSuggestedHeader?.Number ?? 0) >= header.Number
+            return IsKnownBlockAtOrBelowBestSuggestedHeader(header, IsKnownBlock(header.Number, header.Hash))
                 ? base.Suggest(block, header, options)
                 : AddBlockResult.InvalidBlock;
         }

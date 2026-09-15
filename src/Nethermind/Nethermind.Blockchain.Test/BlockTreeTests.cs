@@ -65,7 +65,9 @@ public class BlockTreeTests
         _headersDb?.Dispose();
     }
 
-    private BlockTree BuildBlockTree()
+    private BlockTree BuildBlockTree() => BuildBlockTree(out _);
+
+    private BlockTree BuildBlockTree(out IBlockAccessListStore blockAccessListStore)
     {
         _blocksDb = new TestMemDb();
         _headersDb = new TestMemDb();
@@ -75,6 +77,7 @@ public class BlockTreeTests
             .WithHeadersDb(_headersDb)
             .WithBlockInfoDb(_blocksInfosDb)
             .WithoutSettingHead;
+        blockAccessListStore = builder.BlockAccessListStore;
         return builder.TestObject;
     }
 
@@ -478,18 +481,26 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Suggesting_a_block_whose_header_is_already_known_still_stores_its_body()
     {
-        BlockTree blockTree = BuildBlockTree();
+        BlockTree blockTree = BuildBlockTree(out IBlockAccessListStore blockAccessListStore);
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
         blockTree.SuggestBlock(block0);
 
         Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        block1.EncodedBlockAccessList = encodedBal;
+        block1.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
         blockTree.Insert(block1.Header); // fast sync inserts headers ahead of the bodies
 
         AddBlockResult result = blockTree.SuggestBlock(block1);
 
-        Assert.That(result, Is.EqualTo(AddBlockResult.AlreadyKnown));
-        Assert.That(blockTree.FindBlock(block1.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: block1.Number),
-            Is.Not.Null, "a known header must not make the block's body be discarded");
+        using MemoryManager<byte>? persistedBal = blockAccessListStore.GetRlp(block1.Number, block1.Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AddBlockResult.AlreadyKnown));
+            Assert.That(blockTree.FindBlock(block1.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: block1.Number),
+                Is.Not.Null, "a known header must not make the block's body be discarded");
+            Assert.That(persistedBal?.Memory.ToArray(), Is.EqualTo(encodedBal));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

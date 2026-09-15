@@ -652,22 +652,19 @@ namespace Nethermind.Synchronization.Blocks
             bool handled = false;
             if (HandleAddResult(bestPeer, currentBlock.Header, isFirstInBatch, addResult))
             {
-                if (downloadReceipts)
-                {
-                    if (receipts is not null)
-                    {
-                        _receiptStorage.Insert(currentBlock, receipts);
-                    }
-                    else
-                    {
-                        // this shouldn't now happen with new validation above, still lets keep this check
-                        if (currentBlock.Header.HasTransactions)
-                        {
-                            if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");
-                        }
-                    }
-                }
                 handled = true;
+            }
+
+            if (downloadReceipts && addResult is AddBlockResult.Added or AddBlockResult.AlreadyKnown)
+            {
+                if (receipts is not null)
+                {
+                    _receiptStorage.Insert(currentBlock, receipts);
+                }
+                else if (currentBlock.Header.HasTransactions)
+                {
+                    if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");
+                }
             }
 
             if (!shouldProcess)
