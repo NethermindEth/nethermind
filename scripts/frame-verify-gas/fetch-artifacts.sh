@@ -131,7 +131,7 @@ if ! {
   echo "FRAME_GROTH16_ARTIFACTS=${artifacts}"
   echo "GROTH16_ARTIFACTS_SHA256SUMS=${sums}"
   echo "GROTH16_ARTIFACTS_VERSION=${version}"
-  echo "GROTH16_ARTIFACTS_SHA256SUMS_DIGEST=$(sha256sum "${assets}/SHA256SUMS" | cut -d ' ' -f 1)"
+  echo "GROTH16_ARTIFACTS_SHA256SUMS_DIGEST=${digest}"
 } >> "${GITHUB_ENV}"; then
   echo "::error::Failed to write artifact paths to GITHUB_ENV; the measurement step would otherwise run without FRAME_GROTH16_ARTIFACTS set and self-ignore the privacy cases silently."
   exit 1
