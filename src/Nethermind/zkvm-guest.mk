@@ -22,7 +22,7 @@
 # fewer SP1 cycles and ~2.5% fewer ZisK steps over the nine stateless-tests
 # mainnet blocks, while 11 gives ~6.5% smaller binaries - which matters less
 # than proving cost.
-BFLAT_IMAGE ?= nethermindeth/bflat-riscv64:a8a64ef0c646b7c6d86417d7a340c1f226dbae46@sha256:ef3296763c7b8163d9f7f13de95839e03397f7a6ea9c4a6d7f902dadc843934a
+BFLAT_IMAGE ?= nethermindeth/bflat-riscv64:1554355c92e0026cbb498ef1d0d7be7e53e2eebe@sha256:c0bea3f84b34be74237c513ea92d56ab9103a0cc9b28b2900a4e3a8547065832
 
 # Every target here decodes rv64im only and reads the whole .text up front -
 # ziskemu ROMs it, SP1 panics on the first word it cannot decode, OpenVM turns
