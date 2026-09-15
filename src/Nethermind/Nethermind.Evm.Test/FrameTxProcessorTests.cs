@@ -3006,6 +3006,9 @@ public class FrameTxProcessorTests
         {
             AssertStorage(Observer, 0, UInt256.One, "the frame before the batch keeps the write it committed");
             AssertStorage(batched, 0, UInt256.Zero, "the unroll discards the write the batch's first frame committed");
+            // Without this the zero above is satisfied by a frame that never ran, so the unroll goes unpinned.
+            Assert.That(tracer.FrameReceipts![2].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess),
+                "the batch's first frame has to have committed the write the unroll then discards");
             Assert.That(tracer.FrameReceipts![3].Status, Is.EqualTo(TxFrameReceipt.StatusFailure),
                 "the terminal frame has to fail for the batch to unroll at all");
         }
