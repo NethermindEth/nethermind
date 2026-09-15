@@ -210,15 +210,11 @@ public class NonceManagerTests
     {
         using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out ulong nonce);
         Assert.That(nonce, Is.EqualTo(0UL));
-        TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task task = Task.Run(() =>
+        Task task = Task.Factory.StartNew(() =>
         {
-            started.SetResult();
             using NonceLocker locker2 = _nonceManager.ReserveNonce(TestItem.AddressB, out ulong nonce2);
             Assert.That(nonce2, Is.EqualTo(0UL));
-        });
-        Assert.That(started.Task.Wait(TimeSpan.FromSeconds(1)), Is.True);
-        task.Wait(TimeSpan.FromMilliseconds(10_000));
-        Assert.That(task.IsCompleted, Is.EqualTo(true));
+        }, TaskCreationOptions.LongRunning);
+        Assert.That(task.Wait(TimeSpan.FromMilliseconds(10_000)), Is.True);
     }
 }
