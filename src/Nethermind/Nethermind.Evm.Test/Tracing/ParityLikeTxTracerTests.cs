@@ -431,6 +431,7 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         }
     }
 
+    // Run with DOTNET_EnableAVX=0 and DOTNET_EnableHWIntrinsic=0 to exercise the Vector128 and scalar handlers.
     private static IEnumerable<TestCaseData> SuccessfulWordOperationCases()
     {
         const string zero = "0x0000000000000000000000000000000000000000000000000000000000000000";
@@ -448,6 +449,10 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         yield return WordOperationCase(Instruction.XOR, [allA, "0x0f"], $"{allA[..^2]}a5");
         yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x80", "0x00"],
             "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff80");
+        yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x800000000000000000", "0x08"],
+            "0xffffffffffffffffffffffffffffffffffffffffffffff800000000000000000");
+        yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x8000000000000000000000000000000000", "0x10"],
+            "0xffffffffffffffffffffffffffffff8000000000000000000000000000000000");
         yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x80", "0x20"],
             "0x0000000000000000000000000000000000000000000000000000000000000080");
         yield return WordOperationCase(Instruction.CLZ, ["0x00"],
