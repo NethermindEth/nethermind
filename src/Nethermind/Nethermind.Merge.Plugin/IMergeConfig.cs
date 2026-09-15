@@ -5,7 +5,7 @@ using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.Merge.Plugin.GC;
+using Nethermind.Core.Memory;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -47,21 +47,21 @@ public interface IMergeConfig : IConfig
     [ConfigItem(Description = "The garbage collection (GC) mode between Engine API calls.", DefaultValue = nameof(GcLevel.Gen1))]
     public GcLevel SweepMemory { get; set; }
 
-    [ConfigItem(Description = $"The memory compaction mode. When set to `{nameof(GcCompaction.Full)}`, compacts the large object heap (LOH) if `{nameof(SweepMemory)}` is set to `{nameof(GcLevel.Gen2)}`.",
-        DefaultValue = nameof(GcCompaction.Yes))]
+    [ConfigItem(Description = $"The compaction mode for ordinary post-block collections; periodic decommit collections always fully compact. When set to `{nameof(GcCompaction.Full)}`, compacts the large object heap (LOH) if `{nameof(SweepMemory)}` is set to `{nameof(GcLevel.Gen2)}`.",
+        DefaultValue = nameof(GcCompaction.No))]
     public GcCompaction CompactMemory { get; set; }
 
     [ConfigItem(Description = """
-            The number of requests to the garbage collector (GC) to release the process memory.
+            The number of newPayload calls between compacting collections that release process memory.
 
             Allowed values:
 
             - `-1`: No requests.
             - `0`: Requests every time.
-            - A positive number: Requests after that many Engine API calls.
+            - A positive number: Requests after that many newPayload calls, including calls whose pending collection was cancelled.
 
 
-            """, DefaultValue = "25")]
+            """, DefaultValue = "50")]
     public int CollectionsPerDecommit { get; set; }
 
     [ConfigItem(Description = "The timeout, in milliseconds, for the `engine_newPayload` method.", DefaultValue = "7000", HiddenFromDocs = true)]

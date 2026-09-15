@@ -32,6 +32,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
+using Nethermind.Core.Memory;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.SszRest;
@@ -202,15 +203,9 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IHandler<Hash256?, InclusionListBytes>, GetInclusionListTransactionsHandler>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
-                .AddSingleton<GCKeeper>((ctx) =>
-                {
-                    IInitConfig initConfig = ctx.Resolve<IInitConfig>();
-                    return new GCKeeper(
-                        initConfig.DisableGcOnNewPayload
-                            ? ctx.Resolve<NoSyncGcRegionStrategy>()
-                            : NoGCStrategy.Instance,
-                        ctx.Resolve<ILogManager>());
-                })
+                .AddSingleton<IGCStrategy>(ctx => ctx.Resolve<IInitConfig>().DisableGcOnNewPayload
+                    ? ctx.Resolve<NoSyncGcRegionStrategy>()
+                    : NoGCStrategy.Instance)
                 .AddSingleton<IHttpClient, DefaultHttpClient>()
                 .AddSingleton<IGasLimitCalculator, TargetAdjustedGasLimitCalculator>()
                 .AddSingleton<IJsonRpcServiceConfigurer, SszMiddlewareConfigurer>()

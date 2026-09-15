@@ -12,7 +12,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.GC;
+using Nethermind.Core.Memory;
 using Nethermind.Merge.Plugin.Handlers;
 using ValidationResult = Nethermind.Merge.Plugin.Data.ValidationResult;
 

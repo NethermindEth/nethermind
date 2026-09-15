@@ -3,7 +3,7 @@
 
 using System.ComponentModel;
 
-namespace Nethermind.Merge.Plugin.GC;
+namespace Nethermind.Core.Memory;
 
 public interface IGCStrategy
 {

@@ -28,6 +28,7 @@ using Microsoft.Extensions.Hosting;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.JsonRpc;
+using Nethermind.Core.Memory;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
@@ -47,7 +48,11 @@ public class StartupTests
     private const string GetBlobsV1Method = "engine_getBlobsV1";
     private const string GetBlobsV2Method = "engine_getBlobsV2";
 
+    private static readonly GCKeeper GcKeeper = new(NoGCStrategy.Instance, LimboLogs.Instance);
     private static readonly Startup Startup;
+
+    [OneTimeTearDown]
+    public void DisposeGcKeeper() => GcKeeper.Dispose();
 
     static StartupTests() => Startup = CreateStartup();
 
@@ -65,7 +70,7 @@ public class StartupTests
 
         EthereumJsonSerializer jsonSerializer = new();
         jsonRpcLocalStats ??= Substitute.For<IJsonRpcLocalStats>();
-        JsonRpcService jsonRpcService = new(moduleProvider, LimboLogs.Instance, rpcConfig);
+        JsonRpcService jsonRpcService = new(moduleProvider, LimboLogs.Instance, rpcConfig, GcKeeper);
         JsonRpcProcessor jsonRpcProcessor = new(jsonRpcService, rpcConfig, Substitute.For<IFileSystem>(), LimboLogs.Instance);
 
         return new Startup(jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats, jsonSerializer, rpcConfig, rpcAuthentication);
