@@ -1134,6 +1134,188 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(tracer.ReturnValue, Is.EqualTo(new byte[] { Convert.ToByte(!isDelegated) }));
     }
 
+    [Test]
+    public void BuildUp_ExistingEmptyAuthority_GrantsDelegationRefundOnSetCode()
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        PrivateKey authority = TestItem.PrivateKeyB;
+        Address codeSource = TestItem.AddressC;
+
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
+
+        BlockExecutionContext blkCtx = CreatePragueBlockContext();
+        AuthorizationTuple auth = _ethereumEcdsa.Sign(authority, _specProvider.ChainId, codeSource, 0);
+
+        Snapshot snapshot = _stateProvider.TakeSnapshot();
+
+        _stateProvider.CreateAccount(authority.Address, UInt256.Zero, 0);
+        long gasWithEmptyAuthority = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth);
+
+        _stateProvider.Restore(snapshot);
+        _stateProvider.CreateAccount(authority.Address, UInt256.One, 0);
+        long gasWithNonEmptyAuthority = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth);
+
+        _stateProvider.Restore(snapshot);
+        long gasWithAbsentAuthority = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gasWithEmptyAuthority, Is.EqualTo(gasWithNonEmptyAuthority), "existence alone earns the refund - emptiness doesn't matter");
+            Assert.That(gasWithEmptyAuthority, Is.LessThan(gasWithAbsentAuthority), "absent authority needs a new account, so it gets no refund");
+        }
+    }
+
+    [Test]
+    public void BuildUp_GhostEmptyAccountFromZeroTransfer_DoesNotGrantDelegationRefundOnSetCode()
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        PrivateKey authority = TestItem.PrivateKeyB;
+        Address codeSource = TestItem.AddressC;
+
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
+
+        BlockExecutionContext blkCtx = CreatePragueBlockContext();
+        AuthorizationTuple auth = _ethereumEcdsa.Sign(authority, _specProvider.ChainId, codeSource, 0);
+
+        Snapshot snapshot = _stateProvider.TakeSnapshot();
+        Transaction createGhostTx = Build.A.Transaction
+            .WithTo(authority.Address)
+            .WithValue(0)
+            .WithGasLimit(21_000)
+            .SignedAndResolved(_ethereumEcdsa, sender)
+            .TestObject;
+
+        _transactionProcessor.BuildUp(createGhostTx, blkCtx, NullTxTracer.Instance);
+        long gasWithGhost = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth, senderNonce: 1);
+
+        _stateProvider.Restore(snapshot);
+        long gasWithoutGhost = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth);
+
+        Assert.That(gasWithGhost, Is.EqualTo(gasWithoutGhost));
+    }
+
+    // The internal zero-value CALL that would mint the ghost is handled
+    // by two different code paths (fast/full) depending on TxTracer.IsTracingActions
+    [Test]
+    public void BuildUp_GhostEmptyAccountFromInternalCall_DoesNotGrantDelegationRefundOnSetCode([Values] bool isTracingActions)
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        PrivateKey authority = TestItem.PrivateKeyB;
+        Address codeSource = TestItem.AddressC;
+        Address ghostMaker = TestItem.AddressF;
+
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
+        DeployCode(ghostMaker, Prepare.EvmCode.Call(authority.Address, 50_000).Done);
+
+        BlockExecutionContext blkCtx = CreatePragueBlockContext();
+        AuthorizationTuple auth = _ethereumEcdsa.Sign(authority, _specProvider.ChainId, codeSource, 0);
+
+        Snapshot snapshot = _stateProvider.TakeSnapshot();
+        Transaction createGhostTx = Build.A.Transaction
+            .WithTo(ghostMaker)
+            .WithValue(0)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(_ethereumEcdsa, sender)
+            .TestObject;
+
+        ITxTracer ghostTxTracer = new ActionsTxTracer(isTracingActions);
+        _transactionProcessor.BuildUp(createGhostTx, blkCtx, ghostTxTracer);
+        long gasWithGhost = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth, senderNonce: 1);
+
+        _stateProvider.Restore(snapshot);
+        long gasWithoutGhost = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth);
+
+        Assert.That(gasWithGhost, Is.EqualTo(gasWithoutGhost));
+    }
+
+    [Test]
+    public void BuildUp_GhostEmptyCoinbaseFromZeroFee_DoesNotGrantDelegationRefundOnSetCode()
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        PrivateKey authority = TestItem.PrivateKeyB;
+        Address codeSource = TestItem.AddressC;
+
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
+
+        // beneficiary == authority: a zero-fee tx must not mint an empty ghost coinbase that later earns the refund
+        BlockExecutionContext blkCtx = CreatePragueBlockContext(beneficiary: authority.Address);
+        AuthorizationTuple auth = _ethereumEcdsa.Sign(authority, _specProvider.ChainId, codeSource, 0);
+
+        Snapshot snapshot = _stateProvider.TakeSnapshot();
+        Transaction zeroFeeTx = Build.A.Transaction
+            .WithTo(TestItem.AddressF)
+            .WithValue(0)
+            .WithGasPrice(0)
+            .WithGasLimit(21_000)
+            .SignedAndResolved(_ethereumEcdsa, sender)
+            .TestObject;
+
+        _transactionProcessor.BuildUp(zeroFeeTx, blkCtx, NullTxTracer.Instance);
+        long gasWithGhost = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth, senderNonce: 1);
+
+        _stateProvider.Restore(snapshot);
+        long gasWithoutGhost = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth);
+
+        Assert.That(gasWithGhost, Is.EqualTo(gasWithoutGhost));
+    }
+
+    [Test]
+    public void BuildUp_GhostEmptyAccountFromSelfDestruct_DoesNotGrantDelegationRefundOnSetCode()
+    {
+        PrivateKey sender = TestItem.PrivateKeyA;
+        PrivateKey authority = TestItem.PrivateKeyB;
+        Address codeSource = TestItem.AddressC;
+        Address ghostMaker = TestItem.AddressF;
+
+        _stateProvider.CreateAccount(sender.Address, 1.Ether);
+        DeployCode(ghostMaker, Prepare.EvmCode.PushData(authority.Address).Op(Instruction.SELFDESTRUCT).Done);
+
+        BlockExecutionContext blkCtx = CreatePragueBlockContext();
+        AuthorizationTuple auth = _ethereumEcdsa.Sign(authority, _specProvider.ChainId, codeSource, 0);
+
+        Snapshot snapshot = _stateProvider.TakeSnapshot();
+        Transaction createGhostTx = Build.A.Transaction
+            .WithTo(ghostMaker)
+            .WithValue(0)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(_ethereumEcdsa, sender)
+            .TestObject;
+
+        _transactionProcessor.BuildUp(createGhostTx, blkCtx, NullTxTracer.Instance);
+        long gasWithGhost = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth, senderNonce: 1);
+
+        _stateProvider.Restore(snapshot);
+        long gasWithoutGhost = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth);
+
+        Assert.That(gasWithGhost, Is.EqualTo(gasWithoutGhost));
+    }
+
+    private BlockExecutionContext CreatePragueBlockContext(Address? beneficiary = null)
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithGasLimit(10_000_000)
+            .WithBeneficiary(beneficiary ?? Address.Zero)
+            .TestObject;
+
+        return new BlockExecutionContext(header, _specProvider.GetSpec(header));
+    }
+
+    private long BuildUpSetCodeAndGetSpentGas(in BlockExecutionContext blkCtx, PrivateKey sender, AuthorizationTuple auth, ulong senderNonce = 0)
+    {
+        Transaction setCodeTx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(TestItem.AddressD)
+            .WithGasLimit(100_000)
+            .WithNonce(senderNonce)
+            .WithAuthorizationCode(auth)
+            .SignedAndResolved(_ethereumEcdsa, sender)
+            .TestObject;
+
+        _transactionProcessor.BuildUp(setCodeTx, blkCtx, NullTxTracer.Instance);
+        return (long)setCodeTx.SpentGas;
+    }
+
     private void DeployCode(Address codeSource, byte[] code)
     {
         _stateProvider.CreateAccountIfNotExists(codeSource, 0);
@@ -1156,5 +1338,10 @@ internal class TransactionProcessorEip7702Tests
 
         public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
             => RefundAtFirstOperation ??= _refund;
+    }
+
+    private sealed class ActionsTxTracer : TxTracer
+    {
+        public ActionsTxTracer(bool isTracingActions) => IsTracingActions = isTracingActions;
     }
 }
