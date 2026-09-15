@@ -115,15 +115,13 @@ public class TransactionsMessageSerializerTests
         }
     }
 
-    [Test]
-    public void Skips_an_oversized_item_instead_of_decoding_it()
+    [TestCaseSource(nameof(OversizedItemCases))]
+    public void Skips_an_oversized_item_instead_of_decoding_it(int maxTxSize, byte[] oversizedItem)
     {
-        const int maxTxSize = 500;
         Transaction validTxBefore = SimpleSignedTx();
         Transaction validTxAfter = SimpleSignedTx(1);
         byte[] validTxBeforeBytes = TxDecoder.Instance.Encode(validTxBefore, RlpBehaviors.InMempoolForm).Bytes;
         byte[] validTxAfterBytes = TxDecoder.Instance.Encode(validTxAfter, RlpBehaviors.InMempoolForm).Bytes;
-        byte[] oversizedItem = EncodeOversizedTypedItem(maxTxSize + 1, (byte)TxType.EIP1559);
         using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(EncodeAsSequence(validTxBeforeBytes, oversizedItem, validTxAfterBytes)).AsDisposable();
 
         TransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = maxTxSize });
@@ -157,18 +155,16 @@ public class TransactionsMessageSerializerTests
         Assert.That(deserialized.Transactions.Count, Is.EqualTo(1), "a tx exactly at the cap must be kept, not skipped");
     }
 
-    [Test]
-    public void Keeps_a_blob_tx_above_max_tx_size_but_within_the_blob_cap()
+    [TestCaseSource(nameof(BlobCapCases))]
+    public void Measures_a_blob_tx_against_the_blob_cap(IReleaseSpec spec, long? maxTxSize, long maxBlobTxSize, int expectedCount)
     {
         Transaction blobTx = Build.A.Transaction
             .WithTo(TestItem.AddressA)
             .WithShardBlobTxTypeAndFields(1)
             .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
             .TestObject;
-        // The blob tx's mempool-form size (~128 KiB of sidecar) is far above this tiny cap, so it is only
-        // kept if the blob-specific cap - driven by the type byte, not the length - is applied instead.
-        TxPoolConfig config = new() { MaxTxSize = 500, MaxBlobTxSize = 500 };
-        ISpecProvider specProvider = new TestSpecProvider(Cancun.Instance);
+        TxPoolConfig config = new() { MaxTxSize = maxTxSize, MaxBlobTxSize = maxBlobTxSize };
+        ISpecProvider specProvider = new TestSpecProvider(spec);
         TransactionsMessageSerializer serializer = new(config, specProvider);
 
         using TransactionsMessage message = new(new[] { blobTx }.ToPooledList());
@@ -176,7 +172,7 @@ public class TransactionsMessageSerializerTests
         serializer.Serialize(buffer, message);
         using TransactionsMessage deserialized = serializer.Deserialize(buffer);
 
-        Assert.That(deserialized.Transactions.Count, Is.EqualTo(1));
+        Assert.That(deserialized.Transactions.Count, Is.EqualTo(expectedCount));
     }
 
     [Test]
@@ -227,6 +223,46 @@ public class TransactionsMessageSerializerTests
         item[3] = typeByte;
         item[4] = 0xff;
         return item;
+    }
+
+    /// <summary>
+    /// Builds a well-formed RLP long-form sequence (prefix 0xf9, a 2-byte length) declaring
+    /// <paramref name="contentLength"/> content bytes starting with 0xff, which is not a valid start of a
+    /// legacy transaction's field list - so attempting to decode this item throws, distinguishing a test that
+    /// skipped it from one that decoded it and happened to succeed. Its total on-wire size - the measure the
+    /// guard applies to a sequence item - is three bytes beyond <paramref name="contentLength"/>.
+    /// </summary>
+    private static byte[] EncodeOversizedSequenceItem(int contentLength)
+    {
+        byte[] item = new byte[3 + contentLength];
+        item[0] = 0xf9;
+        item[1] = (byte)(contentLength >> 8);
+        item[2] = (byte)contentLength;
+        item[3] = 0xff;
+        return item;
+    }
+
+    private static IEnumerable<TestCaseData> OversizedItemCases()
+    {
+        const int maxTxSize = 500;
+
+        yield return new TestCaseData(maxTxSize, EncodeOversizedTypedItem(maxTxSize + 1, (byte)TxType.EIP1559))
+            .SetName("Skips a typed item whose content length exceeds the cap");
+        // A sequence item is measured the way SizeTxFilter measures a decoded legacy tx, prefix included, so
+        // content exactly at the cap is already over it.
+        yield return new TestCaseData(maxTxSize, EncodeOversizedSequenceItem(maxTxSize))
+            .SetName("Skips a sequence item its RLP prefix pushes over the cap");
+    }
+
+    private static IEnumerable<TestCaseData> BlobCapCases()
+    {
+        // A one-blob tx's mempool-form size (~128 KiB of sidecar) is far above either cap below, so whether
+        // it survives turns on the blob cap alone - which Cancun's blob-gas allowance raises past it and
+        // Shanghai's, carrying no blobs, does not.
+        yield return new TestCaseData(Cancun.Instance, 500L, 500L, 1)
+            .SetName("Keeps a blob tx above MaxTxSize but within the blob cap");
+        yield return new TestCaseData(Shanghai.Instance, null, 500L, 0)
+            .SetName("Skips a blob tx above the blob cap with no MaxTxSize configured");
     }
 
     /// <summary>Concatenates already-encoded RLP items behind a single outer sequence (list) prefix.</summary>
