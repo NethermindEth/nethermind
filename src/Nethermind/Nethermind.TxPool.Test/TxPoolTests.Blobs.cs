@@ -5225,6 +5225,56 @@ namespace Nethermind.TxPool.Test
                 "a moved payer evicts rather than rewrites, or its old reservation is held for good");
         }
 
+        // EIP-8141 "Revalidation". The sidecar-free read also declines when the record behind the light one is
+        // gone, and that decline repeats every head: carrying it alone would leave the transaction pending,
+        // unjudged and still holding its payer's reservation, which is the exemption the sweep exists to close.
+        [Test]
+        public async Task Blob_carrying_frame_tx_whose_record_cannot_be_read_is_judged_rather_than_deferred_for_good(
+            [Values] bool recordDeleted)
+        {
+            const int deferralBudget = 2;
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.StorageWithReorgs,
+                FrameTxMaxVerifyGas = 200_000,
+                FrameTxRevalidationDeferralBudget = deferralBudget
+            };
+            BlobTxStorage blobTxStorage = new();
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.AddressF, UInt256.MaxValue);
+
+            Transaction tx = SponsoredBlobFrameTx(TestItem.PrivateKeyA);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(tx.PayerAddress, Is.EqualTo(TestItem.AddressF), "nothing is reserved unless the payer resolves");
+
+            // The light record stays pooled either way, so readability is the single variable. The simulator keeps
+            // accepting, so an arm that can read its record has nothing to evict it for.
+            DropCachedBlobTransactions();
+            if (recordDeleted) blobTxStorage.Delete(tx.Hash!.ValueHash256, tx.Timestamp);
+
+            Assert.That(BlobPool().TryGetValueWithoutBlobs(tx.Hash!.ValueHash256, out _), Is.EqualTo(!recordDeleted),
+                "the arm under test is whether the sweep can read the record back at all");
+            DropCachedBlobTransactions();
+
+            // One head per carry, then one more, on which the carry is spent and a verdict has to be reached.
+            for (int i = 1; i <= deferralBudget + 1; i++)
+            {
+                Block block = Build.A.Block.WithNumber(i).TestObject;
+                block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressA };
+                await RaiseBlockAddedToMainAndWaitForNewHead(block);
+            }
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(recordDeleted ? 0 : 1),
+                "a record no head can read must not outlast the carry, and one every head can read must");
+
+            // What the drop is for: the payer takes one pending transaction at a time, so the slot coming back
+            // is the reservation having been released rather than stranded on an unjudgeable record.
+            AcceptTxResult next = _txPool.SubmitTx(SponsoredBlobFrameTx(TestItem.PrivateKeyB), TxHandlingOptions.None);
+            Assert.That(next, recordDeleted ? Is.EqualTo(AcceptTxResult.Accepted) : Is.Not.EqualTo(AcceptTxResult.Accepted),
+                "the payer's reservation leaves with the record, and only with it");
+        }
+
         // The persistent pool recreates its light records inside its own constructor, so a restart is the one
         // path on which nothing raises Inserted and the index would otherwise never hear about them.
         [Test]
@@ -5315,14 +5365,19 @@ namespace Nethermind.TxPool.Test
 
         private bool BlobTransactionMetadataIsCached(Hash256 hash) => BlobTxCache("_blobTxMetadataCache").Contains(hash.ValueHash256);
 
-        private Nethermind.Core.Caching.LruCache<ValueHash256, Transaction> BlobTxCache(string field)
-        {
-            object blobPool = typeof(TxPool).GetField("_blobTransactions",
-                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(_txPool)!;
-            return (Nethermind.Core.Caching.LruCache<ValueHash256, Transaction>)typeof(PersistentBlobTxDistinctSortedPool)
-                .GetField(field, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-                .GetValue(blobPool)!;
-        }
+        /// <summary>The pool's blob collection and its caches, which no public surface exposes.</summary>
+        /// <remarks>Reached by field name, so a rename of either field throws here rather than passing quietly —
+        /// these two helpers are the only place it has to be followed to.</remarks>
+        private PersistentBlobTxDistinctSortedPool BlobPool() =>
+            (PersistentBlobTxDistinctSortedPool)PrivateField(typeof(TxPool), "_blobTransactions").GetValue(_txPool)!;
+
+        private Nethermind.Core.Caching.LruCache<ValueHash256, Transaction> BlobTxCache(string field) =>
+            (Nethermind.Core.Caching.LruCache<ValueHash256, Transaction>)
+                PrivateField(typeof(PersistentBlobTxDistinctSortedPool), field).GetValue(BlobPool())!;
+
+        private static System.Reflection.FieldInfo PrivateField(Type declaring, string field) =>
+            declaring.GetField(field, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new MissingFieldException(declaring.Name, field);
 
         [Test]
         // The gauge asserted below is a process-wide static and this fixture is ParallelScope.All, so any frame
