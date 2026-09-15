@@ -430,9 +430,9 @@ namespace Nethermind.Blockchain
                 // bodies and access lists, so this can still be the first time either arrives. Persist rather than
                 // discard - once a feed has finished its descent nothing fetches its payload again. The two feeds
                 // descend independently, so each write needs its own presence check.
-                // History pruning drops bodies while keeping levels and headers, so "known header, no body" also
-                // describes a pruned block; no cutoff check is needed because that cutoff sits far below the head
-                // that Suggest callers work near, while below-cutoff bodies arrive through Insert.
+                // History pruning drops bodies and access lists while keeping levels and headers, so "known header,
+                // no payload" also describes a pruned block; no cutoff check is needed because that cutoff sits far
+                // below the head that Suggest callers work near, while below-cutoff payloads arrive through Insert.
                 if (block is not null)
                 {
                     if (!_blockStore.HasBlock(header.Number, header.Hash))
@@ -440,7 +440,8 @@ namespace Nethermind.Blockchain
                         _blockStore.InsertDeferred(block);
                     }
 
-                    if (!_balStore.Exists(header.Number, header.Hash))
+                    if ((block.EncodedBlockAccessList is not null || block.BlockAccessList is not null) &&
+                        !_balStore.Exists(header.Number, header.Hash))
                     {
                         _balStore.InsertFromBlockDeferred(block);
                     }
