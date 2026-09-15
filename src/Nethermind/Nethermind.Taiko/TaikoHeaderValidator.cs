@@ -38,7 +38,7 @@ public class TaikoHeaderValidator(
 
     protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
 
-    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error, bool validateHash = true)
     {
         if (header.UnclesHash != Keccak.OfAnEmptySequenceRlp)
         {
@@ -54,7 +54,7 @@ public class TaikoHeaderValidator(
             return false;
         }
 
-        return base.Validate<TOrphaned>(header, parent, isUncle, out error);
+        return base.Validate<TOrphaned>(header, parent, isUncle, out error, validateHash);
     }
 
     protected override bool ValidateExtraData(BlockHeader header, IReleaseSpec spec, bool isUncle, ref string? error)

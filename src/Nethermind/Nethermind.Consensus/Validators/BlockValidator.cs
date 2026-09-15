@@ -40,6 +40,9 @@ public class BlockValidator(
     public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
         _headerValidator.Validate(header, parent, isUncle, out error);
 
+    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error, bool validateHash) =>
+        _headerValidator.Validate(header, parent, isUncle, out error, validateHash);
+
     public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
         _headerValidator.ValidateOrphaned(header, out error);
     /// <summary>
@@ -74,7 +77,7 @@ public class BlockValidator(
 
         return ValidateBlockSize(block, spec, ref errorMessage) &&
                ValidateTransactions(block, spec, ref errorMessage) &&
-               ValidateHeader<TOrphaned>(block, parent, ref errorMessage) &&
+               ValidateHeader<TOrphaned>(block, parent, validateHashes, ref errorMessage) &&
                ValidateUncles<TOrphaned>(block, spec, validateHashes, ref errorMessage) &&
                ValidateTxRootMatchesTxs(block, validateHashes, ref errorMessage) &&
                ValidateEip4844Fields(block, spec, ref errorMessage) &&
@@ -82,11 +85,14 @@ public class BlockValidator(
                ValidateBlockLevelAccessList(block, spec, ref errorMessage);
     }
 
-    private bool ValidateHeader<TOrphaned>(Block block, BlockHeader? parent, ref string? errorMessage)
+    private bool ValidateHeader<TOrphaned>(Block block, BlockHeader? parent, bool validateHashes, ref string? errorMessage)
         where TOrphaned : struct, IFlag
     {
+        // validateHashes: false means the caller has already verified the header hash, so skip recomputing it.
         bool blockHeaderValid = typeof(TOrphaned) == typeof(OffFlag)
-            ? parent is not null && _headerValidator.Validate(block.Header, parent, false, out errorMessage)
+            ? parent is not null && (validateHashes
+                ? _headerValidator.Validate(block.Header, parent, false, out errorMessage)
+                : _headerValidator.Validate(block.Header, parent, false, out errorMessage, validateHash: false))
             : parent is null && _headerValidator.ValidateOrphaned(block.Header, out errorMessage);
 
         if (_logger.IsDebug && !blockHeaderValid) _logger.Debug($"{Invalid(block)} Invalid header: {errorMessage}");

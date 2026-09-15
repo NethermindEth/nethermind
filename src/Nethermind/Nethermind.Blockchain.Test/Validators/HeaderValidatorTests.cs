@@ -312,6 +312,16 @@ public class HeaderValidatorTests
     }
 
     [Test]
+    public void Validate_SkippingHash_DoesNotRecomputeHash()
+    {
+        HeaderValidator sut = new(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
+        _block.Header.Hash = Keccak.Zero;
+
+        Assert.That(sut.Validate(_block.Header, _parentBlock.Header, false, out _), Is.False);
+        Assert.That(sut.Validate(_block.Header, _parentBlock.Header, false, out string? error, validateHash: false), Is.True, error);
+    }
+
+    [Test]
     public void When_given_parent_is_wrong()
     {
         _block.Header.Hash = _block.CalculateHash();

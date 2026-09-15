@@ -74,7 +74,10 @@ namespace Nethermind.Consensus.Validators
         public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
             Validate<OffFlag>(header, parent, isUncle, out error);
 
-        protected virtual bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error) where TOrphaned : struct, IFlag
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error, bool validateHash) =>
+            Validate<OffFlag>(header, parent, isUncle, out error, validateHash);
+
+        protected virtual bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error, bool validateHash = true) where TOrphaned : struct, IFlag
         {
             IReleaseSpec spec;
             error = null;
@@ -83,7 +86,7 @@ namespace Nethermind.Consensus.Validators
 
             // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
             return ValidateFieldLimit(header, ref error)
-                   && ValidateHash(header, ref error)
+                   && (!validateHash || ValidateHash(header, ref error))
                    && ValidateExtraData(header, spec = _specProvider.GetSpec(header), isUncle, ref error)
                    && (orphaned || ValidateParent(header, parent, ref error))
                    && (orphaned || ValidateTotalDifficulty(header, parent, ref error))
