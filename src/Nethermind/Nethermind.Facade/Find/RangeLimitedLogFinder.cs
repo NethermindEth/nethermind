@@ -46,7 +46,7 @@ public sealed class RangeLimitedLogFinder(
 
     private void EnsureScanWithinLimit(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
     {
-        // The config may be reloaded while the singleton is in use.
+        // Read per call: the singleton is built at the first logs request, not at startup.
         int maxBlockDepth = receiptConfig.MaxBlockDepth;
         if (maxBlockDepth <= 0 || toBlock.Number < fromBlock.Number)
             return;
