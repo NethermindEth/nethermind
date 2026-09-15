@@ -429,6 +429,9 @@ namespace Nethermind.Blockchain
                 // A known header says nothing about the body: fast sync inserts headers ahead of bodies, so this
                 // can still be the first time the block arrives carrying one. Persist it rather than discard it -
                 // once the bodies feed has finished its descent nothing fetches that body again.
+                // History pruning drops bodies while keeping levels and headers, so "known header, no body" also
+                // describes a pruned block; there is no cutoff check here because every Suggest caller works at or
+                // above BestSuggestedHeader, while below-cutoff bodies arrive through Insert.
                 if (block is not null && !_blockStore.HasBlock(header.Number, header.Hash))
                 {
                     _blockStore.InsertDeferred(block);
