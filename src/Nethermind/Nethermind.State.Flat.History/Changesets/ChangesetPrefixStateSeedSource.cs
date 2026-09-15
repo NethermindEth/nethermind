@@ -12,6 +12,8 @@ namespace Nethermind.State.Flat.History.Changesets;
 /// key the target never reads is never touched, and the parent state is never changed.</summary>
 public sealed class ChangesetPrefixStateSeedSource(TransactionChangesetIndex index) : IPrefixStateSeedSource
 {
+    public bool Enabled => index.Enabled;
+
     public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot)
     {
         if (transactionIndex <= 0 || transactionIndex > ChangesetKeyLayout.MaxTransactionIndex || block.Hash is null) return false;

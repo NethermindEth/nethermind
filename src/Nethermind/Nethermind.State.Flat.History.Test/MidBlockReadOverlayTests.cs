@@ -42,7 +42,7 @@ public class MidBlockReadOverlayTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(account!.Balance, Is.EqualTo((UInt256)42));
-            Assert.That(account.Nonce, Is.EqualTo((UInt256)5), "a field the prefix left alone is the parent's");
+            Assert.That(account.Nonce, Is.EqualTo(5UL), "a field the prefix left alone is the parent's");
             Assert.That(account.StorageRoot, Is.EqualTo(TestItem.KeccakA), "storage untouched keeps the parent's root, so its slots are still read");
             Assert.That(account.CodeHash, Is.EqualTo(TestItem.KeccakB));
         }
@@ -69,13 +69,17 @@ public class MidBlockReadOverlayTests
         Fold(1, c => c.Balance(TestItem.AddressA, 7));
 
         _read.TryGetAccount(TestItem.AddressA, Parent, out Account? account);
+        bool slotKnown = _read.TryGetStorage(TestItem.AddressA, 9, out UInt256 slot);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(account!.Balance, Is.EqualTo((UInt256)7));
-            Assert.That(account.Nonce, Is.EqualTo(UInt256.Zero), "not the five the parent carried");
+            Assert.That(account.Nonce, Is.EqualTo(0UL), "not the five the parent carried");
             Assert.That(account.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
             Assert.That(account.CodeHash, Is.EqualTo(Keccak.OfAnEmptyString));
+            Assert.That(_read.HasStorage(TestItem.AddressA), Is.True, "the destruction wiped the slots, so the storage tree is not skipped");
+            Assert.That(slotKnown, Is.True, "a slot the block never touched went with the account");
+            Assert.That(slot, Is.EqualTo(UInt256.Zero));
         }
     }
 

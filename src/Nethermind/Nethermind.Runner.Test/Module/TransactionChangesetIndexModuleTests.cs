@@ -6,8 +6,10 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.State.Flat.History.Changesets;
+using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Module;
@@ -36,6 +38,21 @@ public class TransactionChangesetIndexModuleTests
         using IHistoryBlockExecutor executor = container.Resolve<IHistoryBlockExecutorFactory>().Create();
 
         Assert.That(executor, Is.Not.Null, "the executor scope must carry everything a block replay resolves, or the builder thread dies on its first block");
+    }
+
+    [TestCase(true, TestName = "WithTheIndexOn_TheTraceEnvironmentCarriesAReadOverlaySlot")]
+    [TestCase(false, TestName = "WithTheIndexOff_TheTraceEnvironmentIsUndecorated")]
+    public void The_read_overlay_follows_the_index_switch(bool indexEnabled)
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = indexEnabled }))
+            .Build();
+
+        IOverridableEnv env = container.Resolve<IOverridableEnvFactory>().Create();
+        using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder.AddModule(env));
+
+        Assert.That(scope.IsRegistered<StateReadOverlaySlot>(), Is.EqualTo(indexEnabled),
+            "the slot exists exactly when the scope provider consults it; a slot nothing reads would let the executor skip a prefix no one supplies");
     }
 
     [Test]

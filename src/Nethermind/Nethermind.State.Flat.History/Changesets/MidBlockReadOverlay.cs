@@ -28,7 +28,7 @@ internal sealed class MidBlockReadOverlay(MidBlockOverlay overlay) : IStateReadO
         }
 
         Account basis = account.Emptied ? Account.TotallyEmpty : underlying ?? Account.TotallyEmpty;
-        bool wiped = account.Emptied || account.StorageClearedAt != MidBlockOverlay.NeverCleared;
+        bool wiped = account.StorageClearedAt != MidBlockOverlay.NeverCleared;
         overlaid = new Account(
             account.Nonce is { } nonce ? (ulong)nonce : (ulong)basis.Nonce,
             account.Balance ?? basis.Balance,

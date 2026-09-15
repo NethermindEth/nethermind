@@ -151,10 +151,14 @@ public class BlockProcessorTests
         artifacts.AssertUntouched(block);
     }
 
-    private static Task<BasicTestBlockchain> CreatePrefixReplayChain(IReleaseSpec spec) =>
-        BasicTestBlockchain.Create(builder => builder
-            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false })
-            .AddSingleton<IBlockValidationModule, PrefixReplayValidationModule>());
+    private static Task<BasicTestBlockchain> CreatePrefixReplayChain(IReleaseSpec spec, IPrefixStateSeedSource? seeds = null) =>
+        BasicTestBlockchain.Create(builder =>
+        {
+            builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false })
+                .AddSingleton<IBlockValidationModule, PrefixReplayValidationModule>();
+            if (seeds is not null) builder.AddSingleton<IPrefixStateSeedSource>(seeds);
+        });
 
     private static async Task<Block> AddThreeTransferBlock(BasicTestBlockchain chain)
     {
@@ -189,14 +193,15 @@ public class BlockProcessorTests
     public async Task TransactionTraceBoundary_WhenThePrefixIsSeeded_ExecutesOnlyTheTargetWithTheSameTrace(string tracerName)
     {
         IReleaseSpec spec = Prague.Instance;
-        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec);
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds);
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await AddThreeTransferBlock(chain);
         Hash256 target = block.Transactions[2].Hash!;
         GethTraceOptions traceOptions = new() { TxHash = target, Tracer = tracerName };
 
-        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
-        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
         using (TransactionChangesetIndex.BlockCapture capture = index.StartBlock((ulong)block.Number))
         {
             using IDisposable scope = chain.MainWorldState.BeginScope(parent);
@@ -206,7 +211,7 @@ public class BlockProcessorTests
         }
 
         string expected = ReplayThroughTraceEnvironment(chain, parent, block, target, traceOptions, seeds: null, out int replayed);
-        string actual = ReplayThroughTraceEnvironment(chain, parent, block, target, traceOptions, new ChangesetPrefixStateSeedSource(index), out int seeded);
+        string actual = ReplayThroughTraceEnvironment(chain, parent, block, target, traceOptions, seeds, out int seeded);
 
         using (Assert.EnterMultipleScope())
         {
@@ -220,10 +225,10 @@ public class BlockProcessorTests
     public async Task TransactionTraceBoundary_WhenTheSeedIsRefused_ReplaysThePrefix()
     {
         IReleaseSpec spec = Prague.Instance;
-        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec);
+        RefusingSeedSource seeds = new();
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds);
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await AddThreeTransferBlock(chain);
-        RefusingSeedSource seeds = new();
         GethTraceOptions traceOptions = new() { TxHash = block.Transactions[2].Hash!, Tracer = "callTracer" };
 
         ReplayThroughTraceEnvironment(chain, parent, block, block.Transactions[2].Hash!, traceOptions, seeds, out int executed);
@@ -239,10 +244,10 @@ public class BlockProcessorTests
     public async Task TransactionTraceBoundary_WhenTheTargetIsFirst_NeverAsksForASeed()
     {
         IReleaseSpec spec = Prague.Instance;
-        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec);
+        RefusingSeedSource seeds = new();
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds);
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await AddThreeTransferBlock(chain);
-        RefusingSeedSource seeds = new();
         GethTraceOptions traceOptions = new() { TxHash = block.Transactions[0].Hash!, Tracer = "callTracer" };
 
         ReplayThroughTraceEnvironment(chain, parent, block, block.Transactions[0].Hash!, traceOptions, seeds, out _);
@@ -276,6 +281,8 @@ public class BlockProcessorTests
     private sealed class RefusingSeedSource : IPrefixStateSeedSource
     {
         public int AskedFor { get; private set; } = -1;
+
+        public bool Enabled => true;
 
         public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot)
         {

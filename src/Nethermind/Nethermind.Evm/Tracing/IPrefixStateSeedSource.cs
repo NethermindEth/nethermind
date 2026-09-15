@@ -10,6 +10,9 @@ namespace Nethermind.Evm.Tracing;
 /// can read it in place of replaying the transactions ahead of it.</summary>
 public interface IPrefixStateSeedSource
 {
+    /// <summary>Whether this source can ever arm a slot; a read path is only prepared for an overlay when it can.</summary>
+    bool Enabled { get; }
+
     /// <summary>Arms <paramref name="slot"/> with an overlay of everything the transactions before
     /// <paramref name="transactionIndex"/> wrote; reads of the scope in flight then see it ahead of the parent state.
     /// False leaves the slot untouched and means the caller replays the prefix as it always did.</summary>
@@ -23,6 +26,8 @@ public sealed class NullPrefixStateSeedSource : IPrefixStateSeedSource
     private NullPrefixStateSeedSource()
     {
     }
+
+    public bool Enabled => false;
 
     public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot) => false;
 }
