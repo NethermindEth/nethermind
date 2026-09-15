@@ -151,4 +151,34 @@ public partial class Metrics
         GasPriceAve = BlockAveGasPrice;
         GasPriceMedian = BlockEstMedianGasPrice;
     }
+
+    [GaugeMetric]
+    [Description("Number of precompile runs, by precompile. Excludes cache hits.")]
+    [KeyIsLabel("precompile")]
+    public static NonBlocking.ConcurrentDictionary<string, long> PrecompileRuns { get; } = new();
+
+    [GaugeMetric]
+    [Description("Precompile result cache probes, by precompile and probe result (block_hit, surviving_hit, miss).")]
+    [KeyIsLabel("precompile", "result")]
+    public static NonBlocking.ConcurrentDictionary<(string, string), long> PrecompileCacheProbes { get; } = new();
+
+    [GaugeMetric]
+    [Description("Precompile result cache insertion outcomes, by precompile and outcome. The per-block tier records admissions (block) and the entries its byte budget refused (rejected_full); the surviving tier admits independently and records only the entries above its per-entry cap (rejected_large).")]
+    [KeyIsLabel("precompile", "outcome")]
+    public static NonBlocking.ConcurrentDictionary<(string, string), long> PrecompileCacheAdds { get; } = new();
+
+    [GaugeMetric]
+    [Description("Accounted weight held by the per-block precompile result cache, by precompile, as it stood at the end of the last block.")]
+    [KeyIsLabel("precompile")]
+    public static NonBlocking.ConcurrentDictionary<string, long> PrecompileCacheUsedBytes { get; } = new();
+
+    [GaugeMetric]
+    [Description("Entries held by the per-block precompile result cache, by precompile, as they stood at the end of the last block.")]
+    [KeyIsLabel("precompile")]
+    public static NonBlocking.ConcurrentDictionary<string, long> PrecompileCacheEntries { get; } = new();
+
+    [GaugeMetric]
+    [Description("Weighted byte budget of one precompile's per-block cache partition. Shares are equal for now. A precompile without a partition reports nothing, so nothing is reported at all while precompile caching is disabled.")]
+    [KeyIsLabel("precompile")]
+    public static NonBlocking.ConcurrentDictionary<string, long> PrecompileCachePartitionMaxBytes { get; } = new();
 }

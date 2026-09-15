@@ -13,7 +13,7 @@ namespace Nethermind.Evm.Precompiles;
 /// <summary>
 /// Counts the calls that reach the wrapped precompile.
 /// </summary>
-public sealed class MeteredPrecompile : PrecompileDecorator
+public sealed partial class MeteredPrecompile : PrecompileDecorator
 {
     private static readonly ConcurrentBag<MeteredPrecompile> Metered = [];
 

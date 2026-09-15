@@ -10,7 +10,7 @@ namespace Nethermind.Evm.Precompiles;
 /// <summary>
 /// Wraps every precompile of <paramref name="inner"/> in a <see cref="MeteredPrecompile"/>.
 /// </summary>
-public sealed class MeteredPrecompileProvider(IPrecompileProvider inner) : IPrecompileProvider
+public sealed partial class MeteredPrecompileProvider(IPrecompileProvider inner) : IPrecompileProvider
 {
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _precompiles = Meter(inner);
 
