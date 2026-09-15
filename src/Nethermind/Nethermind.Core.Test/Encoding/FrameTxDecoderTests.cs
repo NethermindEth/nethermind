@@ -486,11 +486,14 @@ public class FrameTxDecoderTests
         }
     }
 
-    [Test]
-    public void Decode_MoreNonceKeysThanTheCap_Throws()
+    // RlpLimitException, not the bare RlpException an out-of-range read is wrapped in: the keys are read into
+    // a fixed buffer, so without the decoder's own count guard the over-cap key overruns it and throws anyway.
+    [TestCase(Eip8250Constants.MaxNonceKeys, false)]
+    [TestCase(Eip8250Constants.MaxNonceKeys + 1, true)]
+    public void Decode_BoundsTheNonceKeyCount(int keyCount, bool rejected)
     {
         Transaction keyed = CreateFrameTx();
-        UInt256[] keys = new UInt256[Eip8250Constants.MaxNonceKeys + 1];
+        UInt256[] keys = new UInt256[keyCount];
         for (int i = 0; i < keys.Length; i++)
         {
             keys[i] = (UInt256)(i + 1);
@@ -498,7 +501,31 @@ public class FrameTxDecoderTests
 
         keyed.NonceKeys = keys;
 
-        Assert.That(() => EncodeDecode(keyed), Throws.InstanceOf<RlpException>());
+        if (rejected)
+        {
+            Assert.That(() => EncodeDecode(keyed), Throws.InstanceOf<RlpLimitException>());
+        }
+        else
+        {
+            Assert.That(EncodeDecode(keyed).NonceKeys, Is.EqualTo(keys));
+        }
+    }
+
+    // Public, and reachable with an unbounded key set from a transaction built field by field over RPC: a
+    // dynamic stackalloc past the bound would be an uncatchable stack overflow rather than a rejection.
+    [Test]
+    public void MeasureNonceCalldata_PastTheCalldataBound_Throws()
+    {
+        Transaction keyed = CreateFrameTx();
+        UInt256[] keys = new UInt256[Eip8250Constants.MaxNonceKeys + 1];
+        for (int i = 0; i < keys.Length; i++)
+        {
+            keys[i] = UInt256.MaxValue - (UInt256)i;
+        }
+
+        keyed.NonceKeys = keys;
+
+        Assert.That(() => FrameTxNonceCalldata.Measure(keyed), Throws.InstanceOf<ArgumentOutOfRangeException>());
     }
 
     [TestCase(Eip8141Constants.MaxFrames, false)]

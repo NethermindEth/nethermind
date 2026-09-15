@@ -75,6 +75,11 @@ public class FrameTxPaymasterFilterTests
         yield return Case("PayFrameBehindSpacerVerifyFrame_Rejected",
             () => FrameTx([OnlyVerify(PrefixFrameGas), SpacerVerifyFrame(), Pay(Paymaster, PrefixFrameGas)]), paymasterHasCode: true, rejected: true);
 
+        // A non-VERIFY frame ends the prefix, so nothing behind it can install a payer: the pay frame there
+        // sponsors nothing and names no paymaster, unlike the VERIFY spacer above.
+        yield return Case("PayFrameBehindANonVerifyFrame_Accepted",
+            () => FrameTx([OnlyVerify(PrefixFrameGas), Execution(PrefixFrameGas), Pay(Paymaster, PrefixFrameGas)]), paymasterHasCode: true, rejected: false);
+
         yield return Case("NonFrameTx_Accepted",
             () => Build.A.Transaction.WithSenderAddress(Sender).TestObject, paymasterHasCode: true, rejected: false);
     }

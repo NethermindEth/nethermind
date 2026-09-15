@@ -17,6 +17,8 @@ namespace Nethermind.TxPool.Test;
 [Parallelizable(ParallelScope.All)]
 internal class FrameTxVerifyGasFilterTest
 {
+    private const ulong ConfiguredMaxVerifyGas = 100_000;
+
     // An unrecognized layout is charged its whole frame list: whether an approving DEFAULT frame approves at
     // all depends on sender-controlled code, so the frames behind it may still run before any gas is paid.
     private static IEnumerable<TestCaseData> PrefixCases()
@@ -27,13 +29,18 @@ internal class FrameTxVerifyGasFilterTest
             .SetName("an unrecognized layout is charged its whole frame list");
         yield return new TestCaseData(new[] { ApprovingDefault(1_000), Execution(20_000) }, AcceptTxResult.Accepted)
             .SetName("an unrecognized layout under the ceiling is still accepted");
+        // The bound is inclusive, as the fixed and state-gas ceilings below are.
+        yield return new TestCaseData(new[] { ApprovingDefault(ConfiguredMaxVerifyGas) }, AcceptTxResult.Accepted)
+            .SetName("a prefix exactly at the configured ceiling is accepted");
+        yield return new TestCaseData(new[] { ApprovingDefault(ConfiguredMaxVerifyGas + 1) }, AcceptTxResult.FrameTxVerifyGasTooHigh)
+            .SetName("a prefix one gas over the configured ceiling is rejected");
     }
 
     [TestCaseSource(nameof(PrefixCases))]
     public void Accept_ChargesEveryFrameThatMayRunBeforePayment(TxFrame[] frames, AcceptTxResult expected)
     {
         Transaction tx = FrameTx(frames);
-        FrameTxVerifyGasFilter filter = new(new TxPoolConfig { FrameTxMaxVerifyGas = 100_000 }, LimboLogs.Instance.GetClassLogger<FrameTxVerifyGasFilterTest>());
+        FrameTxVerifyGasFilter filter = new(new TxPoolConfig { FrameTxMaxVerifyGas = ConfiguredMaxVerifyGas }, LimboLogs.Instance.GetClassLogger<FrameTxVerifyGasFilterTest>());
         TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
 
         Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(expected));

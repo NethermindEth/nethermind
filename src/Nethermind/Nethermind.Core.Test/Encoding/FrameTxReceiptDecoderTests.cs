@@ -781,6 +781,26 @@ public class FrameTxReceiptDecoderTests
         Assert.That(() => DecodeMessage(encoded), Throws.InstanceOf<RlpException>());
     }
 
+    /// <summary>A frame transaction has at least one frame, so a receipt without one is malformed: accepting it
+    /// would derive a successful transaction status from nothing.</summary>
+    /// <remarks>Built rather than round-tripped, the encoder refusing an empty frame list first — the payload
+    /// decoder is the only place these bytes can reach.</remarks>
+    [Test]
+    public void PayloadDecode_FrameReceiptWithoutFrames_Throws()
+    {
+        byte[] payload = new byte[Rlp.LengthOf(21_000UL) + Rlp.LengthOf(TestItem.AddressA) + Rlp.LengthOfSequence(0)];
+        RlpWriter writer = new(payload);
+        writer.Encode(21_000UL);
+        writer.Encode(TestItem.AddressA);
+        writer.StartSequence(0);
+
+        Assert.That(() =>
+        {
+            RlpReader reader = new(payload);
+            FrameReceiptRlp.DecodePayload(ref reader, new TxReceipt(), payload.Length, RlpBehaviors.None);
+        }, Throws.InstanceOf<RlpException>());
+    }
+
     /// <summary>Where the first frame's status byte sits in an encoded receipt message.</summary>
     /// <remarks>Walks the wrapper, the type byte and the payload fields the decoder reads before the status,
     /// so a layout change moves this with it rather than silently patching the wrong byte.</remarks>
