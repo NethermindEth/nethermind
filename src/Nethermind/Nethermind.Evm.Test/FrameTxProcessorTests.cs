@@ -2916,6 +2916,83 @@ public class FrameTxProcessorTests
         }
     }
 
+    [Test]
+    public void Execute_AtomicBatch_AfterAnEarlierFrameWroteTransientStorage_Unrolls()
+    {
+        Address batched = TestItem.AddressD;
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.TSTORE)
+            .PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(batched, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModeSender, target: Observer),
+            Frame(TxFrame.ModeSender, flags: TxFrame.AtomicBatchFlag, target: batched),
+            Frame(TxFrame.ModeSender, target: Recipient));
+
+        FrameReceiptTracer tracer = new();
+        TransactionResult result = Process(tx, tracer: tracer);
+
+        Assert.That(result.TransactionExecuted, Is.True, "a batch unrolling over an earlier frame's transient write stays valid");
+        using (Assert.EnterMultipleScope())
+        {
+            AssertStorage(Observer, 0, UInt256.One, "the frame before the batch keeps the write it committed");
+            AssertStorage(batched, 0, UInt256.Zero, "the unroll discards the write the batch's first frame committed");
+            Assert.That(tracer.FrameReceipts![3].Status, Is.EqualTo(TxFrameReceipt.StatusFailure),
+                "the terminal frame has to fail for the batch to unroll at all");
+        }
+    }
+
+    // Both entry points snapshot the whole transaction on the far side of the frame loop's per-frame
+    // discard, so a journal left dirty at entry would make restoring to either snapshot throw.
+    [Test]
+    public void ExecuteAndSimulatePrefix_WithTransientStorageLeftAtEntry_RestoreRatherThanThrowing()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        _stateProvider.SetTransientState(new StorageCell(Observer, UInt256.Zero), UInt256.One);
+        TransactionResult rejected = Process(FrameTx(nonce: 0,
+            Frame(TxFrame.ModeDefault, target: Observer),
+            Frame(TxFrame.ModeSender, target: Observer)));
+
+        _stateProvider.SetTransientState(new StorageCell(Observer, UInt256.Zero), UInt256.One);
+        TransactionResult simulated = SimulateValidationPrefix(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rejected.ErrorDescription, Does.Contain("SENDER frame before execution approval"),
+                "the rejection has to surface as itself, not as a restore failure");
+            Assert.That(simulated.TransactionExecuted, Is.True,
+                "the prefix simulation restores its own snapshot in a finally");
+        }
+    }
+
+    [Test]
+    public void Execute_PostTxRevert_AfterThePayingFrameWroteTransientStorage_UnwindsTheBody()
+    {
+        DeploySmartSender(
+        [
+            .. Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.TSTORE).Done,
+            .. ApproveCode(TxFrame.ApproveExecutionAndPayment),
+        ]);
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            Frame(TxFrame.ModeDefault, flags: TxFrame.ApproveExecutionAndPayment),
+            Frame(TxFrame.ModeSender, target: Observer),
+            Frame(TxFrame.ModePostTx, target: Recipient));
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True, "a POST_TX revert must not invalidate the transaction");
+        AssertStorage(Observer, 0, UInt256.Zero, "the failed assertion discards the body");
+    }
+
     // A key's slot exists after its first use, so only that use grows the state.
     [Test]
     public void Execute_KeyedNonce_DefaultCodeApproval_ChargesFirstUseOnlyOnce()

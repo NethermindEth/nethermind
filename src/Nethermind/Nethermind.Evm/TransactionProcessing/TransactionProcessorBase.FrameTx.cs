@@ -109,6 +109,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
         }
 
+        // Every transaction-wide snapshot below is taken on the far side of the frame loop's per-frame
+        // discard, so an entry journal left dirty by a caller would make restoring to one throw.
+        WorldState.ResetTransient();
+
         if (opts.HasFlag(ExecutionOptions.FrameValidationPrefixOnly))
         {
             return SimulateFrameValidationPrefix(tx, tracer, opts, header, spec);
@@ -239,7 +243,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // A batch is the maximal run [i, j] where i..j-1 carry ATOMIC_BATCH_FLAG and j does not; any
         // failure inside it rolls back to before the run and skips the rest of it.
         bool inBatch = false;
-        Snapshot batchStartSnapshot = default;
+        Snapshot batchStartSnapshot = Snapshot.Empty;
         StackAccessTracker batchTracker = default;
         int batchStartIndex = 0;
         long batchStartRefund = 0;
@@ -278,9 +282,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 batchStartDestroys = accessTracker.DestroyList.TakeSnapshot();
             }
 
-            // Transient storage is discarded between frames (EIP-8141 § Cross-frame interactions).
-            WorldState.ResetTransient();
-
             bool isSender = frame.Mode == TxFrame.ModeSender;
             if (isSender && !frameContext.SenderApproved)
             {
@@ -305,6 +306,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             int frameStartJournal = frameContext.FrameJournalCheckpoint;
             bool payerWasSet = frameContext.Payer is not null;
             TransactionSubstate substate = ExecuteFrame(frame, resolvedTarget, caller, isStatic, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
+            // Transient storage is discarded between frames (EIP-8141 § Cross-frame interactions). Discarded
+            // here rather than before the next frame: the batch and prefix-end snapshots straddle frames, and
+            // a discard after either was taken truncates the journal it indexes into.
+            WorldState.ResetTransient();
             shouldRestoreRipemdTouch |= substate.ShouldRestoreRipemdTouch;
 
             bool frameSucceeded = !substate.ShouldRevert && !substate.IsError;
@@ -605,7 +610,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 }
 
                 frameContext.CurrentFrameIndex = i;
-                WorldState.ResetTransient();
 
                 TxFrame boundedFrame = CapFrameGas(frame, Eip8141Constants.MaxVerifyGas - verifyGasUsed, out bool capped);
 
@@ -625,6 +629,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                 // A deploy frame runs in DEFAULT mode, so unlike a VERIFY frame it may write state.
                 TransactionSubstate substate = ExecuteFrame(boundedFrame, resolvedTarget, caller, isStatic: !isDeployFrame, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
+                // Discarded once the frame has run, as the main loop does.
+                WorldState.ResetTransient();
 
                 verifyGasUsed += frameGasUsed - (ulong)frameStateGas;
 
