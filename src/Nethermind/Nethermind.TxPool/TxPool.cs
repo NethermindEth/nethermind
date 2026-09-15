@@ -1197,13 +1197,24 @@ namespace Nethermind.TxPool
 
             foreach (ValueHash256 hash in _frameTxsToRevalidate)
             {
-                // A type-6 frame tx may carry blobs (blob pool) or not (normal pool), so check both.
-                if ((!_transactions.TryGetValue(hash, out Transaction? tx) && !_blobTransactions.TryGetValue(hash, out tx))
-                    || !tx.SupportsFrames
-                    || tx.Frames is null)
+                // A type-6 frame tx may carry blobs (blob pool) or not (normal pool), so check both. The blob
+                // pool is read sidecar-free: only the prefix is re-resolved, and reloading the blobs would
+                // decode megabytes per transaction under this lock.
+                if (!_transactions.TryGetValue(hash, out Transaction? tx)
+                    && !_blobTransactions.TryGetValueWithoutBlobs(hash, out tx))
                 {
+                    // A sidecar-free read declines rather than waits when another caller holds the same read,
+                    // so a still-pooled transaction can report as absent. The set is cleared below, which would
+                    // skip this head's revalidation altogether; carry it to the next head instead.
+                    if (_blobTransactions.ContainsKey(hash) && TryDeferToNextHead(hash))
+                    {
+                        Interlocked.Increment(ref Metrics.FrameTxRevalidationsDeferred);
+                    }
+
                     continue;
                 }
+
+                if (!tx.SupportsFrames || tx.Frames is null) continue;
 
                 Interlocked.Increment(ref Metrics.FrameTxRevalidations);
                 if (!TryRevalidateFrameTransaction(tx, state))

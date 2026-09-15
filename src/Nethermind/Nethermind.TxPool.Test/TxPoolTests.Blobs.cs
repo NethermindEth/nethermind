@@ -5211,6 +5211,8 @@ namespace Nethermind.TxPool.Test
             if (reloadedFromStorage) DropCachedBlobTransactions();
             Assert.That(BlobTransactionIsCached(tx.Hash!), Is.EqualTo(!reloadedFromStorage),
                 "the arm under test is which copy the sweep reads back");
+            Assert.That(BlobTransactionMetadataIsCached(tx.Hash!), Is.EqualTo(!reloadedFromStorage),
+                "the sweep reads the sidecar-free copy, so that is the cache the storage arm has to miss");
 
             simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
                 .Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
@@ -5254,17 +5256,71 @@ namespace Nethermind.TxPool.Test
                 "a record restored at startup must be indexed, or a restart exempts it from revalidation");
         }
 
-        /// <summary>Drops every cached full blob transaction, so the pool has to answer from blob storage.</summary>
-        private void DropCachedBlobTransactions() => BlobTxCache().Clear();
+        // A reorg's change list does not describe what the abandoned branch reverted, so the sweep falls back
+        // from CollectAffected to CollectAll and queues every indexed frame transaction at once. That fan-out,
+        // not the single-transaction case, is what a reload under the head write lock is paid for.
+        [Test]
+        public async Task Reorg_revalidates_every_indexed_blob_carrying_frame_tx([Values] bool reorged)
+        {
+            const int pooled = 8;
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, FrameTxMaxVerifyGas = 200_000 };
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.AddressF, UInt256.MaxValue);
 
-        private bool BlobTransactionIsCached(Hash256 hash) => BlobTxCache().Contains(hash.ValueHash256);
+            for (int i = 0; i < pooled; i++)
+            {
+                Assert.That(_txPool.SubmitTx(SponsoredBlobFrameTx(TestItem.PrivateKeys[i], TestItem.Addresses[200 + i]), TxHandlingOptions.None),
+                    Is.EqualTo(AcceptTxResult.Accepted));
+            }
 
-        private Nethermind.Core.Caching.LruCache<ValueHash256, Transaction> BlobTxCache()
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(pooled), "the fan-out has to have something to reach");
+
+            // The pool has no last head yet, so until one lands even a change-list-carrying block counts as
+            // non-sequential and takes the fallback. This head is the parent the sequential arm needs.
+            Block parent = Build.A.Block.WithNumber(1).TestObject;
+            parent.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.Addresses[100] };
+            await RaiseBlockAddedToMainAndWaitForNewHead(parent);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(pooled),
+                "the parent head still resolves the same payer, so nothing may leave on it");
+
+            // Every reload then goes to blob storage, which is the per-transaction cost the fan-out multiplies.
+            DropCachedBlobTransactions();
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+                .Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+
+            // Named by nothing these transactions depend on, so the sequential arm's change list reaches none of
+            // them and only the reorg's CollectAll fallback can. Both arms are the same sequential block, so a
+            // reported previous branch is the single variable between them.
+            Block block = Build.A.Block.WithNumber(2).WithParent(parent).TestObject;
+            block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.Addresses[100] };
+            await RaiseBlockAddedToMainAndWaitForNewHead(block, reorged ? parent : null);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(reorged ? 0 : pooled),
+                "a reorg must revalidate every indexed frame transaction, and a sequential head only those its change list names");
+        }
+
+        /// <summary>Drops every cached blob transaction, full and sidecar-free, so the pool has to answer from
+        /// blob storage.</summary>
+        /// <remarks>Both caches, because revalidation reads the sidecar-free one: leaving it populated would
+        /// let the storage arm answer from memory and stop discriminating.</remarks>
+        private void DropCachedBlobTransactions()
+        {
+            BlobTxCache("_blobTxCache").Clear();
+            BlobTxCache("_blobTxMetadataCache").Clear();
+        }
+
+        private bool BlobTransactionIsCached(Hash256 hash) => BlobTxCache("_blobTxCache").Contains(hash.ValueHash256);
+
+        private bool BlobTransactionMetadataIsCached(Hash256 hash) => BlobTxCache("_blobTxMetadataCache").Contains(hash.ValueHash256);
+
+        private Nethermind.Core.Caching.LruCache<ValueHash256, Transaction> BlobTxCache(string field)
         {
             object blobPool = typeof(TxPool).GetField("_blobTransactions",
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(_txPool)!;
             return (Nethermind.Core.Caching.LruCache<ValueHash256, Transaction>)typeof(PersistentBlobTxDistinctSortedPool)
-                .GetField("_blobTxCache", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                .GetField(field, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
                 .GetValue(blobPool)!;
         }
 
@@ -5369,10 +5425,12 @@ namespace Nethermind.TxPool.Test
         }
 
         // A code-carrying pay target, so the payer resolves only through the simulator rather than natively.
-        private Transaction SponsoredBlobFrameTx(PrivateKey sender)
+        private Transaction SponsoredBlobFrameTx(PrivateKey sender, Address paymaster = null)
         {
-            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressF);
-            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, paymaster: TestItem.AddressF, sender: sender);
+            // One pending transaction per non-canonical pay target, so pooling several needs a target each.
+            paymaster ??= TestItem.AddressF;
+            _stateProvider.InsertCode([0x60, 0x00], paymaster);
+            Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, paymaster: paymaster, sender: sender);
             EnsureSenderBalance(sender.Address, (UInt256)tx.GasLimit * tx.MaxFeePerGas
                 + (UInt256)Eip4844Constants.GasPerBlob * tx.MaxFeePerBlobGas!.Value);
             return tx;

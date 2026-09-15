@@ -296,7 +296,9 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             return false;
         }
 
+        // Built from the storage record, so it is payer-less exactly as a full reload is.
         blobTx = BlobTransactionPayload.Elide(loadedTx);
+        RestoreAdmissionMetadata(blobTx, currentLightTx);
         _blobTxMetadataCache.Set(hash, blobTx);
 
         return true;
