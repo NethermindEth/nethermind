@@ -303,7 +303,12 @@ internal sealed class XdcMasternodeEthModule(
         }
 
         using IReadOnlyTxProcessorSource source = readOnlyTxProcessingEnvFactory.Create();
-        using IReadOnlyTxProcessingScope scope = source.Build(head.Header);
+        if (!source.TryBuild(head.Header, out IReadOnlyTxProcessingScope? scope))
+        {
+            return ResultWrapper<XdcTokenSupply>.Fail($"No state available for block {head.Header.ToString(BlockHeader.Format.FullHashAndNumber)}", ErrorCodes.ResourceUnavailable);
+        }
+
+        using IReadOnlyTxProcessingScope _ = scope;
         IWorldState worldState = scope.WorldState;
 
         if (!mintedRecordContract.TryGetOnsetEpoch(worldState, out UInt256 onsetEpoch))
