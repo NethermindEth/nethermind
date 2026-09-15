@@ -45,7 +45,6 @@ public static class WorldStateExtensions
     }
 
     /// <inheritdoc cref="AddToBalanceAndCreateIfNotEmpty(IWorldState, Address, in UInt256, IReleaseSpec)"/>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [SkipLocalsInit]
     public static void AddToBalanceAndCreateIfNotEmpty(this IWorldState worldState, Address address, ExecutionType executionType, in UInt256 balanceChange, IReleaseSpec spec)
     {
