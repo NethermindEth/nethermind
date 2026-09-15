@@ -196,13 +196,15 @@ public class TransactionsMessageSerializerTests
         Assert.That(deserialized.Transactions.Count, Is.EqualTo(1), "a blob tx the pool would accept must never be skipped");
     }
 
-    [Test]
-    public void A_size_limit_below_the_rlp_short_form_maximum_does_not_change_how_a_truncated_item_fails()
+    // Each prefix declares 55 content bytes the buffer does not carry: 0xb7 as a byte string, 0xf7 as a
+    // sequence. A cap below the short-form maximum would let the byte string reach the type-byte peek and the
+    // sequence reach the unchecked skip, both of which run past the end of the buffer - letting the sender pick
+    // the exception an unguarded decode would have raised as an RLP error.
+    [TestCase((byte)0xb7, TestName = "A truncated short-form byte string under a tiny cap still fails as an RLP error")]
+    [TestCase((byte)0xf7, TestName = "A truncated short-form sequence under a tiny cap still fails as an RLP error")]
+    public void A_size_limit_below_the_rlp_short_form_maximum_does_not_change_how_a_truncated_item_fails(byte itemPrefix)
     {
-        // 0xb7 declares 55 content bytes the buffer does not carry. A cap below 55 would let this item reach
-        // the type-byte peek, which then reads past the end of the buffer - letting the sender pick the
-        // exception an unguarded decode would have raised as an RLP error.
-        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(EncodeAsSequence(new byte[] { 0xb7 })).AsDisposable();
+        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(EncodeAsSequence(new[] { itemPrefix })).AsDisposable();
         TransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = 10 });
 
         Assert.That(() => serializer.Deserialize(buffer).Dispose(), Throws.InstanceOf<RlpException>());

@@ -19,14 +19,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         private static readonly RlpLimit RlpLimit = RlpLimit.For<TransactionsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(TransactionsMessage.Transactions));
         private static readonly Nethermind.Serialization.Rlp.TxDecoder TxDecoder = Nethermind.Serialization.Rlp.TxDecoder.Instance;
 
-        /// <summary>The largest content length an RLP short form can encode (Yellow Paper, Appendix B).</summary>
+        /// <summary>The largest measure <see cref="IsOverSizeLimit"/> can read off an RLP short-form item.</summary>
         /// <remarks>
         /// <c>PeekPrefixAndContentLength</c> bounds-checks only the long forms, so the bytes an item declares
         /// past its prefix are safe to read only once its declared length rules the short forms out. Both caps
-        /// below are clamped to this length, which keeps every item reaching the type-byte peek in
-        /// <see cref="IsOverSizeLimit"/> in the bounds-checked long form however small a limit is configured.
+        /// below are clamped to this measure, which keeps every item that reaches the type-byte peek, or the
+        /// unchecked <c>SkipItem</c>, in the bounds-checked long form however small a limit is configured. A
+        /// short form carries at most 55 content bytes (Yellow Paper, Appendix B) and a sequence item is
+        /// measured with its one-byte prefix included, so 56 is the largest either kind can present. That
+        /// coincides with <c>RlpHelpers.SmallPrefixBarrier</c>, which is internal to
+        /// <c>Nethermind.Serialization.Rlp</c> and not visible from here.
         /// </remarks>
-        private const long ShortFormMaxContentLength = 55;
+        private const long ShortFormMaxItemMeasure = 56;
 
         private readonly long _maxTxSize;
 
@@ -43,10 +47,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public TransactionsMessageSerializer(ITxPoolConfig? txPoolConfig = null, ISpecProvider? specProvider = null)
         {
-            _maxTxSize = Math.Max(txPoolConfig?.MaxTxSize ?? long.MaxValue, ShortFormMaxContentLength);
+            _maxTxSize = Math.Max(txPoolConfig?.MaxTxSize ?? long.MaxValue, ShortFormMaxItemMeasure);
             _maxBlobTxSize = txPoolConfig?.MaxBlobTxSize is null || specProvider is null
                 ? long.MaxValue
-                : Math.Max(txPoolConfig.MaxBlobTxSize.Value + MaxBlobSidecarOverhead(specProvider.GetFinalSpec()), ShortFormMaxContentLength);
+                : Math.Max(txPoolConfig.MaxBlobTxSize.Value + MaxBlobSidecarOverhead(specProvider.GetFinalSpec()), ShortFormMaxItemMeasure);
             _deserializeTransactionsMessage = (ref RlpReader ctx) => new TransactionsMessage(DeserializeTxsWithSizeGuard(ref ctx));
         }
 
