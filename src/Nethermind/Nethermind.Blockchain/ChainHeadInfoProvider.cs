@@ -30,7 +30,11 @@ namespace Nethermind.Blockchain
         {
             SpecProvider = specProvider;
             ReadOnlyStateProvider = stateProvider;
-            HeadNumber = blockTree.BestKnownNumber;
+            Block? head = blockTree.Head;
+            HeadNumber = head?.Number ?? 0;
+            // Genesis is not a head worth gating on: a node still syncing to the tip would price and bound
+            // transactions against it, so the facts below stay at their defaults until the first head change.
+            if (head is not null && !head.IsGenesis) ReadHead(head.Header);
 
             blockTree.BlockAddedToMain += OnHeadChanged;
             _blockTree = blockTree;
@@ -70,16 +74,25 @@ namespace Nethermind.Blockchain
 
         private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
         {
-            IReleaseSpec spec = SpecProvider.GetSpec(e.Block.Header);
             HeadNumber = e.Block.Number;
-            BlockGasLimit = e.Block!.GasLimit;
-            CurrentBaseFee = e.Block.Header.BaseFeePerGas;
+            ReadHead(e.Block.Header);
+            HeadChanged?.Invoke(sender, e);
+        }
+
+        /// <summary>Reads the head-derived facts the transaction pool gates on off <paramref name="header"/>.</summary>
+        /// <remarks>Shared with the constructor, so a node that has seen no <see cref="IBlockTree.BlockAddedToMain"/>
+        /// yet gates on its own head rather than on the defaults. <see cref="HeadNumber"/> is set by the callers,
+        /// which read it off the block rather than the header.</remarks>
+        private void ReadHead(BlockHeader header)
+        {
+            IReleaseSpec spec = SpecProvider.GetSpec(header);
+            BlockGasLimit = header.GasLimit;
+            CurrentBaseFee = header.BaseFeePerGas;
             CurrentFeePerBlobGas =
-                BlobGasCalculator.TryCalculateFeePerBlobGas(e.Block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 currentFeePerBlobGas)
+                BlobGasCalculator.TryCalculateFeePerBlobGas(header, spec.BlobBaseFeeUpdateFraction, out UInt256 currentFeePerBlobGas)
                     ? currentFeePerBlobGas
                     : UInt256.Zero;
             CurrentProofVersion = spec.BlobProofVersion;
-            HeadChanged?.Invoke(sender, e);
         }
     }
 }
