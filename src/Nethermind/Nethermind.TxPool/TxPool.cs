@@ -1155,12 +1155,12 @@ namespace Nethermind.TxPool
 
         /// <summary>Queues <paramref name="hash"/> for the next head's revalidation sweep, unless it has already
         /// been carried across <see cref="ITxPoolConfig.FrameTxRevalidationDeferralBudget"/> consecutive heads.</summary>
-        /// <remarks>Bounded because each carried head costs work under the head write lock — a validation-prefix
-        /// simulation, or a blob-pool record read: left unbounded, a backlog larger than one head's budget never
-        /// drains and stalls every later head. One allowance per transaction covers both, so a transaction
-        /// alternating between them cannot carry for twice as long as either alone. The count is read from the
-        /// previous head's map alone, so a head that revalidates without re-deferring clears it; what stays
-        /// bounded is the carry feeding itself, not the total.</remarks>
+        /// <remarks>Bounded for a different reason on each path it serves: a simulation carried every head holds
+        /// the head write lock for work a saturated per-head budget never drains, while a transaction no head
+        /// ever judges holds its payer's reservation for good. One allowance per transaction covers both, so a
+        /// transaction alternating between them cannot carry for twice as long as either alone. The count is
+        /// read from the previous head's map alone, so a head that revalidates without re-deferring clears it;
+        /// what stays bounded is the carry feeding itself, not the total.</remarks>
         private bool TryDeferToNextHead(in ValueHash256 hash)
         {
             _frameTxDeferralsCarried.TryGetValue(hash, out int spentHeads);
@@ -1180,9 +1180,8 @@ namespace Nethermind.TxPool
         /// revalidation sweep exists to close. So once the carry is spent the full read decides, and a record even
         /// that cannot materialise is dropped: nothing can broadcast or include it either.
         /// Neither the decline nor the escalation is counted as a deferral: this path always reaches a verdict
-        /// within the carry, and the eviction below counts the one outcome an operator can act on. What a decline does
-        /// cost is the transaction's shared carry, which the simulation site then finds spent — so a carry spent
-        /// here surfaces there, as FrameTxRevalidationDeferralsExhausted without FrameTxRevalidationsDeferred.
+        /// within the carry, and the eviction below counts the one outcome that leaves the pool. What a decline
+        /// does cost is the transaction's shared carry, which the simulation site then finds spent.
         /// </remarks>
         private bool TryReadBlobFrameTransaction(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? tx)
         {
