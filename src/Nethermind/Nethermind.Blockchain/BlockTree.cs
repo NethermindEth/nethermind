@@ -426,6 +426,14 @@ namespace Nethermind.Blockchain
             bool isKnown = IsKnownBlock(header.Number, header.Hash);
             if (isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number)
             {
+                // A known header says nothing about the body: fast sync inserts headers ahead of bodies, so this
+                // can still be the first time the block arrives carrying one. Persist it rather than discard it -
+                // once the bodies feed has finished its descent nothing fetches that body again.
+                if (block is not null && !_blockStore.HasBlock(header.Number, header.Hash))
+                {
+                    _blockStore.InsertDeferred(block);
+                }
+
                 if (Logger.IsTrace) Logger.Trace($"Block {header.ToString(BlockHeader.Format.FullHashAndNumber)} already known.");
                 return AddBlockResult.AlreadyKnown;
             }

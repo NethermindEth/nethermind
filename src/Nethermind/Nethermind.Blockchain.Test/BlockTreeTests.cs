@@ -476,6 +476,23 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Suggesting_a_block_whose_header_is_already_known_still_stores_its_body()
+    {
+        BlockTree blockTree = BuildBlockTree();
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        blockTree.SuggestBlock(block0);
+
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        blockTree.Insert(block1.Header); // fast sync inserts headers ahead of the bodies
+
+        AddBlockResult result = blockTree.SuggestBlock(block1);
+
+        Assert.That(result, Is.EqualTo(AddBlockResult.AlreadyKnown));
+        Assert.That(blockTree.FindBlock(block1.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: block1.Number),
+            Is.Not.Null, "a known header must not make the block's body be discarded");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Cleans_invalid_blocks_before_starting()
     {
         MemDb blockInfosDb = new();
