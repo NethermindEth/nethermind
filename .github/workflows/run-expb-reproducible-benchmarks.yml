@@ -1382,21 +1382,41 @@ jobs:
           }
 
           compute_percentiles "${processing_ms}" "" > "${metrics_file}"
+          if [[ -s "${client_ms}" ]]; then echo "SOURCE=sse"; else echo "SOURCE=k6"; fi >> "${metrics_file}"
 
-          # Also compute K6 TTFB metrics when client metrics were primary
+          # Also compute K6 request-time metrics when client metrics were primary. The same table carries
+          # the gas used, which gives MGas/s over the client's processing time.
           if [[ -s "${client_ms}" ]]; then
+            ttfb_table="${RUNNER_TEMP}/expb-ttfb-table.txt"
             ttfb_ms="${RUNNER_TEMP}/expb-ttfb-ms.txt"
+            ttfb_gas="${RUNNER_TEMP}/expb-ttfb-gas.txt"
             awk -F'|' '
               /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
+                gas = $3
                 value = $4
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", gas)
                 gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
                 if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
-                  print value
+                  print gas, value
                 }
               }
-            ' "${clean_log}" > "${ttfb_ms}"
+            ' "${clean_log}" > "${ttfb_table}"
+            awk '{ print $2 }' "${ttfb_table}" > "${ttfb_ms}"
+            awk '{ print $1 }' "${ttfb_table}" > "${ttfb_gas}"
             if [[ -s "${ttfb_ms}" ]]; then
               compute_percentiles "${ttfb_ms}" "TTFB_" >> "${metrics_file}"
+              # Row i of the k6 table is block i of the feed. The feed reports a block when the next
+              # payload is requested, so it can lack the last one; the sums stop at the shorter list.
+              mgas_s=$(awk 'NR == FNR { gas[NR] = $1; paired = NR; next } FNR <= paired { total_gas += gas[FNR]; total_ms += $1 } END { if (total_ms > 0) printf "%.2f", (total_gas / 1000000) / (total_ms / 1000) }' "${ttfb_gas}" "${client_ms}")
+              if [[ -n "${mgas_s}" ]]; then
+                echo "MGAS_S=${mgas_s}" >> "${metrics_file}"
+              fi
+              # Time outside processing per payload, from the same pairing.
+              outside_ms="${RUNNER_TEMP}/expb-outside-ms.txt"
+              awk 'NR == FNR { request[NR] = $1; paired = NR; next } FNR <= paired { printf "%.2f\n", request[FNR] - $1 }' "${ttfb_ms}" "${client_ms}" > "${outside_ms}"
+              if [[ -s "${outside_ms}" ]]; then
+                compute_percentiles "${outside_ms}" "OUTSIDE_" >> "${metrics_file}"
+              fi
             fi
           fi
 
@@ -1404,20 +1424,27 @@ jobs:
           echo ""
           echo "========================================="
           if [[ -s "${client_ms}" ]]; then
-            echo "  Client Processing (SSE) Metrics"
+            echo "  Block processing (Nethermind)"
           else
-            echo "  Processing Metrics (K6 TTFB)"
+            echo "  newPayload request time (k6)"
           fi
           echo "========================================="
-          while IFS='=' read -r key val; do
+          grep -v "^SOURCE=\|^TTFB_\|^MGAS_S=\|^OUTSIDE_" "${metrics_file}" | while IFS='=' read -r key val; do
             printf "  %-10s %s ms\n" "${key}" "${val}"
-          done < "${metrics_file}"
+          done
           if [[ -s "${client_ms}" ]] && grep -q "^TTFB_AVG=" "${metrics_file}" 2>/dev/null; then
+            printf "  %-10s %s MGas/s\n" "MGAS_S" "${mgas_s:-n/a}"
             echo "-----------------------------------------"
-            echo "  K6 TTFB (secondary)"
+            echo "  newPayload request time (k6)"
             echo "-----------------------------------------"
             grep "^TTFB_" "${metrics_file}" | while IFS='=' read -r key val; do
               printf "  %-10s %s ms\n" "${key#TTFB_}" "${val}"
+            done
+            echo "-----------------------------------------"
+            echo "  Request minus processing"
+            echo "-----------------------------------------"
+            grep "^OUTSIDE_" "${metrics_file}" | while IFS='=' read -r key val; do
+              printf "  %-10s %s ms\n" "${key#OUTSIDE_}" "${val}"
             done
           fi
           echo "========================================="
@@ -1669,16 +1696,17 @@ jobs:
             fi
           }
 
-          load_metric_with_fallback() {
+          # Which measurement the unprefixed keys hold. Files written before SOURCE existed carried k6
+          # keys under TTFB_ only when the client feed was present, so that presence implies sse; without
+          # either key the file could hold either measurement.
+          metrics_source() {
             local file="$1"
-            local primary_key="$2"
-            local fallback_key="$3"
-            local value=""
-            value="$(load_metric "${file}" "${primary_key}")"
-            if [[ -z "${value}" ]]; then
-              value="$(load_metric "${file}" "${fallback_key}")"
+            local source
+            source="$(load_metric "${file}" "SOURCE")"
+            if [[ -z "${source}" && -n "$(load_metric "${file}" "TTFB_AVG")" ]]; then
+              source="sse"
             fi
-            printf '%s' "${value}"
+            printf '%s' "${source:-unknown}"
           }
 
           percentage_delta() {
@@ -1688,7 +1716,7 @@ jobs:
               echo "n/a"
               return
             fi
-            awk -v c="${current}" -v b="${baseline}" 'BEGIN { if (b == 0) { print "n/a"; } else { printf "%+.2f%%", ((c - b) / b) * 100; } }'
+            awk -v c="${current}" -v b="${baseline}" 'BEGIN { if (b == 0) { print "n/a"; } else { printf "%+.0f%%", ((c - b) / b) * 100; } }'
           }
 
           append_line() {
@@ -1699,36 +1727,36 @@ jobs:
             printf '\n' >> "${comment_file}"
           }
 
-          emit_metrics_section() {
-            local label="$1"
-            local current_metrics="$2"
-            local master_metrics="$3"
-            local prefix="$4"
-
-            local metrics=("AVG" "MEDIAN" "P90" "P95" "P99" "MIN" "MAX")
-
-            if [[ ! -f "${master_metrics}" ]] || ! grep -q "^${prefix}AVG=" "${master_metrics}" 2>/dev/null; then
-              append_line "| Metric | PR |"
-              append_line "|---|---:|"
-              for m in "${metrics[@]}"; do
-                local val
-                val="$(load_metric "${current_metrics}" "${prefix}${m}")"
-                if [[ -z "${val}" ]]; then val="$(load_metric_with_fallback "${current_metrics}" "${prefix}${m}" "${prefix}MEAN")"; fi
-                append_line "| ${m} (ms) | ${val:-n/a} |"
-              done
+          # Whole milliseconds read fine above 100 ms; the small payload sets need the decimal.
+          format_ms() {
+            local value="$1"
+            if [[ -z "${value}" ]]; then
+              printf 'n/a'
               return
             fi
+            awk -v v="${value}" 'BEGIN { if (v + 0 >= 100 || v + 0 <= -100) printf "%.0f", v; else printf "%.1f", v }'
+          }
 
-            append_line "| Metric | PR | Master (cached) | Delta |"
-            append_line "|---|---:|---:|---:|"
-            for m in "${metrics[@]}"; do
-              local cv mv
-              cv="$(load_metric "${current_metrics}" "${prefix}${m}")"
-              if [[ -z "${cv}" ]]; then cv="$(load_metric_with_fallback "${current_metrics}" "${prefix}${m}" "${prefix}MEAN")"; fi
-              mv="$(load_metric "${master_metrics}" "${prefix}${m}")"
-              if [[ -z "${mv}" ]]; then mv="$(load_metric_with_fallback "${master_metrics}" "${prefix}${m}" "${prefix}MEAN")"; fi
-              append_line "| ${m} (ms) | ${cv:-n/a} | ${mv:-n/a} | $(percentage_delta "${cv}" "${mv}") |"
-            done
+          cell() {
+            printf ' %s |' "$1"
+          }
+
+          # Master, PR and delta cells for one metric of one column group. An empty master path or a
+          # prefix that no file carries renders as n/a, which keeps the table one shape in every case.
+          group_cells() {
+            local current_metrics="$1"
+            local master_metrics="$2"
+            local prefix="$3"
+            local master_prefix="$4"
+            local metric="$5"
+            local cv="" mv=""
+            cv="$(load_metric "${current_metrics}" "${prefix}${metric}")"
+            if [[ -n "${master_metrics}" ]]; then
+              mv="$(load_metric "${master_metrics}" "${master_prefix}${metric}")"
+            fi
+            cell "$(format_ms "${mv}")"
+            cell "$(format_ms "${cv}")"
+            cell "$(percentage_delta "${cv}" "${mv}")"
           }
 
           build_table() {
@@ -1736,6 +1764,9 @@ jobs:
             local current_metrics="$2"
             local master_metrics="$3"
             local scenario_name="${CLIENT}-${STATE_LAYOUT}-${payload_set}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
+
+            local metrics=("MIN" "AVG" "MEDIAN" "P90" "P99" "MAX")
+            local labels=("Min" "Avg" "P50" "P90" "P99" "Max")
 
             append_blank
             append_line "#### ${payload_set}"
@@ -1752,22 +1783,59 @@ jobs:
               append_line "No cached master baseline for \`${payload_set}\`. A baseline will be created from the next successful \`master\` push run."
             fi
 
-            # Primary: client-side (SSE) metrics or fallback
-            append_blank
-            if grep -q "^TTFB_AVG=" "${current_metrics}" 2>/dev/null; then
-              append_line "**Client Processing (SSE)**"
+            # The request time is what the consensus client waits for; the processing time isolates EVM
+            # and state work; their per-payload difference is the request path and GC. Without client
+            # metrics the unprefixed keys hold the k6 table instead, on either side, so each column picks
+            # its request-time prefix from its own source and is compared only against the same
+            # measurement.
+            local current_source master_source
+            current_source="$(metrics_source "${current_metrics}")"
+            master_source="none"
+            if [[ -f "${master_metrics}" ]]; then
+              master_source="$(metrics_source "${master_metrics}")"
             fi
-            append_blank
-            emit_metrics_section "Processing" "${current_metrics}" "${master_metrics}" ""
+            local request_master="${master_metrics}" processing_master="${master_metrics}"
+            local request_prefix="" master_request_prefix="" processing_prefix="NONE_"
+            if [[ "${current_source}" == "sse" ]]; then
+              request_prefix="TTFB_"
+              processing_prefix=""
+            fi
+            case "${master_source}" in
+              sse) master_request_prefix="TTFB_" ;;
+              k6) processing_master="" ;;
+              *) request_master=""; processing_master="" ;;
+            esac
 
-            # Secondary: K6 TTFB metrics (only shown when SSE data was primary)
-            if grep -q "^TTFB_AVG=" "${current_metrics}" 2>/dev/null; then
+            # Markdown has one header row and no spans: each group name sits over its Master column and
+            # a bold sub-header row names the three columns.
+            append_blank
+            append_line "| ms | Request (k6) | | | Processing | | | Request - processing | | |"
+            append_line "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
+            append_line "| | **Master** | **PR** | **%** | **Master** | **PR** | **%** | **Master** | **PR** | **%** |"
+            local i row
+            for i in "${!metrics[@]}"; do
+              row="| ${labels[$i]} |"
+              row="${row}$(group_cells "${current_metrics}" "${request_master}" "${request_prefix}" "${master_request_prefix}" "${metrics[$i]}")"
+              row="${row}$(group_cells "${current_metrics}" "${processing_master}" "${processing_prefix}" "" "${metrics[$i]}")"
+              row="${row}$(group_cells "${current_metrics}" "${processing_master}" "OUTSIDE_" "OUTSIDE_" "${metrics[$i]}")"
+              append_line "${row}"
+            done
+            local cm="" mm=""
+            cm="$(load_metric "${current_metrics}" "MGAS_S")"
+            if [[ -n "${processing_master}" ]]; then
+              mm="$(load_metric "${processing_master}" "MGAS_S")"
+            fi
+            append_line "| MGas/s | | | |$(cell "$(format_ms "${mm}")")$(cell "$(format_ms "${cm}")")$(cell "$(percentage_delta "${cm}" "${mm}")") | | |"
+
+            if [[ "${master_source}" == "sse" ]]; then
               append_blank
-              append_line "<details><summary>K6 TTFB</summary>"
+              append_line "_Timing rows: a positive delta is slower. MGas/s: a positive delta is more throughput._"
+            elif [[ "${master_source}" == "k6" && "${current_source}" == "sse" ]]; then
               append_blank
-              emit_metrics_section "TTFB" "${current_metrics}" "${master_metrics}" "TTFB_"
+              append_line "_The cached master run has no client processing data, so the processing columns are PR-only._"
+            elif [[ "${master_source}" == "unknown" ]]; then
               append_blank
-              append_line "</details>"
+              append_line "_The cached master run predates source tracking and could hold either measurement, so the comparison is PR-only until the next \`master\` push refreshes the cache._"
             fi
           }
 
@@ -1877,6 +1945,19 @@ jobs:
             fi
           }
 
+          # Which measurement the unprefixed keys hold. Files written before SOURCE existed carried k6
+          # keys under TTFB_ only when the client feed was present, so that presence implies sse; without
+          # either key the file could hold either measurement.
+          metrics_source() {
+            local file="$1"
+            local source
+            source="$(load_metric "${file}" "SOURCE")"
+            if [[ -z "${source}" && -n "$(load_metric "${file}" "TTFB_AVG")" ]]; then
+              source="sse"
+            fi
+            printf '%s' "${source:-unknown}"
+          }
+
           mapfile -t payload_sets < <(echo "${PAYLOAD_SETS}" | jq -r '.[]')
 
           {
@@ -1903,8 +1984,7 @@ jobs:
             for (( r=1; r<=run_count; r++ )); do
               mf="${METRICS_DIR}/expb-single-metrics-${ps}-run${r}/expb-metrics.env"
               if [[ -f "${mf}" ]]; then
-                ttfb_check=$(load_metric "${mf}" "TTFB_AVG")
-                if [[ -n "${ttfb_check}" ]]; then
+                if [[ "$(metrics_source "${mf}")" == "sse" ]]; then
                   source_label="SSE"
                 else
                   source_label="TTFB"
@@ -1937,8 +2017,7 @@ jobs:
                 fi
 
                 src=""
-                ttfb_check=$(load_metric "${mf}" "TTFB_AVG")
-                if [[ -n "${ttfb_check}" ]]; then src="SSE"; else src="TTFB"; fi
+                if [[ "$(metrics_source "${mf}")" == "sse" ]]; then src="SSE"; else src="TTFB"; fi
 
                 avg=$(load_metric "${mf}" "AVG")
                 median=$(load_metric "${mf}" "MEDIAN")
@@ -1993,7 +2072,7 @@ jobs:
               else
                 src=""
                 ttfb_check=$(load_metric "${mf}" "TTFB_AVG")
-                if [[ -n "${ttfb_check}" ]]; then src=" (SSE)"; fi
+                if [[ "$(metrics_source "${mf}")" == "sse" ]]; then src=" (SSE)"; fi
 
                 {
                   echo "| Metric | Value${src} |"
@@ -2010,7 +2089,7 @@ jobs:
                 if [[ -n "${ttfb_check}" ]]; then
                   {
                     echo ""
-                    echo "<details><summary>K6 TTFB</summary>"
+                    echo "<details><summary>newPayload request time (k6)</summary>"
                     echo ""
                     echo "| Metric | Value |"
                     echo "|---|---:|"
@@ -2856,21 +2935,41 @@ jobs:
             echo "INVALID_BLOCK_FOUND=${invalid_block_found}"
           } > "${metrics_dir}/metrics.env"
           compute_percentiles "${processing_ms}" "" >> "${metrics_dir}/metrics.env"
+          if [[ -s "${client_ms}" ]]; then echo "SOURCE=sse"; else echo "SOURCE=k6"; fi >> "${metrics_dir}/metrics.env"
 
-          # Also compute K6 TTFB metrics when client metrics were primary
+          # Also compute K6 request-time metrics when client metrics were primary. The same table carries
+          # the gas used, which gives MGas/s over the client's processing time.
           if [[ -s "${client_ms}" ]]; then
+            ttfb_table="${RUNNER_TEMP}/expb-ttfb-table-${key}.txt"
             ttfb_ms="${RUNNER_TEMP}/expb-ttfb-ms-${key}.txt"
+            ttfb_gas="${RUNNER_TEMP}/expb-ttfb-gas-${key}.txt"
             awk -F'|' '
               /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
+                gas = $3
                 value = $4
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", gas)
                 gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
                 if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
-                  print value
+                  print gas, value
                 }
               }
-            ' "${clean_log}" > "${ttfb_ms}"
+            ' "${clean_log}" > "${ttfb_table}"
+            awk '{ print $2 }' "${ttfb_table}" > "${ttfb_ms}"
+            awk '{ print $1 }' "${ttfb_table}" > "${ttfb_gas}"
             if [[ -s "${ttfb_ms}" ]]; then
               compute_percentiles "${ttfb_ms}" "TTFB_" >> "${metrics_dir}/metrics.env"
+              # Row i of the k6 table is block i of the feed. The feed reports a block when the next
+              # payload is requested, so it can lack the last one; the sums stop at the shorter list.
+              mgas_s=$(awk 'NR == FNR { gas[NR] = $1; paired = NR; next } FNR <= paired { total_gas += gas[FNR]; total_ms += $1 } END { if (total_ms > 0) printf "%.2f", (total_gas / 1000000) / (total_ms / 1000) }' "${ttfb_gas}" "${client_ms}")
+              if [[ -n "${mgas_s}" ]]; then
+                echo "MGAS_S=${mgas_s}" >> "${metrics_dir}/metrics.env"
+              fi
+              # Time outside processing per payload, from the same pairing.
+              outside_ms="${RUNNER_TEMP}/expb-outside-ms-${key}.txt"
+              awk 'NR == FNR { request[NR] = $1; paired = NR; next } FNR <= paired { printf "%.2f\n", request[FNR] - $1 }' "${ttfb_ms}" "${client_ms}" > "${outside_ms}"
+              if [[ -s "${outside_ms}" ]]; then
+                compute_percentiles "${outside_ms}" "OUTSIDE_" >> "${metrics_dir}/metrics.env"
+              fi
             fi
           fi
 
@@ -2878,20 +2977,27 @@ jobs:
           echo "========================================="
           echo "  Metrics for ${TAG} run ${RUN}"
           if [[ -s "${client_ms}" ]]; then
-            echo "  Source: Client Processing (SSE)"
+            echo "  Block processing (Nethermind)"
           else
-            echo "  Source: K6 TTFB"
+            echo "  newPayload request time (k6)"
           fi
           echo "========================================="
-          grep -v "^TAG=\|^RUN=\|^EXCEPTION_\|^INVALID_\|^TTFB_" "${metrics_dir}/metrics.env" | while IFS='=' read -r key val; do
+          grep -v "^TAG=\|^RUN=\|^EXCEPTION_\|^INVALID_\|^SOURCE=\|^TTFB_\|^MGAS_S=\|^OUTSIDE_" "${metrics_dir}/metrics.env" | while IFS='=' read -r key val; do
             printf "  %-10s %s ms\n" "${key}" "${val}"
           done
           if grep -q "^TTFB_AVG=" "${metrics_dir}/metrics.env" 2>/dev/null; then
+            printf "  %-10s %s MGas/s\n" "MGAS_S" "${mgas_s:-n/a}"
             echo "-----------------------------------------"
-            echo "  K6 TTFB (secondary)"
+            echo "  newPayload request time (k6)"
             echo "-----------------------------------------"
             grep "^TTFB_" "${metrics_dir}/metrics.env" | while IFS='=' read -r key val; do
               printf "  %-10s %s ms\n" "${key#TTFB_}" "${val}"
+            done
+            echo "-----------------------------------------"
+            echo "  Request minus processing"
+            echo "-----------------------------------------"
+            grep "^OUTSIDE_" "${metrics_dir}/metrics.env" | while IFS='=' read -r key val; do
+              printf "  %-10s %s ms\n" "${key#OUTSIDE_}" "${val}"
             done
           fi
           echo "========================================="
@@ -3060,6 +3166,19 @@ jobs:
             fi
           }
 
+          # Which measurement the unprefixed keys hold. Files written before SOURCE existed carried k6
+          # keys under TTFB_ only when the client feed was present, so that presence implies sse; without
+          # either key the file could hold either measurement.
+          metrics_source() {
+            local file="$1"
+            local source
+            source="$(load_metric "${file}" "SOURCE")"
+            if [[ -z "${source}" && -n "$(load_metric "${file}" "TTFB_AVG")" ]]; then
+              source="sse"
+            fi
+            printf '%s' "${source:-unknown}"
+          }
+
           percentage_delta() {
             local current="$1"
             local baseline="$2"
@@ -3093,6 +3212,7 @@ jobs:
           } > "${summary_file}"
 
           baseline_avg=""
+          baseline_source=""
           row_idx=0
 
           for i in "${!tags[@]}"; do
@@ -3131,8 +3251,7 @@ jobs:
               fi
 
               # Detect metrics source
-              ttfb_avg=$(load_metric "${metrics_file}" "TTFB_AVG")
-              if [[ -n "${ttfb_avg}" ]]; then
+              if [[ "$(metrics_source "${metrics_file}")" == "sse" ]]; then
                 source="SSE"
               else
                 source="TTFB"
@@ -3150,9 +3269,14 @@ jobs:
 
               if [[ -z "${baseline_avg}" && -n "${avg}" ]]; then
                 baseline_avg="${avg}"
+                baseline_source="${source}"
               fi
 
-              delta=$(percentage_delta "${avg}" "${baseline_avg}")
+              if [[ "${source}" == "${baseline_source}" ]]; then
+                delta=$(percentage_delta "${avg}" "${baseline_avg}")
+              else
+                delta="n/a"
+              fi
 
               warnings=""
               if [[ "${exception}" == "true" ]]; then
@@ -3172,7 +3296,7 @@ jobs:
             echo ""
             echo "**Source:** SSE = client-side processing time from Nethermind's SSE data feed, TTFB = K6 HTTP time-to-first-byte (fallback)"
             echo ""
-            echo "**Delta vs First** shows the percentage change in AVG processing time compared to the first image in the list."
+            echo "**Delta vs First** shows the percentage change in AVG compared to the first image in the list, and reads n/a when the row's source differs from the first image's."
           } >> "${summary_file}"
 
           echo "--- Multi-Image Summary ---"

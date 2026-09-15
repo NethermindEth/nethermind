@@ -53,6 +53,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public bool IsTIPXDCXMiner { get; set; }
     public bool IsTIPXDCXReceiver { get; set; }
     public bool IsDynamicGasLimitBlock { get; set; }
+    public UInt256 MinimumGasPrice { get; set; }
     public ulong RangeReturnSigner { get; set; }
 
     public void ApplyV2Config(ulong round)
@@ -148,5 +149,12 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public bool IsTIPXDCXReceiver { get; set; }
     public bool IsTipUpgradePenaltyEnabled { get; set; }
     public bool IsDynamicGasLimitBlock { get; set; }
+
+    /// <summary>Gas price, in wei, below which the transaction pool rejects a non-special transaction. Zero disables the check.</summary>
+    /// <remarks>
+    /// A mempool-admission rule rather than a consensus rule, so only the pool reads it. Resolved from the chainspec by
+    /// <see cref="XdcChainSpecEngineParameters.ResolveMinGasPrice"/>.
+    /// </remarks>
+    public UInt256 MinimumGasPrice { get; set; }
     public void ApplyV2Config(ulong round);
 }
