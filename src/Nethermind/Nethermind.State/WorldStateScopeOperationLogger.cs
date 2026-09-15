@@ -38,10 +38,17 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         return true;
     }
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
+        if (!baseScopeProvider.TryBeginScope(baseBlock, metrics, out IWorldStateScopeProvider.IScope? innerScope))
+        {
+            scope = null;
+            return false;
+        }
+
         long scopeId = Interlocked.Increment(ref _currentScopeId);
-        return new ScopeWrapper(baseScopeProvider.BeginScope(baseBlock, metrics), scopeId, _logger);
+        scope = new ScopeWrapper(innerScope, scopeId, _logger);
+        return true;
     }
 
     private class ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger) : IWorldStateScopeProvider.IScope

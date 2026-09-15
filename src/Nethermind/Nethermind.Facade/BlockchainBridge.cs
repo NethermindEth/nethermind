@@ -701,18 +701,18 @@ namespace Nethermind.Facade
             /// inner env), and nonces on these paths must be read from the world state rather than through an
             /// <see cref="IStateReader"/>.
             /// </remarks>
-            public Scope<BlockchainBridge.BlockProcessingComponents> BuildAndOverride(
+            public bool TryBuildAndOverride(
                 BlockHeader? header,
-                Dictionary<Address, AccountOverride>? stateOverride = null,
-                IReleaseSpec? specOverride = null,
-                BlockOverride? blockOverride = null)
+                Dictionary<Address, AccountOverride>? stateOverride,
+                IReleaseSpec? specOverride,
+                BlockOverride? blockOverride,
+                [NotNullWhen(true)] out Scope<BlockchainBridge.BlockProcessingComponents>? scope)
             {
                 // A block override still goes through the env so it keeps committing the unchanged state at
                 // the overridden block number, which the overridden header relies on to resolve.
-                Scope<BlockchainBridge.BlockProcessingComponents> scope =
-                    inner.BuildAndOverride(header, stateOverride: null, specOverride, blockOverride);
+                if (!inner.TryBuildAndOverride(header, stateOverride: null, specOverride, blockOverride, out scope)) return false;
 
-                if (stateOverride is null || header is null) return scope;
+                if (stateOverride is null || header is null) return true;
 
                 try
                 {
@@ -727,7 +727,7 @@ namespace Nethermind.Facade
                     throw;
                 }
 
-                return scope;
+                return true;
             }
 
             public bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, [NotNullWhen(true)] out Scope<BlockchainBridge.BlockProcessingComponents>? scope) =>

@@ -49,16 +49,7 @@ public class FlatScopeProvider(
             return false;
         }
 
-        try
-        {
-            scope = BeginScope(parent, metrics);
-            return true;
-        }
-        catch (StateUnavailableException)
-        {
-            scope = null;
-            return false;
-        }
+        return TryBeginScope(parent, metrics, out scope);
     }
 
     private bool TryGetBaseBlock(BlockHeader targetBlock, out BlockHeader? parent)
@@ -73,12 +64,21 @@ public class FlatScopeProvider(
         return parent is not null;
     }
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
         StateId currentState = new(baseBlock);
-        SnapshotBundle snapshotBundle = flatDbManager.GatherSnapshotBundle(currentState, usage: usage);
+        SnapshotBundle snapshotBundle;
+        try
+        {
+            snapshotBundle = flatDbManager.GatherSnapshotBundle(currentState, usage: usage);
+        }
+        catch (StateUnavailableException)
+        {
+            scope = null;
+            return false;
+        }
 
-        return new FlatWorldStateScope(
+        scope = new FlatWorldStateScope(
             currentState,
             snapshotBundle,
             _codeDb,
@@ -88,6 +88,7 @@ public class FlatScopeProvider(
             logManager,
             warmReadPool: _warmReadPool,
             isReadOnly: isReadOnly);
+        return true;
     }
 
     public void Dispose()

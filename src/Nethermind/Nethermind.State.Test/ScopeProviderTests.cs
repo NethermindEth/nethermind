@@ -1263,7 +1263,7 @@ public class ScopeProviderTests(bool useFlat)
         IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
         baseScope.RootHash.Returns(TestItem.KeccakA);
         IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
-        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(baseScope);
+        baseProvider.TryBeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>(), out Arg.Any<IWorldStateScopeProvider.IScope>()).Returns(call => call.Succeed(2, baseScope));
         PrewarmerScopeProvider consumer = new(baseProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
 
         bool ran = false;
@@ -1292,7 +1292,7 @@ public class ScopeProviderTests(bool useFlat)
         caches.ConsumerScopeOpened += () => throw new InvalidOperationException("join failed");
         IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
         IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
-        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(baseScope);
+        baseProvider.TryBeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>(), out Arg.Any<IWorldStateScopeProvider.IScope>()).Returns(call => call.Succeed(2, baseScope));
         PrewarmerScopeProvider consumer = new(baseProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
 
         Assert.That(() => consumer.BeginScope(Build.A.BlockHeader.TestObject), Throws.InvalidOperationException);
@@ -1343,7 +1343,7 @@ public class ScopeProviderTests(bool useFlat)
         bool openDuringBaseDispose = false;
         baseScope.When(s => s.Dispose()).Do(_ => openDuringBaseDispose = caches.ConsumerScopeOpen);
         IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
-        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(baseScope);
+        baseProvider.TryBeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>(), out Arg.Any<IWorldStateScopeProvider.IScope>()).Returns(call => call.Succeed(2, baseScope));
         PrewarmerScopeProvider consumer = new(baseProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
 
         using (consumer.BeginScope(Build.A.BlockHeader.TestObject))
@@ -1416,7 +1416,7 @@ public class ScopeProviderTests(bool useFlat)
     {
         IWorldStateScopeProvider.IScope inner = Substitute.For<IWorldStateScopeProvider.IScope>();
         IWorldStateScopeProvider innerProvider = Substitute.For<IWorldStateScopeProvider>();
-        innerProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(inner);
+        innerProvider.TryBeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>(), out Arg.Any<IWorldStateScopeProvider.IScope>()).Returns(call => call.Succeed(2, inner));
 
         IWorldStateScopeProvider decorated = new WorldStateMetricsScopeProvider(
             new WorldStateScopeOperationLogger(innerProvider, LimboLogs.Instance), _ => { });
@@ -1790,7 +1790,11 @@ public class ScopeProviderTests(bool useFlat)
     private sealed class LegacyScopeProvider : IWorldStateScopeProvider
     {
         public bool HasRoot(BlockHeader baseBlock) => true;
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock, LocalMetrics metrics) => Substitute.For<IWorldStateScopeProvider.IScope>();
+        public bool TryBeginScope(BlockHeader baseBlock, LocalMetrics metrics, out IWorldStateScopeProvider.IScope scope)
+        {
+            scope = Substitute.For<IWorldStateScopeProvider.IScope>();
+            return true;
+        }
     }
 
     private sealed class TargetScopeProvider : IWorldStateScopeProvider
@@ -1824,7 +1828,11 @@ public class ScopeProviderTests(bool useFlat)
             return true;
         }
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock, LocalMetrics metrics) => Substitute.For<IWorldStateScopeProvider.IScope>();
+        public bool TryBeginScope(BlockHeader baseBlock, LocalMetrics metrics, out IWorldStateScopeProvider.IScope scope)
+        {
+            scope = Substitute.For<IWorldStateScopeProvider.IScope>();
+            return true;
+        }
     }
 
 #nullable enable
