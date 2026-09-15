@@ -1548,7 +1548,8 @@ jobs:
           }
 
           # Which measurement the unprefixed keys hold. Files written before SOURCE existed carried k6
-          # keys under TTFB_ only when the client feed was present, so that presence implies sse.
+          # keys under TTFB_ only when the client feed was present, so that presence implies sse; without
+          # either key the file could hold either measurement.
           metrics_source() {
             local file="$1"
             local source
@@ -1556,7 +1557,7 @@ jobs:
             if [[ -z "${source}" && -n "$(load_metric "${file}" "TTFB_AVG")" ]]; then
               source="sse"
             fi
-            printf '%s' "${source:-k6}"
+            printf '%s' "${source:-unknown}"
           }
 
           percentage_delta() {
@@ -1650,36 +1651,45 @@ jobs:
             # either side, so each column picks its request-time prefix from its own source.
             local current_source master_source
             current_source="$(metrics_source "${current_metrics}")"
-            master_source="k6"
+            master_source="none"
             if [[ -f "${master_metrics}" ]]; then
               master_source="$(metrics_source "${master_metrics}")"
             fi
+            # A table is compared only when both columns hold the same measurement; an empty master
+            # file renders it PR-only.
+            local request_master="${master_metrics}" processing_master="${master_metrics}"
             local request_prefix="" master_request_prefix=""
             if [[ "${current_source}" == "sse" ]]; then request_prefix="TTFB_"; fi
-            if [[ "${master_source}" == "sse" ]]; then master_request_prefix="TTFB_"; fi
+            case "${master_source}" in
+              sse) master_request_prefix="TTFB_" ;;
+              k6) processing_master="" ;;
+              *) request_master=""; processing_master="" ;;
+            esac
 
             if [[ "${current_source}" != "sse" ]] || grep -q "^TTFB_AVG=" "${current_metrics}" 2>/dev/null; then
               append_blank
               append_line "**newPayload request time (k6)**"
               append_blank
-              emit_metrics_section "Request" "${current_metrics}" "${master_metrics}" "${request_prefix}" "false" "${master_request_prefix}"
+              emit_metrics_section "Request" "${current_metrics}" "${request_master}" "${request_prefix}" "false" "${master_request_prefix}"
             fi
 
             if [[ "${current_source}" == "sse" ]]; then
               append_blank
               append_line "**Block processing (Nethermind)**"
               append_blank
+              emit_metrics_section "Processing" "${current_metrics}" "${processing_master}" "" "true"
               if [[ "${master_source}" == "sse" ]]; then
-                emit_metrics_section "Processing" "${current_metrics}" "${master_metrics}" "" "true"
-              else
-                emit_metrics_section "Processing" "${current_metrics}" "" "" "true"
-                if [[ -f "${master_metrics}" ]]; then
-                  append_blank
-                  append_line "_The cached master run has no client processing data, so this table is PR-only._"
-                fi
+                append_blank
+                append_line "_Timing rows: a positive delta is slower. MGas/s: a positive delta is more throughput._"
+              elif [[ "${master_source}" == "k6" ]]; then
+                append_blank
+                append_line "_The cached master run has no client processing data, so this table is PR-only._"
               fi
+            fi
+
+            if [[ "${master_source}" == "unknown" ]]; then
               append_blank
-              append_line "_Timing rows: a positive delta is slower. MGas/s: a positive delta is more throughput._"
+              append_line "_The cached master run predates source tracking and could hold either measurement, so the tables are PR-only until the next \`master\` push refreshes the cache._"
             fi
           }
 
@@ -1789,7 +1799,8 @@ jobs:
           }
 
           # Which measurement the unprefixed keys hold. Files written before SOURCE existed carried k6
-          # keys under TTFB_ only when the client feed was present, so that presence implies sse.
+          # keys under TTFB_ only when the client feed was present, so that presence implies sse; without
+          # either key the file could hold either measurement.
           metrics_source() {
             local file="$1"
             local source
@@ -1797,7 +1808,7 @@ jobs:
             if [[ -z "${source}" && -n "$(load_metric "${file}" "TTFB_AVG")" ]]; then
               source="sse"
             fi
-            printf '%s' "${source:-k6}"
+            printf '%s' "${source:-unknown}"
           }
 
           mapfile -t payload_sets < <(echo "${PAYLOAD_SETS}" | jq -r '.[]')
@@ -2886,7 +2897,8 @@ jobs:
           }
 
           # Which measurement the unprefixed keys hold. Files written before SOURCE existed carried k6
-          # keys under TTFB_ only when the client feed was present, so that presence implies sse.
+          # keys under TTFB_ only when the client feed was present, so that presence implies sse; without
+          # either key the file could hold either measurement.
           metrics_source() {
             local file="$1"
             local source
@@ -2894,7 +2906,7 @@ jobs:
             if [[ -z "${source}" && -n "$(load_metric "${file}" "TTFB_AVG")" ]]; then
               source="sse"
             fi
-            printf '%s' "${source:-k6}"
+            printf '%s' "${source:-unknown}"
           }
 
           percentage_delta() {
@@ -2930,6 +2942,7 @@ jobs:
           } > "${summary_file}"
 
           baseline_avg=""
+          baseline_source=""
           row_idx=0
 
           for i in "${!tags[@]}"; do
@@ -2986,9 +2999,14 @@ jobs:
 
               if [[ -z "${baseline_avg}" && -n "${avg}" ]]; then
                 baseline_avg="${avg}"
+                baseline_source="${source}"
               fi
 
-              delta=$(percentage_delta "${avg}" "${baseline_avg}")
+              if [[ "${source}" == "${baseline_source}" ]]; then
+                delta=$(percentage_delta "${avg}" "${baseline_avg}")
+              else
+                delta="n/a"
+              fi
 
               warnings=""
               if [[ "${exception}" == "true" ]]; then
