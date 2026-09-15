@@ -553,8 +553,8 @@ public class Eth72ProtocolHandler(
     /// type-6 frame transaction, which carries blobs by presence rather than by type.</remarks>
     private static bool IsBlobCarryingFrameTransaction(Transaction tx) => tx.Type is TxType.FrameTx && tx.CarriesBlobs;
 
-    // eth/72 strips blob payloads from pooled transaction responses, so they are served from
-    // the sidecar-free record instead of materializing blobs from persistent storage.
+    // eth/72 strips type-3 blob payloads from pooled transaction responses, so those are served from
+    // the sidecar-free record; a blob-carrying type-6 is served whole, as below.
     protected override bool TryGetPooledTransactionToServe(Hash256 hash, [NotNullWhen(true)] out Transaction? tx)
     {
         if (!_txPool.TryGetPendingTransactionWithoutBlobs(hash, out tx))

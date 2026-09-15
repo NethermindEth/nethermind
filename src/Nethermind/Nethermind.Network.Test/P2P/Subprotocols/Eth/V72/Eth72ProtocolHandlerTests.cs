@@ -5072,8 +5072,11 @@ public class Eth72ProtocolHandlerTests
     // EIP-8141: a type-6 carrying blobs is not TxType.SupportsBlobs, so it takes the plain eth/72 path end to
     // end - announced at its full network size with no cell mask, then served, delivered and submitted whole
     // over a correlated response, with the sparse cell protocol staying type-3 only throughout.
-    [Test]
-    public void should_carry_a_blob_bearing_frame_tx_over_the_plain_announcement_path()
+    // Both wrapper versions, because the sidecar validator accepts either from the wire regardless of the
+    // head's own proof version, and the per-blob proof count it must check differs between them.
+    [TestCase(ProofVersion.V0)]
+    [TestCase(ProofVersion.V1)]
+    public void should_carry_a_blob_bearing_frame_tx_over_the_plain_announcement_path(ProofVersion proofVersion)
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip8141Enabled.Returns(true);
@@ -5082,7 +5085,7 @@ public class Eth72ProtocolHandlerTests
             .Returns(AnnounceResult.RequestRequired);
         HandleIncomingStatusMessage();
 
-        Transaction tx = BlobCarryingFrameTx();
+        Transaction tx = BlobCarryingFrameTx(proofVersion);
         int announcedSize = tx.GetLength();
         _deliveredMessages.Clear();
         _handler.SendNewTransaction(tx);
@@ -5185,11 +5188,11 @@ public class Eth72ProtocolHandlerTests
         }
     }
 
-    private static Transaction BlobCarryingFrameTx()
+    private static Transaction BlobCarryingFrameTx(ProofVersion version = ProofVersion.V1)
     {
         Transaction tx = Build.A.Transaction
             .WithNonce(0UL)
-            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithShardBlobTxTypeAndFields(spec: version is ProofVersion.V1 ? Osaka.Instance : Cancun.Instance)
             .SignedAndResolved()
             .TestObject;
         tx.Type = TxType.FrameTx;
