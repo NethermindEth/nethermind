@@ -20,7 +20,7 @@ import sys
 # day the image honours it; nothing here depends on it either way.
 NUMBER = r"(\d[\d,]*)"
 STEPS = re.compile(rf"^STEPS\s+{NUMBER}\s*$", re.MULTILINE)
-BUCKETS = ("MAIN", "OPCODES", "PRECOMPILES", "MEMORY", "TOTAL")
+BUCKETS = ("MAIN", "OPCODES", "PRECOMPILES", "MEMORY")
 
 
 def number(text: str) -> int:
@@ -51,6 +51,7 @@ def main() -> int:
 
     row = {"input": args.input, "steps": number(steps.group(1))}
     row.update({name.lower(): bucket(log, name) for name in BUCKETS})
+    row["total"] = bucket(log, "TOTAL")
 
     rows = json.loads(args.into.read_text(encoding="utf-8")) if args.into.exists() else []
     rows = [existing for existing in rows if existing["input"] != args.input]

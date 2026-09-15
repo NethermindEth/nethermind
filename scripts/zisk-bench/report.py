@@ -80,19 +80,23 @@ def render(
     baseline_commit: str = "",
     base_commit: str = "",
     commit_kind: str = "commit",
-) -> tuple[str, bool]:
+) -> tuple[str, bool, bool]:
     lines = [MARKER, "## Stateless guest cost", ""]
     regressed = False
 
-    mismatch = baseline is not None and bool(base_commit) and baseline_commit != base_commit
-    if mismatch:
+    if not baseline:
+        baseline = None
+        baseline_commit = ""
+
+    stale = baseline is not None and bool(base_commit) and baseline_commit != base_commit
+    if stale:
         lines += ["⚠️ **Baseline does not match this pull request's base; deltas are suppressed.**", ""]
         lines += [f"Restored from `{baseline_commit[:12] or 'unrecorded'}`, not this pull request's base (`{base_commit[:12]}`).", ""]
         baseline = None
 
     if baseline is None:
         lines += [
-            "Only absolute measurements are shown." if mismatch else
+            "Only absolute measurements are shown." if stale else
             "No baseline was restored, so this run only records where the guest stands. Pull requests "
             "compare against a baseline measured at their base commit.",
             "",
@@ -163,10 +167,10 @@ def render(
         against = f"`{baseline_commit[:12]}`" if baseline_commit else "an unrecorded master commit"
         lines += ["", f"Compared against {against}."]
 
-    if regressed and not mismatch:
+    if regressed:
         lines.insert(2, "⚠️ **Prover cost is up against the baseline or benchmark coverage decreased.**")
 
-    return "\n".join(lines) + "\n", regressed
+    return "\n".join(lines) + "\n", regressed, stale
 
 
 def main() -> int:
@@ -198,8 +202,7 @@ def main() -> int:
 
     loaded_baseline = load(args.baseline) if args.baseline and args.baseline.exists() else None
     baseline, baseline_commit = loaded_baseline or (None, "")
-    stale = baseline is not None and bool(args.base_commit) and baseline_commit != args.base_commit
-    report, regressed = render(current, baseline, args.commit, baseline_commit, args.base_commit, args.commit_kind)
+    report, regressed, stale = render(current, baseline, args.commit, baseline_commit, args.base_commit, args.commit_kind)
 
     print(report)
     if args.summary:

@@ -189,7 +189,7 @@ class ReportTests(unittest.TestCase):
         current = {"a.ssz": row("a.ssz", 110, 900)}
         baseline = {"a.ssz": row("a.ssz", 100, 1000)}
 
-        body, regressed = REPORT.render(current, baseline, "c0ffee")
+        body, regressed, _ = REPORT.render(current, baseline, "c0ffee")
 
         self.assertIn("| a | 110 | +10.000% | 900 | -10.000% |", body)
         self.assertNotIn("⚠️", body)
@@ -199,7 +199,7 @@ class ReportTests(unittest.TestCase):
         current = {"a.ssz": row("a.ssz", 100, 1100)}
         baseline = {"a.ssz": row("a.ssz", 100, 1000)}
 
-        _, regressed = REPORT.render(current, baseline, "c0ffee")
+        _, regressed, _ = REPORT.render(current, baseline, "c0ffee")
 
         self.assertTrue(regressed)
 
@@ -207,7 +207,7 @@ class ReportTests(unittest.TestCase):
         current = {"a.ssz": row("a.ssz", 100, 1_000_000)}
         baseline = {"a.ssz": row("a.ssz", 100, 999_999)}
 
-        _, regressed = REPORT.render(current, baseline, "c0ffee")
+        _, regressed, _ = REPORT.render(current, baseline, "c0ffee")
 
         self.assertFalse(regressed)
 
@@ -216,7 +216,7 @@ class ReportTests(unittest.TestCase):
         current = {"a.ssz": row("a.ssz", 110, 900)}
         baseline = {"a.ssz": row("a.ssz", 100, 1000)}
 
-        _, regressed = REPORT.render(current, baseline, "c0ffee")
+        _, regressed, _ = REPORT.render(current, baseline, "c0ffee")
 
         self.assertFalse(regressed)
 
@@ -225,7 +225,7 @@ class ReportTests(unittest.TestCase):
         current = {"a.ssz": row("a.ssz", 110, 900), "new.ssz": row("new.ssz", 500, 5000)}
         baseline = {"a.ssz": row("a.ssz", 100, 1000), "gone.ssz": row("gone.ssz", 700, 7000)}
 
-        body, _ = REPORT.render(current, baseline, "c0ffee")
+        body, _, _ = REPORT.render(current, baseline, "c0ffee")
 
         self.assertIn("| **all 1 blocks** | **110** | **+10.000%** | **900** | **-10.000%** |", body)
         self.assertIn("| new | 500 | new | 5,000 | new |", body)
@@ -234,7 +234,7 @@ class ReportTests(unittest.TestCase):
         current = {"a.ssz": row("a.ssz", 100, 1100)}
         baseline = {"a.ssz": row("a.ssz", 100, 1000)}
 
-        body, _ = REPORT.render(current, baseline, "c0ffee")
+        body, _, _ = REPORT.render(current, baseline, "c0ffee")
 
         self.assertIn("Prover cost is up against the baseline", body)
 
@@ -244,7 +244,7 @@ class ReportTests(unittest.TestCase):
         current = {"big.ssz": row("big.ssz", 100, 1_000_000), "small.ssz": row("small.ssz", 100, 1_100)}
         baseline = {"big.ssz": row("big.ssz", 100, 1_000_000), "small.ssz": row("small.ssz", 100, 1_000)}
 
-        body, regressed = REPORT.render(current, baseline, "c0ffee")
+        body, regressed, _ = REPORT.render(current, baseline, "c0ffee")
 
         self.assertTrue(regressed)
         self.assertIn("**+0.010%**", body)  # the totals row alone would have stayed quiet
@@ -254,7 +254,7 @@ class ReportTests(unittest.TestCase):
         current = {"a.ssz": row("a.ssz", 100, 1000)}
         baseline = {"a.ssz": row("a.ssz", 100, 1000), "gone.ssz": row("gone.ssz", 100, 1000)}
 
-        body, regressed = REPORT.render(current, baseline, "c0ffee")
+        body, regressed, _ = REPORT.render(current, baseline, "c0ffee")
 
         self.assertIn("this run did not: gone", body)
         self.assertTrue(regressed)
@@ -262,7 +262,7 @@ class ReportTests(unittest.TestCase):
     def test_the_baseline_commit_is_named_so_the_delta_can_be_attributed(self):
         rows = {"a.ssz": row("a.ssz", 100, 1000)}
 
-        body, _ = REPORT.render(rows, rows, "c0ffee", "ba5e1111aaaa", "ba5e1111aaaa")
+        body, _, _ = REPORT.render(rows, rows, "c0ffee", "ba5e1111aaaa", "ba5e1111aaaa")
 
         self.assertIn("Compared against `ba5e1111aaaa`.", body)
 
@@ -270,25 +270,26 @@ class ReportTests(unittest.TestCase):
         # `restore-keys` serves the newest matching cache, which need not be the pull request's base.
         rows = {"a.ssz": row("a.ssz", 100, 1000)}
 
-        body, regressed = REPORT.render(rows, rows, "c0ffee", "0lde5t000000", "ba5e1111aaaa")
+        body, regressed, stale = REPORT.render(rows, rows, "c0ffee", "0lde5t000000", "ba5e1111aaaa")
 
         self.assertIn("not this pull request's base (`ba5e1111aaaa`)", body)
         self.assertNotIn("Δ", body)
         self.assertNotIn("+0.000%", body)
         self.assertFalse(regressed)
+        self.assertTrue(stale)
 
     def test_threshold_is_bracketed(self):
         for increment, expected in ((400, False), (600, True)):
             with self.subTest(increment=increment):
-                body, flagged = REPORT.render({"a.ssz": row("a.ssz", 10, 1_000_000 + increment)},
-                                              {"a.ssz": row("a.ssz", 10, 1_000_000)}, "head")
+                body, flagged, _ = REPORT.render({"a.ssz": row("a.ssz", 10, 1_000_000 + increment)},
+                                                  {"a.ssz": row("a.ssz", 10, 1_000_000)}, "head")
                 self.assertEqual(flagged, expected)
                 self.assertEqual("⚠️" in body, expected)
 
     def test_variable_buckets_use_shared_rows_and_distinct_columns(self):
         current = {"a.ssz": row("a.ssz", 10, 100, 20, 30, 40, 50), "new.ssz": row("new.ssz", 1, 1)}
         baseline = {"a.ssz": row("a.ssz", 10, 100, 10, 20, 30, 40), "gone.ssz": row("gone.ssz", 1, 1)}
-        body, _ = REPORT.render(current, baseline, "head")
+        body, _, _ = REPORT.render(current, baseline, "head")
         self.assertIn("Variable cost", body)
         self.assertIn("excludes BASE", body)
         for line in ("| MAIN | 10 | 20 | +100.000% |", "| OPCODES | 20 | 30 | +50.000% |",
@@ -318,21 +319,29 @@ class ReportTests(unittest.TestCase):
     def test_an_unrecorded_baseline_is_not_passed_off_as_a_known_commit(self):
         rows = {"a.ssz": row("a.ssz", 100, 1000)}
 
-        body, _ = REPORT.render(rows, rows, "c0ffee")
+        body, _, _ = REPORT.render(rows, rows, "c0ffee")
 
         self.assertIn("Compared against an unrecorded master commit.", body)
 
     def test_without_a_baseline_it_reports_absolutes_only(self):
         current = {"a.ssz": row("a.ssz", 100, 1000)}
 
-        body, regressed = REPORT.render(current, None, "c0ffee")
+        body, regressed, _ = REPORT.render(current, None, "c0ffee")
 
         self.assertIn("No baseline was restored", body)
         self.assertNotIn("Δ", body)
         self.assertFalse(regressed)
 
+    def test_an_empty_baseline_is_not_reported_as_a_comparison(self):
+        body, regressed, stale = REPORT.render({"a.ssz": row("a.ssz", 100, 1000)}, {}, "c0ffee", "base", "base")
+
+        self.assertIn("No baseline was restored", body)
+        self.assertNotIn("Compared against", body)
+        self.assertFalse(regressed)
+        self.assertFalse(stale)
+
     def test_the_footer_identifies_a_pull_request_merge_commit(self):
-        body, _ = REPORT.render({"a.ssz": row("a.ssz", 1, 1)}, None, "c0ffee", commit_kind="merge commit")
+        body, _, _ = REPORT.render({"a.ssz": row("a.ssz", 1, 1)}, None, "c0ffee", commit_kind="merge commit")
 
         self.assertIn("`c0ffee` (merge commit)", body)
 
@@ -363,12 +372,12 @@ class ReportTests(unittest.TestCase):
             self.assertIn("stale=false", output)
 
     def test_body_carries_the_marker_so_the_comment_is_updated_not_duplicated(self):
-        body, _ = REPORT.render({"a.ssz": row("a.ssz", 1, 1)}, None, "c0ffee")
+        body, _, _ = REPORT.render({"a.ssz": row("a.ssz", 1, 1)}, None, "c0ffee")
 
         self.assertTrue(body.startswith(REPORT.MARKER))
 
     def test_block_number_is_shown_without_the_extension(self):
-        body, _ = REPORT.render({"25532382.ssz": row("25532382.ssz", 1, 1)}, None, "c0ffee")
+        body, _, _ = REPORT.render({"25532382.ssz": row("25532382.ssz", 1, 1)}, None, "c0ffee")
 
         self.assertIn("| 25532382 |", body)
         self.assertNotIn("25532382.ssz", body)
@@ -476,26 +485,27 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
         self.assertEqual(commit, "base-sha")
         self.assertEqual(rows["1.ssz"]["total"], 100)
 
-    @unittest.skipUnless(sys.platform == "linux", "workflow shell runs on Linux")
-    def test_measurement_definitions_come_from_base(self):
+    def select_measurement_definitions(self, missing_base):
         match = re.search(r"      - name: Select measurement definitions\n.*?        run: \|\n(.*?)(?=\n      - name:)",
                           self.WORKFLOW, re.DOTALL)
         script = textwrap.dedent(match.group(1))
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
-            repo = work / "repo"
-            repo.mkdir()
+            source = work / "source"
+            source.mkdir()
             guest = "src/Nethermind/Nethermind.Stateless.ZiskGuest"
-            (repo / guest).mkdir(parents=True)
-            (repo / "scripts/zisk-bench").mkdir(parents=True)
+            (source / guest).mkdir(parents=True)
+            (source / "scripts/zisk-bench").mkdir(parents=True)
             definitions = [{"input": f"{i}.ssz", "hash": "0" * 64, "output": "1" * 64} for i in range(9)]
-            manifest = repo / guest / "inputs.json"
+            manifest = source / guest / "inputs.json"
             manifest.write_text(json.dumps(definitions))
-            instrument = repo / "scripts/zisk-bench/report.py"
+            instrument = source / "scripts/zisk-bench/report.py"
             instrument.write_text("base instrument")
+
             def git(*args):
                 return subprocess.check_output(["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", *args],
-                                               cwd=repo, text=True, stderr=subprocess.DEVNULL).strip()
+                                               cwd=source, text=True, stderr=subprocess.DEVNULL).strip()
+
             git("init")
             git("add", ".")
             git("commit", "-m", "base")
@@ -503,13 +513,42 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
             instrument.write_text("changed instrument")
             manifest.write_text("[]")
             git("commit", "-am", "candidate")
+            checkout = source
+            if missing_base:
+                remote = work / "remote.git"
+                git("clone", "--bare", ".", str(remote))
+                checkout = work / "checkout"
+                subprocess.run(["git", "clone", "--depth=1", f"file://{remote}", str(checkout)], check=True,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                probe = subprocess.run(["git", "cat-file", "-e", f"{base}^{{commit}}"], cwd=checkout,
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                self.assertNotEqual(probe.returncode, 0)
             env = dict(os.environ, BASE_SHA=base, GUEST_DIR=guest, RUNNER_TEMP=str(work),
                        GITHUB_ENV=str(work / "env"), GITHUB_OUTPUT=str(work / "outputs"))
-            subprocess.run(["bash", "-c", script], cwd=repo, env=env, capture_output=True, check=True)
+            subprocess.run(["bash", "-c", script], cwd=checkout, env=env, capture_output=True, check=True)
             selected = work / "zisk-bench-definitions"
-            self.assertEqual((selected / "scripts/zisk-bench/report.py").read_text(), "base instrument")
-            self.assertEqual(json.loads((selected / guest / "inputs.json").read_text()), definitions)
-            self.assertIn("trusted=true", (work / "outputs").read_text())
+            return (
+                (selected / "scripts/zisk-bench/report.py").read_text(),
+                json.loads((selected / guest / "inputs.json").read_text()),
+                (work / "outputs").read_text(),
+                definitions,
+            )
+
+    @unittest.skipUnless(sys.platform == "linux", "workflow shell runs on Linux")
+    def test_measurement_definitions_come_from_base(self):
+        instrument, selected, outputs, definitions = self.select_measurement_definitions(missing_base=False)
+
+        self.assertEqual(instrument, "base instrument")
+        self.assertEqual(selected, definitions)
+        self.assertIn("trusted=true", outputs)
+
+    @unittest.skipUnless(sys.platform == "linux", "workflow shell runs on Linux")
+    def test_measurement_definitions_fetch_a_missing_base(self):
+        instrument, selected, outputs, definitions = self.select_measurement_definitions(missing_base=True)
+
+        self.assertEqual(instrument, "base instrument")
+        self.assertEqual(selected, definitions)
+        self.assertIn("trusted=true", outputs)
 
     @unittest.skipUnless(sys.platform == "linux", "workflow shell runs on Linux")
     def test_measurement_definitions_fall_back_to_head_without_a_base(self):
@@ -546,6 +585,8 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
         self.assertNotIn("DOTNET_VERSION", self.WORKFLOW)
         self.assertIn("fetch-depth: 2", self.WORKFLOW)
         self.assertIn("filter: blob:none", self.WORKFLOW)
+        self.assertIn('git fetch --depth=1 --filter=blob:none origin "$BASE_SHA"', self.WORKFLOW)
+        self.assertIn('global.json pins $version but the runner resolved $resolved', self.WORKFLOW)
 
 
 class InputListTests(unittest.TestCase):

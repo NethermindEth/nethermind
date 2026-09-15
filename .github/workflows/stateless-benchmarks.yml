@@ -55,7 +55,8 @@ jobs:
           jq '.sdk.rollForward = "disable"' global.json > "$RUNNER_TEMP/global.json"
           cp "$RUNNER_TEMP/global.json" global.json
           resolved=$(dotnet --version)
-          [[ "$resolved" == "$version" ]]
+          [[ "$resolved" == "$version" ]] \
+            || { echo "::error::global.json pins $version but the runner resolved $resolved"; exit 1; }
           echo "version=$resolved" >> "$GITHUB_OUTPUT"
 
       - name: Select measurement definitions
@@ -66,6 +67,9 @@ jobs:
           set -euo pipefail
           definitions="$RUNNER_TEMP/zisk-bench-definitions"
           mkdir -p "$definitions"
+          if [[ -n "$BASE_SHA" ]] && ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            git fetch --depth=1 --filter=blob:none origin "$BASE_SHA" 2>/dev/null || true
+          fi
           if [[ -n "$BASE_SHA" ]] && \
             git cat-file -e "$BASE_SHA:scripts/zisk-bench/report.py" 2>/dev/null && \
             git cat-file -e "$BASE_SHA:$GUEST_DIR/inputs.json" 2>/dev/null; then
