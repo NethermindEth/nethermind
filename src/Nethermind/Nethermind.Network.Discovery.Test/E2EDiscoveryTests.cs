@@ -14,6 +14,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -61,6 +62,9 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
         builder
             .AddModule(new PseudoNethermindModule(spec, configProvider, new TestLogManager()))
             .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2EDiscoveryTests)}-{discoveryVersion}"));
+        IPeerManager peerManager = Substitute.For<IPeerManager>();
+        peerManager.StopAsync().Returns(Task.CompletedTask);
+        builder.RegisterInstance(peerManager).As<IPeerManager>();
         builder.RegisterInstance(forkInfo).As<IForkInfo>();
         return builder.Build();
     }
@@ -70,10 +74,11 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
     int _ip = 1;
     private int AssignIp() => Interlocked.Increment(ref _ip);
 
-    [Test]
+    [TestCase(false)]
+    [TestCase(true)]
     [Category("Flaky"), Retry(3)]
     [Parallelizable(ParallelScope.None)]
-    public async Task TestDiscovery([Values] bool bootnodeTcpPortZero)
+    public async Task TestDiscovery(bool bootnodeTcpPortZero)
     {
         using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
 
