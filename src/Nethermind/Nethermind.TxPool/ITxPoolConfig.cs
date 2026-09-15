@@ -58,7 +58,7 @@ public interface ITxPoolConfig : IConfig
     /// drains; what it bounds is that self-feeding, not the transaction's total stay, since the count is
     /// consecutive.
     /// </remarks>
-    [ConfigItem(DefaultValue = "2", Description = "EIP-8141: the number of *consecutive* chain heads a pending frame transaction whose revalidation reached no verdict on a bound or fault of this node's own may be carried across before the pool stops re-queuing it. Any head that revalidates it without deferring it again resets the count. `0` stops re-queuing entirely.")]
+    [ConfigItem(DefaultValue = "2", Description = "EIP-8141: the number of *consecutive* chain heads a pending frame transaction the pool deferred rather than judged may be carried across before it stops re-queuing it. Any head that revalidates it without deferring it again resets the count. `0` stops re-queuing entirely.")]
     int FrameTxRevalidationDeferralBudget { get; set; }
 
     [ConfigItem(DefaultValue = "16", Description = "The max number of pending blob transactions per single sender. `0` to lift the limit.")]
