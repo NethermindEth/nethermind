@@ -24,6 +24,7 @@ public sealed class TransactionChangesetBuilder(
     internal const int WarnAfterAttempts = 8;
     internal static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan TipProgressInterval = TimeSpan.FromMinutes(10);
 
     private readonly int _dutyCyclePercent = Math.Clamp(config.HistoryTransactionIndexDutyCyclePercent, 1, 100);
     private readonly ulong _retrofitFromBlock = config.HistoryTransactionIndexRetrofitFromBlock;
@@ -259,16 +260,24 @@ public sealed class TransactionChangesetBuilder(
             return;
         }
 
+        bool retrofitting = index.TryGetCoverage(out ulong from, out ulong to) && _retrofitFromBlock != 0 && from > _retrofitFromBlock;
         TimeSpan elapsed = Stopwatch.GetElapsedTime(_progressReportedAt, now);
-        if (elapsed < ProgressInterval) return;
+        if (elapsed < (retrofitting ? ProgressInterval : TipProgressInterval)) return;
 
         long built = Interlocked.Exchange(ref _builtSinceReport, 0);
         double blocksPerSecond = built / elapsed.TotalSeconds;
-        string coverage = index.TryGetCoverage(out ulong from, out ulong to) ? $"{from}-{to}" : "none";
-        string remaining = _retrofitFromBlock != 0 && from > _retrofitFromBlock
-            ? $", {from - _retrofitFromBlock} blocks to {_retrofitFromBlock}, about {TimeSpan.FromSeconds((from - _retrofitFromBlock) / Math.Max(blocksPerSecond, 0.001)):d\\.hh\\:mm}"
-            : "";
-        _logger.Info($"Transaction changeset index covers {coverage}, {blocksPerSecond:F1} blocks/s{remaining}");
+        string coverage = from <= to && (from != 0 || to != 0) ? $"{from}-{to}" : "none";
+        if (retrofitting)
+        {
+            _logger.Info(
+                $"Transaction changeset index covers {coverage}, {blocksPerSecond:F1} blocks/s, {from - _retrofitFromBlock} blocks to {_retrofitFromBlock}, " +
+                $"about {TimeSpan.FromSeconds((from - _retrofitFromBlock) / Math.Max(blocksPerSecond, 0.001)):d\\.hh\\:mm}");
+        }
+        else
+        {
+            _logger.Info($"Transaction changeset index covers {coverage} and follows the tip");
+        }
+
         _progressReportedAt = now;
     }
 
