@@ -73,7 +73,7 @@ public class BalParentReadBenchmarks
                     slots[s] = new UInt256(slotBytes, isBigEndian: false);
                     StorageCell cell = new(address, slots[s]);
                     // Include missing slots and equal-but-distinct address instances.
-                    if (s % 4 != 0) _parent.Set(cell, [42]);
+                    if (s % 4 != 0) _parent.Set(cell, (UInt256)42);
                     _cells[s * accounts.Length + a] = new(new Address(addressBytes), slots[s]);
                 }
                 Array.Sort(slots);
@@ -119,12 +119,12 @@ public class BalParentReadBenchmarks
                 int repeats = Pattern == ReadPattern.Consecutive ? 4 : 1;
                 for (int repeat = 0; repeat < repeats; repeat++)
                 {
-                    ReadOnlySpan<byte> value = _state.Get(cell);
-                    sum += value.IsEmpty ? 0UL : value[0];
+                    _state.Get(cell, out UInt256 value);
+                    sum += value[0];
                     if (Pattern != ReadPattern.First)
                     {
-                        value = _state.GetOriginal(cell);
-                        sum += value.IsEmpty ? 0UL : value[0];
+                        _state.GetOriginal(in cell, out value);
+                        sum += value[0];
                     }
                 }
             }

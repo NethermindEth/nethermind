@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -9,6 +11,7 @@ using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Io;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -229,20 +232,38 @@ public sealed class PersistedSnapshot : SmallRefCountingDisposable
         return true;
     }
 
-    public bool TryGetSlot(Address address, in UInt256 index, ref SlotValue slotValue)
+    public bool TryGetSlot(Address address, in UInt256 index, out UInt256? slotValue)
     {
         ArenaByteReader reader = CreateReader();
         if (!PersistedSnapshotReader.TryGetSlot<ArenaByteReader, NoOpPin>(
                 in reader, new Bound(0, reader.Length), address, in index, out Bound b))
+        {
+            slotValue = null;
             return false;
-        Span<byte> buf = stackalloc byte[PersistedSnapshotTags.RlpSlotValueBufferSize];
-        Span<byte> raw = buf[..checked((int)b.Length)];
-        reader.TryRead(b.Offset, raw);
+        }
         // length 0 = null/deleted slot (empty payload); a present value is RLP-wrapped.
-        ReadOnlySpan<byte> value = raw.Length == 0 ? raw : new RlpReader(raw).DecodeByteArraySpan();
-        slotValue = SlotValue.FromSpanWithoutLeadingZero(value);
+        if (b.Length == 0)
+        {
+            slotValue = null;
+            return true;
+        }
+        DecodeSlot(ref reader, b, out slotValue);
         return true;
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void DecodeSlot(ref ArenaByteReader reader, Bound b, out UInt256? slotValue)
+    {
+        if ((ulong)b.Length > PersistedSnapshotTags.RlpSlotValueBufferSize)
+            ThrowInvalidSlotLength(b.Length);
+        using NoOpPin pin = reader.PinBuffer(b);
+        slotValue = BaseFlatPersistence.DecodeSlotValue(new RlpReader(pin.Buffer).DecodeByteArraySpan());
+    }
+
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowInvalidSlotLength(long length) =>
+        SortedTable.ThrowCorrupt($"storage RLP length {length} exceeds the {PersistedSnapshotTags.RlpSlotValueBufferSize}-byte maximum");
 
     public bool? TryGetSelfDestructFlag(Address address)
     {
