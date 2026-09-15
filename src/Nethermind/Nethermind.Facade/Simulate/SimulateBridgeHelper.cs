@@ -99,7 +99,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
 
         try
         {
-            Simulate(parent, payload, tracer, env, list, gasCapLimit, cancellationToken);
+            result.Error = Simulate(parent, payload, tracer, env, list, gasCapLimit, cancellationToken);
         }
         catch (ArgumentException ex)
         {
@@ -124,7 +124,8 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         return result;
     }
 
-    private void Simulate<TTrace>(BlockHeader parent,
+    /// <returns>The error that stopped the simulation, or <c>null</c> when every block ran.</returns>
+    private string? Simulate<TTrace>(BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
         SimulateReadOnlyBlocksProcessingScope env,
@@ -151,7 +152,10 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 env.SimulateRequestState.BlockGasLeft = callHeader.GasLimit;
                 env.SimulateRequestState.BlockStateGasLeft = callHeader.GasLimit;
                 callHeader.Hash = callHeader.CalculateHash();
-                if (output.Count == 0) env.OpenAtTarget(callHeader);
+                if (output.Count == 0 && !env.TryOpenAtTarget(callHeader))
+                {
+                    return $"No state available for block {parent.ToString(BlockHeader.Format.FullHashAndNumber)}";
+                }
 
                 TransactionWithSourceDetails[] calls = blockCall.Calls ?? [];
 
@@ -194,6 +198,8 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                 parent = processedBlock.Header;
             }
         }
+
+        return null;
     }
 
     private BlockBody AssembleBody(
