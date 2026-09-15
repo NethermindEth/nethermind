@@ -5,6 +5,7 @@
 using Nethermind.Abi;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.ExecutionRequest;
@@ -21,7 +22,7 @@ using Nethermind.Core.Messages;
 
 namespace Nethermind.Consensus.ExecutionRequests;
 
-public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
+public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAccessList
 {
     public static readonly AbiSignature DepositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
 
@@ -88,6 +89,39 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         _consolidationTransaction.Hash = _consolidationTransaction.CalculateHash();
         _builderDepositTransaction.Hash = _builderDepositTransaction.CalculateHash();
         _builderExitTransaction.Hash = _builderExitTransaction.CalculateHash();
+    }
+
+    /// <summary>Access-list hint for the prewarmer: the fixed queue words the EIP-7002/EIP-7251 dequeue calls read every block.</summary>
+    AccessList? IHasAccessList.GetAccessList(Block block, IReleaseSpec spec)
+    {
+        if (!spec.RequestsEnabled || block.IsGenesis) return null;
+
+        AccessList.Builder builder = new();
+        bool hasContract = false;
+        if (spec.WithdrawalRequestsEnabled)
+        {
+            AddQueueContract(builder, spec.Eip7002ContractAddress ?? Eip7002Constants.WithdrawalRequestPredeployAddress);
+            hasContract = true;
+        }
+
+        if (spec.ConsolidationRequestsEnabled)
+        {
+            AddQueueContract(builder, spec.Eip7251ContractAddress ?? Eip7251Constants.ConsolidationRequestPredeployAddress);
+            hasContract = true;
+        }
+
+        return hasContract ? builder.Build() : null;
+
+        static void AddQueueContract(AccessList.Builder builder, Address address)
+        {
+            builder.AddAddress(address);
+            // Excess, count, queue head, and queue tail words of the reference queue contracts.
+            for (ulong slot = 0; slot < 4; slot++)
+            {
+                UInt256 index = slot;
+                builder.AddStorage(in index);
+            }
+        }
     }
 
     public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
