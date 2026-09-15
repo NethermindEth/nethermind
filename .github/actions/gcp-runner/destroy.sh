@@ -22,6 +22,7 @@ if ! ZONE=$(resolve_zone "$INSTANCE_NAME"); then
       echo "instance_name=${INSTANCE_NAME}"
       echo "zone="
       echo "preempted=false"
+      echo "preempted_at=0"
       echo "terminated_by=lookup-failed"
     } >> "$GITHUB_OUTPUT"
     exit 1
@@ -84,7 +85,9 @@ else
     preempted_at=$(gcloud compute operations list --project="$PROJECT_ID" --zones="$ZONES" \
       --filter="targetLink~/instances/${INSTANCE_NAME}$ AND operationType=compute.instances.preempted" \
       --format='value(insertTime)' --limit=1 2>/dev/null || true)
-    PREEMPTED_AT=$(date -d "$preempted_at" +%s 2>/dev/null || echo 0)
+    if [ -n "$preempted_at" ]; then
+      PREEMPTED_AT=$(date -d "$preempted_at" +%s 2>/dev/null || echo 0)
+    fi
     echo "::warning title=GCP runner::${RUNNER_LABEL} was preempted — infrastructure reclaim, not a sync failure"
     # Surface it on the run summary too: the matrix boundary reduces this to a plain failed
     # entry, so without this the distinction is only visible deep in a job log.

@@ -218,13 +218,13 @@ jobs:
             names=""
           fi
           markers=$(printf '%s\n' "$names" \
-            | sed -n "s/^preempted-${RUN_ATTEMPT}-\([0-9][0-9]*\)-\(.*\)$/\1 \2/p")
+            | sed -n "s/^preempted-${RUN_ATTEMPT}-\([0-9][0-9]*\)-\(.*\)$/\1 \2/p") || markers=""
           reclaims=$(jq -r --arg markers "$markers" \
             '($markers | split("\n") | map(select(length > 0)) | map(split(" "))) as $m
              | . as $matrix
              | $m[] as $one
              | $matrix[] | select(.runner_label == $one[1])
-             | "\($one[0])\tSync \(.network) (\(.mode))"' <<<"$MATRIX")
+             | "\($one[0])\tSync \(.network) (\(.mode))"' <<<"$MATRIX") || reclaims=""
 
           listed=0
           unexplained=""
