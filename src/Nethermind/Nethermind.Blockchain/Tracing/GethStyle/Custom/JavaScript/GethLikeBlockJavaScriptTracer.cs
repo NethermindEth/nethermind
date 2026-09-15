@@ -53,6 +53,8 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
     {
         _ctx.BlockHash = _blockHash;
         _ctx.error = Undefined.Value;
+        _ctx.Output = null;
+        _ctx.gasUsed = 0;
         _ctx.GasPrice = tx!.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, _baseFee);
         _ctx.TxHash = tx.Hash;
         _ctx.txIndex = tx.Hash is not null ? _index++ : null;

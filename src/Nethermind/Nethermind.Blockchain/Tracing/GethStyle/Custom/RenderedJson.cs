@@ -18,8 +18,19 @@ internal sealed class RenderedJson(byte[] utf8)
 
 internal sealed class RenderedJsonConverter : JsonConverter<RenderedJson>
 {
-    public override void Write(Utf8JsonWriter writer, RenderedJson value, JsonSerializerOptions options) =>
+    /// <summary>
+    /// Writes the pre-rendered bytes after walking them with the response serializer's depth limit, so a
+    /// configured <see cref="JsonSerializerOptions.MaxDepth"/> still bounds script results.
+    /// </summary>
+    public override void Write(Utf8JsonWriter writer, RenderedJson value, JsonSerializerOptions options)
+    {
+        Utf8JsonReader reader = new(value.Utf8.Span, new JsonReaderOptions { MaxDepth = options.MaxDepth });
+        while (reader.Read())
+        {
+        }
+
         writer.WriteRawValue(value.Utf8.Span, skipInputValidation: true);
+    }
 
     public override RenderedJson Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         throw new NotSupportedException();

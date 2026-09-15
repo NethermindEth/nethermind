@@ -84,8 +84,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     /// the trace keeps nothing in the V8 heap. The bytes are written to the response verbatim.
     /// </summary>
     /// <remarks>
-    /// Uses the static <see cref="EthereumJsonSerializer.JsonOptions"/>: the request's serializer instance is not
-    /// reachable from the tracer, so its configured depth limit does not apply to script results.
+    /// Renders with the static <see cref="EthereumJsonSerializer.JsonOptions"/>, since the request's serializer
+    /// is not reachable from the tracer; the response serializer's depth limit is applied when the bytes are
+    /// written, see <see cref="RenderedJsonConverter"/>.
     /// </remarks>
     private static RenderedJson MaterializeResult(object? scriptResult)
     {

@@ -728,6 +728,21 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Assert.That(hoardingSecondTransaction, Throws.InstanceOf(typeof(IScriptEngineException)));
     }
 
+    [Test]
+    public void Rendered_result_respects_the_response_serializer_depth_limit()
+    {
+        const string nestedTracer = @"{
+                    step: function(log, db) { },
+                    fault: function(log, db) { },
+                    result: function(ctx, db) { return { a: { b: { c: { d: 1 } } } }; }
+                }";
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(GetTracer(nestedTracer), MStore());
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        JsonSerializerOptions shallow = new(EthereumJsonSerializer.JsonOptions) { MaxDepth = 3 };
+
+        Assert.That(() => JsonSerializer.Serialize(trace.CustomTracerResult, shallow), Throws.InstanceOf<JsonException>());
+    }
+
     private const string HoardingTracer = @"{
                     hoard: [],
                     step: function(log, db) { this.hoard.push(new Array(524288).fill(1)); },

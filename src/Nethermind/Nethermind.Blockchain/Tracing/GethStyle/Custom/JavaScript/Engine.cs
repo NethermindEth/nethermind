@@ -43,6 +43,7 @@ public class Engine : IDisposable
     private static readonly UIntPtr V8HeapSoftLimit = new(128 * 1024 * 1024);
 
     private static readonly V8Runtime _runtime = CreateRuntime();
+    private static int _liveEngines;
     private static readonly ConcurrentDictionary<string, V8Script> _builtInScripts = new();
     private static readonly LruCache<string, V8Script> _runtimeScripts = new(10, "runtime scripts");
 
@@ -74,12 +75,28 @@ public class Engine : IDisposable
     }
 
     /// <summary>
-    /// A soft-limit violation blocks every script in the runtime until the limit is set again, so every engine
-    /// re-arms it when it starts and when it goes away. Setting the limit only clears the violation flag: the
-    /// runtime checks the heap on every outermost host-to-script call regardless, so re-arming per transaction
-    /// does not delay detection.
+    /// A soft-limit violation blocks every script in the runtime until the limit is set again. The limit is
+    /// re-armed only when the first engine of the process starts or the last one goes away, so an engine on one
+    /// thread cannot lift a violation raised against a script still running on another. Setting the limit only
+    /// clears the violation flag: the runtime checks the heap on every outermost host-to-script call regardless.
     /// </summary>
     private static void RearmHeapSoftLimit() => _runtime.MaxHeapSize = V8HeapSoftLimit;
+
+    private static void OnEngineCreated()
+    {
+        if (Interlocked.Increment(ref _liveEngines) == 1)
+        {
+            RearmHeapSoftLimit();
+        }
+    }
+
+    private static void OnEngineDisposed()
+    {
+        if (Interlocked.Decrement(ref _liveEngines) == 0)
+        {
+            RearmHeapSoftLimit();
+        }
+    }
 
     private static string PackTracerCode(string tracerObjectCode) => "(" + tracerObjectCode + ")";
 
@@ -107,7 +124,7 @@ public class Engine : IDisposable
     {
         _spec = spec;
 
-        RearmHeapSoftLimit();
+        OnEngineCreated();
         V8Engine = _runtime.CreateScriptEngine(IsDebugging
             ? V8ScriptEngineFlags.AwaitDebuggerAndPauseOnStart | V8ScriptEngineFlags.EnableDebugging
             : V8ScriptEngineFlags.None);
@@ -198,6 +215,8 @@ public class Engine : IDisposable
         }
         catch (ObjectDisposedException)
         {
+            // The timeout fired after the tracing thread released the engine: there is no script left to stop,
+            // and the timer thread has no caller to report to.
         }
     }
 
@@ -220,7 +239,7 @@ public class Engine : IDisposable
         }
         finally
         {
-            RearmHeapSoftLimit();
+            OnEngineDisposed();
         }
     }
 
