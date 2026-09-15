@@ -71,6 +71,10 @@ public class GethGenesisConfigJson : IHasNamedForks
 
     public UInt256? TerminalTotalDifficulty { get; set; }
     public bool? TerminalTotalDifficultyPassed { get; set; }
+
+    /// <summary>Optional Nethermind extension containing the beacon-chain genesis timestamp in Unix seconds.</summary>
+    /// <remarks>The value remains <see langword="null"/> when the field is absent.</remarks>
+    public ulong? BeaconChainGenesisTimestamp { get; set; }
     public Address? DepositContractAddress { get; set; }
     public Dictionary<string, GethBlobScheduleEntry>? BlobSchedule { get; set; }
 

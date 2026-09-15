@@ -190,6 +190,9 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO1Timestamp + 1000)) { TestName = "BPO1" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO2Timestamp)) { TestName = "First BPO2" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO2Timestamp + 1000)) { TestName = "BPO2" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.AmsterdamTimestamp - 1)) { TestName = "Before Amsterdam" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.AmsterdamTimestamp)) { TestName = "First Amsterdam" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.AmsterdamTimestamp + 1000)) { TestName = "Amsterdam" };
         }
     }
 
@@ -205,7 +208,8 @@ public class ChainSpecBasedSpecProviderTests
         {
             Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(SepoliaSpecProvider.Instance.TerminalTotalDifficulty));
             Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.Zero);
-            Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(long.MaxValue));
+            Assert.That(provider.GenesisSpec.DifficultyBombDelay, Is.EqualTo(9_000_000));
+            Assert.That(provider.BeaconChainGenesisTimestamp, Is.EqualTo(SepoliaSpecProvider.BeaconChainGenesisTimestampConst));
             Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Sepolia));
             Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Sepolia));
 

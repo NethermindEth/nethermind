@@ -100,13 +100,12 @@ public class ChainSpecLoaderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(chainSpec.NetworkId, Is.EqualTo(11155111), $"{nameof(chainSpec.NetworkId)}");
-            Assert.That(chainSpec.Name, Is.EqualTo("Sepolia Testnet"), $"{nameof(chainSpec.Name)}");
-            Assert.That(chainSpec.DataDir, Is.EqualTo("sepolia"), $"{nameof(chainSpec.Name)}");
             Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
-            Assert.That(chainSpec.Bootnodes, Has.Length.EqualTo(5), nameof(chainSpec.Bootnodes));
 
             Assert.That(chainSpec.LondonBlockNumber, Is.EqualTo(0L));
             Assert.That(chainSpec.ShanghaiTimestamp, Is.EqualTo(1677557088));
+            Assert.That(chainSpec.AmsterdamTimestamp, Is.EqualTo(1791294816));
+            Assert.That(chainSpec.Parameters.BeaconChainGenesisTimestamp, Is.EqualTo(1655733600));
         }
     }
 
