@@ -64,11 +64,16 @@ public class BlockValidator(
     /// <param name="parent">Parent of the block</param>
     /// <param name="errorMessage">Message detailing a validation failure.</param>
     /// <param name="validateHashes">
-    /// <c>false</c> to skip recomputing the header hash and the transactions, uncles and withdrawals roots,
-    /// including validation of fork-specific withdrawal presence rules. Only pass <c>false</c> after independently
-    /// validating the block body, deriving its roots and verifying the header hash
-    /// (see <see cref="HeaderValidator.ValidateHash(BlockHeader)"/>); otherwise a block whose body or header hash
-    /// does not match its contents can be accepted.
+    /// <c>false</c> to skip four keccaks: the header hash, which binds <see cref="BlockHeader.Hash"/> to the header
+    /// contents, and the uncles hash, transactions root and withdrawals root, which bind the body to the header.
+    /// Everything else still runs, the EIP-4895 withdrawals presence rules included.
+    /// <para>
+    /// Only pass <c>false</c> after deriving those three roots from the block's own body and verifying the header
+    /// hash against the header contents (see <see cref="HeaderValidator.ValidateHash(BlockHeader)"/>). A payload
+    /// type that takes the roots off the wire instead - Taiko's is one - hashes consistently while leaving them
+    /// unchecked, so the skip is unsound for it. Without the hash check, a block whose hash does not match its
+    /// contents is accepted, and that hash is what the block tree and the consensus layer see.
+    /// </para>
     /// </param>
     /// <returns>
     /// <c>true</c> if the <paramref name="block"/> is valid; otherwise, <c>false</c>.
@@ -285,33 +290,32 @@ public class BlockValidator(
         return ValidateWithdrawals(block, _specProvider.GetSpec(block.Header), true, ref error);
     }
 
+    /// <remarks>
+    /// The EIP-4895 presence rules run regardless of <paramref name="validateHashes"/>: a verified header hash says
+    /// nothing about whether the body carries the withdrawals the fork requires, only that the root field is the one
+    /// that was hashed.
+    /// </remarks>
     protected virtual bool ValidateWithdrawals(Block block, IReleaseSpec spec, bool validateHashes, ref string? error)
     {
-        if (validateHashes)
+        if (spec.WithdrawalsEnabled && block.Withdrawals is null)
         {
-            if (spec.WithdrawalsEnabled && block.Withdrawals is null)
-            {
-                error = BlockErrorMessages.MissingWithdrawals;
-                if (_logger.IsWarn) _logger.Warn($"Withdrawals cannot be null in block {block.Hash} when EIP-4895 activated.");
-                return false;
-            }
+            error = BlockErrorMessages.MissingWithdrawals;
+            if (_logger.IsWarn) _logger.Warn($"Withdrawals cannot be null in block {block.Hash} when EIP-4895 activated.");
+            return false;
+        }
 
-            if (!spec.WithdrawalsEnabled && block.Withdrawals is not null)
-            {
-                error = BlockErrorMessages.WithdrawalsNotEnabled;
-                if (_logger.IsWarn) _logger.Warn($"Withdrawals must be null in block {block.Hash} when EIP-4895 not activated.");
-                return false;
-            }
+        if (!spec.WithdrawalsEnabled && block.Withdrawals is not null)
+        {
+            error = BlockErrorMessages.WithdrawalsNotEnabled;
+            if (_logger.IsWarn) _logger.Warn($"Withdrawals must be null in block {block.Hash} when EIP-4895 not activated.");
+            return false;
+        }
 
-            if (block.Withdrawals is not null)
-            {
-                if (!ValidateWithdrawalsHashMatches(block, out Hash256 withdrawalsRoot))
-                {
-                    error = BlockErrorMessages.InvalidWithdrawalsRoot(block.Header.WithdrawalsRoot, withdrawalsRoot);
-                    if (_logger.IsWarn) _logger.Warn($"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}");
-                    return false;
-                }
-            }
+        if (validateHashes && block.Withdrawals is not null && !ValidateWithdrawalsHashMatches(block, out Hash256 withdrawalsRoot))
+        {
+            error = BlockErrorMessages.InvalidWithdrawalsRoot(block.Header.WithdrawalsRoot, withdrawalsRoot);
+            if (_logger.IsWarn) _logger.Warn($"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}");
+            return false;
         }
 
         return true;

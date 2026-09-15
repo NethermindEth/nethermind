@@ -4,6 +4,7 @@
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
@@ -73,6 +74,24 @@ public class BlockValidatorTests
         {
             Assert.That(error, Does.StartWith("InvalidHeaderHash"), "the hash check must be what rejects the block");
         }
+    }
+
+    /// <summary>
+    /// The EIP-4895 presence rules are not a hash recomputation, so a caller that verified the header hash has not
+    /// verified them: the header only pins the withdrawals root field, not whether a body carries withdrawals.
+    /// </summary>
+    [Test]
+    public void ValidateSuggestedBlock_WithdrawalsMissingAfterShanghai_IsRejected([Values] bool validateHashes)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Shanghai.Instance);
+        BlockValidator sut = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent).WithWithdrawals(null).TestObject;
+
+        bool isValid = sut.ValidateSuggestedBlock(block, parent, out string? error, validateHashes);
+
+        Assert.That(isValid, Is.False);
+        Assert.That(error, Does.StartWith(BlockErrorMessages.MissingWithdrawals));
     }
 
     [Test]

@@ -78,9 +78,8 @@ public class InvalidHeaderInterceptorTest
         }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void TestValidateHeaderForwardsValidateHash(bool validateHash)
+    [Test]
+    public void TestValidateHeaderForwardsValidateHash([Values] bool validateHash)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
