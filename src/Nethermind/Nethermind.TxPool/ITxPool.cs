@@ -99,6 +99,10 @@ namespace Nethermind.TxPool
         /// Required rather than defaulted to <c>RemoveTransaction(tx.Hash)</c>, unlike its defaulted neighbours
         /// here: that forward leaves the hash known, turning the drop into the blacklist this contract forbids,
         /// and it also ignores the retry budget and raises no <see cref="EvictedPending"/>.
+        /// Breaking implementers rather than defaulting to <c>false</c> is deliberate too: <c>false</c> is also the
+        /// ordinary "retained, budget not yet spent" answer, so an unimplemented member would read as a deliberate
+        /// retention while every later block re-burns a prefix that can never be paid. Declining is said outright,
+        /// as <see cref="NullTxPool"/> does.
         /// </remarks>
         /// <param name="tx">The transaction to drop. The instance is what the events carry, so it must be the
         /// pooled one rather than a re-decoded copy sharing its hash.</param>
