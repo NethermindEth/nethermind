@@ -33,10 +33,10 @@ public sealed class TransactionChangesetBuilder(
     private readonly Lock _chunks = new();
     private readonly Stack<Chunk> _retry = new();
     private readonly Dictionary<ulong, ulong> _completedByTop = [];
+    private readonly HashSet<ulong> _stalledTops = [];
     private readonly List<Thread> _threads = [];
     private IHistoryBlockExecutor? _tipExecutor;
     private ulong? _nextChunkTop;
-    private readonly HashSet<ulong> _stalledTops = [];
     private long _progressReportedAt;
     private long _builtSinceReport;
     private int _disposed;
