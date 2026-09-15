@@ -13,7 +13,7 @@ on:
           Which self-hosted benchmark runner to use, and with it every path that differs between the
           boxes. amd64 = `reproducible-benchmarks` (EPYC 4344P, snapshots under /mnt/sda, all clients
           and both layouts); arm64 = `reproducible-benchmarks-arm` (Axion, snapshots under /data,
-          Nethermind + flat only, prebuilt images only). Timings from the two boxes are NOT comparable.
+          flat layout, prebuilt images only). Timings from the two boxes are NOT comparable.
         required: false
         type: choice
         options:
@@ -274,10 +274,12 @@ jobs:
               ;;
           esac
 
-          # The ARM box stocks Nethermind flat snapshots only, so its narrower capabilities are checked
-          # against the selected runner instead of being removed from the inputs for everyone.
-          if [[ "${arch}" == "arm64" ]] && [[ "${client}" != "nethermind" || "${reference_client}" != "none" ]]; then
-            echo "::error::The reproducible-benchmarks-arm runner only supports a single Nethermind client - dispatch with arch=amd64 for geth/reth or a reference client."
+          # The ARM box runs one node at a time from the per-client snapshot sets it stocks. Snapshot
+          # availability is checked during path preparation before any output directories are created;
+          # its narrower capabilities are checked against the selected runner instead of being removed
+          # from the inputs for everyone.
+          if [[ "${arch}" == "arm64" && "${reference_client}" != "none" ]]; then
+            echo "::error::The reproducible-benchmarks-arm runner only supports a single client - dispatch with arch=amd64 for a reference client."
             exit 1
           fi
           comparison="false"
@@ -445,6 +447,9 @@ jobs:
                 else
                   echo "${snapshot_root}/nethermind-${snapshot_block}"
                 fi
+              elif [[ "${arch}" == "arm64" ]]; then
+                # The ARM box keeps one directory per client under /data; its snapshot root is the Nethermind one.
+                echo "$(dirname "${snapshot_root}")/${c}/${c}-${snapshot_block}"
               else
                 echo "${snapshot_root}/${c}-${snapshot_block}"
               fi
@@ -645,9 +650,11 @@ jobs:
     runs-on: [self-hosted, "${{ needs.resolve.outputs.runner_label }}"]
     timeout-minutes: 800
     env:
-      # NB: the `runner` context is not available in job-level env, so OUT_DIR /
-      # STATE_DIR are exported from $RUNNER_TEMP in the "Set up run paths" step.
       DIAG_DIR: ${{ needs.resolve.outputs.scratch_root }}/diag
+      RESULTS_DIR: ${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}
+      OUT_DIR: ${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}/out
+      STATE_DIR: ${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}/state
+      ARCHIVE_DIR: ${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}/archives
       CONTAINER_NAME: rpcbench-primary-${{ github.run_id }}
       REF_CONTAINER_NAME: rpcbench-reference-${{ github.run_id }}
       ECC_CONTAINER_NAME: ethcallchaos-bench-${{ github.run_id }}
@@ -719,8 +726,10 @@ jobs:
 
       - name: Set up run paths
         run: |
-          echo "OUT_DIR=$RUNNER_TEMP/rpcbench-out" >> "$GITHUB_ENV"
-          echo "STATE_DIR=$RUNNER_TEMP/rpcbench-state" >> "$GITHUB_ENV"
+          echo "RESULTS_DIR=${RESULTS_DIR}" >> "$GITHUB_ENV"
+          echo "OUT_DIR=${OUT_DIR}" >> "$GITHUB_ENV"
+          echo "STATE_DIR=${STATE_DIR}" >> "$GITHUB_ENV"
+          echo "ARCHIVE_DIR=${ARCHIVE_DIR}" >> "$GITHUB_ENV"
 
       - name: Print resolved configuration
         run: |
@@ -745,28 +754,86 @@ jobs:
           echo "Layout flags: ${{ needs.resolve.outputs.layout_flags }}"
 
       - name: Prepare scratch and output dirs
-        run: mkdir -p "${OUT_DIR}" "${STATE_DIR}"
+        shell: bash
+        env:
+          DB_SOURCE: ${{ needs.resolve.outputs.db_source }}
+          REFERENCE_DB_SOURCE: ${{ needs.resolve.outputs.ref_db_source }}
+          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+        run: |
+          set -euo pipefail
+          fail_path() { echo "::error::$*"; exit 1; }
+          canonical_existing() { realpath -e -- "$1"; }
+          canonical_planned() { realpath -m -- "$1"; }
+          is_under() { [[ "$1/" == "$2/"* ]]; }
+          path_overlaps() {
+            local path="$1" root="$2"
+            is_under "$path" "$root" || is_under "$root" "$path"
+          }
+
+          db_canonical="$(canonical_existing "${DB_SOURCE}")" || fail_path "DB_SOURCE '${DB_SOURCE}' is missing or unresolvable; set node_config.db_source to an existing snapshot path."
+          scratch_canonical="$(canonical_planned "${SCRATCH_ROOT}")" || fail_path "cannot canonicalize SCRATCH_ROOT '${SCRATCH_ROOT}'"
+          [[ -d "${db_canonical}" ]] || fail_path "DB_SOURCE '${DB_SOURCE}' is not a directory"
+          path_overlaps "${scratch_canonical}" "${db_canonical}" && fail_path "SCRATCH_ROOT must be disjoint from DB_SOURCE"
+          if [[ -n "${REFERENCE_DB_SOURCE}" ]]; then
+            ref_db_canonical="$(canonical_existing "${REFERENCE_DB_SOURCE}")" || fail_path "Reference DB source '${REFERENCE_DB_SOURCE}' is missing or unresolvable; set node_config.reference_db_source to an existing snapshot path."
+          else
+            ref_db_canonical=""
+          fi
+          if [[ -n "${ref_db_canonical}" ]] && path_overlaps "${scratch_canonical}" "${ref_db_canonical}"; then
+            fail_path "SCRATCH_ROOT must be disjoint from reference DB source"
+          fi
+
+          # Resolve existing parents and symlinks before mkdir. Every generated path must remain below the
+          # canonical scratch root and disjoint from both pristine DB trees; lexical resolver checks cannot
+          # see a symlinked diag/results component.
+          for planned in "${DIAG_DIR}" "${RESULTS_DIR}" "${OUT_DIR}" "${STATE_DIR}" "${ARCHIVE_DIR}"; do
+            canonical="$(canonical_planned "${planned}")" || fail_path "cannot canonicalize output path '${planned}'"
+            is_under "${canonical}" "${scratch_canonical}" && [[ "${canonical}" != "${scratch_canonical}" ]] || fail_path "output path '${planned}' escapes SCRATCH_ROOT"
+            path_overlaps "${canonical}" "${db_canonical}" && fail_path "output path '${planned}' overlaps DB_SOURCE"
+            if [[ -n "${ref_db_canonical}" ]] && path_overlaps "${canonical}" "${ref_db_canonical}"; then
+              fail_path "output path '${planned}' overlaps reference DB source"
+            fi
+          done
+          mkdir -p "${OUT_DIR}" "${STATE_DIR}" "${ARCHIVE_DIR}"
 
       - name: Reclaim root disk before pulling
-        # Only the ARM box has the ~19G root disk this protects; see its rationale below.
         if: needs.resolve.outputs.runner_label == 'reproducible-benchmarks-arm'
         shell: bash
-        # The box has a ~19G root disk. A pull that runs it out of space kills the docker daemon and the
-        # runner with it, so reclaim first and only refuse to start if the disk is still tight afterwards.
         env:
           KEEP_IMAGES: |
             ${{ needs.resolve.outputs.image_ref }}
             ${{ needs.resolve.outputs.ref_image_ref }}
           KEEP_TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
+        # Filling the disk docker writes to kills the daemon and takes the runner with it. That disk is not always `/`:
+        # the box keeps its image store on the data volume, so the pull headroom follows docker's configured store
+        # and `/` is only held to what RUNNER_TEMP needs. The containerd image store ignores `image prune`, so the
+        # reclaim below has to `docker rmi` explicitly.
         run: |
           set -uo pipefail
-          MIN_FREE_GB=6
-          avail_gb() { df -BG --output=avail / | tail -1 | tr -dc '0-9'; }
-          report() { df -h /; du -xsh /var/lib/containerd /var/lib/docker 2>/dev/null || true; }
-
+          MIN_OUTPUT_FREE_BYTES=$((6 * 1024 * 1024 * 1024))
+          MIN_ROOT_FREE_BYTES=$((1 * 1024 * 1024 * 1024))
+          # Check the volume that will receive benchmark output, not just `/`. Keep byte precision so a
+          # rounded-up `df -BG` result cannot admit a nearly-full filesystem.
+          available_bytes() {
+            local value
+            value="$(df -B1 --output=avail "$1" 2>/dev/null | tail -1 | tr -dc '0-9')"
+            [[ "${value}" =~ ^[0-9]+$ ]] || { echo "Unable to determine free space for $1" >&2; return 1; }
+            echo "${value}"
+          }
+          filesystem_for() { df -B1 --output=source "$1" 2>/dev/null | tail -1 | awk '{print $1}'; }
+          docker_root="$(docker info -f '{{.DockerRootDir}}' 2>/dev/null)"
+          [[ -d "${docker_root}" ]] || docker_root=/var/lib/docker
+          containerd_root="$(containerd config dump 2>/dev/null | awk -F'"' '/^root = /{print $2}')"
+          [[ -d "${containerd_root}" ]] || containerd_root=/var/lib/containerd
+          # `docker info` reports overlayfs for the containerd image store and overlay2 for the legacy graphdriver.
+          [[ "$(docker info -f '{{.Driver}}' 2>/dev/null)" == "overlayfs" ]] && image_store="${containerd_root}" || image_store="${docker_root}"
+          output_fs="$(filesystem_for "${RESULTS_DIR}")"
+          root_fs="$(filesystem_for /)"
+          [[ -n "${output_fs}" && -n "${root_fs}" ]] || { echo "Unable to determine output/root filesystems" >&2; exit 1; }
+          report() { df -h / "${RESULTS_DIR}" "${image_store}"; du -xsh "${docker_root}" "${containerd_root}" 2>/dev/null || true; }
+          echo "Image store: ${image_store} (docker=${docker_root} containerd=${containerd_root})"
+          echo "Output volume: ${RESULTS_DIR} (${output_fs}); root filesystem: ${root_fs}"
           echo "== before =="; report
-          echo "Free before reclaim: $(avail_gb)G"
-
           # Cheap, always-safe garbage first.
           docker container prune -f || true
           docker network prune -f || true
@@ -779,23 +846,23 @@ jobs:
           rm -rf /root/actions-runner/_work/_temp/* 2>/dev/null || true
           apt-get clean 2>/dev/null || true
           journalctl --vacuum-size=200M 2>/dev/null || true
-
           # Stale benchmark images are the monotonic consumer: every campaign pushes multi-GB tags and
           # nothing retires them. Docker here uses the CONTAINERD image store, so that content lands in
           # /var/lib/containerd and `docker image prune -a --filter until=<age>` reports 0B against it
           # (`docker system df` even reports a negative reclaimable) — an explicit `docker rmi` is the
           # only thing that frees it. Drop unused tags oldest-first, and only as many as needed, so
           # pinned A/B images survive whenever there is already room.
-          if (( $(avail_gb) < MIN_FREE_GB )); then
+          image_before="$(available_bytes "${image_store}")" || exit 1
+          if (( image_before < MIN_OUTPUT_FREE_BYTES )); then
             # Sweep arms come from tool_config.clients as `ctype@image`, and run-rpc-sweep.sh treats a
-            # failed pull as "probably local" — so dropping one of those yields a silently partial matrix
-            # rather than an error. Keep them too.
+            # failed pull as "probably local" — so dropping one of those yields a silently partial matrix.
             sweep_keep="$(printf '%s' "${KEEP_TOOL_CONFIG:-}" | jq -r '.clients // empty' 2>/dev/null \
               | tr ' ' '\n' | sed 's/.*@//' | grep -v '^$' || true)"
             keep_re="$(printf '%s\n%s\n' "${KEEP_IMAGES}" "${sweep_keep}" | tr -d ' ' | grep -v '^$' | sort -u | paste -sd'|' -)"
             echo "Reclaiming stale images (keeping: ${keep_re:-none})"
             while IFS= read -r img; do
-              (( $(avail_gb) >= MIN_FREE_GB )) && break
+              image_now="$(available_bytes "${image_store}")" || exit 1
+              (( image_now >= MIN_OUTPUT_FREE_BYTES )) && break
               [[ -z "${img}" || "${img}" == *'<none>'* ]] && continue
               [[ -n "${keep_re}" ]] && [[ "${img}" =~ ^(${keep_re})$ ]] && continue
               # Never touch an image a container still references (another queued job may be mid-run).
@@ -803,14 +870,18 @@ jobs:
               if docker rmi "${img}" >/dev/null 2>&1; then echo "  dropped ${img}"; fi
             done < <(docker images --format '{{.CreatedAt}}\t{{.Repository}}:{{.Tag}}' | sort | cut -f2-)
           fi
-
-          free="$(avail_gb)"
+          image_free="$(available_bytes "${image_store}")" || exit 1
+          output_free="$(available_bytes "${RESULTS_DIR}")" || exit 1
+          root_free="$(available_bytes /)" || exit 1
+          required_root_free="${MIN_ROOT_FREE_BYTES}"
+          if [[ "${output_fs}" == "${root_fs}" ]]; then
+            required_root_free="${MIN_OUTPUT_FREE_BYTES}"
+          fi
           echo "== after =="; report
-          echo "Free after reclaim: ${free}G (need ${MIN_FREE_GB}G)"
-          if (( free < MIN_FREE_GB )); then
-            echo "::error::Only ${free}G free on / after reclaim — refusing to start rather than risk killing the runner daemon."
-            echo "Everything reclaimable is already gone; the remaining usage needs a look over SSH."
-            du -xh --max-depth=2 /var /usr /root 2>/dev/null | sort -rh | head -15 || true
+          echo "Free after reclaim: ${image_free} bytes on ${image_store}, ${output_free} bytes on ${RESULTS_DIR} (need ${MIN_OUTPUT_FREE_BYTES}), ${root_free} bytes on / (need ${required_root_free})"
+          if (( image_free < MIN_OUTPUT_FREE_BYTES || output_free < MIN_OUTPUT_FREE_BYTES || root_free < required_root_free )); then
+            echo "::error::Not enough free space after reclaim (image=${image_free}, output=${output_free}, root=${root_free}; required image/output=${MIN_OUTPUT_FREE_BYTES}, root=${required_root_free}) — refusing to start rather than risk killing the runner daemon."
+            du -xh --max-depth=2 /var /usr /root "${image_store}" 2>/dev/null | sort -rh | head -15 || true
             exit 1
           fi
 
@@ -1158,7 +1229,7 @@ jobs:
         if: always() && needs.resolve.outputs.dottrace == 'true'
         shell: bash
         env:
-          ARCHIVE: ${{ runner.temp }}/dottrace-rpcbench.zip
+          ARCHIVE: ${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}/archives/dottrace-rpcbench.zip
         run: |
           set -euo pipefail
           if [[ -d "${DIAG_DIR}/dottrace" ]] && [[ -n "$(find "${DIAG_DIR}/dottrace" -type f 2>/dev/null)" ]]; then
@@ -1172,7 +1243,7 @@ jobs:
         if: always() && needs.resolve.outputs.perf == 'true'
         shell: bash
         env:
-          ARCHIVE: ${{ runner.temp }}/perf-rpcbench.zip
+          ARCHIVE: ${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}/archives/perf-rpcbench.zip
         run: |
           set -euo pipefail
           # Archive first and defer the failure, so a capture that produced no usable profile still ships the
@@ -1202,7 +1273,7 @@ jobs:
         if: always() && needs.resolve.outputs.dotnet_trace == 'true'
         shell: bash
         env:
-          ARCHIVE: ${{ runner.temp }}/dotnet-trace-rpcbench.zip
+          ARCHIVE: ${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}/archives/dotnet-trace-rpcbench.zip
         run: |
           set -euo pipefail
           if [[ -s "${DIAG_DIR}/dotnet-trace/rpcbench.nettrace" ]]; then
@@ -1233,7 +1304,7 @@ jobs:
             echo "clean_shutdown=true" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
-          clean="${RUNNER_TEMP}/node.clean.log"
+          clean="${STATE_DIR}/node.clean.log"
           sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "${node_log}" > "${clean}"
 
           # "Incorrect JSON RPC parameters" errors come from the CALLER's malformed input, not node health. Key on that
@@ -1241,7 +1312,7 @@ jobs:
           benign_rpc_exc='Incorrect JSON RPC parameters'
           # Detect via a match file — piping through 'head' under pipefail can SIGPIPE the first grep on a match storm and
           # silently flip the gate to false. Truncate only when printing.
-          exc_matches="${RUNNER_TEMP}/node.exceptions.log"
+          exc_matches="${STATE_DIR}/node.exceptions.log"
           grep -in "Exception" "${clean}" | grep -vF "${benign_rpc_exc}" > "${exc_matches}" || true
           exception_found="false"
           if [[ -s "${exc_matches}" ]]; then
@@ -1280,7 +1351,7 @@ jobs:
           # noisy upstream image cannot fail a Nethermind benchmark run.
           ref_log="${STATE_DIR}/node-reference.log"
           if [[ -f "${ref_log}" ]]; then
-            ref_clean="${RUNNER_TEMP}/node-reference.clean.log"
+            ref_clean="${STATE_DIR}/node-reference.clean.log"
             sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "${ref_log}" > "${ref_clean}"
             for pattern in "Exception" "Unhandled" "Fatal" "ERROR"; do
               if grep -qi "${pattern}" "${ref_clean}"; then
@@ -1328,14 +1399,14 @@ jobs:
         with:
           name: rpcbench-results-${{ needs.resolve.outputs.benchmark_tool }}
           path: |
-            ${{ runner.temp }}/rpcbench-out/
-            ${{ runner.temp }}/rpcbench-state/node.log
-            ${{ runner.temp }}/rpcbench-state/node-reference.log
-            ${{ runner.temp }}/rpcbench-state/db-baseline.txt
-            ${{ runner.temp }}/rpcbench-state/db-final.txt
-            ${{ runner.temp }}/rpcbench-state/db-baseline-reference.txt
-            ${{ runner.temp }}/rpcbench-state/db-final-reference.txt
-            ${{ runner.temp }}/rpcbench-state/sweep/
+            ${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}/out/
+            ${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}/state/node.log
+            ${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}/state/node-reference.log
+            ${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}/state/db-baseline.txt
+            ${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}/state/db-final.txt
+            ${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}/state/db-baseline-reference.txt
+            ${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}/state/db-final-reference.txt
+            ${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}/state/sweep/
           retention-days: 30
           if-no-files-found: warn
 
@@ -1362,7 +1433,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: dottrace-rpcbench
-          path: ${{ runner.temp }}/dottrace-rpcbench.zip
+          path: ${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}/archives/dottrace-rpcbench.zip
           retention-days: 30
           if-no-files-found: ignore
 
@@ -1371,7 +1442,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: perf-rpcbench
-          path: ${{ runner.temp }}/perf-rpcbench.zip
+          path: ${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}/archives/perf-rpcbench.zip
           retention-days: 30
           if-no-files-found: error
 
@@ -1380,7 +1451,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: dotnet-trace-rpcbench
-          path: ${{ runner.temp }}/dotnet-trace-rpcbench.zip
+          path: ${{ needs.resolve.outputs.scratch_root }}/diag/results/${{ github.run_id }}-${{ github.run_attempt }}/archives/dotnet-trace-rpcbench.zip
           retention-days: 30
           if-no-files-found: error
 
