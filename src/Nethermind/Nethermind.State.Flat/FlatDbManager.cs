@@ -457,7 +457,12 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         ClearReadOnlyBundleCache();
         _trieNodeCache.Clear();
 
-        if (_logger.IsInfo) _logger.Info($"FlatDbManager FlushCache completed. Persisted to {persistedState}.");
+        // The shutdown path leaves the persisted state where it was, so "persisted to" would name a block
+        // far below the head; PersistForShutdown reports what it converted.
+        if (_logger.IsInfo)
+            _logger.Info(forShutdown
+                ? $"FlatDbManager FlushCache completed. Persisted state {persistedState}."
+                : $"FlatDbManager FlushCache completed. Persisted to {persistedState}.");
     }
 
     public bool HasStateForBlock(in StateId stateId)

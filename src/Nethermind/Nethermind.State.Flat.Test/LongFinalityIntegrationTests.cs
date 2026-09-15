@@ -476,6 +476,9 @@ public class LongFinalityIntegrationTests
             persistedAtShutdown = pm.PersistForShutdown(CancellationToken.None);
         }
 
+        Assert.That(persistedAtShutdown, Is.EqualTo(block0),
+            "the shutdown must leave the persisted base where it was — advancing it is what strands the window");
+
         using FlatTestContainer restarted = new(config: config, baseDbPath: _testDir, catalogDb: catalogDb);
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         reader.CurrentState.Returns(persistedAtShutdown);
@@ -509,6 +512,29 @@ public class LongFinalityIntegrationTests
 
         using ReadOnlySnapshotBundle headBundle = manager.GatherReadOnlySnapshotBundle(head);
         Assert.That(headBundle.GetAccount(TestItem.AddressA)?.Balance, Is.EqualTo((UInt256)5));
+    }
+
+    [Test]
+    public void ShutdownPersist_WithoutLongFinality_FallsBackToTheFlush()
+    {
+        // No persisted-snapshot tier to convert into, so the only way to make the tier durable is the
+        // flush, which collapses it into the base at the head.
+        FlatDbConfig config = new()
+        {
+            CompactSize = 16,
+            MinReorgDepth = 64,
+            MaxReorgDepth = 256,
+            EnableLongFinality = false
+        };
+        using FlatTestContainer tier = new(
+            config: config, baseDbPath: _testDir, finalizedStateProvider: new SettableFinalizedProvider());
+        StateId block0 = new(0, Keccak.EmptyTreeHash);
+        using PersistenceManager pm = BuildManager(tier, block0);
+
+        StateId prev = block0;
+        for (ulong b = 1; b <= 3; b++) prev = AddInMemoryBase(tier, prev, b);
+
+        Assert.That(pm.PersistForShutdown(CancellationToken.None), Is.EqualTo(prev));
     }
 
     [Test]
