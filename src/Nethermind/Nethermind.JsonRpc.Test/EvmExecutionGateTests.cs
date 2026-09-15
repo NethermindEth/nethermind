@@ -75,7 +75,7 @@ public class EvmExecutionGateTests
     [Test]
     public async Task Admits_exactly_the_configured_number_of_permits()
     {
-        EvmExecutionGate gate = Gate(permits: 2, maxQueueWaitMs: 0);
+        using EvmExecutionGate gate = Gate(permits: 2, maxQueueWaitMs: 0);
 
         using EvmExecutionGate.Lease first = await Acquire(gate);
         using EvmExecutionGate.Lease second = await Acquire(gate);
@@ -91,7 +91,7 @@ public class EvmExecutionGateTests
     [Test]
     public async Task Trusted_caller_is_admitted_before_anonymous_callers_already_waiting()
     {
-        EvmExecutionGate gate = Gate(permits: 1);
+        using EvmExecutionGate gate = Gate(permits: 1);
         EvmExecutionGate.Lease held = await Acquire(gate);
 
         ValueTask<EvmExecutionGate.Lease> anonymous = gate.AcquireAsync(1, allowQueue: true);
@@ -114,7 +114,7 @@ public class EvmExecutionGateTests
     [Test]
     public async Task Cancelled_caller_stops_waiting_and_leaves_its_permit_behind()
     {
-        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 60_000);
+        using EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 60_000);
         EvmExecutionGate.Lease held = await Acquire(gate);
 
         using CancellationTokenSource disconnected = new();
@@ -135,7 +135,7 @@ public class EvmExecutionGateTests
     [Test]
     public void Cancelled_caller_does_not_enter_the_queue()
     {
-        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 60_000);
+        using EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 60_000);
         using CancellationTokenSource disconnected = new();
         disconnected.Cancel();
 
@@ -152,7 +152,7 @@ public class EvmExecutionGateTests
     [Test]
     public async Task Caller_that_gives_up_between_the_grant_and_its_resumption_returns_the_permit()
     {
-        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 60_000);
+        using EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 60_000);
         EvmExecutionGate.Lease held = await Acquire(gate);
 
         using CancellationTokenSource disconnected = new();
@@ -188,7 +188,7 @@ public class EvmExecutionGateTests
     [Test]
     public async Task Disposing_the_gate_answers_everyone_waiting()
     {
-        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 60_000);
+        using EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 60_000);
         using EvmExecutionGate.Lease held = await Acquire(gate);
 
         ValueTask<EvmExecutionGate.Lease> queued = gate.AcquireAsync(1, allowQueue: true);
@@ -208,7 +208,7 @@ public class EvmExecutionGateTests
     [Test]
     public async Task Releasing_a_permit_admits_the_next_caller()
     {
-        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 0);
+        using EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 0);
 
         using (EvmExecutionGate.Lease held = await Acquire(gate))
         {
@@ -222,7 +222,7 @@ public class EvmExecutionGateTests
     [Test]
     public async Task Queued_request_is_admitted_when_a_permit_frees_within_the_budget()
     {
-        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 5_000);
+        using EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 5_000);
         EvmExecutionGate.Lease held = await Acquire(gate);
 
         ValueTask<EvmExecutionGate.Lease> queued = gate.AcquireAsync(1, allowQueue: true);
@@ -237,7 +237,7 @@ public class EvmExecutionGateTests
     [Test]
     public async Task Saturated_gate_sheds_once_the_wait_budget_expires()
     {
-        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30);
+        using EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30);
         using EvmExecutionGate.Lease held = await Acquire(gate);
 
         Assert.That(async () => await gate.AcquireAsync(1, allowQueue: true), Throws.InstanceOf<LimitExceededException>());
@@ -246,7 +246,7 @@ public class EvmExecutionGateTests
     [Test]
     public async Task Caller_that_may_not_queue_sheds_immediately_even_with_a_budget()
     {
-        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 60_000);
+        using EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 60_000);
         using EvmExecutionGate.Lease held = await Acquire(gate);
 
         // Refused at the call, not after the minute-long budget - see ShedsOnArrival.
@@ -263,7 +263,7 @@ public class EvmExecutionGateTests
         // PriorityQueue - which is not a stable heap - has no order of its own to fall back on. A real clock only
         // reaches that state when two arrivals land on the same tick.
         TestClock? clock = frozenClock ? new TestClock() : null;
-        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000, clock);
+        using EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000, clock);
         EvmExecutionGate.Lease held = await Acquire(gate);
 
         const int waiterCount = 8;
@@ -301,7 +301,7 @@ public class EvmExecutionGateTests
         // The reason for ordering by cost at all: a small eth_call must not sit behind large simulations, which is
         // what drives the mean response time an operator actually perceives.
         TestClock clock = new();
-        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000, clock);
+        using EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000, clock);
         EvmExecutionGate.Lease held = await Acquire(gate);
 
         ValueTask<EvmExecutionGate.Lease> heavy = gate.AcquireAsync(EvmExecutionGate.MaxWeight, allowQueue: true);
@@ -326,7 +326,7 @@ public class EvmExecutionGateTests
         // bounds the overtaking at (weight - 1) quanta.
         const int budgetMs = 30_000;
         TestClock clock = new();
-        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: budgetMs, clock);
+        using EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: budgetMs, clock);
         EvmExecutionGate.Lease held = await Acquire(gate);
 
         ValueTask<EvmExecutionGate.Lease> heavy = gate.AcquireAsync(EvmExecutionGate.MaxWeight, allowQueue: true);
@@ -352,7 +352,7 @@ public class EvmExecutionGateTests
         // released, so the overtaking actually happens rather than depending on a background task winning a race.
         const int budgetMs = 30_000;
         TestClock clock = new();
-        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: budgetMs, clock);
+        using EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: budgetMs, clock);
         EvmExecutionGate.Lease held = await Acquire(gate);
 
         ValueTask<EvmExecutionGate.Lease> heavy = gate.AcquireAsync(EvmExecutionGate.MaxWeight, allowQueue: true);
@@ -396,7 +396,7 @@ public class EvmExecutionGateTests
     {
         // The cap bounds queue depth and refuses past it on arrival. It makes no promise about the wait - see the
         // remark on EvmExecutionGate, which is explicit that the ordering is not a liveness guarantee.
-        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000);
+        using EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000);
         EvmExecutionGate.Lease held = await Acquire(gate);
 
         ValueTask<EvmExecutionGate.Lease>[] queued =
@@ -457,7 +457,7 @@ public class EvmExecutionGateTests
         // It does NOT pin the lost-update race the Interlocked increment exists for: that window is a couple
         // of instructions between the read and write of a non-atomic ++, too narrow to reproduce reliably. What
         // this does catch is a wholesale accounting mistake, such as a decrement path that stops running.
-        EvmExecutionGate gate = Gate(permits: 2, maxQueueWaitMs: 40);
+        using EvmExecutionGate gate = Gate(permits: 2, maxQueueWaitMs: 40);
         EvmExecutionGate.Lease first = await Acquire(gate);
         EvmExecutionGate.Lease second = await Acquire(gate);
 
@@ -502,7 +502,7 @@ public class EvmExecutionGateTests
     public async Task Queue_length_metric_tracks_waiting_callers()
     {
         long before = Interlocked.Read(ref Metrics.EvmExecutionQueueLength);
-        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000);
+        using EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000);
         EvmExecutionGate.Lease held = await Acquire(gate);
 
         ValueTask<EvmExecutionGate.Lease> queued = gate.AcquireAsync(1, allowQueue: true);
@@ -518,7 +518,7 @@ public class EvmExecutionGateTests
     public async Task Shed_caller_is_removed_from_the_queue_length()
     {
         long before = Interlocked.Read(ref Metrics.EvmExecutionQueueLength);
-        EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 20);
+        using EvmExecutionGate gate = Gate(permits: 1, maxQueueWaitMs: 20);
         using EvmExecutionGate.Lease held = await Acquire(gate);
 
         Assert.That(async () => await gate.AcquireAsync(1, allowQueue: true), Throws.InstanceOf<LimitExceededException>());
@@ -530,7 +530,7 @@ public class EvmExecutionGateTests
     {
         // A leaked extra permit would silently widen EVM concurrency for the rest of the process, so Release
         // checks _freePermits against _maxPermits and throws: the bug must surface loudly instead.
-        EvmExecutionGate gate = Gate(permits: 1);
+        using EvmExecutionGate gate = Gate(permits: 1);
         EvmExecutionGate.Lease lease = await Acquire(gate);
         lease.Dispose();
 
@@ -540,7 +540,7 @@ public class EvmExecutionGateTests
     [Test]
     public void Permit_count_falls_back_to_the_processor_count()
     {
-        EvmExecutionGate gate = new(new JsonRpcConfig { EthModuleConcurrentInstances = null, EvmExecutionMaxQueueWaitMs = 0 });
+        using EvmExecutionGate gate = new(new JsonRpcConfig { EthModuleConcurrentInstances = null, EvmExecutionMaxQueueWaitMs = 0 });
 
         List<EvmExecutionGate.Lease> leases = [];
         try
@@ -569,7 +569,7 @@ public class EvmExecutionGateTests
     [TestCase(-5, Description = "a negative instance count still leaves one usable slot")]
     public async Task Non_positive_instance_count_still_admits_one_caller(int configured)
     {
-        EvmExecutionGate gate = Gate(permits: configured, maxQueueWaitMs: 0);
+        using EvmExecutionGate gate = Gate(permits: configured, maxQueueWaitMs: 0);
 
         using EvmExecutionGate.Lease only = await Acquire(gate);
         Assert.That(async () => await Acquire(gate), Throws.InstanceOf<LimitExceededException>());

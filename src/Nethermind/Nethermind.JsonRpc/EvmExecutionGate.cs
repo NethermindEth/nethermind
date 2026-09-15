@@ -40,8 +40,8 @@ namespace Nethermind.JsonRpc;
 /// bound. It is wrong in both directions - a small <c>eth_call</c> into a hot loop is expensive, a large state
 /// override may execute trivially - so it is deliberately used only to pick an order, never to admit or refuse.
 /// It confers <em>no</em> resistance to abuse and mildly assists it: sixty bytes naming a tight loop with a 30M gas
-/// cap weigh one and sit at the head of the queue, a params-less request weighs zero and sits ahead of everything,
-/// and an honest simulate call with a large state override always goes last. Ordering is a mean-latency
+/// cap weigh one and share the lightest queue class with params-less requests, and an honest simulate call with a
+/// large state override always goes last. Ordering is a mean-latency
 /// optimisation for well-behaved traffic; what bounds a hostile caller is the permit count and the depth cap.
 /// </para>
 /// <para>

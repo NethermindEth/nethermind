@@ -180,7 +180,7 @@ public class EvmExecutionGateServiceTests
     public async Task A_caller_that_gives_up_while_queued_stops_waiting()
     {
         using BlockingGatedModule module = new();
-        JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 60_000, module);
+        using JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 60_000, module);
         using JsonRpcContext context = new(RpcEndpoint.Http);
 
         ValueTask<JsonRpcResponse> inFlight = service.SendRequestAsync(Request(GatedMethod), context);
@@ -213,7 +213,7 @@ public class EvmExecutionGateServiceTests
     public async Task Disposing_the_service_answers_a_queued_caller_at_once()
     {
         using BlockingGatedModule module = new();
-        JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 60_000, module);
+        using JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 60_000, module);
         using JsonRpcContext context = new(RpcEndpoint.Http);
 
         ValueTask<JsonRpcResponse> inFlight = service.SendRequestAsync(Request(GatedMethod), context);
@@ -236,7 +236,7 @@ public class EvmExecutionGateServiceTests
     public async Task Gated_method_is_shed_while_every_permit_is_held()
     {
         using BlockingGatedModule module = new();
-        JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 0, module);
+        using JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 0, module);
         using JsonRpcContext context = new(RpcEndpoint.Http);
 
         ValueTask<JsonRpcResponse> inFlight = service.SendRequestAsync(Request(GatedMethod), context);
@@ -252,7 +252,7 @@ public class EvmExecutionGateServiceTests
     public async Task Ungated_method_is_served_while_the_gate_is_saturated()
     {
         using BlockingGatedModule module = new();
-        JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 0, module);
+        using JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 0, module);
         using JsonRpcContext context = new(RpcEndpoint.Http);
 
         ValueTask<JsonRpcResponse> inFlight = service.SendRequestAsync(Request(GatedMethod), context);
@@ -269,7 +269,7 @@ public class EvmExecutionGateServiceTests
     public async Task Permit_is_released_when_the_gated_method_throws()
     {
         ThrowingGatedModule module = new();
-        JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 0, module);
+        using JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 0, module);
         using JsonRpcContext context = new(RpcEndpoint.Http);
 
         // Twice: the second call can only be admitted if the first returned its permit on the failure path.
@@ -292,7 +292,7 @@ public class EvmExecutionGateServiceTests
     public async Task Batch_items_are_shed_rather_than_queued([Values(RpcEndpoint.Http, RpcEndpoint.IPC)] RpcEndpoint endpoint)
     {
         using BlockingGatedModule module = new();
-        JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 60_000, module);
+        using JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 60_000, module);
         using JsonRpcContext context = new(endpoint);
         Assert.That(context.IsAuthenticated, Is.EqualTo(endpoint == RpcEndpoint.IPC), "precondition: the IPC arm is the trusted one");
 
@@ -317,7 +317,7 @@ public class EvmExecutionGateServiceTests
     public async Task Single_request_waits_for_a_slot_and_is_then_served([Values(RpcEndpoint.Http, RpcEndpoint.IPC)] RpcEndpoint endpoint)
     {
         using BlockingGatedModule module = new();
-        JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 30_000, module);
+        using JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 30_000, module);
         using JsonRpcContext context = new(endpoint);
 
         ValueTask<JsonRpcResponse> inFlight = service.SendRequestAsync(Request(GatedMethod), context);
@@ -344,7 +344,7 @@ public class EvmExecutionGateServiceTests
         // assignment fails this test. A batch is dispatched sequentially, so a gated item must shed promptly and
         // the ungated item behind it must still be served rather than waiting out the 60s budget.
         using BlockingGatedModule module = new();
-        JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 60_000, module);
+        using JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 60_000, module);
         using JsonRpcContext context = new(RpcEndpoint.Http);
 
         ValueTask<JsonRpcResponse> inFlight = service.SendRequestAsync(Request(GatedMethod), context);
@@ -378,7 +378,7 @@ public class EvmExecutionGateServiceTests
     {
         // EvmExecutionGateEnabled = false must restore the previous behaviour exactly: no permit, no shedding.
         using BlockingGatedModule module = new();
-        JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 0, module, gateEnabled: false);
+        using JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 0, module, gateEnabled: false);
         using JsonRpcContext context = new(RpcEndpoint.Http);
 
         ValueTask<JsonRpcResponse> first = service.SendRequestAsync(Request(GatedMethod), context);
@@ -406,7 +406,7 @@ public class EvmExecutionGateServiceTests
     {
         // On a lane that processes one request at a time, waiting only delays the calls behind it.
         using BlockingGatedModule module = new();
-        JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 60_000, module, webSocketsConcurrency: wsConcurrency);
+        using JsonRpcService service = CreateService(permits: 1, maxQueueWaitMs: 60_000, module, webSocketsConcurrency: wsConcurrency);
         using JsonRpcContext context = new(RpcEndpoint.Ws);
 
         ValueTask<JsonRpcResponse> inFlight = service.SendRequestAsync(Request(GatedMethod), context);
