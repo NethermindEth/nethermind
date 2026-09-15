@@ -747,21 +747,27 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [NonParallelizable]
     public void Engine_construction_failing_under_a_pending_violation_leaves_later_engines_usable()
     {
-        Engine hoarder = new(Shanghai.Instance);
-        dynamic hoardingTracer = hoarder.CreateTracer(HoardingTracer);
-        Action hoard = () =>
+        using (Engine hoarder = new(Shanghai.Instance))
         {
-            for (int i = 0; i < 400; i++)
+            dynamic hoardingTracer = hoarder.CreateTracer(HoardingTracer);
+            try
             {
-                hoardingTracer.step(null, null);
+                Action hoard = () =>
+                {
+                    for (int i = 0; i < 400; i++)
+                    {
+                        hoardingTracer.step(null, null);
+                    }
+                };
+                Assert.That(hoard, Throws.InstanceOf(typeof(IScriptEngineException)), "the hoarding script must trip the limit");
+                Assert.That(() => new Engine(Shanghai.Instance).Dispose(), Throws.InstanceOf(typeof(IScriptEngineException)), "engines cannot start while the hoard still holds the heap over the limit");
             }
-        };
-        Assert.That(hoard, Throws.InstanceOf(typeof(IScriptEngineException)), "the hoarding script must trip the limit");
+            finally
+            {
+                ((object)hoardingTracer as IDisposable)?.Dispose();
+            }
+        }
 
-        Assert.That(() => new Engine(Shanghai.Instance), Throws.InstanceOf(typeof(IScriptEngineException)), "engines cannot start while the hoard still holds the heap over the limit");
-
-        ((object)hoardingTracer as IDisposable)?.Dispose();
-        hoarder.Dispose();
         using Engine recovered = new(Shanghai.Instance);
         dynamic probe = recovered.CreateTracer("{ result: function(ctx, db) { return 7; } }");
 
