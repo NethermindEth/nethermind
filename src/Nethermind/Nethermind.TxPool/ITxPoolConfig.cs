@@ -55,8 +55,8 @@ public interface ITxPoolConfig : IConfig
     /// <remarks>
     /// One allowance per transaction, shared by every revalidation path that can reach no verdict, so a
     /// transaction alternating between them cannot carry for twice as long as either alone. Bounded because
-    /// a carry that feeds itself never drains: re-arming it costs a block that genuinely touched the
-    /// transaction's dependencies and would have triggered a revalidation anyway.
+    /// a carry that feeds itself never drains; what it bounds is that self-feeding, not the transaction's
+    /// total stay, since the count is consecutive.
     /// </remarks>
     [ConfigItem(DefaultValue = "2", Description = "EIP-8141: the number of *consecutive* chain heads a pending frame transaction whose revalidation reached no verdict may be carried across before the pool stops re-queuing it. Any head that revalidates it without deferring it again resets the count. `0` stops re-queuing entirely.")]
     int FrameTxRevalidationDeferralBudget { get; set; }
