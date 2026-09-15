@@ -57,6 +57,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 .AddScoped<IHasAccessList>(ctx => ctx.Resolve<IBeaconBlockRootHandler>())
                 // Chains may bind their own IBlockhashStore; only hint-capable stores contribute.
                 .AddScoped<IHasAccessList>(ctx => ctx.Resolve<IBlockhashStore>() as IHasAccessList ?? NoAccessList.Instance)
+                // Taiko binds its own IExecutionRequestsProcessor; only hint-capable processors contribute.
                 .AddScoped<IHasAccessList>(ctx => ctx.Resolve<IExecutionRequestsProcessor>() as IHasAccessList ?? NoAccessList.Instance)
 
                 .Add<PrewarmerEnvFactory>()

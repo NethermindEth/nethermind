@@ -28,6 +28,10 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAcces
 
     private const ulong GasLimit = Eip8037Constants.SystemCallGasLimit;
 
+    // EIP-7002 WITHDRAWAL_REQUEST_QUEUE_STORAGE_OFFSET: the slots below it hold the excess, count, queue head and
+    // queue tail words. EIP-7251 and the EIP-8282 builder contracts are derived from the same queue template.
+    private const ulong QueueStorageOffset = 4;
+
     // Canonical ABI layout of the EIP-6110 `DepositEvent(bytes,bytes,bytes,bytes,bytes)` log data: five head
     // words holding the offsets below, each pointing at a length word followed by the right-padded field.
     // These are the values EIP-6110 `is_valid_deposit_event_data` and EELS `extract_deposit_data` require;
@@ -91,7 +95,11 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAcces
         _builderExitTransaction.Hash = _builderExitTransaction.CalculateHash();
     }
 
-    /// <summary>Access-list hint for the prewarmer: the fixed queue words the EIP-7002/EIP-7251 dequeue calls read every block.</summary>
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Hints the prewarmer with the fixed queue words that every enabled dequeue system call reads. The addresses are
+    /// taken from the system calls themselves, so the hint cannot drift from the accounts the calls actually target.
+    /// </remarks>
     AccessList? IHasAccessList.GetAccessList(Block block, IReleaseSpec spec)
     {
         if (!spec.RequestsEnabled || block.IsGenesis) return null;
@@ -100,23 +108,29 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAcces
         bool hasContract = false;
         if (spec.WithdrawalRequestsEnabled)
         {
-            AddQueueContract(builder, spec.Eip7002ContractAddress ?? Eip7002Constants.WithdrawalRequestPredeployAddress);
+            AddQueueContract(builder, _withdrawalTransaction);
             hasContract = true;
         }
 
         if (spec.ConsolidationRequestsEnabled)
         {
-            AddQueueContract(builder, spec.Eip7251ContractAddress ?? Eip7251Constants.ConsolidationRequestPredeployAddress);
+            AddQueueContract(builder, _consolidationTransaction);
+            hasContract = true;
+        }
+
+        if (spec.BuilderRequestsEnabled)
+        {
+            AddQueueContract(builder, _builderDepositTransaction);
+            AddQueueContract(builder, _builderExitTransaction);
             hasContract = true;
         }
 
         return hasContract ? builder.Build() : null;
 
-        static void AddQueueContract(AccessList.Builder builder, Address address)
+        static void AddQueueContract(AccessList.Builder builder, SystemCall dequeueCall)
         {
-            builder.AddAddress(address);
-            // Excess, count, queue head, and queue tail words of the reference queue contracts.
-            for (ulong slot = 0; slot < 4; slot++)
+            builder.AddAddress(dequeueCall.To!);
+            for (ulong slot = 0; slot < QueueStorageOffset; slot++)
             {
                 UInt256 index = slot;
                 builder.AddStorage(in index);
