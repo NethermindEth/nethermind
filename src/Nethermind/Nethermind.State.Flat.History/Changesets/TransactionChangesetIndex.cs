@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -16,6 +17,7 @@ public sealed class TransactionChangesetIndex
     private readonly IColumnsDb<FlatHistoryColumns> _columns;
     private readonly TransactionChangesetStore _store;
     private readonly MidBlockOverlayCache _overlays;
+    private readonly ConsecutiveBlockOverlays _consecutive = new();
 
     public TransactionChangesetIndex(IColumnsDb<FlatHistoryColumns> columns, IFlatDbConfig config)
     {
@@ -75,6 +77,19 @@ public sealed class TransactionChangesetIndex
             && _store.TryGetBlockHash(block, out ValueHash256 indexed)
             && indexed == blockHash
             && _overlays.TryRent(block, beforeTransaction, out lease);
+    }
+
+    /// <summary>The whole block for a trace of every transaction: rows in memory, and the chain of the consecutive
+    /// blocks traced before it when the block continues one.</summary>
+    internal bool TryOpenBlock(Block block, [NotNullWhen(true)] out ICoveredBlock? covered)
+    {
+        covered = null;
+        ulong number = (ulong)block.Number;
+        if (!Covers(number) || block.Hash is null || block.ParentHash is null) return false;
+        if (!BlockChangesets.TryRead(_store, number, block.Hash, block.Transactions.Length, out BlockChangesets? rows)) return false;
+
+        covered = new CoveredBlock(rows, number == 0 ? null : _consecutive.EndingAt(number - 1, block.ParentHash), _consecutive);
+        return true;
     }
 
     /// <summary>One block's rows, written into a batch of their own. The caller claims coverage only once

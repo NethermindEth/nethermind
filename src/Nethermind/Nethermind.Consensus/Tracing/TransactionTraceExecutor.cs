@@ -27,7 +27,7 @@ public sealed class TransactionTraceExecutor(
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions options, BlockReceiptsTracer tracer, CancellationToken token)
     {
         TransactionTraceBoundary? boundary = TransactionTraceBoundary.Get(tracer.OtherTracer, options);
-        if (boundary is null || balManager.ForceConstructGeneratedBlockAccessList || boundary.IsTracingRewards)
+        if (boundary is null || balManager.ForceConstructGeneratedBlockAccessList || (boundary.IsTracingRewards && !boundary.SkipsTransactions))
             return inner.ProcessTransactions(block, options, tracer, token);
 
         Metrics.ResetBlockStats();

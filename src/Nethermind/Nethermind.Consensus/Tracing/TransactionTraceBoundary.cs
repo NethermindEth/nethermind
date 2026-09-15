@@ -13,10 +13,10 @@ namespace Nethermind.Consensus.Tracing;
 public sealed class TransactionTraceBoundary : IBlockTracer
 {
     private readonly IBlockTracer _inner;
-    private readonly Hash256 _transactionHash;
+    private readonly Hash256? _transactionHash;
     private readonly IPrefixStateSeedSource? _seeds;
 
-    private TransactionTraceBoundary(IBlockTracer inner, Hash256 transactionHash, IPrefixStateSeedSource? seeds)
+    private TransactionTraceBoundary(IBlockTracer inner, Hash256? transactionHash, IPrefixStateSeedSource? seeds)
     {
         _inner = inner;
         _transactionHash = transactionHash;
@@ -29,6 +29,10 @@ public sealed class TransactionTraceBoundary : IBlockTracer
 
     internal IPrefixStateSeedSource? Seeds => _seeds;
 
+    /// <summary>No transaction is the target: the seed stands for the whole block and only what follows the
+    /// transactions, the rewards, is executed and traced.</summary>
+    internal bool SkipsTransactions => _transactionHash is null;
+
     /// <summary>Wraps a transaction tracer for early completion in a supported read-only replay environment.</summary>
     /// <param name="tracer">The tracer to forward callbacks to; reward tracing retains full replay.</param>
     /// <param name="transactionHash">The transaction to stop after, or null for unrestricted replay.</param>
@@ -37,9 +41,14 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     public static IBlockTracer Wrap(IBlockTracer tracer, Hash256? transactionHash, IPrefixStateSeedSource? seeds = null) =>
         transactionHash is null || tracer.IsTracingRewards ? tracer : new TransactionTraceBoundary(tracer, transactionHash, seeds);
 
+    /// <summary>Wraps a tracer that wants only what comes after the transactions, on the state the seed source
+    /// supplies for the end of the block. A refused seed replays the block, so the answer is always right.</summary>
+    public static IBlockTracer AfterTransactions(IBlockTracer tracer, IPrefixStateSeedSource seeds) => new TransactionTraceBoundary(tracer, null, seeds);
+
     internal int IndexOf(Block block)
     {
         Transaction[] transactions = block.Transactions;
+        if (_transactionHash is null) return transactions.Length;
         for (int i = 0; i < transactions.Length; i++)
         {
             if (transactions[i].Hash == _transactionHash) return i;
@@ -67,7 +76,7 @@ public sealed class TransactionTraceBoundary : IBlockTracer
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
-        _isTarget = tx?.Hash == _transactionHash;
+        _isTarget = _transactionHash is not null && tx?.Hash == _transactionHash;
         return _inner.StartNewTxTrace(tx);
     }
 
