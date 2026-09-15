@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -93,7 +94,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                     if (IsOverSizeLimit(ref ctx, maxTxSize, maxBlobTxSize))
                     {
                         ctx.SkipItem();
-                        Metrics.OversizedTransactionsSkipped++;
+                        Interlocked.Increment(ref Metrics.OversizedTransactionsSkipped);
                         continue;
                     }
 

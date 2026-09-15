@@ -122,6 +122,6 @@ namespace Nethermind.Network
 
         [CounterMetric]
         [Description("Number of incoming transactions skipped before RLP decoding for exceeding the configured size limit.")]
-        public static long OversizedTransactionsSkipped { get; set; }
+        public static long OversizedTransactionsSkipped;
     }
 }
