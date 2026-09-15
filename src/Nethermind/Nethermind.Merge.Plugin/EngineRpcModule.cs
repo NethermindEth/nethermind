@@ -8,11 +8,11 @@ using Nethermind.Api;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Core.Memory;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.TxPool;
 

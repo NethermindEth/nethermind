@@ -4,8 +4,8 @@
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
 using Nethermind.Core.Memory;
+using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin;
 

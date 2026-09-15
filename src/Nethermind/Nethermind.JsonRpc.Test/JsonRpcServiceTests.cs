@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core.Memory;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -17,6 +16,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -46,16 +46,18 @@ namespace Nethermind.JsonRpc.Test;
 [TestFixture]
 public class JsonRpcServiceTests
 {
-    [TestCase("engine_newPayloadV1", true, true)]
-    [TestCase("engine_newPayloadV5", true, true)]
-    [TestCase("engine_newPayloadV99", true, true)]
-    [TestCase("engine_newPayloadWithWitnessV5", true, true)]
-    [TestCase("engine_newPayloadV5", false, false)]
-    [TestCase("engine_forkchoiceUpdatedV4", true, false)]
-    [TestCase("eth_call", true, false)]
-    [TestCase("Engine_newPayloadV5", true, false)]
-    [TestCase(null, true, false)]
-    public async Task New_payload_cancels_pending_collection_before_dispatch(string? method, bool authenticated, bool cancels)
+    [TestCase("engine_newPayloadV1", true, true, RpcEndpoint.Http)]
+    [TestCase("engine_newPayloadV5", true, true, RpcEndpoint.Http)]
+    [TestCase("engine_newPayloadV99", true, true, RpcEndpoint.Http)]
+    [TestCase("engine_newPayloadWithWitnessV5", true, true, RpcEndpoint.Http)]
+    [TestCase("engine_newPayloadV5", false, false, RpcEndpoint.Http)]
+    [TestCase("engine_forkchoiceUpdatedV4", true, false, RpcEndpoint.Http)]
+    [TestCase("eth_call", true, false, RpcEndpoint.Http)]
+    [TestCase("Engine_newPayloadV5", true, false, RpcEndpoint.Http)]
+    [TestCase(null, true, false, RpcEndpoint.Http)]
+    [TestCase("engine_newPayloadV5", false, true, RpcEndpoint.IPC)]
+    [TestCase("eth_call", false, false, RpcEndpoint.IPC)]
+    public async Task New_payload_cancels_pending_collection_before_dispatch(string? method, bool authenticated, bool cancels, RpcEndpoint endpoint)
     {
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
         strategy.PostBlockDelayMs.Returns(60_000);
@@ -66,7 +68,7 @@ public class JsonRpcServiceTests
         provider.Check(Arg.Any<string>(), Arg.Any<JsonRpcContext>(), out Arg.Any<string?>(), out Arg.Any<RpcModuleProvider.ResolvedMethodInfo?>())
             .Returns(ModuleResolution.Unknown);
         JsonRpcService service = new(provider, NullLogManager.Instance, new JsonRpcConfig(), keeper);
-        using JsonRpcContext context = JsonRpcContext.Http(new JsonRpcUrl("http", "localhost", 8551, RpcEndpoint.Http, authenticated, ["engine"]));
+        using JsonRpcContext context = new(endpoint, url: new JsonRpcUrl("http", "localhost", 8551, RpcEndpoint.Http, authenticated, ["engine"]));
         using JsonRpcResponse response = await service.SendRequestAsync(new JsonRpcRequest { Method = method! }, context);
         if (cancels) await pending.WaitAsync(TimeSpan.FromSeconds(5));
         else Assert.That(pending.IsCompleted, Is.False);

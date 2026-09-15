@@ -5,11 +5,17 @@ using System.ComponentModel;
 
 namespace Nethermind.Core.Memory;
 
+/// <summary>Controls no-GC-region entry and delayed post-payload collections.</summary>
 public interface IGCStrategy
 {
+    /// <summary>Gets the payload interval for decommit: -1 disables it, 0 requests it every time, and positive values count payload calls.</summary>
+    /// <remarks>Cancelled collections still count toward the interval. Once due, decommit remains due until accepted.</remarks>
     int CollectionsPerDecommit { get; }
+    /// <summary>Gets the delay in milliseconds before attempting a post-payload collection.</summary>
     int PostBlockDelayMs { get; }
+    /// <summary>Returns whether no-GC-region entry is currently permitted.</summary>
     bool CanStartNoGCRegion();
+    /// <summary>Returns ordinary collection settings; NoGC disables scheduling and a due decommit overrides these settings.</summary>
     (GcLevel Generation, GcCompaction Compacting) GetForcedGCParams();
 }
 

@@ -22,13 +22,8 @@ internal sealed class GcRegionRuntime : IGcRegionRuntime
     public bool TryStart(long totalSize, long lohSize) =>
         System.GC.TryStartNoGCRegion(totalSize, lohSize, disallowFullBlockingGC: true);
     public void End() => System.GC.EndNoGCRegion();
-    public bool Collect(GcLevel generation, GCCollectionMode mode, GcCompaction compacting)
-    {
-        if (mode != GCCollectionMode.Aggressive && generation == GcLevel.Gen2 && compacting == GcCompaction.Full)
-        {
-            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-        }
-
-        return GCScheduler.Instance.GCCollect((int)generation, mode, blocking: compacting > GcCompaction.No, compacting: compacting > GcCompaction.No);
-    }
+    public bool Collect(GcLevel generation, GCCollectionMode mode, GcCompaction compacting) =>
+        GCScheduler.Instance.GCCollect((int)generation, mode, blocking: compacting > GcCompaction.No,
+            compacting: compacting > GcCompaction.No, trimNativeMemory: true,
+            compactLoh: mode != GCCollectionMode.Aggressive && generation == GcLevel.Gen2 && compacting == GcCompaction.Full);
 }

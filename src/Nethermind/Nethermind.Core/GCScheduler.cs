@@ -191,7 +191,7 @@ public sealed class GCScheduler
     public bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting) =>
         GCCollect(generation, mode, blocking, compacting, trimNativeMemory: true);
 
-    private bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting, bool trimNativeMemory)
+    internal bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting, bool trimNativeMemory, bool compactLoh = false)
     {
         if (Volatile.Read(ref _forcedGCExclusions) > 0)
         {
@@ -210,6 +210,10 @@ public sealed class GCScheduler
         if (generation >= GC.MaxGeneration)
         {
             Volatile.Write(ref _sweepBaselineAllocatedBytes, GC.GetTotalAllocatedBytes(precise: false));
+        }
+        if (compactLoh)
+        {
+            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
         }
         System.GC.Collect(generation, mode, blocking: blocking, compacting: compacting);
         if (trimNativeMemory)

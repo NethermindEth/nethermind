@@ -70,7 +70,17 @@ public class GCKeeper : IDisposable
         NoGCRegion region = new(this, GCScheduler.MarkGCPaused());
         lock (_lock)
         {
-            if (_disposed || _region is not null || !_gcStrategy.CanStartNoGCRegion()) return region;
+            if (_disposed) return region;
+            if (_region is not null)
+            {
+                if (_logger.IsDebug) _logger.Debug("No-GC region entry skipped: previous entry or region is still active.");
+                return region;
+            }
+            if (!_gcStrategy.CanStartNoGCRegion())
+            {
+                if (_logger.IsDebug) _logger.Debug("No-GC region entry disallowed by strategy.");
+                return region;
+            }
             _region = region;
         }
 
@@ -113,6 +123,7 @@ public class GCKeeper : IDisposable
             try
             {
                 started = keeper._runtime.TryStart(_defaultSize, _lohSize);
+                if (!started && keeper._logger.IsDebug) keeper._logger.Debug("Runtime declined no-GC region entry.");
             }
             catch (Exception e) when (e is ArgumentOutOfRangeException or InvalidOperationException)
             {
@@ -165,6 +176,10 @@ public class GCKeeper : IDisposable
                     keeper._runtime.End();
                     if (scheduleGC) keeper.ScheduleGC();
                 }
+            }
+            catch (InvalidOperationException e)
+            {
+                if (keeper._logger.IsDebug) keeper._logger.Debug($"No-GC region already ended: {e.Message}");
             }
             catch (Exception e)
             {

@@ -6,8 +6,8 @@ using System.Collections.Generic;
 using System.Runtime;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Logging;
 using Nethermind.Core.Memory;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -17,14 +17,17 @@ namespace Nethermind.Core.Test;
 public class GCKeeperTests
 {
     [Test]
-    public void Refused_decommit_does_not_arm_loh_compaction()
+    public void Refused_collection_does_not_arm_loh_compaction(
+        [Values(GCCollectionMode.Aggressive, GCCollectionMode.Forced)] GCCollectionMode mode, [Values] bool pruning)
     {
-        using GCScheduler.ForcedGCExclusionScope exclusion = GCScheduler.Instance.ExcludeForcedGC();
+        using GCScheduler.ForcedGCExclusionScope? exclusion = pruning ? GCScheduler.Instance.ExcludeForcedGC() : null;
+        bool paused = !pruning && GCScheduler.MarkGCPaused();
+        if (!pruning) Assert.That(paused, Is.True);
         GCLargeObjectHeapCompactionMode previous = GCSettings.LargeObjectHeapCompactionMode;
         try
         {
             GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.Default;
-            bool collected = GcRegionRuntime.Instance.Collect(GcLevel.Gen2, GCCollectionMode.Aggressive, GcCompaction.Full);
+            bool collected = GcRegionRuntime.Instance.Collect(GcLevel.Gen2, mode, GcCompaction.Full);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(collected, Is.False);
@@ -34,6 +37,7 @@ public class GCKeeperTests
         finally
         {
             GCSettings.LargeObjectHeapCompactionMode = previous;
+            if (paused) GCScheduler.MarkGCResumed();
         }
     }
 
@@ -46,6 +50,11 @@ public class GCKeeperTests
         using IDisposable lease = keeper.TryStartNoGCRegion();
         if (shutdown) keeper.Dispose();
         else lease.Dispose();
+        if (!shutdown)
+        {
+            using IDisposable next = keeper.TryStartNoGCRegion();
+            Assert.That(queued, Has.Count.EqualTo(2));
+        }
         queued[0].Execute();
         using (Assert.EnterMultipleScope())
         {
@@ -126,6 +135,25 @@ public class GCKeeperTests
     }
 
     [Test]
+    public void Ending_a_region_logs_expected_failure_at_debug([Values] bool expected)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsDebug.Returns(true);
+        logger.IsError.Returns(true);
+        Exception failure = expected ? new InvalidOperationException("Region ended.") : new Exception("Unexpected failure.");
+        RegionRuntime runtime = new() { EndFailure = failure };
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.CanStartNoGCRegion().Returns(true);
+        List<IThreadPoolWorkItem> queued = [];
+        using GCKeeper keeper = new(strategy, new OneLoggerLogManager(new ILogger(logger)), runtime, queued.Add);
+        using (keeper.TryStartNoGCRegion()) queued[0].Execute();
+        logger.Received(expected ? 0 : 1).Error("No-GC region cleanup failed.", failure);
+        logger.Received(expected ? 1 : 0).Debug(Arg.Is<string>(message => message.StartsWith("No-GC region already ended:")));
+        using IDisposable next = keeper.TryStartNoGCRegion();
+        Assert.That(queued, Has.Count.EqualTo(2));
+    }
+
+    [Test]
     public async Task Decommit_counts_payloads_with_cancelled_collections_and_retries_until_collected()
     {
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
@@ -166,9 +194,13 @@ public class GCKeeperTests
             using (keeper.TryStartNoGCRegion()) { }
             await keeper.ScheduleGCInternal();
             bool decommit = interval == 0 || (interval > 0 && i % interval == 0);
-            Assert.That(runtime.Collections[^1], Is.EqualTo(decommit
-                ? (GcLevel.Gen2, GCCollectionMode.Aggressive, GcCompaction.Full)
-                : (GcLevel.Gen1, GCCollectionMode.Forced, GcCompaction.No)), $"Payload {i}");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(runtime.Collections, Has.Count.EqualTo(i));
+                Assert.That(runtime.Collections[^1], Is.EqualTo(decommit
+                    ? (GcLevel.Gen2, GCCollectionMode.Aggressive, GcCompaction.Full)
+                    : (GcLevel.Gen1, GCCollectionMode.Forced, GcCompaction.No)), $"Payload {i}");
+            }
         }
     }
 
@@ -189,6 +221,7 @@ public class GCKeeperTests
             Collections.Add((generation, mode, compacting));
             return CollectionSucceeds;
         }
+        public Exception? EndFailure { get; init; }
         public Action? BeforeStart { get; init; }
         public bool Refuse { get; init; }
         public bool Throw { get; init; }
@@ -206,6 +239,7 @@ public class GCKeeperTests
         {
             Ends++;
             IsActive = false;
+            if (EndFailure is not null) throw EndFailure;
         }
     }
 
