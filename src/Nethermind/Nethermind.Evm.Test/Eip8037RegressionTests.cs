@@ -22,6 +22,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 {
     private const long DynamicStatePricingBlockGasLimit = 100_000_000;
     private static readonly byte[] DefaultCreate2Salt = [0x01];
+    private static readonly ulong[] AuthorizationHaltGasLimits =
+        [1_000_000, Eip7825Constants.DefaultTxGasLimitCap + 10_000, Eip7825Constants.DefaultTxGasLimitCap + 1_000_000];
 
     public enum SelfDestructBeneficiaryKind
     {
@@ -492,6 +494,50 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Set_code_create_is_rejected_before_authorization_and_settlement(
+        [Values] bool beforeAmsterdam,
+        [Values(ExecutionOptions.Commit, ExecutionOptions.BuildUp, ExecutionOptions.CommitAndRestore,
+            ExecutionOptions.SkipValidation, ExecutionOptions.SkipValidationAndCommit, ExecutionOptions.Warmup)] ExecutionOptions options)
+    {
+        EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(null)
+            .WithData(Prepare.EvmCode.Op(Instruction.INVALID).Done)
+            .WithGasLimit(1_000_000)
+            .WithGasPrice(1)
+            .WithAuthorizationCode(ecdsa.Sign(RecipientKey, SpecProvider.ChainId, TestItem.AddressC, 0))
+            .SignedAndResolved(ecdsa, SenderKey, true)
+            .TestObject;
+        ForkActivation activation = (BlockNumber, beforeAmsterdam ? Timestamp - 1 : Timestamp);
+        (Block block, _) = PrepareTx(activation, transaction.GasLimit,
+            transaction: transaction, blockGasLimit: DynamicStatePricingBlockGasLimit);
+        UInt256 senderBalance = TestState.GetBalance(Sender);
+        Address contractAddress = ContractAddress.From(Sender, transaction.Nonce);
+        TestAllTracerWithOutput tracer = CreateTracer();
+
+        // EIP-7702 forbids CREATE even for RPC execution modes that skip gas validation.
+        _processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)));
+        TransactionResult result = _processor.Process(transaction, tracer, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            Assert.That(TestState.GetNonce(Sender), Is.Zero);
+            Assert.That(TestState.GetBalance(Sender), Is.EqualTo(senderBalance));
+            Assert.That(TestState.GetNonce(Recipient), Is.Zero);
+            Assert.That(TestState.GetCode(Recipient), Is.Empty);
+            Assert.That(TestState.AccountExists(contractAddress), Is.False);
+            Assert.That(tracer.Actions, Is.Empty);
+            Assert.That(tracer.ReturnValue, Is.Null, "No receipt is emitted for a rejected transaction.");
+            Assert.That(tracer.Refund, Is.Zero);
+            Assert.That(tracer.GasConsumedResult, Is.EqualTo(default(GasConsumed)));
+            Assert.That(block.Header.GasUsed, Is.Zero);
+        }
+    }
+
+    [Test]
     public void Eip8037_authorization_refund_excludes_existing_authority_from_block_state_gas()
     {
         EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
@@ -607,7 +653,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Eip8037_halted_child_spill_does_not_reduce_persistent_authorization_state_gas()
+    public void Eip8037_halted_child_spill_does_not_reduce_persistent_authorization_state_gas(
+        [ValueSource(nameof(AuthorizationHaltGasLimits))] ulong gasLimit)
     {
         EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
         Address child = TestItem.AddressC;
@@ -629,12 +676,12 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         TestState.CreateAccount(codeSource, 0);
         TestState.InsertCode(codeSource, delegatedCode, SpecProvider.GenesisSpec);
 
-        const long gasLimit = 1_000_000;
         Transaction transaction = Build.A.Transaction
             .WithType(TxType.SetCode)
             .WithTo(Recipient)
             .WithGasLimit(gasLimit)
             .WithGasPrice(1)
+            .WithMaxFeePerGas(1)
             .WithAuthorizationCode(ecdsa.Sign(RecipientKey, SpecProvider.ChainId, codeSource, 0))
             .SignedAndResolved(ecdsa, SenderKey, true)
             .TestObject;
@@ -645,14 +692,25 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             blockGasLimit: DynamicStatePricingBlockGasLimit);
 
         TestAllTracerWithOutput tracer = CreateTracer();
+        UInt256 senderBalance = TestState.GetBalance(transaction.SenderAddress!);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
+        ulong expectedPaidGas = Math.Min(gasLimit, Eip7825Constants.DefaultTxGasLimitCap + GasCostOf.PerAuthBaseState);
+        byte[] expectedDelegation = [0xef, 0x01, 0x00, .. codeSource.Bytes];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
+            Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.BadInstruction)));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(expectedPaidGas));
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.PerAuthBaseState));
-            Assert.That(Eip7702Constants.IsDelegatedCode(TestState.GetCode(Recipient)), Is.True);
+            Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(expectedPaidGas - GasCostOf.PerAuthBaseState));
+            Assert.That(tracer.GasConsumedResult.GasRefund, Is.Zero);
+            Assert.That(tracer.Refund, Is.Zero);
+            Assert.That(transaction.SpentGas, Is.EqualTo(expectedPaidGas));
+            Assert.That(TestState.GetBalance(transaction.SenderAddress!), Is.EqualTo(senderBalance - expectedPaidGas));
+            Assert.That(TestState.GetNonce(Recipient), Is.EqualTo(1));
+            Assert.That(TestState.GetCode(Recipient), Is.EqualTo(expectedDelegation));
+            AssertStorage(new StorageCell(child, 0), UInt256.Zero);
         }
     }
 
