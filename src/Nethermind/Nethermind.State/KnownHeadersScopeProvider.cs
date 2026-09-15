@@ -46,10 +46,11 @@ public sealed class KnownHeadersScopeProvider : IWorldStateScopeProvider
         return true;
     }
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
+        if (!_baseProvider.TryBeginScope(baseBlock, metrics, out scope)) return false;
         _headerProvider.Remember(baseBlock);
-        return _baseProvider.BeginScope(baseBlock, metrics);
+        return true;
     }
 
     public void Clear() => _headerProvider.Clear();

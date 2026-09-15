@@ -1836,7 +1836,7 @@ public class BlockProcessorTests
             TrackingReadOnlyTxProcessingEnvFactory factory,
             ITransactionProcessor transactionProcessor) : IReadOnlyTxProcessorSource
         {
-            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) => throw new NotSupportedException();
+            public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) => throw new NotSupportedException();
 
             public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
             {

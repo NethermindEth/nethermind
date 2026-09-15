@@ -38,11 +38,14 @@ public interface IWorldStateScopeProvider
     /// <remarks>This check is advisory and does not reserve or pin the state.</remarks>
     bool HasStateForTarget(BlockHeader targetBlock) => throw new NotSupportedException();
 
+    /// <summary>Attempts to open the state committed at <paramref name="baseBlock"/> (pre-genesis when <c>null</c>).</summary>
     /// <param name="metrics">
     /// Per-scope accumulator the world state folds into the global counters at commit/scope end. Scopes
     /// that record state/storage access metrics (e.g. the prewarmer) increment it; others ignore it.
     /// </param>
-    IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics);
+    /// <param name="scope">The acquired scope, or <c>null</c> when the state is unavailable.</param>
+    /// <returns><c>true</c> when a scope was acquired; otherwise <c>false</c>.</returns>
+    bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IScope? scope);
 
     public interface IScope : IDisposable
     {

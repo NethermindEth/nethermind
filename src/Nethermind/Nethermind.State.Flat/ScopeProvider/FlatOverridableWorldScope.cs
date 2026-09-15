@@ -155,16 +155,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                 return false;
             }
 
-            try
-            {
-                scope = BeginScope(parent, metrics);
-                return true;
-            }
-            catch (StateUnavailableException)
-            {
-                scope = null;
-                return false;
-            }
+            return TryBeginScope(parent, metrics, out scope);
         }
 
         private bool TryGetBaseBlock(BlockHeader targetBlock, out BlockHeader? parent)
@@ -179,12 +170,21 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             return parent is not null;
         }
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+        public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
         {
             StateId currentState = new(baseBlock);
-            SnapshotBundle snapshotBundle = flatOverrideScope.GatherSnapshotBundle(baseBlock);
+            SnapshotBundle snapshotBundle;
+            try
+            {
+                snapshotBundle = flatOverrideScope.GatherSnapshotBundle(baseBlock);
+            }
+            catch (StateUnavailableException)
+            {
+                scope = null;
+                return false;
+            }
 
-            return new FlatWorldStateScope(
+            scope = new FlatWorldStateScope(
                 currentState,
                 snapshotBundle,
                 codeDb,
@@ -192,6 +192,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                 configuration,
                 trieWarmer,
                 logManager);
+            return true;
         }
     }
 

@@ -2122,7 +2122,11 @@ public class StorageProviderTests(bool useFlat)
 
         public bool HasRoot(BlockHeader baseBlock) => scopeProvider.HasRoot(baseBlock);
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock, LocalMetrics metrics) => new ScopeDecorator(scopeProvider.BeginScope(baseBlock, metrics), writtenData);
+        public bool TryBeginScope(BlockHeader baseBlock, LocalMetrics metrics, out IWorldStateScopeProvider.IScope scope)
+        {
+            scope = new ScopeDecorator(scopeProvider.BeginScope(baseBlock, metrics), writtenData);
+            return true;
+        }
 
         private class ScopeDecorator(IWorldStateScopeProvider.IScope baseScope, WrittenData writtenData) : IWorldStateScopeProvider.IScope
         {

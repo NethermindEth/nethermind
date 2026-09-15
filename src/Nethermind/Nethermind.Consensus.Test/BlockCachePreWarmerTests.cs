@@ -1629,7 +1629,7 @@ public class BlockCachePreWarmerTests
             FlagCapturingPolicy owner)
             : IReadOnlyTxProcessorSource
         {
-            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) => inner.Build(baseBlock);
+            public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) => inner.TryBuild(baseBlock, out scope);
 
             public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
             {
@@ -1676,7 +1676,7 @@ public class BlockCachePreWarmerTests
             ConcurrentBag<IReadOnlyTxProcessorSource> disposed)
             : IReadOnlyTxProcessorSource
         {
-            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) => inner.Build(baseBlock);
+            public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) => inner.TryBuild(baseBlock, out scope);
 
             public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) =>
                 inner.TryBuildAtTarget(targetBlock, out scope);
@@ -1709,7 +1709,7 @@ public class BlockCachePreWarmerTests
             DiscoveryDetectingPolicy owner)
             : IReadOnlyTxProcessorSource
         {
-            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) => inner.Build(baseBlock);
+            public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) => inner.TryBuild(baseBlock, out scope);
 
             public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
             {
@@ -1748,7 +1748,7 @@ public class BlockCachePreWarmerTests
 
         private sealed class ThrowingBuildEnv : IReadOnlyTxProcessorSource
         {
-            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) =>
+            public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) =>
                 throw new InvalidOperationException("scope build failure");
 
             public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) =>
@@ -1848,7 +1848,7 @@ public class BlockCachePreWarmerTests
 
         private sealed class CountingEnv(IReadOnlyTxProcessorSource inner, ManualResetEventSlim gate, Action onWarmup) : IReadOnlyTxProcessorSource
         {
-            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) => inner.Build(baseBlock);
+            public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) => inner.TryBuild(baseBlock, out scope);
 
             public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
             {
@@ -1920,7 +1920,7 @@ public class BlockCachePreWarmerTests
         private sealed class GateEnv(IReadOnlyTxProcessorSource inner, TxWarmGatePolicy owner) : IReadOnlyTxProcessorSource
         {
             public bool BuiltTxWarmScope;
-            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) => inner.Build(baseBlock);
+            public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) => inner.TryBuild(baseBlock, out scope);
             public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
             {
                 scope = new GateScope(inner.BuildAtTarget(targetBlock), owner, this);

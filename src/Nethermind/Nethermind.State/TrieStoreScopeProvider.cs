@@ -70,26 +70,7 @@ public class TrieStoreScopeProvider(
             return false;
         }
 
-        IDisposable trieStoreCloser = _trieStore.BeginScope(parent);
-        try
-        {
-            if (!HasRoot(parent))
-            {
-                trieStoreCloser.Dispose();
-                scope = null;
-                return false;
-            }
-
-            StateTree backingStateTree = _backingStateTree ??= CreateStateTree();
-            backingStateTree.RootHash = parent?.StateRoot ?? Keccak.EmptyTreeHash;
-            scope = new TrieStoreWorldStateBackendScope(backingStateTree, this, _codeDb, trieStoreCloser, _logManager);
-            return true;
-        }
-        catch
-        {
-            trieStoreCloser.Dispose();
-            throw;
-        }
+        return TryBeginScope(parent, metrics, out scope);
     }
 
     private bool TryGetBaseBlock(BlockHeader targetBlock, out BlockHeader? parent)
@@ -104,13 +85,28 @@ public class TrieStoreScopeProvider(
         return parent is not null;
     }
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, LocalMetrics metrics)
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
         IDisposable trieStoreCloser = _trieStore.BeginScope(baseBlock);
-        StateTree backingStateTree = _backingStateTree ??= CreateStateTree();
-        backingStateTree.RootHash = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
+        try
+        {
+            if (!HasRoot(baseBlock))
+            {
+                trieStoreCloser.Dispose();
+                scope = null;
+                return false;
+            }
 
-        return new TrieStoreWorldStateBackendScope(backingStateTree, this, _codeDb, trieStoreCloser, _logManager);
+            StateTree backingStateTree = _backingStateTree ??= CreateStateTree();
+            backingStateTree.RootHash = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
+            scope = new TrieStoreWorldStateBackendScope(backingStateTree, this, _codeDb, trieStoreCloser, _logManager);
+            return true;
+        }
+        catch
+        {
+            trieStoreCloser.Dispose();
+            throw;
+        }
     }
 
     protected virtual StorageTree CreateStorageTree(Address address, Hash256 storageRoot) => new(_trieStore.GetTrieStore(address), storageRoot, _logManager);

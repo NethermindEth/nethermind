@@ -55,12 +55,8 @@ public sealed class RegeneratingReceiptsEnvSourceFactory(
         IOverridableEnv<ReceiptsRegenerationEnv> inner,
         IDisposable scope) : IOverridableEnv<ReceiptsRegenerationEnv>, IDisposable
     {
-        public Scope<ReceiptsRegenerationEnv> BuildAndOverride(
-            BlockHeader? header,
-            Dictionary<Address, AccountOverride>? stateOverride = null,
-            IReleaseSpec? specOverride = null,
-            BlockOverride? blockOverride = null) =>
-            inner.BuildAndOverride(header, stateOverride, specOverride, blockOverride);
+        public bool TryBuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, BlockOverride? blockOverride, [NotNullWhen(true)] out Scope<ReceiptsRegenerationEnv>? scope) =>
+            inner.TryBuildAndOverride(header, stateOverride, specOverride, blockOverride, out scope);
 
         public bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, [NotNullWhen(true)] out Scope<ReceiptsRegenerationEnv>? scope) =>
             inner.TryBuildAndOverrideAtTarget(targetBlock, stateOverride, specOverride, out scope);

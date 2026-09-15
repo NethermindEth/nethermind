@@ -263,54 +263,39 @@ namespace Nethermind.State
 
         public bool HasCode(Address address) => _stateProvider.GetAccount(address).HasCode;
 
-        public IDisposable BeginScope(BlockHeader? baseBlock)
+        public bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
         {
-            if (Interlocked.CompareExchange(ref _isInScope, true, false))
-            {
-                throw new InvalidOperationException("Cannot create nested worldstate scope.");
-            }
-
             if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope with baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} with stateroot {baseBlock?.StateRoot?.ToString() ?? "null"}.");
-
-            try
-            {
-                _currentScope = ScopeProvider.BeginScope(baseBlock, _localMetrics);
-                _stateProvider.SetScope(_currentScope);
-                _persistentStorageProvider.SetBackendScope(_currentScope);
-            }
-            catch
-            {
-                EndScope();
-                throw;
-            }
-
-            return new Reactive.AnonymousDisposable(() =>
-            {
-                EndScope();
-                if (_logger.IsTrace) _logger.Trace($"WorldState scope for baseblock {baseBlock?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
-            });
+            return TryBeginScope(baseBlock, atTarget: false, out scopeCloser);
         }
 
         public bool TryBeginScopeAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
         {
             ArgumentNullException.ThrowIfNull(targetBlock);
+            if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope for target {targetBlock.ToString(BlockHeader.Format.Short)}.");
+            return TryBeginScope(targetBlock, atTarget: true, out scopeCloser);
+        }
+
+        private bool TryBeginScope(BlockHeader? block, bool atTarget, [NotNullWhen(true)] out IDisposable? scopeCloser)
+        {
             if (Interlocked.CompareExchange(ref _isInScope, true, false))
             {
                 throw new InvalidOperationException("Cannot create nested worldstate scope.");
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Beginning WorldState scope for target {targetBlock.ToString(BlockHeader.Format.Short)}.");
-
             try
             {
-                if (!ScopeProvider.TryBeginScopeAtTarget(targetBlock, _localMetrics, out IWorldStateScopeProvider.IScope? scope))
+                bool acquired = atTarget
+                    ? ScopeProvider.TryBeginScopeAtTarget(block!, _localMetrics, out IWorldStateScopeProvider.IScope? scope)
+                    : ScopeProvider.TryBeginScope(block, _localMetrics, out scope);
+                if (!acquired)
                 {
                     EndScope();
                     scopeCloser = null;
                     return false;
                 }
 
-                _currentScope = scope;
+                _currentScope = scope!;
                 _stateProvider.SetScope(scope);
                 _persistentStorageProvider.SetBackendScope(scope);
             }
@@ -323,7 +308,7 @@ namespace Nethermind.State
             scopeCloser = new Reactive.AnonymousDisposable(() =>
             {
                 EndScope();
-                if (_logger.IsTrace) _logger.Trace($"WorldState scope for target {targetBlock.ToString(BlockHeader.Format.Short)} closed");
+                if (_logger.IsTrace) _logger.Trace($"WorldState scope for {(atTarget ? "target" : "baseblock")} {block?.ToString(BlockHeader.Format.Short) ?? "null"} closed");
             });
             return true;
         }
