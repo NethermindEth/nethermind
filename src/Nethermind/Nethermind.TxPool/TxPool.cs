@@ -37,7 +37,7 @@ namespace Nethermind.TxPool
     /// Stores all pending transactions. These will be used by block producer if this node is a miner / validator
     /// or simply for broadcasting and tracing in other cases.
     /// </summary>
-    public class TxPool : ITxPool, IAsyncDisposable
+    public class TxPool : ITxPool, IFrameTxWidthLedger, IAsyncDisposable
     {
         private const int RevalidationAbandonmentWarningThreshold = 3;
         private const int MarkerPublicationDeferralWarningThreshold = 3;
@@ -688,7 +688,6 @@ namespace Nethermind.TxPool
 
                             ReAddReorganisedTransactions(args.PreviousBlock);
                             RemoveProcessedTransactions(args.Block);
-                            EarnWidthForIncludedTransactions(args.Block);
                             RemoveExpiredFrameTransactions(args.Block);
                             RevalidateFrameTransactions(args.Block);
 
@@ -934,24 +933,27 @@ namespace Nethermind.TxPool
             return removed;
         }
 
-        /// <summary>Credits each included EIP-8250 keyed-nonce frame transaction's sender with the width its gas earns.</summary>
+        /// <summary>Credits each finalized EIP-8250 keyed-nonce frame transaction's sender with the width its gas earns.</summary>
         /// <remarks>
-        /// MATCHA v1 credits on inclusion rather than finalization: the pool consumes no finalization signal,
-        /// and the block tree that raises one lives outside this project. <see cref="Transaction.SpentGas"/>
-        /// is the gas the processor charged, so the credit is the gas actually paid. A block later reorged
-        /// out keeps its credit (MATCHA-GAP).
+        /// MATCHA earns width only on finalization, so a block later reorged out grants none. The consensus layer
+        /// that observes finalization delivers the finalized blocks through <see cref="IFrameTxWidthLedger"/>, so
+        /// this pool keeps no reference to the block tree that raises the signal. The gas is read from the block's
+        /// receipts, not recomputed. Each finalized block arrives once, so a sender earns once per finalized
+        /// transaction.
         /// </remarks>
-        private void EarnWidthForIncludedTransactions(Block block)
+        public void EarnWidthOnFinalization(Block finalizedBlock, TxReceipt[] receipts)
         {
             if (!_txPoolConfig.FrameTxWidthEnabled) return;
 
-            Transaction[] blockTransactions = block.Transactions;
+            Transaction[] blockTransactions = finalizedBlock.Transactions;
+            if (receipts.Length != blockTransactions.Length) return;
+
             for (int i = 0; i < blockTransactions.Length; i++)
             {
                 Transaction blockTx = blockTransactions[i];
                 if (blockTx.SupportsFrames && KeyedNonceManager.UsesKeyedNonce(blockTx))
                 {
-                    _senderWidth.Earn(blockTx.SenderAddress!, (UInt256)blockTx.SpentGas);
+                    _senderWidth.Earn(blockTx.SenderAddress!, (UInt256)receipts[i].GasUsed);
                 }
             }
         }
