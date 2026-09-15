@@ -58,6 +58,34 @@ public class FrameTransactionSigningTests
     }
 
     [Test]
+    public void Fills_a_signature_the_decoder_and_validation_both_accept()
+    {
+        PrivateKey key = TestItem.PrivateKeyA;
+
+        Transaction transaction = Fill(BuildInput(key, key.Address, [Entry()]));
+
+        Assert.That(FrameTxValidation.IsWellFormed(transaction, postTxEnabled: true, out string? error), Is.True, error);
+
+        // The digest is recomputed from the decoded form, so a fill over a stale preimage fails here.
+        Transaction decoded = EncodeDecode(transaction);
+
+        Assert.That(FrameTxValidation.IsWellFormed(decoded, postTxEnabled: true, out error), Is.True, error);
+        Assert.That(transaction.Hash, Is.EqualTo(decoded.Hash));
+        AssertSignatureRecoversSigner(decoded, 0, key.Address);
+    }
+
+    [Test]
+    public void Applies_the_state_chain_id_before_signing()
+    {
+        PrivateKey key = TestItem.PrivateKeyA;
+
+        Transaction transaction = Fill(BuildInput(key, key.Address, [Entry()], chainId: null));
+
+        Assert.That(transaction.ChainId, Is.EqualTo(ChainId));
+        AssertSignatureRecoversSigner(transaction, 0, key.Address);
+    }
+
+    [Test]
     public void Preserves_pre_signed_canonical_signature()
     {
         PrivateKey key = TestItem.PrivateKeyA;
@@ -145,15 +173,26 @@ public class FrameTransactionSigningTests
 
     private static Transaction Fill(InputData input) => input.GetTransactions(null!, ChainId)[0];
 
+    private static Transaction EncodeDecode(Transaction transaction)
+    {
+        TxDecoder decoder = TxDecoder.Instance;
+        byte[] bytes = new byte[decoder.GetLength(transaction, RlpBehaviors.None)];
+        RlpWriter writer = new(bytes);
+        decoder.Encode(ref writer, transaction, RlpBehaviors.None);
+        RlpReader reader = new(bytes);
+        return decoder.Decode(ref reader, RlpBehaviors.None)!;
+    }
+
     private static FrameSignatureForRpc Entry(byte scheme = TxFrameSignature.SchemeSecp256k1, Address? signer = null,
         byte[]? msg = null, byte[]? signature = null) =>
         new() { Scheme = scheme, Signer = signer, Msg = msg ?? [], Signature = signature ?? [] };
 
-    private static InputData BuildInput(PrivateKey? key, Address? sender, FrameSignatureForRpc[]? signatures)
+    private static InputData BuildInput(PrivateKey? key, Address? sender, FrameSignatureForRpc[]? signatures,
+        ulong? chainId = ChainId)
     {
         FrameTransactionForRpc transaction = new()
         {
-            ChainId = ChainId,
+            ChainId = chainId,
             From = sender,
             Nonce = 0,
             Gas = 100_000,
@@ -165,7 +204,8 @@ public class FrameTransactionSigningTests
                 {
                     Mode = TxFrame.ModeVerify,
                     Flags = TxFrame.ApproveExecutionAndPayment,
-                    GasLimit = 50_000,
+                    ExecutionGasLimit = 50_000,
+                    StateGasLimit = 25_000,
                     Value = UInt256.Zero,
                 },
             ],

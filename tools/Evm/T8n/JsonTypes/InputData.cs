@@ -118,9 +118,8 @@ public class InputData
                 continue;
             }
 
-            // TxFrameSignatureDecoder elides the signature bytes of canonical-hash entries only, so an
-            // explicit-digest entry's bytes are part of the sigHash preimage: filling one here would
-            // invalidate every canonical signature already produced in this loop.
+            // An explicit-digest entry's bytes stay in the sigHash preimage, so filling one here would
+            // invalidate every canonical signature this loop has already produced.
             if (signature.Scheme != TxFrameSignature.SchemeSecp256k1 || !signature.SignsCanonicalHash)
             {
                 throw new T8nException($"cannot fill frame signature {i}: only canonical-hash secp256k1 entries are fillable",
