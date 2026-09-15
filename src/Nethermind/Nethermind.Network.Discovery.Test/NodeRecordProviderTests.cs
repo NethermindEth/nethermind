@@ -110,6 +110,46 @@ public class NodeRecordProviderTests
     }
 
     [Test]
+    public async Task Resolver_address_change_refreshes_the_signed_record()
+    {
+        Block head = Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(head);
+        IForkInfo forkInfo = Substitute.For<IForkInfo>();
+        forkInfo.GetForkId(1, 10).Returns(new NetworkForkId(0x01020304, 20));
+        IIPResolver.NethermindIp initialIp = new(
+            IPAddress.IPv6Any,
+            IPAddress.Parse("192.0.2.1"),
+            IPAddress.Parse("192.0.2.1"),
+            IPAddress.Parse("2001:db8::1"));
+        IIPResolver.NethermindIp changedIp = new(
+            IPAddress.IPv6Any,
+            IPAddress.Parse("192.0.2.2"),
+            IPAddress.Parse("192.0.2.2"),
+            IPAddress.Parse("2001:db8::2"));
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(
+            new ValueTask<IIPResolver.NethermindIp>(initialIp),
+            new ValueTask<IIPResolver.NethermindIp>(changedIp));
+        NetworkListenerState listenerState = CreateListenerState(initialIp);
+        listenerState.SetRlpxAddress(IPAddress.IPv6Any);
+        listenerState.SetDiscoveryAddress(IPAddress.IPv6Any);
+        NodeRecordProvider provider = CreateProvider(
+            blockTree,
+            forkInfo,
+            ipResolver,
+            timestampMilliseconds: 1_000,
+            listenerState);
+
+        NodeRecord initialRecord = await provider.GetCurrentAsync();
+        ipResolver.Changed += Raise.Event();
+        NodeRecord changedRecord = await provider.GetCurrentAsync();
+
+        Assert.That(changedRecord.EnrSequence, Is.EqualTo(initialRecord.EnrSequence + 1));
+        AssertEndpointEntries(changedRecord, "192.0.2.2", "2001:db8::2");
+    }
+
+    [Test]
     public async Task NewHeadBlock_DoesNotRepeatUnchangedEndpointWarnings()
     {
         Block initialHead = Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject;

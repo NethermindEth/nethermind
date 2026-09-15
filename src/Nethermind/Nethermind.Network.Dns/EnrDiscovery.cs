@@ -69,7 +69,7 @@ public class EnrDiscovery : INodeSource
                     NodeRecord nodeRecord = _parser.ParseRecord(nodeRecordText, buffer);
                     if (_forkInfo.IsNodeRecordForkCompatible(nodeRecord))
                     {
-                        TryCreateNode(nodeRecord, out node);
+                        TryCreateVerifiedNode(nodeRecord, out node);
                     }
                     else if (_logger.IsTrace)
                     {
@@ -96,6 +96,16 @@ public class EnrDiscovery : INodeSource
 
     internal static bool TryCreateNode(NodeRecord nodeRecord, out Node? node) =>
         Node.TryFromEnr(nodeRecord, out node);
+
+    internal static bool TryCreateVerifiedNode(NodeRecord nodeRecord, out Node? node)
+    {
+        if (!TryCreateNode(nodeRecord, out node))
+        {
+            return false;
+        }
+
+        return node!.SetVerifiedEnr(nodeRecord);
+    }
 
     public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
 }

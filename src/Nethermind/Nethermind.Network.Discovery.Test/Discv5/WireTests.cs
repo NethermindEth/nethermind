@@ -514,7 +514,6 @@ public class WireTests
             handler,
             packetCodec,
             nodeRecordProvider,
-            ipResolver,
             new DiscoveryConfig(),
             new KademliaConfig<Node> { CurrentNodeId = currentNode, KSize = bucketSize },
             new CryptoRandom(),

@@ -11,10 +11,13 @@ using Autofac;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Config;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Enr;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
@@ -427,6 +430,332 @@ public class RlpxHostIntegrationTests
             Is.EqualTo(replacementAddress));
     }
 
+    [Test]
+    public async Task ConnectAsync_FallsBackToVerifiedIpv6EndpointWithoutPublishingFailedAttempt()
+    {
+        if (!Socket.OSSupportsIPv6)
+        {
+            Assert.Ignore("IPv6 is not supported on this host.");
+        }
+
+        using TcpListener ipv6Listener = new(IPAddress.IPv6Loopback, 0);
+        ipv6Listener.Start();
+        int listeningPort = ((IPEndPoint)ipv6Listener.LocalEndpoint).Port;
+        int refusedPort = GetAvailablePort();
+        await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, GetAvailablePort());
+        RlpxHost host = container.Resolve<RlpxHost>();
+        TaskCompletionSource<ISession> sessionCreated = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int sessionCount = 0;
+        host.SessionCreated += (_, args) =>
+        {
+            Interlocked.Increment(ref sessionCount);
+            sessionCreated.TrySetResult(args.Session);
+        };
+        Node node = CreateDualStackNode(refusedPort, listeningPort);
+        IPEndPoint originalAddress = node.Address;
+        int originalDiscoveryPort = node.DiscoveryPort;
+        Assert.That(RlpxHost.TryCreateAlternateDialNode(node, allowNonRoutable: true, out Node? alternate), Is.True);
+        Assert.That(alternate!.Address, Is.EqualTo(new IPEndPoint(IPAddress.IPv6Loopback, listeningPort)));
+
+        try
+        {
+            await host.Init();
+            Task<Socket> acceptTask = ipv6Listener.AcceptSocketAsync();
+
+            Assert.That(await host.ConnectAsync(node), Is.True);
+
+            using Socket accepted = await acceptTask.WaitAsync(TimeSpan.FromSeconds(5));
+            ISession session = await sessionCreated.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sessionCount, Is.EqualTo(1), "a failed TCP attempt must not become a published session");
+                Assert.That(session.RemoteNodeId, Is.EqualTo(node.Id));
+                Assert.That(session.RemoteHost, Is.EqualTo(IPAddress.IPv6Loopback.ToString()));
+                Assert.That(session.RemotePort, Is.EqualTo(listeningPort));
+                Assert.That(session.Node.Address, Is.EqualTo(new IPEndPoint(IPAddress.IPv6Loopback, listeningPort)));
+                Assert.That(node.Address, Is.EqualTo(originalAddress), "dial fallback must not mutate the shared node endpoint");
+                Assert.That(node.DiscoveryPort, Is.EqualTo(originalDiscoveryPort), "dial fallback must not mutate discovery state");
+            }
+        }
+        finally
+        {
+            await host.Shutdown();
+            ipv6Listener.Stop();
+        }
+    }
+
+    [Test]
+    public async Task ConnectAsync_PrimarySuccessDoesNotDialAlternate()
+    {
+        if (!Socket.OSSupportsIPv6)
+        {
+            Assert.Ignore("IPv6 is not supported on this host.");
+        }
+
+        using TcpListener ipv4Listener = new(IPAddress.Loopback, 0);
+        using TcpListener ipv6Listener = new(IPAddress.IPv6Loopback, 0);
+        ipv4Listener.Start();
+        ipv6Listener.Start();
+        int ipv4Port = ((IPEndPoint)ipv4Listener.LocalEndpoint).Port;
+        int ipv6Port = ((IPEndPoint)ipv6Listener.LocalEndpoint).Port;
+        await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, GetAvailablePort());
+        RlpxHost host = container.Resolve<RlpxHost>();
+        int sessionCount = 0;
+        host.SessionCreated += (_, _) => Interlocked.Increment(ref sessionCount);
+
+        try
+        {
+            await host.Init();
+            Assert.That(await host.ConnectAsync(CreateDualStackNode(ipv4Port, ipv6Port)), Is.True);
+            using Socket accepted = await ipv4Listener.AcceptSocketAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            await Task.Delay(100);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sessionCount, Is.EqualTo(1));
+                Assert.That(ipv6Listener.Pending(), Is.False);
+            }
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+    }
+
+    [Test]
+    public async Task ConnectAsync_CancellationDoesNotStartFallbackOrPublishSession()
+    {
+        if (!Socket.OSSupportsIPv6)
+        {
+            Assert.Ignore("IPv6 is not supported on this host.");
+        }
+
+        PendingClientChannelFactory channelFactory = new();
+        await using IContainer container = CreateListenerContainer(
+            "127.0.0.1",
+            IPAddress.Loopback,
+            GetAvailablePort(),
+            channelFactory: channelFactory);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        int sessionCount = 0;
+        host.SessionCreated += (_, _) => Interlocked.Increment(ref sessionCount);
+        using CancellationTokenSource cancellation = new();
+
+        try
+        {
+            await host.Init();
+            Task<bool> connectTask = host.ConnectAsync(CreateDualStackNode(30303, 30304), cancellation.Token);
+            await channelFactory.ConnectStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            cancellation.Cancel();
+
+            Assert.That(
+                async () => await connectTask,
+                Throws.InstanceOf<OperationCanceledException>());
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sessionCount, Is.Zero);
+                Assert.That(channelFactory.CreatedClientChannels, Is.EqualTo(1), "cancellation must not start the alternate family");
+            }
+
+            await channelFactory.ClientChannel!.CloseAsync();
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+    }
+
+    [Test]
+    public async Task ConnectAsync_SkipsRejectedPrimaryAndDialsVerifiedAlternate()
+    {
+        if (!Socket.OSSupportsIPv6)
+        {
+            Assert.Ignore("IPv6 is not supported on this host.");
+        }
+
+        using TcpListener listener = new(IPAddress.IPv6Loopback, 0);
+        listener.Start();
+        RedirectingClientChannelFactory channelFactory = new((IPEndPoint)listener.LocalEndpoint);
+        await using IContainer container = CreateListenerContainer(
+            "127.0.0.1",
+            IPAddress.Loopback,
+            GetAvailablePort(),
+            channelFactory: channelFactory);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        Node node = CreateNode(CreateDualStackRecord(
+            IPAddress.Any,
+            30303,
+            IPAddress.Parse("2606:4700:4700::1111"),
+            30304,
+            sequence: 0), verified: true);
+
+        try
+        {
+            await host.Init();
+            Task<Socket> acceptTask = listener.AcceptSocketAsync();
+
+            Assert.That(await host.ConnectAsync(node), Is.True);
+
+            using Socket accepted = await acceptTask.WaitAsync(TimeSpan.FromSeconds(5));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(node.Address.Address, Is.EqualTo(IPAddress.Any));
+                Assert.That(channelFactory.CreatedClientChannels, Is.EqualTo(1));
+                Assert.That(channelFactory.RequestedRemoteEndpoint.Address,
+                    Is.EqualTo(IPAddress.Parse("2606:4700:4700::1111")));
+                Assert.That(channelFactory.RequestedRemoteEndpoint.Port, Is.EqualTo(30304));
+            }
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+    }
+
+    [Test]
+    public async Task ConnectAsync_AttemptsEachFamilyAtMostOnce()
+    {
+        if (!Socket.OSSupportsIPv6)
+        {
+            Assert.Ignore("IPv6 is not supported on this host.");
+        }
+
+        FailingClientChannelFactory channelFactory = new();
+        await using IContainer container = CreateListenerContainer(
+            "127.0.0.1",
+            IPAddress.Loopback,
+            GetAvailablePort(),
+            channelFactory: channelFactory);
+        RlpxHost host = container.Resolve<RlpxHost>();
+
+        try
+        {
+            await host.Init();
+
+            Assert.That(await host.ConnectAsync(CreateDualStackNode(30303, 30304)), Is.False);
+            Assert.That(channelFactory.CreatedClientChannels, Is.EqualTo(2));
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+    }
+
+    [TestCase("8.8.8.8", false, true)]
+    [TestCase("10.0.0.1", false, false)]
+    [TestCase("10.0.0.1", true, true)]
+    [TestCase("100.64.0.1", false, false)]
+    [TestCase("fc00::1", false, false)]
+    [TestCase("fc00::1", true, true)]
+    [TestCase("0.0.0.0", true, false)]
+    [TestCase("224.0.0.1", true, false)]
+    [TestCase("192.0.2.1", true, false)]
+    [TestCase("2001:db8::1", true, false)]
+    public void Dial_address_policy_rejects_invalid_and_public_to_private_transitions(
+        string address,
+        bool allowNonRoutable,
+        bool expected) =>
+        Assert.That(RlpxHost.IsDialAddressAcceptable(IPAddress.Parse(address), allowNonRoutable), Is.EqualTo(expected));
+
+    [Test]
+    public void Alternate_dial_requires_current_verified_record()
+    {
+        Node unverified = CreateDualStackNode(
+            IPAddress.Parse("8.8.8.8"), 30303,
+            IPAddress.Parse("2606:4700:4700::1111"), 30304,
+            verified: false);
+        unverified.IsStatic = true;
+        unverified.IsTrusted = true;
+        unverified.IsBootnode = true;
+        Assert.That(RlpxHost.TryCreateAlternateDialNode(unverified, allowNonRoutable: false, out _), Is.False,
+            "peer role flags must not authenticate an ENR");
+
+        Node stale = CreateDualStackNode(
+            IPAddress.Parse("8.8.8.8"), 30303,
+            IPAddress.Parse("2606:4700:4700::1111"), 30304,
+            verified: true,
+            sequence: 1);
+        stale.ObserveEnrSequence(2);
+        Assert.That(RlpxHost.TryCreateAlternateDialNode(stale, allowNonRoutable: false, out _), Is.False);
+    }
+
+    [Test]
+    public void Alternate_dial_obeys_withdrawal_family_validation_and_routability()
+    {
+        Node publicToPrivate = CreateDualStackNode(
+            IPAddress.Parse("8.8.8.8"), 30303,
+            IPAddress.Parse("fc00::1"), 30304,
+            verified: true);
+        Assert.That(RlpxHost.TryCreateAlternateDialNode(publicToPrivate, allowNonRoutable: false, out _), Is.False);
+
+        Node privateToPrivate = CreateDualStackNode(
+            IPAddress.Parse("10.0.0.1"), 30303,
+            IPAddress.Parse("fc00::1"), 30304,
+            verified: true);
+        Assert.That(RlpxHost.TryCreateAlternateDialNode(privateToPrivate, allowNonRoutable: true, out _), Is.True);
+
+        NodeRecord mappedRecord = CreateDualStackRecord(
+            IPAddress.Parse("8.8.8.8"), 30303,
+            IPAddress.Parse("::ffff:8.8.4.4"), 30304,
+            sequence: 0);
+        Node mapped = CreateNode(mappedRecord, verified: true);
+        Assert.That(RlpxHost.TryCreateAlternateDialNode(mapped, allowNonRoutable: false, out _), Is.False);
+
+        NodeRecord withdrawal = CreateDualStackRecord(
+            IPAddress.Parse("8.8.8.8"), 30303,
+            ipv6: null, ipv6Port: 30304,
+            sequence: 1);
+        Assert.That(publicToPrivate.SetVerifiedEnr(withdrawal), Is.True);
+        Assert.That(RlpxHost.TryCreateAlternateDialNode(publicToPrivate, allowNonRoutable: false, out _), Is.False);
+    }
+
+    private static Node CreateDualStackNode(int ipv4Port, int ipv6Port)
+        => CreateDualStackNode(IPAddress.Loopback, ipv4Port, IPAddress.IPv6Loopback, ipv6Port, verified: true);
+
+    private static Node CreateDualStackNode(
+        IPAddress ipv4,
+        int ipv4Port,
+        IPAddress ipv6,
+        int ipv6Port,
+        bool verified,
+        ulong sequence = 0) =>
+        CreateNode(CreateDualStackRecord(ipv4, ipv4Port, ipv6, ipv6Port, sequence), verified);
+
+    private static NodeRecord CreateDualStackRecord(
+        IPAddress ipv4,
+        int ipv4Port,
+        IPAddress? ipv6,
+        int ipv6Port,
+        ulong sequence)
+    {
+        NodeRecord record = new() { EnrSequence = sequence };
+        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        record.SetEntry(new IpEntry(ipv4));
+        record.SetEntry(new TcpEntry(ipv4Port));
+        record.SetEntry(new UdpEntry(ipv4Port));
+        if (ipv6 is not null)
+        {
+            record.SetEntry(new Ip6Entry(ipv6));
+            record.SetEntry(new Tcp6Entry(ipv6Port));
+            record.SetEntry(new Udp6Entry(ipv6Port));
+        }
+
+        new NodeRecordSigner(new EthereumEcdsa(0), TestItem.PrivateKeyA).Sign(record);
+        return record;
+    }
+
+    private static Node CreateNode(NodeRecord record, bool verified)
+    {
+        Assert.That(Node.TryFromEnr(record, out Node? node), Is.True);
+        if (verified)
+        {
+            Assert.That(node!.SetVerifiedEnr(record), Is.True);
+        }
+
+        return node!;
+    }
+
     private static IContainer CreateFilterContainer(bool filterEnabled, bool subnetBucketing, string? externalIp = null,
         IPrivilegedIpProvider? privilegedIpProvider = null)
     {
@@ -484,7 +813,7 @@ public class RlpxHostIntegrationTests
         builder.RegisterInstance(ipResolver);
         builder.RegisterInstance(logManager ?? LimboLogs.Instance).As<ILogManager>();
         builder.RegisterInstance(Substitute.For<IMessageSerializationService>());
-        builder.RegisterInstance(Substitute.For<IHandshakeService>());
+        builder.RegisterInstance<IHandshakeService>(new StubHandshakeService());
         builder.RegisterInstance(Substitute.For<ISessionMonitor>());
         builder.RegisterInstance(NullDisconnectsAnalyzer.Instance).As<IDisconnectsAnalyzer>();
         builder.RegisterInstance(privilegedIpProvider ?? Substitute.For<IPrivilegedIpProvider>());
@@ -570,6 +899,91 @@ public class RlpxHostIntegrationTests
         public IChannel CreateClient() => new TcpSocketChannel();
 
         public IChannel CreateDatagramChannel() => new SocketDatagramChannel();
+    }
+
+    private abstract class ClientChannelFactory : IChannelFactory
+    {
+        public int CreatedClientChannels { get; protected set; }
+
+        public IServerChannel CreateServer() =>
+            new TcpServerSocketChannel(new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp));
+
+        public abstract IChannel CreateClient();
+
+        public IChannel CreateDatagramChannel() => new SocketDatagramChannel();
+    }
+
+    private sealed class PendingClientChannelFactory : ClientChannelFactory
+    {
+        public TaskCompletionSource ConnectStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public IChannel? ClientChannel { get; private set; }
+
+        public override IChannel CreateClient()
+        {
+            CreatedClientChannels++;
+            return ClientChannel = new PendingTcpSocketChannel(ConnectStarted);
+        }
+    }
+
+    private sealed class PendingTcpSocketChannel(TaskCompletionSource connectStarted) : TcpSocketChannel(AddressFamily.InterNetwork)
+    {
+        protected override bool DoConnect(EndPoint remoteAddress, EndPoint localAddress)
+        {
+            connectStarted.TrySetResult();
+            return false;
+        }
+    }
+
+    private sealed class RedirectingClientChannelFactory(IPEndPoint target) : ClientChannelFactory
+    {
+        private readonly TaskCompletionSource<IPEndPoint> _requestedRemoteEndpoint =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public IPEndPoint RequestedRemoteEndpoint => _requestedRemoteEndpoint.Task.GetAwaiter().GetResult();
+
+        public override IChannel CreateClient()
+        {
+            CreatedClientChannels++;
+            return new RedirectingTcpSocketChannel(target, _requestedRemoteEndpoint);
+        }
+    }
+
+    private sealed class RedirectingTcpSocketChannel(
+        IPEndPoint target,
+        TaskCompletionSource<IPEndPoint> requestedRemoteEndpoint) : TcpSocketChannel(target.AddressFamily)
+    {
+        protected override bool DoConnect(EndPoint remoteAddress, EndPoint localAddress)
+        {
+            requestedRemoteEndpoint.TrySetResult((IPEndPoint)remoteAddress);
+            return base.DoConnect(target, localAddress);
+        }
+    }
+
+    private sealed class FailingClientChannelFactory : ClientChannelFactory
+    {
+        public override IChannel CreateClient()
+        {
+            CreatedClientChannels++;
+            return new FailingTcpSocketChannel();
+        }
+    }
+
+    private sealed class FailingTcpSocketChannel : TcpSocketChannel
+    {
+        protected override bool DoConnect(EndPoint remoteAddress, EndPoint localAddress) =>
+            throw new SocketException((int)SocketError.ConnectionRefused);
+    }
+
+    private sealed class StubHandshakeService : IHandshakeService
+    {
+        public Packet Auth(PublicKey remoteNodeId, EncryptionHandshake handshake, bool preEip8Format = false)
+            => new([]);
+
+        public Packet Ack(EncryptionHandshake handshake, Packet auth) => new([]);
+
+        public void Agree(EncryptionHandshake handshake, Packet ack)
+        {
+        }
     }
 
     private static int GetAvailablePort()
