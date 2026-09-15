@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -136,6 +137,51 @@ public class Eip8037BlockGasInclusionCheckTests
             txGas: 21_000);
 
         Assert.That(outcome, Is.EqualTo(Eip8037BlockGasInclusionCheck.Outcome.Ok));
+    }
+
+    [Test]
+    public void TryGetBlockGasReservations_reserves_full_gas_in_both_dimensions_for_a_nonframe_tx_under_cap()
+    {
+        Transaction tx = new() { Type = TxType.EIP1559, GasLimit = 200_000 };
+
+        bool computed = Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(tx, Amsterdam.Instance, out ulong execution, out ulong state);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(computed, Is.True);
+            Assert.That(execution, Is.EqualTo(200_000UL));
+            Assert.That(state, Is.EqualTo(200_000UL));
+        }
+    }
+
+    [Test]
+    public void TryGetBlockGasReservations_clamps_the_execution_reservation_to_the_eip7825_cap()
+    {
+        Transaction tx = new() { Type = TxType.EIP1559, GasLimit = Eip7825Constants.DefaultTxGasLimitCap * 3 };
+
+        bool computed = Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(tx, Amsterdam.Instance, out ulong execution, out ulong state);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(computed, Is.True);
+            Assert.That(execution, Is.EqualTo(Eip7825Constants.DefaultTxGasLimitCap));
+            Assert.That(state, Is.EqualTo(tx.GasLimit));
+        }
+    }
+
+    [Test]
+    public void TryGetBlockGasReservations_reserves_no_state_gas_without_eip8037()
+    {
+        Transaction tx = new() { Type = TxType.EIP1559, GasLimit = 200_000 };
+
+        bool computed = Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(tx, Amsterdam.NoEip8037Instance, out ulong execution, out ulong state);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(computed, Is.True);
+            Assert.That(execution, Is.EqualTo(200_000UL));
+            Assert.That(state, Is.Zero);
+        }
     }
 
     [TestCase(379_970UL, 281_520UL, 0UL, 98_450UL, TestName = "Calculate_block_execution_gas_subtracts_state_component")]

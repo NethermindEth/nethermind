@@ -55,6 +55,19 @@ public class AccountChangesAtIndex(Address address)
         return needsUndo;
     }
 
+    /// <summary>Reads the captured transaction-prestate value for a slot, if one was recorded this transaction.</summary>
+    public bool TryGetPreTxStorage(in UInt256 key, out UInt256 value)
+    {
+        if (_preTxStorage is not null && _preTxStorage.TryGetValue(key, out PreTxStorage slot))
+        {
+            value = slot.Value;
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
+
     private struct PreTxStorage(in UInt256 value, ulong journalEpoch)
     {
         public readonly UInt256 Value = value;

@@ -456,6 +456,74 @@ public class TxBroadcasterTests
         Assert.That(pickedTxs, Is.EquivalentTo(expectedTxs).UsingTransactionComparer());
     }
 
+    /// <remarks>EIP-8250 sequences advance per domain, so a persistent transaction whose sequence is numerically
+    /// at or below the included one is superseded only when the two share a domain.</remarks>
+    [Test]
+    public void EnsureStopBroadcastUpToNonce_supersedes_only_the_included_transactions_nonce_domain([Values] bool includeKeyed)
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        Transaction keyOne = PersistentTx(TestItem.KeccakA, 0, [(UInt256)1]);
+        Transaction keyTwo = PersistentTx(TestItem.KeccakB, 0, [(UInt256)2]);
+        Transaction accountDomain = PersistentTx(TestItem.KeccakC, 0, null);
+        foreach (Transaction tx in new[] { keyOne, keyTwo, accountDomain })
+        {
+            _broadcaster.Broadcast(tx, true);
+        }
+
+        _broadcaster.EnsureStopBroadcastUpToNonce(includeKeyed ? keyOne : accountDomain);
+
+        Assert.That(_broadcaster.GetSnapshot(),
+            Is.EquivalentTo(includeKeyed ? new[] { keyTwo, accountDomain } : new[] { keyOne, keyTwo }));
+    }
+
+    /// <remarks>The control for the case above: inside one domain every sequence at or below the included one
+    /// is still superseded.</remarks>
+    [Test]
+    public void EnsureStopBroadcastUpToNonce_stops_the_account_domain_up_to_the_included_nonce()
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        Transaction first = PersistentTx(TestItem.KeccakA, 0, null);
+        Transaction included = PersistentTx(TestItem.KeccakB, 1, null);
+        Transaction later = PersistentTx(TestItem.KeccakC, 2, null);
+        foreach (Transaction tx in new[] { first, included, later })
+        {
+            _broadcaster.Broadcast(tx, true);
+        }
+
+        _broadcaster.EnsureStopBroadcastUpToNonce(included);
+
+        Assert.That(_broadcaster.GetSnapshot(), Is.EquivalentTo(new[] { later }));
+    }
+
+    /// <remarks>Inclusion consumes every key the transaction names, so a persistent entry that shares one is
+    /// permanently unmineable however the two key sets differ; a disjoint one is untouched.</remarks>
+    [Test]
+    public void EnsureStopBroadcastUpToNonce_supersedes_a_persistent_transaction_sharing_a_nonce_key()
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        Transaction overlapping = PersistentTx(TestItem.KeccakA, 5, [(UInt256)1]);
+        Transaction disjoint = PersistentTx(TestItem.KeccakB, 5, [(UInt256)3]);
+        foreach (Transaction tx in new[] { overlapping, disjoint })
+        {
+            _broadcaster.Broadcast(tx, true);
+        }
+
+        _broadcaster.EnsureStopBroadcastUpToNonce(PersistentTx(TestItem.KeccakC, 5, [(UInt256)1, (UInt256)2]));
+
+        Assert.That(_broadcaster.GetSnapshot(), Is.EquivalentTo(new[] { disjoint }));
+    }
+
+    /// <summary>A locally submitted transaction of one sender, distinguished from its siblings by hash and by
+    /// which nonce domain <paramref name="nonceKeys"/> selects.</summary>
+    private static Transaction PersistentTx(Hash256 hash, ulong nonce, UInt256[] nonceKeys) =>
+        Build.A.Transaction
+            .WithType(nonceKeys is null ? TxType.EIP1559 : TxType.FrameTx)
+            .WithNonce(nonce)
+            .WithNonceKeys(nonceKeys)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithHash(hash)
+            .TestObject;
+
     [Test]
     public void should_broadcast_local_tx_immediately_after_receiving_it()
     {
@@ -491,7 +559,7 @@ public class TxBroadcasterTests
             Substitute.For<IForkInfo>(),
             Substitute.For<ILogManager>(),
             Substitute.For<ITxPoolConfig>(),
-            Substitute.For<ISpecProvider>());
+            Substitute.For<IChainHeadSpecProvider>());
         _broadcaster.AddPeer(eth68Handler);
 
         Transaction localTx = Build.A.Transaction
@@ -532,7 +600,7 @@ public class TxBroadcasterTests
             Substitute.For<IForkInfo>(),
             Substitute.For<ILogManager>(),
             Substitute.For<ITxPoolConfig>(),
-            Substitute.For<ISpecProvider>());
+            Substitute.For<IChainHeadSpecProvider>());
 
         Transaction localTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields()
@@ -574,7 +642,7 @@ public class TxBroadcasterTests
             Substitute.For<IForkInfo>(),
             Substitute.For<ILogManager>(),
             Substitute.For<ITxPoolConfig>(),
-            Substitute.For<ISpecProvider>());
+            Substitute.For<IChainHeadSpecProvider>());
 
         Transaction localTx = Build.A.Transaction
             .WithData(new byte[txSize])
@@ -629,7 +697,7 @@ public class TxBroadcasterTests
             Substitute.For<IForkInfo>(),
             Substitute.For<ILogManager>(),
             Substitute.For<ITxPoolConfig>(),
-            Substitute.For<ISpecProvider>());
+            Substitute.For<IChainHeadSpecProvider>());
         _broadcaster.AddPeer(eth68Handler);
 
         Transaction localTx = Build.A.Transaction
@@ -722,6 +790,47 @@ public class TxBroadcasterTests
 
         // Assert
         Assert.That(result, Is.EqualTo(versionMatches), "LightTransaction from blob transaction should be gossiped when proof version matches.");
+    }
+
+    [Test]
+    public void Gossips_frame_blob_tx_only_with_current_proof_version_sidecar([Values] ProofVersion proofVersion, [Values] bool versionMatches)
+    {
+        IChainHeadInfoProvider mockChainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
+        mockChainHeadInfoProvider.CurrentProofVersion.Returns(proofVersion);
+        SpecDrivenTxGossipPolicy gossipPolicy = new(mockChainHeadInfoProvider);
+
+        ProofVersion wrapperVersion = versionMatches
+            ? proofVersion
+            : proofVersion == ProofVersion.V1 ? ProofVersion.V0 : ProofVersion.V1;
+
+        Transaction frameBlobTx = new()
+        {
+            Type = TxType.FrameTx,
+            BlobVersionedHashes = [new byte[32]],
+            MaxFeePerBlobGas = 1,
+            NetworkWrapper = new ShardBlobNetworkWrapper([], [], [], wrapperVersion),
+        };
+
+        Assert.That(gossipPolicy.ShouldGossipTransaction(frameBlobTx), Is.EqualTo(versionMatches));
+    }
+
+    [Test]
+    public void Withholds_frame_blob_tx_lacking_a_sidecar()
+    {
+        IChainHeadInfoProvider mockChainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
+        mockChainHeadInfoProvider.CurrentProofVersion.Returns(ProofVersion.V1);
+        SpecDrivenTxGossipPolicy gossipPolicy = new(mockChainHeadInfoProvider);
+
+        Transaction frameBlobTxNoWrapper = new()
+        {
+            Type = TxType.FrameTx,
+            BlobVersionedHashes = [new byte[32]],
+            MaxFeePerBlobGas = 1,
+        };
+        Transaction bloblessFrameTx = new() { Type = TxType.FrameTx };
+
+        Assert.That(gossipPolicy.ShouldGossipTransaction(frameBlobTxNoWrapper), Is.False);
+        Assert.That(gossipPolicy.ShouldGossipTransaction(bloblessFrameTx), Is.True);
     }
 
     [Test]
@@ -822,5 +931,54 @@ public class TxBroadcasterTests
         {
             Assert.That(pickedTxs, Is.Null);
         }
+    }
+
+    // EIP-8141: the pool's expiry pass reaches only the pending pools, so without a sweep here a locally
+    // submitted frame tx evicted from them would be re-announced forever. The boundary case pins the strict
+    // comparison: at deadline == timestamp the expiry-verifier predeploy still accepts, so the tx must stay.
+    [TestCase(999UL, true, false, TestName = "expired frame tx stops being broadcast")]
+    [TestCase(1_000UL, false, false, TestName = "frame tx at its deadline keeps being broadcast")]
+    [TestCase(1_001UL, false, false, TestName = "unexpired frame tx keeps being broadcast")]
+    // A blob-carrying frame tx is held as a LightTransaction, which has no frames: its deadline has to survive
+    // as PersistedExpiryDeadline for the sweep to reach it at all.
+    [TestCase(999UL, true, true, TestName = "expired blob-carrying frame tx stops being broadcast")]
+    public void should_stop_broadcasting_expired_frame_txs_on_new_head(ulong deadline, bool shouldBeDropped, bool carriesBlobs)
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+
+        Transaction frameTx = FrameTxWithDeadline(deadline, carriesBlobs);
+        Transaction regularTx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+        _broadcaster.Broadcast(frameTx, true);
+        _broadcaster.Broadcast(regularTx, true);
+        Assert.That(_broadcaster.GetSnapshot().Length, Is.EqualTo(2));
+
+        _broadcaster.OnNewHead(this, Build.A.Block.WithTimestamp(1_000).TestObject);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_broadcaster.ContainsTx(frameTx.Hash!), Is.EqualTo(!shouldBeDropped));
+            Assert.That(_broadcaster.ContainsTx(regularTx.Hash!), Is.True,
+                "a transaction without a frame expiry deadline must never be swept");
+        }
+    }
+
+    private Transaction FrameTxWithDeadline(ulong deadline, bool carriesBlobs = false)
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = _specProvider.ChainId,
+            SenderAddress = TestItem.AddressA,
+            // An expiry verifier frame may appear only as the first frame (EIP-8141 "Expiry Verifier Frame").
+            Frames = [FrameTxTestFrames.ExpiryAt(deadline, gasLimit: 50_000), FrameTxTestFrames.SelfVerify(gasLimit: 50_000)],
+            FrameSignatures = [],
+            BlobVersionedHashes = carriesBlobs ? [new byte[32]] : null,
+            MaxFeePerBlobGas = carriesBlobs ? 1 : null,
+            GasLimit = 100_000,
+            GasPrice = 1.GWei,
+            DecodedMaxFeePerGas = 1.GWei,
+        };
+        tx.Hash = tx.CalculateHash();
+        return tx;
     }
 }

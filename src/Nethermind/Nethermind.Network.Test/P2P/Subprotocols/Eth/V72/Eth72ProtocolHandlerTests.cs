@@ -27,6 +27,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.Contract.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
@@ -58,7 +59,7 @@ public class Eth72ProtocolHandlerTests
     private ISyncServer _syncManager = null!;
     private ITxPool _transactionPool = null!;
     private IGossipPolicy _gossipPolicy = null!;
-    private ISpecProvider _specProvider = null!;
+    private IChainHeadSpecProvider _specProvider = null!;
     private ITxPoolConfig _txPoolConfig = null!;
     private Block _genesisBlock = null!;
     private Eth72ProtocolHandler _handler = null!;
@@ -72,7 +73,7 @@ public class Eth72ProtocolHandlerTests
     [SetUp]
     public void Setup()
     {
-        _specProvider = Substitute.For<ISpecProvider>();
+        _specProvider = Substitute.For<IChainHeadSpecProvider>();
         _svc = Build.A.SerializationService().WithEth72(_specProvider).TestObject;
 
         _disposables = [];
@@ -304,7 +305,8 @@ public class Eth72ProtocolHandlerTests
             size: tx.GetLength(),
             proofVersion: ProofVersion.V1,
             blobCellMask: BlobCellMask.Full,
-            sparseBlobNetworkSize: 0);
+            sparseBlobNetworkSize: 0,
+            type: TxType.Blob);
 
         _handler.SendNewTransactions([legacyLightTx], sendFullTx: false);
 
@@ -504,6 +506,51 @@ public class Eth72ProtocolHandlerTests
             m.EthMessage.Hashes.Count == 1 &&
             m.EthMessage.Hashes[0] == hash));
         _session.DidNotReceive().DeliverMessage(Arg.Any<GetCellsMessage72>());
+    }
+
+    // The frame-transaction gate reads the head spec, and an announcement carries up to MaxCount entries.
+    [Test]
+    public void should_resolve_the_frame_tx_gate_once_per_announcement()
+    {
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8141Enabled.Returns(true);
+        _specProvider.GetCurrentHeadSpec().Returns(spec);
+        _transactionPool.NotifyAboutTx(Arg.Any<Hash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(AnnounceResult.RequestRequired);
+
+        Hash256[] hashes = [HashFromInt(1), HashFromInt(2), HashFromInt(3)];
+        using NewPooledTransactionHashesMessage72 message = new(
+            [.. Enumerable.Repeat((byte)TxType.FrameTx, hashes.Length)],
+            [.. Enumerable.Repeat(1024, hashes.Length)],
+            [.. hashes],
+            BlobCellMask.Empty.ToBytes());
+
+        HandleIncomingStatusMessage();
+        _specProvider.ClearReceivedCalls();
+        HandleZeroMessage(message, Eth72MessageCode.NewPooledTransactionHashes);
+
+        _specProvider.Received(1).GetCurrentHeadSpec();
+        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m =>
+            m.EthMessage.Hashes.Count == hashes.Length));
+    }
+
+    // Delivery validates every transaction in the packet, so the same gate has to be resolved once there too.
+    [Test]
+    public void should_resolve_the_frame_tx_gate_once_per_delivered_packet()
+    {
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8141Enabled.Returns(true);
+        _specProvider.GetCurrentHeadSpec().Returns(spec);
+
+        Transaction[] transactions = [FrameTx(TestItem.PrivateKeyA), FrameTx(TestItem.PrivateKeyB), FrameTx(TestItem.PrivateKeyC)];
+        using TransactionsMessage message = new(transactions.ToPooledList());
+
+        HandleIncomingStatusMessage();
+        _specProvider.ClearReceivedCalls();
+        HandleZeroMessage(message, Eth62MessageCode.Transactions);
+
+        _specProvider.Received(1).GetCurrentHeadSpec();
+        _transactionPool.Received(transactions.Length).SubmitTx(Arg.Is<Transaction>(tx => tx.Type == TxType.FrameTx), Arg.Any<TxHandlingOptions>());
     }
 
     [Test]
@@ -5022,6 +5069,148 @@ public class Eth72ProtocolHandlerTests
         return new Hash256(bytes);
     }
 
+    // EIP-8141: a type-6 carrying blobs is not TxType.SupportsBlobs, so it takes the plain eth/72 path end to
+    // end - announced at its full network size with no cell mask, then served, delivered and submitted whole
+    // over a correlated response, with the sparse cell protocol staying type-3 only throughout.
+    // Both wrapper versions, because the sidecar validator accepts either from the wire regardless of the
+    // head's own proof version, and the per-blob proof count it must check differs between them.
+    [TestCase(ProofVersion.V0)]
+    [TestCase(ProofVersion.V1)]
+    public void should_carry_a_blob_bearing_frame_tx_over_the_plain_announcement_path(ProofVersion proofVersion)
+    {
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8141Enabled.Returns(true);
+        _specProvider.GetCurrentHeadSpec().Returns(spec);
+        _transactionPool.NotifyAboutTx(Arg.Any<Hash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(AnnounceResult.RequestRequired);
+        HandleIncomingStatusMessage();
+
+        Transaction tx = BlobCarryingFrameTx(proofVersion);
+        int announcedSize = tx.GetLength();
+        _deliveredMessages.Clear();
+        _handler.SendNewTransaction(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_deliveredMessages.OfType<TransactionsMessage>(), Is.Empty,
+                "a blob-carrying frame tx must never be broadcast with its sidecar");
+            _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage72>(m =>
+                m.Types.Length == 1
+                && m.Types[0] == (byte)TxType.FrameTx
+                && m.Sizes[0] == announcedSize
+                && BlobCellMask.FromBytes(m.CellMask).IsEmpty));
+        }
+
+        // The pooled response has to match that announcement, so a type-6 is served whole rather than from
+        // the sidecar-free record a type-3 response is elided to.
+        _transactionPool.TryGetPendingTransactionWithoutBlobs(tx.Hash!, out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                x[1] = BuildElidedBlobTransaction(tx);
+                return true;
+            });
+        _transactionPool.TryGetPendingTransaction(tx.Hash!, out Arg.Any<Transaction>())
+            .Returns(x =>
+            {
+                x[1] = tx;
+                return true;
+            });
+
+        _deliveredMessages.Clear();
+        using GetPooledTransactionsMessage serveRequest = new(new[] { tx.Hash! }.ToPooledList());
+        HandleZeroMessage(serveRequest, Eth66MessageCode.GetPooledTransactions);
+
+        Transaction servedTx = _deliveredMessages.OfType<PooledTransactionsMessage>().Single().EthMessage.Transactions[0];
+        Assert.That(servedTx.NetworkWrapper, Is.TypeOf<ShardBlobNetworkWrapper>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(((ShardBlobNetworkWrapper)servedTx.NetworkWrapper!).HasFullBlobs(), Is.True,
+                "an elided type-6 could never be completed - cells are requested for type-3 only");
+            Assert.That(servedTx.GetLength(), Is.EqualTo(announcedSize),
+                "the served size must match the announced one");
+        }
+
+        _deliveredMessages.Clear();
+        using NewPooledTransactionHashesMessage72 announcement = new(
+            [(byte)TxType.FrameTx], [announcedSize], [tx.Hash!], BlobCellMask.Empty.ToBytes());
+        HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_deliveredMessages.OfType<GetPooledTransactionsMessage>().Count(), Is.EqualTo(1));
+            Assert.That(_deliveredMessages.OfType<GetCellsMessage72>(), Is.Empty,
+                "cells are requested for type-3 only");
+        }
+
+        long requestId = GetLastGetPooledTransactionsRequestId(tx.Hash!);
+        using PooledTransactionsMessage66 response = new(
+            requestId, new PooledTransactionsMessage65(new[] { servedTx }.ToPooledList()));
+        HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+
+        using (Assert.EnterMultipleScope())
+        {
+            _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            _transactionPool.Received(1).SubmitTx(
+                Arg.Is<Transaction>(submitted => submitted.Hash == tx.Hash && submitted.CarriesBlobs),
+                Arg.Any<TxHandlingOptions>());
+        }
+    }
+
+    // The type-6 sidecar is verified on arrival because nothing else will: SupportsBlobs is type-3 only, so
+    // gating on it admits a blobless carrier that no later Cells response can complete.
+    [Test]
+    public void should_reject_a_blob_bearing_frame_tx_delivered_without_its_sidecar()
+    {
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8141Enabled.Returns(true);
+        _specProvider.GetCurrentHeadSpec().Returns(spec);
+        _transactionPool.NotifyAboutTx(Arg.Any<Hash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(AnnounceResult.RequestRequired);
+        HandleIncomingStatusMessage();
+
+        Transaction tx = BlobCarryingFrameTx();
+        Transaction elidedTx = BuildElidedBlobTransaction(tx);
+
+        // Announced at the elided size, so the shape check passes and sidecar validation is what must reject it.
+        using NewPooledTransactionHashesMessage72 announcement = new(
+            [(byte)TxType.FrameTx], [elidedTx.GetLength()], [tx.Hash!], BlobCellMask.Empty.ToBytes());
+        HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
+
+        long requestId = GetLastGetPooledTransactionsRequestId(tx.Hash!);
+        using PooledTransactionsMessage66 response = new(
+            requestId, new PooledTransactionsMessage65(new[] { elidedTx }.ToPooledList()));
+        HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+
+        using (Assert.EnterMultipleScope())
+        {
+            _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
+            _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+        }
+    }
+
+    private static Transaction BlobCarryingFrameTx(ProofVersion version = ProofVersion.V1)
+    {
+        Transaction tx = Build.A.Transaction
+            .WithNonce(0UL)
+            .WithShardBlobTxTypeAndFields(spec: version is ProofVersion.V1 ? Osaka.Instance : Cancun.Instance)
+            .SignedAndResolved()
+            .TestObject;
+        tx.Type = TxType.FrameTx;
+        tx.Frames = [];
+        tx.FrameSignatures = [];
+        tx.Hash = tx.CalculateHash();
+        return tx;
+    }
+
+    private static Transaction FrameTx(PrivateKey signer) => Build.A.Transaction
+        .WithType(TxType.FrameTx)
+        .WithNonce(0)
+        .WithMaxFeePerGas(1.GWei)
+        .WithMaxPriorityFeePerGas(1.GWei)
+        .WithGasLimit(100_000)
+        .WithTo(TestItem.AddressB)
+        .SignedAndResolved(signer).TestObject;
+
     private static void AssertCustodyRequest(
         (Hash256 Hash, BlobCellMask CellMask) request,
         Hash256 expectedHash,
@@ -5228,7 +5417,7 @@ public class Eth72ProtocolHandlerTests
         IForkInfo forkInfo,
         ILogManager logManager,
         ITxPoolConfig txPoolConfig,
-        ISpecProvider specProvider,
+        IChainHeadSpecProvider specProvider,
         IBlobCustodyTracker blobCustodyTracker,
         ISparseBlobPoolPeerRegistry sparseBlobPoolPeerRegistry,
         ITxGossipPolicy? transactionsGossipPolicy)

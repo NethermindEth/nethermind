@@ -4,6 +4,7 @@
 using System;
 using NonBlocking;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -14,6 +15,7 @@ using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
+using Nethermind.TxPool.Comparison;
 using ITimer = Nethermind.Core.Timers.ITimer;
 
 namespace Nethermind.TxPool
@@ -68,6 +70,10 @@ namespace Nethermind.TxPool
 
         private readonly TimeSpan _minTimeBetweenPersistedTxBroadcast = TimeSpan.FromSeconds(1);
 
+        /// <summary>Persistent txs carrying an EIP-8141 expiry deadline; zero lets the per-head sweep skip the walk.</summary>
+        /// <remarks>Maintained from the pool's own insert and removal events, so no mutation path can bypass it.</remarks>
+        private int _expiringFrameTxCount;
+
         private readonly ILogger _logger;
         private readonly ITimestamper _timestamper;
 
@@ -87,6 +93,8 @@ namespace Nethermind.TxPool
             _gossipFilter = _txGossipPolicy.ShouldGossipTransaction;
             _logger = logManager?.GetClassLogger<TxBroadcaster>() ?? throw new ArgumentNullException(nameof(logManager));
             _persistentTxs = new TxDistinctSortedPool(txPoolConfig.Size, comparer, logManager);
+            _persistentTxs.Inserted += OnInsertedTx;
+            _persistentTxs.Removed += OnRemovedTx;
             _accumulatedTemporaryTxs = new ResettableList<Transaction>(512, 4);
             _txsToSend = new ResettableList<Transaction>(512, 4);
 
@@ -120,7 +128,7 @@ namespace Nethermind.TxPool
 
             if (tx is not null
                 && (tx.MaxFeePerGas >= _baseFeeThreshold || tx.IsFree())
-                && _persistentTxs.TryInsert(tx.Hash, tx.SupportsBlobs ? new LightTransaction(tx) : tx, out Transaction? removed)
+                && _persistentTxs.TryInsert(tx.Hash, tx.CarriesBlobs ? new LightTransaction(tx) : tx, out Transaction? removed)
                 && removed?.Hash != tx.Hash)
             {
                 NotifyPeersAboutLocalTx(tx);
@@ -149,8 +157,59 @@ namespace Nethermind.TxPool
         public void OnNewHead(object? sender, Block block)
         {
             _baseFeeThreshold = CalculateBaseFeeThreshold();
+            StopBroadcastingExpiredFrameTxs(block.Timestamp);
             BroadcastPersistentTxs();
         }
+
+        /// <summary>Stops broadcasting EIP-8141 frame transactions whose expiry deadline has passed as of the new head.</summary>
+        /// <remarks>
+        /// The pool's own expiry pass reaches only the pending pools, so a locally submitted frame tx that has since
+        /// been evicted from them survives here alone and would be re-announced every head for the rest of the node's
+        /// life. Such a transaction can never be included: the expiry-verifier predeploy reverts once
+        /// <c>block.timestamp &gt; deadline</c>, and the comparison is strict here to match that condition exactly.
+        /// No fork gate is needed — only a frame transaction ever carries a deadline.
+        /// </remarks>
+        private void StopBroadcastingExpiredFrameTxs(ulong timestamp)
+        {
+            if (Volatile.Read(ref _expiringFrameTxCount) == 0)
+            {
+                return;
+            }
+
+            foreach (Transaction tx in _persistentTxs.GetSnapshot())
+            {
+                if (tx.SupportsFrames
+                    && FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline)
+                    && timestamp > deadline)
+                {
+                    StopBroadcast(tx.Hash!);
+                    // The only signal that the node stopped announcing a transaction its own user submitted.
+                    if (_logger.IsDebug) _logger.Debug($"Stopped broadcasting expired frame transaction {tx.Hash} (deadline {deadline} < head timestamp {timestamp}).");
+                }
+            }
+        }
+
+        private void OnInsertedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolEventArgs args)
+        {
+            if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
+        }
+
+        private void OnRemovedTx(object? sender, SortedPool<ValueHash256, Transaction, AddressAsKey>.SortedPoolRemovedEventArgs args)
+        {
+            if (HasExpiryDeadline(args.Value))
+            {
+                int remaining = Interlocked.Decrement(ref _expiringFrameTxCount);
+                AssertExpiringFrameTxCountNotNegative(remaining);
+            }
+        }
+
+        // Drift that would defeat the fast path for good. Judged on the decrement's own result, because
+        // re-reading the field lets a concurrent insert hide the excursion.
+        [Conditional("DEBUG")]
+        private static void AssertExpiringFrameTxCountNotNegative(int remaining) =>
+            Debug.Assert(remaining >= 0, "Expiring frame transaction count went negative.");
+
+        private static bool HasExpiryDeadline(Transaction tx) => tx.SupportsFrames && FrameTxValidation.TryGetExpiryDeadline(tx, out _);
 
         internal UInt256 CalculateBaseFeeThreshold()
         {
@@ -281,13 +340,23 @@ namespace Nethermind.TxPool
             }
         }
 
-        public void EnsureStopBroadcastUpToNonce(Address address, ulong nonce)
+        /// <summary>Stops announcing the sender's persistent transactions that <paramref name="includedTx"/>
+        /// has made unmineable.</summary>
+        /// <remarks>Inclusion consumes every EIP-8250 key the transaction names, so a persistent entry is
+        /// superseded when it shares any of them: sequences in the sender's disjoint domains advance
+        /// independently and stay announceable at the same numeric value.</remarks>
+        public void EnsureStopBroadcastUpToNonce(Transaction includedTx)
         {
             if (_persistentTxs.Count != 0)
             {
-                foreach (Transaction tx in _persistentTxs.TakeWhile(address, t => t.Nonce <= nonce))
+                ulong nonce = includedTx.Nonce;
+                // Ascending nonce order bounds the scan; the domain decides which of those entries is superseded.
+                foreach (Transaction tx in _persistentTxs.TakeWhile(includedTx.SenderAddress!, t => t.Nonce <= nonce))
                 {
-                    StopBroadcast(tx.Hash!);
+                    if (CompetingTransactionEqualityComparer.OverlapsNonceDomain(includedTx, tx))
+                    {
+                        StopBroadcast(tx.Hash!);
+                    }
                 }
             }
         }
@@ -367,7 +436,7 @@ namespace Nethermind.TxPool
 
         public bool TryGetPersistentTx(Hash256 hash, out Transaction? transaction)
         {
-            if (_persistentTxs.TryGetValue(hash, out transaction) && !transaction.SupportsBlobs)
+            if (_persistentTxs.TryGetValue(hash, out transaction) && !transaction.CarriesBlobs)
             {
                 return true;
             }

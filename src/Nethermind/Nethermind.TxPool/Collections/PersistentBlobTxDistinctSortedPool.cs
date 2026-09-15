@@ -166,6 +166,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             // tx is present, but not cached, at this point we need to load it from db...
             if (_blobTxStorage.TryGet(hash, lightTx.SenderAddress!, lightTx.Timestamp, out fullBlobTx))
             {
+                RestoreAdmissionMetadata(fullBlobTx, lightTx);
                 // ...and we are saving recently used blob tx to cache
                 _blobTxCache.Set(hash, fullBlobTx);
                 return true;
@@ -295,7 +296,9 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             return false;
         }
 
+        // Built from the storage record, so it is payer-less exactly as a full reload is.
         blobTx = BlobTransactionPayload.Elide(loadedTx);
+        RestoreAdmissionMetadata(blobTx, currentLightTx);
         _blobTxMetadataCache.Set(hash, blobTx);
 
         return true;
@@ -495,6 +498,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
 
                     if (cacheStorageResult)
                     {
+                        RestoreAdmissionMetadata(fullTx, currentLightTx);
                         _blobTxCache.Set(dbKey.Hash, fullTx);
                     }
                 }
@@ -705,9 +709,21 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                 return false;
             }
 
+            RestoreAdmissionMetadata(fullBlobTx, currentLightTx);
             _blobTxCache.Set(hash, fullBlobTx);
             return true;
         }
+    }
+
+    /// <summary>Puts back onto a storage-loaded copy what only the pooled record carries.</summary>
+    /// <remarks>
+    /// EIP-8141 resolves the payer at admission and records it on the light record, but the wire form kept in
+    /// storage has no room for it, so a reloaded copy would otherwise read as having resolved none.
+    /// </remarks>
+    private static void RestoreAdmissionMetadata(Transaction fullBlobTx, Transaction lightTx)
+    {
+        fullBlobTx.PayerAddress = lightTx.PayerAddress;
+        fullBlobTx.PayerExposure = lightTx.PayerExposure;
     }
 
     protected override bool Remove(ValueHash256 hash, out Transaction? tx)

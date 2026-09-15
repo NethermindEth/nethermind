@@ -16,12 +16,12 @@ public interface ITxPoolInfoProvider
     TxPoolSenderInfo GetSenderInfo(Address address)
     {
         TxPoolInfo info = GetInfo();
-        info.Pending.TryGetValue(address, out IDictionary<ulong, Transaction>? pending);
-        info.Queued.TryGetValue(address, out IDictionary<ulong, Transaction>? queued);
+        info.Pending.TryGetValue(address, out IDictionary<string, Transaction>? pending);
+        info.Queued.TryGetValue(address, out IDictionary<string, Transaction>? queued);
         if (pending is null && queued is null) return TxPoolSenderInfo.Empty;
         return new TxPoolSenderInfo(
-            pending ?? ImmutableDictionary<ulong, Transaction>.Empty,
-            queued ?? ImmutableDictionary<ulong, Transaction>.Empty);
+            pending ?? ImmutableDictionary<string, Transaction>.Empty,
+            queued ?? ImmutableDictionary<string, Transaction>.Empty);
     }
 
     TxPoolCounts GetCounts()
@@ -29,9 +29,9 @@ public interface ITxPoolInfoProvider
         TxPoolInfo info = GetInfo();
         int pending = 0;
         int queued = 0;
-        foreach (KeyValuePair<AddressAsKey, IDictionary<ulong, Transaction>> kv in info.Pending)
+        foreach (KeyValuePair<AddressAsKey, IDictionary<string, Transaction>> kv in info.Pending)
             pending += kv.Value.Count;
-        foreach (KeyValuePair<AddressAsKey, IDictionary<ulong, Transaction>> kv in info.Queued)
+        foreach (KeyValuePair<AddressAsKey, IDictionary<string, Transaction>> kv in info.Queued)
             queued += kv.Value.Count;
         return new TxPoolCounts(pending, queued);
     }

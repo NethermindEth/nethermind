@@ -41,13 +41,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void GetOriginal(in StorageCell storageCell, out UInt256 value);
 
     /// <summary>
-    /// Get the persistent storage value at the specified storage cell
-    /// </summary>
-    /// <param name="storageCell">Storage location</param>
-    /// <param name="value">Value at cell</param>
-    void Get(in StorageCell storageCell, out UInt256 value);
-
-    /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
