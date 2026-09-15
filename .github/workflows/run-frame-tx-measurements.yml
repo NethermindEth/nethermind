@@ -212,7 +212,7 @@ jobs:
             run_harness Nethermind.Blockchain.Test FrameTxProducerRetryMeasurement "${producer_retry_markers[@]}" || status=1
           fi
           if [[ "${HARNESS}" == "prefix-retry" ]]; then
-            run_harness Nethermind.TxPool.Test FrameTxPrefixRetryMeasurement || status=1
+            run_harness Nethermind.TxPool.Test FrameTxPoolRetentionMeasurement || status=1
           fi
 
           if [[ "${ran}" -eq 0 ]]; then
