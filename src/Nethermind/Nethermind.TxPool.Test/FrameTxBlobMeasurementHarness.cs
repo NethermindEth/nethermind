@@ -87,7 +87,7 @@ internal static class FrameTxBlobMeasurementHarness
         for (int i = 0; i < blobCount; i++)
         {
             byte[] blob = new byte[Ckzg.BytesPerBlob];
-            blob[0] = (byte)(i % 256);
+            blob[0] = (byte)i;
             rawBlobs[i] = blob;
         }
 
