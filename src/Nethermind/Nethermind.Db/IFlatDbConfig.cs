@@ -52,6 +52,18 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "History rows one verification worker holds in memory for the subtree it is replaying. A subtree with more rows is split into its children and a single key with more rows is streamed, so any value works on any archive; larger values mean fewer, bigger subtrees. Sized so that one mainnet depth-2 account subtree fits without splitting; each worker holds about 400 bytes per row plus its replayed trie. 0 uses the built-in default of 5 million.", DefaultValue = "0")]
     long HistoryVerifyMaxRows { get; set; }
 
+    [ConfigItem(Description = "Index, per transaction, what each transaction of a block wrote, so that a trace of one transaction resolves the state before it instead of replaying the transactions ahead of it. Built in the background behind the history watermark, in its own column, and never on the block processing path. Off by default; a node that leaves it off pays nothing.", DefaultValue = "false")]
+    bool HistoryTransactionIndexEnabled { get; set; }
+
+    [ConfigItem(Description = "Share of its wall clock the transaction index builder may spend working; it sleeps out the rest so that re-executing blocks stays invisible to the RPC the node is serving. 100 lets it run flat out.", DefaultValue = "25")]
+    int HistoryTransactionIndexDutyCyclePercent { get; set; }
+
+    [ConfigItem(Description = "Once the transaction index has caught up with the tip, also index backwards down to this block, so an archive that already exists gains coverage without a resync. 0 indexes forward from the moment the index is turned on and nothing older; 1 covers the whole chain, since genesis carries no transactions. Never goes below the flat-history floor.", DefaultValue = "0")]
+    ulong HistoryTransactionIndexRetrofitFromBlock { get; set; }
+
+    [ConfigItem(Description = "Threads re-executing blocks for the backwards retrofit of the transaction index, each on its own block range with its own processing environment. The tip is always followed by one thread regardless. 1 runs the retrofit on that same thread. Each worker holds the state its current 128-block chunk wrote, a few hundred thousand entries on mainnet, so the count is a memory knob as well as a throughput one.", DefaultValue = "1")]
+    int HistoryTransactionIndexWorkers { get; set; }
+
     [ConfigItem(Description = "Serve eth_getProof at heights below the flat state boundary from the archive commitment columns. Requires an unwindowed (v2) flat history whose commitments cover the height; off by default.", DefaultValue = "false")]
     bool ArchiveProofServeEnabled { get; set; }
 

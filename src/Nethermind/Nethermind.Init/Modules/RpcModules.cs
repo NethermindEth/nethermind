@@ -37,6 +37,7 @@ using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Sockets;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Evm.Tracing;
 using Nethermind.State;
 using Nethermind.TxPool;
 
@@ -47,6 +48,12 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
+
+        // Registered to lose: the flat-history module, when loaded, supplies the real one and this must not beat it.
+        builder.RegisterInstance(NullPrefixStateSeedSource.Instance)
+            .As<IPrefixStateSeedSource>()
+            .ExternallyOwned()
+            .PreserveExistingDefaults();
 
         builder
             .AddSingleton<IEthSyncingInfo, EthSyncingInfo>()
