@@ -2295,10 +2295,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 1
-          sparse-checkout: |
-            scripts/expb
-            scripts/validate-folded-profile.sh
-          sparse-checkout-cone-mode: false
       - name: Ensure Docker is installed
         shell: bash
         run: |

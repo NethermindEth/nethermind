@@ -1309,6 +1309,13 @@ esac
             )
             self.assertIn("exit 1", collector[collector.index(deferred_failure) :])
 
+    def test_expb_campaign_checkout_uses_full_repository(self) -> None:
+        expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
+        checkout = workflow_named_step_body(expb_workflow, "benchmark-multi", "Checkout repository")
+
+        self.assertIn("fetch-depth: 1", checkout)
+        self.assertNotIn("sparse-checkout", checkout)
+
     def test_expb_single_log_staging_sanitizes_rendered_config(self) -> None:
         expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
         script = workflow_named_step_script(expb_workflow, "benchmark", "Stage benchmark logs")
