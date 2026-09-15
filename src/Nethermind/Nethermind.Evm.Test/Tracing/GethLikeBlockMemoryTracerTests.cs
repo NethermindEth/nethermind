@@ -5,9 +5,13 @@ using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Int256;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -58,6 +62,29 @@ public class GethLikeBlockMemoryTracerTests
         Assert.That(blockTracer.BuildResult().First(), Is.Not.Null, "0");
         Assert.That(blockTracer.BuildResult().Skip(1).First(), Is.Not.Null, "1");
         Assert.That(blockTracer.BuildResult().Last(), Is.Not.Null, "2");
+    }
+
+    [TestCase(0UL, 24_000L)]
+    [TestCase(1UL, null)]
+    public void Uses_destroy_refund_from_active_block_spec(ulong blockNumber, long? expectedRefund)
+    {
+        ISpecProvider specProvider = new CustomSpecProvider(
+            ((ForkActivation)0, Frontier.Instance),
+            ((ForkActivation)1, London.Instance));
+        GethLikeBlockMemoryTracer blockTracer = new(GethTraceOptions.Default, specProvider);
+        Block block = Build.A.Block.WithNumber(blockNumber).WithTimestamp(0).TestObject;
+
+        blockTracer.StartNewBlockTrace(block);
+        ITxTracer txTracer = ((IBlockTracer)blockTracer).StartNewTxTrace(Build.A.Transaction.TestObject);
+        txTracer.ReportAction(100, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.TRANSACTION);
+        txTracer.ReportSelfDestruct(TestItem.AddressA, UInt256.Zero, Address.Zero);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: ReadOnlyMemory<byte>.Empty);
+        txTracer.StartOperation(0, Instruction.STOP, 100, in environment);
+        txTracer.ReportActionEnd(100, default);
+        blockTracer.EndTxTrace();
+
+        Assert.That(blockTracer.BuildResult().Single().Entries.Single().Refund, Is.EqualTo(expectedRefund));
     }
 
     [Test]

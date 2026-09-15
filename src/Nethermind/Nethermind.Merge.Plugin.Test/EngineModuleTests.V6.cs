@@ -542,10 +542,12 @@ public partial class EngineModuleTests
 
         ForkchoiceStateV1 fcuState = new(genesis.Hash!, genesis.Hash!, genesis.Hash!);
 
+        Task improvedBlockWait = chain.WaitForImprovedBlock(genesis.Hash!, minTransactions: 1);
+
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResponse = await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(fcuState, payloadAttributes);
         Assert.That(fcuResponse.Result.ResultType, Is.EqualTo(ResultType.Success));
 
-        await Task.Delay(1000);
+        await improvedBlockWait;
 
         ResultWrapper<GetPayloadV6Result?> getPayloadResult =
             await chain.EngineRpcModule.engine_getPayloadV6(Bytes.FromHexString(fcuResponse.Data.PayloadId!));
@@ -1122,7 +1124,7 @@ public partial class EngineModuleTests
         Assert.That(chain.BlockTree.Head!.Number, Is.EqualTo(4));
     }
 
-    private async Task<ExecutionPayloadV4> AddNewBlockV6(IEngineRpcModule rpcModule, MergeTestBlockchain chain, int transactionCount = 0)
+    protected async Task<ExecutionPayloadV4> AddNewBlockV6(IEngineRpcModule rpcModule, MergeTestBlockchain chain, int transactionCount = 0)
     {
         Transaction[] txs = BuildTransactions(chain, chain.BlockTree.Head!.Hash!, TestItem.PrivateKeyA, TestItem.AddressB, (uint)transactionCount, 0, out _, out _, 0);
         chain.AddTransactions(txs);

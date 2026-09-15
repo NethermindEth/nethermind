@@ -662,11 +662,47 @@ jobs:
       RPC_PORT: "8545"
       REF_RPC_PORT: "8546"
     steps:
+      # This workspace persists between jobs and is shared with every other workflow on the box, so a job
+      # that checks out sparsely leaves core.sparseCheckout and skip-worktree bits behind for the next one.
+      # actions/checkout's own `sparse-checkout disable` then has to re-materialize the whole tree and
+      # aborts if any path is mid-write, leaving a partial tree while still reporting success - and
+      # skip-worktree keeps `git status` clean, so the damage only surfaces later as a missing script.
+      - name: Clear inherited sparse-checkout state
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -d .git ]] || exit 0
+          if ! git sparse-checkout disable; then
+            echo "::warning::git sparse-checkout disable failed; removing the workspace instead."
+          fi
+          # `grep -c`, not `grep -q`: -q exits on the first match, and with thousands of flagged entries
+          # git is still writing when the pipe closes, so it dies on SIGPIPE and pipefail turns the whole
+          # condition false - skipping the fallback in exactly the case that needs it.
+          skipped="$(git ls-files -v 2>/dev/null | grep -c '^S' || true)"
+          if [[ "${skipped:-0}" -gt 0 ]]; then
+            echo "::warning::${skipped} skip-worktree entries survived the reset; removing the workspace so checkout re-clones."
+            find . -mindepth 1 -maxdepth 1 -exec rm -rf {} + ||
+              echo "::warning::the workspace could not be fully removed; checkout will report what remains."
+          fi
+
       - name: Check out repository
         uses: actions/checkout@v6
 
       - name: Make scripts executable
-        run: chmod +x scripts/rpc-bench/*.sh
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Without this guard a partial tree reaches the benchmark as `chmod: No such file or directory`,
+          # which reads like the scripts are missing from the branch rather than from the workspace.
+          # Globbed rather than testing the directory: a half-restored tree can leave the directory behind
+          # with none of its scripts in it.
+          shopt -s nullglob
+          scripts=(scripts/rpc-bench/*.sh)
+          if [[ "${#scripts[@]}" -eq 0 ]]; then
+            echo "::error::scripts/rpc-bench/*.sh is missing after checkout - the shared workspace was left in a partial state. Re-run the job to re-clone it."
+            exit 1
+          fi
+          chmod +x "${scripts[@]}"
 
       - name: Verify perf profiling prerequisites
         if: needs.resolve.outputs.perf == 'true'

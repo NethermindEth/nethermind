@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -26,13 +25,21 @@ internal static unsafe class BN254
             throw new InvalidOperationException("MCL initialization failed");
     }
 
+    /// <summary>Adds two BN254 G1 points and writes the normalized result (EIP-196).</summary>
+    /// <remarks>
+    /// <paramref name="input"/> must be exactly 128 bytes (two 64-byte big-endian G1 points) and
+    /// <paramref name="output"/> at least 64 bytes: both are accessed through raw pointers with no bounds check, so a
+    /// short buffer would read or write past the end. A longer <paramref name="input"/> is rejected to keep the
+    /// contract exact; a longer <paramref name="output"/> is fine — only the first 64 bytes are written.
+    /// </remarks>
+    /// <returns><c>false</c> on a length mismatch, a point that fails to deserialize, or a serialization failure.</returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal static bool Add(byte[] output, ReadOnlySpan<byte> input)
     {
         const int chunkSize = 64;
 
-        Debug.Assert(input.Length == 128);
-        Debug.Assert(output.Length == 64);
+        if (input.Length != 2 * chunkSize || output.Length < chunkSize)
+            return false;
 
         fixed (byte* data = &MemoryMarshal.GetReference(input))
         {
@@ -49,13 +56,22 @@ internal static unsafe class BN254
         }
     }
 
+    /// <summary>Multiplies a BN254 G1 point by a scalar and writes the normalized result (EIP-196).</summary>
+    /// <remarks>
+    /// <paramref name="input"/> must be exactly 96 bytes (a 64-byte big-endian G1 point followed by a 32-byte
+    /// big-endian scalar) and <paramref name="output"/> at least 64 bytes: both are accessed through raw pointers
+    /// with no bounds check, so a short buffer would read or write past the end. A longer <paramref name="input"/> is
+    /// rejected to keep the contract exact; a longer <paramref name="output"/> is fine — only the first 64 bytes are written.
+    /// </remarks>
+    /// <returns><c>false</c> on a length mismatch, a point or scalar that fails to decode, or a serialization failure.</returns>
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal static bool Mul(byte[] output, ReadOnlySpan<byte> input)
     {
         const int chunkSize = 64;
+        const int scalarSize = 32;
 
-        Debug.Assert(input.Length == 96);
-        Debug.Assert(output.Length == 64);
+        if (input.Length != chunkSize + scalarSize || output.Length < chunkSize)
+            return false;
 
         fixed (byte* data = &MemoryMarshal.GetReference(input))
         {
@@ -63,7 +79,7 @@ internal static unsafe class BN254
                 return false;
 
             Unsafe.SkipInit(out mclBnFr y);
-            if (mclBnFr_setBigEndianMod(ref y, (nint)data + chunkSize, 32) == -1 || mclBnFr_isValid(y) == 0)
+            if (mclBnFr_setBigEndianMod(ref y, (nint)data + chunkSize, scalarSize) == -1 || mclBnFr_isValid(y) == 0)
                 return false;
 
             mclBnG1_mul(ref x, x, y);  // x *= y

@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
@@ -112,6 +113,50 @@ public class HashKeyedNodeStorageTests
 
         Assert.That(storage.Get(null, TreePath.Empty, first), Is.EqualTo(new byte[] { 0x01 }));
         Assert.That(storage.Get(null, TreePath.Empty, second), Is.EqualTo(new byte[] { 0x02 }));
+    }
+
+    [Test]
+    public void Resolves_colliding_witness_buckets_before_and_after_writes([Values(2, 8, 9, 16)] int count)
+    {
+        int mask = (int)BitOperations.RoundUpToPowerOf2((uint)count + 1) - 1;
+        int bucket = ((int)(BitConverter.ToUInt32(Keccak.EmptyTreeHash.Bytes) & (uint)mask) + 1) & mask;
+        byte[][] nodes = new byte[count + 1][];
+        int found = 0;
+        for (int candidate = 0; found < nodes.Length; candidate++)
+        {
+            byte[] node = BitConverter.GetBytes(candidate);
+            if ((BitConverter.ToUInt32(HashOf(node).Bytes) & (uint)mask) == bucket) nodes[found++] = node;
+        }
+        HashKeyedNodeStorage storage = new(nodes.AsSpan(0, count));
+
+        for (int phase = 0; phase < 2; phase++)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(storage.Get(null, TreePath.Empty, HashOf(nodes[i])), Is.EqualTo(nodes[i]));
+                    Assert.That(storage.KeyExists(null, TreePath.Empty, HashOf(nodes[i])), Is.True);
+                }
+            }
+            Assert.That(storage.Get(null, TreePath.Empty, HashOf(nodes[^1])), Is.Null);
+            storage.Set(null, TreePath.Empty, UnknownHash, [0x01]);
+        }
+        storage.Set(null, TreePath.Empty, HashOf(nodes[0]), null);
+        Assert.That(storage.Get(null, TreePath.Empty, HashOf(nodes[0])), Is.Null);
+        Assert.That(storage.KeyExists(null, TreePath.Empty, HashOf(nodes[0])), Is.False);
+    }
+
+    [Test]
+    public void Duplicate_witness_nodes_resolve_and_can_be_evicted([Values(1, 9)] int count)
+    {
+        byte[][] nodes = new byte[count][];
+        Array.Fill(nodes, Nodes[1]);
+        HashKeyedNodeStorage storage = Storage(nodes);
+        ValueHash256 hash = HashOf(Nodes[1]);
+        Assert.That(storage.Get(null, TreePath.Empty, hash), Is.EqualTo(Nodes[1]));
+        storage.Set(null, TreePath.Empty, hash, null);
+        Assert.That(storage.Get(null, TreePath.Empty, hash), Is.Null);
     }
 
     [Test]

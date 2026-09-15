@@ -153,6 +153,12 @@ namespace Nethermind.Network.Rlpx
                 ThrowInvalidMac("payload");
         }
 
+        /// <remarks>
+        /// RLPx defines a single frame-mac over the whole frame-ciphertext, so the MAC cannot be checked
+        /// before every block has been absorbed into the ingress accumulator. Decrypting ahead of that check
+        /// is safe because the plaintext is confined to <see cref="_innerBuffer"/>, which <see cref="PassFrame"/>
+        /// only forwards once <see cref="AuthenticatePayload"/> has succeeded.
+        /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ProcessOneBlock(IByteBuffer input)
         {
