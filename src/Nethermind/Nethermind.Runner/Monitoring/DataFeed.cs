@@ -14,6 +14,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -111,16 +112,19 @@ public class DataFeed
     {
         if (string.IsNullOrWhiteSpace(events)) return StreamedEntryTypes;
 
-        List<EntryType> requested = [];
-        foreach (string name in events.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        ReadOnlySpan<char> names = events;
+        using ArrayPoolList<EntryType> requested = new(StreamedEntryTypes.Length);
+        foreach (Range range in names.Split(','))
         {
-            if (Enum.TryParse(name, ignoreCase: true, out EntryType type) && Array.IndexOf(StreamedEntryTypes, type) >= 0 && !requested.Contains(type))
+            if (Enum.TryParse(names[range].Trim(), ignoreCase: true, out EntryType type)
+                && Array.IndexOf(StreamedEntryTypes, type) >= 0
+                && !requested.Contains(type))
             {
                 requested.Add(type);
             }
         }
 
-        return requested.Count == 0 ? StreamedEntryTypes : requested.ToArray();
+        return requested.Count == 0 ? StreamedEntryTypes : requested.AsSpan().ToArray();
     }
 
     private async Task ProcessingFeeds(HttpContext ctx, EntryType[] requested, CancellationToken ct)
