@@ -6,16 +6,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Text;
-using CkzgLib;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.TxPool.Collections;
@@ -30,41 +25,39 @@ namespace Nethermind.TxPool.Test;
 /// disk seek. The two states are the ones the serve path can be in: warm, which is a hash this node announced and
 /// a peer asked for straight after, and cold, which is the same hash after a restart or after the
 /// <see cref="ITxPoolConfig.BlobCacheSize"/> LRUs have churned past it. A fresh pool over the same storage
-/// reproduces cold exactly, since it restores the light collection with both caches empty.
-/// Results go to <c>FRAME_SERVE_READ_OUT</c>, or <c>frame-serve-read.txt</c> in the temp directory, because the
-/// test runner swallows console writers.</remarks>
+/// reproduces cold exactly, since it restores the light collection with both caches empty.</remarks>
 [TestFixture]
 public class FrameTxServePathReadMeasurement
 {
-    private const int SampleTxs = 256;
-    private const int TimedPasses = 5;
-
     private readonly List<Transaction> _samples = [];
     private readonly StringBuilder _report = new();
 
     [OneTimeSetUp]
-    public void OneTimeSetup()
-    {
-        if (!KzgPolynomialCommitments.IsInitialized) KzgPolynomialCommitments.InitializeAsync().Wait();
-    }
+    public void OneTimeSetup() => FrameTxBlobMeasurementHarness.EnsureKzgInitialized();
 
     /// <summary>The two properties the serve path's accepted double read rests on, asserted where CI runs them.</summary>
     /// <remarks>The measurement below is <c>[Explicit]</c>, so without this neither claim would be checked on any
-    /// branch. The allocation bound is what proves the warm pair never reaches storage: a pass that decoded one
-    /// record would allocate orders of magnitude more than the whole 256-transaction pass is allowed here.</remarks>
+    /// branch.</remarks>
     [Test]
     public void Serving_an_announced_frame_tx_reads_no_storage_and_never_escalates_to_a_full_row()
     {
-        BlobTxStorage storage = BuildSamples(blobsPerTx: 1);
-        BlobTxDistinctSortedPool pool = InsertAll(storage);
+        CountingBlobTxStorage storage = BuildSamples(blobsPerTx: 1);
+        using PersistentBlobTxDistinctSortedPool pool = InsertAll(storage);
 
         Transaction sample = _samples[0];
         Assert.That(storage.TryGetWithoutBlobs(sample.Hash!.ValueHash256, sample.SenderAddress!, out _), Is.True,
             "admission writes the sidecar-free record, so the sidecar-free read never falls back to the full row");
 
+        storage.ResetCounts();
         (TimeSpan _, long allocated) = TimeServePair(pool);
-        Assert.That(allocated, Is.LessThan(8 * 1024),
-            $"{SampleTxs} warm serve pairs must answer from the pool's caches rather than decode any record");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(storage.FullRowReads, Is.Zero, "a warm serve must not re-read the sidecar-carrying row");
+            Assert.That(storage.SidecarFreeReads, Is.Zero, "a warm serve must not read the sidecar-free record either");
+            Assert.That(allocated, Is.LessThan(8 * 1024),
+                $"{FrameTxBlobMeasurementHarness.SampleTxs} warm serve pairs must answer from the pool's caches rather than decode any record");
+        });
     }
 
     [TestCase(1)]
@@ -72,59 +65,43 @@ public class FrameTxServePathReadMeasurement
     [Explicit("measurement harness")]
     public void Serving_a_blob_frame_tx_costs(int blobsPerTx)
     {
-        BlobTxStorage storage = BuildSamples(blobsPerTx);
-        BlobTxDistinctSortedPool warm = InsertAll(storage);
+        CountingBlobTxStorage storage = BuildSamples(blobsPerTx);
+        using PersistentBlobTxDistinctSortedPool warm = InsertAll(storage);
 
-        (TimeSpan warmPair, long warmPairAllocated) = Measure(() => TimeServePair(warm));
-        (TimeSpan warmSingle, long warmSingleAllocated) = Measure(() => TimeFullReadOnly(warm));
+        (TimeSpan warmPair, TimeSpan _, long warmPairAllocated) = FrameTxBlobMeasurementHarness.Measure(() => TimeServePair(warm));
+        (TimeSpan warmSingle, TimeSpan _, long warmSingleAllocated) = FrameTxBlobMeasurementHarness.Measure(() => TimeFullReadOnly(warm));
 
         // A fresh pool per pass keeps every sample cold: one pass touches each hash exactly once, and the
         // rebuild that resets the caches is outside the timer.
-        (TimeSpan coldPair, long coldPairAllocated) = Measure(() => TimeServePair(NewPool(storage)));
-        (TimeSpan coldSingle, long coldSingleAllocated) = Measure(() => TimeFullReadOnly(NewPool(storage)));
+        (TimeSpan coldPair, TimeSpan _, long coldPairAllocated) = FrameTxBlobMeasurementHarness.Measure(() => TimeOnAColdPool(storage, TimeServePair));
+        (TimeSpan coldSingle, TimeSpan _, long coldSingleAllocated) = FrameTxBlobMeasurementHarness.Measure(() => TimeOnAColdPool(storage, TimeFullReadOnly));
 
-        _report.AppendLine($"blobs per tx: {blobsPerTx}, samples: {SampleTxs}, best of {TimedPasses} after one discarded");
+        _report.AppendLine($"blobs per tx: {blobsPerTx}, samples: {FrameTxBlobMeasurementHarness.SampleTxs}, best of {FrameTxBlobMeasurementHarness.TimedPasses} after one discarded");
         AppendState("warm", warmPair, warmPairAllocated, warmSingle, warmSingleAllocated);
         AppendState("cold", coldPair, coldPairAllocated, coldSingle, coldSingleAllocated);
         _report.AppendLine();
     }
 
+    [OneTimeTearDown]
+    public void WriteReport() => FrameTxBlobMeasurementHarness.WriteReport(_report, "FRAME_SERVE_READ_OUT", "frame-serve-read.txt");
+
     private void AppendState(string state, TimeSpan pair, long pairAllocated, TimeSpan single, long singleAllocated)
     {
-        double pairUs = pair.TotalMicroseconds / SampleTxs;
-        double singleUs = single.TotalMicroseconds / SampleTxs;
+        double pairUs = pair.TotalMicroseconds / FrameTxBlobMeasurementHarness.SampleTxs;
+        double singleUs = single.TotalMicroseconds / FrameTxBlobMeasurementHarness.SampleTxs;
         _report.AppendLine($"  {state} pair {pairUs,8:N2}us single {singleUs,8:N2}us  discarded read {pairUs - singleUs,8:N2}us ({(pairUs / singleUs - 1) * 100,6:N1}%)");
-        _report.AppendLine($"  {state} allocated/tx  pair {pairAllocated / SampleTxs,9:N0}B single {singleAllocated / SampleTxs,9:N0}B");
+        _report.AppendLine($"  {state} allocated/tx  pair {pairAllocated / FrameTxBlobMeasurementHarness.SampleTxs,9:N0}B single {singleAllocated / FrameTxBlobMeasurementHarness.SampleTxs,9:N0}B");
     }
 
-    [OneTimeTearDown]
-    public void WriteReport()
+    private CountingBlobTxStorage BuildSamples(int blobsPerTx)
     {
-        if (_report.Length == 0) return;
-
-        string path = Environment.GetEnvironmentVariable("FRAME_SERVE_READ_OUT")
-            ?? Path.Combine(Path.GetTempPath(), "frame-serve-read.txt");
-        File.AppendAllText(path, _report.ToString());
-        TestContext.Out.WriteLine(_report.ToString());
+        FrameTxBlobMeasurementHarness.BuildSamples(blobsPerTx, _samples);
+        return new CountingBlobTxStorage(new BlobTxStorage());
     }
 
-    private BlobTxStorage BuildSamples(int blobsPerTx)
+    private PersistentBlobTxDistinctSortedPool InsertAll(CountingBlobTxStorage storage)
     {
-        _samples.Clear();
-        // One sidecar shared by every sample: the blobs differ only in bytes the decode does not branch on, and
-        // computing cell proofs per transaction would dominate the setup.
-        ShardBlobNetworkWrapper wrapper = BuildWrapper(blobsPerTx, out byte[][] versionedHashes);
-        for (int i = 0; i < SampleTxs; i++)
-        {
-            _samples.Add(BuildBlobFrameTx(TestItem.Addresses[i % TestItem.Addresses.Length], (ulong)i, wrapper, versionedHashes));
-        }
-
-        return new BlobTxStorage();
-    }
-
-    private BlobTxDistinctSortedPool InsertAll(BlobTxStorage storage)
-    {
-        BlobTxDistinctSortedPool pool = NewPool(storage);
+        PersistentBlobTxDistinctSortedPool pool = NewPool(storage);
         foreach (Transaction tx in _samples)
         {
             Assert.That(pool.TryInsert(tx.Hash!.ValueHash256, tx), Is.True);
@@ -133,29 +110,22 @@ public class FrameTxServePathReadMeasurement
         return pool;
     }
 
-    private static BlobTxDistinctSortedPool NewPool(BlobTxStorage storage)
+    private static PersistentBlobTxDistinctSortedPool NewPool(CountingBlobTxStorage storage)
     {
+        TxPoolConfig config = new();
+        // "Warm" below means every sample is still cached, which stops holding the moment the samples outnumber
+        // the LRU. Asserted here rather than left to an allocation figure nobody could trace back to the cause.
+        Assert.That(config.BlobCacheSize, Is.GreaterThanOrEqualTo(FrameTxBlobMeasurementHarness.SampleTxs),
+            $"{nameof(ITxPoolConfig.BlobCacheSize)} must hold every sample for the warm figures to mean anything");
+
         IComparer<Transaction> comparer = new TransactionComparerProvider(MainnetSpecProvider.Instance, Substitute.For<IBlockTree>()).GetDefaultComparer();
-        return new PersistentBlobTxDistinctSortedPool(storage, new TxPoolConfig(), comparer, LimboLogs.Instance);
+        return new PersistentBlobTxDistinctSortedPool(storage, config, comparer, LimboLogs.Instance);
     }
 
-    /// <summary>Runs <paramref name="pass"/> once discarded, then <see cref="TimedPasses"/> times.</summary>
-    /// <remarks>Without the discarded pass the read that runs first is charged with JIT-compiling a decoder the
-    /// second then finds warm, which lands on whichever side the caller happens to time first. The allocation
-    /// figure is taken from the same best pass, so the two reported numbers describe one run rather than two.</remarks>
-    private static (TimeSpan Best, long Allocated) Measure(Func<(TimeSpan, long)> pass)
+    private (TimeSpan, long) TimeOnAColdPool(CountingBlobTxStorage storage, Func<BlobTxDistinctSortedPool, (TimeSpan, long)> pass)
     {
-        pass();
-
-        TimeSpan best = TimeSpan.MaxValue;
-        long bestAllocated = 0;
-        for (int i = 0; i < TimedPasses; i++)
-        {
-            (TimeSpan elapsed, long allocated) = pass();
-            if (elapsed < best) (best, bestAllocated) = (elapsed, allocated);
-        }
-
-        return (best, bestAllocated);
+        using PersistentBlobTxDistinctSortedPool cold = NewPool(storage);
+        return pass(cold);
     }
 
     /// <summary>What the serve path does: the sidecar-free read whose result the type-6 branch then discards,
@@ -189,43 +159,5 @@ public class FrameTxServePathReadMeasurement
         }
 
         return (Stopwatch.GetElapsedTime(start), GC.GetAllocatedBytesForCurrentThread() - before);
-    }
-
-    private static ShardBlobNetworkWrapper BuildWrapper(int blobCount, out byte[][] versionedHashes)
-    {
-        IBlobProofsManager proofsManager = IBlobProofsManager.For(ProofVersion.V1);
-        byte[][] rawBlobs = new byte[blobCount][];
-        for (int i = 0; i < blobCount; i++)
-        {
-            byte[] blob = new byte[Ckzg.BytesPerBlob];
-            blob[0] = (byte)(i % 256);
-            rawBlobs[i] = blob;
-        }
-
-        ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper(rawBlobs);
-        proofsManager.ComputeProofsAndCommitments(wrapper);
-        versionedHashes = proofsManager.ComputeHashes(wrapper);
-        return wrapper;
-    }
-
-    private static Transaction BuildBlobFrameTx(Address sender, ulong nonce, ShardBlobNetworkWrapper wrapper, byte[][] versionedHashes)
-    {
-        Transaction tx = new()
-        {
-            Type = TxType.FrameTx,
-            ChainId = TestBlockchainIds.ChainId,
-            SenderAddress = sender,
-            Nonce = nonce,
-            GasLimit = 1_000_000,
-            GasPrice = 1,
-            DecodedMaxFeePerGas = 1.GWei,
-            MaxFeePerBlobGas = 1.GWei,
-            Frames = [FrameTxTestFrames.OnlyVerify(gasLimit: 40_000), FrameTxTestFrames.Pay(TestItem.AddressF, gasLimit: 40_000)],
-            FrameSignatures = [],
-            BlobVersionedHashes = versionedHashes,
-            NetworkWrapper = wrapper,
-        };
-        tx.Hash = tx.CalculateHash();
-        return tx;
     }
 }

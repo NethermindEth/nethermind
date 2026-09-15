@@ -6,13 +6,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Text;
-using CkzgLib;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -27,14 +22,10 @@ namespace Nethermind.TxPool.Test;
 /// byte ratio unconditionally, and of the timing ratio only because each read is warmed and then taken at its best
 /// pass: timing two cold reads in sequence charges whichever ran first with the JIT the second then finds done.
 /// The per-transaction cost is then extrapolated to <see cref="ITxPoolConfig.PersistentBlobStorageSize"/>, which
-/// is the fan-out a reorg reaches through <c>CollectAll</c>.
-/// Results go to <c>FRAME_BLOB_RELOAD_OUT</c>, or <c>frame-blob-reload.txt</c> in the temp directory, because the
-/// test runner swallows console writers.</remarks>
+/// is the fan-out a reorg reaches through <c>CollectAll</c>.</remarks>
 [TestFixture]
 public class FrameTxBlobRevalidationReloadMeasurement
 {
-    private const int SampleTxs = 256;
-    private const int TimedPasses = 5;
     private const int DefaultPersistentBlobStorageSize = 16384;
 
     private BlobTxStorage _storage = null!;
@@ -42,10 +33,7 @@ public class FrameTxBlobRevalidationReloadMeasurement
     private readonly StringBuilder _report = new();
 
     [OneTimeSetUp]
-    public void OneTimeSetup()
-    {
-        if (!KzgPolynomialCommitments.IsInitialized) KzgPolynomialCommitments.InitializeAsync().Wait();
-    }
+    public void OneTimeSetup() => FrameTxBlobMeasurementHarness.EnsureKzgInitialized();
 
     [SetUp]
     public void Setup()
@@ -76,17 +64,17 @@ public class FrameTxBlobRevalidationReloadMeasurement
 
         AssertEveryFormIsReadable();
 
-        (TimeSpan fullBest, TimeSpan fullWorst, long fullAllocated) = Measure(TimeFull);
-        (TimeSpan elidedBest, TimeSpan elidedWorst, long elidedAllocated) = Measure(TimeElided);
+        (TimeSpan fullBest, TimeSpan fullWorst, long fullAllocated) = FrameTxBlobMeasurementHarness.Measure(TimeFull);
+        (TimeSpan elidedBest, TimeSpan elidedWorst, long elidedAllocated) = FrameTxBlobMeasurementHarness.Measure(TimeElided);
 
-        double fullPerTxUs = fullBest.TotalMicroseconds / SampleTxs;
-        double elidedPerTxUs = elidedBest.TotalMicroseconds / SampleTxs;
+        double fullPerTxUs = fullBest.TotalMicroseconds / FrameTxBlobMeasurementHarness.SampleTxs;
+        double elidedPerTxUs = elidedBest.TotalMicroseconds / FrameTxBlobMeasurementHarness.SampleTxs;
 
-        _report.AppendLine($"blobs per tx: {blobsPerTx}, samples: {SampleTxs}, timed passes: {TimedPasses} after one discarded; read+decode and allocated are both the best pass");
+        _report.AppendLine($"blobs per tx: {blobsPerTx}, samples: {FrameTxBlobMeasurementHarness.SampleTxs}, timed passes: {FrameTxBlobMeasurementHarness.TimedPasses} after one discarded; read+decode and allocated are both the best pass");
         _report.AppendLine($"  record bytes   full {fullBytes,10:N0}   elided {elidedBytes,10:N0}   ratio {(double)fullBytes / elidedBytes,8:N1}x");
         _report.AppendLine($"  read+decode/tx full {fullPerTxUs,10:N1}us elided {elidedPerTxUs,10:N1}us ratio {fullPerTxUs / elidedPerTxUs,8:N1}x");
-        _report.AppendLine($"  worst pass/tx  full {fullWorst.TotalMicroseconds / SampleTxs,10:N1}us elided {elidedWorst.TotalMicroseconds / SampleTxs,10:N1}us ratio {fullWorst.TotalMicroseconds / elidedWorst.TotalMicroseconds,8:N1}x");
-        _report.AppendLine($"  allocated/tx   full {fullAllocated / SampleTxs,10:N0}B  elided {elidedAllocated / SampleTxs,10:N0}B");
+        _report.AppendLine($"  worst pass/tx  full {fullWorst.TotalMicroseconds / FrameTxBlobMeasurementHarness.SampleTxs,10:N1}us elided {elidedWorst.TotalMicroseconds / FrameTxBlobMeasurementHarness.SampleTxs,10:N1}us ratio {fullWorst.TotalMicroseconds / elidedWorst.TotalMicroseconds,8:N1}x");
+        _report.AppendLine($"  allocated/tx   full {fullAllocated / FrameTxBlobMeasurementHarness.SampleTxs,10:N0}B  elided {elidedAllocated / FrameTxBlobMeasurementHarness.SampleTxs,10:N0}B");
         _report.AppendLine($"  CollectAll over {DefaultPersistentBlobStorageSize:N0} under the head write lock:");
         _report.AppendLine($"    full   {fullPerTxUs * DefaultPersistentBlobStorageSize / 1_000_000,10:N1}s  ({(double)fullBytes * DefaultPersistentBlobStorageSize / (1 << 30),0:N1} GiB decoded)");
         _report.AppendLine($"    elided {elidedPerTxUs * DefaultPersistentBlobStorageSize / 1_000_000,10:N1}s  ({(double)elidedBytes * DefaultPersistentBlobStorageSize / (1 << 30),0:N1} GiB decoded)");
@@ -95,27 +83,15 @@ public class FrameTxBlobRevalidationReloadMeasurement
 
     private void StoreSamples(int blobsPerTx)
     {
-        // One sidecar shared by every sample: the blobs differ only in bytes the decode does not branch on, and
-        // computing cell proofs per transaction would dominate the setup.
-        ShardBlobNetworkWrapper wrapper = BuildWrapper(blobsPerTx, out byte[][] versionedHashes);
-        for (int i = 0; i < SampleTxs; i++)
+        FrameTxBlobMeasurementHarness.BuildSamples(blobsPerTx, _samples);
+        foreach (Transaction tx in _samples)
         {
-            Transaction tx = BuildBlobFrameTx(TestItem.Addresses[i % TestItem.Addresses.Length], (ulong)i, wrapper, versionedHashes);
             _storage.Add(tx);
-            _samples.Add(tx);
         }
     }
 
     [OneTimeTearDown]
-    public void WriteReport()
-    {
-        if (_report.Length == 0) return;
-
-        string path = Environment.GetEnvironmentVariable("FRAME_BLOB_RELOAD_OUT")
-            ?? Path.Combine(Path.GetTempPath(), "frame-blob-reload.txt");
-        File.AppendAllText(path, _report.ToString());
-        TestContext.Out.WriteLine(_report.ToString());
-    }
+    public void WriteReport() => FrameTxBlobMeasurementHarness.WriteReport(_report, "FRAME_BLOB_RELOAD_OUT", "frame-blob-reload.txt");
 
     /// <summary>Positive control: a timing pair means nothing if either read is answering with nothing, or if the
     /// sidecar-free form has lost the prefix the sweep reads.</summary>
@@ -129,31 +105,6 @@ public class FrameTxBlobRevalidationReloadMeasurement
         Assert.That(((ShardBlobNetworkWrapper)elided!.NetworkWrapper!).Blobs, Is.Empty, "the sidecar-free read must not carry blobs");
         Assert.That(elided.Frames, Is.Not.Null.And.Length.EqualTo(sample.Frames!.Length),
             "the sidecar-free form is only useful to revalidation if it keeps the prefix");
-    }
-
-    /// <summary>Runs <paramref name="pass"/> once discarded, then <see cref="TimedPasses"/> times.</summary>
-    /// <remarks>
-    /// Without the discarded pass the read that runs first is charged with JIT-compiling a decoder the second
-    /// then finds warm, which lands on whichever side the caller happens to time first rather than on the one
-    /// that is genuinely slower. The best pass is the reported figure and the worst is printed beside it, so a
-    /// spread wide enough to swallow the difference is visible rather than averaged away. The allocation figure
-    /// is taken from that same best pass, so the two reported numbers describe one run rather than two.
-    /// </remarks>
-    private static (TimeSpan Best, TimeSpan Worst, long Allocated) Measure(Func<(TimeSpan, long)> pass)
-    {
-        pass();
-
-        TimeSpan best = TimeSpan.MaxValue;
-        TimeSpan worst = TimeSpan.Zero;
-        long bestAllocated = 0;
-        for (int i = 0; i < TimedPasses; i++)
-        {
-            (TimeSpan elapsed, long passAllocated) = pass();
-            if (elapsed < best) (best, bestAllocated) = (elapsed, passAllocated);
-            if (elapsed > worst) worst = elapsed;
-        }
-
-        return (best, worst, bestAllocated);
     }
 
     private (TimeSpan, long) TimeFull()
@@ -181,42 +132,4 @@ public class FrameTxBlobRevalidationReloadMeasurement
     }
 
     private static byte[] Encoded(Transaction tx, RlpBehaviors behaviors) => TxDecoder.Instance.Encode(tx, behaviors).Bytes;
-
-    private static ShardBlobNetworkWrapper BuildWrapper(int blobCount, out byte[][] versionedHashes)
-    {
-        IBlobProofsManager proofsManager = IBlobProofsManager.For(ProofVersion.V1);
-        byte[][] rawBlobs = new byte[blobCount][];
-        for (int i = 0; i < blobCount; i++)
-        {
-            byte[] blob = new byte[Ckzg.BytesPerBlob];
-            blob[0] = (byte)(i % 256);
-            rawBlobs[i] = blob;
-        }
-
-        ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper(rawBlobs);
-        proofsManager.ComputeProofsAndCommitments(wrapper);
-        versionedHashes = proofsManager.ComputeHashes(wrapper);
-        return wrapper;
-    }
-
-    private static Transaction BuildBlobFrameTx(Address sender, ulong nonce, ShardBlobNetworkWrapper wrapper, byte[][] versionedHashes)
-    {
-        Transaction tx = new()
-        {
-            Type = TxType.FrameTx,
-            ChainId = TestBlockchainIds.ChainId,
-            SenderAddress = sender,
-            Nonce = nonce,
-            GasLimit = 1_000_000,
-            GasPrice = 1,
-            DecodedMaxFeePerGas = 1.GWei,
-            MaxFeePerBlobGas = 1.GWei,
-            Frames = [FrameTxTestFrames.OnlyVerify(gasLimit: 40_000), FrameTxTestFrames.Pay(TestItem.AddressF, gasLimit: 40_000)],
-            FrameSignatures = [],
-            BlobVersionedHashes = versionedHashes,
-            NetworkWrapper = wrapper,
-        };
-        tx.Hash = tx.CalculateHash();
-        return tx;
-    }
 }

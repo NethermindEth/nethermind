@@ -570,7 +570,7 @@ public class Eth72ProtocolHandler(
         }
 
         // Deliberately re-reads the row the call above already resolved: a serve answers this node's own
-        // announcement, so both reads hit the blob pool's caches, and an ITxPool discriminator would save only that.
+        // announcement, so both reads hit the blob pool's caches unless BlobCacheSize has churned past the hash.
         if (_txPool.TryGetPendingTransaction(hash, out tx)
             && tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
             && wrapper.HasFullBlobs())
