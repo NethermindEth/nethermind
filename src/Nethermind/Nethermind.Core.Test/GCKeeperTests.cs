@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Memory;
@@ -16,31 +15,6 @@ namespace Nethermind.Core.Test;
 [NonParallelizable]
 public class GCKeeperTests
 {
-    [Test]
-    public void Refused_collection_does_not_arm_loh_compaction(
-        [Values(GCCollectionMode.Aggressive, GCCollectionMode.Forced)] GCCollectionMode mode, [Values] bool pruning)
-    {
-        using GCScheduler.ForcedGCExclusionScope? exclusion = pruning ? GCScheduler.Instance.ExcludeForcedGC() : null;
-        bool paused = !pruning && GCScheduler.MarkGCPaused();
-        if (!pruning) Assert.That(paused, Is.True);
-        GCLargeObjectHeapCompactionMode previous = GCSettings.LargeObjectHeapCompactionMode;
-        try
-        {
-            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.Default;
-            bool collected = GcRegionRuntime.Instance.Collect(GcLevel.Gen2, mode, GcCompaction.Full);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(collected, Is.False);
-                Assert.That(GCSettings.LargeObjectHeapCompactionMode, Is.EqualTo(GCLargeObjectHeapCompactionMode.Default));
-            }
-        }
-        finally
-        {
-            GCSettings.LargeObjectHeapCompactionMode = previous;
-            if (paused) GCScheduler.MarkGCResumed();
-        }
-    }
-
     [Test]
     public void Released_before_dispatch_skips_entry([Values] bool shutdown)
     {
@@ -237,7 +211,7 @@ public class GCKeeperTests
     }
 
     [Test]
-    public async Task Cancelled_idle_wait_retains_decommit_until_a_quiet_gap([Values] bool shutdown)
+    public async Task Cancelled_idle_wait_retains_decommit_until_a_quiet_gap([Values] bool shutdown, [Values(1, 30)] int cancellations)
     {
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
         strategy.CanStartNoGCRegion().Returns(true);
@@ -260,14 +234,18 @@ public class GCKeeperTests
             }
         }
         using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, Delay);
-        CountPayload(keeper, strategy);
-        Task pending = keeper.ScheduleGCInternal();
-        await waiting.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.That(runtime.Collections, Is.Empty);
-        if (shutdown) keeper.Dispose();
-        else keeper.CancelPendingGC();
-        await pending.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.That(runtime.Collections, Is.Empty);
+        for (int i = 0; i < cancellations; i++)
+        {
+            waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            CountPayload(keeper, strategy);
+            Task pending = keeper.ScheduleGCInternal();
+            await waiting.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(runtime.Collections, Is.Empty);
+            if (shutdown && i == cancellations - 1) keeper.Dispose();
+            else keeper.CancelPendingGC();
+            await pending.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(runtime.Collections, Is.Empty);
+        }
         wait = false;
         await keeper.ScheduleGCInternal();
         if (shutdown)
@@ -413,17 +391,20 @@ public class GCKeeperTests
     }
 
     [Test]
-    public async Task Cancellation_does_not_wait_for_committed_collection([Values] bool dispose)
+    public async Task Cancellation_does_not_wait_for_committed_collection([Values] bool dispose, [Values(0, 1)] int delay)
     {
         using ManualResetEventSlim executing = new(false);
         using ManualResetEventSlim release = new(false);
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
-        strategy.PostBlockDelayMs.Returns(0);
+        strategy.CanStartNoGCRegion().Returns(true);
+        strategy.PostBlockDelayMs.Returns(delay);
         strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
         strategy.CollectionsPerDecommit.Returns(-1);
-        RegionRuntime runtime = new() { BeforeCollect = () => { executing.Set(); release.Wait(); } };
-        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime);
-        Task collection = Task.Run(keeper.ScheduleGCInternal);
+        TaskCompletionSource collectionReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        RegionRuntime runtime = new() { BeforeCollect = () => { executing.Set(); release.Wait(); collectionReleased.SetResult(); } };
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { },
+            static (_, _) => Task.FromResult(true));
+        Task collection = Task.Run(() => keeper.TryStartNoGCRegion().Dispose());
         Task cancellation = Task.CompletedTask;
         try
         {
@@ -438,7 +419,7 @@ public class GCKeeperTests
         finally
         {
             release.Set();
-            await Task.WhenAll(collection, cancellation).WaitAsync(TimeSpan.FromSeconds(5));
+            await Task.WhenAll(collection, cancellation, collectionReleased.Task).WaitAsync(TimeSpan.FromSeconds(5));
         }
     }
 

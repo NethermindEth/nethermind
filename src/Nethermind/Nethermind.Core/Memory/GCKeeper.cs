@@ -244,7 +244,8 @@ public class GCKeeper : IDisposable
                 }
                 else
                 {
-                    if (!await _delay(postBlockDelayMs, pendingGcCts.Token)) return;
+                    // A completed delay must not run collection under ScheduleGC's lock.
+                    if (!await _delay(postBlockDelayMs, pendingGcCts.Token).ConfigureAwait(ConfigureAwaitOptions.ForceYielding)) return;
                 }
 
                 if (pendingGcCts.IsCancellationRequested) return;
