@@ -46,8 +46,7 @@ public sealed class RangeLimitedLogFinder(
 
     private void EnsureScanWithinLimit(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
     {
-        // Read per call, as the module this replaced did, so the limit is not pinned to whenever the
-        // singleton happened to be built - which is now the first logs request rather than startup.
+        // The config may be reloaded while the singleton is in use.
         int maxBlockDepth = receiptConfig.MaxBlockDepth;
         if (maxBlockDepth <= 0 || toBlock.Number < fromBlock.Number)
             return;

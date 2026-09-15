@@ -37,8 +37,6 @@ public class RangeLimitedLogFinderTests
             CreateLogFinder(out ILogFinder inner, indexFrom: indexFrom, indexTo: indexTo),
             inner, IndexableFilter(), shouldThrow);
 
-    // The gap the marker-interface wiring left open: on an index-enabled node these bypassed the index and
-    // the limit alike, so any caller could ask for a genesis-to-head sequential read.
     [Test]
     public void Enforces_max_block_depth_on_a_caller_opting_out_of_the_log_index()
     {

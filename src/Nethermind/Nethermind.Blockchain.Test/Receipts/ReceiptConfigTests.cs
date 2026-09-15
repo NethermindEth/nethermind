@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Config.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Receipts;
@@ -24,10 +25,7 @@ public class ReceiptConfigTests
         ConfigItemAttribute? attribute = property.GetCustomAttribute<ConfigItemAttribute>();
         Assert.That(attribute, Is.Not.Null, "every config property is published, so every one needs a documented default");
 
-        object? value = property.GetValue(new ReceiptConfig());
-
-        Assert.That(value?.ToString() ?? "null",
-            Is.EqualTo(attribute!.DefaultValue?.Trim('"') ?? "null").IgnoreCase);
+        StandardConfigTests.CheckDefault(property, new ReceiptConfig());
     }
 
     private static IEnumerable<string> PropertyNames() => typeof(IReceiptConfig).GetProperties().Select(static p => p.Name);
