@@ -5276,9 +5276,7 @@ namespace Nethermind.TxPool.Test
         }
 
         // The deferral budget is one allowance per transaction, not one per reason it was deferred: a
-        // sidecar-free read that declines spends the same carry the simulation site later reads. So
-        // FrameTxRevalidationDeferralsExhausted reports a spent carry, and FrameTxRevalidationsDeferred beside
-        // it is what says whether simulation was what spent it.
+        // sidecar-free read that declines spends the same carry the simulation site later reads.
         [Test]
         public async Task Blob_frame_tx_carry_spent_by_declined_reads_is_already_gone_when_the_simulator_defers()
         {

@@ -93,7 +93,7 @@ namespace Nethermind.TxPool
         public static long FrameTxSimulations;
 
         [CounterMetric]
-        [Description("Number of pending EIP-8141 frame transactions revalidated against a new chain head.")]
+        [Description("Number of EIP-8141 frame-transaction revalidations run against a new chain head.")]
         public static long FrameTxRevalidations;
 
         [CounterMetric]
@@ -101,11 +101,11 @@ namespace Nethermind.TxPool
         public static long FrameTxRevalidationEvictions;
 
         [CounterMetric]
-        [Description("Number of EIP-8141 frame-transaction revalidations that reached no verdict and were deferred to the next chain head.")]
+        [Description("Number of EIP-8141 frame-transaction revalidations that reached no verdict on a bound or fault of this node's own, and were deferred to the next chain head.")]
         public static long FrameTxRevalidationsDeferred;
 
         [CounterMetric]
-        [Description("Number of EIP-8141 frame-transaction revalidations that reached no verdict and were not deferred, having already been carried across `TxPool.FrameTxRevalidationDeferralBudget` consecutive chain heads.")]
+        [Description("Number of EIP-8141 frame-transaction revalidations that reached no verdict on a bound or fault of this node's own and were not deferred, having already been carried across `TxPool.FrameTxRevalidationDeferralBudget` consecutive chain heads.")]
         public static long FrameTxRevalidationDeferralsExhausted;
 
         [CounterMetric]
