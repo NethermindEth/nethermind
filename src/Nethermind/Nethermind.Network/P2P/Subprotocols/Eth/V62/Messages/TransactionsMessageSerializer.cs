@@ -128,11 +128,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             (int prefixLength, int contentLength) = ctx.PeekPrefixAndContentLength();
             long size = isTyped ? contentLength : prefixLength + (long)contentLength;
 
-            if (size <= maxTxSize) return false;
-            if (!isTyped) return true;
+            if (size <= maxTxSize && size <= maxBlobTxSize) return false;
+            if (!isTyped) return size > maxTxSize;
 
             byte txType = ctx.Peek(prefixLength, 1)[0];
-            return txType != (byte)TxType.Blob || size > maxBlobTxSize;
+            return txType == (byte)TxType.Blob ? size > maxBlobTxSize : size > maxTxSize;
         }
     }
 }
