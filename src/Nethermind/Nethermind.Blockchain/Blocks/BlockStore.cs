@@ -48,17 +48,19 @@ public class BlockStore : IBlockStore, IClearableCache
 
     public byte[]? GetMetadata(byte[] key) => _blockDb.Get(key);
 
-    /// <remarks>Deliberately does not consult <see cref="_blockCache"/>: it is a bounded read accelerator whose
-    /// entries can be evicted at any time, and it holds blocks that were never written (a preloaded block cached
-    /// by <c>UpdateMainChainCore</c>). Callers use this to decide whether a block still has to be downloaded, so
-    /// a cache hit would let a body be skipped and then lost. The pending overlay is durable once drained.</remarks>
+    /// <inheritdoc/>
+    /// <remarks>Deliberately does not consult <c>_blockCache</c>: it is a bounded read accelerator whose entries
+    /// can be evicted at any time, and it holds blocks that were never written (a preloaded block cached by
+    /// <c>UpdateMainChainCore</c>), so a hit there would report a body that is about to vanish. The pending
+    /// overlay is durable - its entry is removed only after the write returns. Both key forms are probed, so this
+    /// agrees with <see cref="Get"/> on a database predating the block-number prefix.</remarks>
     public bool HasBlock(ulong blockNumber, Hash256 blockHash)
     {
         if (_pending?.Contains(blockHash) == true) return true;
 
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
-        return _blockDb.KeyExists(dbKey);
+        return _blockDb.KeyExists(dbKey) || _blockDb.KeyExists(blockHash.Bytes);
     }
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
