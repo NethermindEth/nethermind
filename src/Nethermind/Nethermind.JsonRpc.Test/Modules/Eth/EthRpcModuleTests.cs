@@ -1549,7 +1549,8 @@ public partial class EthRpcModuleTests
     [TestCase("eth_getHeaderByNumber", "0x9999999", TestName = "UnknownNumber")]
     [TestCase("eth_getHeaderByNumber", "finalized", TestName = "FinalizedAbsent")]
     [TestCase("eth_getHeaderByNumber", "safe", TestName = "SafeAbsent")]
-    public async Task EthGetHeaderByX_WhenBlockUnknown_ReturnsNull(string method, string blockParam)
+    [TestCase("eth_getHeaderByNumber", "pending", TestName = "Pending")]
+    public async Task EthGetHeaderByX_WhenBlockUnknownOrPending_ReturnsNull(string method, string blockParam)
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc(method, blockParam);
@@ -1557,12 +1558,14 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task EthGetHeaderByNumber_WhenPending_NilsTransientFields([Values("hash", "nonce", "miner")] string field)
+    public async Task EthGetHeaderByHash_WhenPendingHash_ReturnsHeader()
     {
         using Context ctx = await Context.Create();
-        string serialized = await ctx.Test.TestEthRpc("eth_getHeaderByNumber", "pending");
-        JToken json = JToken.Parse(serialized);
-        Assert.That(json["result"]![field]!.Type, Is.EqualTo(JTokenType.Null));
+        // PendingHash resolves to the head hash, so a hash lookup of it must still return a full header.
+        Assert.That(ctx.Test.BlockTree.PendingHash, Is.EqualTo(ctx.Test.BlockTree.Head!.Hash));
+        string serialized = await ctx.Test.TestEthRpc("eth_getHeaderByHash", ctx.Test.BlockTree.Head!.Hash!.ToString());
+        JObject result = (JObject)JToken.Parse(serialized)["result"]!;
+        Assert.That(result["hash"]!.Value<string>(), Is.EqualTo(ctx.Test.BlockTree.Head!.Hash!.ToString()));
     }
 
     [Test]
@@ -3012,15 +3015,20 @@ public partial class EthRpcModuleTests
                 configurer?.Invoke(builder);
             };
 
+            TestRpcBlockchain.Builder<TestRpcBlockchain> testBlockchainBuilder = TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+                .WithBlockchainBridge(blockchainBridge!)
+                .WithConfig(new JsonRpcConfig { EstimateErrorMargin = estimateErrorMargin, Timeout = -1 })
+                .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false });
+
+            // Left unset, the chain follows the suite-wide backend selection.
+            if (useFlatDb is not null)
+            {
+                testBlockchainBuilder.WithFlatDb(useFlatDb.Value);
+            }
+
             return Task.FromResult(new Context
             {
-                TestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.NethDev)
-                    .WithBlockchainBridge(blockchainBridge!)
-                    .WithConfig(new JsonRpcConfig { EstimateErrorMargin = estimateErrorMargin, Timeout = -1 })
-                    .WithBlocksConfig(new BlocksConfig() { ParallelExecution = false })
-                    .WithFlatDb(useFlatDb ?? (Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1"))
-                    .Build(wrappedConfigurer).Result,
-
+                TestFactory = () => testBlockchainBuilder.Build(wrappedConfigurer).Result,
                 AuraTestFactory = () => TestRpcBlockchain.ForTest(SealEngineType.AuRa)
                     .Build(wrappedConfigurer).Result
             });

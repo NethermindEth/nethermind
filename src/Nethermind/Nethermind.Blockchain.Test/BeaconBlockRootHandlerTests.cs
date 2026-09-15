@@ -149,8 +149,8 @@ public class BeaconBlockRootHandlerTests
             AccessList = new AccessList.Builder().AddAddress(Eip4788Constants.BeaconRootsAddress).Build()
         };
 
-        transaction.Hash = transaction.CalculateHash();
+        // System transactions carry no hash; compare the encodings instead.
         _transactionProcessor.Received().Execute(Arg.Is<Transaction>(t =>
-            t.Hash == transaction.Hash), NullTxTracer.Instance);
+            t.CalculateHash() == transaction.CalculateHash()), NullTxTracer.Instance);
     }
 }
