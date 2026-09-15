@@ -723,7 +723,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private ProcessingBranch PrepareProcessingBranch(Block suggestedBlock, ProcessingOptions options)
     {
         BlockHeader? branchingPoint = null;
-        ArrayPoolList<Block> blocksToBeAddedToMain = new((int)Reorganization.PersistenceInterval);
+        // The common case is a single-block branch (engine API new payload); the list grows on demand
+        // for deep reorgs, so don't rent (and later clear) a PersistenceInterval-sized array per block.
+        ArrayPoolList<Block> blocksToBeAddedToMain = new(16);
 
         bool branchingCondition;
 
