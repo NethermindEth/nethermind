@@ -60,13 +60,14 @@ public class SimulateReadOnlyBlocksProcessingScope(
     public IBlockProcessor BlockProcessor => blockProcessor;
 
     /// <summary>
-    /// Opens the world state for the first simulated block; the following blocks chain on it inside the same scope,
-    /// as the overridable env discards its overrides when the scope closes.
+    /// Attempts to open the world state for the first simulated block; the following blocks chain on it inside the
+    /// same scope, as the overridable env discards its overrides when the scope closes.
     /// </summary>
-    public void OpenAtTarget(BlockHeader firstBlock)
+    /// <returns><c>false</c> when the parent state of <paramref name="firstBlock"/> is unavailable.</returns>
+    public bool TryOpenAtTarget(BlockHeader firstBlock)
     {
         if (_overridableWorldStateCloser is not null) throw new InvalidOperationException("The simulate world state scope is already open.");
-        _overridableWorldStateCloser = overridableEnv.BuildAndOverrideAtTarget(firstBlock);
+        return overridableEnv.TryBuildAndOverrideAtTarget(firstBlock, stateOverride: null, specOverride: null, out _overridableWorldStateCloser);
     }
 
     public void Dispose()
