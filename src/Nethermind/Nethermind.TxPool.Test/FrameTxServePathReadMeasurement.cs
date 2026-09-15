@@ -76,17 +76,13 @@ public class FrameTxServePathReadMeasurement
         ServeReadCountingBlobTxStorage storage = BuildSamples(blobsPerTx);
         using PersistentBlobTxDistinctSortedPool warm = InsertAll(storage);
 
-        (TimeSpan warmPair, TimeSpan warmPairWorst, long warmPairAllocated) = FrameTxBlobMeasurementHarness.Measure(() => TimeServePair(warm));
-        AssertThePassAnswered();
-        (TimeSpan warmSingle, TimeSpan warmSingleWorst, long warmSingleAllocated) = FrameTxBlobMeasurementHarness.Measure(() => TimeFullReadOnly(warm));
-        AssertThePassAnswered();
+        (TimeSpan warmPair, TimeSpan warmPairWorst, long warmPairAllocated) = Measure(() => TimeServePair(warm));
+        (TimeSpan warmSingle, TimeSpan warmSingleWorst, long warmSingleAllocated) = Measure(() => TimeFullReadOnly(warm));
 
         // A fresh pool per pass keeps every sample cold: one pass touches each hash exactly once, and the
         // rebuild that resets the caches is outside the timer.
-        (TimeSpan coldPair, TimeSpan coldPairWorst, long coldPairAllocated) = FrameTxBlobMeasurementHarness.Measure(() => TimeOnAColdPool(storage, TimeServePair));
-        AssertThePassAnswered();
-        (TimeSpan coldSingle, TimeSpan coldSingleWorst, long coldSingleAllocated) = FrameTxBlobMeasurementHarness.Measure(() => TimeOnAColdPool(storage, TimeFullReadOnly));
-        AssertThePassAnswered();
+        (TimeSpan coldPair, TimeSpan coldPairWorst, long coldPairAllocated) = Measure(() => TimeOnAColdPool(storage, TimeServePair));
+        (TimeSpan coldSingle, TimeSpan coldSingleWorst, long coldSingleAllocated) = Measure(() => TimeOnAColdPool(storage, TimeFullReadOnly));
 
         _report.AppendLine($"blobs per tx: {blobsPerTx}, samples: {FrameTxBlobMeasurementHarness.SampleTxs}, best of {FrameTxBlobMeasurementHarness.TimedPasses} after one discarded");
         AppendState("warm", warmPair, warmPairWorst, warmPairAllocated, warmSingle, warmSingleWorst, warmSingleAllocated);
@@ -109,6 +105,17 @@ public class FrameTxServePathReadMeasurement
     }
 
     private static double PerTxUs(TimeSpan elapsed) => elapsed.TotalMicroseconds / FrameTxBlobMeasurementHarness.SampleTxs;
+
+    /// <summary>Best-of-N over <paramref name="pass"/>, with every pass required to have served every sample.</summary>
+    /// <remarks>Checking only the last pass would leave the selector free to pick a vacuous one: a pass that serves
+    /// nothing is the minimum by construction, so it would become the reported figure with the check still green.</remarks>
+    private (TimeSpan Best, TimeSpan Worst, long Allocated) Measure(Func<(TimeSpan, long)> pass)
+        => FrameTxBlobMeasurementHarness.Measure(() =>
+        {
+            (TimeSpan elapsed, long allocated) = pass();
+            AssertThePassAnswered();
+            return (elapsed, allocated);
+        });
 
     private void AssertThePassAnswered() => Assert.That(_answered, Is.EqualTo(FrameTxBlobMeasurementHarness.SampleTxs),
         "a pass that serves nothing is the cheapest of all, so a timing or allocation figure only means something once every sample was answered");
