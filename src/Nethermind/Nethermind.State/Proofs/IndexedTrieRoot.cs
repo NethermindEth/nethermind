@@ -21,7 +21,6 @@ internal static class IndexedTrieRoot
 {
     internal const int LeafBatchSize = 16;
     internal const int MinItemsForParallelRootHash = 64;
-    // A receipt leaf (bloom plus logs) is heavy enough to pay off the fan-out at a single batch.
     internal const int MinReceiptsForParallelRootHash = LeafBatchSize;
 
     internal interface IValueEncoder<T>
