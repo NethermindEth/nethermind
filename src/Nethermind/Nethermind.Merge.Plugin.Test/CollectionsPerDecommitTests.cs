@@ -12,12 +12,12 @@ namespace Nethermind.Merge.Plugin.Test;
 public class CollectionsPerDecommitTests
 {
     [Test]
-    public void Defaults_compact_only_on_every_fiftieth_payload()
+    public void Defaults_compact_only_on_every_twenty_fifth_payload()
     {
         IMergeConfig config = new ConfigProvider().GetConfig<IMergeConfig>();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(config.CollectionsPerDecommit, Is.EqualTo(50));
+            Assert.That(config.CollectionsPerDecommit, Is.EqualTo(25));
             Assert.That(config.CompactMemory, Is.EqualTo(GcCompaction.No));
         }
     }

@@ -61,7 +61,7 @@ public interface IMergeConfig : IConfig
             - A positive number: Requests after that many newPayload calls, including calls whose pending collection was cancelled.
 
 
-            """, DefaultValue = "50")]
+            """, DefaultValue = "25")]
     public int CollectionsPerDecommit { get; set; }
 
     [ConfigItem(Description = "The timeout, in milliseconds, for the `engine_newPayload` method.", DefaultValue = "7000", HiddenFromDocs = true)]
