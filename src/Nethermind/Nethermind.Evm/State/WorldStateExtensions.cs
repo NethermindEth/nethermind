@@ -50,7 +50,7 @@ public static class WorldStateExtensions
     {
         ref readonly UInt256 credit = ref executionType.GetBalanceCredit(in balanceChange);
 
-        if (executionType.IsAnyCreate()) // CREATE/CREATE2 bump nonce afterward, so safe to pass
+        if (executionType.IsAnyCreate()) // CREATE/CREATE2 frame bumps the nonce after, so the account will not be left empty
             worldState.AddToBalanceAndCreateIfNotExists(address, in credit, spec, out _);
         else
             worldState.AddToBalanceAndCreateIfNotEmpty(address, in credit, spec);
