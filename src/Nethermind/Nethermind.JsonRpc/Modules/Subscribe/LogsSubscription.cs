@@ -61,13 +61,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private async Task TryPublishEvent(BlockHeader blockHeader, TxReceipt[] receipts, string eventName, bool removed)
         {
-            BlockHeader fromBlock = _blockTree.FindHeader(_filter.FromBlock);
-            BlockHeader toBlock = _blockTree.FindHeader(_filter.ToBlock, true);
-
-            bool isAfterFromBlock = blockHeader.Number >= fromBlock?.Number;
-            bool isBeforeToBlock = blockHeader.Number <= toBlock?.Number;
-
-            if (isAfterFromBlock && isBeforeToBlock)
+            if (IsWithinBound(_filter.FromBlock, blockHeader, lowerBound: true) && IsWithinBound(_filter.ToBlock, blockHeader, lowerBound: false))
             {
                 IEnumerable<FilterLog> filterLogs = GetFilterLogs(blockHeader, receipts, removed);
 
@@ -83,6 +77,29 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id}: {eventName} event happens, but there are no logs matching filter.");
             }
         }
+
+        /// <summary>
+        /// Whether <paramref name="header"/> lies on the right side of <paramref name="bound"/>.
+        /// </summary>
+        /// <remarks>
+        /// "latest"/"pending" (the defaults) mean an open-ended subscription, not the head at publish time: the head is
+        /// moved before BlockAddedToMain fires for each block of a branch and the receipts event is dispatched
+        /// asynchronously, so resolving them here would drop every block that is not the head, including the removed
+        /// side of a reorg. "earliest" is the default lower bound of a supplied filter, so it must not cost a lookup either.
+        /// A hash identifies one block only in the {"blockHash": ..} form (both bounds equal); as a one-sided bound it is a
+        /// position on the chain, like a number. Any other bound is resolved through the block tree, which throws for a
+        /// type it does not know.
+        /// </remarks>
+        private bool IsWithinBound(BlockParameter bound, BlockHeader header, bool lowerBound) => bound.Type switch
+        {
+            BlockParameterType.Latest or BlockParameterType.Pending => true,
+            BlockParameterType.Earliest when lowerBound => true,
+            BlockParameterType.BlockNumber => IsOnSide(header.Number, bound.BlockNumber, lowerBound),
+            BlockParameterType.BlockHash when _filter.FromBlock.Equals(_filter.ToBlock) => header.Hash == bound.BlockHash,
+            _ => IsOnSide(header.Number, _blockTree.FindHeader(bound)?.Number, lowerBound),
+        };
+
+        private static bool IsOnSide(ulong number, ulong? bound, bool lowerBound) => lowerBound ? number >= bound : number <= bound;
 
         private IEnumerable<FilterLog> GetFilterLogs(BlockHeader blockHeader, TxReceipt[] receipts, bool removed)
         {
