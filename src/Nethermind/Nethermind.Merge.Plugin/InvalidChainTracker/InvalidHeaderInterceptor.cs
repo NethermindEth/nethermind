@@ -20,9 +20,7 @@ public class InvalidHeaderInterceptor(
         TrackValidationResult(header, headerValidator.Validate(header, parent, isUncle, out error));
 
     public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error, bool validateHash) =>
-        TrackValidationResult(header, validateHash
-            ? headerValidator.Validate(header, parent, isUncle, out error)
-            : headerValidator.Validate(header, parent, isUncle, out error, validateHash: false));
+        TrackValidationResult(header, headerValidator.Validate(header, parent, isUncle, out error, validateHash));
 
     private bool TrackValidationResult(BlockHeader header, bool result)
     {

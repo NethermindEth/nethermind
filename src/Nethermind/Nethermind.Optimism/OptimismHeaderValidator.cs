@@ -17,7 +17,7 @@ public class PreBedrockHeaderValidator(
     ISpecProvider? specProvider,
     ILogManager? logManager) : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
 {
-    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error, bool validateHash = true)
+    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error, bool validateHash)
     {
         error = null;
         return typeof(TOrphaned) == typeof(OnFlag) || ValidateParent(header, parent, ref error);
@@ -36,7 +36,7 @@ public class OptimismHeaderValidator(
         new PreBedrockHeaderValidator(blockTree, sealValidator, specProvider, logManager),
         blockTree, specProvider, sealValidator, logManager)
 {
-    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error, bool validateHash = true)
+    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error, bool validateHash)
     {
         if (specHelper.IsHolocene(header))
         {

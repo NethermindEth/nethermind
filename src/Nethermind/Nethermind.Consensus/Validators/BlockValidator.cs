@@ -63,7 +63,12 @@ public class BlockValidator(
     /// <param name="block">A block to validate</param>
     /// <param name="parent">Parent of the block</param>
     /// <param name="errorMessage">Message detailing a validation failure.</param>
-    /// <param name="validateHashes"></param>
+    /// <param name="validateHashes">
+    /// <c>false</c> to skip recomputing hashes the caller has already verified: the header hash, the uncles hash,
+    /// the transactions root and the withdrawals root. Only pass <c>false</c> after verifying the header hash
+    /// (see <see cref="HeaderValidator.ValidateHash(BlockHeader)"/>); otherwise a block whose hash
+    /// does not match its contents is accepted, and that hash is what the block tree and the consensus layer see.
+    /// </param>
     /// <returns>
     /// <c>true</c> if the <paramref name="block"/> is valid; otherwise, <c>false</c>.
     /// </returns>
@@ -88,11 +93,8 @@ public class BlockValidator(
     private bool ValidateHeader<TOrphaned>(Block block, BlockHeader? parent, bool validateHashes, ref string? errorMessage)
         where TOrphaned : struct, IFlag
     {
-        // validateHashes: false means the caller has already verified the header hash, so skip recomputing it.
         bool blockHeaderValid = typeof(TOrphaned) == typeof(OffFlag)
-            ? parent is not null && (validateHashes
-                ? _headerValidator.Validate(block.Header, parent, false, out errorMessage)
-                : _headerValidator.Validate(block.Header, parent, false, out errorMessage, validateHash: false))
+            ? parent is not null && _headerValidator.Validate(block.Header, parent, false, out errorMessage, validateHashes)
             : parent is null && _headerValidator.ValidateOrphaned(block.Header, out errorMessage);
 
         if (_logger.IsDebug && !blockHeaderValid) _logger.Debug($"{Invalid(block)} Invalid header: {errorMessage}");

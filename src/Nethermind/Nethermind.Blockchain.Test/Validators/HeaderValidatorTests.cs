@@ -312,8 +312,9 @@ public class HeaderValidatorTests
     }
 
     [Test]
-    public void Validate_SkippingHash_DoesNotRecomputeHash()
+    public void Validate_WhenHashValidationSkipped_MismatchedHashIsAccepted()
     {
+        // Always.Valid rather than the fixture's ethash seal validator, which rejects the zeroed hash on its own.
         HeaderValidator sut = new(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
         _block.Header.Hash = Keccak.Zero;
 

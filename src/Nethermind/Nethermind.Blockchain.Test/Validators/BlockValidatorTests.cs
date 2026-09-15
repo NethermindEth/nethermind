@@ -33,7 +33,8 @@ public class BlockValidatorTests
     public void Setup()
     {
         IHeaderValidator headerValidator = Substitute.For<IHeaderValidator>();
-        headerValidator.Validate(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()).Returns(true);
+        headerValidator.Validate(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<bool>(), out Arg.Any<string?>(), Arg.Any<bool>())
+            .Returns(true);
         _blockValidator = new(
             Substitute.For<ITxValidator>(),
             headerValidator,
@@ -42,6 +43,37 @@ public class BlockValidatorTests
             LimboLogs.Instance);
     }
 
+
+    /// <summary>
+    /// The header hash is the one check <c>validateHashes</c> turns off, so an inverted branch on the way to the
+    /// header validator would silently disable it on every path, sync included.
+    /// </summary>
+    [TestCase(true, false, TestName = "ValidateSuggestedBlock_ValidatingHashes_RejectsAMismatchedHeaderHash")]
+    [TestCase(false, true, TestName = "ValidateSuggestedBlock_SkippingHashes_AcceptsAMismatchedHeaderHash")]
+    public void ValidateSuggestedBlock_CarriesValidateHashesToTheHeaderValidator(bool validateHashes, bool expectedValid)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Byzantium.Instance);
+        IBlockTree blockTree = Build.A.BlockTree().WithoutSettingHead.TestObject;
+        BlockValidator sut = new(
+            Always.Valid,
+            new HeaderValidator(blockTree, Always.Valid, specProvider, LimboLogs.Instance),
+            Always.Valid,
+            specProvider,
+            LimboLogs.Instance);
+
+        Block parent = Build.A.Block.WithDifficulty(1).TestObject;
+        Block block = Build.A.Block.WithParent(parent).WithDifficulty(2).TestObject;
+        blockTree.SuggestBlock(parent);
+        block.Header.Hash = Keccak.Zero;
+
+        bool isValid = sut.ValidateSuggestedBlock(block, parent.Header, out string? error, validateHashes);
+
+        Assert.That(isValid, Is.EqualTo(expectedValid), error);
+        if (!expectedValid)
+        {
+            Assert.That(error, Does.StartWith("InvalidHeaderHash"), "the hash check must be what rejects the block");
+        }
+    }
 
     [Test]
     public void Accepts_valid_block()

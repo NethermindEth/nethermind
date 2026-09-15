@@ -71,13 +71,14 @@ namespace Nethermind.Consensus.Validators
         /// <param name="isUncle"><value>True</value> if is an uncle block, otherwise <value>False</value></param>
         /// <param name="error">Detailed error message if validation fails, otherwise <value>null</value>.</param>
         /// <returns><value>True</value> if validation succeeds otherwise <value>false</value></returns>
-        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
-            Validate<OffFlag>(header, parent, isUncle, out error);
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error) =>
+            Validate<OffFlag>(header, parent, isUncle, out error, validateHash: true);
 
-        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error, bool validateHash) =>
+        /// <inheritdoc cref="IHeaderValidator.Validate(BlockHeader, BlockHeader, bool, out string, bool)"/>
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error, bool validateHash) =>
             Validate<OffFlag>(header, parent, isUncle, out error, validateHash);
 
-        protected virtual bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error, bool validateHash = true) where TOrphaned : struct, IFlag
+        protected virtual bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error, bool validateHash) where TOrphaned : struct, IFlag
         {
             IReleaseSpec spec;
             error = null;
@@ -103,7 +104,7 @@ namespace Nethermind.Consensus.Validators
         }
 
         public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
-            Validate<OnFlag>(header, null, false, out error);
+            Validate<OnFlag>(header, null, false, out error, validateHash: true);
 
         protected virtual bool ValidateRequestsHash(BlockHeader header, IReleaseSpec spec, ref string? error)
         {

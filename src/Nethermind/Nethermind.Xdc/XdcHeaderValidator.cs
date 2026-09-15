@@ -21,7 +21,7 @@ public class XdcHeaderValidator(
     ISpecProvider specProvider,
     ILogManager? logManager = null) : HeaderValidator(blockTree, sealValidator, specProvider, logManager)
 {
-    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader parent, bool isUncle, out string? error, bool validateHash = true)
+    protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader parent, bool isUncle, out string? error, bool validateHash)
     {
         ArgumentNullException.ThrowIfNull(parent);
         if (header is not XdcBlockHeader xdcHeader)
