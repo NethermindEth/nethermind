@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.State;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain;
+using Nethermind.Evm.State;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
@@ -73,5 +76,12 @@ public class FlatHistoryModule : Module
             .AddSingleton<IHistoryBlockExecutorFactory, ProcessingHistoryBlockExecutorFactory>()
             .AddSingleton<TransactionChangesetBuilder>()
             .AddStep(typeof(StartTransactionChangesetBuilder))
-            .AddSingleton<IPrefixStateSeedSource, ChangesetPrefixStateSeedSource>();
+            .AddSingleton<IPrefixStateSeedSource>(ctx =>
+            {
+                IBlockTree blockTree = ctx.Resolve<IBlockTree>();
+                return new ChangesetPrefixStateSeedSource(
+                    ctx.Resolve<TransactionChangesetIndex>(),
+                    ctx.Resolve<IStateReader>(),
+                    block => block.Header.ParentHash is null ? null : blockTree.FindHeader(block.Header.ParentHash, BlockTreeLookupOptions.None));
+            });
 }
