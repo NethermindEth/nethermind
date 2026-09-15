@@ -1242,21 +1242,35 @@ jobs:
           }
 
           compute_percentiles "${processing_ms}" "" > "${metrics_file}"
+          if [[ -s "${client_ms}" ]]; then echo "SOURCE=sse"; else echo "SOURCE=k6"; fi >> "${metrics_file}"
 
-          # Also compute K6 TTFB metrics when client metrics were primary
+          # Also compute K6 request-time metrics when client metrics were primary. The same table carries
+          # the gas used, which gives MGas/s over the client's processing time.
           if [[ -s "${client_ms}" ]]; then
+            ttfb_table="${RUNNER_TEMP}/expb-ttfb-table.txt"
             ttfb_ms="${RUNNER_TEMP}/expb-ttfb-ms.txt"
+            ttfb_gas="${RUNNER_TEMP}/expb-ttfb-gas.txt"
             awk -F'|' '
               /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
+                gas = $3
                 value = $4
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", gas)
                 gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
                 if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
-                  print value
+                  print gas, value
                 }
               }
-            ' "${clean_log}" > "${ttfb_ms}"
+            ' "${clean_log}" > "${ttfb_table}"
+            awk '{ print $2 }' "${ttfb_table}" > "${ttfb_ms}"
+            awk '{ print $1 }' "${ttfb_table}" > "${ttfb_gas}"
             if [[ -s "${ttfb_ms}" ]]; then
               compute_percentiles "${ttfb_ms}" "TTFB_" >> "${metrics_file}"
+              # Row i of the k6 table is block i of the feed. The feed reports a block when the next
+              # payload is requested, so it can lack the last one; the sums stop at the shorter list.
+              mgas_s=$(awk 'NR == FNR { gas[NR] = $1; paired = NR; next } FNR <= paired { total_gas += gas[FNR]; total_ms += $1 } END { if (total_ms > 0) printf "%.2f", (total_gas / 1000000) / (total_ms / 1000) }' "${ttfb_gas}" "${client_ms}")
+              if [[ -n "${mgas_s}" ]]; then
+                echo "MGAS_S=${mgas_s}" >> "${metrics_file}"
+              fi
             fi
           fi
 
@@ -1264,17 +1278,18 @@ jobs:
           echo ""
           echo "========================================="
           if [[ -s "${client_ms}" ]]; then
-            echo "  Client Processing (SSE) Metrics"
+            echo "  Block processing (Nethermind)"
           else
-            echo "  Processing Metrics (K6 TTFB)"
+            echo "  newPayload request time (k6)"
           fi
           echo "========================================="
-          while IFS='=' read -r key val; do
+          grep -v "^SOURCE=\|^TTFB_\|^MGAS_S=" "${metrics_file}" | while IFS='=' read -r key val; do
             printf "  %-10s %s ms\n" "${key}" "${val}"
-          done < "${metrics_file}"
+          done
           if [[ -s "${client_ms}" ]] && grep -q "^TTFB_AVG=" "${metrics_file}" 2>/dev/null; then
+            printf "  %-10s %s\n" "MGAS_S" "${mgas_s:-n/a}"
             echo "-----------------------------------------"
-            echo "  K6 TTFB (secondary)"
+            echo "  newPayload request time (k6)"
             echo "-----------------------------------------"
             grep "^TTFB_" "${metrics_file}" | while IFS='=' read -r key val; do
               printf "  %-10s %s ms\n" "${key#TTFB_}" "${val}"
@@ -1555,31 +1570,44 @@ jobs:
             local current_metrics="$2"
             local master_metrics="$3"
             local prefix="$4"
+            local with_mgas="${5:-false}"
 
-            local metrics=("AVG" "MEDIAN" "P90" "P95" "P99" "MIN" "MAX")
+            local metrics=("MIN" "AVG" "MEDIAN" "P90" "P99" "MAX")
+            local labels=("Min" "Avg" "P50" "P90" "P99" "Max")
 
             if [[ ! -f "${master_metrics}" ]] || ! grep -q "^${prefix}AVG=" "${master_metrics}" 2>/dev/null; then
               append_line "| Metric | PR |"
               append_line "|---|---:|"
-              for m in "${metrics[@]}"; do
+              for i in "${!metrics[@]}"; do
                 local val
-                val="$(load_metric "${current_metrics}" "${prefix}${m}")"
-                if [[ -z "${val}" ]]; then val="$(load_metric_with_fallback "${current_metrics}" "${prefix}${m}" "${prefix}MEAN")"; fi
-                append_line "| ${m} (ms) | ${val:-n/a} |"
+                val="$(load_metric "${current_metrics}" "${prefix}${metrics[$i]}")"
+                if [[ -z "${val}" ]]; then val="$(load_metric_with_fallback "${current_metrics}" "${prefix}${metrics[$i]}" "${prefix}MEAN")"; fi
+                append_line "| ${labels[$i]} (ms) | ${val:-n/a} |"
               done
+              if [[ "${with_mgas}" == "true" ]]; then
+                local mgas
+                mgas="$(load_metric "${current_metrics}" "MGAS_S")"
+                append_line "| MGas/s | ${mgas:-n/a} |"
+              fi
               return
             fi
 
-            append_line "| Metric | PR | Master (cached) | Delta |"
+            append_line "| Metric | Master (cached) | PR | Delta |"
             append_line "|---|---:|---:|---:|"
-            for m in "${metrics[@]}"; do
+            for i in "${!metrics[@]}"; do
               local cv mv
-              cv="$(load_metric "${current_metrics}" "${prefix}${m}")"
-              if [[ -z "${cv}" ]]; then cv="$(load_metric_with_fallback "${current_metrics}" "${prefix}${m}" "${prefix}MEAN")"; fi
-              mv="$(load_metric "${master_metrics}" "${prefix}${m}")"
-              if [[ -z "${mv}" ]]; then mv="$(load_metric_with_fallback "${master_metrics}" "${prefix}${m}" "${prefix}MEAN")"; fi
-              append_line "| ${m} (ms) | ${cv:-n/a} | ${mv:-n/a} | $(percentage_delta "${cv}" "${mv}") |"
+              cv="$(load_metric "${current_metrics}" "${prefix}${metrics[$i]}")"
+              if [[ -z "${cv}" ]]; then cv="$(load_metric_with_fallback "${current_metrics}" "${prefix}${metrics[$i]}" "${prefix}MEAN")"; fi
+              mv="$(load_metric "${master_metrics}" "${prefix}${metrics[$i]}")"
+              if [[ -z "${mv}" ]]; then mv="$(load_metric_with_fallback "${master_metrics}" "${prefix}${metrics[$i]}" "${prefix}MEAN")"; fi
+              append_line "| ${labels[$i]} (ms) | ${mv:-n/a} | ${cv:-n/a} | $(percentage_delta "${cv}" "${mv}") |"
             done
+            if [[ "${with_mgas}" == "true" ]]; then
+              local cm mm
+              cm="$(load_metric "${current_metrics}" "MGAS_S")"
+              mm="$(load_metric "${master_metrics}" "MGAS_S")"
+              append_line "| MGas/s | ${mm:-n/a} | ${cm:-n/a} | $(percentage_delta "${cm}" "${mm}") |"
+            fi
           }
 
           build_table() {
@@ -1603,22 +1631,24 @@ jobs:
               append_line "No cached master baseline for \`${payload_set}\`. A baseline will be created from the next successful \`master\` push run."
             fi
 
-            # Primary: client-side (SSE) metrics or fallback
-            append_blank
-            if grep -q "^TTFB_AVG=" "${current_metrics}" 2>/dev/null; then
-              append_line "**Client Processing (SSE)**"
-            fi
-            append_blank
-            emit_metrics_section "Processing" "${current_metrics}" "${master_metrics}" ""
-
-            # Secondary: K6 TTFB metrics (only shown when SSE data was primary)
-            if grep -q "^TTFB_AVG=" "${current_metrics}" 2>/dev/null; then
+            # The request time is what the consensus client waits for; the processing time isolates EVM
+            # and state work. Without client metrics the unprefixed keys hold the k6 table instead.
+            if [[ "$(load_metric "${current_metrics}" "SOURCE")" == "sse" ]]; then
+              if grep -q "^TTFB_AVG=" "${current_metrics}" 2>/dev/null; then
+                append_blank
+                append_line "**newPayload request time (k6)**"
+                append_blank
+                emit_metrics_section "Request" "${current_metrics}" "${master_metrics}" "TTFB_"
+              fi
               append_blank
-              append_line "<details><summary>K6 TTFB</summary>"
+              append_line "**Block processing (Nethermind)**"
               append_blank
-              emit_metrics_section "TTFB" "${current_metrics}" "${master_metrics}" "TTFB_"
+              emit_metrics_section "Processing" "${current_metrics}" "${master_metrics}" "" "true"
+            else
               append_blank
-              append_line "</details>"
+              append_line "**newPayload request time (k6)**"
+              append_blank
+              emit_metrics_section "Request" "${current_metrics}" "${master_metrics}" ""
             fi
           }
 
@@ -1860,7 +1890,7 @@ jobs:
                 if [[ -n "${ttfb_check}" ]]; then
                   {
                     echo ""
-                    echo "<details><summary>K6 TTFB</summary>"
+                    echo "<details><summary>newPayload request time (k6)</summary>"
                     echo ""
                     echo "| Metric | Value |"
                     echo "|---|---:|"
@@ -2603,21 +2633,35 @@ jobs:
             echo "INVALID_BLOCK_FOUND=${invalid_block_found}"
           } > "${metrics_dir}/metrics.env"
           compute_percentiles "${processing_ms}" "" >> "${metrics_dir}/metrics.env"
+          if [[ -s "${client_ms}" ]]; then echo "SOURCE=sse"; else echo "SOURCE=k6"; fi >> "${metrics_dir}/metrics.env"
 
-          # Also compute K6 TTFB metrics when client metrics were primary
+          # Also compute K6 request-time metrics when client metrics were primary. The same table carries
+          # the gas used, which gives MGas/s over the client's processing time.
           if [[ -s "${client_ms}" ]]; then
+            ttfb_table="${RUNNER_TEMP}/expb-ttfb-table-${key}.txt"
             ttfb_ms="${RUNNER_TEMP}/expb-ttfb-ms-${key}.txt"
+            ttfb_gas="${RUNNER_TEMP}/expb-ttfb-gas-${key}.txt"
             awk -F'|' '
               /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
+                gas = $3
                 value = $4
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", gas)
                 gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
                 if (value ~ /^[0-9]+(\.[0-9]+)?$/) {
-                  print value
+                  print gas, value
                 }
               }
-            ' "${clean_log}" > "${ttfb_ms}"
+            ' "${clean_log}" > "${ttfb_table}"
+            awk '{ print $2 }' "${ttfb_table}" > "${ttfb_ms}"
+            awk '{ print $1 }' "${ttfb_table}" > "${ttfb_gas}"
             if [[ -s "${ttfb_ms}" ]]; then
               compute_percentiles "${ttfb_ms}" "TTFB_" >> "${metrics_dir}/metrics.env"
+              # Row i of the k6 table is block i of the feed. The feed reports a block when the next
+              # payload is requested, so it can lack the last one; the sums stop at the shorter list.
+              mgas_s=$(awk 'NR == FNR { gas[NR] = $1; paired = NR; next } FNR <= paired { total_gas += gas[FNR]; total_ms += $1 } END { if (total_ms > 0) printf "%.2f", (total_gas / 1000000) / (total_ms / 1000) }' "${ttfb_gas}" "${client_ms}")
+              if [[ -n "${mgas_s}" ]]; then
+                echo "MGAS_S=${mgas_s}" >> "${metrics_dir}/metrics.env"
+              fi
             fi
           fi
 
@@ -2625,17 +2669,18 @@ jobs:
           echo "========================================="
           echo "  Metrics for ${TAG} run ${RUN}"
           if [[ -s "${client_ms}" ]]; then
-            echo "  Source: Client Processing (SSE)"
+            echo "  Block processing (Nethermind)"
           else
-            echo "  Source: K6 TTFB"
+            echo "  newPayload request time (k6)"
           fi
           echo "========================================="
-          grep -v "^TAG=\|^RUN=\|^EXCEPTION_\|^INVALID_\|^TTFB_" "${metrics_dir}/metrics.env" | while IFS='=' read -r key val; do
+          grep -v "^TAG=\|^RUN=\|^EXCEPTION_\|^INVALID_\|^SOURCE=\|^TTFB_\|^MGAS_S=" "${metrics_dir}/metrics.env" | while IFS='=' read -r key val; do
             printf "  %-10s %s ms\n" "${key}" "${val}"
           done
           if grep -q "^TTFB_AVG=" "${metrics_dir}/metrics.env" 2>/dev/null; then
+            printf "  %-10s %s\n" "MGAS_S" "${mgas_s:-n/a}"
             echo "-----------------------------------------"
-            echo "  K6 TTFB (secondary)"
+            echo "  newPayload request time (k6)"
             echo "-----------------------------------------"
             grep "^TTFB_" "${metrics_dir}/metrics.env" | while IFS='=' read -r key val; do
               printf "  %-10s %s ms\n" "${key#TTFB_}" "${val}"
