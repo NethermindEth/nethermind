@@ -280,8 +280,8 @@ public class TransactionsMessageSerializerTests
     private static IEnumerable<TestCaseData> BlobCapCases()
     {
         // A one-blob tx's mempool-form size (~128 KiB of sidecar) is far above either cap below, so whether
-        // it survives turns on the blob cap alone - which Cancun's blob-gas allowance raises past it and
-        // Shanghai's, carrying no blobs, does not.
+        // it survives turns on the blob cap alone - which Cancun's sidecar allowance raises past it, while
+        // Shanghai's, allowing no blobs, does not.
         yield return new TestCaseData(Cancun.Instance, 500L, 500L, 1)
             .SetName("Keeps a blob tx above MaxTxSize but within the blob cap");
         yield return new TestCaseData(Shanghai.Instance, null, 500L, 0)
