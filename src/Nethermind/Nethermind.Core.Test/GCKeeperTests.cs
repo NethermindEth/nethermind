@@ -403,6 +403,21 @@ public class GCKeeperTests
     }
 
     [Test]
+    public async Task Successful_collection_throttles_the_next_collection()
+    {
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        strategy.CollectionsPerDecommit.Returns(-1);
+        RegionRuntime runtime = new();
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { });
+
+        await keeper.ScheduleGCInternal(throttle: true);
+        await keeper.ScheduleGCInternal(throttle: true);
+
+        Assert.That(runtime.Collections, Has.Count.EqualTo(1));
+    }
+
+    [Test]
     public async Task Cancellation_after_yield_prevents_collection([Values(0, -1)] int delay)
     {
         using GCKeeper keeper = CreateKeeper(delay);
