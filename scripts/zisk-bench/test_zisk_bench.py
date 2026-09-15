@@ -590,36 +590,31 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
 
 
 class InputListTests(unittest.TestCase):
-    """`inputs.json` and the correctness workflow's matrix must name the same blocks.
+    """`inputs.json` is the only place the pinned block set is written down.
 
-    They are two lists because converting the merge-gating matrix to read the file is a change to a
-    workflow that cannot be exercised locally. Keeping them in step is therefore enforced here: a
-    benchmark reporting on a different set of blocks than the tests verify would be quietly misleading.
+    Both workflows read it: the benchmark selects a base-owned copy of it, and the correctness matrix
+    is built from it at run time. A second, restated list would let the benchmark report on blocks the
+    tests never verified, so these tests fail if one reappears.
     """
 
     REPOSITORY = Path(__file__).resolve().parents[2]
+    GUEST_INPUTS = "src/Nethermind/Nethermind.Stateless.ZiskGuest/inputs.json"
 
-    def test_matches_the_stateless_test_matrix(self):
-        import re
-
+    def test_the_correctness_matrix_is_built_from_the_file(self):
         workflow = (self.REPOSITORY / ".github/workflows/stateless-tests.yml").read_text(encoding="utf-8")
-        start = workflow.index("        include:")
-        matrix = re.findall(
-            r"- input: (\S+)\s+hash: (\S+)\s+output: (\S+)",
-            workflow[start:workflow.index("    steps:", start)],
-        )
 
-        inputs = json.loads(
-            (self.REPOSITORY / "src/Nethermind/Nethermind.Stateless.ZiskGuest/inputs.json")
-            .read_text(encoding="utf-8")
-        )
-        self.assertEqual(len(inputs), 9)
+        self.assertIn(f"jq -c . {self.GUEST_INPUTS}", workflow)
+        self.assertIn("include: ${{ fromJSON(needs.build.outputs.blocks) }}", workflow)
+        self.assertNotIn("- input:", workflow, "the matrix restates the block set instead of reading it")
 
-        self.assertEqual(
-            matrix,
-            [(entry["input"], entry["hash"], entry["output"]) for entry in inputs],
-            "inputs.json has drifted from the stateless-tests.yml matrix",
-        )
+    def test_the_pinned_set_has_the_shape_both_workflows_expect(self):
+        inputs = json.loads((self.REPOSITORY / self.GUEST_INPUTS).read_text(encoding="utf-8"))
+
+        self.assertTrue(inputs)
+        for entry in inputs:
+            self.assertRegex(entry["input"], r"^[0-9]+\.ssz$")
+            self.assertRegex(entry["hash"], r"^[0-9a-f]{64}$")
+            self.assertRegex(entry["output"], r"^[0-9a-f]{64}$")
 
 
 if __name__ == "__main__":

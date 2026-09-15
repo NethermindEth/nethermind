@@ -100,8 +100,9 @@ jobs:
           python-version: '3.12'
 
       # Covers the emulator-log parse the guest cost report is built on, and the check that
-      # inputs.json still names the blocks stateless-tests.yml verifies. Both fail silently
-      # otherwise: a drifted parse reports nothing, a drifted block list reports the wrong thing.
+      # stateless-tests.yml still builds its matrix from inputs.json rather than restating it.
+      # Both fail silently otherwise: a drifted parse reports nothing, a second block list
+      # lets the benchmark report on blocks the tests never verified.
       - name: Run script test suites
         run: python -m unittest discover -s scripts/zisk-bench -p 'test*.py' -v
 
