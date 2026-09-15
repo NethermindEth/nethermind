@@ -331,7 +331,7 @@ public class BlockCachePreWarmerTests
         {
             foreach (IHasAccessList systemAccessList in systemAccessLists)
             {
-                AccessList? accessList = systemAccessList.GetAccessList(block, Osaka.Instance);
+                AccessList? accessList = systemAccessList.GetAccessList(block, Amsterdam.Instance);
                 if (accessList is null) continue;
 
                 foreach ((Address address, _) in accessList)
