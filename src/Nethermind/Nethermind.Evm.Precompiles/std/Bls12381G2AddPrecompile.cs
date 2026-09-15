@@ -14,8 +14,6 @@ public partial class Bls12381G2AddPrecompile
     [SkipLocalsInit]
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
-        Metrics.Bls12381G2AddPrecompile++;
-
         if (!ValidateInputLength(inputData))
             return Errors.InvalidInputLength;
 
