@@ -224,12 +224,9 @@ namespace Nethermind.Synchronization.Test.SnapSync
         }
 
         [Test]
-        public void AddStorageRange_ZeroNibbleExtension_Rejected(
-            [Values(1, 10)] int nodeCount,
-            [Values] bool hasTerminalNode)
+        public void AddStorageRange_ZeroNibbleExtension_Rejected([Values] bool underBranch)
         {
-            (Hash256 storageRoot, ArrayPoolList<byte[]> proofList) =
-                BuildZeroNibbleExtensionChain(nodeCount, hasTerminalNode ? [0xc2, 0x3f, 0x01] : null);
+            (Hash256 storageRoot, ArrayPoolList<byte[]> proofList) = BuildZeroNibbleExtensionProof(underBranch);
 
             PathWithAccount account = new(
                 TestItem.KeccakA,
@@ -247,32 +244,46 @@ namespace Nethermind.Synchronization.Test.SnapSync
             Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProofNode));
         }
 
-        private static (Hash256 storageRoot, ArrayPoolList<byte[]> proofList) BuildZeroNibbleExtensionChain(int nodeCount, byte[] terminal)
+        /// <summary>
+        /// Builds a proof set containing a zero-nibble extension node, reached either as the proof root or,
+        /// when <paramref name="underBranch"/> is set, as the left-boundary child of a branch root.
+        /// </summary>
+        private static (Hash256 rootHash, ArrayPoolList<byte[]> proofList) BuildZeroNibbleExtensionProof(bool underBranch)
         {
-            byte[] childHash = new byte[32];
-            childHash[31] = 0x01;
+            byte[] extension = new byte[35];
+            extension[0] = (byte)(Rlp.EmptyListByte + extension.Length - 1);
+            extension[1] = 0x00; // hex-prefix: zero-nibble extension
+            extension[2] = 0xa0; // bytes32 header
+            extension[^1] = 0x01; // child hash, absent from the proof set and never resolved
 
-            bool hasTerminal = terminal is not null;
-            if (hasTerminal)
-                childHash = Keccak.Compute(terminal).BytesToArray();
+            ArrayPoolList<byte[]> proofList = new(2) { extension };
+            byte[] rootHash = Keccak.Compute(extension).BytesToArray();
 
-            byte[][] extensions = new byte[nodeCount][];
-            for (int i = nodeCount - 1; i >= 0; i--)
+            if (underBranch)
             {
-                byte[] rlp = new byte[35];
-                rlp[0] = (byte)(Rlp.EmptyListByte + rlp.Length - 1);
-                rlp[1] = 0x00; // hex-prefix: zero-nibble extension
-                rlp[2] = 0xa0; // bytes32 header
-                Buffer.BlockCopy(childHash, 0, rlp, 3, 32);
-                extensions[i] = rlp;
-                childHash = Keccak.Compute(rlp).BytesToArray();
+                byte[] branch = BuildBranchWithFirstChild(rootHash);
+                proofList.Add(branch);
+                rootHash = Keccak.Compute(branch).BytesToArray();
             }
 
-            ArrayPoolList<byte[]> proofList = new(nodeCount + (hasTerminal ? 1 : 0));
-            foreach (byte[] ext in extensions) proofList.Add(ext);
-            if (hasTerminal) proofList.Add(terminal);
+            return (new Hash256(rootHash), proofList);
+        }
 
-            return (new Hash256(childHash), proofList);
+        /// <summary>
+        /// A 17-item branch whose only child sits at nibble 0, placing it on the left boundary of a range starting at <see cref="Keccak.Zero"/>.
+        /// </summary>
+        private static byte[] BuildBranchWithFirstChild(byte[] childHash)
+        {
+            const int emptyItemCount = 16; // 15 empty children plus the empty value slot
+            const int childOffset = 2;
+
+            byte[] branch = new byte[childOffset + Hash256.Size + emptyItemCount];
+            branch[0] = (byte)(Rlp.EmptyListByte + branch.Length - 1);
+            branch[1] = 0xa0; // bytes32 header
+            childHash.CopyTo(branch.AsSpan(childOffset));
+            branch.AsSpan(childOffset + Hash256.Size).Fill(Rlp.EmptyByteArrayByte);
+
+            return branch;
         }
 
         private static StorageRange PrepareStorageRequest(ValueHash256 accountPath, Hash256 storageRoot, ValueHash256 startingHash) =>
