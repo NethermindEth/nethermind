@@ -25,6 +25,7 @@ internal sealed class RangeOverlay : IStateReadOverlay
         LastBlock = lastBlock;
         LastHash = lastHash;
         Length = (older?.Length ?? 0) + 1;
+        Entries = older?.Entries ?? 0;
     }
 
     public ulong LastBlock { get; }
@@ -33,6 +34,9 @@ internal sealed class RangeOverlay : IStateReadOverlay
 
     /// <summary>Blocks in the chain.</summary>
     public int Length { get; }
+
+    /// <summary>Account and slot entries held by the whole chain, what it costs to keep.</summary>
+    public long Entries { get; private set; }
 
     /// <summary>A new chain head: <paramref name="block"/>, folded through its last transaction, in front of
     /// <paramref name="older"/>.</summary>
@@ -60,9 +64,15 @@ internal sealed class RangeOverlay : IStateReadOverlay
             node._storageAccounts.Add(cell.Address);
         }
 
+        node.Entries += node._accounts.Count + node._slots.Count;
         return node;
     }
 
+    /// <remarks>The storage root is the one field this chain does not maintain exactly: an account wiped in any
+    /// block of the chain reports the empty root even when a later block wrote slots again, the same approximation
+    /// <see cref="MidBlockReadOverlay"/> makes within one block. It is safe where this overlay is read, because
+    /// storage is served slot by slot through the overlay and the scope's storage tree only ever turns an empty
+    /// root into a non-empty one, never the reverse; nothing on the trace path reads the root for anything else.</remarks>
     public bool TryGetAccount(Address address, Account? underlying, out Account? overlaid)
     {
         UInt256? nonce = null;

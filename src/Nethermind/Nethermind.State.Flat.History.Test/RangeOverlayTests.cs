@@ -103,6 +103,24 @@ public class RangeOverlayTests
     }
 
     [Test]
+    public void AChainThatHoldsTooManyEntries_IsNotExtended()
+    {
+        ConsecutiveBlockOverlays overlays = new(maxEntries: 1);
+        BlockChangesets seven = Rows(7, TestItem.KeccakA);
+        BlockChangesets eight = Rows(8, TestItem.KeccakB);
+
+        overlays.Publish(seven, null);
+        RangeOverlay afterSeven = overlays.EndingAt(7, TestItem.KeccakA)!;
+        overlays.Publish(eight, afterSeven);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterSeven.Entries, Is.EqualTo(1), "one account written");
+            Assert.That(overlays.EndingAt(8, TestItem.KeccakB)!.Length, Is.EqualTo(1), "the budget is spent, so the block starts a new chain");
+        }
+    }
+
+    [Test]
     public void ConsecutiveBlockOverlays_ChainOntoTheBlockTheyContinue_AndCutAtTheLimit()
     {
         ConsecutiveBlockOverlays overlays = new(maxBlocks: 2);

@@ -6,7 +6,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using System.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -24,10 +23,10 @@ public class DebugModuleFactory(
     ILogManager logManager
 ) : IRpcModuleFactory<IDebugRpcModule>
 {
-    private readonly Lock _lock = new();
-    private ParallelBlockTracer? _parallelTracer;
+    private readonly SharedParallelBlockTracer _parallelTracer = new(envFactory, rootLifetimeScope, prefixSeeds, flatDbConfig, logManager,
+        builder => ConfigureTracerContainer(builder, validationBlockProcessingModules));
 
-    private ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder) =>
+    private static ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder, IBlockValidationModule[] validationBlockProcessingModules) =>
         builder
             // Standard configuration
             // Note: Not overriding `IReceiptStorage` to null.
@@ -47,11 +46,11 @@ public class DebugModuleFactory(
     public IDebugRpcModule Create()
     {
         IOverridableEnv env = envFactory.Create();
-        IParallelBlockTracer? parallelTracer = ParallelTracer();
+        IParallelBlockTracer? parallelTracer = _parallelTracer.Get();
 
         ILifetimeScope tracerLifecycle = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {
-            ConfigureTracerContainer(builder).AddModule(env);
+            ConfigureTracerContainer(builder, validationBlockProcessingModules).AddModule(env);
             if (parallelTracer is not null) builder.AddScoped<IParallelBlockTracer>(parallelTracer);
         });
 
@@ -65,33 +64,5 @@ public class DebugModuleFactory(
         rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(debugRpcModuleLifetime);
 
         return debugRpcModuleLifetime.Resolve<IDebugRpcModule>();
-    }
-
-    /// <summary>Shared by every debug module instance: the workers' environments are the expensive part, and a
-    /// node-wide cap on them is the point.</summary>
-    private ParallelBlockTracer? ParallelTracer()
-    {
-        if (!prefixSeeds.Enabled) return null;
-
-        lock (_lock)
-        {
-            if (_parallelTracer is null)
-            {
-                _parallelTracer = new ParallelBlockTracer(BuildParallelEnvironment, prefixSeeds, ParallelBlockTracer.DegreeFrom(flatDbConfig), logManager);
-                rootLifetimeScope.Disposer.AddInstanceForDisposal(_parallelTracer);
-            }
-
-            return _parallelTracer;
-        }
-    }
-
-    private IOverridableEnv<ParallelBlockTracer.Components> BuildParallelEnvironment()
-    {
-        IOverridableEnv env = envFactory.Create();
-        ILifetimeScope scope = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            ConfigureTracerContainer(builder)
-                .AddModule(env)
-                .Add<ParallelBlockTracer.Components>());
-        return new ParallelBlockTracer.OwnedEnvironment(scope.Resolve<IOverridableEnv<ParallelBlockTracer.Components>>(), scope);
     }
 }

@@ -27,7 +27,9 @@ namespace Nethermind.Consensus.Tracing;
 /// source arms the writes of the transactions before it, only the target executes, and its trace is byte for byte
 /// what the replay would have produced. Workers take transactions in ascending order off one cursor, so each folds
 /// every changeset once. The first transaction runs on the calling thread before the workers start, which recovers
-/// the block's senders once.</summary>
+/// the block's senders once and proves the tracer can be bounded to one transaction; a tracer that cannot be sends
+/// the caller back to the replay before any worker exists. The caller always waits for its workers, so nothing they
+/// hold is released under them, even when the request is cancelled.</summary>
 public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 {
     public const int MaxDefaultDegree = 16;
@@ -60,7 +62,8 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         [NotNullWhen(true)] out IReadOnlyList<TTrace>? traces)
     {
         traces = null;
-        if (_degree < 2 || !_seeds.Enabled || block.Transactions.Length < 2 || !_seeds.TryOpenBlock(block, out ICoveredBlock? covered)) return false;
+        if (_degree < 2 || !_seeds.Enabled || block.Transactions.Length < 2 || !HashesKnown(block.Transactions)) return false;
+        if (!_seeds.TryOpenBlock(block, out ICoveredBlock? covered)) return false;
 
         using (covered)
         {
@@ -69,19 +72,17 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
             Cursor cursor = new();
 
-            TraceOne(block, parent, transactions, cursor.Next(), covered.CreateWorkerSeeds(), forTransaction, results, stop.Token);
+            if (!TraceOne(block, parent, transactions, cursor.Next(), covered.CreateWorkerSeeds(), forTransaction, results, stop.Token)) return false;
 
             int workers = Math.Min(_degree, transactions.Length - 1);
             Task[] tasks = new Task[workers];
             for (int w = 0; w < workers; w++)
             {
                 IPrefixStateSeedSource seeds = covered.CreateWorkerSeeds();
-                tasks[w] = Task.Factory.StartNew(
-                    () => TraceMany(block, parent, transactions, cursor, seeds, forTransaction, results, stop),
-                    stop.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                tasks[w] = Task.Run(() => TraceMany(block, parent, transactions, cursor, seeds, forTransaction, results, stop), stop.Token);
             }
 
-            Await(tasks, token);
+            Await(tasks);
 
             if (afterTransactions is not null)
             {
@@ -109,7 +110,8 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         {
             for (int i = cursor.Next(); i < transactions.Length; i = cursor.Next())
             {
-                TraceOne(block, parent, transactions, i, seeds, forTransaction, results, stop.Token);
+                if (!TraceOne(block, parent, transactions, i, seeds, forTransaction, results, stop.Token))
+                    throw new InvalidOperationException("The tracer bounded the first transaction and refused a later one.");
             }
         }
         catch
@@ -119,7 +121,9 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         }
     }
 
-    private void TraceOne<TTrace>(Block block, BlockHeader parent, Transaction[] transactions, int index, IPrefixStateSeedSource seeds,
+    /// <summary>False when the tracer cannot be bounded to one transaction, which only a reward-tracing tracer
+    /// cannot; the caller then replays the block as before.</summary>
+    private bool TraceOne<TTrace>(Block block, BlockHeader parent, Transaction[] transactions, int index, IPrefixStateSeedSource seeds,
         Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction, IReadOnlyCollection<TTrace>?[] results, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
@@ -132,10 +136,15 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             try
             {
                 IBlockTracer bounded = TransactionTraceBoundary.Wrap(tracer.WithCancellation(token), hash, seeds);
-                if (bounded is not TransactionTraceBoundary) throw new InvalidOperationException("A tracer that traces rewards cannot trace one transaction alone.");
+                if (bounded is not TransactionTraceBoundary)
+                {
+                    tracer.TryDispose();
+                    return false;
+                }
 
                 scope.Component.Processor.Process(OwnCopy(block), TraceProcessingOptions.ReadOnlyReplay, bounded, token);
                 results[index] = tracer.BuildResult();
+                return true;
             }
             catch
             {
@@ -178,11 +187,23 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     /// senders recovered on it, are shared.</summary>
     private static Block OwnCopy(Block block) => block.WithReplacedHeader(block.Header.Clone());
 
-    private static void Await(Task[] tasks, CancellationToken token)
+    private static bool HashesKnown(Transaction[] transactions)
+    {
+        foreach (Transaction tx in transactions)
+        {
+            if (tx.Hash is null) return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>Waits for every worker whatever happens: they stop on their own once the request is cancelled, and
+    /// what they hold is released only after they are gone.</summary>
+    private static void Await(Task[] tasks)
     {
         try
         {
-            Task.WaitAll(tasks, token);
+            Task.WaitAll(tasks);
         }
         catch (AggregateException e)
         {
@@ -200,11 +221,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         }
     }
 
-    public void Dispose()
-    {
-        _environments.Dispose();
-        _slots.Dispose();
-    }
+    public void Dispose() => _environments.Dispose();
 
     private sealed class Cursor
     {
