@@ -16,10 +16,9 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
 {
     private const ulong GasLimit = 30_000_000UL;
 
-    // Cached per contract address; only written and read on the block-processing thread
-    // (the prewarmer path always requests storage cells, which bypasses the cache).
-    private Address? _cachedAccessListAddress;
-    private AccessList? _cachedAccessList;
+    // The storage-cell-free list depends only on the contract address, which every chainspec leaves
+    // at the canonical one; AccessList is immutable once built, so one shared instance covers them all.
+    private static readonly AccessList BeaconRootsOnlyAccessList = BuildAddressOnlyAccessList(Eip4788Constants.BeaconRootsAddress);
 
     AccessList? IHasAccessList.GetAccessList(Block block, IReleaseSpec spec)
         => BeaconRootsAccessList(block, spec, includeStorageCells: true).accessList;
@@ -44,13 +43,9 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
 
         if (!includeStorageCells)
         {
-            if (_cachedAccessListAddress != eip4788ContractAddress)
-            {
-                _cachedAccessList = new AccessList.Builder().AddAddress(eip4788ContractAddress).Build();
-                _cachedAccessListAddress = eip4788ContractAddress;
-            }
-
-            return (eip4788ContractAddress, _cachedAccessList);
+            return (eip4788ContractAddress, eip4788ContractAddress == Eip4788Constants.BeaconRootsAddress
+                ? BeaconRootsOnlyAccessList
+                : BuildAddressOnlyAccessList(eip4788ContractAddress));
         }
 
         AccessList.Builder builder = new AccessList.Builder()
@@ -89,4 +84,7 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
             processor.Execute(transaction, tracer);
         }
     }
+
+    private static AccessList BuildAddressOnlyAccessList(Address address) =>
+        new AccessList.Builder().AddAddress(address).Build();
 }
