@@ -66,10 +66,19 @@
     <PackageVersion Include="Nethermind.Libp2p.Protocols.PubsubPeerDiscovery" Version="1.0.0-preview.45" />
     <PackageVersion Include="Nethermind.MclBindings" Version="1.0.5" />
     <PackageVersion Include="Nethermind.Numerics.Int256" Version="1.9.0" />
+    <!-- The four zkVM packages are pinned exactly, as RocksDbBindings is: each
+         carries a native half whose ABI the guest is compiled against (syscall
+         numbers, accelerator ordering, the public-values protocol), so a
+         higher resolved version is a silently different contract, not a
+         compatible upgrade. They also come from NuGet's staging gallery, where
+         a version can be replaced or purged, and nuget.config audits only
+         nuget.org. -->
+    <PackageVersion Include="Nethermind.OpenVM.Runtime" Version="[1.0.0-preview.1]" />
     <PackageVersion Include="Nethermind.RocksDbBindings" Version="[11.8.1-preview.92]" />
+    <PackageVersion Include="Nethermind.Sp1.Runtime" Version="[1.0.0-preview.1]" />
     <PackageVersion Include="Nethermind.TurboPForBindings" Version="1.0.0" />
-    <PackageVersion Include="Nethermind.Zkvm.Abstractions" Version="1.0.0-preview.2" />
-    <PackageVersion Include="Nethermind.ZiskOS.Runtime" Version="1.0.0-preview.8" />
+    <PackageVersion Include="Nethermind.ZiskOS.Runtime" Version="[1.0.0-preview.9]" />
+    <PackageVersion Include="Nethermind.Zkvm.Abstractions" Version="[1.0.0-preview.2]" />
     <PackageVersion Include="Nito.Collections.Deque" Version="1.2.1" />
     <PackageVersion Include="NJsonSchema" Version="11.6.1" />
     <PackageVersion Include="NLog" Version="5.5.1" />
