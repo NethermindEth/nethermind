@@ -29,6 +29,7 @@ using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 
 namespace Ethereum.Test.Base
 {
@@ -154,7 +155,14 @@ namespace Ethereum.Test.Base
 
             if (blockValidator.ValidateOrphanedBlock(block, out string blockValidationError))
             {
-                txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec), txTracer);
+                try
+                {
+                    txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec), txTracer);
+                }
+                catch (InvalidDataException e)
+                {
+                    blockValidationError = e.Message;
+                }
             }
             else
             {

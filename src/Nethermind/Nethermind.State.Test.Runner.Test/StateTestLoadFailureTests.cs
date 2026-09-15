@@ -68,60 +68,35 @@ public class StateTestLoadFailureTests
         // fixture's own transaction reaches the runner and tx validation is what rejects it. A v
         // below 27 does not decode, and the template standing in for it must stay invalid rather
         // than become a valid transfer from the named sender.
-        string post = signatureSurvivesDecoding
-            ? $$"""
-                "expectException": "TransactionException.INVALID_SIGNATURE_VRS",
-                      "txbytes": "{{PinnedOutOfRangeSignatureTxBytes()}}",
-                """
-            : string.Empty;
-
-        string file = Path.Combine(_directory, "bad_v_r_s.json");
-        File.WriteAllText(file, $$"""
-            {
-              "t": {
-                "env": {
-                  "currentCoinbase": "0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba",
-                  "currentDifficulty": "0x20000",
-                  "currentGasLimit": "0x0f4240",
-                  "currentNumber": "0x01",
-                  "currentTimestamp": "0x03e8",
-                  "previousHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
-                },
-                "pre": {},
-                "transaction": {
-                  "sender": "{{Sender}}",
-                  "nonce": "0x00",
-                  "gasPrice": "0x0a",
-                  "gasLimit": ["0x5208"],
-                  "to": "0x1000000000000000000000000000000000000000",
-                  "value": ["0x01"],
-                  "data": ["0x"]
-                },
-                "post": {
-                  "Frontier": [
-                    {
-                      {{post}}
-                      "hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-                      "logs": "0x0000000000000000000000000000000000000000000000000000000000000000",
-                      "indexes": { "data": 0, "gas": 0, "value": 0 }
-                    }
-                  ]
-                }
-              }
-            }
-            """);
-
-        List<GeneralStateTest> tests = [.. new TestsSourceLoader(new LoadGeneralStateTestFileStrategy(), file).LoadTests<GeneralStateTest>()];
-
-        Assert.That(tests, Has.Count.EqualTo(1));
+        string txBytes = signatureSurvivesDecoding ? PinnedOutOfRangeSignatureTxBytes() : PinnedUndecodableSignatureTxBytes();
+        GeneralStateTest test = LoadTest(txBytes);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tests[0].LoadFailure, Is.Null);
-            Assert.That(tests[0].Transaction.SenderAddress,
-                Is.EqualTo(signatureSurvivesDecoding ? new Address(Sender) : Address.Zero));
-            Assert.That(new UInt256(tests[0].Transaction.Signature!.RAsSpan, true),
+            Assert.That(test.Transaction.SenderAddress,
+                signatureSurvivesDecoding ? Is.Null : Is.EqualTo(Address.Zero));
+            Assert.That(new UInt256(test.Transaction.Signature!.RAsSpan, true),
                 Is.EqualTo(signatureSurvivesDecoding ? Secp256k1N : UInt256.One),
                 "the fixture's own signature reaches the runner only when it decodes");
+        }
+    }
+
+    [Test]
+    public void Unrecoverable_signature_keeps_the_state_unchanged()
+    {
+        GeneralStateTest rejected = LoadTest(PinnedOutOfRangeSignatureTxBytes());
+        StateTestsRunner runner = new(WhenTrace.Never, traceMemory: false, traceStack: false, chainId: BlockchainIds.Mainnet, suppressOutput: true);
+        EthereumTestResult rejectedResult = runner.RunSingleTest(rejected);
+        Assert.That(rejectedResult.StateRoot, Is.Not.Null);
+
+        GeneralStateTest unrecoverable = LoadTest(PinnedUnrecoverableSignatureTxBytes());
+        Assert.That(unrecoverable.Transaction.SenderAddress, Is.Null);
+        unrecoverable.PostHash = rejectedResult.StateRoot;
+        EthereumTestResult result = runner.RunSingleTest(unrecoverable);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Pass, Is.True, result.Error);
+            Assert.That(result.StateRoot, Is.EqualTo(rejectedResult.StateRoot), "an unrecoverable sender must not transfer value or advance its nonce");
         }
     }
 
@@ -145,7 +120,13 @@ public class StateTestLoadFailureTests
     /// <c>v</c>, so this signature reaches the runner intact and transaction validation is what
     /// rejects it - unlike a <c>v</c> below 27, which the decoder refuses.
     /// </summary>
-    private static string PinnedOutOfRangeSignatureTxBytes()
+    private static string PinnedOutOfRangeSignatureTxBytes() => PinnedSignatureTxBytes(new Signature(Secp256k1N, UInt256.One, 27));
+
+    private static string PinnedUndecodableSignatureTxBytes() => "0xdf800a82520894100000000000000000000000000000000000001801a0101";
+
+    private static string PinnedUnrecoverableSignatureTxBytes() => PinnedSignatureTxBytes(new Signature(5, 1, 27));
+
+    private static string PinnedSignatureTxBytes(Signature signature)
     {
         Transaction transaction = new()
         {
@@ -154,9 +135,57 @@ public class StateTestLoadFailureTests
             GasLimit = 21000,
             To = new Address("0x1000000000000000000000000000000000000000"),
             Value = 1,
-            Signature = new Signature(Secp256k1N, UInt256.One, 27)
+            Signature = signature
         };
 
         return Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
+    }
+
+    private GeneralStateTest LoadTest(string txBytes)
+    {
+        string file = Path.Combine(_directory, "signature.json");
+        File.WriteAllText(file, $$"""
+            {
+              "t": {
+                "env": {
+                  "currentCoinbase": "0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba",
+                  "currentDifficulty": "0x20000",
+                  "currentGasLimit": "0x0f4240",
+                  "currentNumber": "0x01",
+                  "currentTimestamp": "0x03e8",
+                  "previousHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+                },
+                "pre": {
+                  "{{Sender}}": { "balance": "0x0f4240", "code": "0x", "nonce": "0x00", "storage": {} },
+                  "0x1000000000000000000000000000000000000000": { "balance": "0x00", "code": "0x", "nonce": "0x00", "storage": {} }
+                },
+                "transaction": {
+                  "sender": "{{Sender}}",
+                  "nonce": "0x00",
+                  "gasPrice": "0x0a",
+                  "gasLimit": ["0x5208"],
+                  "to": "0x1000000000000000000000000000000000000000",
+                  "value": ["0x01"],
+                  "data": ["0x"]
+                },
+                "post": {
+                  "Frontier": [
+                    {
+                      "expectException": "TransactionException.INVALID_SIGNATURE_VRS",
+                      "txbytes": "{{txBytes}}",
+                      "hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                      "logs": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                      "indexes": { "data": 0, "gas": 0, "value": 0 }
+                    }
+                  ]
+                }
+              }
+            }
+            """);
+
+        List<GeneralStateTest> tests = [.. new TestsSourceLoader(new LoadGeneralStateTestFileStrategy(), file).LoadTests<GeneralStateTest>()];
+        Assert.That(tests, Has.Count.EqualTo(1));
+        Assert.That(tests[0].LoadFailure, Is.Null);
+        return tests[0];
     }
 }

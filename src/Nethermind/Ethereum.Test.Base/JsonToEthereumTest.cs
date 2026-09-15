@@ -137,9 +137,7 @@ namespace Ethereum.Test.Base
 
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson, ulong chainId = BlockchainIds.Mainnet)
         {
-            // A fixture that pins an explicit v/r/s carries no secret key that could reproduce it
-            // (frontier/validation/transaction/bad_v_r_s); it names the sender and puts the signed
-            // transaction in txbytes.
+            // A fixture that pins an explicit v/r/s carries no secret key that could reproduce it.
             PrivateKey? privateKey = transactionJson.SecretKey is null ? null : new PrivateKey(transactionJson.SecretKey);
 
             // Invalid-tx state tests carry the actual signed tx in txbytes; the template below is
@@ -149,7 +147,7 @@ namespace Ethereum.Test.Base
                 try
                 {
                     Transaction decoded = Rlp.Decode<Transaction>(postStateJson.Txbytes, RlpBehaviors.SkipTypedWrapping);
-                    decoded.SenderAddress = privateKey?.Address ?? transactionJson.Sender ?? Address.Zero;
+                    decoded.SenderAddress = privateKey?.Address ?? new EthereumEcdsa(chainId).RecoverAddress(decoded);
                     return decoded;
                 }
                 catch (RlpException)
