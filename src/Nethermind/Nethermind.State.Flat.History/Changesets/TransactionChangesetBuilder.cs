@@ -24,7 +24,6 @@ public sealed class TransactionChangesetBuilder(
     internal const int WarnAfterAttempts = 8;
     internal static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(30);
-    private static readonly TimeSpan TipProgressInterval = TimeSpan.FromMinutes(10);
 
     private readonly int _dutyCyclePercent = Math.Clamp(config.HistoryTransactionIndexDutyCyclePercent, 1, 100);
     private readonly ulong _retrofitFromBlock = config.HistoryTransactionIndexRetrofitFromBlock;
@@ -39,6 +38,7 @@ public sealed class TransactionChangesetBuilder(
     private IHistoryBlockExecutor? _tipExecutor;
     private ulong? _nextChunkTop;
     private long _progressReportedAt;
+    private bool _wasRetrofitting;
     private long _builtSinceReport;
     private int _disposed;
 
@@ -261,23 +261,24 @@ public sealed class TransactionChangesetBuilder(
         }
 
         bool retrofitting = index.TryGetCoverage(out ulong from, out ulong to) && _retrofitFromBlock != 0 && from > _retrofitFromBlock;
+        if (!retrofitting)
+        {
+            if (_wasRetrofitting) _logger.Info($"Transaction changeset index covers {from}-{to}; the retrofit is complete and the index follows the tip.");
+            _wasRetrofitting = false;
+            _progressReportedAt = now;
+            Interlocked.Exchange(ref _builtSinceReport, 0);
+            return;
+        }
+
+        _wasRetrofitting = true;
         TimeSpan elapsed = Stopwatch.GetElapsedTime(_progressReportedAt, now);
-        if (elapsed < (retrofitting ? ProgressInterval : TipProgressInterval)) return;
+        if (elapsed < ProgressInterval) return;
 
         long built = Interlocked.Exchange(ref _builtSinceReport, 0);
         double blocksPerSecond = built / elapsed.TotalSeconds;
-        string coverage = from <= to && (from != 0 || to != 0) ? $"{from}-{to}" : "none";
-        if (retrofitting)
-        {
-            _logger.Info(
-                $"Transaction changeset index covers {coverage}, {blocksPerSecond:F1} blocks/s, {from - _retrofitFromBlock} blocks to {_retrofitFromBlock}, " +
-                $"about {TimeSpan.FromSeconds((from - _retrofitFromBlock) / Math.Max(blocksPerSecond, 0.001)):d\\.hh\\:mm}");
-        }
-        else
-        {
-            _logger.Info($"Transaction changeset index covers {coverage} and follows the tip");
-        }
-
+        _logger.Info(
+            $"Transaction changeset index covers {from}-{to}, {blocksPerSecond:F1} blocks/s, {from - _retrofitFromBlock} blocks to {_retrofitFromBlock}, " +
+            $"about {TimeSpan.FromSeconds((from - _retrofitFromBlock) / Math.Max(blocksPerSecond, 0.001)):d\\.hh\\:mm}");
         _progressReportedAt = now;
     }
 
