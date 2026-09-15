@@ -78,8 +78,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private int _currentRecoveryQueueSize;
     private bool _isProcessingBlock;
     private const int MaxBranchSize = 8192;
-    // The branch is a single block in the common case (engine API new payload); it grows on demand
-    // for the rare deep reorg, so start at the shared pool's smallest bucket.
     private const int InitialBranchCapacity = 16;
     private readonly CompositeBlockTracer _compositeBlockTracer = new();
     private readonly Stopwatch _stopwatch = new();
