@@ -67,20 +67,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        /// <summary>Decodes the wire-form transaction list without a pre-decode size limit.</summary>
-        public static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref RlpReader ctx) =>
-            DeserializeTxsCore(ref ctx, long.MaxValue, long.MaxValue);
-
         /// <summary>Decodes the wire-form transaction list, applying this serializer's configured pre-decode size caps.</summary>
-        internal IOwnedReadOnlyList<Transaction> DeserializeTxsWithSizeGuard(ref RlpReader ctx) =>
-            DeserializeTxsCore(ref ctx, _maxTxSize, _maxBlobTxSize);
-
         /// <remarks>
-        /// An item whose pre-decode size exceeds <paramref name="maxTxSize"/> (or <paramref name="maxBlobTxSize"/>
-        /// for a type-3 item) is skipped rather than decoded, avoiding the RLP-decode cost of an attacker-sized
-        /// item - see <see cref="IsOverSizeLimit"/> for the measure.
+        /// An item whose pre-decode size exceeds the configured transaction cap (or the blob cap for a type-3
+        /// item) is skipped rather than decoded, avoiding the RLP-decode cost of an attacker-sized item - see
+        /// <see cref="IsOverSizeLimit"/> for the measure.
         /// </remarks>
-        private static IOwnedReadOnlyList<Transaction> DeserializeTxsCore(ref RlpReader ctx, long maxTxSize, long maxBlobTxSize)
+        internal IOwnedReadOnlyList<Transaction> DeserializeTxsWithSizeGuard(ref RlpReader ctx)
         {
             int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
             int length = ctx.PeekNumberOfItemsRemaining(checkPosition);
@@ -91,7 +84,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             {
                 for (int i = 0; i < length; i++)
                 {
-                    if (IsOverSizeLimit(ref ctx, maxTxSize, maxBlobTxSize))
+                    if (IsOverSizeLimit(ref ctx, _maxTxSize, _maxBlobTxSize))
                     {
                         ctx.SkipItem();
                         Interlocked.Increment(ref Metrics.OversizedTransactionsSkipped);
