@@ -109,6 +109,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
         }
 
+        // Every transaction-wide snapshot below is taken on the far side of the frame loop's per-frame
+        // discard, so an entry journal left dirty by a caller would make restoring to one throw.
+        WorldState.ResetTransient();
+
         if (opts.HasFlag(ExecutionOptions.FrameValidationPrefixOnly))
         {
             return SimulateFrameValidationPrefix(tx, tracer, opts, header, spec);
@@ -606,7 +610,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 }
 
                 frameContext.CurrentFrameIndex = i;
-                WorldState.ResetTransient();
 
                 TxFrame boundedFrame = CapFrameGas(frame, Eip8141Constants.MaxVerifyGas - verifyGasUsed, out bool capped);
 
@@ -626,6 +629,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                 // A deploy frame runs in DEFAULT mode, so unlike a VERIFY frame it may write state.
                 TransactionSubstate substate = ExecuteFrame(boundedFrame, resolvedTarget, caller, isStatic: !isDeployFrame, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
+                // Discarded once the frame has run, as the main loop does.
+                WorldState.ResetTransient();
 
                 verifyGasUsed += frameGasUsed - (ulong)frameStateGas;
 

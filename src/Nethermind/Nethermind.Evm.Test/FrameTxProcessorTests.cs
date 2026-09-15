@@ -2919,19 +2919,56 @@ public class FrameTxProcessorTests
     [Test]
     public void Execute_AtomicBatch_AfterAnEarlierFrameWroteTransientStorage_Unrolls()
     {
+        Address batched = TestItem.AddressD;
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
-        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.TSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Observer, Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.TSTORE)
+            .PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(batched, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
         DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
 
         Transaction tx = FrameTx(nonce: 0,
             SelfVerifyFrame(),
             Frame(TxFrame.ModeSender, target: Observer),
-            Frame(TxFrame.ModeSender, flags: TxFrame.AtomicBatchFlag, target: Recipient),
+            Frame(TxFrame.ModeSender, flags: TxFrame.AtomicBatchFlag, target: batched),
             Frame(TxFrame.ModeSender, target: Recipient));
 
-        TransactionResult result = Process(tx);
+        FrameReceiptTracer tracer = new();
+        TransactionResult result = Process(tx, tracer: tracer);
 
         Assert.That(result.TransactionExecuted, Is.True, "a batch unrolling over an earlier frame's transient write stays valid");
+        using (Assert.EnterMultipleScope())
+        {
+            AssertStorage(Observer, 0, UInt256.One, "the frame before the batch keeps the write it committed");
+            AssertStorage(batched, 0, UInt256.Zero, "the unroll discards the write the batch's first frame committed");
+            Assert.That(tracer.FrameReceipts![3].Status, Is.EqualTo(TxFrameReceipt.StatusFailure),
+                "the terminal frame has to fail for the batch to unroll at all");
+        }
+    }
+
+    // Both entry points snapshot the whole transaction on the far side of the frame loop's per-frame
+    // discard, so a journal left dirty at entry would make restoring to either snapshot throw.
+    [Test]
+    public void Execute_FrameTx_WithTransientStorageLeftAtEntry_RestoresRatherThanThrowing()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        _stateProvider.SetTransientState(new StorageCell(Observer, UInt256.Zero), UInt256.One);
+        TransactionResult rejected = Process(FrameTx(nonce: 0,
+            Frame(TxFrame.ModeDefault, target: Observer),
+            Frame(TxFrame.ModeSender, target: Observer)));
+
+        _stateProvider.SetTransientState(new StorageCell(Observer, UInt256.Zero), UInt256.One);
+        TransactionResult simulated = SimulateValidationPrefix(FrameTx(nonce: 0, SelfVerifyFrame()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rejected.ErrorDescription, Does.Contain("SENDER frame before execution approval"),
+                "the rejection has to surface as itself, not as a restore failure");
+            Assert.That(simulated.TransactionExecuted, Is.True,
+                "the prefix simulation restores its own snapshot in a finally");
+        }
     }
 
     [Test]
