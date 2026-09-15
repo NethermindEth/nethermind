@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -664,7 +665,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 }";
         using GethLikeBlockJavaScriptTracer tracer = ExecuteTwoTransactionBlock(GetTracer(countingTracer));
 
-        string[] results = tracer.BuildResult().Select(ResultJson).ToArray();
+        string[] results = ResultJsons(tracer.BuildResult());
 
         Assert.That(results, Is.EqualTo(new[] { "1", "1" }));
     }
@@ -710,7 +711,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         byte[] failingCode = Prepare.EvmCode.Op(Instruction.REVERT).Done;
         using GethLikeBlockJavaScriptTracer tracer = ExecuteTwoTransactionBlock(GetTracer(errorTracer), failingCode, MStore());
 
-        string[] results = tracer.BuildResult().Select(ResultJson).ToArray();
+        string[] results = ResultJsons(tracer.BuildResult());
 
         Assert.That(results, Is.EqualTo(new[] { "\"error\"", "\"none\"" }));
     }
@@ -823,6 +824,18 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     private static readonly JsonSerializerOptions ExpectedResultOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     private static string ResultJson(GethLikeTxTrace trace) => JsonSerializer.Serialize(trace.CustomTracerResult, EthereumJsonSerializer.JsonOptions);
+
+    private static string[] ResultJsons(IReadOnlyCollection<GethLikeTxTrace> traces)
+    {
+        string[] results = new string[traces.Count];
+        int index = 0;
+        foreach (GethLikeTxTrace trace in traces)
+        {
+            results[index++] = ResultJson(trace);
+        }
+
+        return results;
+    }
 
     private static void AssertResult(GethLikeTxTrace trace, object expected) =>
         Assert.That(

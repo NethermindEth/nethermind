@@ -6,7 +6,8 @@ using Nethermind.Core;
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
 
 /// <summary>
-/// Runs the transaction with every tracing hook switched off and reports an empty object.
+/// Runs the transaction with the instruction and action hooks switched off, keeping only receipt tracing, and
+/// reports an empty object.
 /// </summary>
 /// <remarks>
 /// The baseline for the cost of traversing a block through the debug API.

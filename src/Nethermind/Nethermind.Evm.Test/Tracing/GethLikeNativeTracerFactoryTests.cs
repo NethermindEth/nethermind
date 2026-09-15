@@ -20,24 +20,16 @@ public class GethLikeNativeTracerFactoryTests
     private readonly Block _block = Build.A.Block.TestObject;
     private readonly Transaction _tx = Build.A.Transaction.TestObject;
 
-    [Test]
-    public void CreateTracer_NativeTracerExists()
+    [TestCase(Native4ByteTracer.FourByteTracer, typeof(Native4ByteTracer))]
+    [TestCase(NativeNoopTracer.NoopTracer, typeof(NativeNoopTracer))]
+    [TestCase(NativeStateGasTracer.StateGasTracer, typeof(NativeStateGasTracer))]
+    public void CreateTracer_NativeTracerExists(string tracerName, Type expectedTracer)
     {
-        GethTraceOptions options = new() { Tracer = Native4ByteTracer.FourByteTracer };
-
-        GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, Substitute.For<IReleaseSpec>());
-
-        Assert.That(nativeTracer is Native4ByteTracer, Is.True);
-    }
-
-    [Test]
-    public void CreateTracer_NoopTracerExists()
-    {
-        GethTraceOptions options = new() { Tracer = NativeNoopTracer.NoopTracer };
+        GethTraceOptions options = new() { Tracer = tracerName };
 
         GethLikeNativeTxTracer nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, Substitute.For<IReleaseSpec>());
 
-        Assert.That(nativeTracer, Is.InstanceOf<NativeNoopTracer>());
+        Assert.That(nativeTracer, Is.InstanceOf(expectedTracer));
     }
 
     [Test]
@@ -56,17 +48,6 @@ public class GethLikeNativeTracerFactoryTests
             Assert.That(nativeTracer.IsTracingOpLevelStorage, Is.False);
             Assert.That(nativeTracer.IsTracingReceipt, Is.True);
         });
-    }
-
-    [Test]
-    public void CreateTracer_StateGasTracerExists()
-    {
-        GethTraceOptions options = new() { Tracer = NativeStateGasTracer.StateGasTracer };
-        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
-
-        GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, spec);
-
-        Assert.That(nativeTracer is NativeStateGasTracer, Is.True);
     }
 
     [Test]

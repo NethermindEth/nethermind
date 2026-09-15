@@ -83,8 +83,11 @@ public partial class DebugRpcModuleTests
         string byNumber = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", head.Number, "0x0");
         string byParameter = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", blockParameter(head), "0x0");
 
-        Assert.That(byNumber, Does.Contain("\"result\""));
-        Assert.That(JToken.Parse(byParameter), Is.EqualTo(JToken.Parse(byNumber)).Using(JToken.EqualityComparer));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(byNumber, Does.Contain("\"result\""));
+            Assert.That(JToken.Parse(byParameter), Is.EqualTo(JToken.Parse(byNumber)).Using(JToken.EqualityComparer));
+        }
     }
 
     private static IEnumerable<TestCaseData> BlockParameterShapes()
