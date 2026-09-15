@@ -3,9 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core.Test.Threading;
 using Nethermind.JsonRpc.Exceptions;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.EvmAdmissionGate;
@@ -16,27 +16,65 @@ namespace Nethermind.JsonRpc.Test;
 [TestFixture]
 public class EvmAdmissionGateTests
 {
-    private const int EvmPermits = 2;
-    private const int MaxQueueWaitMs = 5_000;
-    private const int QueueLimit = 3;
-    private static readonly TimeSpan Budget = TimeSpan.FromMilliseconds(MaxQueueWaitMs);
-    private static readonly TimeSpan WaitBudget = TimeSpan.FromSeconds(10);
-
-    [ThreadStatic]
-    private static bool _releasingPermit;
-
-    private EvmAdmissionGate _gate = null!;
-    private ManualTimeProvider _timeProvider = null!;
-
-    [SetUp]
-    public void SetUp()
+    /// <summary>A tick source the test advances by hand, so the ordering window does not depend on wall-clock timing.</summary>
+    private sealed class TestClock
     {
-        _timeProvider = new ManualTimeProvider();
-        _gate = CreateGate(new JsonRpcConfig { EthModuleConcurrentInstances = EvmPermits, EvmExecutionMaxQueueWaitMs = MaxQueueWaitMs });
+        private long _ticks;
+
+        internal long Now() => _ticks;
+
+        internal void Advance(long ticks) => _ticks += ticks;
     }
 
-    [TearDown]
-    public void TearDown() => _gate.Dispose();
+    /// <summary>Runs posted continuations only when pumped, so a grant can be settled without letting the waiter that
+    /// owns it resume.</summary>
+    private sealed class ManualSynchronizationContext : SynchronizationContext
+    {
+        private readonly Queue<(SendOrPostCallback Callback, object? State)> _posted = new();
+
+        internal int Pending
+        {
+            get { lock (_posted) return _posted.Count; }
+        }
+
+        public override void Post(SendOrPostCallback d, object? state)
+        {
+            lock (_posted) _posted.Enqueue((d, state));
+        }
+
+        internal void RunPending()
+        {
+            while (true)
+            {
+                (SendOrPostCallback Callback, object? State) next;
+                lock (_posted)
+                {
+                    if (_posted.Count == 0) return;
+
+                    next = _posted.Dequeue();
+                }
+
+                next.Callback(next.State);
+            }
+        }
+    }
+
+    private static EvmAdmissionGate Gate(int permits, int maxQueueWaitMs = 500, TestClock? clock = null) =>
+        new(new JsonRpcConfig { EthModuleConcurrentInstances = permits, EvmExecutionMaxQueueWaitMs = maxQueueWaitMs },
+            clock is null ? null : clock.Now);
+
+    private static long Quantum(int maxQueueWaitMs) =>
+        (long)(TimeSpan.FromMilliseconds(maxQueueWaitMs).TotalSeconds * Stopwatch.Frequency) / QuantumsPerBudget;
+
+    /// <summary>The raw params length that <see cref="Weigh"/> maps onto <paramref name="weight"/>.</summary>
+    private static int ParamsFor(int weight) => (weight - 1) * BytesPerWeightUnit;
+
+    private static ValueTask<Lease> Acquire(EvmAdmissionGate gate, int weight = 1, CancellationToken cancellationToken = default) =>
+        gate.AdmitAsync(ParamsFor(weight), cancellationToken);
+
+    /// <summary>Acquires as an authenticated caller, which an anonymous one may never overtake.</summary>
+    private static ValueTask<Lease> AcquireTrusted(EvmAdmissionGate gate) =>
+        gate.AdmitAsync(0, CancellationToken.None, allowQueue: false, isTrusted: true);
 
     // A null expectation stands for Environment.ProcessorCount, which is not a compile-time constant.
     [TestCase(null, null, TestName = "Processor count")]
@@ -45,822 +83,496 @@ public class EvmAdmissionGateTests
     [TestCase(-3, 1, TestName = "Negative is raised to one")]
     public void Permits_follow_eth_module_concurrency(int? ethModuleConcurrentInstances, int? expected)
     {
-        using EvmAdmissionGate gate = CreateGate(new JsonRpcConfig { EthModuleConcurrentInstances = ethModuleConcurrentInstances });
+        using EvmAdmissionGate gate = new(new JsonRpcConfig { EthModuleConcurrentInstances = ethModuleConcurrentInstances });
 
         Assert.That(gate.Permits, Is.EqualTo(expected ?? Environment.ProcessorCount));
-    }
-
-    [TestCase(null, 500, TestName = "Defaults to 500 ms")]
-    [TestCase(-1, 0, TestName = "Negative disables queueing")]
-    public async Task Wait_budget_follows_the_config(int? maxQueueWaitMs, int expectedBudgetMs)
-    {
-        JsonRpcConfig config = new() { EthModuleConcurrentInstances = 1 };
-        if (maxQueueWaitMs is int configured)
-        {
-            config.EvmExecutionMaxQueueWaitMs = configured;
-        }
-        using EvmAdmissionGate gate = CreateGate(config);
-        using Lease held = await Admit(gate);
-
-        if (expectedBudgetMs == 0)
-        {
-            Assert.Throws<LimitExceededException>(() => Admit(gate), "a zero budget must reject synchronously");
-            return;
-        }
-
-        Task<Lease> waiting = Admit(gate).AsTask();
-        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(expectedBudgetMs - 1));
-        Assert.That(waiting.IsCompleted, Is.False, "the waiter must survive until the budget");
-        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(1));
-        Assert.ThrowsAsync<LimitExceededException>(() => waiting);
     }
 
     [TestCase(0, 1, TestName = "No params bytes")]
     [TestCase(BytesPerWeightUnit - 1, 1, TestName = "Just below one unit")]
     [TestCase(BytesPerWeightUnit, 2, TestName = "One unit")]
-    [TestCase(4 * BytesPerWeightUnit + 17, 5, TestName = "Partial units round down")]
-    [TestCase(7 * BytesPerWeightUnit, 8, TestName = "Upper clamp reached exactly")]
-    [TestCase(int.MaxValue, 8, TestName = "Upper clamp")]
-    public void Weight_grows_with_raw_params_size(int paramsUtf8Length, int expectedWeight) =>
-        Assert.That(Weigh(paramsUtf8Length), Is.EqualTo(expectedWeight));
+    [TestCase(BytesPerWeightUnit * 64, MaxWeight, TestName = "Clamped at the heaviest class")]
+    public void Weight_grows_with_raw_params_size(int paramsUtf8Length, int expected) =>
+        Assert.That(Weigh(paramsUtf8Length), Is.EqualTo(expected));
 
     [Test]
-    public async Task Permits_are_respected_and_released_on_dispose()
+    public async Task Admits_exactly_the_configured_number_of_permits()
     {
-        Lease[] held = new Lease[EvmPermits];
-        for (int i = 0; i < EvmPermits; i++)
-        {
-            ValueTask<Lease> admission = Admit();
-            Assert.That(admission.IsCompletedSuccessfully, Is.True, $"permit {i} should be granted synchronously");
-            held[i] = admission.Result;
-        }
+        using EvmAdmissionGate gate = Gate(permits: 2, maxQueueWaitMs: 0);
 
-        Task<Lease> waiting = Admit().AsTask();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(waiting.IsCompleted, Is.False, "one over the permit count must wait");
-            Assert.That(_gate.InFlight, Is.EqualTo(EvmPermits));
-            Assert.That(_gate.Queued, Is.EqualTo(1));
-        }
+        using Lease first = await Acquire(gate);
+        using Lease second = await Acquire(gate);
 
-        held[0].Dispose();
-        using Lease admitted = await waiting.WaitAsync(WaitBudget);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(_gate.InFlight, Is.EqualTo(EvmPermits));
-            Assert.That(_gate.Queued, Is.EqualTo(0));
-        }
-
-        held[1].Dispose();
+        Assert.That(async () => await Acquire(gate), Throws.InstanceOf<LimitExceededException>());
     }
 
     [Test]
-    [NonParallelizable]
-    public async Task Cancelled_waiter_is_skipped_at_the_next_grant_and_never_takes_a_permit()
+    public async Task In_flight_follows_held_permits()
     {
-        long cancellationsBefore = Metrics.RpcAdmissionCancellations;
-        using EvmAdmissionGate gate = CreateGate(SinglePermit());
-        using CancellationTokenSource cancellation = new();
-        Lease held = await Admit(gate);
+        using EvmAdmissionGate gate = Gate(permits: 2, maxQueueWaitMs: 0);
+        Assert.That(gate.InFlight, Is.Zero);
 
-        Task<Lease> waiting = Admit(gate, cancellationToken: cancellation.Token).AsTask();
-        cancellation.Cancel();
-        using (Assert.EnterMultipleScope())
+        Lease first = await Acquire(gate);
+        Assert.That(gate.InFlight, Is.EqualTo(1));
+
+        using (await Acquire(gate))
         {
-            Assert.That(waiting.IsCompleted, Is.False, "cancellation is observed lazily, at the next grant or sweep");
-            Assert.That(gate.Queued, Is.EqualTo(1));
+            Assert.That(gate.InFlight, Is.EqualTo(2));
         }
+
+        Assert.That(gate.InFlight, Is.EqualTo(1));
+        first.Dispose();
+        Assert.That(gate.InFlight, Is.Zero);
+    }
+
+    [Test]
+    public async Task Releasing_a_permit_admits_the_next_caller()
+    {
+        using EvmAdmissionGate gate = Gate(permits: 1, maxQueueWaitMs: 0);
+
+        using (Lease held = await Acquire(gate))
+        {
+            Assert.That(async () => await Acquire(gate), Throws.InstanceOf<LimitExceededException>());
+        }
+
+        using Lease afterRelease = await Acquire(gate);
+        Assert.Pass();
+    }
+
+    [Test]
+    public async Task Queued_request_is_admitted_when_a_permit_frees_within_the_budget()
+    {
+        using EvmAdmissionGate gate = Gate(permits: 1, maxQueueWaitMs: 5_000);
+        Lease held = await Acquire(gate);
+
+        ValueTask<Lease> queued = Acquire(gate);
+        Assert.That(queued.IsCompleted, Is.False, "the gate is saturated, so this caller must wait");
 
         held.Dispose();
 
-        Assert.CatchAsync<OperationCanceledException>(() => waiting.WaitAsync(WaitBudget));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(gate.Queued, Is.EqualTo(0));
-            Assert.That(gate.InFlight, Is.EqualTo(0), "no live waiter remained, so the permit must have been returned");
-            Assert.That(Metrics.RpcAdmissionCancellations, Is.EqualTo(cancellationsBefore + 1));
-        }
-
-        ValueTask<Lease> fresh = Admit(gate);
-        Assert.That(fresh.IsCompletedSuccessfully, Is.True, "the cancelled waiter must not have taken the freed permit");
-        fresh.Result.Dispose();
-
-        // A sweep racing the grant must find nothing left to settle.
-        _timeProvider.AdvanceAndFireTimer(Budget);
-        Assert.That(gate.Queued, Is.EqualTo(0));
+        using Lease admitted = await queued;
+        Assert.Pass();
     }
 
-    [TestCase(MinWeight, TestName = "Live waiter in the same bucket")]
-    [TestCase(MaxWeight, TestName = "Live waiter in a heavier bucket")]
-    public async Task Grant_skips_a_cancelled_head_and_passes_the_permit_to_the_next_live_waiter(int liveWeight)
+    [Test]
+    public async Task Saturated_gate_sheds_once_the_wait_budget_expires()
     {
-        using EvmAdmissionGate gate = CreateGate(SinglePermit());
-        using CancellationTokenSource cancellation = new();
-        Lease held = await Admit(gate);
-        Task<Lease> cancelled = Admit(gate, cancellationToken: cancellation.Token).AsTask();
-        Task<Lease> live = Admit(gate, liveWeight).AsTask();
-        cancellation.Cancel();
+        using EvmAdmissionGate gate = Gate(permits: 1, maxQueueWaitMs: 30);
+        using Lease held = await Acquire(gate);
+
+        Assert.That(async () => await Acquire(gate), Throws.InstanceOf<LimitExceededException>());
+    }
+
+    [TestCase(0, TestName = "Zero budget")]
+    [TestCase(-1, TestName = "Negative budget")]
+    public async Task A_non_positive_budget_sheds_synchronously(int maxQueueWaitMs)
+    {
+        using EvmAdmissionGate gate = Gate(permits: 1, maxQueueWaitMs);
+        using Lease held = await Acquire(gate);
+
+        Assert.Throws<LimitExceededException>(() => Acquire(gate), "a zero budget must reject on the calling thread");
+    }
+
+    [Test]
+    public async Task Caller_that_may_not_queue_sheds_immediately_even_with_a_budget()
+    {
+        using EvmAdmissionGate gate = Gate(permits: 1, maxQueueWaitMs: 60_000);
+        using Lease held = await Acquire(gate);
+
+        Assert.That(ShedsOnArrival(gate, allowQueue: false), Is.True);
+    }
+
+    /// <summary>A saturated gate must not refuse the trusted caller while it goes on serving anonymous ones.</summary>
+    /// <remarks>Shedding authenticated callers reads as a latency favour only while the gate is unsaturated. Saturated,
+    /// it meant refusing the consensus client outright while anonymous callers behind it were still admitted after a
+    /// wait. They queue at the head instead: no anonymous arrival can overtake one, whatever its weight or arrival time.</remarks>
+    [Test]
+    public async Task Trusted_caller_is_admitted_before_anonymous_callers_already_waiting()
+    {
+        using EvmAdmissionGate gate = Gate(permits: 1);
+        Lease held = await Acquire(gate);
+
+        ValueTask<Lease> anonymous = Acquire(gate);
+        Assert.That(() => gate.Queued, Is.EqualTo(1).After(1000, 10), "precondition: an anonymous caller is queued first");
+
+        ValueTask<Lease> trusted = AcquireTrusted(gate);
+        Assert.That(() => gate.Queued, Is.EqualTo(2).After(1000, 10), "the trusted caller queues rather than being shed");
 
         held.Dispose();
 
-        using Lease granted = await live.WaitAsync(WaitBudget);
-        Assert.CatchAsync<OperationCanceledException>(() => cancelled.WaitAsync(WaitBudget));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(gate.Queued, Is.EqualTo(0));
-            Assert.That(gate.InFlight, Is.EqualTo(1), "the permit passed straight on; returning it as well would leave the live lease uncounted");
-        }
+        using Lease admitted = await trusted;
+        Assert.That(async () => await anonymous, Throws.InstanceOf<LimitExceededException>(),
+            "the one free permit went to the trusted caller, not to the anonymous caller that arrived first");
     }
 
-    [TestCase(false, TestName = "Before its deadline")]
-    [TestCase(true, TestName = "At its deadline: a cancellation, not a rejection")]
-    [NonParallelizable]
-    public async Task Cancelled_waiter_is_settled_by_the_sweep(bool atDeadline)
+    /// <summary>A caller that gives up stops waiting, and burns no permit doing so.</summary>
+    /// <remarks>Under exactly the overload this gate exists for, clients time out and drop their sockets en masse.
+    /// Without the token linked into the wait, each one would still be granted a permit on the next release and execute a
+    /// full call for a socket nobody is reading, while a live caller behind it is shed.</remarks>
+    [Test]
+    public async Task Cancelled_caller_stops_waiting_and_leaves_its_permit_behind()
     {
-        long rejectionsBefore = Metrics.RpcAdmissionWaitTimeoutRejections;
-        long cancellationsBefore = Metrics.RpcAdmissionCancellations;
-        using EvmAdmissionGate gate = CreateGate(SinglePermit());
-        using CancellationTokenSource cancellation = new();
-        using Lease held = await Admit(gate);
-        Task<Lease> waiting = Admit(gate, cancellationToken: cancellation.Token).AsTask();
-        // Behind the cancelled head in the same bucket, with half its budget left when the head is popped.
-        _timeProvider.Advance(Budget / 2);
-        Task<Lease> live = Admit(gate).AsTask();
+        using EvmAdmissionGate gate = Gate(permits: 1, maxQueueWaitMs: 60_000);
+        Lease held = await Acquire(gate);
 
-        cancellation.Cancel();
-        _timeProvider.AdvanceAndFireTimer(atDeadline ? Budget / 2 : TimeSpan.Zero);
+        using CancellationTokenSource disconnected = new();
+        ValueTask<Lease> queued = Acquire(gate, cancellationToken: disconnected.Token);
+        Assert.That(() => gate.Queued, Is.EqualTo(1).After(1000, 10), "precondition: the caller is queued");
 
-        Assert.CatchAsync<OperationCanceledException>(() => waiting.WaitAsync(WaitBudget));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(live.IsCompleted, Is.False, "the live waiter behind the cancelled head keeps waiting");
-            Assert.That(gate.Queued, Is.EqualTo(1));
-            Assert.That(gate.InFlight, Is.EqualTo(1));
-            Assert.That(Metrics.RpcAdmissionWaitTimeoutRejections, Is.EqualTo(rejectionsBefore));
-            Assert.That(Metrics.RpcAdmissionCancellations, Is.EqualTo(cancellationsBefore + 1));
-        }
-    }
+        disconnected.Cancel();
 
-    [TestCase(0, TestName = "Zero budget: shed on the calling thread, nothing queued")]
-    [TestCase(100, TestName = "Positive budget: shed by the wait timeout")]
-    public async Task Rejects_when_permits_never_free(int maxQueueWaitMs)
-    {
-        using EvmAdmissionGate gate = CreateGate(SinglePermit(maxQueueWaitMs));
-        long rejectionsBefore = maxQueueWaitMs == 0 ? Metrics.RpcAdmissionQueueFullRejections : Metrics.RpcAdmissionWaitTimeoutRejections;
-        Lease held = await Admit(gate);
+        Assert.That(async () => await queued, Throws.InstanceOf<OperationCanceledException>());
 
-        if (maxQueueWaitMs == 0)
-        {
-            Assert.Throws<LimitExceededException>(() => Admit(gate), "a zero budget must reject synchronously, without a waiter");
-        }
-        else
-        {
-            Task<Lease> waiting = Admit(gate).AsTask();
-            Assert.That(waiting.IsCompleted, Is.False);
-            _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(maxQueueWaitMs));
-            Assert.ThrowsAsync<LimitExceededException>(() => waiting);
-        }
-
-        long rejectionsAfter = maxQueueWaitMs == 0 ? Metrics.RpcAdmissionQueueFullRejections : Metrics.RpcAdmissionWaitTimeoutRejections;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(rejectionsAfter, Is.GreaterThan(rejectionsBefore));
-            Assert.That(gate.Queued, Is.EqualTo(0));
-            Assert.That(gate.InFlight, Is.EqualTo(1));
-        }
-
+        // The abandoned waiter must not have taken the permit with it.
         held.Dispose();
-        ValueTask<Lease> fresh = Admit(gate);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fresh.IsCompletedSuccessfully, Is.True, "the freed permit must not have gone to the timed-out waiter");
-            Assert.That(gate.InFlight, Is.EqualTo(1));
-        }
-        fresh.Result.Dispose();
-    }
-
-    [TestCase(-1, TestName = "Negative queue limit is treated as uncapped")]
-    [TestCase(0, TestName = "Zero queue limit leaves queueing unbounded")]
-    public async Task Non_positive_queue_limits_leave_queueing_uncapped(int queueLimit)
-    {
-        using EvmAdmissionGate gate = CreateGate(SinglePermit(queueLimit: queueLimit));
-        Task<Lease>? waiting = null;
-        using (Lease held = await Admit(gate))
-        {
-            Task<Lease> queued = Admit(gate).AsTask();
-            waiting = queued;
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(queued.IsCompleted, Is.False);
-                Assert.That(gate.Queued, Is.EqualTo(1));
-            }
-        }
-
-        if (waiting is not null)
-        {
-            using Lease granted = await waiting.WaitAsync(WaitBudget);
-        }
+        using Lease next = await Acquire(gate);
+        Assert.Pass();
     }
 
     [Test]
-    public async Task Saturated_gate_rejects_when_queueing_is_disallowed_but_grants_free_permits()
+    public void Cancelled_caller_does_not_enter_the_queue()
     {
-        using EvmAdmissionGate gate = CreateGate(SinglePermit());
-        ValueTask<Lease> freeAdmission = gate.AdmitAsync(0, CancellationToken.None, allowQueue: false);
-        Assert.That(freeAdmission.IsCompletedSuccessfully, Is.True);
-        freeAdmission.Result.Dispose();
+        using EvmAdmissionGate gate = Gate(permits: 1, maxQueueWaitMs: 60_000);
+        using CancellationTokenSource disconnected = new();
+        disconnected.Cancel();
 
-        using Lease held = await Admit(gate);
-        Assert.Throws<LimitExceededException>(() => gate.AdmitAsync(0, CancellationToken.None, allowQueue: false));
-        Assert.That(gate.Queued, Is.EqualTo(0));
+        Assert.That(async () => await Acquire(gate, cancellationToken: disconnected.Token),
+            Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(gate.Queued, Is.Zero);
     }
 
-    [TestCase(QueueLimit, TestName = "EvmExecutionQueueLimit caps the waiters")]
-    [TestCase(0, TestName = "EvmExecutionQueueLimit zero lifts the cap")]
-    public async Task Queued_waiters_are_capped_by_the_queue_limit(int queueLimit)
-    {
-        using EvmAdmissionGate gate = CreateGate(SinglePermit(queueLimit: queueLimit));
-        long rejectionsBefore = Metrics.RpcAdmissionQueueFullRejections;
-        Lease held = await Admit(gate);
-        List<Task<Lease>> queued = QueueWaiters(gate, queueLimit);
-        Assert.That(gate.Queued, Is.EqualTo(queueLimit == 0 ? QueueLimit + 1 : QueueLimit), "waiters up to the limit must be queued");
-        if (queueLimit != 0)
-        {
-            Assert.That(Metrics.RpcAdmissionQueueFullRejections, Is.GreaterThan(rejectionsBefore));
-        }
-
-        held.Dispose();
-        foreach (Task<Lease> waiter in queued)
-        {
-            (await waiter.WaitAsync(WaitBudget)).Dispose();
-        }
-        Assert.That(gate.InFlight, Is.EqualTo(0));
-    }
-
-    [TestCase(0, TestName = "Uncapped queue")]
-    [TestCase(QueueLimit, TestName = "Capped queue")]
-    public async Task Every_waiter_expires_at_the_budget(int queueLimit)
-    {
-        using EvmAdmissionGate gate = CreateGate(SinglePermit(queueLimit: queueLimit));
-        using Lease held = await Admit(gate);
-        List<Task<Lease>> queued = QueueWaiters(gate, queueLimit);
-        Assert.That(gate.Queued, Is.EqualTo(queued.Count));
-
-        _timeProvider.AdvanceAndFireTimer(Budget);
-
-        foreach (Task<Lease> waiter in queued)
-        {
-            Assert.ThrowsAsync<LimitExceededException>(() => waiter.WaitAsync(WaitBudget));
-        }
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(gate.Queued, Is.EqualTo(0));
-            Assert.That(gate.InFlight, Is.EqualTo(1));
-        }
-    }
-
+    /// <summary>A caller that gives up after the grant but before it resumes must hand the permit straight back.</summary>
+    /// <remarks>The only path that both holds a permit and throws: nothing will ever reach the caller to release it, so
+    /// a miss here narrows the gate by one for the life of the process. Deterministic because the grant's continuation
+    /// is parked on a context the test pumps by hand rather than on the thread pool.</remarks>
     [Test]
-    public async Task Expired_waiters_are_swept_per_bucket()
+    public async Task Caller_that_gives_up_between_the_grant_and_its_resumption_returns_the_permit()
     {
-        using EvmAdmissionGate gate = CreateGate(SinglePermit());
-        using Lease held = await Admit(gate);
-        Task<Lease> heavy = Admit(gate, MaxWeight).AsTask();
-        _timeProvider.Advance(Budget / 2);
-        Task<Lease> light = Admit(gate, MinWeight).AsTask();
+        using EvmAdmissionGate gate = Gate(permits: 1, maxQueueWaitMs: 60_000);
+        Lease held = await Acquire(gate);
 
-        _timeProvider.AdvanceAndFireTimer(Budget / 2);
-        Assert.ThrowsAsync<LimitExceededException>(() => heavy);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(light.IsCompleted, Is.False, "the light waiter has half its budget left");
-            Assert.That(gate.Queued, Is.EqualTo(1));
-        }
-
-        _timeProvider.AdvanceAndFireTimer(Budget / 2);
-        Assert.ThrowsAsync<LimitExceededException>(() => light);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(gate.Queued, Is.EqualTo(0));
-            Assert.That(gate.InFlight, Is.EqualTo(1));
-        }
-    }
-
-    [Test]
-    public async Task Sweep_arms_to_the_oldest_waiter_across_weight_buckets()
-    {
-        RecordingTimeProvider timeProvider = new();
-        using EvmAdmissionGate gate = CreateGate(SinglePermit(), timeProvider);
-        Task<Lease> older;
-        Task<Lease> younger;
-        using (Lease held = await Admit(gate))
-        {
-            older = Admit(gate, MaxWeight).AsTask();
-
-            timeProvider.Advance(Budget / 2);
-            younger = Admit(gate, MinWeight).AsTask();
-
-            // Both buckets are still live. The next sweep must be due at the older request's deadline.
-            timeProvider.FireTimer();
-            Assert.That(timeProvider.DueTimes[^1], Is.EqualTo(Budget / 2));
-
-            timeProvider.Advance(Budget / 2);
-            timeProvider.FireTimer();
-            Assert.ThrowsAsync<LimitExceededException>(() => older);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(younger.IsCompleted, Is.False);
-                Assert.That(timeProvider.DueTimes[^1], Is.EqualTo(Budget / 2));
-                Assert.That(gate.Queued, Is.EqualTo(1));
-                Assert.That(gate.InFlight, Is.EqualTo(1));
-            }
-        }
-
-        using Lease granted = await younger.WaitAsync(WaitBudget);
-    }
-
-    [Test]
-    public async Task Sweep_rearms_for_the_remaining_deadline_and_never_disarms()
-    {
-        RecordingTimeProvider timeProvider = new();
-        using EvmAdmissionGate gate = CreateGate(SinglePermit(), timeProvider);
-        Lease held = await Admit(gate);
-
-        Task<Lease> first = Admit(gate).AsTask();
-        Assert.That(timeProvider.DueTimes, Is.EqualTo(new[] { Budget }), "enqueueing into an empty queue arms the sweep for one budget");
-
-        timeProvider.Advance(Budget / 2);
-        Task<Lease> second = Admit(gate).AsTask();
-        Assert.That(timeProvider.DueTimes, Has.Count.EqualTo(1), "enqueueing behind a waiter leaves the timer alone");
-
-        held.Dispose();
-        held = await first.WaitAsync(WaitBudget);
-        Assert.That(timeProvider.DueTimes, Has.Count.EqualTo(1), "a grant leaves the timer alone");
-
-        // A stale fire for the granted waiter: nothing expires, yet the sweep re-arms for the remaining one.
-        timeProvider.Advance(Budget / 2);
-        timeProvider.FireTimer();
-        Assert.That(timeProvider.DueTimes, Is.EqualTo(new[] { Budget, Budget / 2 }));
-
-        Task<Lease> third = Admit(gate).AsTask();
-        timeProvider.Advance(Budget / 2);
-        timeProvider.FireTimer();
-        Assert.ThrowsAsync<LimitExceededException>(() => second);
-        Assert.That(timeProvider.DueTimes, Is.EqualTo(new[] { Budget, Budget / 2, Budget / 2 }), "popping one of two re-arms for the remaining deadline");
-
-        timeProvider.Advance(Budget / 2);
-        timeProvider.FireTimer();
-        Assert.ThrowsAsync<LimitExceededException>(() => third);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(timeProvider.DueTimes, Has.Count.EqualTo(3), "a sweep that leaves nothing queued does not touch the timer");
-            Assert.That(timeProvider.DueTimes, Has.None.EqualTo(Timeout.InfiniteTimeSpan));
-            Assert.That(gate.Queued, Is.EqualTo(0));
-        }
-
-        held.Dispose();
-    }
-
-    // System.Threading.Timer truncates a due time to whole milliseconds; a fractional remainder would fire early and re-fire
-    // at zero until the clock passes the deadline.
-    [Test]
-    public async Task Sweep_rearms_for_a_whole_number_of_milliseconds()
-    {
-        TimeSpan fraction = TimeSpan.FromMicroseconds(300);
-        RecordingTimeProvider timeProvider = new();
-        using EvmAdmissionGate gate = CreateGate(SinglePermit(), timeProvider);
-        using Lease held = await Admit(gate);
-        Task<Lease> first = Admit(gate).AsTask();
-        timeProvider.Advance(Budget / 2 + fraction);
-        Task<Lease> second = Admit(gate).AsTask();
-
-        timeProvider.Advance(Budget / 2 - fraction);
-        timeProvider.FireTimer();
-
-        Assert.ThrowsAsync<LimitExceededException>(() => first);
-        Assert.That(timeProvider.DueTimes[^1], Is.EqualTo(Budget / 2 + TimeSpan.FromMilliseconds(1)), "the second waiter's remaining budget must be rounded up to the timer's resolution, not truncated by it");
-
-        timeProvider.Advance(timeProvider.DueTimes[^1]);
-        timeProvider.FireTimer();
-        Assert.ThrowsAsync<LimitExceededException>(() => second);
-    }
-
-    [Test]
-    public void Disposing_the_gate_disposes_its_timer()
-    {
-        RecordingTimeProvider timeProvider = new();
-        EvmAdmissionGate gate = CreateGate(SinglePermit(), timeProvider);
-
-        gate.Dispose();
-
-        Assert.That(timeProvider.TimerDisposed, Is.True);
-    }
-
-    [TestCase(false, TestName = "Pending admission is disposed")]
-    [TestCase(true, TestName = "Cancelled pending admission stays cancelled")]
-    public async Task Disposing_the_gate_settles_pending_admissions_and_rejects_late_work(bool cancelPending)
-    {
-        using EvmAdmissionGate gate = CreateGate(SinglePermit());
-        using CancellationTokenSource cancellation = new();
-        Lease held = await Admit(gate);
-        Task<Lease> pending = Admit(gate, cancellationToken: cancellation.Token).AsTask();
-        if (cancelPending)
-        {
-            cancellation.Cancel();
-        }
-
-        gate.Dispose();
-        if (cancelPending)
-        {
-            Assert.CatchAsync<OperationCanceledException>(() => pending.WaitAsync(WaitBudget));
-        }
-        else
-        {
-            Assert.ThrowsAsync<ObjectDisposedException>(() => pending.WaitAsync(WaitBudget));
-        }
-        Assert.Throws<ObjectDisposedException>(() => Admit(gate));
-
-        // The timer callback may already be queued when disposal races it; it must be inert after disposal.
-        _timeProvider.AdvanceAndFireTimer(Budget);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(gate.Queued, Is.EqualTo(0));
-            Assert.That(gate.InFlight, Is.EqualTo(1), "an active lease remains valid after gate disposal");
-        }
-
-        // Existing leases can finish after their owner has disposed the gate, and Dispose is idempotent.
-        held.Dispose();
-        gate.Dispose();
-        Assert.That(gate.InFlight, Is.EqualTo(0));
-    }
-
-    [TestCase(0, TestName = "Release at the exact deadline")]
-    [TestCase(1, TestName = "Release after the deadline")]
-    [NonParallelizable]
-    public async Task Release_rejects_an_expired_waiter_when_the_timer_callback_is_delayed(int delayMilliseconds)
-    {
-        long rejectionsBefore = Metrics.RpcAdmissionWaitTimeoutRejections;
-        using EvmAdmissionGate gate = CreateGate(SinglePermit());
-        Lease held = await Admit(gate);
-        Task<Lease> waiting = Admit(gate).AsTask();
-
-        _timeProvider.Advance(Budget + TimeSpan.FromMilliseconds(delayMilliseconds));
-        held.Dispose();
-
-        Assert.ThrowsAsync<LimitExceededException>(() => waiting);
-        _timeProvider.AdvanceAndFireTimer(TimeSpan.Zero);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(gate.Queued, Is.EqualTo(0));
-            Assert.That(gate.InFlight, Is.EqualTo(0));
-            Assert.That(Metrics.RpcAdmissionWaitTimeoutRejections, Is.EqualTo(rejectionsBefore + 1));
-        }
-    }
-
-    [TestCase(MinWeight, TestName = "Same weight bucket")]
-    [TestCase(MaxWeight, TestName = "Different weight bucket")]
-    [NonParallelizable]
-    public async Task Release_skips_an_expired_light_head_and_grants_a_later_live_waiter(int liveWeight)
-    {
-        long rejectionsBefore = Metrics.RpcAdmissionWaitTimeoutRejections;
-        using EvmAdmissionGate gate = CreateGate(SinglePermit());
-        Lease held = await Admit(gate);
-        Task<Lease> expired = Admit(gate, MinWeight).AsTask();
-
-        _timeProvider.Advance(Budget);
-        Task<Lease> live = Admit(gate, liveWeight).AsTask();
-        held.Dispose();
-
-        using Lease granted = await live.WaitAsync(WaitBudget);
-        Assert.ThrowsAsync<LimitExceededException>(() => expired);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(gate.Queued, Is.EqualTo(0));
-            Assert.That(gate.InFlight, Is.EqualTo(1));
-            Assert.That(Metrics.RpcAdmissionWaitTimeoutRejections, Is.EqualTo(rejectionsBefore + 1));
-        }
-    }
-
-    [Test]
-    [NonParallelizable]
-    public async Task A_cancelled_waiter_at_the_expiry_precedes_timeout_and_later_live_waiter()
-    {
-        long rejectionsBefore = Metrics.RpcAdmissionWaitTimeoutRejections;
-        long cancellationsBefore = Metrics.RpcAdmissionCancellations;
-        using EvmAdmissionGate gate = CreateGate(SinglePermit());
-        using CancellationTokenSource cancellation = new();
-        Lease held = await Admit(gate);
-        Task<Lease> cancelled = Admit(gate, cancellationToken: cancellation.Token).AsTask();
-
-        _timeProvider.Advance(Budget);
-        Task<Lease> live = Admit(gate).AsTask();
-        cancellation.Cancel();
-        held.Dispose();
-
-        using Lease granted = await live.WaitAsync(WaitBudget);
-        Assert.CatchAsync<OperationCanceledException>(() => cancelled);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(gate.Queued, Is.EqualTo(0));
-            Assert.That(gate.InFlight, Is.EqualTo(1));
-            Assert.That(Metrics.RpcAdmissionWaitTimeoutRejections, Is.EqualTo(rejectionsBefore));
-            Assert.That(Metrics.RpcAdmissionCancellations, Is.EqualTo(cancellationsBefore + 1));
-        }
-    }
-
-    [Test]
-    [NonParallelizable]
-    public async Task Release_of_a_holder_frees_the_permit_when_every_queued_waiter_is_expired()
-    {
-        long rejectionsBefore = Metrics.RpcAdmissionWaitTimeoutRejections;
-        using EvmAdmissionGate gate = CreateGate(SinglePermit());
-        Lease held = await Admit(gate);
-        Task<Lease> light = Admit(gate, MinWeight).AsTask();
-        Task<Lease> heavy = Admit(gate, MaxWeight).AsTask();
-
-        _timeProvider.Advance(Budget);
-        held.Dispose();
-
-        Assert.ThrowsAsync<LimitExceededException>(() => light);
-        Assert.ThrowsAsync<LimitExceededException>(() => heavy);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(gate.Queued, Is.EqualTo(0));
-            Assert.That(gate.InFlight, Is.EqualTo(0));
-            Assert.That(Metrics.RpcAdmissionWaitTimeoutRejections, Is.EqualTo(rejectionsBefore + 2));
-        }
-
-        // The timer callback was never needed to reclaim the permit; a later callback must remain harmless.
-        _timeProvider.AdvanceAndFireTimer(TimeSpan.Zero);
-        ValueTask<Lease> fresh = Admit(gate);
-        Assert.That(fresh.IsCompletedSuccessfully, Is.True);
-        fresh.Result.Dispose();
-    }
-
-    [Test]
-    [NonParallelizable]
-    public async Task Queued_and_in_flight_gauges_follow_the_gate()
-    {
-        Lease[] held = [await Admit(), await Admit()];
-        Task<Lease> waiting = Admit().AsTask();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Metrics.RpcAdmissionInFlight, Is.EqualTo(EvmPermits));
-            Assert.That(Metrics.RpcAdmissionQueued, Is.EqualTo(1));
-        }
-
-        held[0].Dispose();
-        held[1].Dispose();
-        (await waiting.WaitAsync(WaitBudget)).Dispose();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Metrics.RpcAdmissionInFlight, Is.EqualTo(0));
-            Assert.That(Metrics.RpcAdmissionQueued, Is.EqualTo(0));
-        }
-    }
-
-    [Test]
-    public async Task Lighter_waiters_are_served_first_and_fifo_within_a_weight()
-    {
-        Lease[] held = [await Admit(MaxWeight), await Admit(MaxWeight)];
-        Task<Lease> heavyFirst = Admit(MaxWeight).AsTask();
-        Task<Lease> heavySecond = Admit(MaxWeight).AsTask();
-        Task<Lease> lightFirst = Admit(MinWeight).AsTask();
-        Task<Lease> lightSecond = Admit(MinWeight).AsTask();
-        Task<Lease>[] expectedOrder = [lightFirst, lightSecond, heavyFirst, heavySecond];
-        Assert.That(_gate.Queued, Is.EqualTo(expectedOrder.Length));
-
-        Lease releasing = held[0];
-        for (int i = 0; i < expectedOrder.Length; i++)
-        {
-            releasing.Dispose();
-            releasing = await expectedOrder[i].WaitAsync(WaitBudget);
-            for (int later = i + 1; later < expectedOrder.Length; later++)
-            {
-                Assert.That(expectedOrder[later].IsCompleted, Is.False, $"waiter {later} must not be admitted before waiter {i}");
-            }
-        }
-
-        releasing.Dispose();
-        held[1].Dispose();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(_gate.Queued, Is.EqualTo(0));
-            Assert.That(_gate.InFlight, Is.EqualTo(0));
-        }
-    }
-
-    [TestCase(0, 500, TestName = "Equal enqueue timestamps use sequence order")]
-    [TestCase(100, 500, TestName = "Earlier enqueue timestamp wins")]
-    [TestCase(500, 1, TestName = "An aged heavy waiter precedes new light traffic")]
-    public async Task Aged_heavy_waiter_precedes_light_traffic(int delayMilliseconds, int agingAdvanceMilliseconds)
-    {
-        using EvmAdmissionGate gate = CreateGate(SinglePermit(maxQueueWaitMs: 1_000));
-        Lease holder = await Admit(gate, MaxWeight);
-        Task<Lease> heavy = Admit(gate, MaxWeight).AsTask();
-
-        _timeProvider.Advance(TimeSpan.FromMilliseconds(delayMilliseconds));
-        Task<Lease> light = Admit(gate, MinWeight).AsTask();
-
-        _timeProvider.Advance(TimeSpan.FromMilliseconds(agingAdvanceMilliseconds));
-        holder.Dispose();
-        using (Lease agedGrant = await heavy.WaitAsync(WaitBudget))
-        {
-            Assert.That(light.IsCompleted, Is.False, "a light waiter must not overtake the earlier heavy waiter");
-        }
-
-        using Lease lightGrant = await light.WaitAsync(WaitBudget);
-    }
-
-    [Test]
-    public async Task Overtaken_heavy_waiter_is_shed_at_its_wait_budget_while_light_traffic_keeps_flowing()
-    {
-        const int budgetMs = 200;
-        using EvmAdmissionGate gate = CreateGate(SinglePermit(budgetMs));
-        Lease holder = await Admit(gate);
-        Task<Lease> heavy = Admit(gate, MaxWeight).AsTask();
-
+        using CancellationTokenSource disconnected = new();
+        ManualSynchronizationContext resumption = new();
+        SynchronizationContext? original = SynchronizationContext.Current;
+        Task<Lease> queued;
         try
         {
-            Assert.That(heavy.IsCompleted, Is.False);
-            int lightServed = 0;
-            while (lightServed < 2)
-            {
-                Task<Lease> light = Admit(gate).AsTask();
-                Assert.That(light.IsCompleted, Is.False);
-                holder.Dispose();
-                holder = await light.WaitAsync(WaitBudget);
-                lightServed++;
-            }
+            SynchronizationContext.SetSynchronizationContext(resumption);
+            queued = Acquire(gate, cancellationToken: disconnected.Token).AsTask();
+            Assert.That(gate.Queued, Is.EqualTo(1), "precondition: the caller is queued");
 
-            Assert.That(heavy.IsCompleted, Is.False);
-            _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(budgetMs));
+            held.Dispose();
+            Assert.That(() => resumption.Pending, Is.EqualTo(1).After(1000, 10),
+                "precondition: the permit was granted and its resumption is parked, not yet run");
 
-            Assert.ThrowsAsync<LimitExceededException>(() => heavy);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(lightServed, Is.EqualTo(2));
-                Assert.That(gate.Queued, Is.EqualTo(0));
-                Assert.That(gate.InFlight, Is.EqualTo(1));
-            }
+            disconnected.Cancel();
+            resumption.RunPending();
         }
         finally
         {
-            holder.Dispose();
+            SynchronizationContext.SetSynchronizationContext(original);
         }
+
+        Assert.That(async () => await queued, Throws.InstanceOf<OperationCanceledException>());
+
+        // The caller never got a lease, so if it did not hand the permit back nothing else can.
+        using Lease next = await Acquire(gate);
+        Assert.Pass();
+    }
+
+    /// <summary>Shutdown answers waiters at once instead of waiting out the budget for each of them.</summary>
+    [Test]
+    public async Task Disposing_the_gate_answers_everyone_waiting_as_shed()
+    {
+        using EvmAdmissionGate gate = Gate(permits: 1, maxQueueWaitMs: 60_000);
+        using Lease held = await Acquire(gate);
+
+        ValueTask<Lease> queued = Acquire(gate);
+        Assert.That(() => gate.Queued, Is.EqualTo(1).After(1000, 10));
+
+        gate.Dispose();
+
+        // Bounded rather than awaited outright: without the drain this sits out the whole 60 s budget, and a regression
+        // should fail here rather than hang the suite.
+        Task<Lease> queuedTask = queued.AsTask();
+        Assert.That(await Task.WhenAny(queuedTask, Task.Delay(TimeSpan.FromSeconds(10))), Is.SameAs(queuedTask),
+            "a closing gate must answer its waiters rather than let them wait out the budget");
+        Assert.That(async () => await queuedTask, Throws.InstanceOf<LimitExceededException>(),
+            "a shed answer maps to 'Too many requests', not to an internal error");
+        Assert.That(async () => await Acquire(gate), Throws.InstanceOf<LimitExceededException>(), "a closed gate admits nobody");
     }
 
     [Test]
-    public async Task Timeouts_racing_grants_neither_leak_nor_double_release_permits()
+    public async Task Waiters_of_equal_weight_are_admitted_in_arrival_order([Values] bool frozenClock)
     {
-        const int requests = 2_000;
-        using EvmAdmissionGate gate = CreateGate(new JsonRpcConfig { EthModuleConcurrentInstances = EvmPermits, EvmExecutionMaxQueueWaitMs = 1 }, TimeProvider.System);
-        int admitted = 0;
-        Task[] callers = new Task[requests];
-        for (int i = 0; i < requests; i++)
+        // Weight decides the ordering only between cost classes; within one class the deadline reduces to arrival time,
+        // so equal-weight callers keep strict FIFO. The frozen-clock case needs the sequence tiebreaker: with every
+        // deadline identical, PriorityQueue - not a stable heap - has no order of its own to fall back on.
+        TestClock? clock = frozenClock ? new TestClock() : null;
+        using EvmAdmissionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000, clock);
+        Lease held = await Acquire(gate);
+
+        const int waiterCount = 8;
+        ValueTask<Lease>[] waiters = new ValueTask<Lease>[waiterCount];
+        for (int i = 0; i < waiterCount; i++)
         {
-            int weight = i % MaxWeight + 1;
-            callers[i] = Task.Run(async () =>
+            waiters[i] = Acquire(gate);
+            Assert.That(waiters[i].IsCompleted, Is.False);
+        }
+
+        // Admission resumes asynchronously by design (see Waiter), so order is observed rather than polled.
+        List<int> admissionOrder = [];
+        Task[] observers = new Task[waiterCount];
+        for (int i = 0; i < waiterCount; i++)
+        {
+            int index = i;
+            ValueTask<Lease> waiter = waiters[i];
+            observers[i] = Task.Run(async () =>
             {
-                try
-                {
-                    using (await gate.AdmitAsync(ParamsBytes(weight), CancellationToken.None))
-                    {
-                        Interlocked.Increment(ref admitted);
-                        await Task.Yield();
-                    }
-                }
-                catch (LimitExceededException) { }
+                using Lease lease = await waiter;
+                lock (admissionOrder) admissionOrder.Add(index);
             });
         }
 
-        await Task.WhenAll(callers).WaitAsync(WaitBudget);
-        using (Assert.EnterMultipleScope())
+        held.Dispose();
+        await Task.WhenAll(observers);
+
+        Assert.That(admissionOrder, Is.EqualTo(new[] { 0, 1, 2, 3, 4, 5, 6, 7 }));
+    }
+
+    [Test]
+    public async Task Lighter_callers_are_admitted_ahead_of_a_heavier_one_that_arrived_first()
+    {
+        // The reason for ordering by cost at all: a small eth_call must not sit behind large simulations.
+        TestClock clock = new();
+        using EvmAdmissionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000, clock);
+        Lease held = await Acquire(gate);
+
+        ValueTask<Lease> heavy = Acquire(gate, MaxWeight);
+        ValueTask<Lease> light = Acquire(gate);
+
+        held.Dispose();
+
+        // The light caller arrived second but carries less slack, so it holds the only permit.
+        using (await light)
         {
-            Assert.That(admitted, Is.GreaterThan(0));
-            // Deliberately not asserting which shed path ran: the default queue limit can reject up front before any
-            // 1 ms budget expires.
-            Assert.That(gate.InFlight, Is.EqualTo(0));
-            Assert.That(gate.Queued, Is.EqualTo(0));
+            Assert.That(heavy.IsCompleted, Is.False, "the heavier caller must still be waiting");
         }
 
-        Lease[] fresh = new Lease[EvmPermits];
-        try
-        {
-            for (int i = 0; i < EvmPermits; i++)
-            {
-                ValueTask<Lease> admission = Admit(gate);
-                Assert.That(admission.IsCompletedSuccessfully, Is.True, $"permit {i} must be available again");
-                fresh[i] = admission.Result;
-            }
+        (await heavy).Dispose();
+    }
 
-            Assert.That(gate.InFlight, Is.EqualTo(EvmPermits), "all restored permits must be held before any are released");
-        }
-        finally
+    [Test]
+    public async Task A_heavy_waiter_is_not_overtaken_once_its_slack_has_elapsed()
+    {
+        // Unaged cost ordering lets every later light caller overtake forever, so a heavy request would shed at its
+        // budget for as long as light load continued; anchoring the deadline to arrival bounds the overtaking window.
+        const int budgetMs = 30_000;
+        TestClock clock = new();
+        using EvmAdmissionGate gate = Gate(permits: 1, maxQueueWaitMs: budgetMs, clock);
+        Lease held = await Acquire(gate);
+
+        ValueTask<Lease> heavy = Acquire(gate, MaxWeight);
+
+        // Past the heavy caller's slack window, so any later light caller now has the later deadline.
+        clock.Advance(Quantum(budgetMs) * MaxWeight);
+        ValueTask<Lease> lateLight = Acquire(gate);
+
+        held.Dispose();
+
+        using (await heavy)
         {
-            foreach (Lease lease in fresh)
-            {
-                lease.Dispose();
-            }
+            Assert.That(lateLight.IsCompleted, Is.False, "the aged-in heavy caller must go first");
+        }
+
+        (await lateLight).Dispose();
+    }
+
+    [Test]
+    public async Task The_heaviest_class_can_be_overtaken_for_just_under_half_its_budget()
+    {
+        // Pins the constant the ordering was tuned to: with QuantumsPerBudget = 2 * MaxWeight a light arrival inside
+        // (MaxWeight - 1) quanta still overtakes, one at MaxWeight quanta no longer does - the same aging point the
+        // bucketed predecessor used, so the measured median-latency behaviour carries over.
+        const int budgetMs = 30_000;
+        TestClock clock = new();
+        using EvmAdmissionGate gate = Gate(permits: 1, maxQueueWaitMs: budgetMs, clock);
+        Lease held = await Acquire(gate);
+
+        ValueTask<Lease> heavy = Acquire(gate, MaxWeight);
+        clock.Advance(Quantum(budgetMs) * (MaxWeight - 1) - 1);
+        ValueTask<Lease> insideWindow = Acquire(gate);
+
+        held.Dispose();
+
+        using (await insideWindow)
+        {
+            Assert.That(heavy.IsCompleted, Is.False, "an arrival inside the slack window overtakes");
+        }
+
+        (await heavy).Dispose();
+    }
+
+    [Test]
+    public async Task A_heavy_waiter_is_served_after_the_light_callers_that_legitimately_overtook_it()
+    {
+        const int budgetMs = 30_000;
+        TestClock clock = new();
+        using EvmAdmissionGate gate = Gate(permits: 1, maxQueueWaitMs: budgetMs, clock);
+        Lease held = await Acquire(gate);
+
+        ValueTask<Lease> heavy = Acquire(gate, MaxWeight);
+        Assert.That(heavy.IsCompleted, Is.False);
+
+        // Inside the heavy caller's slack window, so these are entitled to overtake it.
+        const int overtakerCount = 3;
+        ValueTask<Lease>[] overtakers = new ValueTask<Lease>[overtakerCount];
+        for (int i = 0; i < overtakerCount; i++)
+        {
+            overtakers[i] = Acquire(gate);
+        }
+
+        // Past the window: these must not overtake, however many of them arrive.
+        clock.Advance(Quantum(budgetMs) * MaxWeight);
+        ValueTask<Lease>[] lateArrivals = new ValueTask<Lease>[overtakerCount];
+        for (int i = 0; i < overtakerCount; i++)
+        {
+            lateArrivals[i] = Acquire(gate);
+        }
+
+        held.Dispose();
+
+        for (int i = 0; i < overtakerCount; i++)
+        {
+            (await overtakers[i]).Dispose();
+        }
+
+        Assert.That(lateArrivals[0].IsCompleted, Is.False, "the aged-in heavy caller must precede later arrivals");
+        (await heavy).Dispose();
+
+        for (int i = 0; i < overtakerCount; i++)
+        {
+            (await lateArrivals[i]).Dispose();
         }
     }
 
     [Test]
-    public async Task Releasing_a_permit_never_runs_the_next_waiters_continuation_inline()
+    public async Task Arrivals_beyond_the_queue_depth_cap_are_shed_rather_than_queued()
     {
-        Lease[] held = [await Admit(), await Admit()];
-        bool? continuationRanOnReleaser = null;
-        Task<Lease> probe = Admit().AsTask().ContinueWith(admission =>
-        {
-            continuationRanOnReleaser = _releasingPermit;
-            return admission.Result;
-        }, TaskContinuationOptions.ExecuteSynchronously);
+        using EvmAdmissionGate gate = Gate(permits: 1, maxQueueWaitMs: 30_000);
+        Lease held = await Acquire(gate);
 
-        _releasingPermit = true;
-        held[0].Dispose();
-        _releasingPermit = false;
-
-        using (await probe.WaitAsync(WaitBudget))
+        ValueTask<Lease>[] queued = new ValueTask<Lease>[MaxQueueDepthPerPermit];
+        for (int i = 0; i < queued.Length; i++)
         {
-            Assert.That(continuationRanOnReleaser, Is.False);
+            queued[i] = Acquire(gate);
+            Assert.That(queued[i].IsCompleted, Is.False);
         }
-        held[1].Dispose();
+
+        // Asserted on the synchronous throw, not by awaiting: a caller that queues instead raises the same exception once
+        // the budget expires, so awaiting cannot tell "refused on arrival" from "waited 30 s".
+        Assert.That(ShedsOnArrival(gate), Is.True, "over the cap the gate must refuse on arrival");
+        Assert.That(gate.Queued, Is.EqualTo(queued.Length), "the shed caller must not have been queued");
+
+        // Drained rather than abandoned: an un-awaited waiter faults a whole budget later.
+        held.Dispose();
+        for (int i = 0; i < queued.Length; i++)
+        {
+            (await queued[i]).Dispose();
+        }
     }
 
-    private EvmAdmissionGate CreateGate(JsonRpcConfig config, TimeProvider? timeProvider = null) =>
-        new(config, timeProvider ?? _timeProvider);
-
-    private static JsonRpcConfig SinglePermit(int maxQueueWaitMs = MaxQueueWaitMs, int queueLimit = 500) => new()
+    /// <summary>Whether the gate refuses without queueing: <see cref="EvmAdmissionGate.AdmitAsync"/> throws at the call
+    /// itself rather than from the returned task after the wait budget.</summary>
+    private static bool ShedsOnArrival(EvmAdmissionGate gate, bool allowQueue = true)
     {
-        EthModuleConcurrentInstances = 1,
-        EvmExecutionMaxQueueWaitMs = maxQueueWaitMs,
-        EvmExecutionQueueLimit = queueLimit,
-    };
-
-    private static List<Task<Lease>> QueueWaiters(EvmAdmissionGate gate, int queueLimit)
-    {
-        List<Task<Lease>> queued = [];
-        for (int i = 0; i < QueueLimit; i++)
+        ValueTask<Lease> pending;
+        try
         {
-            queued.Add(Admit(gate).AsTask());
+            pending = gate.AdmitAsync(0, CancellationToken.None, allowQueue);
+        }
+        catch (LimitExceededException)
+        {
+            return true;
         }
 
-        if (queueLimit == 0)
+        // "Did not throw" alone would also cover a free permit, which would mean the caller never tested the saturated
+        // gate it meant to.
+        if (pending.IsCompletedSuccessfully)
         {
-            queued.Add(Admit(gate).AsTask());
-        }
-        else
-        {
-            Assert.Throws<LimitExceededException>(() => Admit(gate), "the waiter over the queue limit must be shed synchronously");
+            pending.Result.Dispose();
+            Assert.Fail("a permit was free, so the gate was not saturated and the shed path was never exercised");
         }
 
-        return queued;
+        // Genuinely queued. Observe the task so a later timeout is not an unobserved fault.
+        _ = pending.AsTask().ContinueWith(static t => _ = t.Exception, TaskScheduler.Default);
+        return false;
     }
 
-    private ValueTask<Lease> Admit(int weight = MinWeight) => Admit(_gate, weight);
-
-    private static ValueTask<Lease> Admit(EvmAdmissionGate gate, int weight = MinWeight, CancellationToken cancellationToken = default) =>
-        gate.AdmitAsync(ParamsBytes(weight), cancellationToken);
-
-    // The smallest params size that weighs the given amount.
-    private static int ParamsBytes(int weight) => (weight - MinWeight) * BytesPerWeightUnit;
-
-    // Records every re-arm so the arming rules the sweep relies on can be asserted; ManualTimeProvider ignores Change.
-    private sealed class RecordingTimeProvider : TimeProvider
+    [Test]
+    public async Task The_gate_still_admits_after_heavy_concurrent_expiry()
     {
-        private readonly List<TimeSpan> _dueTimes = [];
-        private long _ticks;
-        private TimerCallback? _callback;
-        private object? _state;
+        // Exercises the paths that maintain the live count concurrently - enqueue under the lock, expiry from the timer
+        // thread, release from the holder - and checks the count settles and the gate is still usable.
+        using EvmAdmissionGate gate = Gate(permits: 2, maxQueueWaitMs: 40);
+        Lease first = await Acquire(gate);
+        Lease second = await Acquire(gate);
 
-        public IReadOnlyList<TimeSpan> DueTimes => _dueTimes;
-        public bool TimerDisposed { get; private set; }
-
-        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
-
-        public override long GetTimestamp() => _ticks;
-
-        public void Advance(TimeSpan elapsed) => _ticks += elapsed.Ticks;
-
-        public void FireTimer() => _callback!(_state);
-
-        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        const int threads = 8;
+        const int perThread = 40;
+        Task[] workers = new Task[threads];
+        for (int t = 0; t < threads; t++)
         {
-            _callback = callback;
-            _state = state;
-            return new RecordingTimer(this);
-        }
-
-        private sealed class RecordingTimer(RecordingTimeProvider owner) : ITimer
-        {
-            public bool Change(TimeSpan dueTime, TimeSpan period)
+            workers[t] = Task.Run(async () =>
             {
-                owner._dueTimes.Add(dueTime);
-                return true;
-            }
-
-            public void Dispose() => owner.TimerDisposed = true;
-
-            public ValueTask DisposeAsync() => default;
+                for (int i = 0; i < perThread; i++)
+                {
+                    try
+                    {
+                        (await Acquire(gate)).Dispose();
+                    }
+                    catch (LimitExceededException)
+                    {
+                        // Expected: the gate is saturated for the whole run.
+                    }
+                }
+            });
         }
+
+        await Task.WhenAll(workers);
+        first.Dispose();
+        second.Dispose();
+
+        // Polled, not sampled: Settle completes the waiter before it decrements, and the continuation resumes
+        // asynchronously, so a worker can finish while the settling thread is still a statement short.
+        Assert.That(() => gate.Queued, Is.Zero.After(2000, 50),
+            "a lost decrement never recovers, so the depth cap would eventually refuse every arrival");
+
+        using Lease afterwards = await Acquire(gate);
+        Assert.That(gate.InFlight, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Releasing_a_lease_twice_throws_rather_than_inflating_the_permit_count()
+    {
+        using EvmAdmissionGate gate = Gate(permits: 1);
+        Lease lease = await Acquire(gate);
+        lease.Dispose();
+
+        Assert.That(lease.Dispose, Throws.InstanceOf<InvalidOperationException>());
+    }
+
+    [Test]
+    public void Disposing_the_default_lease_is_a_no_op() =>
+        Assert.That(() => default(Lease).Dispose(), Throws.Nothing);
+
+    [TestCase(0, TestName = "Zero instances")]
+    [TestCase(-5, TestName = "Negative instances")]
+    public async Task Non_positive_instance_count_still_admits_one_caller(int configured)
+    {
+        using EvmAdmissionGate gate = Gate(permits: configured, maxQueueWaitMs: 0);
+
+        using Lease only = await Acquire(gate);
+        Assert.That(async () => await Acquire(gate), Throws.InstanceOf<LimitExceededException>());
     }
 }

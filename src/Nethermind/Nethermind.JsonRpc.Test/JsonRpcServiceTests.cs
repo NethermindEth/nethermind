@@ -22,7 +22,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Core.Test.Threading;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -58,7 +57,6 @@ public class JsonRpcServiceTests
         _context = new JsonRpcContext(RpcEndpoint.Http);
         // StrictHexFormat is pinned for the whole assembly by StrictHexFormatAssemblySetup; no fixture may touch
         // that static, because it is process-global and every concurrent block-parameter parse reads it (#13204).
-        _timeProvider = new ManualTimeProvider();
         UseGate(_configurationProvider.GetConfig<IJsonRpcConfig>());
     }
 
@@ -75,7 +73,6 @@ public class JsonRpcServiceTests
     private ILogManager _logManager = null!;
     private JsonRpcContext _context = null!;
     private EvmAdmissionGate _gate = null!;
-    private ManualTimeProvider _timeProvider = null!;
     private IContainer? _serviceContainer;
 
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
@@ -268,7 +265,7 @@ public class JsonRpcServiceTests
     private void UseGate(IJsonRpcConfig config)
     {
         _gate?.Dispose();
-        _gate = new EvmAdmissionGate(config, _timeProvider);
+        _gate = new EvmAdmissionGate(config);
     }
 
     private static JsonRpcConfig SinglePermitConfig(int maxQueueWaitMs) =>
@@ -971,7 +968,6 @@ public class JsonRpcServiceTests
         long rejectionsBefore = Metrics.JsonRpcOverloadRejections;
         Task<JsonRpcResponse> shedTask = SendEthCallAsync(service);
         await WaitUntil(() => _gate.Queued == 1);
-        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(100));
         using JsonRpcErrorResponse shed = AssertJsonRpcError(await shedTask, ErrorCodes.LimitExceeded, "Too many requests");
         ulong? blockNumber = RpcTest.AssertSuccess<ulong?>(await service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_blockNumber"), _context));
 
@@ -989,11 +985,12 @@ public class JsonRpcServiceTests
     [TestCase(RpcEndpoint.Http, 1, 1, false, false, true, TestName = "HTTP requests may queue")]
     [TestCase(RpcEndpoint.Ws, 1, 1, false, false, false, TestName = "Single-lane WebSocket requests fail fast")]
     [TestCase(RpcEndpoint.Ws, 2, 1, false, false, true, TestName = "Multi-lane WebSocket requests may queue")]
-    [TestCase(RpcEndpoint.IPC, 2, 1, false, false, false, TestName = "IPC requests fail fast when WebSocket is multi-lane")]
-    [TestCase(RpcEndpoint.IPC, 1, 2, false, false, false, TestName = "IPC requests fail fast when IPC is multi-lane")]
-    [TestCase(RpcEndpoint.IPC, 1, 2, true, false, false, TestName = "Explicitly authenticated IPC requests fail fast")]
-    [TestCase(RpcEndpoint.Http, 1, 1, true, false, false, TestName = "Authenticated HTTP requests fail fast")]
+    [TestCase(RpcEndpoint.IPC, 2, 1, false, false, true, TestName = "IPC requests queue at the head when WebSocket is multi-lane")]
+    [TestCase(RpcEndpoint.IPC, 1, 2, false, false, true, TestName = "IPC requests queue at the head when IPC is multi-lane")]
+    [TestCase(RpcEndpoint.IPC, 1, 2, true, false, true, TestName = "Explicitly authenticated IPC requests queue at the head")]
+    [TestCase(RpcEndpoint.Http, 1, 1, true, false, true, TestName = "Authenticated HTTP requests queue at the head")]
     [TestCase(RpcEndpoint.Http, 1, 1, false, true, false, TestName = "Batch items fail fast")]
+    [TestCase(RpcEndpoint.Http, 1, 1, true, true, false, TestName = "Authenticated batch items fail fast")]
     public async Task Evm_queueing_policy_depends_on_transport_authentication_and_batch_membership(
         RpcEndpoint endpoint,
         int webSocketsProcessingConcurrency,
@@ -1006,7 +1003,6 @@ public class JsonRpcServiceTests
         {
             EthModuleConcurrentInstances = 1,
             EvmExecutionMaxQueueWaitMs = 10_000,
-            EvmExecutionQueueLimit = 1,
             WebSocketsProcessingConcurrency = webSocketsProcessingConcurrency,
             IpcProcessingConcurrency = ipcProcessingConcurrency,
         };
@@ -1057,7 +1053,6 @@ public class JsonRpcServiceTests
             EnabledModules = [ModuleType.Eth],
             EthModuleConcurrentInstances = 1,
             EvmExecutionMaxQueueWaitMs = 10_000,
-            EvmExecutionQueueLimit = 1,
         };
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         using ManualResetEventSlim release = new();
@@ -1085,16 +1080,11 @@ public class JsonRpcServiceTests
             Task<JsonRpcResponse> second = service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_call", new LegacyTransactionForRpc()), context).AsTask();
             Assert.That(second.IsCompleted, Is.False, "the second real eth_call must wait for the occupied permit");
 
-            using JsonRpcErrorResponse third = AssertJsonRpcError(
-                await service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_call", new LegacyTransactionForRpc()), context).AsTask().WaitAsync(TestTimeout),
-                ErrorCodes.LimitExceeded,
-                "Too many requests");
-
             container.Dispose();
             containerDisposed = true;
 
-            // Disposal faults the queued admission before the holder releases, while still completing the queued task.
-            using JsonRpcErrorResponse settled = AssertJsonRpcError(await second.WaitAsync(TestTimeout), ErrorCodes.InternalError);
+            // Disposal answers the queued admission as shed before the holder releases, while still completing the queued task.
+            using JsonRpcErrorResponse settled = AssertJsonRpcError(await second.WaitAsync(TestTimeout), ErrorCodes.LimitExceeded, "Too many requests");
 
             release.Set();
             using JsonRpcResponse completed = await first.WaitAsync(TestTimeout);
@@ -1146,8 +1136,6 @@ public class JsonRpcServiceTests
         await WaitUntil(() => _gate.Queued == 1);
 
         cancellation.Cancel();
-        // Cancellation is observed lazily: the next sweep drops the waiter whose caller has gone.
-        _timeProvider.AdvanceAndFireTimer(TimeSpan.Zero);
 
         Assert.CatchAsync<OperationCanceledException>(() => waiting.WaitAsync(TestTimeout), "A cancelled admission must not produce a response.");
         using (Assert.EnterMultipleScope())
@@ -1215,7 +1203,7 @@ public class JsonRpcServiceTests
             expectedCode);
         Assert.That(_gate.InFlight, Is.EqualTo(0));
 
-        // The single permit must be free again, otherwise this waits for a sweep the manual clock never fires.
+        // The single permit must be free again, otherwise this waits out the whole budget.
         RpcTest.AssertSuccess<HexBytes>(await SendEthCallAsync(service));
     }
 
@@ -1311,7 +1299,6 @@ public class JsonRpcServiceTests
         if (saturated)
         {
             await WaitUntil(() => _gate.Queued == 1);
-            _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(100));
         }
 
         using JsonRpcErrorResponse response = AssertJsonRpcError(await responseTask.WaitAsync(TestTimeout), expectedCode);
@@ -1321,6 +1308,131 @@ public class JsonRpcServiceTests
             Assert.That(BindingProbeConverter.Bindings - bindingsBefore, Is.EqualTo(expectedBindings));
             Assert.That(_gate.InFlight, Is.EqualTo(saturated ? 1 : 0), "only the externally held permit may remain in flight");
         }
+    }
+
+    [Test]
+    public async Task Authenticated_request_is_served_before_anonymous_waiters_that_arrived_first()
+    {
+        UseGate(SinglePermitConfig(maxQueueWaitMs: 10_000));
+        List<int> servedInputLengths = [];
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(callInfo =>
+        {
+            lock (servedInputLengths)
+            {
+                servedInputLengths.Add(callInfo.Arg<SignableTransactionForRpc>() is LegacyTransactionForRpc { Input: { } input } ? input.Length : -1);
+            }
+            return ResultWrapper<HexBytes>.Success(ToHexBytes("0x01"));
+        });
+        IJsonRpcService service = CreateService(ethRpcModule);
+        using JsonRpcContext authenticated = new(RpcEndpoint.Http, url: new JsonRpcUrl(string.Empty, string.Empty, 0, RpcEndpoint.Http, true, [ModuleType.Eth]));
+        LegacyTransactionForRpc anonymousCall = new() { Input = new byte[1] };
+        LegacyTransactionForRpc authenticatedCall = new() { Input = new byte[2] };
+
+        Task<JsonRpcResponse> anonymous;
+        Task<JsonRpcResponse> trusted;
+        using (await HoldPermitAsync())
+        {
+            anonymous = service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_call", anonymousCall), _context).AsTask();
+            await WaitUntil(() => _gate.Queued == 1);
+            // A saturated gate used to shed authenticated callers outright; they wait at the head instead.
+            trusted = service.SendRequestAsync(RpcTest.BuildJsonRequest("eth_call", authenticatedCall), authenticated).AsTask();
+            await WaitUntil(() => _gate.Queued == 2);
+        }
+
+        RpcTest.AssertSuccess<HexBytes>(await trusted.WaitAsync(TestTimeout));
+        RpcTest.AssertSuccess<HexBytes>(await anonymous.WaitAsync(TestTimeout));
+        Assert.That(servedInputLengths, Is.EqualTo(new[] { authenticatedCall.Input!.Length, anonymousCall.Input!.Length }),
+            "the authenticated caller takes the first free permit even though the anonymous one was queued first");
+    }
+
+    [Test]
+    public void Eth_fillTransaction_is_gated_because_it_estimates_gas_without_crossing_the_service()
+    {
+        // eth_fillTransaction calls eth_estimateGas on the module directly when the caller omits gas, so that execution
+        // never passes through JsonRpcService and the gate only sees it if the method is itself flagged.
+        MethodInfo fillTransaction = typeof(IEthRpcModule).GetMethod(nameof(IEthRpcModule.eth_fillTransaction))!;
+
+        Assert.That(fillTransaction.GetCustomAttribute<JsonRpcMethodAttribute>()?.IsEvmExecution, Is.True);
+    }
+
+    [Test]
+    public void No_gated_method_can_return_a_streamable_result()
+    {
+        // The permit is released when the invocation returns, so a gated method whose result re-executes while the
+        // response is written would run the EVM outside the gate. The module provider rejects the declared payload type
+        // at registration; this pins the concrete streaming types too, since every streaming result is substituted at
+        // runtime under a base (GethLikeTxTraceStreamingSingleResult : GethLikeTxTrace) that a declared-type check misses.
+        // Scope is what this project references: plugin modules are not covered.
+        Assembly[] scanned = [typeof(IStreamableResult).Assembly];
+
+        Type[] streamingTypes = [.. scanned
+            .SelectMany(static a => a.GetTypes())
+            .Where(static t => !t.IsAbstract && !t.IsInterface && typeof(IStreamableResult).IsAssignableFrom(t))];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(streamingTypes, Is.Not.Empty, "no IStreamableResult implementations were found to check against");
+            Assert.That(AllRpcModuleInterfaces(scanned), Does.Contain(typeof(IEthRpcModule)),
+                "the eth module was not in the scanned set, so gated methods would not be seen");
+        }
+
+        // eth_call, eth_estimateGas, eth_createAccessList, eth_fillTransaction, eth_simulateV1.
+        const int gatedMethodCount = 5;
+        List<string> offenders = [];
+        int gatedMethods = 0;
+        int payloadsCompared = 0;
+        foreach (Type moduleType in AllRpcModuleInterfaces(scanned))
+        {
+            foreach (MethodInfo method in moduleType.GetMethods(BindingFlags.Instance | BindingFlags.Public))
+            {
+                if (method.GetCustomAttribute<JsonRpcMethodAttribute>() is not { IsEvmExecution: true }) continue;
+
+                gatedMethods++;
+                foreach (Type payload in PayloadTypes(method))
+                {
+                    payloadsCompared++;
+                    foreach (Type streaming in streamingTypes)
+                    {
+                        if (payload.IsAssignableFrom(streaming))
+                        {
+                            offenders.Add($"{moduleType.Name}.{method.Name} -> {payload.Name} accepts {streaming.Name}");
+                        }
+                    }
+                }
+            }
+        }
+
+        // The vacuity risk: if PayloadTypes stops unwrapping a return shape it yields nothing and the guard passes
+        // having compared nothing at all.
+        Assert.That(gatedMethods, Is.GreaterThanOrEqualTo(gatedMethodCount),
+            "fewer gated methods were found than are flagged IsEvmExecution, so some were not examined");
+        Assert.That(payloadsCompared, Is.GreaterThanOrEqualTo(gatedMethods),
+            "at least one payload type per gated method must have been extracted and compared");
+
+        Assert.That(offenders, Is.Empty,
+            "a method flagged IsEvmExecution must not be able to return an IStreamableResult; see JsonRpcMethodAttribute.IsEvmExecution");
+    }
+
+    private static IEnumerable<Type> AllRpcModuleInterfaces(Assembly[] assemblies) =>
+        assemblies
+            .SelectMany(static a => a.GetExportedTypes())
+            .Where(static t => t.IsInterface && typeof(IRpcModule).IsAssignableFrom(t));
+
+    /// <summary>Payload types a JSON-RPC method can resolve to, unwrapping Task/ValueTask and the result wrapper.</summary>
+    private static IEnumerable<Type> PayloadTypes(MethodInfo method)
+    {
+        Type returnType = method.ReturnType;
+        if (returnType.IsGenericType)
+        {
+            Type definition = returnType.GetGenericTypeDefinition();
+            if (definition == typeof(Task<>) || definition == typeof(ValueTask<>))
+            {
+                returnType = returnType.GenericTypeArguments[0];
+            }
+        }
+
+        return returnType.IsGenericType ? returnType.GenericTypeArguments : [];
     }
 
     // Every caller waits for another task to make progress, so this sleeps rather than yielding: on a saturated agent

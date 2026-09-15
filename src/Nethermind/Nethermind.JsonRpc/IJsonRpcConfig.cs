@@ -162,31 +162,34 @@ public interface IJsonRpcConfig : IConfig
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
+    /// <summary>Whether EVM-executing JSON-RPC methods are admitted through the execution gate. Defaults to <c>true</c>.</summary>
+    [ConfigItem(
+        Description = """
+            Whether `eth_call`, `eth_estimateGas`, `eth_createAccessList`, `eth_fillTransaction` and `eth_simulateV1`
+            are admitted through the EVM execution gate, which bounds how many of them run at once to
+            `EthModuleConcurrentInstances`, queues a bounded excess (`EvmExecutionMaxQueueWaitMs`) and answers the rest
+            with `LimitExceeded` (HTTP 503). `false` restores unbounded admission: every call is served, however slowly,
+            and a heavy enough call rate can starve block processing.
+            """,
+        DefaultValue = "true")]
+    bool EvmExecutionGateEnabled { get; set; }
+
     /// <summary>Maximum time, in milliseconds, that an EVM-executing request may wait for a slot. Defaults to 500 ms; 0 disables queueing.</summary>
     [ConfigItem(
         Description = """
-            The max time, in milliseconds, an EVM-executing JSON-RPC request may wait for an
-            execution slot before it is answered with `LimitExceeded` (HTTP 503). Waiting requests are served lightest first,
-            weighted by their `params` size (one unit per 128 KiB, at most 8), FIFO within a weight. A waiter aged through
-            half its budget takes priority over lighter newcomers, while expired requests are shed at their full budget.
-            `0` disables queueing: a request that finds every slot busy is rejected at once, before its parameters are read.
-            A longer budget adds latency to the requests it serves without
-            adding throughput. Queueing is bypassed for batch items and authenticated requests, including all IPC requests.
-            WebSocket connections configured with at most one processing worker also bypass queueing, to avoid delaying later calls.
+            The max time, in milliseconds, an EVM-executing JSON-RPC request may wait for an execution slot before it is
+            answered with `LimitExceeded` (HTTP 503). Waiting requests are ordered by cost, weighted by their `params` size
+            (one unit per 128 KiB, at most 8): a lighter request may overtake a heavier one only if it arrives within the
+            heavier one's slack, just under half the budget for the heaviest class, so sustained light traffic cannot
+            starve a heavy request. The queue holds at most eight waiters per slot; arrivals beyond that are shed at once.
+            `0` disables queueing: a request that finds every slot busy is rejected at once, before its parameters are
+            read. A longer budget adds latency to the requests it serves without adding throughput. Batch items and
+            WebSocket connections with a single processing worker never queue, so a wait cannot delay the calls behind
+            them; authenticated requests, including all IPC requests, queue at the head ahead of anonymous ones rather
+            than being refused. Ignored unless `EvmExecutionGateEnabled` is set.
             """,
         DefaultValue = "500")]
     int EvmExecutionMaxQueueWaitMs { get; set; }
-
-    /// <summary>Maximum number of EVM-executing requests waiting for a slot. Defaults to 500; 0 removes the queue limit.</summary>
-    [ConfigItem(
-        Description = """
-            The max number of EVM-executing JSON-RPC requests waiting for an execution slot
-            at once; further requests are answered with `LimitExceeded` (HTTP 503) immediately, before their parameters are
-            read. `0` to lift the limit, leaving `EvmExecutionMaxQueueWaitMs` as the only bound on the queue. Negative
-            values are treated as zero and therefore leave the queue uncapped.
-            """,
-        DefaultValue = "500")]
-    int EvmExecutionQueueLimit { get; set; }
 
     [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null")]
     public string JwtSecretFile { get; set; }

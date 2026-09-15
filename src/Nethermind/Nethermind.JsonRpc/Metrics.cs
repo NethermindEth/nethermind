@@ -30,7 +30,7 @@ namespace Nethermind.JsonRpc
 
         /// <summary>Number of EVM-executing JSON-RPC requests currently waiting for an execution slot.</summary>
         [GaugeMetric]
-        [Description("Number of EVM-executing JSON RPC requests waiting for an execution slot. A request whose caller has disconnected stays counted until the next grant or expiry sweep removes it.")]
+        [Description("Number of EVM-executing JSON RPC requests waiting for an execution slot.")]
         public static long RpcAdmissionQueued { get; set; }
 
         /// <summary>Number of EVM-executing JSON-RPC requests currently holding an execution slot.</summary>
@@ -40,7 +40,7 @@ namespace Nethermind.JsonRpc
 
         /// <summary>Number of EVM-executing JSON-RPC requests rejected before entering the wait queue.</summary>
         [CounterMetric]
-        [Description("Number of EVM-executing JSON RPC requests shed up front because JsonRpc.EvmExecutionQueueLimit requests were already waiting or queueing is disabled (JsonRpc.EvmExecutionMaxQueueWaitMs=0).")]
+        [Description("Number of EVM-executing JSON RPC requests shed up front because the queue already held eight waiters per execution slot, the caller may not queue (a batch item or a single-lane connection), or queueing is disabled (JsonRpc.EvmExecutionMaxQueueWaitMs=0).")]
         public static long RpcAdmissionQueueFullRejections { get; set; }
 
         /// <summary>Number of EVM-executing JSON-RPC requests rejected after their queue wait budget expired.</summary>

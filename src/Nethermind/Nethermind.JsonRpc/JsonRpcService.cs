@@ -35,19 +35,19 @@ public sealed class JsonRpcService : IJsonRpcService, IDisposable
 
     private readonly ILogger _logger;
     private readonly IRpcModuleProvider _rpcModuleProvider;
-    private readonly EvmAdmissionGate _gate;
+    private readonly EvmAdmissionGate? _gate;
     private readonly HashSet<string> _methodsLoggingFiltering;
     private readonly int _maxLoggedRequestParametersCharacters;
     private readonly bool _webSocketsQueueingEnabled;
 
     /// <summary>Creates a JSON-RPC service using the supplied module provider, logger, and configuration.</summary>
     public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig)
-        : this(rpcModuleProvider, logManager, jsonRpcConfig, new EvmAdmissionGate(jsonRpcConfig))
+        : this(rpcModuleProvider, logManager, jsonRpcConfig, jsonRpcConfig.EvmExecutionGateEnabled ? new EvmAdmissionGate(jsonRpcConfig) : null)
     {
     }
 
-    // Lets tests drive the gate on a manual TimeProvider.
-    internal JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig, EvmAdmissionGate gate)
+    // Lets tests inject the gate; null leaves EVM-executing methods ungated, as EvmExecutionGateEnabled=false does.
+    internal JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig, EvmAdmissionGate? gate)
     {
         _logger = logManager.GetClassLogger<JsonRpcService>();
         _rpcModuleProvider = rpcModuleProvider;
@@ -58,7 +58,7 @@ public sealed class JsonRpcService : IJsonRpcService, IDisposable
     }
 
     /// <inheritdoc/>
-    public void Dispose() => _gate.Dispose();
+    public void Dispose() => _gate?.Dispose();
 
     /// <inheritdoc/>
     public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context) =>
@@ -82,7 +82,7 @@ public sealed class JsonRpcService : IJsonRpcService, IDisposable
 
         try
         {
-            ValueTask<JsonRpcResponse> responseTask = method!.IsEvmExecution
+            ValueTask<JsonRpcResponse> responseTask = method!.IsEvmExecution && _gate is not null
                 ? ExecuteGatedAsync(rpcRequest, methodName, method, context, cancellationToken)
                 : ExecuteAsync(rpcRequest, methodName, method, context);
             return responseTask.IsCompletedSuccessfully
@@ -147,7 +147,7 @@ public sealed class JsonRpcService : IJsonRpcService, IDisposable
     {
         // Admitted before the parameters are bound, so a shed request never pays for deserializing them; the permit is
         // released once the invocation, including any task it returned, has completed.
-        using EvmAdmissionGate.Lease lease = await _gate.AdmitAsync(request.ParamsUtf8Length, cancellationToken, allowQueue: CanQueue(request, context));
+        using EvmAdmissionGate.Lease lease = await _gate!.AdmitAsync(request.ParamsUtf8Length, cancellationToken, CanQueue(request, context), IsTrusted(request, context));
         cancellationToken.ThrowIfCancellationRequested();
         return await ExecuteAsync(request, methodName, method, context);
     }
@@ -161,6 +161,15 @@ public sealed class JsonRpcService : IJsonRpcService, IDisposable
             RpcEndpoint.Ws => _webSocketsQueueingEnabled,
             _ => false,
         };
+
+    /// <summary>Whether a saturated gate queues this request at the head, ahead of every anonymous waiter.</summary>
+    /// <remarks>
+    /// The favour is for the consensus client's single calls, which a saturated gate would otherwise refuse outright while
+    /// anonymous callers behind them were still served after a wait. It stops at the batch exclusion: a trusted batch item
+    /// would wait, and every item behind it in the batch would wait with it.
+    /// </remarks>
+    private static bool IsTrusted(JsonRpcRequest request, JsonRpcContext context) =>
+        context.IsAuthenticated && !request.IsBatchItem;
 
     private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {

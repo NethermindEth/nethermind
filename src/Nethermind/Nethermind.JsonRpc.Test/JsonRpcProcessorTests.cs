@@ -19,7 +19,6 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Core.Test.Threading;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
@@ -397,10 +396,8 @@ public class JsonRpcProcessorTests
             EnabledModules = [ModuleType.Eth],
             EthModuleConcurrentInstances = 1,
             EvmExecutionMaxQueueWaitMs = 60_000,
-            EvmExecutionQueueLimit = 16,
         };
-        ManualTimeProvider timeProvider = new();
-        using EvmAdmissionGate gate = new(config, timeProvider);
+        using EvmAdmissionGate gate = new(config);
 
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>())
@@ -449,8 +446,8 @@ public class JsonRpcProcessorTests
             ResultWrapper<ulong?> blockNumber = (ResultWrapper<ulong?>)items[2];
             Assert.That(blockNumber.Id, Is.EqualTo(new JsonRpcId(3)));
             Assert.That(blockNumber.Data, Is.EqualTo(7UL));
+            // Shed on arrival: nothing queued, and the 10 s wait above is far inside the 60 s budget a queued item would sit out.
             Assert.That(gate.Queued, Is.Zero);
-            Assert.That(timeProvider.GetTimestamp(), Is.Zero, "the batch must fail fast without advancing the fake clock");
         }
 
         ethRpcModule.DidNotReceive().eth_call(Arg.Any<SignableTransactionForRpc>());
