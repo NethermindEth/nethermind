@@ -25,9 +25,9 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     public bool HasStateForTarget(BlockHeader targetBlock) =>
         baseScopeProvider.HasStateForTarget(targetBlock);
 
-    public bool TryBeginScope(BlockHeader targetBlock, LocalMetrics metrics, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
-        if (!baseScopeProvider.TryBeginScope(targetBlock, metrics, out IWorldStateScopeProvider.IScope? innerScope))
+        if (!baseScopeProvider.TryBeginScopeAtTarget(targetBlock, metrics, out IWorldStateScopeProvider.IScope? innerScope))
         {
             scope = null;
             return false;

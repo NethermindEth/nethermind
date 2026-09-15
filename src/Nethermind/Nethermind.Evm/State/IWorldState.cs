@@ -34,7 +34,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <param name="targetBlock">The target block; its parent state is opened.</param>
     /// <param name="scopeCloser">The disposable scope closer when acquisition succeeds.</param>
     /// <returns><c>true</c> when the parent state was acquired; otherwise <c>false</c>.</returns>
-    bool TryBeginScope(BlockHeader targetBlock, [NotNullWhen(true)] out IDisposable? scopeCloser) => throw new NotSupportedException();
+    bool TryBeginScopeAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IDisposable? scopeCloser) => throw new NotSupportedException();
 
     /// <summary>Checks whether the parent state required to execute <paramref name="targetBlock"/> is available.</summary>
     /// <remarks>This check is advisory and does not reserve or pin state.</remarks>

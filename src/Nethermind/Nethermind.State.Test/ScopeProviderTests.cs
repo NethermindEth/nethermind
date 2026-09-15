@@ -79,7 +79,7 @@ public class ScopeProviderTests(bool useFlat)
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ctx.ScopeProvider.HasStateForTarget(target), Is.True);
-            Assert.That(ctx.ScopeProvider.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.True);
+            Assert.That(ctx.ScopeProvider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.True);
             Assert.That(scope, Is.Not.Null);
             Assert.That(scope!.Get(TestItem.AddressA), Is.Not.Null);
             scope.Dispose();
@@ -95,10 +95,10 @@ public class ScopeProviderTests(bool useFlat)
         stateHeaderProvider.Parent = HeaderAt(stateRoot, 1);
         BlockHeader target = Build.A.BlockHeader.WithParent(stateHeaderProvider.Parent).WithTimestamp(24680).TestObject;
 
-        Assert.That(ctx.ScopeProvider.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope firstScope), Is.True);
+        Assert.That(ctx.ScopeProvider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope firstScope), Is.True);
         firstScope!.Dispose();
 
-        Assert.That(ctx.ScopeProvider.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope secondScope), Is.True);
+        Assert.That(ctx.ScopeProvider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope secondScope), Is.True);
         secondScope!.Dispose();
     }
 
@@ -110,11 +110,11 @@ public class ScopeProviderTests(bool useFlat)
         BlockHeader target = Build.A.BlockHeader.WithNumber(2).WithParentHash(TestItem.KeccakA).TestObject;
 
         Assert.That(ctx.ScopeProvider.HasStateForTarget(target), Is.False);
-        Assert.That(ctx.ScopeProvider.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.False);
+        Assert.That(ctx.ScopeProvider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.False);
         Assert.That(scope, Is.Null);
 
         stateHeaderProvider.Parent = HeaderAt(Keccak.EmptyTreeHash, 1);
-        Assert.That(ctx.ScopeProvider.TryBeginScope(target, new LocalMetrics(), out scope), Is.True);
+        Assert.That(ctx.ScopeProvider.TryBeginScopeAtTarget(target, new LocalMetrics(), out scope), Is.True);
         scope!.Dispose();
     }
 
@@ -126,7 +126,7 @@ public class ScopeProviderTests(bool useFlat)
         BlockHeader target = Build.A.BlockHeader.WithParent(parent).WithTimestamp(54321).TestObject;
 
         Assert.That(ctx.ScopeProvider.HasStateForTarget(target), Is.False);
-        Assert.That(ctx.ScopeProvider.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.False);
+        Assert.That(ctx.ScopeProvider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.False);
         Assert.That(scope, Is.Null);
     }
 
@@ -137,7 +137,7 @@ public class ScopeProviderTests(bool useFlat)
         using Context ctx = new(useFlat, stateHeaderProvider: stateHeaderProvider);
         BlockHeader target = Build.A.BlockHeader.WithNumber(0).WithStateRoot(TestItem.KeccakA).TestObject;
 
-        Assert.That(ctx.ScopeProvider.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.True);
+        Assert.That(ctx.ScopeProvider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.True);
         scope!.Dispose();
         Assert.That(stateHeaderProvider, Is.Not.Null);
     }
@@ -152,10 +152,10 @@ public class ScopeProviderTests(bool useFlat)
         BlockHeader secondTarget = Build.A.BlockHeader.WithTimestamp(5432).TestObject;
 
         Assert.That(decorated.HasStateForTarget(firstTarget), Is.True);
-        Assert.That(decorated.TryBeginScope(firstTarget, new LocalMetrics(), out IWorldStateScopeProvider.IScope firstScope), Is.True);
+        Assert.That(decorated.TryBeginScopeAtTarget(firstTarget, new LocalMetrics(), out IWorldStateScopeProvider.IScope firstScope), Is.True);
         firstScope!.Dispose();
         Assert.That(decorated.HasStateForTarget(secondTarget), Is.True);
-        Assert.That(decorated.TryBeginScope(secondTarget, new LocalMetrics(), out IWorldStateScopeProvider.IScope secondScope), Is.True);
+        Assert.That(decorated.TryBeginScopeAtTarget(secondTarget, new LocalMetrics(), out IWorldStateScopeProvider.IScope secondScope), Is.True);
         secondScope!.Dispose();
 
         using (Assert.EnterMultipleScope())
@@ -175,7 +175,7 @@ public class ScopeProviderTests(bool useFlat)
         BlockHeader target = Build.A.BlockHeader.WithTimestamp(6543).TestObject;
 
         Assert.That(decorated.HasStateForTarget(target), Is.True);
-        Assert.That(decorated.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.True);
+        Assert.That(decorated.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.True);
         scope!.Dispose();
 
         Assert.That(inner.LastTarget, Is.SameAs(target));
@@ -189,7 +189,7 @@ public class ScopeProviderTests(bool useFlat)
         BlockHeader target = Build.A.BlockHeader.WithNumber(1).WithParentHash(TestItem.KeccakA).TestObject;
 
         Assert.That(context.ScopeProvider.HasStateForTarget(target), Is.False);
-        Assert.That(context.ScopeProvider.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.False);
+        Assert.That(context.ScopeProvider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.False);
         Assert.That(scope, Is.Null);
     }
 
@@ -200,7 +200,7 @@ public class ScopeProviderTests(bool useFlat)
         BlockHeader target = Build.A.BlockHeader.WithNumber(1).WithParentHash(TestItem.KeccakA).TestObject;
 
         Assert.That(context.ScopeProvider.HasStateForTarget(target), Is.False);
-        Assert.That(context.ScopeProvider.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.False);
+        Assert.That(context.ScopeProvider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.False);
         Assert.That(scope, Is.Null);
     }
 
@@ -211,7 +211,7 @@ public class ScopeProviderTests(bool useFlat)
         BlockHeader target = Build.A.BlockHeader.WithNumber(1).TestObject;
 
         Assert.That(() => provider.HasStateForTarget(target), Throws.TypeOf<NotSupportedException>());
-        Assert.That(() => provider.TryBeginScope(target, new LocalMetrics(), out _), Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => provider.TryBeginScopeAtTarget(target, new LocalMetrics(), out _), Throws.TypeOf<NotSupportedException>());
     }
 
     [Test]
@@ -225,7 +225,7 @@ public class ScopeProviderTests(bool useFlat)
 
         Assert.That(state.HasStateForTarget(target), Is.False);
         Assert.That(provider.LastTarget, Is.SameAs(target));
-        Assert.That(state.TryBeginScope(target, out IDisposable failedScope), Is.False);
+        Assert.That(state.TryBeginScopeAtTarget(target, out IDisposable failedScope), Is.False);
         Assert.That(provider.LastTarget, Is.SameAs(target));
         Assert.That(failedScope, Is.Null);
         Assert.That(state.IsInScope, Is.False);
@@ -233,10 +233,10 @@ public class ScopeProviderTests(bool useFlat)
         provider.TryResult = true;
         Assert.That(state.HasStateForTarget(target), Is.True);
         Assert.That(provider.LastTarget, Is.SameAs(target));
-        Assert.That(state.TryBeginScope(target, out IDisposable scope), Is.True);
+        Assert.That(state.TryBeginScopeAtTarget(target, out IDisposable scope), Is.True);
         Assert.That(provider.LastTarget, Is.SameAs(target));
         Assert.That(state.IsInScope, Is.True);
-        Assert.That(() => state.TryBeginScope(target, out _), Throws.InvalidOperationException);
+        Assert.That(() => state.TryBeginScopeAtTarget(target, out _), Throws.InvalidOperationException);
         Assert.That(state.IsInScope, Is.True);
         scope!.Dispose();
         Assert.That(state.IsInScope, Is.False);
@@ -1809,7 +1809,7 @@ public class ScopeProviderTests(bool useFlat)
             return TryResult;
         }
 
-        public bool TryBeginScope(BlockHeader targetBlock, LocalMetrics metrics, out IWorldStateScopeProvider.IScope scope)
+        public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, out IWorldStateScopeProvider.IScope scope)
         {
             LastTarget = targetBlock;
             Targets.Add(targetBlock);

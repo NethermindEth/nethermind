@@ -61,7 +61,7 @@ public class TrieStoreScopeProvider(
         return TryGetBaseBlock(targetBlock, out BlockHeader? parent) && HasRoot(parent);
     }
 
-    public bool TryBeginScope(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
         ArgumentNullException.ThrowIfNull(targetBlock);
         if (!TryGetBaseBlock(targetBlock, out BlockHeader? parent))

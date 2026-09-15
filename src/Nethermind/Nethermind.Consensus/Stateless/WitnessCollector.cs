@@ -25,7 +25,7 @@ public class WitnessCollector(
     /// </remarks>
     public Witness GetWitnessForExistingBlock(BlockHeader parentHeader, Block block)
     {
-        if (!worldState.TryBeginScope(block.Header, out IDisposable? scope))
+        if (!worldState.TryBeginScopeAtTarget(block.Header, out IDisposable? scope))
         {
             throw new InvalidOperationException($"Parent state is unavailable for target block {block.ToString(Block.Format.FullHashAndNumber)}.");
         }

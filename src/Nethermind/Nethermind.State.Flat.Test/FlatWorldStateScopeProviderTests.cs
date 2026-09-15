@@ -57,7 +57,7 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(provider.HasStateForTarget(target), Is.True);
 
         stateAvailable = false;
-        Assert.That(provider.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.False);
+        Assert.That(provider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.False);
         Assert.That(scope, Is.Null);
     }
 
@@ -83,12 +83,12 @@ public class FlatWorldStateScopeProviderTests
         foreach (IWorldStateScopeProvider provider in providers)
         {
             Assert.That(provider.HasStateForTarget(target), Is.True);
-            Assert.That(provider.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.True);
+            Assert.That(provider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.True);
             scope!.Dispose();
         }
 
         Assert.That(manager.GlobalWorldState.HasStateForTarget(sameParentDifferentTimestamp), Is.True);
-        Assert.That(manager.GlobalWorldState.TryBeginScope(sameParentDifferentTimestamp, new LocalMetrics(), out IWorldStateScopeProvider.IScope? secondScope), Is.True);
+        Assert.That(manager.GlobalWorldState.TryBeginScopeAtTarget(sameParentDifferentTimestamp, new LocalMetrics(), out IWorldStateScopeProvider.IScope? secondScope), Is.True);
         secondScope!.Dispose();
         blockTree.Received(8).FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>());
     }
@@ -108,7 +108,7 @@ public class FlatWorldStateScopeProviderTests
         context.FlatDbManager.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>())
             .Returns(_ => CreateSnapshotBundle(context.ResourcePool, persistenceReader));
 
-        Assert.That(context.WorldStateManager.GlobalWorldState.TryBeginScope(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.True);
+        Assert.That(context.WorldStateManager.GlobalWorldState.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.True);
         Assert.That(readerDisposed, Is.False);
 
         scope!.Dispose();
@@ -130,7 +130,7 @@ public class FlatWorldStateScopeProviderTests
         context.FlatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>())
             .Returns(_ => throw CreateStateUnavailableException());
 
-        Assert.That(overridable.WorldState.TryBeginScope(target, new LocalMetrics(), out _), Is.False);
+        Assert.That(overridable.WorldState.TryBeginScopeAtTarget(target, new LocalMetrics(), out _), Is.False);
         Assert.That(local.ToString(), Is.EqualTo("Leases: 1"));
         overridable.Dispose();
     }

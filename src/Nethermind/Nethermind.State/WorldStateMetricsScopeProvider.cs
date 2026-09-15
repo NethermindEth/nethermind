@@ -22,9 +22,9 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
     public bool HasStateForTarget(BlockHeader targetBlock) => _baseProvider.HasStateForTarget(targetBlock);
 
-    public bool TryBeginScope(BlockHeader targetBlock, LocalMetrics metrics, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
-        if (!_baseProvider.TryBeginScope(targetBlock, metrics, out IWorldStateScopeProvider.IScope? baseScope))
+        if (!_baseProvider.TryBeginScopeAtTarget(targetBlock, metrics, out IWorldStateScopeProvider.IScope? baseScope))
         {
             scope = null;
             return false;

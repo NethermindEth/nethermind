@@ -16,7 +16,7 @@ namespace Nethermind.State;
 /// </summary>
 /// <remarks>
 /// An overridable env commits state overrides into an in-memory header the block tree never sees, and a
-/// target processed through <see cref="TryBeginScope"/> becomes the committed state its child builds on.
+/// target processed through <see cref="TryBeginScopeAtTarget"/> becomes the committed state its child builds on.
 /// Matching is by <see cref="BlockHeader.ParentHash"/> only; whether a known header's state exists remains
 /// the wrapped provider's <c>HasRoot</c> check. <see cref="Clear"/> goes with the overrides reset that
 /// discards the state those headers describe.
@@ -39,9 +39,9 @@ public sealed class KnownHeadersScopeProvider : IWorldStateScopeProvider
 
     public bool HasStateForTarget(BlockHeader targetBlock) => _baseProvider.HasStateForTarget(targetBlock);
 
-    public bool TryBeginScope(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
-        if (!_baseProvider.TryBeginScope(targetBlock, metrics, out scope)) return false;
+        if (!_baseProvider.TryBeginScopeAtTarget(targetBlock, metrics, out scope)) return false;
         _headerProvider.Remember(targetBlock);
         return true;
     }

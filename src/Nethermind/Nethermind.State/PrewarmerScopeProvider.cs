@@ -56,9 +56,9 @@ public class PrewarmerScopeProvider(
 
     public bool HasStateForTarget(BlockHeader targetBlock) => baseProvider.HasStateForTarget(targetBlock);
 
-    public bool TryBeginScope(BlockHeader targetBlock, LocalMetrics metrics, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
-        if (!baseProvider.TryBeginScope(targetBlock, metrics, out IWorldStateScopeProvider.IScope? baseScope))
+        if (!baseProvider.TryBeginScopeAtTarget(targetBlock, metrics, out IWorldStateScopeProvider.IScope? baseScope))
         {
             scope = null;
             return false;

@@ -86,7 +86,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
             if (specOverride is not null)
                 overridableSpecProvider.SetOverride(specOverride);
 
-            if (!_worldState.TryBeginScope(targetBlock, out _worldScopeCloser))
+            if (!_worldState.TryBeginScopeAtTarget(targetBlock, out _worldScopeCloser))
             {
                 Reset();
                 scope = null;
