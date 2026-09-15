@@ -19,8 +19,9 @@ namespace Nethermind.Xdc.Test;
 [TestFixture, Parallelizable(ParallelScope.All)]
 internal class XdcBlockTreeTests
 {
-    [Test]
-    public void Suggest_BlockBelowFinalizedHeight_WhenKnown_ReturnsAlreadyKnown()
+    [TestCase(true, TestName = "body already stored")]
+    [TestCase(false, TestName = "only the header known")]
+    public void Suggest_BlockBelowFinalizedHeight_WhenKnown_ReturnsAlreadyKnownAndKeepsTheBody(bool bodyAlreadyStored)
     {
         (XdcBlockTree blockTree, IXdcConsensusContext consensus) = BuildBlockTree();
 
@@ -29,34 +30,25 @@ internal class XdcBlockTreeTests
         Block block2 = XdcBlock(2UL, block1.Hash!);
 
         blockTree.SuggestBlock(genesis);
-        blockTree.SuggestBlock(block1);
+        if (bodyAlreadyStored)
+        {
+            blockTree.SuggestBlock(block1);
+        }
+        else
+        {
+            blockTree.Insert(block1.Header); // sync inserts headers ahead of the bodies
+        }
         blockTree.SuggestBlock(block2);
         blockTree.UpdateHeadBlock(block2.Hash!);
 
         consensus.HighestCommitBlock.Returns(new BlockRoundInfo(block2.Hash!, 1, block2.Number));
 
-        Assert.That(blockTree.SuggestBlock(block1), Is.EqualTo(AddBlockResult.AlreadyKnown));
-    }
-
-    [Test]
-    public void Suggest_BlockBelowFinalizedHeight_WithOnlyHeaderKnown_StoresItsBody()
-    {
-        (XdcBlockTree blockTree, IXdcConsensusContext consensus) = BuildBlockTree();
-
-        Block genesis = XdcBlock(0UL, Keccak.Zero);
-        Block block1 = XdcBlock(1UL, genesis.Hash!);
-        Block block2 = XdcBlock(2UL, block1.Hash!);
-
-        blockTree.SuggestBlock(genesis);
-        blockTree.Insert(block1.Header); // sync inserts headers ahead of the bodies
-        blockTree.SuggestBlock(block2);
-        blockTree.UpdateHeadBlock(block2.Hash!);
-
-        consensus.HighestCommitBlock.Returns(new BlockRoundInfo(block2.Hash!, 1, block2.Number));
-
-        Assert.That(blockTree.SuggestBlock(block1), Is.EqualTo(AddBlockResult.AlreadyKnown));
-        Assert.That(blockTree.FindBlock(block1.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: block1.Number),
-            Is.Not.Null, "the finalized-height branch must delegate to the base so a re-suggested body is kept");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.SuggestBlock(block1), Is.EqualTo(AddBlockResult.AlreadyKnown));
+            Assert.That(blockTree.FindBlock(block1.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: block1.Number),
+                Is.Not.Null, "the finalized-height branch must delegate to the base so a re-suggested body is kept");
+        }
     }
 
     [Test]

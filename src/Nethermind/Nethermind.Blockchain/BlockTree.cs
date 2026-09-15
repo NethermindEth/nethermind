@@ -430,8 +430,8 @@ namespace Nethermind.Blockchain
                 // can still be the first time the block arrives carrying one. Persist it rather than discard it -
                 // once the bodies feed has finished its descent nothing fetches that body again.
                 // History pruning drops bodies while keeping levels and headers, so "known header, no body" also
-                // describes a pruned block; there is no cutoff check here because every Suggest caller works at or
-                // above BestSuggestedHeader, while below-cutoff bodies arrive through Insert.
+                // describes a pruned block; no cutoff check is needed because that cutoff sits far below the head
+                // that Suggest callers work near, while below-cutoff bodies arrive through Insert.
                 if (block is not null && !_blockStore.HasBlock(header.Number, header.Hash))
                 {
                     _blockStore.InsertDeferred(block);
