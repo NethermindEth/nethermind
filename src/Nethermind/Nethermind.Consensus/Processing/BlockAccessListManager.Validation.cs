@@ -42,6 +42,7 @@ public partial class BlockAccessListManager
 
         ulong totalExecutionGas = 0;
         ulong totalStateGas = 0;
+        ulong totalReceiptGas = 0;
         for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
         {
             if (token.IsCancellationRequested)
@@ -67,9 +68,8 @@ public partial class BlockAccessListManager
                 totalStateGas += gasResult.BlockStateGasUsed;
                 SpendGas(gasResult.BlockGasUsed);
 
+                block.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(totalExecutionGas, totalStateGas);
                 CheckGasUsed(j, block, totalExecutionGas, totalStateGas);
-
-                transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(j, block.Transactions[j], block.Header, receiptsTracers[j].TxReceipts[0]));
 
                 // Worker for tx (j+1) has stashed its BAL into _perTxBal[j+1] via Return as
                 // soon as the tx finished — no contention with the validator. Merge it into
@@ -78,6 +78,15 @@ public partial class BlockAccessListManager
                 bool validateStorageReads = j == chunkEnd - 1;
                 MergeAndReturnBal((uint)(j + 1));
                 ValidateBlockAccessList(block, (uint)(j + 1), validateStorageReads);
+
+                if (transactionProcessedEventHandler is not null)
+                {
+                    TxReceipt receipt = receiptsTracers[j].TxReceipts[0];
+                    receipt.Index = j;
+                    totalReceiptGas += receipt.GasUsed;
+                    receipt.GasUsedTotal = totalReceiptGas;
+                    transactionProcessedEventHandler.OnTransactionProcessed(new TxProcessedEventArgs(j, tx, block.Header, receipt));
+                }
             }
         }
 

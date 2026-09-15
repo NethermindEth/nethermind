@@ -88,6 +88,7 @@ public partial class BlockProcessor(
         try
         {
             receipts = ProcessBlock(block, blockTracer, options, spec, token);
+            _blockTransactionsExecutor.PublishTransactionProcessedEvents();
             processed = true;
         }
         catch (BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException ex) when (_balManager.ParallelExecutionEnabled)
@@ -102,6 +103,7 @@ public partial class BlockProcessor(
         }
         finally
         {
+            _blockTransactionsExecutor.ClearTransactionProcessedEvents();
             if (!processed) block.DisposeAccountChanges();
         }
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
