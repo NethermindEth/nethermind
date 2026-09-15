@@ -17,7 +17,6 @@ namespace Nethermind.State.Proofs;
 /// </summary>
 public sealed partial class ReceiptTrie : PatriciaTrie<TxReceipt>
 {
-    private const int MinItemsForParallelReceiptRootHash = 16;
     private readonly IRlpDecoder<TxReceipt> _decoder;
     /// <inheritdoc/>
     /// <param name="receipts">The transaction receipts to build the trie of.</param>
@@ -80,7 +79,7 @@ public sealed partial class ReceiptTrie : PatriciaTrie<TxReceipt>
         RlpBehaviors behavior = (receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)
             | RlpBehaviors.SkipTypedWrapping;
         return new IndexedTrieRoot.Calculator<TxReceipt, ReceiptEncoder>(txReceipts, new(receiptDecoder, behavior))
-            .Calculate(minItemsForParallel: MinItemsForParallelReceiptRootHash);
+            .Calculate(minItemsForParallel: IndexedTrieRoot.MinReceiptsForParallelRootHash);
     }
     private readonly struct ReceiptEncoder(ReceiptMessageDecoder decoder, RlpBehaviors behavior) : IndexedTrieRoot.IValueEncoder<TxReceipt>
     {
