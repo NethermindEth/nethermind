@@ -275,7 +275,7 @@ class ReportTests(unittest.TestCase):
         self.assertIn("not this pull request's base (`ba5e1111aaaa`)", body)
         self.assertNotIn("Δ", body)
         self.assertNotIn("+0.000%", body)
-        self.assertTrue(regressed)
+        self.assertFalse(regressed)
 
     def test_threshold_is_bracketed(self):
         for increment, expected in ((400, False), (600, True)):
@@ -308,7 +308,8 @@ class ReportTests(unittest.TestCase):
             output = (work / "output").read_text(encoding="utf-8")
             lines = output.splitlines()
             self.assertEqual(lines[0], "regressed=true")
-            delimiter = lines[1].removeprefix("report<<")
+            self.assertEqual(lines[1], "stale=false")
+            delimiter = lines[2].removeprefix("report<<")
             self.assertEqual(lines[-1], delimiter)
             summary = (work / "summary").read_text(encoding="utf-8")
             self.assertIn(summary, output)
@@ -329,6 +330,37 @@ class ReportTests(unittest.TestCase):
         self.assertIn("No baseline was restored", body)
         self.assertNotIn("Δ", body)
         self.assertFalse(regressed)
+
+    def test_the_footer_identifies_a_pull_request_merge_commit(self):
+        body, _ = REPORT.render({"a.ssz": row("a.ssz", 1, 1)}, None, "c0ffee", commit_kind="merge commit")
+
+        self.assertIn("`c0ffee` (merge commit)", body)
+
+    def test_stale_baseline_is_reported_separately_from_a_regression(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            (work / "current.json").write_text(json.dumps([row("1.ssz", 100, 1000)]))
+            (work / "base.json").write_text(json.dumps({"commit": "older", "rows": [row("1.ssz", 100, 1000)]}))
+            args = ["report.py", "--current", str(work / "current.json"), "--baseline", str(work / "base.json"),
+                    "--base-commit", "current", "--github-output", str(work / "output")]
+            with unittest.mock.patch.object(sys, "argv", args), unittest.mock.patch.object(sys, "stdout", io.StringIO()):
+                self.assertEqual(REPORT.main(), 0)
+            output = (work / "output").read_text(encoding="utf-8")
+            self.assertIn("regressed=false", output)
+            self.assertIn("stale=true", output)
+
+    def test_invalid_baseline_falls_back_to_absolute_measurements(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            (work / "current.json").write_text(json.dumps([row("1.ssz", 100, 1000)]))
+            (work / "base.json").write_text(json.dumps({"rows": [{"input": "1.ssz"}]}))
+            args = ["report.py", "--current", str(work / "current.json"), "--baseline", str(work / "base.json"),
+                    "--github-output", str(work / "output")]
+            with unittest.mock.patch.object(sys, "argv", args), unittest.mock.patch.object(sys, "stdout", io.StringIO()):
+                self.assertEqual(REPORT.main(), 0)
+            output = (work / "output").read_text(encoding="utf-8")
+            self.assertIn("regressed=false", output)
+            self.assertIn("stale=false", output)
 
     def test_body_carries_the_marker_so_the_comment_is_updated_not_duplicated(self):
         body, _ = REPORT.render({"a.ssz": row("a.ssz", 1, 1)}, None, "c0ffee")
@@ -362,6 +394,11 @@ class BaselineFileTests(unittest.TestCase):
 
         self.assertEqual(list(rows), ["a.ssz"])
         self.assertEqual(commit, "ba5e1111aaaa")
+
+    def test_rejects_incomplete_or_older_baseline_shapes(self):
+        for document in ({"commit": "base"}, {"rows": [{"input": "a.ssz"}]}, "not rows"):
+            with self.subTest(document=document):
+                self.assertIsNone(self.load(document))
 
 
 class WorkflowTests(unittest.TestCase):
@@ -473,6 +510,42 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
             self.assertEqual((selected / "scripts/zisk-bench/report.py").read_text(), "base instrument")
             self.assertEqual(json.loads((selected / guest / "inputs.json").read_text()), definitions)
             self.assertIn("trusted=true", (work / "outputs").read_text())
+
+    @unittest.skipUnless(sys.platform == "linux", "workflow shell runs on Linux")
+    def test_measurement_definitions_fall_back_to_head_without_a_base(self):
+        match = re.search(r"      - name: Select measurement definitions\n.*?        run: \|\n(.*?)(?=\n      - name:)",
+                          self.WORKFLOW, re.DOTALL)
+        script = textwrap.dedent(match.group(1))
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            repo = work / "repo"
+            repo.mkdir()
+            guest = "src/Nethermind/Nethermind.Stateless.ZiskGuest"
+            (repo / guest).mkdir(parents=True)
+            (repo / "scripts/zisk-bench").mkdir(parents=True)
+            definitions = [{"input": "1.ssz", "hash": "0" * 64, "output": "1" * 64}]
+            (repo / guest / "inputs.json").write_text(json.dumps(definitions))
+            (repo / "scripts/zisk-bench/report.py").write_text("instrument")
+
+            def git(*args):
+                subprocess.check_call(["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", *args],
+                                      cwd=repo, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+            git("init")
+            git("add", ".")
+            git("commit", "-m", "head")
+            env = dict(os.environ, BASE_SHA="", GUEST_DIR=guest, RUNNER_TEMP=str(work),
+                       GITHUB_ENV=str(work / "env"), GITHUB_OUTPUT=str(work / "outputs"))
+            result = subprocess.run(["bash", "-c", script], cwd=repo, env=env, capture_output=True, text=True, check=True)
+            self.assertEqual(json.loads((work / "zisk-bench-definitions" / guest / "inputs.json").read_text()), definitions)
+            self.assertIn("trusted=false", (work / "outputs").read_text())
+            self.assertNotIn("No base-owned measurement definitions", result.stdout)
+
+    def test_the_workflow_uses_global_json_and_a_small_blobless_fetch(self):
+        self.assertIn("global-json-file: global.json", self.WORKFLOW)
+        self.assertNotIn("DOTNET_VERSION", self.WORKFLOW)
+        self.assertIn("fetch-depth: 2", self.WORKFLOW)
+        self.assertIn("filter: blob:none", self.WORKFLOW)
 
 
 class InputListTests(unittest.TestCase):

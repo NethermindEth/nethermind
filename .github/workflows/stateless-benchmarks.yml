@@ -26,7 +26,6 @@ env:
   GUEST_DIR: src/Nethermind/Nethermind.Stateless.ZiskGuest
   # Bumping this invalidates every stored baseline, which is what you want if the parsed shape changes.
   CACHE_VERSION: v3
-  DOTNET_VERSION: 10.0.300
 
 jobs:
   measure:
@@ -38,22 +37,26 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          # The PR merge commit and its base are enough for `git archive "$BASE_SHA"`; omit all
+          # historical blobs and lazily retrieve just the two base-owned paths we archive below.
+          fetch-depth: 2
+          filter: blob:none
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+          global-json-file: global.json
 
       - name: Pin resolved SDK
         id: sdk
         run: |
           set -euo pipefail
-          jq --arg version "$DOTNET_VERSION" '.sdk.version = $version | .sdk.rollForward = "disable"' global.json > "$RUNNER_TEMP/global.json"
+          version=$(jq -r '.sdk.version' global.json)
+          jq '.sdk.rollForward = "disable"' global.json > "$RUNNER_TEMP/global.json"
           cp "$RUNNER_TEMP/global.json" global.json
-          version=$(dotnet --version)
-          [[ "$version" == "$DOTNET_VERSION" ]]
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+          resolved=$(dotnet --version)
+          [[ "$resolved" == "$version" ]]
+          echo "version=$resolved" >> "$GITHUB_OUTPUT"
 
       - name: Select measurement definitions
         id: definitions
@@ -63,17 +66,19 @@ jobs:
           set -euo pipefail
           definitions="$RUNNER_TEMP/zisk-bench-definitions"
           mkdir -p "$definitions"
-          if [[ -n "$BASE_SHA" ]] && git cat-file -e "$BASE_SHA:scripts/zisk-bench/report.py" 2>/dev/null; then
+          if [[ -n "$BASE_SHA" ]] && \
+            git cat-file -e "$BASE_SHA:scripts/zisk-bench/report.py" 2>/dev/null && \
+            git cat-file -e "$BASE_SHA:$GUEST_DIR/inputs.json" 2>/dev/null; then
             git archive "$BASE_SHA" scripts/zisk-bench "$GUEST_DIR/inputs.json" | tar -x -C "$definitions"
             echo "trusted=true" >> "$GITHUB_OUTPUT"
           else
             # Initial introduction has no base-owned instrument and cannot claim a comparison.
             git archive HEAD scripts/zisk-bench "$GUEST_DIR/inputs.json" | tar -x -C "$definitions"
             echo "trusted=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No base-owned measurement definitions; recording absolute values only."
+            [[ -z "$BASE_SHA" ]] || echo "::notice::No base-owned measurement definitions; recording absolute values only."
           fi
           echo "BENCH_DEFINITIONS=$definitions" >> "$GITHUB_ENV"
-          jq -e 'length == 9 and all(.[]; (.input | test("^[0-9]+\\.ssz$")) and (.hash | test("^[0-9a-f]{64}$")) and (.output | test("^[0-9a-f]{64}$")))' "$definitions/$GUEST_DIR/inputs.json"
+          jq -e 'length > 0 and all(.[]; (.input | test("^[0-9]+\\.ssz$")) and (.hash | test("^[0-9a-f]{64}$")) and (.output | test("^[0-9a-f]{64}$")))' "$definitions/$GUEST_DIR/inputs.json"
 
       - name: Build guest
         working-directory: ${{ env.GUEST_DIR }}
@@ -145,13 +150,18 @@ jobs:
             --current "$RUNNER_TEMP/current.json" \
             ${baseline:+--baseline "$baseline"} \
             --commit "${{ github.sha }}" \
+            --commit-kind "${{ github.event_name == 'pull_request' && 'merge commit' || 'commit' }}" \
             --base-commit "${{ github.event.pull_request.base.sha }}" \
             --summary "$GITHUB_STEP_SUMMARY" \
             --github-output "$GITHUB_OUTPUT"
 
       - name: Flag cost regression
         if: steps.report.outputs.regressed == 'true'
-        run: echo "::warning::Guest cost comparison needs review (cost, coverage, or baseline provenance) — see the job summary."
+        run: echo "::warning::Guest cost or benchmark coverage regressed — see the job summary."
+
+      - name: Flag stale baseline
+        if: steps.report.outputs.stale == 'true'
+        run: echo "::notice::The restored baseline does not match this pull request's base, so deltas were suppressed."
 
       - name: Stage baseline
         if: github.event_name == 'push' && github.ref_name == 'master'

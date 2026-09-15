@@ -20,18 +20,44 @@ MARKER = "<!-- zisk-guest-benchmark-report -->"
 # rounding-level change is reported as a number but not called out as a regression. Testing it per
 # block also covers the totals row, whose delta is a cost-weighted mean and so never the larger one.
 NOTABLE = 0.05
+REQUIRED_ROW_FIELDS = ("input", "steps", "total", "main", "opcodes", "precompiles", "memory")
 
 
-def load(path: pathlib.Path) -> tuple[dict[str, dict], str]:
+def load(path: pathlib.Path) -> tuple[dict[str, dict], str] | None:
     """Rows keyed by block file name, and the commit they were measured at if the file records one.
 
     A staged baseline is `{"commit": ..., "rows": [...]}`; a freshly measured file is the bare array
-    `parse-stats.py` appends to.
+    `parse-stats.py` appends to. An incomplete or older file returns `None` so a restored cache can
+    fall back to absolute measurements instead of breaking the benchmark job.
     """
-    document = json.loads(path.read_text(encoding="utf-8"))
-    rows = document["rows"] if isinstance(document, dict) else document
-    commit = document.get("commit", "") if isinstance(document, dict) else ""
-    return {row["input"]: row for row in rows}, commit
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+
+    if isinstance(document, list):
+        rows = document
+        commit = ""
+    elif isinstance(document, dict):
+        rows = document.get("rows")
+        commit = document.get("commit", "")
+    else:
+        return None
+
+    if not isinstance(rows, list) or not isinstance(commit, str):
+        return None
+
+    result = {}
+    for row in rows:
+        if not isinstance(row, dict) or any(field not in row for field in REQUIRED_ROW_FIELDS):
+            return None
+        if not isinstance(row["input"], str) or any(type(row[field]) is not int for field in REQUIRED_ROW_FIELDS[1:]):
+            return None
+        if row["input"] in result:
+            return None
+        result[row["input"]] = row
+
+    return result, commit
 
 
 def pct(current: int, before: int) -> float:
@@ -53,6 +79,7 @@ def render(
     commit: str,
     baseline_commit: str = "",
     base_commit: str = "",
+    commit_kind: str = "commit",
 ) -> tuple[str, bool]:
     lines = [MARKER, "## Stateless guest cost", ""]
     regressed = False
@@ -62,7 +89,6 @@ def render(
         lines += ["⚠️ **Baseline does not match this pull request's base; deltas are suppressed.**", ""]
         lines += [f"Restored from `{baseline_commit[:12] or 'unrecorded'}`, not this pull request's base (`{base_commit[:12]}`).", ""]
         baseline = None
-        regressed = True
 
     if baseline is None:
         lines += [
@@ -129,7 +155,7 @@ def render(
 
     lines += [
         "",
-        f"`{commit[:12]}` · {len(current)} pinned blocks · ziskemu is deterministic, so these figures "
+        f"`{commit[:12]}` ({commit_kind}) · {len(current)} pinned blocks · ziskemu is deterministic, so these figures "
         "are exact and any non-zero delta is real.",
     ]
 
@@ -148,6 +174,7 @@ def main() -> int:
     parser.add_argument("--current", required=True, type=pathlib.Path)
     parser.add_argument("--baseline", type=pathlib.Path)
     parser.add_argument("--commit", default="", help="The commit being measured.")
+    parser.add_argument("--commit-kind", default="commit", help="Whether the measured commit is a pull request merge commit.")
     parser.add_argument(
         "--base-commit",
         default="",
@@ -162,14 +189,17 @@ def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-    current, _ = load(args.current)
+    loaded_current = load(args.current)
+    if loaded_current is None:
+        raise SystemExit("invalid measurements to report")
+    current, _ = loaded_current
     if not current:
         raise SystemExit("no measurements to report")
 
-    baseline, baseline_commit = (
-        load(args.baseline) if args.baseline and args.baseline.exists() else (None, "")
-    )
-    report, regressed = render(current, baseline, args.commit, baseline_commit, args.base_commit)
+    loaded_baseline = load(args.baseline) if args.baseline and args.baseline.exists() else None
+    baseline, baseline_commit = loaded_baseline or (None, "")
+    stale = baseline is not None and bool(args.base_commit) and baseline_commit != args.base_commit
+    report, regressed = render(current, baseline, args.commit, baseline_commit, args.base_commit, args.commit_kind)
 
     print(report)
     if args.summary:
@@ -181,6 +211,7 @@ def main() -> int:
             delimiter = "ZISK_REPORT_" + secrets.token_hex(16)
         with args.github_output.open("a", encoding="utf-8") as handle:
             handle.write(f"regressed={str(regressed).lower()}\n")
+            handle.write(f"stale={str(stale).lower()}\n")
             handle.write(f"report<<{delimiter}\n{report}\n{delimiter}\n")
     return 0
 
