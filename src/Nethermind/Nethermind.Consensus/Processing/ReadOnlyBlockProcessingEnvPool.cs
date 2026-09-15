@@ -10,11 +10,11 @@ using Nethermind.Core.Exceptions;
 
 namespace Nethermind.Consensus.Processing;
 
-/// <summary>A read-only block-processing environment that can be pinned to a base block for the length of a scope.</summary>
+/// <summary>A read-only block-processing environment reserved for the length of a scope.</summary>
 /// <typeparam name="TScope">The scope type handed out by <see cref="Begin"/>, disposed to release the environment.</typeparam>
 public interface IReadOnlyBlockProcessingEnv<out TScope> where TScope : IDisposable
 {
-    TScope Begin(BlockHeader? baseBlock);
+    TScope Begin();
 }
 
 /// <summary>
@@ -44,12 +44,12 @@ public class ReadOnlyBlockProcessingEnvPool<TEnv, TScope>(
     private int _activeCount;
     private volatile bool _disposed;
 
-    public PooledScope Begin(BlockHeader? baseBlock)
+    public PooledScope Begin()
     {
         TEnv env = Rent();
         try
         {
-            TScope scope = env.Begin(baseBlock);
+            TScope scope = env.Begin();
             return new PooledScope(scope, env, this);
         }
         catch
