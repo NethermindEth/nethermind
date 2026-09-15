@@ -127,6 +127,7 @@ fi
 
 sums="${RUNNER_TEMP}/frame-verify-gas-groth16.SHA256SUMS"
 cp "${assets}/SHA256SUMS" "${sums}" || exit 1
+digest=$(sha256sum "${assets}/SHA256SUMS" | cut -d ' ' -f 1) || exit 1
 if ! {
   echo "FRAME_GROTH16_ARTIFACTS=${artifacts}"
   echo "GROTH16_ARTIFACTS_SHA256SUMS=${sums}"
