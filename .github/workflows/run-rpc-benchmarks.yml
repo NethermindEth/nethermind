@@ -724,6 +724,10 @@ jobs:
     if: needs.resolve.outputs.should_run == 'true'
     runs-on: [self-hosted, "${{ needs.resolve.outputs.runner_label }}"]
     timeout-minutes: 800
+    defaults:
+      run:
+        # Other workflows leave sparse-checkout state in the shared workspace's .git.
+        working-directory: rpc-bench-workspace
     env:
       # NB: the `runner` context is not available in job-level env, so OUT_DIR /
       # STATE_DIR are exported from $RUNNER_TEMP in the "Set up run paths" step.
@@ -735,10 +739,20 @@ jobs:
       RPC_PORT: "8545"
       REF_RPC_PORT: "8546"
     steps:
+      - name: Set up run paths
+        working-directory: .
+        run: |
+          mkdir -p rpc-bench-workspace
+          echo "OUT_DIR=$RUNNER_TEMP/rpcbench-out" >> "$GITHUB_ENV"
+          echo "STATE_DIR=$RUNNER_TEMP/rpcbench-state" >> "$GITHUB_ENV"
+
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          path: rpc-bench-workspace
 
       - name: Make scripts executable
+        id: scripts
         run: chmod +x scripts/rpc-bench/*.sh
 
       - name: Verify perf profiling prerequisites
@@ -760,11 +774,6 @@ jobs:
             run_as_root systemctl start docker || run_as_root service docker start
           fi
           docker version
-
-      - name: Set up run paths
-        run: |
-          echo "OUT_DIR=$RUNNER_TEMP/rpcbench-out" >> "$GITHUB_ENV"
-          echo "STATE_DIR=$RUNNER_TEMP/rpcbench-state" >> "$GITHUB_ENV"
 
       - name: Print resolved configuration
         run: |
@@ -1116,7 +1125,7 @@ jobs:
           ./scripts/rpc-bench/run-ethcallchaos.sh
 
       - name: Stop reference node and verify DB integrity
-        if: always() && needs.resolve.outputs.comparison == 'true'
+        if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.comparison == 'true'
         env:
           STOP_GRACE: "180"
         run: NODE_ENV_FILE="${STATE_DIR}/node-reference.env" ./scripts/rpc-bench/stop-node.sh
@@ -1198,7 +1207,7 @@ jobs:
           ./scripts/rpc-bench/run-rpc-sweep.sh
 
       - name: Stop node and verify DB integrity
-        if: always() && needs.resolve.outputs.benchmark_tool != 'jsonbench-sweep'
+        if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.benchmark_tool != 'jsonbench-sweep'
         env:
           STOP_GRACE: "180"
         run: ./scripts/rpc-bench/stop-node.sh
@@ -1218,7 +1227,7 @@ jobs:
           fi
 
       - name: Collect perf profile
-        if: always() && needs.resolve.outputs.perf == 'true'
+        if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.perf == 'true'
         shell: bash
         env:
           ARCHIVE: ${{ runner.temp }}/perf-rpcbench.zip
@@ -1393,7 +1402,7 @@ jobs:
       # output, or per-call files.
       - name: Stage private corpus results
         id: stage-corpus-results
-        if: always() && needs.resolve.outputs.eth_call_corpus == 'true'
+        if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.eth_call_corpus == 'true'
         shell: bash
         run: python3 scripts/rpc-bench/corpus_results.py stage "${OUT_DIR}" "${RUNNER_TEMP}/rpcbench-corpus-results"
 
@@ -1434,7 +1443,7 @@ jobs:
           if-no-files-found: error
 
       - name: Defensive cleanup
-        if: always()
+        if: always() && steps.scripts.outcome == 'success'
         shell: bash
         env:
           SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
