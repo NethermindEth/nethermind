@@ -31,6 +31,9 @@ namespace Nethermind.Blockchain.Test;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BeaconBlockRootHandlerTests
 {
+    private static readonly IReleaseSpec[] BeaconRootSpecs = [Cancun.Instance, Osaka.Instance, Amsterdam.Instance];
+    private static readonly Hash256 BeaconRoot = new(new string('1', 64));
+
     private BeaconBlockRootHandler _beaconBlockRootHandler;
     private ITransactionProcessor _transactionProcessor;
     private IWorldState _worldState;
@@ -137,9 +140,6 @@ public class BeaconBlockRootHandlerTests
 
         _transactionProcessor.DidNotReceive().Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>());
     }
-
-    private static readonly IReleaseSpec[] BeaconRootSpecs = [Cancun.Instance, Osaka.Instance, Amsterdam.Instance];
-    private static readonly Hash256 BeaconRoot = new(new string('1', 64));
 
     [Test]
     public void StoreBeaconRoot_constructs_transaction_for_current_fork(

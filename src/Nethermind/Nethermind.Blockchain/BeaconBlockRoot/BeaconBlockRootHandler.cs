@@ -14,6 +14,8 @@ namespace Nethermind.Blockchain.BeaconBlockRoot;
 
 public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState stateProvider) : IBeaconBlockRootHandler
 {
+    private const ulong GasLimit = 30_000_000UL;
+
     AccessList? IHasAccessList.GetAccessList(Block block, IReleaseSpec spec)
         => BeaconRootsAccessList(block, spec, includeStorageCells: true).accessList;
 
@@ -60,9 +62,11 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
         if (toAddress is not null)
         {
             BlockHeader? header = block.Header;
+            // EIP-8037 adds a state reservoir without reducing the 30M execution budget.
+            // Retain the pre-fork intrinsic charge to preserve execution of custom beacon-root contracts.
             Transaction transaction = spec.IsEip8037Enabled
                 ? new SystemCall { GasLimit = Eip8037Constants.SystemCallGasLimit }
-                : new Transaction { GasLimit = Eip8037Constants.SystemCallBaseGasLimit };
+                : new Transaction { GasLimit = GasLimit };
             transaction.Data = header.ParentBeaconBlockRoot.Bytes.ToArray();
             transaction.To = toAddress;
             transaction.SenderAddress = Address.SystemUser;
