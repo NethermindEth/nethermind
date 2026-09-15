@@ -200,7 +200,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         private bool CanStartNewPruning() => _fullPruningDb.CanStartPruning;
 
-        private const long ChainSizeThresholdFactor = 130;
+        public const long ChainSizeThresholdFactor = 130;
 
         private bool HaveEnoughDiskSpaceToRun()
         {
