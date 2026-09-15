@@ -180,6 +180,18 @@ public class TransactionsMessageSerializerTests
     }
 
     [Test]
+    public void A_size_limit_below_the_rlp_short_form_maximum_does_not_change_how_a_truncated_item_fails()
+    {
+        // 0xb7 declares 55 content bytes the buffer does not carry. A cap below 55 would let this item reach
+        // the type-byte peek, which then reads past the end of the buffer - letting the sender pick the
+        // exception an unguarded decode would have raised as an RLP error.
+        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(EncodeAsSequence(new byte[] { 0xb7 })).AsDisposable();
+        TransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = 10 });
+
+        Assert.That(() => serializer.Deserialize(buffer).Dispose(), Throws.InstanceOf<RlpException>());
+    }
+
+    [Test]
     public void Null_config_keeps_every_transaction_regardless_of_size()
     {
         List<Transaction> transactions = GetTransactions().ElementAt(1).ToList();
