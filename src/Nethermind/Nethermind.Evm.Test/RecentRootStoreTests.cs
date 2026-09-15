@@ -143,9 +143,12 @@ public class RecentRootStoreTests
             Write(state, Source, Salt, Root, writtenSlot);
             ValueHash256 sourceId = RecentRootStore.SourceId(Source, Salt);
 
+            // Through ReferenceCell, which is what applies the modulo: folding the slots here first would
+            // hand StorageKey the same ring index twice and assert nothing about the ring.
             Assert.That(
-                RecentRootStore.StorageKey(sourceId, aliasedSlot % Eip8272Constants.RecentRootLength),
-                Is.EqualTo(RecentRootStore.StorageKey(sourceId, writtenSlot % Eip8272Constants.RecentRootLength)));
+                RecentRootStore.ReferenceCell(sourceId, aliasedSlot),
+                Is.EqualTo(RecentRootStore.ReferenceCell(sourceId, writtenSlot)),
+                "a slot a full ring later must land on the cell it aliases");
 
             // The stored entry commits to writtenSlot, so a reference to the aliased slot cannot match.
             Assert.That(RecentRootStore.IsReferenceValid(state, sourceId, aliasedSlot, Root, aliasedSlot + 1), Is.False);

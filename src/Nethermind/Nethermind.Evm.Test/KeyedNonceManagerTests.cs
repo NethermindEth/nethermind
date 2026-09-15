@@ -203,9 +203,17 @@ public class KeyedNonceManagerTests
     public void IsNonceSetValid_false_for_malformed_sets(UInt256[] nonceKeys) =>
         Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, nonceKeys, nonceSeq: 0), Is.False);
 
+    // The slot has to hold MAX_NONCE_SEQ, or the key mismatches and the case passes without the bound.
+    // It is the bound that keeps the out-of-range clamp from false-matching a transaction at that seq.
     [Test]
-    public void IsNonceSetValid_false_at_max_nonce_seq() =>
+    public void IsNonceSetValid_false_at_max_nonce_seq()
+    {
+        KeyedNonceManager.ConsumeNonceSet(_state, TestItem.AddressA, [(UInt256)5], nonceSeq: ulong.MaxValue - 1);
+
+        Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, (UInt256)5), Is.EqualTo(ulong.MaxValue),
+            "the slot must sit at MAX_NONCE_SEQ for the bound to be what rejects this");
         Assert.That(KeyedNonceManager.IsNonceSetValid(_state, TestItem.AddressA, [(UInt256)5], nonceSeq: ulong.MaxValue), Is.False);
+    }
 
     [Test]
     public void IsNonceSetValid_for_key_zero_matches_the_account_nonce()

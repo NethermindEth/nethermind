@@ -1997,6 +1997,71 @@ public class FrameTxProcessorTests
         }
     }
 
+    // A batch failing before its terminal frame is the only way the rest of a run goes unrun: those frames
+    // are skipped (0x2) rather than failed, the terminal frame with them, and the frame past the batch runs.
+    [Test]
+    public void Execute_AtomicBatchFailsBeforeItsTerminalFrame_SkipsTheRestOfTheRun()
+    {
+        Address afterBatch = TestItem.AddressD;
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(afterBatch, Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModeSender, TxFrame.AtomicBatchFlag, target: Recipient),
+            Frame(TxFrame.ModeSender, TxFrame.AtomicBatchFlag, target: Observer),
+            Frame(TxFrame.ModeSender, target: Observer),
+            Frame(TxFrame.ModeSender, target: afterBatch));
+
+        FrameReceiptTracer tracer = new();
+
+        Assert.That(ProcessTraced(tx, tracer).TransactionExecuted, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts![1].Status, Is.EqualTo(TxFrameReceipt.StatusFailure),
+                "the frame whose failure unrolls the batch keeps its own failure receipt");
+            Assert.That(tracer.FrameReceipts[2].Status, Is.EqualTo(TxFrameReceipt.StatusSkipped));
+            Assert.That(tracer.FrameReceipts[3].Status, Is.EqualTo(TxFrameReceipt.StatusSkipped),
+                "the terminal frame belongs to the run, so it is skipped with it");
+            Assert.That(tracer.FrameReceipts[2].GasUsed, Is.Zero, "a skipped frame burned nothing");
+            Assert.That(tracer.FrameReceipts[4].Status, Is.EqualTo(TxFrameReceipt.StatusSuccess),
+                "the frame past the batch still runs");
+            AssertStorage(Observer, 0, UInt256.Zero, "neither skipped frame wrote");
+        }
+    }
+
+    // A POST_TX revert leaves the transaction valid, so the assertions behind it never run: skipped (0x2),
+    // not failed, and carrying neither gas nor logs.
+    [Test]
+    public void Execute_PostTxFrameFails_SkipsTheAssertionsBehindIt()
+    {
+        Address passingAssertion = TestItem.AddressF;
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.Op(Instruction.STOP).Done);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        DeployContract(passingAssertion, Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModeSender, target: Observer),
+            Frame(TxFrame.ModePostTx, target: Recipient),
+            Frame(TxFrame.ModePostTx, target: passingAssertion));
+
+        FrameReceiptTracer tracer = new();
+
+        Assert.That(ProcessTraced(tx, tracer).TransactionExecuted, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.FrameReceipts![2].Status, Is.EqualTo(TxFrameReceipt.StatusFailure),
+                "the assertion whose revert discards the body");
+            Assert.That(tracer.FrameReceipts[3].Status, Is.EqualTo(TxFrameReceipt.StatusSkipped));
+            Assert.That(tracer.FrameReceipts[3].GasUsed, Is.Zero, "a skipped assertion burned nothing");
+            Assert.That(tracer.FrameReceipts[3].Logs, Is.Empty);
+        }
+    }
+
     // A failure in a later assertion must unwind the whole body, not only what ran after the first.
     [Test]
     public void Execute_SecondPostTxFrameFails_UnwindsTheWholeBody()
