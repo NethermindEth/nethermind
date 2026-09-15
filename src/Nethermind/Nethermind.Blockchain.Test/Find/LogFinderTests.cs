@@ -564,6 +564,23 @@ public class LogFinderTests
     }
 
     [Test]
+    public void Should_ConsultTheIndex_OnALaterPollOfAStoredFilter_OnceTheIndexCoversTheRange()
+    {
+        IndexedLogFinder finder = CreateBoundaryFinder(out _, out ILogIndexStorage index, indexFrom: null, lowestStored: 1UL);
+        LogFilter stored = BoundaryFilter();
+
+        _ = finder.FindLogs(stored, BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray();
+        index.DidNotReceiveWithAnyArgs().GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>());
+
+        index.MinBlockNumber.Returns(0);
+        index.MaxBlockNumber.Returns(BoundaryTo);
+
+        _ = finder.FindLogs(stored, BoundaryHeader(BoundaryFrom), BoundaryHeader(BoundaryTo)).ToArray();
+
+        index.Received().GetEnumerator(TestItem.AddressA, BoundaryFrom, BoundaryTo);
+    }
+
+    [Test]
     public void Should_FallBackToThePlainScan_ForAnAddressLessFilter()
     {
         IndexedLogFinder finder = CreateBoundaryFinder(out _, out ILogIndexStorage index);
