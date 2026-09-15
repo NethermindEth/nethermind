@@ -16,7 +16,7 @@ using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
-using static Nethermind.Evm.Metrics;
+using static Nethermind.Evm.Precompiles.Metrics;
 
 namespace Nethermind.Blockchain.Test;
 

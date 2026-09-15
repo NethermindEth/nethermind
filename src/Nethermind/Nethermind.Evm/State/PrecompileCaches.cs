@@ -18,6 +18,9 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Logging;
 
 using CollectionExtensions = Nethermind.Core.Collections.CollectionExtensions;
+#if !ZK_EVM
+using PrecompileMetrics = Nethermind.Evm.Precompiles.Metrics;
+#endif
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 namespace Nethermind.Evm.State;
@@ -135,7 +138,7 @@ public sealed class PrecompileCaches
     {
 #if !ZK_EVM
         // publishes the metrics to make occupancy gauges report each block's high point
-        Metrics.PrecompileCacheSurvivingEntries = _survivingCache.Count;
+        PrecompileMetrics.PrecompileCacheSurvivingEntries = _survivingCache.Count;
 #endif
         foreach (KeyValuePair<AddressAsKey, Partition> partition in _partitions)
         {
@@ -264,13 +267,13 @@ public sealed class PrecompileCaches
 #if !ZK_EVM
             if (!ExecutionMetricsFlag.IsActive) return;
 
-            Metrics.PrecompileCacheProbes[(_name, ProbeBlockHit)] = Volatile.Read(ref _blockHits);
-            Metrics.PrecompileCacheProbes[(_name, ProbeSurvivingHit)] = Volatile.Read(ref _survivingHits);
-            Metrics.PrecompileCacheProbes[(_name, ProbeMiss)] = Volatile.Read(ref _misses);
-            Metrics.PrecompileCacheRejectedFull[_name] = Volatile.Read(ref _rejectedFull);
-            Metrics.PrecompileCachePartitionMaxBytes[_name] = MaxBytes;
-            Metrics.PrecompileCacheUsedBytes[_name] = UsedBytes;
-            Metrics.PrecompileCacheEntries[_name] = Count;
+            PrecompileMetrics.PrecompileCacheProbes[(_name, ProbeBlockHit)] = Volatile.Read(ref _blockHits);
+            PrecompileMetrics.PrecompileCacheProbes[(_name, ProbeSurvivingHit)] = Volatile.Read(ref _survivingHits);
+            PrecompileMetrics.PrecompileCacheProbes[(_name, ProbeMiss)] = Volatile.Read(ref _misses);
+            PrecompileMetrics.PrecompileCacheRejectedFull[_name] = Volatile.Read(ref _rejectedFull);
+            PrecompileMetrics.PrecompileCachePartitionMaxBytes[_name] = MaxBytes;
+            PrecompileMetrics.PrecompileCacheUsedBytes[_name] = UsedBytes;
+            PrecompileMetrics.PrecompileCacheEntries[_name] = Count;
 #endif
         }
 
