@@ -849,6 +849,7 @@ public class StorageProviderTests(bool useFlat)
     /// The warm-up runs first so no window pays a first-call cost.
     /// </remarks>
     [Test]
+    [NonParallelizable]
     public void Transient_write_does_not_allocate()
     {
         const int Iterations = 1000;
