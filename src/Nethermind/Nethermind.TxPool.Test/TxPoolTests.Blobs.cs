@@ -5153,10 +5153,9 @@ namespace Nethermind.TxPool.Test
 
         // EIP-8141 "Revalidation". The persistent pool swaps the transaction for a frameless light record, but
         // the prefix it was admitted with is still in blob storage, so the sweep reloads it in every blob mode.
-        [TestCase(BlobsSupportMode.InMemory)]
-        [TestCase(BlobsSupportMode.Storage)]
-        [TestCase(BlobsSupportMode.StorageWithReorgs)]
-        public async Task Blob_carrying_frame_tx_whose_prefix_stops_validating_is_evicted_on_a_new_head(BlobsSupportMode blobsSupport)
+        [Test]
+        public async Task Blob_carrying_frame_tx_whose_prefix_stops_validating_is_evicted_on_a_new_head(
+            [Values(BlobsSupportMode.InMemory, BlobsSupportMode.Storage, BlobsSupportMode.StorageWithReorgs)] BlobsSupportMode blobsSupport)
         {
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
             simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
@@ -5174,6 +5173,10 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
+            // The reload is the claim under test, so a persistent pool must answer from storage rather than
+            // from the cache it would only have on the first few hundred blob transactions after a restart.
+            if (blobsSupport.IsPersistentStorage()) DropCachedBlobTransactions();
+
             // The prefix stops validating; only the dependency index decides whether that is ever noticed.
             simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
                 .Returns(FrameTxSimulationResult.Reject("prefix reverts"));
@@ -5186,6 +5189,83 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero,
                 "a pooled prefix that no longer validates must be evicted");
+        }
+
+        // EIP-8141 "Revalidation". The payer is admission metadata, carried on the pooled light record but not
+        // on the wire form blob storage keeps, so the verdict must not be read off the reloaded copy.
+        [Test]
+        public async Task Blob_carrying_frame_tx_whose_payer_moved_is_evicted_on_a_new_head([Values] bool reloadedFromStorage)
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, FrameTxMaxVerifyGas = 200_000 };
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), frameTxPrefixSimulator: simulator);
+
+            // Both solvent, so only the move can decide the eviction rather than a bound either side failed.
+            EnsureSenderBalance(TestItem.AddressF, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+
+            Transaction tx = SponsoredBlobFrameTx(TestItem.PrivateKeyA);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(tx.PayerAddress, Is.EqualTo(TestItem.AddressF), "nothing is reserved unless the payer resolves");
+
+            if (reloadedFromStorage) DropCachedBlobTransactions();
+            Assert.That(BlobTransactionIsCached(tx.Hash!), Is.EqualTo(!reloadedFromStorage),
+                "the arm under test is which copy the sweep reads back");
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+                .Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+
+            Block block = Build.A.Block.WithNumber(1).TestObject;
+            block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressA };
+            await RaiseBlockAddedToMainAndWaitForNewHead(block);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero,
+                "a moved payer evicts rather than rewrites, or its old reservation is held for good");
+        }
+
+        // The persistent pool recreates its light records inside its own constructor, so a restart is the one
+        // path on which nothing raises Inserted and the index would otherwise never hear about them.
+        [Test]
+        public async Task Restored_blob_carrying_frame_tx_is_revalidated_against_a_new_head()
+        {
+            TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, FrameTxMaxVerifyGas = 200_000 };
+            BlobTxStorage blobTxStorage = new();
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.AddressF, UInt256.MaxValue);
+
+            Assert.That(_txPool.SubmitTx(SponsoredBlobFrameTx(TestItem.PrivateKeyA), TxHandlingOptions.None),
+                Is.EqualTo(AcceptTxResult.Accepted));
+
+            // A fresh pool over the same storage stands in for a node restart, and the old one is disposed so
+            // that only one of them answers the head below.
+            await _txPool.DisposeAsync();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the reloaded record is what the sweep reads against");
+
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+                .Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+
+            Block block = Build.A.Block.WithNumber(1).TestObject;
+            block.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressA };
+            await RaiseBlockAddedToMainAndWaitForNewHead(block);
+
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero,
+                "a record restored at startup must be indexed, or a restart exempts it from revalidation");
+        }
+
+        /// <summary>Drops every cached full blob transaction, so the pool has to answer from blob storage.</summary>
+        private void DropCachedBlobTransactions() => BlobTxCache().Clear();
+
+        private bool BlobTransactionIsCached(Hash256 hash) => BlobTxCache().Contains(hash.ValueHash256);
+
+        private Nethermind.Core.Caching.LruCache<ValueHash256, Transaction> BlobTxCache()
+        {
+            object blobPool = typeof(TxPool).GetField("_blobTransactions",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(_txPool)!;
+            return (Nethermind.Core.Caching.LruCache<ValueHash256, Transaction>)typeof(PersistentBlobTxDistinctSortedPool)
+                .GetField("_blobTxCache", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                .GetValue(blobPool)!;
         }
 
         [Test]

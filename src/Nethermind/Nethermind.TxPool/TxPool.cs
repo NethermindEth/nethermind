@@ -254,6 +254,9 @@ namespace Nethermind.TxPool
                         _pendingPaymasters.Reserve(paymaster);
                     }
 
+                    // Nothing raises Inserted for a record the pool recreated, so without this a restart would
+                    // exempt every blob-carrying frame transaction it restored from head revalidation.
+                    IndexFrameTxDependencies(restored);
                     StageFrameEvictionRetries(restored);
                 }
             }
