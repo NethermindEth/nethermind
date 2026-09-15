@@ -254,6 +254,9 @@ namespace Nethermind.TxPool
                         _pendingPaymasters.Reserve(paymaster);
                     }
 
+                    // Nothing raises Inserted for a record the pool recreated, so without this a restart would
+                    // exempt every blob-carrying frame transaction it restored from head revalidation.
+                    IndexFrameTxDependencies(restored);
                     StageFrameEvictionRetries(restored);
                 }
             }
@@ -543,15 +546,16 @@ namespace Nethermind.TxPool
         /// Two kinds of dependency sit outside the set (EIP8141-GAP): helper contracts an opaque prefix reaches
         /// through <c>CALL*</c>, so a code change at one does not trigger revalidation; and block context it
         /// reads (<c>TIMESTAMP</c>, <c>NUMBER</c>), which no change list can describe.
+        /// A persistent blob pool holds a frameless light record, which is indexed all the same: the set is
+        /// addresses that record carries, and <see cref="RevalidateFrameTransactions"/> reloads the prefix
+        /// from blob storage. Skipping it would exempt every blob-carrying frame transaction from revalidation.
         /// </remarks>
         /// <param name="resolvedPayer">A payer the sweep resolved but did not record, so it is still tracked.</param>
         /// <param name="onlyIfTracked">Set by revalidation, which re-indexes a transaction the pool already holds
         /// rather than admitting one, so an eviction that landed meanwhile is not undone.</param>
         private void IndexFrameTxDependencies(Transaction tx, Address? resolvedPayer = null, bool onlyIfTracked = false)
         {
-            // Under persistent blob storage the pool holds a frameless light record. There is no prefix left
-            // to re-resolve, so indexing it would only queue a revalidation that must reject it.
-            if (!tx.SupportsFrames || tx.Frames is null) return;
+            if (!tx.SupportsFrames) return;
 
             Address? payer = tx.PayerAddress ?? resolvedPayer;
             bool hasDistinctPayer = payer is not null && payer != tx.SenderAddress;
@@ -1164,6 +1168,44 @@ namespace Nethermind.TxPool
             return true;
         }
 
+        /// <summary>Reads a pooled blob-carrying frame transaction back for the head sweep, sidecar-free where it
+        /// can be: only the prefix is re-resolved, and reloading the blobs would decode megabytes under this lock.</summary>
+        /// <remarks>
+        /// The sidecar-free read declines rather than waits when another caller holds the same read, so a
+        /// still-pooled transaction can report as absent; that is transient and a carry to the next head covers it.
+        /// A record whose full row never landed declines identically every head instead, and left to the carry
+        /// alone it would hold its payer's reservation while no head ever reached a verdict on it — the defect the
+        /// revalidation sweep exists to close. So once the carry is spent the full read decides, and a record even
+        /// that cannot materialise is dropped: nothing can broadcast or include it either.
+        /// </remarks>
+        private bool TryReadBlobFrameTransaction(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? tx)
+        {
+            if (_blobTransactions.TryGetValueWithoutBlobs(hash, out tx)) return true;
+            if (!_blobTransactions.ContainsKey(hash)) return false;
+
+            if (TryDeferToNextHead(hash))
+            {
+                Interlocked.Increment(ref Metrics.FrameTxRevalidationsDeferred);
+                return false;
+            }
+
+            Interlocked.Increment(ref Metrics.FrameTxRevalidationDeferralsExhausted);
+            if (_blobTransactions.TryGetValue(hash, out tx)) return true;
+
+            Hash256 unreadable = hash.ToCommitment();
+            if (RemoveTransaction(unreadable, out Transaction? pooled))
+            {
+                EvictedPending?.Invoke(this, new TxEventArgs(pooled));
+                // Resubmittable: what is missing is this node's copy of the sidecar, not the transaction's validity.
+                _hashCache.DeleteFromLongTerm(unreadable);
+                Interlocked.Increment(ref Metrics.FrameTxRevalidationEvictions);
+                Metrics.PendingTransactionsEvicted++;
+                if (_logger.IsDebug) _logger.Debug($"Evicted frame transaction {unreadable}, its blob record can no longer be read.");
+            }
+
+            return false;
+        }
+
         /// <summary>
         /// Re-resolves the validation prefix of the pending frame transactions whose tracked dependencies
         /// the new block touched, and evicts those that no longer satisfy the public mempool rules.
@@ -1194,12 +1236,13 @@ namespace Nethermind.TxPool
             foreach (ValueHash256 hash in _frameTxsToRevalidate)
             {
                 // A type-6 frame tx may carry blobs (blob pool) or not (normal pool), so check both.
-                if ((!_transactions.TryGetValue(hash, out Transaction? tx) && !_blobTransactions.TryGetValue(hash, out tx))
-                    || !tx.SupportsFrames
-                    || tx.Frames is null)
+                if (!_transactions.TryGetValue(hash, out Transaction? tx)
+                    && !TryReadBlobFrameTransaction(hash, out tx))
                 {
                     continue;
                 }
+
+                if (!tx.SupportsFrames || tx.Frames is null) continue;
 
                 Interlocked.Increment(ref Metrics.FrameTxRevalidations);
                 if (!TryRevalidateFrameTransaction(tx, state))

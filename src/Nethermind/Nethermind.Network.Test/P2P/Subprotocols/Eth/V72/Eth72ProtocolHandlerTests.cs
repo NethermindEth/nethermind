@@ -5069,6 +5069,67 @@ public class Eth72ProtocolHandlerTests
         return new Hash256(bytes);
     }
 
+    // EIP-8141: a type-6 carrying blobs is not TxType.SupportsBlobs, so it takes the plain eth/72 path end to
+    // end - announced by hash at its network size with no cell mask, requested, then submitted whole. The
+    // sidecar is judged by the pool's blob filters, and the sparse cell protocol stays type-3 only.
+    [Test]
+    public void should_carry_a_blob_bearing_frame_tx_over_the_plain_announcement_path()
+    {
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8141Enabled.Returns(true);
+        _specProvider.GetCurrentHeadSpec().Returns(spec);
+        _transactionPool.NotifyAboutTx(Arg.Any<Hash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(AnnounceResult.RequestRequired);
+        HandleIncomingStatusMessage();
+
+        Transaction tx = BlobCarryingFrameTx();
+        _deliveredMessages.Clear();
+        _handler.SendNewTransaction(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_deliveredMessages.OfType<TransactionsMessage>(), Is.Empty,
+                "a blob-carrying frame tx must never be broadcast with its sidecar");
+            _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage72>(m =>
+                m.Types.Length == 1
+                && m.Types[0] == (byte)TxType.FrameTx
+                && m.Sizes[0] == tx.GetLength()
+                && BlobCellMask.FromBytes(m.CellMask).IsEmpty));
+        }
+
+        _deliveredMessages.Clear();
+        using NewPooledTransactionHashesMessage72 announcement = new(
+            [(byte)TxType.FrameTx], [tx.GetLength()], [tx.Hash!], BlobCellMask.Empty.ToBytes());
+        HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_deliveredMessages.OfType<GetPooledTransactionsMessage>().Count(), Is.EqualTo(1));
+            Assert.That(_deliveredMessages.OfType<GetCellsMessage72>(), Is.Empty,
+                "cells are requested for type-3 only");
+        }
+
+        using TransactionsMessage delivery = new(new[] { tx }.ToPooledList());
+        HandleZeroMessage(delivery, Eth62MessageCode.Transactions);
+
+        _transactionPool.Received(1).SubmitTx(
+            Arg.Is<Transaction>(submitted => submitted.Hash == tx.Hash), Arg.Any<TxHandlingOptions>());
+    }
+
+    private static Transaction BlobCarryingFrameTx()
+    {
+        Transaction tx = Build.A.Transaction
+            .WithNonce(0UL)
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .SignedAndResolved()
+            .TestObject;
+        tx.Type = TxType.FrameTx;
+        tx.Frames = [];
+        tx.FrameSignatures = [];
+        tx.Hash = tx.CalculateHash();
+        return tx;
+    }
+
     private static Transaction FrameTx(PrivateKey signer) => Build.A.Transaction
         .WithType(TxType.FrameTx)
         .WithNonce(0)

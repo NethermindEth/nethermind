@@ -97,7 +97,7 @@ namespace Nethermind.TxPool
         public static long FrameTxRevalidations;
 
         [CounterMetric]
-        [Description("Number of pending EIP-8141 frame transactions evicted because they no longer satisfy the public mempool rules against the new head.")]
+        [Description("Number of pending EIP-8141 frame transactions evicted because they no longer satisfy the public mempool rules against the new head, or because the pool could no longer read the record back to judge it.")]
         public static long FrameTxRevalidationEvictions;
 
         [CounterMetric]
@@ -105,7 +105,7 @@ namespace Nethermind.TxPool
         public static long FrameTxRevalidationsDeferred;
 
         [CounterMetric]
-        [Description("Number of EIP-8141 revalidations left unjudged because the transaction had already been deferred across `TxPool.FrameTxRevalidationDeferralBudget` heads. Each one is a transaction this node never reached a verdict on; a sustained count means the per-head simulation budget is too small for the deferral backlog.")]
+        [Description("Number of EIP-8141 revalidations whose carry across `TxPool.FrameTxRevalidationDeferralBudget` heads was spent. One bound by simulation is left unjudged; one bound by a declined blob-pool read falls back to the full record, and is judged or dropped. A sustained count means the per-head simulation budget is too small for the deferral backlog.")]
         public static long FrameTxRevalidationDeferralsExhausted;
 
         [CounterMetric]
