@@ -743,6 +743,31 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Assert.That(() => JsonSerializer.Serialize(trace.CustomTracerResult, shallow), Throws.InstanceOf<JsonException>());
     }
 
+    [Test]
+    [NonParallelizable]
+    public void Engine_construction_failing_under_a_pending_violation_leaves_later_engines_usable()
+    {
+        Engine hoarder = new(Shanghai.Instance);
+        dynamic hoardingTracer = hoarder.CreateTracer(HoardingTracer);
+        Action hoard = () =>
+        {
+            for (int i = 0; i < 400; i++)
+            {
+                hoardingTracer.step(null, null);
+            }
+        };
+        Assert.That(hoard, Throws.InstanceOf(typeof(IScriptEngineException)), "the hoarding script must trip the limit");
+
+        Assert.That(() => new Engine(Shanghai.Instance), Throws.InstanceOf(typeof(IScriptEngineException)), "engines cannot start while the violation is pending");
+
+        ((object)hoardingTracer as IDisposable)?.Dispose();
+        hoarder.Dispose();
+        using Engine recovered = new(Shanghai.Instance);
+        dynamic probe = recovered.CreateTracer("{ result: function(ctx, db) { return 7; } }");
+
+        Assert.That((int)probe.result(), Is.EqualTo(7));
+    }
+
     private const string HoardingTracer = @"{
                     hoard: [],
                     step: function(log, db) { this.hoard.push(new Array(524288).fill(1)); },

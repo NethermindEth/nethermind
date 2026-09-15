@@ -43,7 +43,6 @@ public class Engine : IDisposable
     private static readonly UIntPtr V8HeapSoftLimit = new(128 * 1024 * 1024);
 
     private static readonly V8Runtime _runtime = CreateRuntime();
-    private static int _liveEngines;
     private static readonly ConcurrentDictionary<string, V8Script> _builtInScripts = new();
     private static readonly LruCache<string, V8Script> _runtimeScripts = new(10, "runtime scripts");
 
@@ -75,28 +74,13 @@ public class Engine : IDisposable
     }
 
     /// <summary>
-    /// A soft-limit violation blocks every script in the runtime until the limit is set again. The limit is
-    /// re-armed only when the first engine of the process starts or the last one goes away, so an engine on one
-    /// thread cannot lift a violation raised against a script still running on another. Setting the limit only
-    /// clears the violation flag: the runtime checks the heap on every outermost host-to-script call regardless.
+    /// A soft-limit violation blocks every script in the runtime until the limit is set again, so every engine
+    /// re-arms it when it goes away: while the violation stands no engine can complete a script call, so the
+    /// engines being released are the ones that hit it or failed because of it. Creating an engine does not
+    /// re-arm. Re-arming cannot let the offending script run on: the runtime checks the heap on every outermost
+    /// host-to-script call and terminates it again.
     /// </summary>
     private static void RearmHeapSoftLimit() => _runtime.MaxHeapSize = V8HeapSoftLimit;
-
-    private static void OnEngineCreated()
-    {
-        if (Interlocked.Increment(ref _liveEngines) == 1)
-        {
-            RearmHeapSoftLimit();
-        }
-    }
-
-    private static void OnEngineDisposed()
-    {
-        if (Interlocked.Decrement(ref _liveEngines) == 0)
-        {
-            RearmHeapSoftLimit();
-        }
-    }
 
     private static string PackTracerCode(string tracerObjectCode) => "(" + tracerObjectCode + ")";
 
@@ -124,11 +108,28 @@ public class Engine : IDisposable
     {
         _spec = spec;
 
-        OnEngineCreated();
         V8Engine = _runtime.CreateScriptEngine(IsDebugging
             ? V8ScriptEngineFlags.AwaitDebuggerAndPauseOnStart | V8ScriptEngineFlags.EnableDebugging
             : V8ScriptEngineFlags.None);
+        try
+        {
+            Initialize();
+        }
+        catch
+        {
+            V8Engine.Dispose();
+            throw;
+        }
 
+        Interlocked.CompareExchange(ref _currentEngine, this, null);
+    }
+
+    /// <summary>
+    /// Registers the host functions and evaluates the built-in scripts. Running script fails while a heap-limit
+    /// violation is pending, in which case the constructor releases the script engine so nothing leaks.
+    /// </summary>
+    private void Initialize()
+    {
         Func<object, ITypedArray<byte>> toWord = ToWord;
         Func<object?, string> toHex = ToHex;
         Func<object, ITypedArray<byte>> toAddress = ToAddress;
@@ -150,8 +151,6 @@ public class Engine : IDisposable
             _bigInteger = V8Engine.Evaluate(LoadBigInteger());
             _createUint8Array = V8Engine.Evaluate(LoadBuiltIn(nameof(CreateUint8ArrayCode), CreateUint8ArrayCode));
         }
-
-        Interlocked.CompareExchange(ref _currentEngine, this, null);
     }
 
     /// <summary>
@@ -239,7 +238,7 @@ public class Engine : IDisposable
         }
         finally
         {
-            OnEngineDisposed();
+            RearmHeapSoftLimit();
         }
     }
 
