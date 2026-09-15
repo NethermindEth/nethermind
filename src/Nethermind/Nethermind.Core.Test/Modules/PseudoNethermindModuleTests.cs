@@ -179,15 +179,15 @@ public class PseudoNethermindModuleTests
     }
 
     [Test]
-    public void Rpc_log_finder_is_range_limited_only_without_the_log_index([Values] bool logIndexEnabled)
+    public void Rpc_log_finder_is_range_limited_with_or_without_the_log_index([Values] bool logIndexEnabled)
     {
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new LogIndexConfig { Enabled = logIndexEnabled }))
             .Build();
 
-        Assert.That(container.Resolve<IRpcLogFinder>(), logIndexEnabled
-            ? Is.Not.InstanceOf<RangeLimitedLogFinder>()
-            : Is.InstanceOf<RangeLimitedLogFinder>());
+        // The index exempts a query from the limit per request, by how much of it the index can answer,
+        // so the limiter stays in front of both finders.
+        Assert.That(container.Resolve<IRpcLogFinder>(), Is.InstanceOf<RangeLimitedLogFinder>());
     }
 
     [Test]

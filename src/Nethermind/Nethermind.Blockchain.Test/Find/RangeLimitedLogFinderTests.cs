@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Find;
 using NSubstitute;
@@ -25,7 +26,33 @@ public class RangeLimitedLogFinderTests
     [TestCase(5, false, TestName = "range 5 <= limit 5 -> allowed")]
     [TestCase(0, false, TestName = "limit disabled -> allowed")]
     public void Enforces_max_block_depth(int maxBlockDepth, bool shouldThrow) =>
-        AssertFindLogs(CreateLogFinder(out ILogFinder inner, maxBlockDepth: maxBlockDepth), inner, shouldThrow);
+        AssertFindLogs(CreateLogFinder(out ILogFinder inner, maxBlockDepth: maxBlockDepth), inner, Filter(), shouldThrow);
+
+    [TestCase(FromBlockNumber, ToBlockNumber, false, TestName = "index covers the range -> allowed")]
+    [TestCase(FromBlockNumber, ToBlockNumber - 2, false, TestName = "index lags the head by 2 -> 2 blocks read, allowed")]
+    [TestCase(FromBlockNumber + 3, ToBlockNumber, true, TestName = "index starts 3 blocks in -> 3 blocks read, rejected")]
+    [TestCase(ToBlockNumber + 1, ToBlockNumber + 9, true, TestName = "index is past the range -> whole range read, rejected")]
+    public void Counts_only_the_blocks_the_log_index_cannot_answer(int indexFrom, int indexTo, bool shouldThrow) =>
+        AssertFindLogs(
+            CreateLogFinder(out ILogFinder inner, indexFrom: indexFrom, indexTo: indexTo),
+            inner, IndexableFilter(), shouldThrow);
+
+    // The gap the marker-interface wiring left open: on an index-enabled node these bypassed the index and
+    // the limit alike, so any caller could ask for a genesis-to-head sequential read.
+    [Test]
+    public void Enforces_max_block_depth_on_a_caller_opting_out_of_the_log_index()
+    {
+        LogFilter filter = IndexableFilter();
+        filter.UseIndex = false;
+
+        AssertFindLogs(CreateLogFinder(out ILogFinder inner, indexFrom: 0, indexTo: ToBlockNumber), inner, filter, shouldThrow: true);
+    }
+
+    [Test]
+    public void Enforces_max_block_depth_on_a_filter_the_log_index_cannot_serve() =>
+        AssertFindLogs(
+            CreateLogFinder(out ILogFinder inner, indexFrom: 0, indexTo: ToBlockNumber),
+            inner, Filter(), shouldThrow: true); // no address and no topic, so IndexedLogFinder reads sequentially
 
     [Test]
     public void Rejects_before_the_result_is_enumerated()
@@ -46,10 +73,8 @@ public class RangeLimitedLogFinderTests
         inner.DidNotReceiveWithAnyArgs().FindLogs(default!, default!, default!);
     }
 
-    private static void AssertFindLogs(RangeLimitedLogFinder logFinder, ILogFinder inner, bool shouldThrow)
+    private static void AssertFindLogs(RangeLimitedLogFinder logFinder, ILogFinder inner, LogFilter filter, bool shouldThrow)
     {
-        LogFilter filter = Filter();
-
         if (shouldThrow)
         {
             Assert.That(() => logFinder.FindLogs(filter, Header(FromBlockNumber), Header(ToBlockNumber)).ToArray(),
@@ -63,7 +88,7 @@ public class RangeLimitedLogFinderTests
         }
     }
 
-    private static RangeLimitedLogFinder CreateLogFinder(out ILogFinder inner, int maxBlockDepth = 2)
+    private static RangeLimitedLogFinder CreateLogFinder(out ILogFinder inner, int maxBlockDepth = 2, int? indexFrom = null, int? indexTo = null)
     {
         inner = Substitute.For<ILogFinder>();
         inner.FindLogs(default!, default!, default!).ReturnsForAnyArgs([]);
@@ -72,10 +97,17 @@ public class RangeLimitedLogFinderTests
         blockFinder.FindHeader(Arg.Any<BlockParameter>(), Arg.Any<bool>())
             .Returns(callInfo => Header((int)callInfo.Arg<BlockParameter>().BlockNumber!.Value));
 
-        return new RangeLimitedLogFinder(inner, blockFinder, new ReceiptConfig { MaxBlockDepth = maxBlockDepth });
+        ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
+        logIndexStorage.MinBlockNumber.Returns(indexFrom);
+        logIndexStorage.MaxBlockNumber.Returns(indexTo);
+
+        return new RangeLimitedLogFinder(inner, blockFinder, new ReceiptConfig { MaxBlockDepth = maxBlockDepth }, logIndexStorage);
     }
 
     private static LogFilter Filter() => FilterBuilder.New().FromBlock(FromBlockNumber).ToBlock(ToBlockNumber).Build();
+
+    private static LogFilter IndexableFilter() => FilterBuilder.New()
+        .FromBlock(FromBlockNumber).ToBlock(ToBlockNumber).WithAddress(TestItem.AddressA).Build();
 
     private static BlockHeader Header(int number) => Build.A.BlockHeader.WithNumber(number).TestObject;
 }
