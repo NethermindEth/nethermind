@@ -273,9 +273,10 @@ public class GCKeeper : IDisposable
         if (generation == GcLevel.NoGC) return;
 
         // Non-compacting and at most gen1: cheap enough to run after every block; compaction stays with the
-        // idle-time collection below.
+        // idle-time collection below. Asked for without blocking, the runtime skips it while a background collection
+        // is running instead of waiting for that collection to finish; otherwise it is an ordinary gen1.
         int sweepGeneration = Math.Min((int)generation, (int)GcLevel.Gen1);
-        _runtime.Collect(sweepGeneration, GCCollectionMode.Forced, compacting: false, trimNativeMemory: false);
+        _runtime.Collect(sweepGeneration, GCCollectionMode.Forced, blocking: false, compacting: false, trimNativeMemory: false);
     }
 
     private enum FailCause
@@ -392,7 +393,7 @@ public class GCKeeper : IDisposable
                     _runtime.CompactLargeObjectHeapOnce();
                 }
 
-                _runtime.Collect((int)generation, mode, compacting: compacting > 0, trimNativeMemory: true);
+                _runtime.Collect((int)generation, mode, blocking: true, compacting: compacting > 0, trimNativeMemory: true);
             }
         }
     }

@@ -24,8 +24,6 @@ public sealed class GCScheduler
 
     // Flag indicating if a garbage collection is currently in progress or disallowed
     private static int _canPerformGC = CanPerformGC;
-    // Held while a blocking collection is decided and started, so a request cannot arrive in between.
-    private static readonly Lock _requestActivityLock = new();
     private static long _latencySensitiveRequests;
     private static int _latencySensitiveRequestsInFlight;
     private static readonly AsyncLocal<long> _currentLatencySensitiveRequest = new();
@@ -34,6 +32,7 @@ public sealed class GCScheduler
     private readonly Timer _gcTimer;
     private readonly Timer? _sustainedSweepTimer;
     private readonly MallocHelper _mallocHelper;
+    private readonly Action<int, GCCollectionMode, bool, bool> _collect;
     private readonly Stopwatch _stopwatch = new();
     private Task _lastGcTask = Task.CompletedTask;
     private bool _isNextGcBlocking = false;
@@ -53,10 +52,12 @@ public sealed class GCScheduler
     {
     }
 
-    // Test ctor: a private instance without the sweep timer cannot race assertions on its state.
-    internal GCScheduler(bool sustainedSweepEnabled, MallocHelper? mallocHelper = null)
+    // Test ctor: a private instance without the sweep timer cannot race assertions on its state; a stand-in
+    // collection lets a test hold one in progress.
+    internal GCScheduler(bool sustainedSweepEnabled, MallocHelper? mallocHelper = null, Action<int, GCCollectionMode, bool, bool>? collect = null)
     {
         _mallocHelper = mallocHelper ?? MallocHelper.Instance;
+        _collect = collect ?? (static (generation, mode, blocking, compacting) => GC.Collect(generation, mode, blocking, compacting));
         // Initialize the timer without starting it
         _gcTimer = new Timer(_ => PerformFullGC(), null, Timeout.Infinite, Timeout.Infinite);
         if (sustainedSweepEnabled)
@@ -154,16 +155,14 @@ public sealed class GCScheduler
     /// and collections scheduled after the previous block treat it as the next one arriving.
     /// </param>
     /// <remarks>
-    /// Entered before the request's parameters are bound. No blocking collection issued through this scheduler starts
-    /// while a request is in flight, and one that is starting holds new requests at the door until it has begun,
-    /// where the collection's own suspension takes over.
+    /// Entered before the request's parameters are bound. No collection that suspends every thread is issued through
+    /// this scheduler while a request is in flight. Entering never waits: a request arriving in the instant between
+    /// that check and the runtime suspending threads meets the collection as a pause, which is the price of not
+    /// making it wait out a background collection the runtime may first have to finish.
     /// </remarks>
     public static LatencySensitiveRequestScope EnterLatencySensitiveRequest(bool carriesBlock)
     {
-        lock (_requestActivityLock)
-        {
-            _latencySensitiveRequestsInFlight++;
-        }
+        Interlocked.Increment(ref _latencySensitiveRequestsInFlight);
         if (carriesBlock)
         {
             _currentLatencySensitiveRequest.Value = Interlocked.Increment(ref _latencySensitiveRequests);
@@ -181,14 +180,13 @@ public sealed class GCScheduler
     /// <summary>Number of block-carrying latency-sensitive requests seen so far.</summary>
     public static long LatencySensitiveRequests => Volatile.Read(ref _latencySensitiveRequests);
 
+    /// <summary>Marks a latency-sensitive request as in flight until disposed; see <see cref="EnterLatencySensitiveRequest"/>.</summary>
     public readonly struct LatencySensitiveRequestScope : IDisposable
     {
+        /// <summary>Ends the request's in-flight period and clears its arrival number from the async flow.</summary>
         public void Dispose()
         {
-            lock (_requestActivityLock)
-            {
-                _latencySensitiveRequestsInFlight--;
-            }
+            Interlocked.Decrement(ref _latencySensitiveRequestsInFlight);
             _currentLatencySensitiveRequest.Value = 0;
         }
     }
@@ -245,7 +243,11 @@ public sealed class GCScheduler
 
     /// <inheritdoc cref="GCCollect(int, GCCollectionMode, bool, bool)"/>
     /// <param name="trimNativeMemory">Whether to hand freed native allocator memory back to the OS afterwards.</param>
-    /// <remarks>A blocking collection is refused while a latency-sensitive request is in flight; a background one only pauses briefly and is not.</remarks>
+    /// <remarks>
+    /// Refused while a latency-sensitive request is in flight unless the collection can run in the background, which
+    /// only a non-compacting gen2 asked for without blocking can (concurrent GC is enabled in the runner); a gen0 or gen1
+    /// suspends every thread whatever the flag says. Native memory is trimmed after the collection, outside any guard.
+    /// </remarks>
     public bool GCCollect(int generation, GCCollectionMode mode, bool blocking, bool compacting, bool trimNativeMemory)
     {
         if (Volatile.Read(ref _forcedGCExclusions) > 0)
@@ -253,20 +255,24 @@ public sealed class GCScheduler
             return Refused();
         }
 
-        if (!blocking)
+        bool suspendsEveryThread = blocking || compacting || generation < GC.MaxGeneration;
+        if (suspendsEveryThread && Volatile.Read(ref _latencySensitiveRequestsInFlight) > 0)
         {
-            return Collect(generation, mode, blocking, compacting, trimNativeMemory);
+            return Refused();
         }
 
-        lock (_requestActivityLock)
+        if (!Collect(generation, mode, blocking, compacting))
         {
-            if (_latencySensitiveRequestsInFlight > 0)
-            {
-                return Refused();
-            }
-
-            return Collect(generation, mode, blocking, compacting, trimNativeMemory);
+            return false;
         }
+
+        if (trimNativeMemory)
+        {
+            // Also trim native memory used by Db
+            _mallocHelper.MallocTrim((uint)1.MiB);
+        }
+
+        return true;
     }
 
     // Callers arm LOH compaction right before asking; a refused collection must not leave it armed for the
@@ -277,7 +283,7 @@ public sealed class GCScheduler
         return false;
     }
 
-    private bool Collect(int generation, GCCollectionMode mode, bool blocking, bool compacting, bool trimNativeMemory)
+    private bool Collect(int generation, GCCollectionMode mode, bool blocking, bool compacting)
     {
         if (!MarkGCPaused())
         {
@@ -292,12 +298,7 @@ public sealed class GCScheduler
         {
             Volatile.Write(ref _sweepBaselineAllocatedBytes, GC.GetTotalAllocatedBytes(precise: false));
         }
-        System.GC.Collect(generation, mode, blocking: blocking, compacting: compacting);
-        if (trimNativeMemory)
-        {
-            // Also trim native memory used by Db
-            _mallocHelper.MallocTrim((uint)1.MiB);
-        }
+        _collect(generation, mode, blocking, compacting);
         // Indicate that GC has finished
         MarkGCResumed();
 

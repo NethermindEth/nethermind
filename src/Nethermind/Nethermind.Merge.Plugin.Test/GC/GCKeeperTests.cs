@@ -112,7 +112,7 @@ public class GCKeeperTests
     }
 
     [Test]
-    public void Idle_keeper_sweeps_gen1_without_compaction_or_native_trim_after_a_block()
+    public void Idle_keeper_sweeps_gen1_without_blocking_compaction_or_native_trim_after_a_block()
     {
         FakeRuntime runtime = new();
         using GCKeeper keeper = new(new RegionStrategy(allowRegions: true, sweep: GcLevel.Gen2), LimboLogs.Instance, runtime);
@@ -120,7 +120,7 @@ public class GCKeeperTests
         RunBlock(keeper, runtime);
 
         Assert.That(runtime.Collections.Wait(Patience), "no sweep followed the block");
-        Assert.That(runtime.Collections.Calls, Is.EqualTo(new[] { new Collection(1, GCCollectionMode.Forced, false, false) }));
+        Assert.That(runtime.Collections.Calls, Is.EqualTo(new[] { Sweep }));
     }
 
     [Test]
@@ -153,8 +153,8 @@ public class GCKeeperTests
         Assert.That(runtime.Collections.Wait(Patience, count: 2), "the delayed compacting collection never ran");
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(runtime.Collections.Calls, Does.Contain(new Collection(1, GCCollectionMode.Forced, true, true)));
-            Assert.That(runtime.Collections.Calls, Does.Contain(new Collection(1, GCCollectionMode.Forced, false, false)));
+            Assert.That(runtime.Collections.Calls, Does.Contain(Compaction));
+            Assert.That(runtime.Collections.Calls, Does.Contain(Sweep));
         }
     }
 
@@ -172,7 +172,7 @@ public class GCKeeperTests
         // The next block reschedules nothing (3 s throttle) and only sweeps, which bounds the wait.
         RunBlock(keeper, runtime);
         Assert.That(runtime.Collections.Wait(Patience), "the second block was never swept");
-        Assert.That(runtime.Collections.Calls, Is.EqualTo(new[] { new Collection(1, GCCollectionMode.Forced, false, false) }));
+        Assert.That(runtime.Collections.Calls, Is.EqualTo(new[] { Sweep }));
     }
 
     [Test]
@@ -318,7 +318,10 @@ public class GCKeeperTests
         public (GcLevel Generation, GcCompaction Compacting) GetForcedGCParams() => (sweep, compaction);
     }
 
-    private readonly record struct Collection(int Generation, GCCollectionMode Mode, bool Compacting, bool TrimNativeMemory);
+    private readonly record struct Collection(int Generation, GCCollectionMode Mode, bool Blocking, bool Compacting, bool TrimNativeMemory);
+
+    private static readonly Collection Sweep = new(1, GCCollectionMode.Forced, Blocking: false, Compacting: false, TrimNativeMemory: false);
+    private static readonly Collection Compaction = new(1, GCCollectionMode.Forced, Blocking: true, Compacting: true, TrimNativeMemory: true);
 
     private sealed class CollectionLog
     {
@@ -381,9 +384,9 @@ public class GCKeeperTests
 
         public void CompactLargeObjectHeapOnce() { }
 
-        public bool Collect(int generation, GCCollectionMode mode, bool compacting, bool trimNativeMemory)
+        public bool Collect(int generation, GCCollectionMode mode, bool blocking, bool compacting, bool trimNativeMemory)
         {
-            Collections.Add(new Collection(generation, mode, compacting, trimNativeMemory));
+            Collections.Add(new Collection(generation, mode, blocking, compacting, trimNativeMemory));
             return true;
         }
     }

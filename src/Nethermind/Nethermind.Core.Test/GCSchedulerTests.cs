@@ -3,6 +3,8 @@
 
 using System;
 using System.Runtime;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core.Memory;
 using NSubstitute;
 using NUnit.Framework;
@@ -14,6 +16,7 @@ namespace Nethermind.Core.Test;
 [NonParallelizable]
 public class GCSchedulerTests
 {
+    private static readonly TimeSpan Patience = TimeSpan.FromSeconds(5);
     private readonly GCScheduler _scheduler = new(sustainedSweepEnabled: false);
 
     // Disarm the singleton's sweep so its timer cannot hold the shared static guard mid-test.
@@ -46,18 +49,47 @@ public class GCSchedulerTests
     }
 
     [Test]
-    public void Blocking_collection_is_refused_while_a_latency_sensitive_request_is_in_flight()
+    public void Collections_that_suspend_every_thread_are_refused_while_a_latency_sensitive_request_is_in_flight()
     {
         using (GCScheduler.EnterLatencySensitiveRequest(carriesBlock: false))
         {
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_scheduler.GCCollect(1, GCCollectionMode.Forced, blocking: true, compacting: false), Is.False);
-                Assert.That(_scheduler.GCCollect(1, GCCollectionMode.Forced, blocking: false, compacting: false), Is.True, "a background collection only pauses briefly");
+                Assert.That(_scheduler.GCCollect(1, GCCollectionMode.Forced, blocking: false, compacting: false), Is.False, "a gen1 has no background form; the flag does not make it one");
+                Assert.That(_scheduler.GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: true), Is.False, "compaction forces a blocking collection");
+                Assert.That(_scheduler.GCCollect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: false, compacting: false), Is.True, "a background gen2 only pauses briefly");
             }
         }
 
         Assert.That(_scheduler.GCCollect(1, GCCollectionMode.Forced, blocking: true, compacting: false), Is.True, "the refusal outlived the request");
+    }
+
+    [Test]
+    public void Registering_a_request_never_waits_for_a_collection_in_progress()
+    {
+        using ManualResetEventSlim collecting = new(false);
+        using ManualResetEventSlim release = new(false);
+        GCScheduler scheduler = new(sustainedSweepEnabled: false, collect: (_, _, _, _) =>
+        {
+            collecting.Set();
+            release.Wait();
+        });
+
+        Task<bool> collection = Task.Run(() => scheduler.GCCollect(1, GCCollectionMode.Forced, blocking: true, compacting: false, trimNativeMemory: false));
+        try
+        {
+            Assert.That(collecting.Wait(Patience), "the collection never started");
+            // The runtime makes a blocking request wait for a running background GC; a request must not wait with it.
+            Task registered = Task.Run(static () => GCScheduler.EnterLatencySensitiveRequest(carriesBlock: true).Dispose());
+            Assert.That(registered.Wait(Patience), "registering a request waited for the collection in progress");
+        }
+        finally
+        {
+            release.Set();
+        }
+
+        Assert.That(collection.Result, Is.True);
     }
 
     [Test]

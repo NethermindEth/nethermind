@@ -14,7 +14,7 @@ internal interface IGCRuntime
     bool TryStartNoGCRegion(long totalSize, long lohSize);
     void EndNoGCRegion();
     void CompactLargeObjectHeapOnce();
-    bool Collect(int generation, GCCollectionMode mode, bool compacting, bool trimNativeMemory);
+    bool Collect(int generation, GCCollectionMode mode, bool blocking, bool compacting, bool trimNativeMemory);
 }
 
 internal sealed class GCRuntime : IGCRuntime
@@ -32,6 +32,6 @@ internal sealed class GCRuntime : IGCRuntime
 
     public void CompactLargeObjectHeapOnce() => GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
 
-    public bool Collect(int generation, GCCollectionMode mode, bool compacting, bool trimNativeMemory) =>
-        GCScheduler.Instance.GCCollect(generation, mode, blocking: true, compacting, trimNativeMemory);
+    public bool Collect(int generation, GCCollectionMode mode, bool blocking, bool compacting, bool trimNativeMemory) =>
+        GCScheduler.Instance.GCCollect(generation, mode, blocking, compacting, trimNativeMemory);
 }
