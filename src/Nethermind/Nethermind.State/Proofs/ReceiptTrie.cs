@@ -79,9 +79,6 @@ public sealed partial class ReceiptTrie : PatriciaTrie<TxReceipt>
 
         RlpBehaviors behavior = (receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)
             | RlpBehaviors.SkipTypedWrapping;
-        // Each receipt leaf carries a 256-byte bloom plus its logs, so a receipt is roughly an order of
-        // magnitude heavier to encode and hash than a transaction leaf (which reuses cached RLP). That
-        // higher per-leaf cost pays off the parallel fan-out at a lower item count than the shared default.
         return new IndexedTrieRoot.Calculator<TxReceipt, ReceiptEncoder>(txReceipts, new(receiptDecoder, behavior))
             .Calculate(minItemsForParallel: MinItemsForParallelReceiptRootHash);
     }
