@@ -10,15 +10,18 @@ using System.Text;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Autofac;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Runner.Monitoring;
+using Nethermind.Specs.Forks;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -82,39 +85,35 @@ public class DataFeedTests
         Assert.That(async () => await subscription.WaitAsync(TimeSpan.FromSeconds(1)), Throws.Nothing);
     }
 
-    [Test]
-    public async Task Event_subscriptions_only_prepare_requested_data()
+    [TestCase("?events=processed", false)]
+    [TestCase(null, true)]
+    [CancelAfter(30_000)]
+    public async Task Event_subscriptions_only_prepare_requested_data(string? query, bool expectForkChoice, CancellationToken cancellationToken)
     {
-        await AssertFeedSubscriptionAsync("?events=processed", expectForkChoice: false);
-        await AssertFeedSubscriptionAsync(null, expectForkChoice: true);
-    }
+        LineInterceptingTextWriter? installedConsoleWriter = InstallConsoleWriterIfMissing();
 
-    private static async Task AssertFeedSubscriptionAsync(string? query, bool expectForkChoice)
-    {
-        (FieldInfo Field, object? Original, LineInterceptingTextWriter Installed)? ownedConsoleWriter = EnsureConsoleHelpersInitialized();
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>()).Returns([]);
+
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(Cancun.Instance))
+            .AddSingleton<IReceiptFinder>(receiptFinder)
+            .Build();
+        await container.Resolve<PseudoNethermindRunner>().StartBlockProcessing(cancellationToken);
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+        TestBlockchainUtil blockchainUtil = container.Resolve<TestBlockchainUtil>();
 
         using CancellationTokenSource lifetime = new();
         lifetime.Cancel();
         using CancellationTokenSource feedCancellation = new();
 
-        IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
-        IMainProcessingContext mainProcessingContext = Substitute.For<IMainProcessingContext>();
-        mainProcessingContext.BlockchainProcessor.Returns(blockchainProcessor);
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
-        Block head = Build.A.Block.TestObject;
-        TaskCompletionSource receiptPrepared = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        receiptFinder.Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>()).Returns([]);
-        receiptFinder.WhenForAnyArgs(finder => finder.Get(default!, default, default))
-            .Do(_ => receiptPrepared.TrySetResult());
-
         DataFeed dataFeed = new(
-            Substitute.For<ITxPool>(),
-            Substitute.For<ISpecProvider>(),
+            container.Resolve<ITxPool>(),
+            container.Resolve<ISpecProvider>(),
             receiptFinder,
             blockTree,
-            Substitute.For<ISyncPeerPool>(),
-            mainProcessingContext,
+            container.Resolve<ISyncPeerPool>(),
+            container.Resolve<IMainProcessingContext>(),
             LimboLogs.Instance,
             lifetime.Token);
 
@@ -127,36 +126,40 @@ public class DataFeedTests
         try
         {
             feed = dataFeed.ProcessingFeedAsync(httpContext, feedCancellation.Token);
-            for (int attempt = 0; attempt < 200 && !responseBody.ProcessedWritten.Task.IsCompleted; attempt++)
+            // Processing statistics are reported at most once a second, so blocks are added until a report reaches the feed.
+            for (int attempt = 0; !responseBody.ProcessedWritten.Task.IsCompleted; attempt++)
             {
-                blockchainProcessor.NewProcessingStatistics += Raise.Event<EventHandler<BlockStatistics>>(null, new BlockStatistics());
-                await Task.WhenAny(responseBody.ProcessedWritten.Task, Task.Delay(TimeSpan.FromMilliseconds(25)));
+                Assert.That(attempt, Is.LessThan(MaxReadinessBlocks), "no processed event reached the feed");
+                Assert.That(feed.IsCompleted, Is.False, "the feed ended before a processed event reached it");
+                await blockchainUtil.AddBlockAndWaitForHead(false, cancellationToken);
+                await Task.WhenAny(responseBody.ProcessedWritten.Task, Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken));
             }
-            await responseBody.ProcessedWritten.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
-            blockTree.OnForkChoiceUpdated += Raise.Event<EventHandler<IBlockTree.ForkChoiceUpdateEventArgs>>(null, new IBlockTree.ForkChoiceUpdateEventArgs(head, 0, 0));
+            Block head = blockTree.Head!;
+            object forkChoiceBeforeRaise = ForkChoiceCompletion(dataFeed);
+            blockTree.ForkChoiceUpdated(head.Hash, head.Hash);
+
             if (expectForkChoice)
             {
-                await responseBody.ForkChoiceWritten.Task.WaitAsync(TimeSpan.FromSeconds(1));
-                await receiptPrepared.Task.WaitAsync(TimeSpan.FromSeconds(1));
+                Assert.That(ForkChoiceCompletion(dataFeed), Is.Not.SameAs(forkChoiceBeforeRaise));
+                await responseBody.ForkChoiceWritten.Task.WaitAsync(cancellationToken);
+                receiptFinder.Received(1).Get(head, Arg.Any<bool>(), Arg.Any<bool>());
             }
             else
             {
-                Assert.That(async () => await receiptPrepared.Task.WaitAsync(TimeSpan.FromMilliseconds(200)), Throws.TypeOf<TimeoutException>());
-                Assert.That(responseBody.EventCount("event: forkChoice"), Is.Zero);
+                // The handler swaps the completion source before it queues any work, so an unchanged source proves the
+                // raise returned at the subscriber gate with nothing left in flight.
+                Assert.That(ForkChoiceCompletion(dataFeed), Is.SameAs(forkChoiceBeforeRaise));
+                receiptFinder.DidNotReceive().Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>());
             }
 
             feedCancellation.Cancel();
-            await feed.WaitAsync(TimeSpan.FromSeconds(1));
-            AssertNoSubscribers(dataFeed);
+            await feed.WaitAsync(cancellationToken);
 
-            int processedEvents = responseBody.EventCount("event: processed");
-            blockchainProcessor.NewProcessingStatistics += Raise.Event<EventHandler<BlockStatistics>>(null, new BlockStatistics());
-            Assert.That(responseBody.EventCount("event: processed"), Is.EqualTo(processedEvents));
-
-            if (expectForkChoice)
+            using (Assert.EnterMultipleScope())
             {
-                receiptFinder.Received(1).Get(Arg.Any<Block>(), Arg.Any<bool>(), Arg.Any<bool>());
+                Assert.That(SubscriberCounts(dataFeed), Is.All.EqualTo(0));
+                Assert.That(responseBody.EventCount("event: forkChoice"), expectForkChoice ? Is.GreaterThan(0) : Is.Zero);
             }
         }
         finally
@@ -164,34 +167,40 @@ public class DataFeedTests
             feedCancellation.Cancel();
             try
             {
-                if (feed is not null) await feed.WaitAsync(TimeSpan.FromSeconds(1));
+                if (feed is not null) await feed.WaitAsync(TimeSpan.FromSeconds(5));
             }
             finally
             {
                 RemoveConsoleSubscription(dataFeed);
-                ownedConsoleWriter?.Field.SetValue(null, ownedConsoleWriter.Value.Original);
-                ownedConsoleWriter?.Installed?.Dispose();
+                if (installedConsoleWriter is not null)
+                {
+                    ConsoleWriterField.SetValue(null, null);
+                    installedConsoleWriter.Dispose();
+                }
             }
         }
     }
 
-    private static (FieldInfo Field, object? Original, LineInterceptingTextWriter Installed)? EnsureConsoleHelpersInitialized()
+    private const int MaxReadinessBlocks = 30;
+
+    private static readonly FieldInfo ConsoleWriterField =
+        typeof(ConsoleHelpers).GetField("_interceptingWriter", BindingFlags.Static | BindingFlags.NonPublic)!;
+
+    // The feed replays recent console lines on connect, which needs the interceptor the runner installs at startup.
+    private static LineInterceptingTextWriter? InstallConsoleWriterIfMissing()
     {
-        FieldInfo field = typeof(ConsoleHelpers).GetField("_interceptingWriter", BindingFlags.Static | BindingFlags.NonPublic)!;
-        object? original = field.GetValue(null);
-        if (original is not null) return null;
+        if (ConsoleWriterField.GetValue(null) is not null) return null;
 
         LineInterceptingTextWriter installed = new(TextWriter.Null);
-        field.SetValue(null, installed);
-        return (field, original, installed);
+        ConsoleWriterField.SetValue(null, installed);
+        return installed;
     }
 
-    private static void AssertNoSubscribers(DataFeed dataFeed)
-    {
-        FieldInfo field = typeof(DataFeed).GetField("_subscribersByType", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        long[] subscribers = (long[])field.GetValue(dataFeed)!;
-        Assert.That(subscribers, Is.All.EqualTo(0));
-    }
+    private static object ForkChoiceCompletion(DataFeed dataFeed) =>
+        typeof(DataFeed).GetField("_forkChoice", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(dataFeed)!;
+
+    private static long[] SubscriberCounts(DataFeed dataFeed) =>
+        (long[])typeof(DataFeed).GetField("_subscribersByType", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(dataFeed)!;
 
     private static void RemoveConsoleSubscription(DataFeed dataFeed)
     {
@@ -202,7 +211,7 @@ public class DataFeedTests
 
     private sealed class RecordingResponseBody : Stream
     {
-        private readonly object _lock = new();
+        private readonly Lock _lock = new();
         private readonly StringBuilder _content = new();
 
         public TaskCompletionSource ProcessedWritten { get; } = NewSignal();
@@ -210,18 +219,18 @@ public class DataFeedTests
 
         public int EventCount(string eventName)
         {
-            lock (_lock)
-            {
-                int count = 0;
-                int start = 0;
-                while ((start = _content.ToString().IndexOf(eventName, start, StringComparison.Ordinal)) >= 0)
-                {
-                    count++;
-                    start += eventName.Length;
-                }
+            string content;
+            lock (_lock) content = _content.ToString();
 
-                return count;
+            int count = 0;
+            int start = 0;
+            while ((start = content.IndexOf(eventName, start, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                start += eventName.Length;
             }
+
+            return count;
         }
 
         public override bool CanRead => false;
@@ -254,6 +263,8 @@ public class DataFeedTests
             lock (_lock)
             {
                 _content.Append(Encoding.UTF8.GetString(buffer));
+                if (ProcessedWritten.Task.IsCompleted && ForkChoiceWritten.Task.IsCompleted) return;
+
                 string content = _content.ToString();
                 if (content.Contains("event: processed\ndata: {", StringComparison.Ordinal)) ProcessedWritten.TrySetResult();
                 if (content.Contains("event: forkChoice\ndata: {", StringComparison.Ordinal)) ForkChoiceWritten.TrySetResult();

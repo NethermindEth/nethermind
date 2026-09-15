@@ -365,11 +365,12 @@ public class DataFeed
         // No subscribers, no need to prepare event data
         if (!HaveSubscribers(EntryType.forkChoice)) return;
 
+        DataCompletion forkChoice = Interlocked.Exchange(ref _forkChoice, new DataCompletion(TaskCreationOptions.RunContinuationsAsynchronously));
         Task.Run(() =>
         {
             try
             {
-                OnForkChoiceUpdated(choice);
+                OnForkChoiceUpdated(forkChoice, choice);
             }
             catch (Exception e)
             {
@@ -379,10 +380,8 @@ public class DataFeed
     }
 
     private DataCompletion _forkChoice = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    private void OnForkChoiceUpdated(IBlockTree.ForkChoiceUpdateEventArgs choice)
+    private void OnForkChoiceUpdated(DataCompletion forkChoice, IBlockTree.ForkChoiceUpdateEventArgs choice)
     {
-        DataCompletion forkChoice = Interlocked.Exchange(ref _forkChoice, new DataCompletion(TaskCreationOptions.RunContinuationsAsynchronously));
-
         Block head = choice.Head;
         Transaction[] txs = head.Transactions;
         IReleaseSpec spec = _specProvider.GetSpec(head.Header);
