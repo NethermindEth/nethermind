@@ -123,7 +123,7 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(JToken.Parse(byNumber)["result"]?["failed"]?.Value<bool>(), Is.False, "the canonical block at that height does have a transaction to trace");
-            Assert.That(JToken.Parse(byHash)["result"]?["error"]?.Value<string>(), Does.Contain("has only 0 transactions"),
+            AssertTracerWasReached(byHash, "has only 0 transactions",
                 "a non-canonical hash must not silently trace the canonical block at the same height");
         }
     }
@@ -138,13 +138,12 @@ public partial class DebugRpcModuleTests
 
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", head.Number, -1);
 
-        Assert.That(JToken.Parse(response)["result"]?["error"]?.Value<string>(),
-            Does.Contain($"has only {head.Transactions.Length} transactions and the requested tx index was -1"),
+        AssertTracerWasReached(response, $"has only {head.Transactions.Length} transactions and the requested tx index was -1",
             "a negative index must be reported by the bounds check, not indexed into the transaction array");
     }
 
     [Test]
-    public async Task Debug_traceTransactionByBlockAndIndex_treats_genesis_as_its_own_base_state()
+    public async Task Debug_traceTransactionByBlockAndIndex_needs_no_state_for_genesis()
     {
         using Context context = await Context.Create();
 
@@ -152,8 +151,29 @@ public partial class DebugRpcModuleTests
 
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockAndIndex", 0UL, "0x0");
 
-        Assert.That(JToken.Parse(response)["result"]?["error"]?.Value<string>(), Does.Contain("has only 0 transactions"),
-            "genesis has no parent to replay from, so the state check must fall back to genesis itself rather than reject the request");
+        AssertTracerWasReached(response, "has only 0 transactions",
+            "genesis has no parent to replay from, so no base-state check applies and the request must not be rejected");
+    }
+
+    /// <summary>
+    /// Asserts that a trace request reached transaction tracing rather than being rejected by the base-state
+    /// guard, and that the resulting error contains <paramref name="expectedErrorSubstring"/>.
+    /// </summary>
+    /// <remarks>
+    /// A response rejected by the guard has no "result" node, so <c>["result"]?["error"]</c> silently
+    /// evaluates to <see langword="null"/> and handing that to <see cref="Does.Contain"/> throws
+    /// <see cref="ArgumentException"/> instead of failing the assertion - checking for null first keeps
+    /// <paramref name="because"/> reaching the test report.
+    /// </remarks>
+    private static void AssertTracerWasReached(string response, string expectedErrorSubstring, string because)
+    {
+        string? error = JToken.Parse(response)["result"]?["error"]?.Value<string>();
+
+        Assert.That(error, Is.Not.Null, because);
+        if (error is not null)
+        {
+            Assert.That(error, Does.Contain(expectedErrorSubstring), because);
+        }
     }
 
     private static async Task<Transaction> AddBlockWithTransfer(Context context)
@@ -189,7 +209,9 @@ public partial class DebugRpcModuleTests
         await AddBlockWithTransfer(context);
         BlockHeader parent = context.Blockchain.BlockTree.Head!.Header;
 
-        // Suggested but never processed, so only the parent it reuses the state root of has a committed state
+        // Reuses the parent's state root, but HasStateForBlock keys on (number, root) together, not root
+        // alone - only the parent's own (number, root) pair is committed, so the guard must resolve and
+        // check the actual parent header rather than matching state roots.
         Block unprocessed = Build.A.Block
             .WithParent(parent)
             .WithStateRoot(parent.StateRoot!)
@@ -198,7 +220,7 @@ public partial class DebugRpcModuleTests
 
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransactionByBlockhashAndIndex", unprocessed.Hash!, "0x0");
 
-        Assert.That(JToken.Parse(response)["result"]?["error"]?.Value<string>(), Does.Contain("has only 0 transactions"),
+        AssertTracerWasReached(response, "has only 0 transactions",
             "the trace replays the block on top of its parent, so the block's own state is not a precondition");
     }
 
