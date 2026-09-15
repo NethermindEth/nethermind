@@ -564,10 +564,22 @@ public class Eth72ProtocolHandler(
 
         // A type-6 is announced at its full network size and never joins the type-3 cell protocol, so the
         // requester can neither size-match nor refill the elided record: its sidecar must travel with it.
-        return !IsBlobCarryingFrameTransaction(tx)
-            || (_txPool.TryGetPendingTransaction(hash, out tx)
-                && tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
-                && wrapper.HasFullBlobs());
+        if (!IsBlobCarryingFrameTransaction(tx))
+        {
+            return true;
+        }
+
+        if (_txPool.TryGetPendingTransaction(hash, out tx)
+            && tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
+            && wrapper.HasFullBlobs())
+        {
+            return true;
+        }
+
+        // Admission requires whole proof material, so an incomplete sidecar here means the pool lost it
+        // between announcement and request; the hash is dropped and the peer sees an unanswered request.
+        if (Logger.IsTrace) Logger.Trace($"{Node:c} dropping frame tx {hash} from a pooled transactions response: its sidecar is no longer complete.");
+        return false;
     }
 
     /// <inheritdoc/>
@@ -1728,6 +1740,14 @@ public class Eth72ProtocolHandler(
             return false;
         }
 
+        return ValidateLengthsAndHashes(wrapper, blobVersionedHashes);
+    }
+
+    /// <summary>Checks a sidecar's proof material against the transaction's versioned hashes.</summary>
+    /// <remarks>Dispatched on the wrapper's own version, so the per-version length rules (one proof per blob
+    /// under V0, one per cell under V1) stay with the proofs manager rather than the caller's guard.</remarks>
+    private static bool ValidateLengthsAndHashes(ShardBlobNetworkWrapper wrapper, byte[][] blobVersionedHashes)
+    {
         IBlobProofsManager proofsVerifier = IBlobProofsManager.For(wrapper.Version);
         return proofsVerifier.ValidateLengths(wrapper)
             && proofsVerifier.ValidateHashes(wrapper, blobVersionedHashes);
@@ -1779,9 +1799,7 @@ public class Eth72ProtocolHandler(
             return false;
         }
 
-        IBlobProofsManager proofsVerifier = IBlobProofsManager.For(wrapper.Version);
-        return proofsVerifier.ValidateLengths(wrapper)
-            && proofsVerifier.ValidateHashes(wrapper, blobVersionedHashes);
+        return ValidateLengthsAndHashes(wrapper, blobVersionedHashes);
     }
 
     private bool CanRequestCellsNow(Hash256 hash, BlobCellMask requestMask)
