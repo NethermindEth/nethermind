@@ -105,7 +105,7 @@ namespace Nethermind.TxPool
         public static long FrameTxRevalidationsDeferred;
 
         [CounterMetric]
-        [Description("Number of EIP-8141 revalidations, a subset of FrameTxRevalidationsDeferred, left permanently unjudged because their carry across `TxPool.FrameTxRevalidationDeferralBudget` heads was spent: the transaction stays pending with no later head queued to retry it. Any sustained count means the per-head simulation budget is too small for the deferral backlog and should be raised.")]
+        [Description("Number of EIP-8141 revalidations, a subset of FrameTxRevalidations, that reached no verdict and found their deferral carry across `TxPool.FrameTxRevalidationDeferralBudget` heads already spent, so the transaction stays pending and unjudged until a later head touches its dependencies again. The carry is one allowance per transaction, spent by a declined blob-pool record read as readily as by a simulation, so this counts a spent carry and not the reason it was spent: raise the per-head simulation budget when FrameTxRevalidationsDeferred is rising with it, and look at blob-pool read contention when it is not.")]
         public static long FrameTxRevalidationDeferralsExhausted;
 
         [CounterMetric]

@@ -5275,6 +5275,65 @@ namespace Nethermind.TxPool.Test
                 "the payer's reservation leaves with the record, and only with it");
         }
 
+        // The deferral budget is one allowance per transaction, not one per reason it was deferred: a
+        // sidecar-free read that declines spends the same carry the simulation site later reads. So
+        // FrameTxRevalidationDeferralsExhausted reports a spent carry, and FrameTxRevalidationsDeferred beside
+        // it is what says whether simulation was what spent it.
+        [Test]
+        public async Task Blob_frame_tx_carry_spent_by_declined_reads_is_already_gone_when_the_simulator_defers()
+        {
+            const int deferralBudget = 2;
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.StorageWithReorgs,
+                FrameTxMaxVerifyGas = 200_000,
+                FrameTxRevalidationDeferralBudget = deferralBudget
+            };
+            BlobTxStorage blobTxStorage = new();
+            IFrameTxPrefixSimulator simulator = SponsorNamingSimulator();
+            _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
+            EnsureSenderBalance(TestItem.AddressF, UInt256.MaxValue);
+
+            Transaction tx = SponsoredBlobFrameTx(TestItem.PrivateKeyA);
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            // Unreadable for exactly the budget, so the carry is spent without one simulation having run.
+            DropCachedBlobTransactions();
+            blobTxStorage.Delete(tx.Hash!.ValueHash256, tx.Timestamp);
+            simulator.ClearReceivedCalls();
+
+            Block head = Build.A.Block.WithNumber(1).TestObject;
+            head.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressA };
+            await RaiseBlockAddedToMainAndWaitForNewHead(head);
+            for (int number = 2; number <= deferralBudget; number++)
+            {
+                head = Build.A.Block.WithNumber(number).WithParent(head).TestObject;
+                head.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressE };
+                await RaiseBlockAddedToMainAndWaitForNewHead(head);
+            }
+
+            simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
+
+            // Readable again, and now the simulator is the one that cannot decide. Only the carry can reach the
+            // transaction from here, so every later simulation is one the carry paid for.
+            blobTxStorage.Add(tx);
+            DropCachedBlobTransactions();
+            SimulatesAs(simulator, FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
+
+            for (int number = deferralBudget + 1; number <= deferralBudget + 3; number++)
+            {
+                head = Build.A.Block.WithNumber(number).WithParent(head).TestObject;
+                head.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressE };
+                await RaiseBlockAddedToMainAndWaitForNewHead(head);
+            }
+
+            // One: the carry the declined reads spent is already gone, so the first node-bound simulation
+            // exhausts it rather than opening a fresh allowance. A per-path carry would have run three.
+            simulator.Received(1).Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
+            Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1),
+                "an exhausted carry leaves the transaction pending and unjudged, it does not evict");
+        }
+
         // The persistent pool recreates its light records inside its own constructor, so a restart is the one
         // path on which nothing raises Inserted and the index would otherwise never hear about them.
         [Test]

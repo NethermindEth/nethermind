@@ -95,6 +95,8 @@ internal class FrameTxCalldataStatsFilterTests
     [TestCase(false, TestName = "Accept_LeavesAnOverLongRecentRootReferenceSetUnmeasured")]
     public void Accept_LeavesAnOverLongCalldataSetUnmeasured(bool nonceKeys)
     {
+        // The set that is not over-long carries a measurable value either way, so each bound is read
+        // against a measurement that did happen rather than against a field left null.
         Transaction tx = FrameTx(TestItem.AddressA, [], SelfVerify(PrefixFrameGas));
         if (nonceKeys)
         {
@@ -102,19 +104,23 @@ internal class FrameTxCalldataStatsFilterTests
             UInt256[] keys = new UInt256[Eip8250Constants.MaxNonceKeys + 1];
             for (int i = 0; i < keys.Length; i++) keys[i] = UInt256.MaxValue - (UInt256)i;
             tx.NonceKeys = keys;
+            tx.RecentRootReferences = [Reference()];
         }
         else
         {
             RecentRootReference[] references = new RecentRootReference[Eip8272Constants.MaxRecentRootReferences + 1];
             Array.Fill(references, new RecentRootReference(ValueKeccak.MaxValue, slot: ulong.MaxValue, ValueKeccak.MaxValue));
             tx.RecentRootReferences = references;
+            tx.NonceKeys = [UInt256.One];
         }
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Accept(tx), Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(tx.FrameCalldataStats, Is.EqualTo((ZeroBytes: 0, NonZeroBytes: 0)));
-            Assert.That(tx.ReferenceCalldataStats, Is.EqualTo((ZeroBytes: 0, NonZeroBytes: 0)));
+            Assert.That(tx.FrameCalldataStats,
+                Is.EqualTo(nonceKeys ? (ZeroBytes: 0, NonZeroBytes: 0) : (ZeroBytes: 0, NonZeroBytes: 3)));
+            Assert.That(tx.ReferenceCalldataStats,
+                Is.EqualTo(nonceKeys ? (ZeroBytes: 0, NonZeroBytes: 71) : (ZeroBytes: 0, NonZeroBytes: 0)));
         }
     }
 
