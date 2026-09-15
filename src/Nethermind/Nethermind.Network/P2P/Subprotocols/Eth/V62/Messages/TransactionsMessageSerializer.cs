@@ -3,10 +3,10 @@
 
 using System;
 using System.Threading;
+using CkzgLib;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
@@ -31,9 +31,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         private readonly long _maxTxSize;
 
         /// <remarks>
-        /// Approximates each blob's on-wire size via <c>GasPerBlob</c> (131,072 bytes) rather than the actual
-        /// sidecar size (measured 131,176-131,184 bytes per blob, a ~626-byte shortfall at 6 blobs) - the same
-        /// compensation <see cref="V68.Eth68ProtocolHandler"/> uses verbatim for eth/68 announcements.
+        /// <c>SizeTxFilter</c> measures a blob transaction by its consensus encoding alone, so the cap it
+        /// configures has to be raised here by the mempool-form sidecar the wire carries alongside it - see
+        /// <see cref="MaxBlobSidecarOverhead"/>.
         /// </remarks>
         private readonly long _maxBlobTxSize;
 
@@ -46,8 +46,34 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             _maxTxSize = Math.Max(txPoolConfig?.MaxTxSize ?? long.MaxValue, ShortFormMaxContentLength);
             _maxBlobTxSize = txPoolConfig?.MaxBlobTxSize is null || specProvider is null
                 ? long.MaxValue
-                : Math.Max(txPoolConfig.MaxBlobTxSize.Value + (long)specProvider.GetFinalMaxBlobGasPerBlock(), ShortFormMaxContentLength);
+                : Math.Max(txPoolConfig.MaxBlobTxSize.Value + MaxBlobSidecarOverhead(specProvider.GetFinalSpec()), ShortFormMaxContentLength);
             _deserializeTransactionsMessage = (ref RlpReader ctx) => new TransactionsMessage(DeserializeTxsWithSizeGuard(ref ctx));
+        }
+
+        /// <summary>An upper bound on the bytes a blob transaction's mempool-form sidecar adds to the consensus
+        /// encoding <c>SizeTxFilter</c> measures, for the largest blob count <paramref name="finalSpec"/> allows.</summary>
+        /// <remarks>
+        /// Follows <c>BlobTxDecoder</c>'s mempool-form encoding: the type byte and the wrapper sequence enclosing
+        /// the consensus encoding, the proof-version byte (EIP-7594; absent for <see cref="ProofVersion.V0"/>,
+        /// counted regardless), and the blob, commitment and proof lists - one commitment per blob, and per blob
+        /// either a single proof or, under EIP-7594, one proof per extended-blob cell. Every RLP prefix is taken
+        /// at its widest, so the result over-estimates by a handful of bytes per list. That direction is the safe
+        /// one: too loose a cap only spends a decode on a transaction the pool then rejects, while too tight a
+        /// cap silently drops transactions the pool would have accepted.
+        /// </remarks>
+        private static long MaxBlobSidecarOverhead(IReleaseSpec finalSpec)
+        {
+            // An RLP prefix byte plus the widest length-of-length it can carry.
+            const long widestPrefix = 1 + sizeof(int);
+            const long versionByte = 1;
+
+            long proofsPerBlob = finalSpec.BlobProofVersion is ProofVersion.V1 ? Ckzg.CellsPerExtBlob : 1;
+            long perBlob = widestPrefix + Ckzg.BytesPerBlob
+                           + 1 + Ckzg.BytesPerCommitment
+                           + proofsPerBlob * (1 + Ckzg.BytesPerProof);
+
+            // The type byte and the wrapper sequence, the version byte, then the three sidecar lists.
+            return 1 + widestPrefix + versionByte + 3 * widestPrefix + (long)finalSpec.MaxBlobCount * perBlob;
         }
 
         public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
@@ -115,12 +141,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             }
         }
 
-        /// <summary>Whether the item at the reader's current position exceeds the configured size cap.</summary>
+        /// <summary>Whether the item at the reader's current position exceeds the configured size caps.</summary>
         /// <remarks>
-        /// Mirrors <c>SizeTxFilter</c>'s post-decode measure (<c>tx.GetLength(shouldCountBlobs: false)</c>), so a
-        /// transaction the pool would accept is never skipped here: a legacy item's comparable length includes
-        /// its RLP prefix, but a typed item's mempool-form wrapper prefix is not part of that measure, so only
-        /// its content length is compared.
+        /// Mirrors <c>SizeTxFilter</c>'s post-decode measure (<c>tx.GetLength(shouldCountBlobs: false)</c>): a
+        /// legacy item's comparable length includes its RLP prefix, but a typed item's mempool-form wrapper
+        /// prefix is not part of that measure, so only its content length is compared. For a non-blob item the
+        /// two measures agree exactly. A blob item is measured on the wire with the sidecar that filter ignores
+        /// altogether, which the blob cap covers by <see cref="MaxBlobSidecarOverhead"/> - so a blob transaction
+        /// the pool would accept is never skipped here as long as it carries no more than the final spec's
+        /// <c>MaxBlobCount</c> blobs with the proofs that spec's version prescribes. One exceeding those bounds
+        /// may be skipped; the pool would reject it on validation regardless.
         /// </remarks>
         private static bool IsOverSizeLimit(ref RlpReader ctx, long maxTxSize, long maxBlobTxSize)
         {

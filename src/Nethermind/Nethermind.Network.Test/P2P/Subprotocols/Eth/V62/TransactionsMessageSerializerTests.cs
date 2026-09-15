@@ -175,6 +175,27 @@ public class TransactionsMessageSerializerTests
         Assert.That(deserialized.Transactions.Count, Is.EqualTo(expectedCount));
     }
 
+    [TestCaseSource(nameof(MaxBlobCountCases))]
+    public void Keeps_a_blob_tx_sitting_exactly_on_the_pool_size_boundary(IReleaseSpec spec)
+    {
+        Transaction blobTx = Build.A.Transaction
+            .WithTo(TestItem.AddressA)
+            .WithShardBlobTxTypeAndFields((int)spec.MaxBlobCount, spec: spec)
+            .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
+            .TestObject;
+        // SizeTxFilter accepts a blob tx whose consensus encoding is at most MaxBlobTxSize, so a tx of the
+        // largest blob count sitting exactly on that boundary is the tightest case the guard must let through.
+        TxPoolConfig config = new() { MaxBlobTxSize = blobTx.GetLength(shouldCountBlobs: false) };
+        TransactionsMessageSerializer serializer = new(config, new TestSpecProvider(spec));
+
+        using TransactionsMessage message = new(new[] { blobTx }.ToPooledList());
+        using DisposableByteBuffer buffer = Unpooled.Buffer(serializer.GetLength(message, out _)).AsDisposable();
+        serializer.Serialize(buffer, message);
+        using TransactionsMessage deserialized = serializer.Deserialize(buffer);
+
+        Assert.That(deserialized.Transactions.Count, Is.EqualTo(1), "a blob tx the pool would accept must never be skipped");
+    }
+
     [Test]
     public void A_size_limit_below_the_rlp_short_form_maximum_does_not_change_how_a_truncated_item_fails()
     {
@@ -263,6 +284,16 @@ public class TransactionsMessageSerializerTests
             .SetName("Keeps a blob tx above MaxTxSize but within the blob cap");
         yield return new TestCaseData(Shanghai.Instance, null, 500L, 0)
             .SetName("Skips a blob tx above the blob cap with no MaxTxSize configured");
+    }
+
+    private static IEnumerable<TestCaseData> MaxBlobCountCases()
+    {
+        yield return new TestCaseData(Cancun.Instance)
+            .SetName("Keeps a six-blob tx at the boundary, one proof per blob");
+        yield return new TestCaseData(Prague.Instance)
+            .SetName("Keeps a nine-blob tx at the boundary, one proof per blob");
+        yield return new TestCaseData(Osaka.Instance)
+            .SetName("Keeps a nine-blob tx at the boundary, one EIP-7594 cell proof per cell");
     }
 
     /// <summary>Concatenates already-encoded RLP items behind a single outer sequence (list) prefix.</summary>
