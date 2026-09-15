@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Reflection;
+using System.Runtime;
 using Nethermind.Core.Memory;
 using NSubstitute;
 using NUnit.Framework;
@@ -82,6 +84,31 @@ public class GCSchedulerTests
         scheduler.SweepIfAllocationBudgetExceeded();
 
         mallocHelper.DidNotReceive().MallocTrim(Arg.Any<uint>());
+    }
+
+    [Test]
+    public void Refused_idle_compaction_does_not_arm_loh([Values] bool pruning)
+    {
+        GCScheduler scheduler = new(sustainedSweepEnabled: false);
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        typeof(GCScheduler).GetField("_isNextGcBlocking", flags)!.SetValue(scheduler, true);
+        typeof(GCScheduler).GetField("_isNextGcCompacting", flags)!.SetValue(scheduler, true);
+        Action collect = typeof(GCScheduler).GetMethod("PerformFullGC", flags)!.CreateDelegate<Action>(scheduler);
+        using GCScheduler.ForcedGCExclusionScope? exclusion = pruning ? scheduler.ExcludeForcedGC() : null;
+        bool paused = !pruning && GCScheduler.MarkGCPaused();
+        if (!pruning) Assert.That(paused, Is.True);
+        GCLargeObjectHeapCompactionMode previous = GCSettings.LargeObjectHeapCompactionMode;
+        try
+        {
+            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.Default;
+            collect();
+            Assert.That(GCSettings.LargeObjectHeapCompactionMode, Is.EqualTo(GCLargeObjectHeapCompactionMode.Default));
+        }
+        finally
+        {
+            GCSettings.LargeObjectHeapCompactionMode = previous;
+            if (paused) GCScheduler.MarkGCResumed();
+        }
     }
 
     private long ArmBudget()

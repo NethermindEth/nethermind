@@ -161,8 +161,6 @@ public sealed class GCScheduler
         {
             // Collect all generations
             generation = GC.MaxGeneration;
-            // Compact large object heap
-            GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
             // Release memory back to the OS
             mode = GCCollectionMode.Aggressive;
         }

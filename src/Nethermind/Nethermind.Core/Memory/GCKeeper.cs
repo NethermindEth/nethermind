@@ -39,6 +39,7 @@ public class GCKeeper : IDisposable
         _postBlockDelayMs = gcStrategy.PostBlockDelayMs;
         _logger = logManager.GetClassLogger<GCKeeper>();
         _runtime = runtime;
+        // One outstanding entry bounds pool usage without a dedicated thread for each keeper.
         _queue = queue ?? (static item => ThreadPool.UnsafeQueueUserWorkItem(item, preferLocal: false));
     }
 
@@ -66,19 +67,20 @@ public class GCKeeper : IDisposable
     /// <summary>Queues no-GC-region entry without waiting for the runtime; disposing the lease ends its protection.</summary>
     public IDisposable TryStartNoGCRegion()
     {
-        Interlocked.Increment(ref _payloadsSinceDecommit);
-        NoGCRegion region = new(this, GCScheduler.MarkGCPaused());
+        bool eligible = _gcStrategy.CanStartNoGCRegion();
+        NoGCRegion region = new(this, GCScheduler.MarkGCPaused(), eligible);
         lock (_lock)
         {
             if (_disposed) return region;
+            if (!eligible)
+            {
+                if (_logger.IsDebug) _logger.Debug("No-GC region entry disallowed by strategy.");
+                return region;
+            }
+            Interlocked.Increment(ref _payloadsSinceDecommit);
             if (_region is not null)
             {
                 if (_logger.IsDebug) _logger.Debug("No-GC region entry skipped: previous entry or region is still active.");
-                return region;
-            }
-            if (!_gcStrategy.CanStartNoGCRegion())
-            {
-                if (_logger.IsDebug) _logger.Debug("No-GC region entry disallowed by strategy.");
                 return region;
             }
             _region = region;
@@ -104,7 +106,7 @@ public class GCKeeper : IDisposable
         }
     }
 
-    private sealed class NoGCRegion(GCKeeper keeper, bool pausedGCScheduler) : IDisposable, IThreadPoolWorkItem
+    private sealed class NoGCRegion(GCKeeper keeper, bool pausedGCScheduler, bool scheduleGC) : IDisposable, IThreadPoolWorkItem
     {
         private readonly Lock _stateLock = new();
         private bool _released;
@@ -144,8 +146,7 @@ public class GCKeeper : IDisposable
                 }
             }
 
-            // A region entered after its payload finished protected no work and needs no post-block collection.
-            if (started) EndRegion(scheduleGC: false);
+            if (started) EndRegion();
             else keeper.ReleaseRegion(this);
         }
 
@@ -165,16 +166,16 @@ public class GCKeeper : IDisposable
             if (pausedGCScheduler) GCScheduler.MarkGCResumed();
             if (end) EndRegion();
             else if (release) keeper.ReleaseRegion(this);
+            if (scheduleGC) keeper.ScheduleGC();
         }
 
-        private void EndRegion(bool scheduleGC = true)
+        private void EndRegion()
         {
             try
             {
                 if (keeper._runtime.IsActive)
                 {
                     keeper._runtime.End();
-                    if (scheduleGC) keeper.ScheduleGC();
                 }
             }
             catch (InvalidOperationException e)
@@ -192,7 +193,7 @@ public class GCKeeper : IDisposable
         }
     }
 
-    private static long _lastGcTimeMs;
+    private long _lastGcTimeMs;
 
     private void ScheduleGC()
     {
@@ -200,6 +201,7 @@ public class GCKeeper : IDisposable
         {
             lock (_lock)
             {
+                if (_disposed) return;
                 long timeStamp = Environment.TickCount64;
                 if (TimeSpan.FromMilliseconds(timeStamp - _lastGcTimeMs).TotalSeconds <= 3)
                 {

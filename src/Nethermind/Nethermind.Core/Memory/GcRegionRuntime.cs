@@ -22,6 +22,7 @@ internal sealed class GcRegionRuntime : IGcRegionRuntime
     public bool TryStart(long totalSize, long lohSize) =>
         System.GC.TryStartNoGCRegion(totalSize, lohSize, disallowFullBlockingGC: true);
     public void End() => System.GC.EndNoGCRegion();
+    /// <remarks>Aggressive GC enables LOH compaction itself (dotnet/runtime v10.0.0, gc.cpp: reason_induced_aggressive).</remarks>
     public bool Collect(GcLevel generation, GCCollectionMode mode, GcCompaction compacting) =>
         GCScheduler.Instance.GCCollect((int)generation, mode, blocking: compacting > GcCompaction.No,
             compacting: compacting > GcCompaction.No, trimNativeMemory: true,

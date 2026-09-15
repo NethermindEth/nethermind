@@ -90,7 +90,10 @@ public class GCKeeperTests
         using ManualResetEventSlim proceed = new(false);
         RegionRuntime runtime = new() { BeforeStart = () => { entering.Set(); proceed.Wait(); } };
         List<IThreadPoolWorkItem> queued = [];
-        using GCKeeper keeper = CreateRegionKeeper(runtime, queued.Add);
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.CanStartNoGCRegion().Returns(true);
+        strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add);
         using IDisposable lease = keeper.TryStartNoGCRegion();
         Task worker = Task.Run(queued[0].Execute);
         Task release = Task.CompletedTask;
@@ -103,6 +106,7 @@ public class GCKeeperTests
                 else lease.Dispose();
             });
             await release.WaitAsync(TimeSpan.FromSeconds(5));
+            strategy.Received(shutdown ? 0 : 1).GetForcedGCParams();
             using IDisposable next = keeper.TryStartNoGCRegion();
             Assert.That(queued, Has.Count.EqualTo(1));
         }
@@ -157,13 +161,14 @@ public class GCKeeperTests
     public async Task Decommit_counts_payloads_with_cancelled_collections_and_retries_until_collected()
     {
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.CanStartNoGCRegion().Returns(true);
         strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
         strategy.CollectionsPerDecommit.Returns(50);
         RegionRuntime runtime = new();
         using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { });
         for (int i = 0; i < 50; i++)
         {
-            using (keeper.TryStartNoGCRegion()) { }
+            CountPayload(keeper, strategy);
             await CancelCollectionAfterYield(keeper);
         }
         Assert.That(runtime.Collections, Is.Empty);
@@ -185,13 +190,14 @@ public class GCKeeperTests
     public async Task Decommit_interval_preserves_sentinels([Values(-1, 0, 50)] int interval)
     {
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.CanStartNoGCRegion().Returns(true);
         strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
         strategy.CollectionsPerDecommit.Returns(interval);
         RegionRuntime runtime = new();
         using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { });
         for (int i = 1; i <= 100; i++)
         {
-            using (keeper.TryStartNoGCRegion()) { }
+            CountPayload(keeper, strategy);
             await keeper.ScheduleGCInternal();
             bool decommit = interval == 0 || (interval > 0 && i % interval == 0);
             using (Assert.EnterMultipleScope())
@@ -202,6 +208,48 @@ public class GCKeeperTests
                     : (GcLevel.Gen1, GCCollectionMode.Forced, GcCompaction.No)), $"Payload {i}");
             }
         }
+    }
+
+    private static void CountPayload(GCKeeper keeper, IGCStrategy strategy)
+    {
+        strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+        using (keeper.TryStartNoGCRegion()) { }
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+    }
+
+    [Test]
+    public void Disposed_payload_schedules_collection_without_requiring_entry([Values] bool dispatch, [Values] bool refuse)
+    {
+        List<IThreadPoolWorkItem> queued = [];
+        RegionRuntime runtime = new() { Refuse = refuse };
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.CanStartNoGCRegion().Returns(true);
+        strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add);
+        using IDisposable lease = keeper.TryStartNoGCRegion();
+        if (dispatch) queued[0].Execute();
+        lease.Dispose();
+        lease.Dispose();
+        strategy.Received(1).GetForcedGCParams();
+    }
+
+    [Test]
+    public async Task Strategy_disallowed_payloads_do_not_accumulate_decommit_debt()
+    {
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+        strategy.CollectionsPerDecommit.Returns(25);
+        RegionRuntime runtime = new();
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { });
+        for (int i = 0; i < 100; i++)
+        {
+            using (keeper.TryStartNoGCRegion()) { }
+        }
+        strategy.DidNotReceive().GetForcedGCParams();
+        strategy.CanStartNoGCRegion().Returns(true);
+        CountPayload(keeper, strategy);
+        await keeper.ScheduleGCInternal();
+        Assert.That(runtime.Collections, Is.EqualTo(new[] { (GcLevel.Gen1, GCCollectionMode.Forced, GcCompaction.No) }));
     }
 
     private static GCKeeper CreateRegionKeeper(RegionRuntime runtime, Action<IThreadPoolWorkItem> queue)
