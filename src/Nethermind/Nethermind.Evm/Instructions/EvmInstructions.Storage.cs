@@ -99,11 +99,15 @@ public static partial class EvmInstructions
         // Construct a transient storage cell for the executing account at the specified key.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
-        vm.WorldState.SetTransientState(in storageCell, in newValue);
-
         if (vm.IsTracingOpLevelStorage)
         {
-            TraceTransientStorageSet(vm, in storageCell, in newValue);
+            vm.WorldState.GetTransientState(in storageCell, out UInt256 currentValue);
+            vm.WorldState.SetTransientState(in storageCell, in newValue);
+            TraceTransientStorageSet(vm, in storageCell, in newValue, in currentValue);
+        }
+        else
+        {
+            vm.WorldState.SetTransientState(in storageCell, in newValue);
         }
 
         return EvmExceptionType.None;
@@ -623,13 +627,14 @@ public static partial class EvmInstructions
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     [SkipLocalsInit]
-    private static void TraceTransientStorageSet<TGasPolicy>(VirtualMachine<TGasPolicy> vm, in StorageCell cell, in UInt256 value)
+    private static void TraceTransientStorageSet<TGasPolicy>(VirtualMachine<TGasPolicy> vm, in StorageCell cell, in UInt256 value, in UInt256 current)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        // A transient write always takes effect, so the stored value after the write is the value just written.
         EvmWord word = value.ToBigEndianWord();
+        EvmWord currentWord = current.ToBigEndianWord();
         ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref word, 1));
-        vm.TxTracer.SetOperationTransientStorage(cell.Address, cell.Index, bytes, value.IsZero ? BytesZero : bytes);
+        ReadOnlySpan<byte> currentBytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref currentWord, 1));
+        vm.TxTracer.SetOperationTransientStorage(cell.Address, cell.Index, bytes, current.IsZero ? BytesZero : currentBytes);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
