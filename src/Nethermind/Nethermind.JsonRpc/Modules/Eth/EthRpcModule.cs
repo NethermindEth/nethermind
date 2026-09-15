@@ -662,6 +662,13 @@ public partial class EthRpcModule(
 
     private ResultWrapper<BlockHeaderForRpc?> GetHeader(BlockParameter blockParameter)
     {
+        // The pending tag returns null as proposed in ethereum/execution-apis#877; the block methods
+        // keep their partially-nulled pending object, which that spec does not cover.
+        if (blockParameter.Type == BlockParameterType.Pending)
+        {
+            return ResultWrapper<BlockHeaderForRpc?>.Success(null);
+        }
+
         // SearchForHeader avoids loading the block body — header endpoints don't need transactions/uncles.
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
@@ -669,15 +676,7 @@ public partial class EthRpcModule(
             return ResultWrapper<BlockHeaderForRpc?>.Success(null);
         }
 
-        BlockHeaderForRpc result = _blockForRpcFactory.CreateHeader(searchResult.Object!, _specProvider);
-        if (blockParameter.Type == BlockParameterType.Pending)
-        {
-            result.Hash = null;
-            result.Nonce = null;
-            result.Miner = null;
-        }
-
-        return ResultWrapper<BlockHeaderForRpc?>.Success(result);
+        return ResultWrapper<BlockHeaderForRpc?>.Success(_blockForRpcFactory.CreateHeader(searchResult.Object!, _specProvider));
     }
 
     public virtual ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
