@@ -16,6 +16,11 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
 {
     private const ulong GasLimit = 30_000_000UL;
 
+    // Cached per contract address; only written and read on the block-processing thread
+    // (the prewarmer path always requests storage cells, which bypasses the cache).
+    private Address? _cachedAccessListAddress;
+    private AccessList? _cachedAccessList;
+
     AccessList? IHasAccessList.GetAccessList(Block block, IReleaseSpec spec)
         => BeaconRootsAccessList(block, spec, includeStorageCells: true).accessList;
 
@@ -37,20 +42,28 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
             return (null, null);
         }
 
+        if (!includeStorageCells)
+        {
+            if (_cachedAccessListAddress != eip4788ContractAddress)
+            {
+                _cachedAccessList = new AccessList.Builder().AddAddress(eip4788ContractAddress).Build();
+                _cachedAccessListAddress = eip4788ContractAddress;
+            }
+
+            return (eip4788ContractAddress, _cachedAccessList);
+        }
+
         AccessList.Builder builder = new AccessList.Builder()
             .AddAddress(eip4788ContractAddress);
 
-        if (includeStorageCells)
-        {
-            // https://eips.ethereum.org/EIPS/eip-4788
-            // Set the storage value at header.timestamp % HISTORY_BUFFER_LENGTH to be header.timestamp
-            ulong slotIndex = header.Timestamp % HistoryBufferLength;
-            UInt256 slot256 = slotIndex;
-            builder.AddStorage(in slot256);
-            // Set the storage value at header.timestamp % HISTORY_BUFFER_LENGTH + HISTORY_BUFFER_LENGTH to be calldata[0:32]
-            slot256 = slotIndex + HistoryBufferLength;
-            builder.AddStorage(in slot256);
-        }
+        // https://eips.ethereum.org/EIPS/eip-4788
+        // Set the storage value at header.timestamp % HISTORY_BUFFER_LENGTH to be header.timestamp
+        ulong slotIndex = header.Timestamp % HistoryBufferLength;
+        UInt256 slot256 = slotIndex;
+        builder.AddStorage(in slot256);
+        // Set the storage value at header.timestamp % HISTORY_BUFFER_LENGTH + HISTORY_BUFFER_LENGTH to be calldata[0:32]
+        slot256 = slotIndex + HistoryBufferLength;
+        builder.AddStorage(in slot256);
 
         return (eip4788ContractAddress, builder.Build());
     }
@@ -73,8 +86,8 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
                 AccessList = accessList
             };
 
-            transaction.Hash = transaction.CalculateHash();
-
+            // No eager hash: every caller passes NullTxTracer and the processor only reads
+            // Hash in trace-level logging, so the per-block RLP encode + keccak is wasted work.
             processor.Execute(transaction, tracer);
         }
     }
