@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
@@ -35,13 +34,4 @@ public partial class Metrics
     internal static void SeedBlockGasPriceIfEmpty(in UInt256 baseFee) { }
 
     internal static void PublishBlockGasPriceGauges() { }
-
-    // Precompile cache metrics: the guest runs with NO_EXEC_METRICS, so PublishMetrics returns before
-    // touching these, but it still compiles against them. PrecompileRuns has no counterpart here -
-    // only MeteredPrecompile writes it, and that is std-only.
-    public static Dictionary<(string, string), long> PrecompileCacheProbes { get; } = [];
-    public static Dictionary<(string, string), long> PrecompileCacheAdds { get; } = [];
-    public static Dictionary<string, long> PrecompileCacheUsedBytes { get; } = [];
-    public static Dictionary<string, long> PrecompileCacheEntries { get; } = [];
-    public static Dictionary<string, long> PrecompileCachePartitionMaxBytes { get; } = [];
 }

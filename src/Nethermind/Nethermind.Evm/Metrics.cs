@@ -363,8 +363,4 @@ public partial class Metrics
     [Description("Total number of background tasks executed.")]
     public static long TotalBackgroundTasksExecuted => _totalBackgroundTasksExecuted.Value;
     public static void IncrementTotalBackgroundTasksExecuted() => Interlocked.Increment(ref _totalBackgroundTasksExecuted.Value);
-
-    [GaugeMetric]
-    [Description("Entries held by the surviving precompile result cache, which is shared by every precompile.")]
-    public static long PrecompileCacheSurvivingEntries { get; set; }
 }

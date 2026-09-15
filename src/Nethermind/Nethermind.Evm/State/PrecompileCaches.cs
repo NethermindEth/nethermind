@@ -137,8 +137,10 @@ public sealed class PrecompileCaches
     /// <summary> Empties the per-block tier. Callers must join any concurrent warming first. </summary>
     public void ClearBlockCache()
     {
+#if !ZK_EVM
         // publishes the metrics to make occupancy gauges report each block's high point
         Metrics.PrecompileCacheSurvivingEntries = _survivingCache.Count;
+#endif
         foreach (KeyValuePair<AddressAsKey, Partition> partition in _partitions)
         {
             partition.Value.PublishMetrics();
@@ -271,6 +273,7 @@ public sealed class PrecompileCaches
         /// <summary> Copies this partition's counters into the exported metrics. </summary>
         internal void PublishMetrics()
         {
+#if !ZK_EVM
             if (!ExecutionMetricsFlag.IsActive) return;
 
             Metrics.PrecompileCacheProbes[(_name, ProbeBlockHit)] = Volatile.Read(ref _blockHits);
@@ -283,6 +286,7 @@ public sealed class PrecompileCaches
             Metrics.PrecompileCachePartitionMaxBytes[_name] = MaxBytes;
             Metrics.PrecompileCacheUsedBytes[_name] = UsedBytes;
             Metrics.PrecompileCacheEntries[_name] = Count;
+#endif
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
