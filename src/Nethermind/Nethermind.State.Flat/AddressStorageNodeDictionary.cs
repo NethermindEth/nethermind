@@ -25,7 +25,8 @@ public sealed class AddressStorageNodeDictionary : IReadOnlyCollection<KeyValueP
     private const int PooledNodeCapacity = 4_096;
     // A contract touching tens of thousands of slots in one block needs a dictionary far above the pooled
     // capacity; trimming it on return made every such block re-grow it through LOH-sized doublings. Those
-    // dictionaries are retained whole instead, under a total entry budget (~64 B per entry).
+    // dictionaries are retained whole for the process lifetime instead, under a total entry budget (~64 B per
+    // entry, so at most ~128 MB); nothing hands the memory back, since the contracts that need it recur.
     private const long MaxRetainedLargeNodeEntries = 2L * 1024 * 1024;
 
     private readonly ConcurrentDictionary<Hash256AsKey, AddressNodes> _byAddress = new();

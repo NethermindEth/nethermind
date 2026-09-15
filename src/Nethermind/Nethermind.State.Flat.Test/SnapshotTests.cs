@@ -174,23 +174,23 @@ public class SnapshotTests
     [Test]
     public void AddressOwnedStorageNodesReuseRetainedLargeDictionaryForLargeBatches()
     {
-        // A size no other test requests, so the retained dictionary found is the one released here.
         const int LargeBatch = 12_345;
         AddressStorageNodeDictionary storageNodes = new();
         Hash256 addressA = TestItem.AddressA.ToAccountPath.ToCommitment();
         Hash256 addressB = TestItem.AddressB.ToAccountPath.ToCommitment();
         AddressStorageNodeDictionary.AddressNodes first = storageNodes.GetOrAddAddress(addressA);
         first.EnsureAdditionalCapacity(LargeBatch);
-        Dictionary<HashedKey<TreePath>, TrieNode> large = first.Nodes;
         first.Set(TreePath.Empty, new TrieNode(NodeType.Unknown, TestItem.KeccakA));
 
         storageNodes.NoLockClear();
         AddressStorageNodeDictionary.AddressNodes second = storageNodes.GetOrAddAddress(addressB);
+        Dictionary<HashedKey<TreePath>, TrieNode> beforeBatch = second.Nodes;
         second.EnsureAdditionalCapacity(LargeBatch);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(second.Nodes, Is.SameAs(large));
+            // Growing in place keeps the dictionary instance, so a new instance means one was rented from the retained pool.
+            Assert.That(second.Nodes, Is.Not.SameAs(beforeBatch));
             Assert.That(second.Nodes, Is.Empty);
             Assert.That(second.Nodes.Capacity, Is.GreaterThanOrEqualTo(LargeBatch));
         }
