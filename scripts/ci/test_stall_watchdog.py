@@ -9,11 +9,15 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import xml.etree.ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+# Long enough to outlast SIGKILL delivery, short enough that a child that truly survives fails fast.
+CHILD_DEATH_SECONDS = 2
 
 
 @unittest.skipUnless(sys.platform == "linux", "watchdog uses Linux process groups")
@@ -124,14 +128,21 @@ class WatchdogTests(unittest.TestCase):
         result = self.run_watchdog(sys.executable, "-c", parent)
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         pid = int((self.diag / "child.pid").read_text())
-        # An orphaned zombie is dead but can remain until the container's init reaps it - and init can
-        # do that at any point: the entry vanishes before the open (ENOENT) or between open and read (ESRCH).
-        try:
-            stat = Path(f"/proc/{pid}/stat").read_text()
-        except (FileNotFoundError, ProcessLookupError):
-            stat = None
-        # The state field follows comm, which is parenthesised and may itself contain spaces.
-        self.assertTrue(stat is None or stat.rpartition(")")[2].split()[0] == "Z", "child survived cleanup")
+        # SIGKILL is delivered asynchronously, so poll for the child to die instead of sampling once.
+        deadline = time.monotonic() + CHILD_DEATH_SECONDS
+        while True:
+            # An orphaned zombie is dead but can remain until the container's init reaps it - and init can
+            # do that at any point: the entry vanishes before the open (ENOENT) or between open and read (ESRCH).
+            try:
+                stat = Path(f"/proc/{pid}/stat").read_text()
+            except (FileNotFoundError, ProcessLookupError):
+                stat = None
+            # The state field follows comm, which is parenthesised and may itself contain spaces.
+            state = None if stat is None else stat.rpartition(")")[2].split()[0]
+            if state is None or state == "Z" or time.monotonic() >= deadline:
+                break
+            time.sleep(0.01)
+        self.assertTrue(state is None or state == "Z", "child survived cleanup")
 
 
 @unittest.skipUnless(shutil.which("dotnet"), ".NET SDK required")
