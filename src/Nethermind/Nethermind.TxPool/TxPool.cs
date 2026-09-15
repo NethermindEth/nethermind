@@ -69,6 +69,7 @@ namespace Nethermind.TxPool
         private readonly DelegationCache _pendingDelegations = new();
         private readonly PayerExposureCache _payerExposure = new();
         private readonly PendingPaymasterCache _pendingPaymasters = new();
+        private readonly SenderWidthCache _senderWidth = new();
         private readonly FrameTxDependencyIndex _frameDependencies = new();
         private readonly HashSet<ValueHash256> _frameTxsToRevalidate = [];
         // Consecutive heads each deferred transaction has been carried across. Written only under the head write
@@ -328,6 +329,10 @@ namespace Nethermind.TxPool
             // EIP-8141: must follow both resolvers — it prices whichever payer they recorded, and a
             // second registration would reserve every frame tx's cost twice.
             postHashFilters.Add(new FrameTxPayerExposureFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _payerExposure, _logger));
+
+            // MATCHA width: last, so width is only spent on a transaction every other gate admits; the pool
+            // refunds it on every path that leaves the transaction unpooled.
+            postHashFilters.Add(new FrameTxWidthFilter(txPoolConfig, _transactions, _blobTransactions, _senderWidth, _logger));
 
             _postHashFilters = postHashFilters.ToArray();
 
@@ -785,6 +790,7 @@ namespace Nethermind.TxPool
 
                             ReAddReorganisedTransactions(args.PreviousBlock);
                             RemoveProcessedTransactions(args.Block);
+                            EarnWidthForIncludedTransactions(args.Block);
                             RemoveExpiredFrameTransactions(args.Block);
                             RevalidateFrameTransactions(args.Block);
 
@@ -1028,6 +1034,28 @@ namespace Nethermind.TxPool
             bool removed = RemoveTransaction(tx.Hash);
             _broadcaster.EnsureStopBroadcastUpToNonce(tx);
             return removed;
+        }
+
+        /// <summary>Credits each included EIP-8250 keyed-nonce frame transaction's sender with the width its gas earns.</summary>
+        /// <remarks>
+        /// MATCHA v1 credits on inclusion rather than finalization: the pool consumes no finalization signal,
+        /// and the block tree that raises one lives outside this project. <see cref="Transaction.SpentGas"/>
+        /// is the gas the processor charged, so the credit is the gas actually paid. A block later reorged
+        /// out keeps its credit (MATCHA-GAP).
+        /// </remarks>
+        private void EarnWidthForIncludedTransactions(Block block)
+        {
+            if (!_txPoolConfig.FrameTxWidthEnabled) return;
+
+            Transaction[] blockTransactions = block.Transactions;
+            for (int i = 0; i < blockTransactions.Length; i++)
+            {
+                Transaction blockTx = blockTransactions[i];
+                if (blockTx.SupportsFrames && KeyedNonceManager.UsesKeyedNonce(blockTx))
+                {
+                    _senderWidth.Earn(blockTx.SenderAddress!, (UInt256)blockTx.SpentGas);
+                }
+            }
         }
 
         /// <summary>Drops pending EIP-8141 frame transactions whose expiry deadline has passed as of the new head.</summary>
@@ -1696,8 +1724,9 @@ namespace Nethermind.TxPool
 
         /// <summary>
         /// Releases the pending exposure a resolved frame-tx payer reserved at admission
-        /// (<see cref="FrameTxPayerExposureFilter"/>) and the slot its paymaster took
-        /// (<see cref="FrameTxPaymasterFilter"/>), once the transaction leaves the pool.
+        /// (<see cref="FrameTxPayerExposureFilter"/>), the slot its paymaster took
+        /// (<see cref="FrameTxPaymasterFilter"/>) and the width its sender spent
+        /// (<see cref="FrameTxWidthFilter"/>), once the transaction leaves the pool.
         /// </summary>
         /// <remarks>
         /// Covers eviction, replacement, inclusion and reorg removal (all funnel through the pool
@@ -1714,6 +1743,11 @@ namespace Nethermind.TxPool
             if (PendingPaymasterCache.KeyFor(tx) is Address paymaster)
             {
                 _pendingPaymasters.Decrement(paymaster);
+            }
+
+            if (_txPoolConfig.FrameTxWidthEnabled && tx.Hash is not null)
+            {
+                _senderWidth.RefundCharge(tx.Hash.ValueHash256);
             }
         }
 
@@ -2662,6 +2696,7 @@ namespace Nethermind.TxPool
             _payerExposure.Clear();
             Interlocked.Add(ref Metrics.FrameTxEvictionRetryLedgerEntries, -_frameEvictionAttempts.Count);
             _frameEvictionAttempts.Clear();
+            _senderWidth.Clear();
 
             await _retryCache.DisposeAsync();
             await _headProcessing;
