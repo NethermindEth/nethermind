@@ -1180,7 +1180,7 @@ namespace Nethermind.TxPool
         /// revalidation sweep exists to close. So once the carry is spent the full read decides, and a record even
         /// that cannot materialise is dropped: nothing can broadcast or include it either.
         /// Neither the decline nor the escalation is counted as a deferral: this path always reaches a verdict
-        /// on its own, and the eviction below counts the one outcome an operator can act on. What a decline does
+        /// within the carry, and the eviction below counts the one outcome an operator can act on. What a decline does
         /// cost is the transaction's shared carry, which the simulation site then finds spent — so a carry spent
         /// here surfaces there, as FrameTxRevalidationDeferralsExhausted without FrameTxRevalidationsDeferred.
         /// </remarks>
