@@ -6,7 +6,6 @@ using Nethermind.State;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain;
-using Nethermind.Evm.State;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;

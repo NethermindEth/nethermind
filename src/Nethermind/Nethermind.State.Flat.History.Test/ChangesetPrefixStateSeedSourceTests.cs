@@ -11,7 +11,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using Nethermind.State.Flat.History.Changesets;
 using NSubstitute;
 using NUnit.Framework;
