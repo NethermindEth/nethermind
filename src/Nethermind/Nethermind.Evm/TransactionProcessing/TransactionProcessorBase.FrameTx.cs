@@ -278,9 +278,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 batchStartDestroys = accessTracker.DestroyList.TakeSnapshot();
             }
 
-            // Transient storage is discarded between frames (EIP-8141 § Cross-frame interactions).
-            WorldState.ResetTransient();
-
             bool isSender = frame.Mode == TxFrame.ModeSender;
             if (isSender && !frameContext.SenderApproved)
             {
@@ -305,6 +302,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             int frameStartJournal = frameContext.FrameJournalCheckpoint;
             bool payerWasSet = frameContext.Payer is not null;
             TransactionSubstate substate = ExecuteFrame(frame, resolvedTarget, caller, isStatic, frameContext, in accessTracker, spec, tracer, out ulong frameGasUsed, out long frameStateGas);
+            // Transient storage is discarded between frames (EIP-8141 § Cross-frame interactions). Discarded
+            // here rather than before the next frame: the batch and prefix-end snapshots straddle frames, and
+            // a discard after either was taken truncates the journal it indexes into.
+            WorldState.ResetTransient();
             shouldRestoreRipemdTouch |= substate.ShouldRestoreRipemdTouch;
 
             bool frameSucceeded = !substate.ShouldRevert && !substate.IsError;

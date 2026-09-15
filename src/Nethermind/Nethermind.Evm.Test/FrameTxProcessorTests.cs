@@ -2916,6 +2916,46 @@ public class FrameTxProcessorTests
         }
     }
 
+    [Test]
+    public void Execute_AtomicBatch_AfterAnEarlierFrameWroteTransientStorage_Unrolls()
+    {
+        DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.TSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(),
+            Frame(TxFrame.ModeSender, target: Observer),
+            Frame(TxFrame.ModeSender, flags: TxFrame.AtomicBatchFlag, target: Recipient),
+            Frame(TxFrame.ModeSender, target: Recipient));
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+    }
+
+    [Test]
+    public void Execute_PostTxRevert_AfterThePayingFrameWroteTransientStorage_UnwindsTheBody()
+    {
+        DeploySmartSender(
+        [
+            .. Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.TSTORE).Done,
+            .. ApproveCode(TxFrame.ApproveExecutionAndPayment),
+        ]);
+        DeployContract(Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
+        DeployContract(Recipient, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+
+        Transaction tx = FrameTx(nonce: 0,
+            Frame(TxFrame.ModeDefault, flags: TxFrame.ApproveExecutionAndPayment),
+            Frame(TxFrame.ModeSender, target: Observer),
+            Frame(TxFrame.ModePostTx, target: Recipient));
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.TransactionExecuted, Is.True, "a POST_TX revert must not invalidate the transaction");
+        AssertStorage(Observer, 0, UInt256.Zero, "the failed assertion discards the body");
+    }
+
     // A key's slot exists after its first use, so only that use grows the state.
     [Test]
     public void Execute_KeyedNonce_DefaultCodeApproval_ChargesFirstUseOnlyOnce()
