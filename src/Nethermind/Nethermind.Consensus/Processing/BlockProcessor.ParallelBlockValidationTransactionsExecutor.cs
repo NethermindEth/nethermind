@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,9 +30,12 @@ public partial class BlockProcessor
         IBlockAccessListManager balManager,
         ILogManager logManager,
         BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
-        : IBlockProcessor.IBlockTransactionsExecutor
+        : IBlockProcessor.IBlockTransactionsExecutor,
+          BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler
     {
         private readonly ILogger _logger = logManager.GetClassLogger<ParallelBlockValidationTransactionsExecutor>();
+        private readonly List<PendingTransactionProcessedEvent>? _pendingTransactionProcessedEvents =
+            transactionProcessedEventHandler is null ? null : [];
         private IncrementalValidationWorkItem? _incrementalValidationWorkItem;
         private BlockReceiptsTracer[] _receiptsTracerPool = [];
         private GasValidationResultSlot[] _gasResultPool = [];
@@ -52,6 +56,8 @@ public partial class BlockProcessor
                 return inner.ProcessTransactions(block, processingOptions, receiptsTracer, token);
             }
 
+            ClearTransactionProcessedEvents();
+            _pendingTransactionProcessedEvents?.EnsureCapacity(block.Transactions.Length);
             Metrics.ResetBlockStats();
             inner.SetupTxTimingMetrics(block);
 
@@ -110,6 +116,9 @@ public partial class BlockProcessor
                 balManager.NextTransaction();
                 balManager.SpendGas(currentTx.BlockGasUsed);
                 if (shouldValidateBal) balManager.ValidateBlockAccessList(block, i + 1);
+
+                StageTransactionProcessedEvent(
+                    new TxProcessedEventArgs((int)i, currentTx, block.Header, receiptsTracer.TxReceipts[(int)i]));
             }
 
             return [.. receiptsTracer.TxReceipts];
@@ -142,7 +151,13 @@ public partial class BlockProcessor
             _pooledSlotsInUse = len;
 
             IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem ??= new();
-            incrementalValidation.Schedule(balManager, block, gasResults, receiptsTracers, transactionProcessedEventHandler, token);
+            incrementalValidation.Schedule(
+                balManager,
+                block,
+                gasResults,
+                receiptsTracers,
+                transactionProcessedEventHandler is null ? null : this,
+                token);
             BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
 
             try
@@ -267,6 +282,41 @@ public partial class BlockProcessor
             }
         }
 
+        private void StageTransactionProcessedEvent(TxProcessedEventArgs args) =>
+            _pendingTransactionProcessedEvents?.Add(new(args, args.BlockHeader.GasUsed));
+
+        void BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler.OnTransactionProcessed(TxProcessedEventArgs args) =>
+            StageTransactionProcessedEvent(args);
+
+        /// <inheritdoc/>
+        public void PublishTransactionProcessedEvents()
+        {
+            if (transactionProcessedEventHandler is null || _pendingTransactionProcessedEvents is null)
+            {
+                return;
+            }
+
+            foreach (PendingTransactionProcessedEvent pending in _pendingTransactionProcessedEvents)
+            {
+                BlockHeader header = pending.Args.BlockHeader;
+                ulong finalGasUsed = header.GasUsed;
+                try
+                {
+                    header.GasUsed = pending.HeaderGasUsed;
+                    transactionProcessedEventHandler.OnTransactionProcessed(pending.Args);
+                }
+                finally
+                {
+                    header.GasUsed = finalGasUsed;
+                }
+            }
+        }
+
+        /// <inheritdoc/>
+        public void ClearTransactionProcessedEvents() => _pendingTransactionProcessedEvents?.Clear();
+
+        private readonly record struct PendingTransactionProcessedEvent(TxProcessedEventArgs Args, ulong HeaderGasUsed);
+
         private void EnsureParallelBuffers(int length)
         {
             int currentLength = _receiptsTracerPool.Length;
@@ -371,6 +421,7 @@ public partial class BlockProcessor
                 ReadOnlySpan<TxReceipt> receipts = perTxTracers[i].TxReceipts;
                 if (receipts.IsEmpty) continue;
                 TxReceipt receipt = receipts[0];
+                receipt.Index = i;
                 cumulativeGas += receipt.GasUsed;
                 receipt.GasUsedTotal = cumulativeGas;
                 outer.SetReceipt(i, receipt);
