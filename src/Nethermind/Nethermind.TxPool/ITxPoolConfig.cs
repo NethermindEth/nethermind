@@ -53,13 +53,15 @@ public interface ITxPoolConfig : IConfig
     int FrameTxEvictionRetryBudget { get; set; }
 
     /// <remarks>
-    /// Each carried transaction costs one validation-prefix simulation per head, run while the pool holds its
-    /// head write lock, so an unbounded carry turns a backlog larger than
-    /// <see cref="FrameTxSimulationBudgetPerHeadMs"/> can clear into a permanent per-head stall. Only the carry
-    /// feeding itself is bounded: re-arming the budget costs a block that genuinely touched the transaction's
-    /// dependencies and would have triggered a revalidation anyway.
+    /// Each carried transaction costs a head's worth of work while the pool holds its head write lock: a
+    /// validation-prefix simulation, metered by <see cref="FrameTxSimulationBudgetPerHeadMs"/>, or a
+    /// blob-pool record read, which that budget does not meter and which decodes the whole sidecar. Either
+    /// way an unbounded carry turns a backlog one head cannot clear into a permanent per-head stall. One
+    /// allowance covers both, so a transaction alternating between them cannot carry for twice as long as
+    /// either alone. Only the carry feeding itself is bounded: re-arming the budget costs a block that
+    /// genuinely touched the transaction's dependencies and would have triggered a revalidation anyway.
     /// </remarks>
-    [ConfigItem(DefaultValue = "2", Description = "EIP-8141: the number of *consecutive* chain heads a pending frame transaction whose revalidation spent this node's own simulation bounds may be carried across before the pool stops re-queuing it. Any head that revalidates it without deferring it again resets the count. Exhausting the budget neither evicts nor approves the transaction: it stays pending and unjudged. `0` stops re-queuing entirely.")]
+    [ConfigItem(DefaultValue = "2", Description = "EIP-8141: the number of *consecutive* chain heads a pending frame transaction whose revalidation reached no verdict may be carried across before the pool stops re-queuing it. A revalidation reaches no verdict when it spent this node's own simulation bounds, or when the blob pool declined to read the transaction's record back, and the two share this one allowance. Any head that revalidates it without deferring it again resets the count. Exhausting the budget neither evicts nor approves the transaction: it stays pending and unjudged. `0` stops re-queuing entirely.")]
     int FrameTxRevalidationDeferralBudget { get; set; }
 
     [ConfigItem(DefaultValue = "16", Description = "The max number of pending blob transactions per single sender. `0` to lift the limit.")]
