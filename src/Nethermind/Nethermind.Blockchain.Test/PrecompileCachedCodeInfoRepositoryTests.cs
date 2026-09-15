@@ -16,6 +16,7 @@ using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.Evm.Metrics;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -519,9 +520,9 @@ public class PrecompileCachedCodeInfoRepositoryTests
         {
             Assert.That(ProbeMetric("miss"), Is.EqualTo(2));
             Assert.That(ProbeMetric("block_hit"), Is.EqualTo(1));
-            Assert.That(AddMetric("block"), Is.EqualTo(1));
-            Assert.That(AddMetric("rejected_large"), Is.Zero, "entries under the per-entry cap must not be refused by the surviving tier");
-            Assert.That(AddMetric("rejected_full"), Is.EqualTo(1), "the exhausted byte budget must be visible");
+            Assert.That(AddMetric("block_admitted"), Is.EqualTo(1));
+            Assert.That(AddMetric("surviving_rejected_large"), Is.Zero, "entries under the per-entry cap must not be refused by the surviving tier");
+            Assert.That(AddMetric("block_rejected_full"), Is.EqualTo(1), "the exhausted byte budget must be visible");
             Assert.That(UsedBytesMetric(), Is.EqualTo(entryCost), "the gauge must report the block's high point");
             Assert.That(EntriesMetric(), Is.EqualTo(1), "the refused entry must not be counted");
         }
@@ -537,17 +538,10 @@ public class PrecompileCachedCodeInfoRepositoryTests
         }
     }
 
-    private static long ProbeMetric(string result) =>
-        Evm.Metrics.PrecompileCacheProbes.TryGetValue((MetricLabel, result), out long count) ? count : 0;
-
-    private static long AddMetric(string outcome) =>
-        Evm.Metrics.PrecompileCacheAdds.TryGetValue((MetricLabel, outcome), out long count) ? count : 0;
-
-    private static long UsedBytesMetric() =>
-        Evm.Metrics.PrecompileCacheUsedBytes.TryGetValue(MetricLabel, out long bytes) ? bytes : 0;
-
-    private static long EntriesMetric() =>
-        Evm.Metrics.PrecompileCacheEntries.TryGetValue(MetricLabel, out long entries) ? entries : 0;
+    private static long ProbeMetric(string result) => PrecompileCacheProbes.TryGetValue((MetricLabel, result), out long count) ? count : 0;
+    private static long AddMetric(string outcome) => PrecompileCacheAdds.TryGetValue((MetricLabel, outcome), out long count) ? count : 0;
+    private static long UsedBytesMetric() => PrecompileCacheUsedBytes.TryGetValue(MetricLabel, out long bytes) ? bytes : 0;
+    private static long EntriesMetric() => PrecompileCacheEntries.TryGetValue(MetricLabel, out long entries) ? entries : 0;
 
     private class TestPrecompile(bool supportsCaching, Action? onRun = null, byte[]? fixedOutput = null, string? name = null) : IPrecompile
     {

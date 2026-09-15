@@ -51,10 +51,10 @@ public sealed class PrecompileCaches
     private const string ProbeBlockHit = "block_hit";
     private const string ProbeSurvivingHit = "surviving_hit";
     private const string ProbeMiss = "miss";
-    private const string AddedToBlock = "block";
-    private const string RejectedFull = "rejected_full";
-    private const string RejectedDuplicate = "rejected_duplicate";
-    private const string RejectedLarge = "rejected_large";
+    private const string BlockAdmitted = "block_admitted";
+    private const string BlockRejectedFull = "block_rejected_full";
+    private const string BlockRejectedDuplicate = "block_rejected_duplicate";
+    private const string SurvivingRejectedLarge = "surviving_rejected_large";
 
     /// <summary> For flows and tests that don't cache precompile results. </summary>
     public static PrecompileCaches Empty { get; } = new([], new PreBlockCachesConfig(), maxBytes: 0);
@@ -176,8 +176,7 @@ public sealed class PrecompileCaches
 
         private long _bytes;
 
-        // Metrics, counted in fields and published on block clear
-        // to prevent additional dictionary lookup on read path
+        // Metrics, counted in fields and published on block clear - to prevent additional dictionary lookup on read path
         private long _blockHits;
         private long _survivingHits;
         private long _misses;
@@ -279,10 +278,10 @@ public sealed class PrecompileCaches
             Metrics.PrecompileCacheProbes[(_name, ProbeBlockHit)] = Volatile.Read(ref _blockHits);
             Metrics.PrecompileCacheProbes[(_name, ProbeSurvivingHit)] = Volatile.Read(ref _survivingHits);
             Metrics.PrecompileCacheProbes[(_name, ProbeMiss)] = Volatile.Read(ref _misses);
-            Metrics.PrecompileCacheAdds[(_name, AddedToBlock)] = Volatile.Read(ref _admitted);
-            Metrics.PrecompileCacheAdds[(_name, RejectedFull)] = Volatile.Read(ref _rejectedFull);
-            Metrics.PrecompileCacheAdds[(_name, RejectedDuplicate)] = Volatile.Read(ref _rejectedDuplicate);
-            Metrics.PrecompileCacheAdds[(_name, RejectedLarge)] = Volatile.Read(ref _rejectedLarge);
+            Metrics.PrecompileCacheAdds[(_name, BlockAdmitted)] = Volatile.Read(ref _admitted);
+            Metrics.PrecompileCacheAdds[(_name, BlockRejectedFull)] = Volatile.Read(ref _rejectedFull);
+            Metrics.PrecompileCacheAdds[(_name, BlockRejectedDuplicate)] = Volatile.Read(ref _rejectedDuplicate);
+            Metrics.PrecompileCacheAdds[(_name, SurvivingRejectedLarge)] = Volatile.Read(ref _rejectedLarge);
             Metrics.PrecompileCachePartitionMaxBytes[_name] = MaxBytes;
             Metrics.PrecompileCacheUsedBytes[_name] = UsedBytes;
             Metrics.PrecompileCacheEntries[_name] = Count;
