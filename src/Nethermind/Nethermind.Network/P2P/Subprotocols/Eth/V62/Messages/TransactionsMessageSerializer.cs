@@ -50,8 +50,25 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             _maxTxSize = Math.Max(txPoolConfig?.MaxTxSize ?? long.MaxValue, ShortFormMaxItemMeasure);
             _maxBlobTxSize = txPoolConfig?.MaxBlobTxSize is null || specProvider is null
                 ? long.MaxValue
-                : Math.Max(txPoolConfig.MaxBlobTxSize.Value + MaxBlobSidecarOverhead(specProvider.GetFinalSpec()), ShortFormMaxItemMeasure);
+                : BlobTxSizeCap(txPoolConfig.MaxBlobTxSize.Value, specProvider.GetFinalSpec());
             _deserializeTransactionsMessage = (ref RlpReader ctx) => new TransactionsMessage(DeserializeTxsWithSizeGuard(ref ctx));
+        }
+
+        /// <summary>The pre-decode cap for a blob transaction: the configured post-decode cap widened by the
+        /// largest mempool-form sidecar <paramref name="finalSpec"/> allows.</summary>
+        /// <remarks>
+        /// <c>MaxBlobTxSize</c> is an unvalidated configuration value, so the widening saturates rather than
+        /// wrapping and a negative setting is floored: an absurd one has to degrade to an effectively absent
+        /// cap, never to one that drops every blob transaction.
+        /// </remarks>
+        private static long BlobTxSizeCap(long configuredMaxBlobTxSize, IReleaseSpec finalSpec)
+        {
+            long sidecarAllowance = MaxBlobSidecarOverhead(finalSpec);
+            long configured = Math.Max(configuredMaxBlobTxSize, 0);
+
+            return configured > long.MaxValue - sidecarAllowance
+                ? long.MaxValue
+                : Math.Max(configured + sidecarAllowance, ShortFormMaxItemMeasure);
         }
 
         /// <summary>An upper bound on the bytes a blob transaction's mempool-form sidecar adds to the consensus

@@ -286,6 +286,12 @@ public class TransactionsMessageSerializerTests
             .SetName("Keeps a blob tx above MaxTxSize but within the blob cap");
         yield return new TestCaseData(Shanghai.Instance, null, 500L, 0)
             .SetName("Skips a blob tx above the blob cap with no MaxTxSize configured");
+        // MaxBlobTxSize is unvalidated, so an absurd value has to leave the blob cap effectively absent rather
+        // than wrap the sidecar allowance past either end of the range and collapse the cap onto its floor.
+        yield return new TestCaseData(Cancun.Instance, null, long.MaxValue, 1)
+            .SetName("Keeps a blob tx when MaxBlobTxSize would overflow the sidecar allowance");
+        yield return new TestCaseData(Cancun.Instance, null, long.MinValue, 1)
+            .SetName("Keeps a blob tx when MaxBlobTxSize is negative");
     }
 
     private static IEnumerable<TestCaseData> MaxBlobCountCases()
