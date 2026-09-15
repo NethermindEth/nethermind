@@ -342,6 +342,8 @@ public class TransactionChangesetBuilderTests
         bool retryHandedOut = builder.TryClaimChunk(out TransactionChangesetBuilder.Chunk failing);
         bool freshHandedOut = builder.TryClaimChunk(out _);
         _executor.Fail = false;
+        builder.Complete(new TransactionChangesetBuilder.Chunk(1, 43));
+        bool stillStalled = !builder.TryClaimChunk(out _);
         builder.BuildChunk(failing, _executor);
         builder.Complete(failing);
         bool resumed = builder.TryClaimChunk(out TransactionChangesetBuilder.Chunk next);
@@ -350,7 +352,8 @@ public class TransactionChangesetBuilderTests
         {
             Assert.That(retryHandedOut, Is.True, "the failing chunk keeps being retried");
             Assert.That(freshHandedOut, Is.False, "rows below a chunk that cannot build could never be claimed, so the other workers must not write them");
-            Assert.That(resumed, Is.True, "once the failing chunk builds, chunks are handed out again");
+            Assert.That(stillStalled, Is.True, "another worker finishing a chunk of its own does not make the failing one buildable");
+            Assert.That(resumed, Is.True, "once the failing chunk itself builds, chunks are handed out again");
             Assert.That(next.Top, Is.EqualTo(failing.Bottom - 1));
         }
     }
