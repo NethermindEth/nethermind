@@ -163,9 +163,9 @@ public partial class Metrics
     public static NonBlocking.ConcurrentDictionary<(string, string), long> PrecompileCacheProbes { get; } = new();
 
     [GaugeMetric]
-    [Description("Precompile result cache insertion outcomes, by precompile and outcome. The tiers admit independently, so one insertion can record an outcome for each and the outcomes do not sum to the insertions attempted. The per-block tier reports block_admitted, block_rejected_full for the entries its byte budget refused, and block_rejected_duplicate for those another thread stored first; the surviving tier reports only surviving_rejected_large, the entries above its per-entry cap.")]
-    [KeyIsLabel("precompile", "outcome")]
-    public static NonBlocking.ConcurrentDictionary<(string, string), long> PrecompileCacheAdds { get; } = new();
+    [Description("Results the per-block precompile result cache refused because the precompile's byte budget was exhausted, by precompile. Non-zero means a larger budget would hold more; zero means raising it changes nothing.")]
+    [KeyIsLabel("precompile")]
+    public static NonBlocking.ConcurrentDictionary<string, long> PrecompileCacheRejectedFull { get; } = new();
 
     [GaugeMetric]
     [Description("Accounted weight held by the per-block precompile result cache, by precompile, as it stood at the end of the last block.")]

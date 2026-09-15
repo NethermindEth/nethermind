@@ -520,9 +520,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
         {
             Assert.That(ProbeMetric("miss"), Is.EqualTo(2));
             Assert.That(ProbeMetric("block_hit"), Is.EqualTo(1));
-            Assert.That(AddMetric("block_admitted"), Is.EqualTo(1));
-            Assert.That(AddMetric("surviving_rejected_large"), Is.Zero, "entries under the per-entry cap must not be refused by the surviving tier");
-            Assert.That(AddMetric("block_rejected_full"), Is.EqualTo(1), "the exhausted byte budget must be visible");
+            Assert.That(RejectedFullMetric(), Is.EqualTo(1), "the exhausted byte budget must be visible");
             Assert.That(UsedBytesMetric(), Is.EqualTo(entryCost), "the gauge must report the block's high point");
             Assert.That(EntriesMetric(), Is.EqualTo(1), "the refused entry must not be counted");
         }
@@ -539,7 +537,7 @@ public class PrecompileCachedCodeInfoRepositoryTests
     }
 
     private static long ProbeMetric(string result) => PrecompileCacheProbes.TryGetValue((MetricLabel, result), out long count) ? count : 0;
-    private static long AddMetric(string outcome) => PrecompileCacheAdds.TryGetValue((MetricLabel, outcome), out long count) ? count : 0;
+    private static long RejectedFullMetric() => PrecompileCacheRejectedFull.TryGetValue(MetricLabel, out long count) ? count : 0;
     private static long UsedBytesMetric() => PrecompileCacheUsedBytes.TryGetValue(MetricLabel, out long bytes) ? bytes : 0;
     private static long EntriesMetric() => PrecompileCacheEntries.TryGetValue(MetricLabel, out long entries) ? entries : 0;
 
