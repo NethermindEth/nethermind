@@ -8,6 +8,8 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.State.Flat.History.Changesets;
 using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
@@ -53,6 +55,20 @@ public class TransactionChangesetIndexModuleTests
 
         Assert.That(scope.IsRegistered<StateReadOverlaySlot>(), Is.EqualTo(indexEnabled),
             "the slot exists exactly when the scope provider consults it; a slot nothing reads would let the executor skip a prefix no one supplies");
+    }
+
+    [Test]
+    public void The_debug_and_trace_module_factories_build_with_the_index_on()
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = true }))
+            .Build();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<DebugModuleFactory>().Create(), Is.Not.Null, "the shared parallel tracer and its environments resolve from the node container");
+            Assert.That(container.Resolve<TraceModuleFactory>().Create(), Is.Not.Null);
+        }
     }
 
     [Test]

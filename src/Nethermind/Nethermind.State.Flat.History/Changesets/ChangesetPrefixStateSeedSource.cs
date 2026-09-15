@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -22,4 +23,6 @@ public sealed class ChangesetPrefixStateSeedSource(TransactionChangesetIndex ind
         slot.Arm(new MidBlockReadOverlay(lease.Overlay), lease);
         return true;
     }
+
+    public bool TryOpenBlock(Block block, [NotNullWhen(true)] out ICoveredBlock? covered) => index.TryOpenBlock(block, out covered);
 }

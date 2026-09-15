@@ -64,6 +64,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Threads re-executing blocks for the backwards retrofit of the transaction index, each on its own block range with its own processing environment. The tip is always followed by one thread regardless. 1 runs the retrofit on that same thread. Each worker holds the state its current 128-block chunk wrote, a few hundred thousand entries on mainnet, so the count is a memory knob as well as a throughput one.", DefaultValue = "1")]
     int HistoryTransactionIndexWorkers { get; set; }
 
+    [ConfigItem(Description = "Threads tracing the transactions of one covered block at the same time, each on the exact state before its transaction as the transaction index supplies it. 0 uses one per core, at most 16; 1 traces a block transaction by transaction as before. Only a node with the transaction index on is affected.", DefaultValue = "0")]
+    int HistoryTransactionIndexTraceParallelism { get; set; }
+
     [ConfigItem(Description = "Serve eth_getProof at heights below the flat state boundary from the archive commitment columns. Requires an unwindowed (v2) flat history whose commitments cover the height; off by default.", DefaultValue = "false")]
     bool ArchiveProofServeEnabled { get; set; }
 

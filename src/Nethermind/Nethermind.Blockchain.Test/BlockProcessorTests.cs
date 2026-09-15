@@ -43,6 +43,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
@@ -56,6 +57,9 @@ using Nethermind.Db;
 using FlatHistoryColumns = Nethermind.State.Flat.FlatHistoryColumns;
 using Nethermind.State.Flat.History.Changesets;
 using Nethermind.State.OverridableEnv;
+using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.JsonRpc.Modules.Trace;
+using System.Linq;
 using Nethermind.Trie;
 
 namespace Nethermind.Blockchain.Test;
@@ -151,13 +155,14 @@ public class BlockProcessorTests
         artifacts.AssertUntouched(block);
     }
 
-    private static Task<BasicTestBlockchain> CreatePrefixReplayChain(IReleaseSpec spec, IPrefixStateSeedSource? seeds = null) =>
+    private static Task<BasicTestBlockchain> CreatePrefixReplayChain(IReleaseSpec spec, IPrefixStateSeedSource? seeds = null, Action<ContainerBuilder>? configure = null) =>
         BasicTestBlockchain.Create(builder =>
         {
             builder
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false })
                 .AddSingleton<IBlockValidationModule, PrefixReplayValidationModule>();
             if (seeds is not null) builder.AddSingleton<IPrefixStateSeedSource>(seeds);
+            configure?.Invoke(builder);
         });
 
     private static async Task<Block> AddThreeTransferBlock(BasicTestBlockchain chain)
@@ -255,6 +260,127 @@ public class BlockProcessorTests
         Assert.That(seeds.AskedFor, Is.EqualTo(-1), "there is nothing before the first transaction to seed");
     }
 
+    [TestCase("callTracer")]
+    [TestCase("prestateTracer")]
+    public async Task ParallelBlockTracer_TracesACoveredBlockTransactionByTransaction_LikeTheReplayDoes(string tracerName)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+        IndexThroughTheCapture(chain, index, block, parent, spec);
+        GethTraceOptions traceOptions = new() { Tracer = tracerName };
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, degree: 2, LimboLogs.Instance);
+
+        string expected = chain.JsonSerializer.Serialize(new GethLikeTxTraceCollection(TraceWholeBlockThroughTraceEnvironment(chain, parent, block,
+            state => GethStyleTracer.CreateOptionsTracer(block.Header, traceOptions, state, chain.SpecProvider))));
+        bool traced = parallel.TryTrace(block, parent,
+            (state, txHash) => GethStyleTracer.CreateOptionsTracer(block.Header, traceOptions with { TxHash = txHash }, state, chain.SpecProvider),
+            afterTransactions: null, CancellationToken.None, out IReadOnlyList<GethLikeTxTrace>? traces);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traced, Is.True, "a covered block is traced in parallel");
+            Assert.That(traces!, Has.Count.EqualTo(3));
+            Assert.That(chain.JsonSerializer.Serialize(new GethLikeTxTraceCollection(traces!)), Is.EqualTo(expected), "each transaction traced alone on its seeded state equals the replay, prestate included");
+        }
+    }
+
+    [Test]
+    public async Task ParallelBlockTracer_TracesTheRewardsOnTheStateAfterTheLastTransaction()
+    {
+        IReleaseSpec spec = Prague.Instance;
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds, builder => builder.AddSingleton<IRewardCalculatorSource>(new ZeroRewardToTheBeneficiary()));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+        IndexThroughTheCapture(chain, index, block, parent, spec);
+        ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.Rewards;
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, degree: 3, LimboLogs.Instance);
+
+        IReadOnlyCollection<ParityLikeTxTrace> sequential = TraceWholeBlockThroughTraceEnvironment(chain, parent, block, _ => new ParityLikeBlockTracer(types));
+        bool traced = parallel.TryTrace(block, parent,
+            (_, txHash) => new ParityLikeBlockTracer(txHash, types & ~ParityTraceTypes.Rewards),
+            _ => new ParityLikeBlockTracer(types), CancellationToken.None, out IReadOnlyList<ParityLikeTxTrace>? traces);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traced, Is.True);
+            Assert.That(sequential.Count, Is.EqualTo(4), "precondition: three transactions and the reward");
+            Assert.That(chain.JsonSerializer.Serialize(ParityTxTraceFromStore.FromTxTrace(traces!.ToArray())),
+                Is.EqualTo(chain.JsonSerializer.Serialize(ParityTxTraceFromStore.FromTxTrace(sequential))),
+                "state diffs of each transaction and the reward traced on the seeded end state equal the replay");
+            Assert.That(traces![^1].Action!.RewardType, Is.EqualTo("block"), "the reward comes last, as in the replay");
+        }
+    }
+
+    [Test]
+    public async Task ParallelBlockTracer_LeavesAnUncoveredBlockToTheReplay()
+    {
+        IReleaseSpec spec = Prague.Instance;
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        ChangesetPrefixStateSeedSource seeds = new(new TransactionChangesetIndex(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true }));
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, degree: 2, LimboLogs.Instance);
+
+        bool traced = parallel.TryTrace(block, parent, (_, txHash) => new ParityLikeBlockTracer(txHash, ParityTraceTypes.Trace), null, CancellationToken.None, out _);
+
+        Assert.That(traced, Is.False, "nothing indexed, nothing seeded: the caller replays");
+    }
+
+    private static void IndexThroughTheCapture(BasicTestBlockchain chain, TransactionChangesetIndex index, Block block, BlockHeader parent, IReleaseSpec spec)
+    {
+        using TransactionChangesetIndex.BlockCapture capture = index.StartBlock((ulong)block.Number);
+        using IDisposable scope = chain.MainWorldState.BeginScope(parent);
+        chain.BlockProcessor.ProcessOne(block, TraceProcessingOptions.ReadOnlyReplay | ProcessingOptions.ForceSequentialBlockAccessList, capture.Tracer, spec, CancellationToken.None);
+        Assert.That(capture.Commit() && index.TryClaim((ulong)block.Number, (ulong)block.Number), Is.True, "precondition: the block must be indexed");
+    }
+
+    private static IOverridableEnv<ParallelBlockTracer.Components> BuildParallelEnvironment(BasicTestBlockchain chain)
+    {
+        IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
+        IOverridableEnv env = chain.Container.Resolve<IOverridableEnvFactory>().Create();
+        ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder => builder
+            .AddModule(validation)
+            .AddModule(new TransactionTraceModule(validation))
+            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
+            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+            .AddModule(env)
+            .Add<ParallelBlockTracer.Components>());
+        return new ParallelBlockTracer.OwnedEnvironment(scope.Resolve<IOverridableEnv<ParallelBlockTracer.Components>>(), scope);
+    }
+
+    private static IReadOnlyCollection<TTrace> TraceWholeBlockThroughTraceEnvironment<TTrace>(BasicTestBlockchain chain, BlockHeader parent, Block block, Func<IWorldState, IBlockTracer<TTrace>> tracerFor)
+    {
+        IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
+        IOverridableEnv env = chain.Container.Resolve<IOverridableEnvFactory>().Create();
+        using ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder => builder
+            .AddModule(validation)
+            .AddModule(new TransactionTraceModule(validation))
+            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
+            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+            .AddModule(env));
+        BlockchainProcessorFacade processor = scope.Resolve<BlockchainProcessorFacade>();
+        using IDisposable pinned = env.BuildAndOverride(parent);
+        IBlockTracer<TTrace> tracer = tracerFor(scope.Resolve<IWorldState>());
+        processor.Process(block, TraceProcessingOptions.ReadOnlyReplay, tracer, CancellationToken.None);
+        return tracer.BuildResult();
+    }
+
+    private sealed class ZeroRewardToTheBeneficiary : IRewardCalculatorSource, IRewardCalculator
+    {
+        public IRewardCalculator Get(ITransactionProcessor processor) => this;
+
+        public BlockReward[] CalculateRewards(Block block) => [new BlockReward(block.Beneficiary!, UInt256.Zero)];
+    }
+
     /// <summary>Runs the block the way the debug RPC does: its own read-only processing environment, where the prefix
     /// overlay can be armed on the read path.</summary>
     private static string ReplayThroughTraceEnvironment(BasicTestBlockchain chain, BlockHeader parent, Block block, Hash256 target, GethTraceOptions traceOptions, IPrefixStateSeedSource? seeds, out int executed)
@@ -287,6 +413,12 @@ public class BlockProcessorTests
         public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot)
         {
             AskedFor = transactionIndex;
+            return false;
+        }
+
+        public bool TryOpenBlock(Block block, [NotNullWhen(true)] out ICoveredBlock? covered)
+        {
+            covered = null;
             return false;
         }
     }
