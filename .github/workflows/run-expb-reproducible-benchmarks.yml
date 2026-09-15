@@ -1005,7 +1005,7 @@ jobs:
           if [[ "${PERF}" == "true" ]]; then requested_flags+=(--perf); fi
           if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then requested_flags+=(--no-client-metrics); fi
           if [[ "${#requested_flags[@]}" -gt 0 ]]; then
-            expb_help="$("${expb_bin}" execute-scenarios --help 2>&1)" || {
+            expb_help="$(COLUMNS=200 "${expb_bin}" execute-scenarios --help 2>&1)" || {
               echo "::error::Installed expb from ${expb_source} could not print execute-scenarios help for requested capability verification."
               exit 1
             }
@@ -2536,7 +2536,7 @@ jobs:
           if [[ "${PERF}" == "true" ]]; then requested_flags+=(--perf); fi
           if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then requested_flags+=(--no-client-metrics); fi
           if [[ "${#requested_flags[@]}" -gt 0 ]]; then
-            expb_help="$("${expb_bin}" execute-scenarios --help 2>&1)" || {
+            expb_help="$(COLUMNS=200 "${expb_bin}" execute-scenarios --help 2>&1)" || {
               echo "::error::Installed expb from ${expb_source} could not print execute-scenarios help for requested capability verification."
               exit 1
             }

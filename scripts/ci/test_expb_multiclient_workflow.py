@@ -24,9 +24,10 @@ REPO = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO / ".github/workflows/run-expb-reproducible-benchmarks.yml"
 
 
-def extract_step(path, step_name):
-    """Extract the dedented ``run: |`` body for a named workflow step."""
+def extract_steps(path, step_name):
+    """Extract dedented ``run: |`` bodies for all steps with the given name."""
     lines = path.read_bytes().decode("utf-8-sig").replace("\r\n", "\n").split("\n")
+    bodies = []
     for index, line in enumerate(lines):
         header = re.match(r"^(?P<indent>\s*)- name: (?P<name>.*?)\s*$", line)
         if not header or header["name"] != step_name:
@@ -43,8 +44,18 @@ def extract_step(path, step_name):
             if candidate and len(candidate) - len(candidate.lstrip(" ")) < body_indent:
                 break
             body.append(candidate[body_indent:] if candidate else "")
-        return "\n".join(body) + "\n"
-    raise AssertionError("workflow step {!r} was not found".format(step_name))
+        bodies.append("\n".join(body) + "\n")
+    return bodies
+
+
+def extract_step(path, step_name):
+    """Extract the dedented ``run: |`` body for one named workflow step."""
+    bodies = extract_steps(path, step_name)
+    if len(bodies) != 1:
+        raise AssertionError(
+            "expected one workflow step {!r}, found {}".format(step_name, len(bodies))
+        )
+    return bodies[0]
 
 
 def find_bash():
@@ -97,6 +108,9 @@ class ExpbWorkflowTests(unittest.TestCase):
         cls.resolver = extract_step(WORKFLOW, "Resolve branch and configuration")
         cls.matrix = extract_step(WORKFLOW, "Resolve Docker images")
         cls.summary = extract_step(WORKFLOW, "Build comparison table")
+        cls.installers = extract_steps(WORKFLOW, "Install or upgrade expb")
+        if len(cls.installers) != 2:
+            raise AssertionError("expected both single and multi-image EXPB install steps")
 
     def run_body(self, body, values, output_name="github-output"):
         with tempfile.TemporaryDirectory(prefix="expb-workflow-test-") as temp_dir:
@@ -160,6 +174,43 @@ class ExpbWorkflowTests(unittest.TestCase):
         )
         return proc.returncode, proc.stdout + proc.stderr, output
 
+    def run_capability_probe(self, installer, supports_flag, columns=200):
+        start = installer.index("requested_flags=()")
+        end = installer.index('echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"')
+        probe = installer[start:end].replace("COLUMNS=200", f"COLUMNS={columns}")
+        with tempfile.TemporaryDirectory(prefix="expb-capability-test-") as temp_dir:
+            temp_path = Path(temp_dir)
+            mock = temp_path / "expb-mock"
+            observed_columns = temp_path / "columns"
+            mock.write_text(
+                """#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "${COLUMNS:-}" > "${MOCK_COLUMNS}"
+if [[ "${MOCK_SUPPORTS_FLAG}" == "true" && "${COLUMNS:-80}" -ge 200 ]]; then
+  printf '%s\\n' '--no-client-metrics'
+else
+  printf '%s\\n' '--no-client-met'
+fi
+""",
+                encoding="utf-8",
+            )
+            mock.chmod(0o755)
+            proc, _, _ = self.run_body(
+                'expb_bin="${MOCK_EXPB}"\n' + probe,
+                {
+                    "PERF": "false",
+                    "MEASUREMENT_SOURCE": "engine-api",
+                    "MOCK_EXPB": to_bash(mock),
+                    "MOCK_COLUMNS": to_bash(observed_columns),
+                    "MOCK_SUPPORTS_FLAG": "true" if supports_flag else "false",
+                },
+            )
+            return (
+                proc,
+                proc.stdout + proc.stderr,
+                observed_columns.read_text(encoding="utf-8").strip(),
+            )
+
     def test_reth_amd64_selects_snapshot_and_common_timing(self):
         code, log, output = self.run_resolver(DISPATCH_CLIENT="reth")
         self.assertEqual(0, code, log)
@@ -168,6 +219,23 @@ class ExpbWorkflowTests(unittest.TestCase):
         self.assertEqual("/mnt/sda/reth-25490000", output["client_snapshot_dir"])
         self.assertEqual("/execution-data", output["snapshot_mount_path"])
         self.assertEqual("false", output["rebuild_docker"])
+
+    def test_capability_probe_handles_truncation_and_missing_flags(self):
+        for installer in self.installers:
+            with self.subTest(installer=installer[:40]):
+                proc, log, observed_columns = self.run_capability_probe(installer, True)
+                self.assertEqual(0, proc.returncode, log)
+                self.assertEqual("200", observed_columns)
+
+                proc, log, _ = self.run_capability_probe(installer, True, columns=80)
+                self.assertNotEqual(0, proc.returncode)
+                self.assertIn("does not support requested flag --no-client-metrics", log)
+
+                proc, log, _ = self.run_capability_probe(installer, False)
+                self.assertNotEqual(0, proc.returncode)
+                self.assertIn(
+                    "does not support requested flag --no-client-metrics", log
+                )
 
     def test_arm_reth_selects_reth_snapshot(self):
         code, log, output = self.run_resolver(DISPATCH_CLIENT="reth", DISPATCH_ARCH="arm64")
