@@ -504,6 +504,33 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Suggesting_a_block_whose_body_is_already_stored_still_stores_its_access_list()
+    {
+        BlockTree blockTree = BuildBlockTree(out IBlockAccessListStore blockAccessListStore);
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        blockTree.SuggestBlock(block0);
+
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        blockTree.Insert(block1.Header);
+        blockTree.SuggestBlock(block1); // the bodies feed lands first, carrying no access list
+
+        // the access lists feed descends independently, so the same block can come back carrying only that
+        byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
+        block1.EncodedBlockAccessList = encodedBal;
+        block1.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
+
+        AddBlockResult result = blockTree.SuggestBlock(block1);
+
+        using MemoryManager<byte>? persistedBal = blockAccessListStore.GetRlp(block1.Number, block1.Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AddBlockResult.AlreadyKnown));
+            Assert.That(persistedBal?.Memory.ToArray(), Is.EqualTo(encodedBal),
+                "a stored body must not make the block's access list be discarded");
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Cleans_invalid_blocks_before_starting()
     {
         MemDb blockInfosDb = new();

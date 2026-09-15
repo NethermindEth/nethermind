@@ -58,12 +58,11 @@ public class BlockStoreTests
         Block block = Build.A.Block.WithNumber(1).TestObject;
         db[block.Hash!.Bytes] = new BlockDecoder().Encode(block).Bytes;
 
+        // Probe before the read so the cached case cannot be satisfied by an entry Get itself populated.
+        Assert.That(store.HasBlock(block.Number, block.Hash!), Is.True);
+
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
-            Assert.That(store.HasBlock(block.Number, block.Hash!), Is.True);
-        }
+        Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
     }
 
     [Test]

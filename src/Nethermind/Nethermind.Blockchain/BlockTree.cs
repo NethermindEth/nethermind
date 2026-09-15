@@ -426,16 +426,24 @@ namespace Nethermind.Blockchain
             bool isKnown = IsKnownBlock(header.Number, header.Hash);
             if (IsKnownBlockAtOrBelowBestSuggestedHeader(header, isKnown))
             {
-                // A known header says nothing about the body: fast sync inserts headers ahead of bodies, so this
-                // can still be the first time the block arrives carrying one. Persist it rather than discard it -
-                // once the bodies feed has finished its descent nothing fetches that body again.
+                // A known header says nothing about the payloads hanging off it: fast sync inserts headers ahead of
+                // bodies and access lists, so this can still be the first time either arrives. Persist rather than
+                // discard - once a feed has finished its descent nothing fetches its payload again. The two feeds
+                // descend independently, so each write needs its own presence check.
                 // History pruning drops bodies while keeping levels and headers, so "known header, no body" also
                 // describes a pruned block; no cutoff check is needed because that cutoff sits far below the head
                 // that Suggest callers work near, while below-cutoff bodies arrive through Insert.
-                if (block is not null && !_blockStore.HasBlock(header.Number, header.Hash))
+                if (block is not null)
                 {
-                    _blockStore.InsertDeferred(block);
-                    _balStore.InsertFromBlockDeferred(block);
+                    if (!_blockStore.HasBlock(header.Number, header.Hash))
+                    {
+                        _blockStore.InsertDeferred(block);
+                    }
+
+                    if (!_balStore.Exists(header.Number, header.Hash))
+                    {
+                        _balStore.InsertFromBlockDeferred(block);
+                    }
                 }
 
                 if (Logger.IsTrace) Logger.Trace($"Block {header.ToString(BlockHeader.Format.FullHashAndNumber)} already known.");
@@ -507,6 +515,11 @@ namespace Nethermind.Blockchain
             return AddBlockResult.Added;
         }
 
+        /// <summary>Tells whether <paramref name="header"/> is one <see cref="Suggest"/> answers with
+        /// <see cref="AddBlockResult.AlreadyKnown"/> rather than adding.</summary>
+        /// <param name="isKnown">The caller's <see cref="IsKnownBlock"/> result for <paramref name="header"/>, taken as
+        /// a parameter because callers already need it for their own branches; this method does not re-derive it, so
+        /// passing a value read for another header or before a concurrent insert gives a wrong answer.</param>
         protected bool IsKnownBlockAtOrBelowBestSuggestedHeader(BlockHeader header, bool isKnown) =>
             isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number;
 

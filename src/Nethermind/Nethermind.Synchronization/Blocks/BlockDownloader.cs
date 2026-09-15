@@ -649,11 +649,7 @@ namespace Nethermind.Synchronization.Blocks
             BlockTreeSuggestOptions suggestOptions = GetSuggestOption(shouldProcess, currentBlock);
             if (_logger.IsDebug) _logger.Debug($"Suggesting block {currentBlock.Header.ToString(BlockHeader.Format.Short)} with option {suggestOptions}");
             AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
-            bool handled = false;
-            if (HandleAddResult(bestPeer, currentBlock.Header, isFirstInBatch, addResult))
-            {
-                handled = true;
-            }
+            bool handled = HandleAddResult(bestPeer, currentBlock.Header, isFirstInBatch, addResult);
 
             if (downloadReceipts && addResult is AddBlockResult.Added or AddBlockResult.AlreadyKnown)
             {
