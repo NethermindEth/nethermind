@@ -99,17 +99,13 @@ public static partial class EvmInstructions
         // Construct a transient storage cell for the executing account at the specified key.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
-        UInt256 currentValue = default;
         if (vm.IsTracingOpLevelStorage)
         {
-            vm.WorldState.GetTransientState(in storageCell, out currentValue);
+            SetTransientStorageAndTrace(vm, in storageCell, in newValue);
         }
-
-        vm.WorldState.SetTransientState(in storageCell, in newValue);
-
-        if (vm.IsTracingOpLevelStorage)
+        else
         {
-            TraceTransientStorageSet(vm, in storageCell, in newValue, in currentValue);
+            vm.WorldState.SetTransientState(in storageCell, in newValue);
         }
 
         return EvmExceptionType.None;
@@ -629,9 +625,12 @@ public static partial class EvmInstructions
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     [SkipLocalsInit]
-    private static void TraceTransientStorageSet<TGasPolicy>(VirtualMachine<TGasPolicy> vm, in StorageCell cell, in UInt256 value, in UInt256 current)
+    private static void SetTransientStorageAndTrace<TGasPolicy>(VirtualMachine<TGasPolicy> vm, in StorageCell cell, in UInt256 value)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
+        vm.WorldState.GetTransientState(in cell, out UInt256 current);
+        vm.WorldState.SetTransientState(in cell, in value);
+
         EvmWord word = value.ToBigEndianWord();
         EvmWord currentWord = current.ToBigEndianWord();
         ReadOnlySpan<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref word, 1));
