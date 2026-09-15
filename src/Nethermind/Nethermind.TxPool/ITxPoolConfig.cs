@@ -53,15 +53,19 @@ public interface ITxPoolConfig : IConfig
     int FrameTxEvictionRetryBudget { get; set; }
 
     /// <remarks>
-    /// Each carried transaction costs a head's worth of work while the pool holds its head write lock: a
-    /// validation-prefix simulation, metered by <see cref="FrameTxSimulationBudgetPerHeadMs"/>, or a
-    /// blob-pool record read, which that budget does not meter and which decodes the whole sidecar. Either
-    /// way an unbounded carry turns a backlog one head cannot clear into a permanent per-head stall. One
-    /// allowance covers both, so a transaction alternating between them cannot carry for twice as long as
-    /// either alone. Only the carry feeding itself is bounded: re-arming the budget costs a block that
-    /// genuinely touched the transaction's dependencies and would have triggered a revalidation anyway.
+    /// The two carried paths are bounded for opposite reasons. A carried validation-prefix simulation costs
+    /// a head's work under the pool's head write lock, metered by
+    /// <see cref="FrameTxSimulationBudgetPerHeadMs"/>, so an unbounded carry turns a backlog one head cannot
+    /// clear into a permanent per-head stall. A carried blob-pool read is cheap per head — it declines before
+    /// decoding anything — and it is bounded because a transaction no head ever judges holds its payer's
+    /// pending-cost reservation for good; spending the carry is what forces the verdict, at the cost of one
+    /// full sidecar decode on that last head alone. So lowering this value makes the blob path decode sooner
+    /// and more often, rather than less. One allowance covers both paths, so a transaction alternating
+    /// between them cannot carry for twice as long as either alone. Only the carry feeding itself is
+    /// bounded: re-arming the budget costs a block that genuinely touched the transaction's dependencies and
+    /// would have triggered a revalidation anyway.
     /// </remarks>
-    [ConfigItem(DefaultValue = "2", Description = "EIP-8141: the number of *consecutive* chain heads a pending frame transaction whose revalidation reached no verdict may be carried across before the pool stops re-queuing it. A revalidation reaches no verdict when it spent this node's own simulation bounds, or when the blob pool declined to read the transaction's record back, and the two share this one allowance. Any head that revalidates it without deferring it again resets the count. Exhausting the budget neither evicts nor approves the transaction: it stays pending and unjudged. `0` stops re-queuing entirely.")]
+    [ConfigItem(DefaultValue = "2", Description = "EIP-8141: the number of *consecutive* chain heads a pending frame transaction whose revalidation reached no verdict may be carried across before the pool stops re-queuing it. A revalidation reaches no verdict when it hit a bound or a fault this node imposed on itself while simulating, or when the blob pool declined to read the transaction's record back, and the two share this one allowance. Any head that revalidates it without deferring it again resets the count. Exhausting the budget on the simulation path neither evicts nor approves the transaction: it stays pending and unjudged. On the blob-pool path exhaustion instead forces a verdict, reading the full record and dropping the transaction if even that cannot be read, so a value set too low turns blob-pool read contention into evictions. `0` stops re-queuing entirely.")]
     int FrameTxRevalidationDeferralBudget { get; set; }
 
     [ConfigItem(DefaultValue = "16", Description = "The max number of pending blob transactions per single sender. `0` to lift the limit.")]

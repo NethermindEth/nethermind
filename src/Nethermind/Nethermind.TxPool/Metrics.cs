@@ -93,7 +93,7 @@ namespace Nethermind.TxPool
         public static long FrameTxSimulations;
 
         [CounterMetric]
-        [Description("Number of pending EIP-8141 frame transactions revalidated against a new head, whether because the block touched their tracked dependencies, because a reorg collected every indexed transaction, or because a previous head's deferral carry re-queued them.")]
+        [Description("Number of pending EIP-8141 frame transactions revalidated against a new head, whether because the block touched their tracked dependencies, because a reorg or a non-sequential block collected every indexed transaction, or because a previous head's deferral carry re-queued them.")]
         public static long FrameTxRevalidations;
 
         [CounterMetric]
@@ -101,11 +101,11 @@ namespace Nethermind.TxPool
         public static long FrameTxRevalidationEvictions;
 
         [CounterMetric]
-        [Description("Number of EIP-8141 revalidations, a subset of FrameTxRevalidations, that reached no verdict because this node's own simulation bounds were spent; each is retried on the next head. A sustained count means revalidation is not keeping up, and it is what says whether simulation is what spent the carry FrameTxRevalidationDeferralsExhausted reports.")]
+        [Description("Number of EIP-8141 revalidations, a subset of FrameTxRevalidations, that reached no verdict because of a bound or a fault this node imposed on itself rather than anything about the prefix; each is retried on the next head. FrameTxSimulationsBudgetExhausted and FrameTxSimulationsBusy say which: a spent per-head budget, or a simulator held by concurrent admission, which raising the budget does not relieve. A sustained count means revalidation is not keeping up, and it is what says whether simulation is what spent the carry FrameTxRevalidationDeferralsExhausted reports.")]
         public static long FrameTxRevalidationsDeferred;
 
         [CounterMetric]
-        [Description("Number of EIP-8141 revalidations, a subset of FrameTxRevalidations, that reached no verdict and found their deferral carry across `TxPool.FrameTxRevalidationDeferralBudget` heads already spent, so the transaction stays pending and unjudged until a later head revalidates it again. The carry is one allowance per transaction, spent by a declined blob-pool record read as readily as by a simulation, so this counts a spent carry and not the reason it was spent: raise `TxPool.FrameTxSimulationBudgetPerHeadMs` when FrameTxRevalidationsDeferred is rising with it, and look at blob-pool read contention when it is not.")]
+        [Description("Number of EIP-8141 revalidations, a subset of FrameTxRevalidations, that reached no verdict and found their deferral carry across `TxPool.FrameTxRevalidationDeferralBudget` heads already spent, so the transaction stays pending and unjudged until a later head revalidates it again. The carry is one allowance per transaction, spent by a declined blob-pool record read as readily as by a simulation, so this counts a spent carry and not the reason it was spent: when FrameTxRevalidationsDeferred is rising with it, weigh FrameTxSimulationsBudgetExhausted against FrameTxSimulationsBusy before raising `TxPool.FrameTxSimulationBudgetPerHeadMs`, and look at blob-pool read contention when it is not.")]
         public static long FrameTxRevalidationDeferralsExhausted;
 
         [CounterMetric]
