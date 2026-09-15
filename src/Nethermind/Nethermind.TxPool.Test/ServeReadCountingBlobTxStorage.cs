@@ -13,12 +13,13 @@ using Nethermind.Int256;
 
 namespace Nethermind.TxPool.Test;
 
-/// <summary>Counts the reads a <see cref="BlobTxStorage"/> is asked for, so a test can assert that a pool answered
-/// from its caches rather than infer it from timing or allocation.</summary>
-/// <remarks>Forwards every other member unchanged, including the internal capabilities
-/// <see cref="PersistentBlobTxDistinctSortedPool"/> probes for with <c>as</c>: dropping either of those would
-/// silently move the pool onto a different write path than production takes.</remarks>
-internal sealed class CountingBlobTxStorage(BlobTxStorage inner)
+/// <summary>Counts both kinds of read a <see cref="BlobTxStorage"/> is asked for, so a test can assert that a pool
+/// answered from its caches rather than infer it from timing or allocation.</summary>
+/// <remarks>Distinct from the counter nested in <c>TxPoolTests</c>, which counts sidecar-carrying reads only and
+/// implements neither <see cref="IAtomicBlobTxStorage"/> nor <see cref="ISpecChangeValidationStorage"/>. Both are
+/// forwarded here, because <see cref="PersistentBlobTxDistinctSortedPool"/> probes for them with <c>is</c>/<c>as</c>
+/// and silently takes a different write path than production without them.</remarks>
+internal sealed class ServeReadCountingBlobTxStorage(BlobTxStorage inner)
     : IBlobTxStorage, IBlobTxMetadataStorage, IAtomicBlobTxStorage, ISpecChangeValidationStorage
 {
     /// <summary>Full sidecar-carrying row reads.</summary>

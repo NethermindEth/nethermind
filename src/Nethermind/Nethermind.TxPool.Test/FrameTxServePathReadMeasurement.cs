@@ -46,7 +46,7 @@ public class FrameTxServePathReadMeasurement
     [Test]
     public void Serving_an_announced_frame_tx_reads_no_storage_and_never_escalates_to_a_full_row()
     {
-        CountingBlobTxStorage storage = BuildSamples(blobsPerTx: 1);
+        ServeReadCountingBlobTxStorage storage = BuildSamples(blobsPerTx: 1);
         using PersistentBlobTxDistinctSortedPool pool = InsertAll(storage);
 
         Transaction sample = _samples[0];
@@ -73,7 +73,7 @@ public class FrameTxServePathReadMeasurement
     [Explicit("measurement harness")]
     public void Serving_a_blob_frame_tx_costs(int blobsPerTx)
     {
-        CountingBlobTxStorage storage = BuildSamples(blobsPerTx);
+        ServeReadCountingBlobTxStorage storage = BuildSamples(blobsPerTx);
         using PersistentBlobTxDistinctSortedPool warm = InsertAll(storage);
 
         (TimeSpan warmPair, TimeSpan warmPairWorst, long warmPairAllocated) = FrameTxBlobMeasurementHarness.Measure(() => TimeServePair(warm));
@@ -135,13 +135,13 @@ public class FrameTxServePathReadMeasurement
         }
     }
 
-    private CountingBlobTxStorage BuildSamples(int blobsPerTx)
+    private ServeReadCountingBlobTxStorage BuildSamples(int blobsPerTx)
     {
         FrameTxBlobMeasurementHarness.BuildSamples(blobsPerTx, _samples);
-        return new CountingBlobTxStorage(new BlobTxStorage());
+        return new ServeReadCountingBlobTxStorage(new BlobTxStorage());
     }
 
-    private PersistentBlobTxDistinctSortedPool InsertAll(CountingBlobTxStorage storage)
+    private PersistentBlobTxDistinctSortedPool InsertAll(ServeReadCountingBlobTxStorage storage)
     {
         PersistentBlobTxDistinctSortedPool pool = NewPool(storage);
         foreach (Transaction tx in _samples)
@@ -152,7 +152,7 @@ public class FrameTxServePathReadMeasurement
         return pool;
     }
 
-    private static PersistentBlobTxDistinctSortedPool NewPool(CountingBlobTxStorage storage)
+    private static PersistentBlobTxDistinctSortedPool NewPool(ServeReadCountingBlobTxStorage storage)
     {
         // "Warm" means every sample is still cached, so the premise is set here rather than inherited from a
         // default that could change underneath it. This is the shipped default today.
@@ -161,7 +161,7 @@ public class FrameTxServePathReadMeasurement
         return new PersistentBlobTxDistinctSortedPool(storage, config, comparer, LimboLogs.Instance);
     }
 
-    private (TimeSpan, long) TimeOnAColdPool(CountingBlobTxStorage storage, Func<BlobTxDistinctSortedPool, (TimeSpan, long)> pass)
+    private (TimeSpan, long) TimeOnAColdPool(ServeReadCountingBlobTxStorage storage, Func<BlobTxDistinctSortedPool, (TimeSpan, long)> pass)
     {
         using PersistentBlobTxDistinctSortedPool cold = NewPool(storage);
         return pass(cold);
@@ -177,12 +177,15 @@ public class FrameTxServePathReadMeasurement
         foreach (Transaction tx in _samples)
         {
             ValueHash256 hash = tx.Hash!.ValueHash256;
+            bool servedSidecarFree = false;
             if (pool.TryGetValueWithoutBlobs(hash, out Transaction? elided))
             {
                 _ = BlobTransactionPayload.Elide(elided);
+                servedSidecarFree = true;
             }
 
-            if (pool.TryGetValue(hash, out _)) answered++;
+            // Both, because the discarded read is the one being priced: pair - single is entirely its cost.
+            if (servedSidecarFree && pool.TryGetValue(hash, out _)) answered++;
         }
 
         TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
