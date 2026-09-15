@@ -1005,16 +1005,11 @@ jobs:
           if [[ "${PERF}" == "true" ]]; then requested_flags+=(--perf); fi
           if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then requested_flags+=(--no-client-metrics); fi
           if [[ "${#requested_flags[@]}" -gt 0 ]]; then
-            expb_help="$(COLUMNS=200 "${expb_bin}" execute-scenarios --help 2>&1)" || {
-              echo "::error::Installed expb from ${expb_source} could not print execute-scenarios help for requested capability verification."
+            if ! capability_output="$(NO_COLOR=1 "${expb_bin}" execute-scenarios "${requested_flags[@]}" --help 2>&1)"; then
+              echo "::error::Installed expb from ${expb_source} does not support requested capability flag(s): ${requested_flags[*]}."
+              printf '%s\n' "${capability_output}"
               exit 1
-            }
-            for requested_flag in "${requested_flags[@]}"; do
-              if [[ "${expb_help}" != *"${requested_flag}"* ]]; then
-                echo "::error::Installed expb from ${expb_source} does not support requested flag ${requested_flag}."
-                exit 1
-              fi
-            done
+            fi
           fi
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
@@ -2536,16 +2531,11 @@ jobs:
           if [[ "${PERF}" == "true" ]]; then requested_flags+=(--perf); fi
           if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then requested_flags+=(--no-client-metrics); fi
           if [[ "${#requested_flags[@]}" -gt 0 ]]; then
-            expb_help="$(COLUMNS=200 "${expb_bin}" execute-scenarios --help 2>&1)" || {
-              echo "::error::Installed expb from ${expb_source} could not print execute-scenarios help for requested capability verification."
+            if ! capability_output="$(NO_COLOR=1 "${expb_bin}" execute-scenarios "${requested_flags[@]}" --help 2>&1)"; then
+              echo "::error::Installed expb from ${expb_source} does not support requested capability flag(s): ${requested_flags[*]}."
+              printf '%s\n' "${capability_output}"
               exit 1
-            }
-            for requested_flag in "${requested_flags[@]}"; do
-              if [[ "${expb_help}" != *"${requested_flag}"* ]]; then
-                echo "::error::Installed expb from ${expb_source} does not support requested flag ${requested_flag}."
-                exit 1
-              fi
-            done
+            fi
           fi
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 

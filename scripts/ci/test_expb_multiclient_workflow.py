@@ -174,42 +174,46 @@ class ExpbWorkflowTests(unittest.TestCase):
         )
         return proc.returncode, proc.stdout + proc.stderr, output
 
-    def run_capability_probe(self, installer, supports_flag, columns=200):
+    def run_capability_probe(self, installer, fail_help):
         start = installer.index("requested_flags=()")
         end = installer.index('echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"')
-        probe = installer[start:end].replace("COLUMNS=200", f"COLUMNS={columns}")
+        probe = installer[start:end]
         with tempfile.TemporaryDirectory(prefix="expb-capability-test-") as temp_dir:
             temp_path = Path(temp_dir)
             mock = temp_path / "expb-mock"
-            observed_columns = temp_path / "columns"
+            observed_args = temp_path / "args"
             mock.write_text(
                 """#!/usr/bin/env bash
 set -euo pipefail
-printf '%s\\n' "${COLUMNS:-}" > "${MOCK_COLUMNS}"
-if [[ "${MOCK_SUPPORTS_FLAG}" == "true" && "${COLUMNS:-80}" -ge 200 ]]; then
-  printf '%s\\n' '--no-client-metrics'
-else
-  printf '%s\\n' '--no-client-met'
+printf '%s\\n' "$@" > "${MOCK_ARGS}"
+if [[ "${1:-}" != "execute-scenarios" ]]; then
+  echo "unexpected command" >&2
+  exit 3
+fi
+shift
+if [[ "${MOCK_FAIL_HELP}" == "true" ]]; then
+  echo "No such option: --no-client-metrics" >&2
+  exit 2
+fi
+if [[ "$#" -ne 3 || "$1" != "--perf" || "$2" != "--no-client-metrics" || "$3" != "--help" ]]; then
+  echo "unexpected capability probe arguments" >&2
+  exit 3
 fi
 """,
                 encoding="utf-8",
             )
             mock.chmod(0o755)
             proc, _, _ = self.run_body(
-                'expb_bin="${MOCK_EXPB}"\n' + probe,
+                'expb_bin="${MOCK_EXPB}"\nexpb_source="mock-source"\n' + probe,
                 {
-                    "PERF": "false",
+                    "PERF": "true",
                     "MEASUREMENT_SOURCE": "engine-api",
                     "MOCK_EXPB": to_bash(mock),
-                    "MOCK_COLUMNS": to_bash(observed_columns),
-                    "MOCK_SUPPORTS_FLAG": "true" if supports_flag else "false",
+                    "MOCK_ARGS": to_bash(observed_args),
+                    "MOCK_FAIL_HELP": "true" if fail_help else "false",
                 },
             )
-            return (
-                proc,
-                proc.stdout + proc.stderr,
-                observed_columns.read_text(encoding="utf-8").strip(),
-            )
+            return proc, proc.stdout + proc.stderr, observed_args.read_text(encoding="utf-8").splitlines()
 
     def test_reth_amd64_selects_snapshot_and_common_timing(self):
         code, log, output = self.run_resolver(DISPATCH_CLIENT="reth")
@@ -220,21 +224,25 @@ fi
         self.assertEqual("/execution-data", output["snapshot_mount_path"])
         self.assertEqual("false", output["rebuild_docker"])
 
-    def test_capability_probe_handles_truncation_and_missing_flags(self):
+    def test_capability_probe_uses_parser_status_and_reports_missing_flags(self):
         for installer in self.installers:
             with self.subTest(installer=installer[:40]):
-                proc, log, observed_columns = self.run_capability_probe(installer, True)
+                proc, log, observed_args = self.run_capability_probe(installer, False)
                 self.assertEqual(0, proc.returncode, log)
-                self.assertEqual("200", observed_columns)
+                self.assertEqual(
+                    ["execute-scenarios", "--perf", "--no-client-metrics", "--help"],
+                    observed_args,
+                )
 
-                proc, log, _ = self.run_capability_probe(installer, True, columns=80)
-                self.assertNotEqual(0, proc.returncode)
-                self.assertIn("does not support requested flag --no-client-metrics", log)
-
-                proc, log, _ = self.run_capability_probe(installer, False)
+                proc, log, observed_args = self.run_capability_probe(installer, True)
                 self.assertNotEqual(0, proc.returncode)
                 self.assertIn(
-                    "does not support requested flag --no-client-metrics", log
+                    "Installed expb from mock-source does not support requested capability flag(s): --perf --no-client-metrics.",
+                    log,
+                )
+                self.assertEqual(
+                    ["execute-scenarios", "--perf", "--no-client-metrics", "--help"],
+                    observed_args,
                 )
 
     def test_arm_reth_selects_reth_snapshot(self):
