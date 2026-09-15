@@ -62,7 +62,7 @@ public class DataFeed
         ArgumentNullException.ThrowIfNull(receiptFinder);
         ArgumentNullException.ThrowIfNull(blockTree);
         ArgumentNullException.ThrowIfNull(syncPeerPool);
-        ArgumentNullException.ThrowIfNull(mainProcessingContext?.BlockchainProcessor);
+        ArgumentNullException.ThrowIfNull(mainProcessingContext?.BlockProcessingQueue);
 
         _lifetime = lifetime;
         _txPool = txPool;
@@ -72,7 +72,7 @@ public class DataFeed
 
         _logger = logManager.GetClassLogger<DataFeed>();
 
-        mainProcessingContext.BlockchainProcessor.NewProcessingStatistics += OnNewProcessingStatistics;
+        mainProcessingContext.BlockProcessingQueue.NewProcessingStatistics += OnNewProcessingStatistics;
         blockTree.OnForkChoiceUpdated += OnForkChoiceUpdated;
         ConsoleHelpers.LineWritten += OnConsoleLineWritten;
         _ = StartTxFlowRefresh();
