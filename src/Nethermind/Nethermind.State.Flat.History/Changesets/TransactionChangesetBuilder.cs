@@ -36,7 +36,7 @@ public sealed class TransactionChangesetBuilder(
     private readonly List<Thread> _threads = [];
     private IHistoryBlockExecutor? _tipExecutor;
     private ulong? _nextChunkTop;
-    private Chunk? _stalledOn;
+    private readonly HashSet<ulong> _stalledTops = [];
     private long _progressReportedAt;
     private long _builtSinceReport;
     private int _disposed;
@@ -98,7 +98,7 @@ public sealed class TransactionChangesetBuilder(
         lock (_chunks)
         {
             if (_retry.TryPop(out chunk)) return true;
-            if (_stalledOn is not null) return false;
+            if (_stalledTops.Count > 0) return false;
 
             ulong top = _nextChunkTop ?? from - 1;
             if (from == 0 || top < _retrofitFromBlock || _retrofitFromBlock == 0) return false;
@@ -137,7 +137,7 @@ public sealed class TransactionChangesetBuilder(
     {
         lock (_chunks)
         {
-            if (_stalledOn is { } stalled && stalled.Top == chunk.Top) _stalledOn = null;
+            _stalledTops.Remove(chunk.Top);
             _completedByTop[chunk.Top] = chunk.Bottom;
             while (index.TryGetCoverage(out ulong from, out _) && from > 0 && _completedByTop.Remove(from - 1, out ulong bottom))
             {
@@ -148,9 +148,9 @@ public sealed class TransactionChangesetBuilder(
 
     /// <summary>A chunk that keeps failing is never dropped, since coverage could then never cross it; it is retried
     /// at the idle interval and, past the cap, said so, because a coverage edge that stops moving is otherwise silent.
-    /// Past the cap no new chunk is handed out either, until that same chunk builds: coverage cannot reach anything
-    /// below the failing one, so the other workers would only be writing rows nothing can ever claim.</summary>
-    private void Requeue(in Chunk chunk)
+    /// Past the cap no new chunk is handed out either, until every chunk past it has built: coverage cannot reach
+    /// anything below a failing one, so the other workers would only be writing rows nothing can ever claim.</summary>
+    internal void Requeue(in Chunk chunk)
     {
         Chunk again = chunk with { Attempts = chunk.Attempts + 1 };
         if (again.Attempts % WarnAfterAttempts == 0 && _logger.IsWarn) _logger.Warn(
@@ -159,7 +159,7 @@ public sealed class TransactionChangesetBuilder(
         lock (_chunks)
         {
             _retry.Push(again);
-            if (again.Attempts >= WarnAfterAttempts) _stalledOn = again;
+            if (again.Attempts >= WarnAfterAttempts) _stalledTops.Add(again.Top);
         }
     }
 

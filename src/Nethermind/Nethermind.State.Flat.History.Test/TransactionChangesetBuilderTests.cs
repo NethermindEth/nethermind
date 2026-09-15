@@ -359,6 +359,33 @@ public class TransactionChangesetBuilderTests
     }
 
     [Test]
+    public void WithTwoCappedChunks_HandOutStaysClosedUntilBothBuild()
+    {
+        Capture(upTo: 300);
+        _config.HistoryTransactionIndexRetrofitFromBlock = 1;
+        _config.HistoryTransactionIndexWorkers = 2;
+        using TransactionChangesetBuilder builder = Builder();
+        builder.TryBuildNext();
+        builder.TryClaimChunk(out TransactionChangesetBuilder.Chunk first);
+        builder.TryClaimChunk(out TransactionChangesetBuilder.Chunk second);
+        builder.Requeue(first with { Attempts = TransactionChangesetBuilder.WarnAfterAttempts - 1 });
+        builder.Requeue(second with { Attempts = TransactionChangesetBuilder.WarnAfterAttempts - 1 });
+        builder.TryClaimChunk(out _);
+        builder.TryClaimChunk(out _);
+
+        builder.Complete(first);
+        bool afterFirst = builder.TryClaimChunk(out _);
+        builder.Complete(second);
+        bool afterBoth = builder.TryClaimChunk(out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterFirst, Is.False, "the second capped chunk still blocks coverage, so hand-out must stay closed");
+            Assert.That(afterBoth, Is.True);
+        }
+    }
+
+    [Test]
     public void AChunkWhoseBuildThrew_IsRequeuedRatherThanLost()
     {
         Capture(upTo: 300);
