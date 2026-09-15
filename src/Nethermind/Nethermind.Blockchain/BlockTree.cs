@@ -520,6 +520,7 @@ namespace Nethermind.Blockchain
         /// <param name="isKnown">The caller's <see cref="IsKnownBlock"/> result for <paramref name="header"/>, taken as
         /// a parameter because callers already need it for their own branches; this method does not re-derive it, so
         /// passing a value read for another header or before a concurrent insert gives a wrong answer.</param>
+        /// <param name="header">The block header to compare with the best suggested header.</param>
         protected bool IsKnownBlockAtOrBelowBestSuggestedHeader(BlockHeader header, bool isKnown) =>
             isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number;
 

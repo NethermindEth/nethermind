@@ -65,9 +65,9 @@ public class BlockTreeTests
         _headersDb?.Dispose();
     }
 
-    private BlockTree BuildBlockTree() => BuildBlockTree(out _);
+    private BlockTree BuildBlockTree() => BuildBlockTree(out _, out _);
 
-    private BlockTree BuildBlockTree(out IBlockAccessListStore blockAccessListStore)
+    private BlockTree BuildBlockTree(out IBlockAccessListStore blockAccessListStore, out IBlockStore blockStore)
     {
         _blocksDb = new TestMemDb();
         _headersDb = new TestMemDb();
@@ -78,6 +78,7 @@ public class BlockTreeTests
             .WithBlockInfoDb(_blocksInfosDb)
             .WithoutSettingHead;
         blockAccessListStore = builder.BlockAccessListStore;
+        blockStore = builder.BlockStore;
         return builder.TestObject;
     }
 
@@ -478,10 +479,12 @@ public class BlockTreeTests
         Assert.That(result, Is.EqualTo(AddBlockResult.AlreadyKnown));
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Suggesting_a_block_whose_header_is_already_known_still_stores_its_body()
+    [TestCase(false)]
+    [TestCase(true)]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void Suggesting_a_block_whose_header_is_already_known_stores_missing_payloads(bool bodyAlreadyStored)
     {
-        BlockTree blockTree = BuildBlockTree(out IBlockAccessListStore blockAccessListStore);
+        BlockTree blockTree = BuildBlockTree(out IBlockAccessListStore blockAccessListStore, out IBlockStore blockStore);
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
         blockTree.SuggestBlock(block0);
 
@@ -489,6 +492,11 @@ public class BlockTreeTests
         byte[] encodedBal = Rlp.Encode(new ReadOnlyBlockAccessList()).Bytes;
         block1.EncodedBlockAccessList = encodedBal;
         block1.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
+        if (bodyAlreadyStored)
+        {
+            blockStore.Insert(block1);
+        }
+
         blockTree.Insert(block1.Header); // fast sync inserts headers ahead of the bodies
 
         AddBlockResult result = blockTree.SuggestBlock(block1);
