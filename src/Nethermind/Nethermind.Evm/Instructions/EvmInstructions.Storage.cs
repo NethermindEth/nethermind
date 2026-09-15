@@ -99,15 +99,17 @@ public static partial class EvmInstructions
         // Construct a transient storage cell for the executing account at the specified key.
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, in result);
 
+        UInt256 currentValue = default;
         if (vm.IsTracingOpLevelStorage)
         {
-            vm.WorldState.GetTransientState(in storageCell, out UInt256 currentValue);
-            vm.WorldState.SetTransientState(in storageCell, in newValue);
-            TraceTransientStorageSet(vm, in storageCell, in newValue, in currentValue);
+            vm.WorldState.GetTransientState(in storageCell, out currentValue);
         }
-        else
+
+        vm.WorldState.SetTransientState(in storageCell, in newValue);
+
+        if (vm.IsTracingOpLevelStorage)
         {
-            vm.WorldState.SetTransientState(in storageCell, in newValue);
+            TraceTransientStorageSet(vm, in storageCell, in newValue, in currentValue);
         }
 
         return EvmExceptionType.None;
