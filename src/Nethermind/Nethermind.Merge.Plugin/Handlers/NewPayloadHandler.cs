@@ -145,6 +145,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             _lastBlockGasLimit = block.Header.GasLimit;
         }
 
+        // This gate is the precondition for the later ValidateSuggestedBlock(validateHashes: false) calls: the roots
+        // below come from TryGetBlock, which derives them from the payload's own body, so a matching header hash
+        // binds the body to the header and the validator need not recompute any of them.
         if (!HeaderValidator.ValidateHash(block!.Header, out Hash256 actualHash))
         {
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "invalid block hash"));
@@ -179,6 +182,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         BlockHeader? parentHeader = _blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
         if (parentHeader is null)
         {
+            // Keep full orphan validation because ValidateOrphanedBlock is also used without this handler's hash gate.
             if (!_blockValidator.ValidateOrphanedBlock(block!, out string? error))
             {
                 if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"orphaned block is invalid: {error}"));
