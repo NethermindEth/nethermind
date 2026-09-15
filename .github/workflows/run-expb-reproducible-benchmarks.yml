@@ -1657,19 +1657,17 @@ jobs:
               *) request_master=""; processing_master="" ;;
             esac
 
-            # Markdown has one header row and no spans: each group name sits over its Master column, a
-            # bold sub-header row names the three columns, and the empty column is the rule before the
-            # difference group.
+            # Markdown has one header row and no spans: each group name sits over its Master column and
+            # a bold sub-header row names the three columns.
             append_blank
-            append_line "| ms | Request (k6) | | | Processing | | | | Request - processing | | |"
-            append_line "|---|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|"
-            append_line "| | **Master** | **PR** | **%** | **Master** | **PR** | **%** | | **Master** | **PR** | **%** |"
+            append_line "| ms | Request (k6) | | | Processing | | | Request - processing | | |"
+            append_line "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"
+            append_line "| | **Master** | **PR** | **%** | **Master** | **PR** | **%** | **Master** | **PR** | **%** |"
             local i row
             for i in "${!metrics[@]}"; do
               row="| ${labels[$i]} |"
               row="${row}$(group_cells "${current_metrics}" "${request_master}" "${request_prefix}" "${master_request_prefix}" "${metrics[$i]}")"
               row="${row}$(group_cells "${current_metrics}" "${processing_master}" "${processing_prefix}" "" "${metrics[$i]}")"
-              row="${row} |"
               row="${row}$(group_cells "${current_metrics}" "${processing_master}" "OUTSIDE_" "OUTSIDE_" "${metrics[$i]}")"
               append_line "${row}"
             done
@@ -1678,7 +1676,7 @@ jobs:
             if [[ -n "${processing_master}" ]]; then
               mm="$(load_metric "${processing_master}" "MGAS_S")"
             fi
-            append_line "| MGas/s | | | |$(cell "$(format_ms "${mm}")")$(cell "$(format_ms "${cm}")")$(cell "$(percentage_delta "${cm}" "${mm}")") | | | |"
+            append_line "| MGas/s | | | |$(cell "$(format_ms "${mm}")")$(cell "$(format_ms "${cm}")")$(cell "$(percentage_delta "${cm}" "${mm}")") | | |"
 
             if [[ "${master_source}" == "sse" ]]; then
               append_blank
