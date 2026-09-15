@@ -758,7 +758,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         };
         Assert.That(hoard, Throws.InstanceOf(typeof(IScriptEngineException)), "the hoarding script must trip the limit");
 
-        Assert.That(() => new Engine(Shanghai.Instance), Throws.InstanceOf(typeof(IScriptEngineException)), "engines cannot start while the violation is pending");
+        Assert.That(() => new Engine(Shanghai.Instance), Throws.InstanceOf(typeof(IScriptEngineException)), "engines cannot start while the hoard still holds the heap over the limit");
 
         ((object)hoardingTracer as IDisposable)?.Dispose();
         hoarder.Dispose();

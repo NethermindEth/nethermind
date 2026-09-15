@@ -66,12 +66,6 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
         _ctx.Input = tx.Data;
     }
 
-    public override void EndBlockTrace()
-    {
-        base.EndBlockTrace();
-        Engine.CurrentEngine = null;
-    }
-
     protected override bool ShouldTraceTx(Transaction? tx) => base.ShouldTraceTx(tx) && tx is not null;
 
     protected override GethLikeTxTrace OnEnd(GethLikeJavaScriptTxTracer txTracer)

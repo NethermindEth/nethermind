@@ -75,10 +75,10 @@ public class Engine : IDisposable
 
     /// <summary>
     /// A soft-limit violation blocks every script in the runtime until the limit is set again, so every engine
-    /// re-arms it when it goes away: while the violation stands no engine can complete a script call, so the
-    /// engines being released are the ones that hit it or failed because of it. Creating an engine does not
-    /// re-arm. Re-arming cannot let the offending script run on: the runtime checks the heap on every outermost
-    /// host-to-script call and terminates it again.
+    /// re-arms it when it goes away, whether it was disposed or failed to initialize: while the violation stands
+    /// no engine can complete a script call, so the engines being released are the ones that hit it or failed
+    /// because of it. Re-arming cannot let the offending script run on: the runtime checks the heap on every
+    /// outermost host-to-script call and terminates it again.
     /// </summary>
     private static void RearmHeapSoftLimit() => _runtime.MaxHeapSize = V8HeapSoftLimit;
 
@@ -117,7 +117,18 @@ public class Engine : IDisposable
         }
         catch
         {
-            V8Engine.Dispose();
+            // Initialization runs script, which fails while a heap-limit violation is pending. Release the script
+            // engine so nothing leaks, and re-arm like any other release so the violation cannot outlive the last
+            // engine: the next engine is checked against the heap again and fails if it is still over the limit.
+            try
+            {
+                V8Engine.Dispose();
+            }
+            finally
+            {
+                RearmHeapSoftLimit();
+            }
+
             throw;
         }
 
@@ -125,8 +136,7 @@ public class Engine : IDisposable
     }
 
     /// <summary>
-    /// Registers the host functions and evaluates the built-in scripts. Running script fails while a heap-limit
-    /// violation is pending, in which case the constructor releases the script engine so nothing leaks.
+    /// Registers the host functions and evaluates the built-in scripts into the script engine.
     /// </summary>
     private void Initialize()
     {
