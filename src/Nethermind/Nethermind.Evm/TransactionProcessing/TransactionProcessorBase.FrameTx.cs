@@ -243,7 +243,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // A batch is the maximal run [i, j] where i..j-1 carry ATOMIC_BATCH_FLAG and j does not; any
         // failure inside it rolls back to before the run and skips the rest of it.
         bool inBatch = false;
-        Snapshot batchStartSnapshot = default;
+        Snapshot batchStartSnapshot = Snapshot.Empty;
         StackAccessTracker batchTracker = default;
         int batchStartIndex = 0;
         long batchStartRefund = 0;

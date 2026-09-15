@@ -2949,7 +2949,7 @@ public class FrameTxProcessorTests
     // Both entry points snapshot the whole transaction on the far side of the frame loop's per-frame
     // discard, so a journal left dirty at entry would make restoring to either snapshot throw.
     [Test]
-    public void Execute_FrameTx_WithTransientStorageLeftAtEntry_RestoresRatherThanThrowing()
+    public void ExecuteAndSimulatePrefix_WithTransientStorageLeftAtEntry_RestoreRatherThanThrowing()
     {
         DeploySmartSender(ApproveCode(TxFrame.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode.Op(Instruction.STOP).Done);
