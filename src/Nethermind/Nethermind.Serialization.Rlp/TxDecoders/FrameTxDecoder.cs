@@ -124,9 +124,10 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        // EIP8141-DEVIATION: the spec allows chain_id < 2^256; decoded as u64 like every other
-        // Nethermind transaction type (codebase-wide ChainId width).
-        transaction.ChainId = decoderContext.DecodeULong();
+        // EIP-8141 chain ids are 256 bit. A value beyond the codebase-wide ulong width matches no
+        // chain this node can run, so it is left unset for ExpectedChainIdTxValidator to reject.
+        UInt256 chainId = decoderContext.DecodeUInt256();
+        transaction.ChainId = chainId.IsUint64 ? (ulong)chainId : null;
         transaction.NonceKeys = decoderContext.IsSequenceNext() ? FrameTxNonceCalldata.DecodeKeys(ref decoderContext) : null;
         transaction.Nonce = decoderContext.DecodeULong();
         transaction.SenderAddress = decoderContext.DecodeAddress() ?? ThrowMissingSender();

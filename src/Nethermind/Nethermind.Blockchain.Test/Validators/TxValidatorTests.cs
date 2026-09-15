@@ -671,6 +671,35 @@ public class TxValidatorTests
         Assert.That(result.AsBool, Is.True, result.Error);
     }
 
+    // Regression (EIP-8141): a frame chain id spans 256 bits, so one too wide for the node's ulong
+    // chain id decodes and is rejected as a chain-id mismatch rather than as an RLP error.
+    [Test]
+    public void IsWellFormed_DecodedFrameTxWithChainIdWiderThanULong_RejectsAsChainIdMismatch()
+    {
+        byte[] wideChainId = new byte[32];
+        wideChainId.AsSpan().Fill(0xff);
+        Rlp sequence = Rlp.Encode(
+            Rlp.Encode(wideChainId),
+            Rlp.Encode(0L),
+            Rlp.Encode(TestItem.AddressA.Bytes),
+            Rlp.Encode(Array.Empty<Rlp>()),
+            Rlp.Encode(Array.Empty<Rlp>()),
+            Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L), Rlp.Encode(0L)),
+            Rlp.Encode(Array.Empty<Rlp>()));
+        byte[] payload = [(byte)TxType.FrameTx, .. sequence.Bytes];
+
+        RlpReader reader = new(payload);
+        Transaction decoded = TxDecoder.Instance.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+
+        ValidationResult result = new TxValidator(TestBlockchainIds.ChainId).IsWellFormed(decoded, Bogota.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.ChainId, Is.Null);
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.InvalidTxChainId(TestBlockchainIds.ChainId, null)));
+        }
+    }
+
     [Test]
     public void IsWellFormed_TransactionWithGasLimitExceedingEip7825Cap_ReturnsFalse()
     {

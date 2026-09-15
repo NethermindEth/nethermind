@@ -246,6 +246,39 @@ public class FrameTxDecoderTests
         Assert.That(tx.RecentRootReferences, Has.Length.EqualTo(1));
     }
 
+    [Test]
+    public void ComputeSigHash_ChainIdChanges_HashChanges()
+    {
+        Transaction first = CreateFrameTx();
+        Transaction second = CreateFrameTx();
+        second.ChainId = TestBlockchainIds.ChainId + 1;
+
+        Assert.That(FrameTxSigHash.ComputeValue(second), Is.Not.EqualTo(FrameTxSigHash.ComputeValue(first)));
+    }
+
+    // Unset, never truncated: a truncation could collide with the node's own chain id and admit a
+    // transaction naming another chain.
+    [TestCase(9)]
+    [TestCase(32)]
+    public void Decode_ChainIdWiderThanULong_LeavesChainIdUnset(int chainIdLength)
+    {
+        Transaction decoded = DecodeEnvelope(Rlp.Encode(FilledBytes(chainIdLength, 0xff)));
+
+        Assert.That(decoded.ChainId, Is.Null);
+    }
+
+    [Test]
+    public void Decode_ChainIdAtULongMaximum_IsPreserved()
+    {
+        Transaction decoded = DecodeEnvelope(Rlp.Encode(FilledBytes(8, 0xff)));
+
+        Assert.That(decoded.ChainId, Is.EqualTo(ulong.MaxValue));
+    }
+
+    [Test]
+    public void Decode_ChainIdWiderThan256Bits_Throws() =>
+        Assert.That(() => DecodeEnvelope(Rlp.Encode(FilledBytes(33, 0xff))), Throws.InstanceOf<RlpException>());
+
     private static IEnumerable<TestCaseData> MalformedReferenceListCases()
     {
         Rlp wellFormed = EncodeReference(TestItem.KeccakA.BytesToArray(), 7, TestItem.KeccakB.BytesToArray());
@@ -272,17 +305,20 @@ public class FrameTxDecoderTests
         })).SetName("Decode_ReferenceWithAFourthElement_Throws");
     }
 
-    private Transaction DecodeReferenceEnvelope(Rlp references)
+    private Transaction DecodeReferenceEnvelope(Rlp references) =>
+        DecodeEnvelope(Rlp.Encode(TestBlockchainIds.ChainId), references);
+
+    private Transaction DecodeEnvelope(Rlp chainId, params Rlp[] trailing)
     {
-        Rlp sequence = Rlp.Encode(
-            Rlp.Encode(TestBlockchainIds.ChainId),
+        Rlp sequence = Rlp.Encode([
+            chainId,
             Rlp.Encode(0L),
             Rlp.Encode(TestItem.AddressA.Bytes),
             Rlp.Encode(Array.Empty<Rlp>()),
             Rlp.Encode(Array.Empty<Rlp>()),
             Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L), Rlp.Encode(0L)),
             Rlp.Encode(Array.Empty<Rlp>()),
-            references);
+            .. trailing]);
 
         byte[] payload = new byte[1 + sequence.Length];
         payload[0] = (byte)TxType.FrameTx;
