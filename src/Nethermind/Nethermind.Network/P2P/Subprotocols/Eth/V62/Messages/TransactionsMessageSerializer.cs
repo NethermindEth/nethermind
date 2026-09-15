@@ -37,7 +37,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         /// <remarks>
         /// <c>SizeTxFilter</c> measures a blob transaction by its consensus encoding alone, so the cap it
         /// configures has to be raised here by the mempool-form sidecar the wire carries alongside it - see
-        /// <see cref="MaxBlobSidecarOverhead"/>.
+        /// <see cref="MaxBlobSidecarOverhead"/>. <see cref="V68.Eth68ProtocolHandler"/> approximates the same
+        /// allowance with <c>GasPerBlob</c>; that path only declines to request a transaction, whereas an
+        /// under-estimate here drops one already received.
         /// </remarks>
         private readonly long _maxBlobTxSize;
 
