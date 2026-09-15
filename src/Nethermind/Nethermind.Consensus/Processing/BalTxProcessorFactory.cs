@@ -42,7 +42,13 @@ public class BalTxProcessorFactory(
 
     public (ITransactionProcessor Processor, ITransactionProcessorAdapter Adapter) Create(IWorldState worldState, bool parallel)
     {
+#if RUST_EVM
+        IVirtualMachine virtualMachine = Nethermind.Evm.Rust.RustVirtualMachine.IsAvailable
+            ? new Nethermind.Evm.Rust.RustVirtualMachine(blockHashProvider, specProvider, logManager, new EthereumPrecompileProvider())
+            : new VirtualMachine(blockHashProvider, specProvider, logManager);
+#else
         VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
+#endif
         ITransactionProcessor processor = _transactionProcessorFactory.Create(
             BlobBaseFeeCalculator.Instance, specProvider, worldState, virtualMachine,
             _codeInfoRepositoryFactory(worldState), logManager, parallel);

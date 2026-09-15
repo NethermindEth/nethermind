@@ -2,6 +2,11 @@
 
   <Import Project="../../Directory.Build.targets" />
 
+  <!-- Run the EVM's frames on the Rust interpreter (nethermind-rust's nm-ffi) when it is linked in. -->
+  <PropertyGroup Condition="'$(EnableRustEvm)' == 'true'">
+    <DefineConstants>$(DefineConstants);RUST_EVM</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup Condition="'$(EnableZkEvm)' == 'true'">
     <Compile Remove="**/std/**/*.cs" />
     <None Include="**/std/**/*.cs" />
