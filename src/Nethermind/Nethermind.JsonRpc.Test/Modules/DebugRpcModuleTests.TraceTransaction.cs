@@ -103,12 +103,9 @@ public partial class DebugRpcModuleTests
         Block canonical = context.Blockchain.BlockTree.Head!;
         BlockHeader parent = context.Blockchain.BlockTree.FindHeader(canonical.ParentHash!, BlockTreeLookupOptions.None)!;
 
-        // Same height as the canonical block, but empty - tracing index 0 against it can only fail.
-        // It borrows the canonical state root because only the head's is retained here, and the
-        // module rejects a header without state before it ever reaches the tracer.
         Block sideChain = Build.A.Block
             .WithParent(parent)
-            .WithStateRoot(canonical.StateRoot!)
+            .WithStateRoot(parent.StateRoot!)
             .WithExtraData([1])
             .TestObject;
         AddBlockResult suggested = context.Blockchain.BlockTree.SuggestBlock(sideChain, BlockTreeSuggestOptions.ForceDontSetAsMain);
