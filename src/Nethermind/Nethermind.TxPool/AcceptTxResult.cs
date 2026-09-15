@@ -188,6 +188,12 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult FrameSimulationDeferred = new(TxPoolErrorMessages.FrameSimulationDeferred);
 
         /// <summary>
+        /// An EIP-8250 keyed-nonce frame transaction beyond its sender's free pending baseline, submitted while
+        /// the sender holds too little MATCHA width to admit another. A local mempool policy, not a validity rule.
+        /// </summary>
+        public static readonly AcceptTxResult WidthUnmet = new(TxPoolErrorMessages.WidthUnmet);
+
+        /// <summary>
         /// Declares a result distinct from every other declared result.
         /// </summary>
         /// <remarks>For static declarations only: every call permanently consumes an id from a process-wide

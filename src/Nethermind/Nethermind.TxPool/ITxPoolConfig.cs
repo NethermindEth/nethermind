@@ -52,6 +52,12 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "16", Description = "The max number of pending blob transactions per single sender. `0` to lift the limit.")]
     int MaxPendingBlobTxsPerSender { get; set; }
 
+    [ConfigItem(DefaultValue = "false", Description = "Whether each pending EIP-8250 keyed-nonce frame transaction a sender admits beyond its first `MaxPendingTxsPerSender` must spend sender width, earned from the gas the sender's included keyed-nonce frame transactions paid. A `MaxPendingTxsPerSender` of `0` gives no free baseline here. Experimental.")]
+    bool FrameTxWidthEnabled { get; set; }
+
+    [ConfigItem(DefaultValue = "21000", Description = "The width, in gas, one pending EIP-8250 keyed-nonce frame transaction beyond the sender's `MaxPendingTxsPerSender` baseline spends on admission and gets back when it leaves the pool. Used only when `FrameTxWidthEnabled` is set.")]
+    ulong FrameTxWidthCostPerAdmission { get; set; }
+
     [ConfigItem(DefaultValue = "524288",
         Description = "The max number of cached hashes of already known transactions. Set automatically by the memory hint.")]
     int HashCacheSize { get; set; }
