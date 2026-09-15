@@ -2931,7 +2931,7 @@ public class FrameTxProcessorTests
 
         TransactionResult result = Process(tx);
 
-        Assert.That(result.TransactionExecuted, Is.True);
+        Assert.That(result.TransactionExecuted, Is.True, "a batch unrolling over an earlier frame's transient write stays valid");
     }
 
     [Test]
