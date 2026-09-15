@@ -86,8 +86,6 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
                 AccessList = accessList
             };
 
-            // No eager hash: every caller passes NullTxTracer and the processor only reads
-            // Hash in trace-level logging, so the per-block RLP encode + keccak is wasted work.
             processor.Execute(transaction, tracer);
         }
     }
