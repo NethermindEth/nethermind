@@ -779,30 +779,30 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [NonParallelizable]
     public void Releasing_an_unrelated_engine_does_not_lift_a_pending_violation()
     {
-        Engine bystander = new(Shanghai.Instance);
-        Engine offender = new(Shanghai.Instance);
-        try
+        using (Engine bystander = new(Shanghai.Instance))
+        using (Engine offender = new(Shanghai.Instance))
         {
             dynamic hoardingTracer = offender.CreateTracer(HoardingTracer);
-            Action hoard = () =>
+            try
             {
-                for (int i = 0; i < 400; i++)
+                Action hoard = () =>
                 {
-                    hoardingTracer.step(null, null);
-                }
-            };
-            Assert.That(hoard, Throws.InstanceOf(typeof(IScriptEngineException)), "the hoarding script must trip the limit");
-            ((object)hoardingTracer as IDisposable)?.Dispose();
+                    for (int i = 0; i < 400; i++)
+                    {
+                        hoardingTracer.step(null, null);
+                    }
+                };
+                Assert.That(hoard, Throws.InstanceOf(typeof(IScriptEngineException)), "the hoarding script must trip the limit");
+            }
+            finally
+            {
+                ((object)hoardingTracer as IDisposable)?.Dispose();
+            }
 
             bystander.Dispose();
 
             Assert.That(() => offender.CreateTracer("{ result: function(ctx, db) { return 1; } }"), Throws.InstanceOf(typeof(IScriptEngineException)),
                 "the violation must still stand after an unrelated engine was released while the offender is alive");
-        }
-        finally
-        {
-            offender.Dispose();
-            bystander.Dispose();
         }
 
         using Engine recovered = new(Shanghai.Instance);

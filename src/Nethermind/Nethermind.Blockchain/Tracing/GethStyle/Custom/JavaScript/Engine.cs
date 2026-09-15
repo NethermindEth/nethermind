@@ -79,15 +79,26 @@ public class Engine : IDisposable
     /// re-armed only when the live-engine count leaves or returns to zero, so releasing one engine cannot lift a
     /// violation raised against a script that is still alive in another. Zero is always reached: while the
     /// violation stands no engine can complete a script call, so every live engine fails and is released, and a
-    /// construction that fails releases its count as well.
+    /// construction that fails releases its count as well. The count must stay balanced: an engine that is never
+    /// released disables recovery for the process, so engines belong to the tracer lifecycle only.
     /// </summary>
     private static void RearmHeapSoftLimit() => _runtime.MaxHeapSize = V8HeapSoftLimit;
 
     private static void AcquireLiveEngine()
     {
-        if (Interlocked.Increment(ref _liveEngines) == 1)
+        if (Interlocked.Increment(ref _liveEngines) != 1)
+        {
+            return;
+        }
+
+        try
         {
             RearmHeapSoftLimit();
+        }
+        catch
+        {
+            Interlocked.Decrement(ref _liveEngines);
+            throw;
         }
     }
 

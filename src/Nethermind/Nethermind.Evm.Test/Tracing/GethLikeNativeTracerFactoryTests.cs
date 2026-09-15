@@ -39,7 +39,7 @@ public class GethLikeNativeTracerFactoryTests
 
         GethLikeNativeTxTracer nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options, _block, _tx, null!, Substitute.For<IReleaseSpec>());
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(nativeTracer.IsTracingInstructions, Is.False);
             Assert.That(nativeTracer.IsTracingActions, Is.False);
@@ -47,7 +47,7 @@ public class GethLikeNativeTracerFactoryTests
             Assert.That(nativeTracer.IsTracingMemory, Is.False);
             Assert.That(nativeTracer.IsTracingOpLevelStorage, Is.False);
             Assert.That(nativeTracer.IsTracingReceipt, Is.True);
-        });
+        }
     }
 
     [Test]
