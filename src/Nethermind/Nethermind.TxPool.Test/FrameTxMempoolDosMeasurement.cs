@@ -102,7 +102,9 @@ public class FrameTxMempoolDosMeasurement
     /// <summary>Tolerance when cross-checking Groth16 frame gas against <c>gas.txt</c>.</summary>
     private const double Groth16GasTolerance = 0.02;
 
-    /// <summary>Threshold distinguishing the Groth16 pairing call from ecMul/ecAdd calls.</summary>
+    /// <summary>Threshold below which no call is pairing-sized. <see cref="PaidPairingCallGas"/> already implies
+    /// this once a call exists; kept only so a prefix that fails before any pairing-sized call gets its own
+    /// message instead of being misread as an underpaid pairing.</summary>
     private const long MinPairingCallGas = 150_000;
 
     private const long Bn254FourPairPrice = 181_000;
@@ -579,7 +581,9 @@ public class FrameTxMempoolDosMeasurement
         if (!File.Exists(path))
         {
             Assert.Ignore($"Groth16 artifact {path} is missing; build it with the artifacts tree's generate.sh, "
-                          + "or point FRAME_GROTH16_ARTIFACTS at a tree that has it.");
+                          + "or point FRAME_GROTH16_ARTIFACTS at a tree that has it. Must be built after the "
+                          + "fully-paid-pairing fix (frame-verify-gas) — an older tree's 236k/300k artifacts "
+                          + "underpay ecPairing and fail PaidPairingCallGas instead.");
         }
 
         return Bytes.FromHexString(File.ReadAllText(path).Trim());
@@ -623,7 +627,8 @@ public class FrameTxMempoolDosMeasurement
             $"{sweep.Directory}'s pairing call cost {_lastPairingCallGas} against the {PaidPairingCallGas} of a paid "
             + $"4-pair check. Below it, 63/64 of the frame's gas left ecPairing short of its {Bn254FourPairPrice} "
             + "price, so it failed out of gas before any curve work and ProofInvalid() describes that early exit; "
-            + "above it, ecPairing errored and burned the gas forwarded to it, or it is not a 4-pair check.");
+            + "above it, ecPairing errored and burned the gas forwarded to it, the call expanded memory, or it is "
+            + "not a 4-pair check.");
 
         long slack = (long)(sweep.ExpectedFrameGas * Groth16GasTolerance);
         Assert.That((long)readout.Burned, Is.EqualTo((long)sweep.ExpectedFrameGas).Within(slack),
