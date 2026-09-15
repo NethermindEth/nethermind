@@ -13,11 +13,13 @@ using Nethermind.Core.Extensions;
 
 public class GCKeeper : IDisposable
 {
+    private const int DecommitIdleDelayMs = 3_000;
     private long _payloadsSinceDecommit;
     private readonly Lock _lock = new();
     private readonly IGCStrategy _gcStrategy;
     private readonly IGcRegionRuntime _runtime;
     private readonly Action<IThreadPoolWorkItem> _queue;
+    private readonly Func<int, CancellationToken, Task<bool>> _delay;
     private NoGCRegion? _region;
     private readonly int _postBlockDelayMs;
     private readonly ILogger _logger;
@@ -33,12 +35,13 @@ public class GCKeeper : IDisposable
         : this(gcStrategy, logManager, GcRegionRuntime.Instance) { }
 
     internal GCKeeper(IGCStrategy gcStrategy, ILogManager logManager, IGcRegionRuntime runtime,
-        Action<IThreadPoolWorkItem>? queue = null)
+        Action<IThreadPoolWorkItem>? queue = null, Func<int, CancellationToken, Task<bool>>? delay = null)
     {
         _gcStrategy = gcStrategy;
         _postBlockDelayMs = gcStrategy.PostBlockDelayMs;
         _logger = logManager.GetClassLogger<GCKeeper>();
         _runtime = runtime;
+        _delay = delay ?? TaskExtensions.DelaySafe;
         // One outstanding entry bounds pool usage without a dedicated thread for each keeper.
         _queue = queue ?? (static item => ThreadPool.UnsafeQueueUserWorkItem(item, preferLocal: false));
     }
@@ -232,9 +235,7 @@ public class GCKeeper : IDisposable
 
             try
             {
-                // This should give time to finalize response in Engine API
-                // Normally we should get block every 12s (5s on some chains)
-                // Lets say we process block in 2s, then delay 125ms, then invoke GC
+                // Leave time for the Engine API response before attempting ordinary collection.
                 int postBlockDelayMs = _postBlockDelayMs;
                 if (postBlockDelayMs <= 0)
                 {
@@ -243,16 +244,10 @@ public class GCKeeper : IDisposable
                 }
                 else
                 {
-                    if (!await TaskExtensions.DelaySafe(postBlockDelayMs, pendingGcCts.Token)) return;
+                    if (!await _delay(postBlockDelayMs, pendingGcCts.Token)) return;
                 }
 
-                // Claim the collection under the gate, then release it before any runtime work can block.
-                lock (_lock)
-                {
-                    if (pendingGcCts.IsCancellationRequested) return;
-                    if (ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
-                }
-
+                if (pendingGcCts.IsCancellationRequested) return;
                 if (GCSettings.LatencyMode != GCLatencyMode.NoGCRegion)
                 {
                     long payloadsSinceDecommit = Interlocked.Read(ref _payloadsSinceDecommit);
@@ -262,10 +257,21 @@ public class GCKeeper : IDisposable
                     bool decommit = collectionsPerDecommit >= 0 && payloadsSinceDecommit >= collectionsPerDecommit;
                     if (decommit)
                     {
+                        // Keep the debt pending through a longer idle gap; new payloads cancel this wait.
+                        int remainingIdleMs = DecommitIdleDelayMs - Math.Max(0, postBlockDelayMs);
+                        if (remainingIdleMs > 0 && !await _delay(remainingIdleMs, pendingGcCts.Token)) return;
+
                         // Also decommit memory back to O/S
                         mode = GCCollectionMode.Aggressive;
                         generation = GcLevel.Gen2;
                         compacting = GcCompaction.Full;
+                    }
+
+                    // Claim only after all cancellable waits; never hold the gate during runtime collection.
+                    lock (_lock)
+                    {
+                        if (pendingGcCts.IsCancellationRequested || GCSettings.LatencyMode == GCLatencyMode.NoGCRegion) return;
+                        if (ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
                     }
 
                     if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {generation}, compacting {compacting}");

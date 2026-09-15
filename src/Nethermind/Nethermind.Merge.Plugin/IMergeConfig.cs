@@ -52,7 +52,7 @@ public interface IMergeConfig : IConfig
     public GcCompaction CompactMemory { get; set; }
 
     [ConfigItem(Description = """
-            The number of eligible newPayload calls between compacting collections that release process memory.
+            The number of eligible newPayload calls between compacting collections that release process memory. Decommit waits for at least three seconds after payload completion (or PostBlockGcDelayMs, if longer); a new payload cancels the wait without clearing the count.
 
             Allowed values:
 

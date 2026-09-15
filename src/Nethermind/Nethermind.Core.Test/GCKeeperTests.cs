@@ -165,7 +165,7 @@ public class GCKeeperTests
         strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
         strategy.CollectionsPerDecommit.Returns(50);
         RegionRuntime runtime = new();
-        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { });
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
         for (int i = 0; i < 50; i++)
         {
             CountPayload(keeper, strategy);
@@ -194,7 +194,7 @@ public class GCKeeperTests
         strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
         strategy.CollectionsPerDecommit.Returns(interval);
         RegionRuntime runtime = new();
-        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { });
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
         for (int i = 1; i <= 100; i++)
         {
             CountPayload(keeper, strategy);
@@ -207,6 +207,81 @@ public class GCKeeperTests
                     ? (GcLevel.Gen2, GCCollectionMode.Aggressive, GcCompaction.Full)
                     : (GcLevel.Gen1, GCCollectionMode.Forced, GcCompaction.No)), $"Payload {i}");
             }
+        }
+    }
+
+    [Test]
+    public async Task Decommit_requires_a_longer_idle_gap([Values(0, 1500, 4000)] int postBlockDelayMs, [Values] bool decommit)
+    {
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.PostBlockDelayMs.Returns(postBlockDelayMs);
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        strategy.CollectionsPerDecommit.Returns(decommit ? 0 : -1);
+        RegionRuntime runtime = new();
+        List<int> delays = [];
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, delay: (milliseconds, _) =>
+        {
+            delays.Add(milliseconds);
+            return Task.FromResult(true);
+        });
+        await keeper.ScheduleGCInternal();
+        int[] expected = decommit && postBlockDelayMs < 3000
+            ? postBlockDelayMs == 0 ? [3000] : [postBlockDelayMs, 3000 - postBlockDelayMs]
+            : postBlockDelayMs == 0 ? [] : [postBlockDelayMs];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(delays, Is.EqualTo(expected));
+            Assert.That(runtime.Collections, Has.Count.EqualTo(1));
+            Assert.That(runtime.Collections[0].Item2, Is.EqualTo(decommit ? GCCollectionMode.Aggressive : GCCollectionMode.Forced));
+        }
+    }
+
+    [Test]
+    public async Task Cancelled_idle_wait_retains_decommit_until_a_quiet_gap([Values] bool shutdown)
+    {
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.CanStartNoGCRegion().Returns(true);
+        strategy.CollectionsPerDecommit.Returns(1);
+        RegionRuntime runtime = new();
+        TaskCompletionSource waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        bool wait = true;
+        async Task<bool> Delay(int milliseconds, CancellationToken token)
+        {
+            if (!wait) return true;
+            waiting.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, token);
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+        }
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, Delay);
+        CountPayload(keeper, strategy);
+        Task pending = keeper.ScheduleGCInternal();
+        await waiting.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(runtime.Collections, Is.Empty);
+        if (shutdown) keeper.Dispose();
+        else keeper.CancelPendingGC();
+        await pending.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(runtime.Collections, Is.Empty);
+        wait = false;
+        await keeper.ScheduleGCInternal();
+        if (shutdown)
+        {
+            Assert.That(runtime.Collections, Is.Empty);
+        }
+        else
+        {
+            await keeper.ScheduleGCInternal();
+            Assert.That(runtime.Collections, Is.EqualTo(new[]
+            {
+                (GcLevel.Gen2, GCCollectionMode.Aggressive, GcCompaction.Full),
+                (GcLevel.Gen1, GCCollectionMode.Forced, GcCompaction.No)
+            }));
         }
     }
 
@@ -264,8 +339,10 @@ public class GCKeeperTests
     {
         public List<(GcLevel, GCCollectionMode, GcCompaction)> Collections { get; } = [];
         public bool CollectionSucceeds { get; set; } = true;
+        public Action? BeforeCollect { get; init; }
         public bool Collect(GcLevel generation, GCCollectionMode mode, GcCompaction compacting)
         {
+            BeforeCollect?.Invoke();
             Collections.Add((generation, mode, compacting));
             return CollectionSucceeds;
         }
@@ -340,28 +417,13 @@ public class GCKeeperTests
     {
         using ManualResetEventSlim executing = new(false);
         using ManualResetEventSlim release = new(false);
-        InvalidOperationException stopBeforeRuntime = new("Stop before invoking the real GC.");
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
         strategy.PostBlockDelayMs.Returns(0);
-        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.Yes));
-        strategy.CollectionsPerDecommit.Returns(_ =>
-        {
-            executing.Set();
-            release.Wait();
-            throw stopBeforeRuntime;
-        });
-        using GCKeeper keeper = new(strategy, NullLogManager.Instance);
-        Task collection = Task.Run(async () =>
-        {
-            try
-            {
-                await keeper.ScheduleGCInternal();
-            }
-            catch (InvalidOperationException e) when (ReferenceEquals(e, stopBeforeRuntime))
-            {
-                // The barrier exercises committed collection work without invoking the process-wide GC.
-            }
-        });
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        strategy.CollectionsPerDecommit.Returns(-1);
+        RegionRuntime runtime = new() { BeforeCollect = () => { executing.Set(); release.Wait(); } };
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime);
+        Task collection = Task.Run(keeper.ScheduleGCInternal);
         Task cancellation = Task.CompletedTask;
         try
         {
