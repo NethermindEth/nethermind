@@ -365,6 +365,7 @@ public class DataFeed
         // No subscribers, no need to prepare event data
         if (!HaveSubscribers(EntryType.forkChoice)) return;
 
+        // Swapped at raise time so subscribers see updates in raise order even when a slower preparation finishes later.
         DataCompletion next = new(TaskCreationOptions.RunContinuationsAsynchronously);
         DataCompletion forkChoice = Interlocked.Exchange(ref _forkChoice, next);
         Task.Run(() =>
@@ -380,7 +381,7 @@ public class DataFeed
                 _ = next.Task.ContinueWith(
                     static (completed, state) => ((DataCompletion)state!).TrySetResult(completed.Result),
                     forkChoice,
-                    TaskContinuationOptions.OnlyOnRanToCompletion | TaskContinuationOptions.ExecuteSynchronously);
+                    TaskContinuationOptions.OnlyOnRanToCompletion);
             }
         });
     }
