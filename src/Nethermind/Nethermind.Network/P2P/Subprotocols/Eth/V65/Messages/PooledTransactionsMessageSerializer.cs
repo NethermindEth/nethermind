@@ -9,15 +9,23 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
 {
-    public class PooledTransactionsMessageSerializer(ITxPoolConfig? txPoolConfig = null, ISpecProvider? specProvider = null) : IZeroInnerMessageSerializer<PooledTransactionsMessage>
+    public class PooledTransactionsMessageSerializer : IZeroInnerMessageSerializer<PooledTransactionsMessage>
     {
-        private readonly TransactionsMessageSerializer _txsMessageDeserializer = new(txPoolConfig, specProvider);
+        private readonly TransactionsMessageSerializer _txsMessageDeserializer;
+
+        // Cached once per instance - see the identical note on TransactionsMessageSerializer's own field.
+        private readonly DecodeRlpValue<PooledTransactionsMessage> _deserializePooledTransactionsMessage;
+
+        public PooledTransactionsMessageSerializer(ITxPoolConfig? txPoolConfig = null, ISpecProvider? specProvider = null)
+        {
+            _txsMessageDeserializer = new(txPoolConfig, specProvider);
+            _deserializePooledTransactionsMessage = (ref RlpReader ctx) => new PooledTransactionsMessage(_txsMessageDeserializer.DeserializeTxsWithSizeGuard(ref ctx));
+        }
 
         public void Serialize(IByteBuffer byteBuffer, PooledTransactionsMessage message) => _txsMessageDeserializer.Serialize(byteBuffer, message);
 
         public PooledTransactionsMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp((ref RlpReader ctx) =>
-                new PooledTransactionsMessage(TransactionsMessageSerializer.DeserializeTxs(ref ctx, _txsMessageDeserializer.MaxTxSize, _txsMessageDeserializer.MaxBlobTxSize)));
+            byteBuffer.DeserializeRlp(_deserializePooledTransactionsMessage);
 
         public int GetLength(PooledTransactionsMessage message, out int contentLength) => _txsMessageDeserializer.GetLength(message, out contentLength);
     }

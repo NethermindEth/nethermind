@@ -119,5 +119,9 @@ namespace Nethermind.Network
         [DetailedMetric]
         [KeyIsLabel("filter")]
         public static NonBlocking.ConcurrentDictionary<string, long> PeerCandidateFilter { get; } = new();
+
+        [CounterMetric]
+        [Description("Number of incoming transactions skipped before RLP decoding for exceeding the configured size limit.")]
+        public static long OversizedTransactionsSkipped { get; set; }
     }
 }

@@ -12,21 +12,32 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class TransactionsMessageSerializer(ITxPoolConfig? txPoolConfig = null, ISpecProvider? specProvider = null) : IZeroInnerMessageSerializer<TransactionsMessage>
+    public class TransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<TransactionsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(TransactionsMessage.Transactions));
         private static readonly Nethermind.Serialization.Rlp.TxDecoder TxDecoder = Nethermind.Serialization.Rlp.TxDecoder.Instance;
 
-        private readonly long _maxTxSize = txPoolConfig?.MaxTxSize ?? long.MaxValue;
-        private readonly long _maxBlobTxSize = txPoolConfig?.MaxBlobTxSize is null || specProvider is null
-            ? long.MaxValue
-            : txPoolConfig.MaxBlobTxSize.Value + (long)specProvider.GetFinalMaxBlobGasPerBlock();
+        private readonly long _maxTxSize;
 
-        /// <summary>The configured pre-decode size cap for a non-blob transaction, shared with <see cref="V65.Messages.PooledTransactionsMessageSerializer"/>.</summary>
-        internal long MaxTxSize => _maxTxSize;
+        /// <remarks>
+        /// Approximates each blob's on-wire size via <c>GasPerBlob</c> (131,072 bytes) rather than the actual
+        /// sidecar size (measured 131,176-131,184 bytes per blob, a ~626-byte shortfall at 6 blobs) - the same
+        /// compensation <see cref="V68.Eth68ProtocolHandler"/> uses verbatim for eth/68 announcements.
+        /// </remarks>
+        private readonly long _maxBlobTxSize;
 
-        /// <summary>The configured pre-decode size cap for a blob transaction, shared with <see cref="V65.Messages.PooledTransactionsMessageSerializer"/>.</summary>
-        internal long MaxBlobTxSize => _maxBlobTxSize;
+        // Cached once per instance: a lambda capturing `this` is not hoisted to a static delegate by the
+        // compiler, so creating it inline on every Deserialize call would allocate a new delegate per message.
+        private readonly DecodeRlpValue<TransactionsMessage> _deserializeTransactionsMessage;
+
+        public TransactionsMessageSerializer(ITxPoolConfig? txPoolConfig = null, ISpecProvider? specProvider = null)
+        {
+            _maxTxSize = txPoolConfig?.MaxTxSize ?? long.MaxValue;
+            _maxBlobTxSize = txPoolConfig?.MaxBlobTxSize is null || specProvider is null
+                ? long.MaxValue
+                : txPoolConfig.MaxBlobTxSize.Value + (long)specProvider.GetFinalMaxBlobGasPerBlock();
+            _deserializeTransactionsMessage = (ref RlpReader ctx) => new TransactionsMessage(DeserializeTxsWithSizeGuard(ref ctx));
+        }
 
         public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
         {
@@ -42,7 +53,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         }
 
         public TransactionsMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp((ref RlpReader ctx) => new TransactionsMessage(DeserializeTxs(ref ctx, _maxTxSize, _maxBlobTxSize)));
+            byteBuffer.DeserializeRlp(_deserializeTransactionsMessage);
 
         public int GetLength(TransactionsMessage message, out int contentLength)
         {
@@ -55,13 +66,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        /// <summary>Decodes the wire-form transaction list.</summary>
+        /// <summary>Decodes the wire-form transaction list without a pre-decode size limit.</summary>
+        public static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref RlpReader ctx) =>
+            DeserializeTxsCore(ref ctx, long.MaxValue, long.MaxValue);
+
+        /// <summary>Decodes the wire-form transaction list, applying this serializer's configured pre-decode size caps.</summary>
+        internal IOwnedReadOnlyList<Transaction> DeserializeTxsWithSizeGuard(ref RlpReader ctx) =>
+            DeserializeTxsCore(ref ctx, _maxTxSize, _maxBlobTxSize);
+
         /// <remarks>
         /// An item whose pre-decode size exceeds <paramref name="maxTxSize"/> (or <paramref name="maxBlobTxSize"/>
-        /// for a type-3 item) is skipped rather than decoded, so a peer that sends an over-limit transaction is
-        /// not disconnected by the resulting decode failure - see <see cref="IsOverSizeLimit"/> for the measure.
+        /// for a type-3 item) is skipped rather than decoded, avoiding the RLP-decode cost of an attacker-sized
+        /// item - see <see cref="IsOverSizeLimit"/> for the measure.
         /// </remarks>
-        public static IOwnedReadOnlyList<Transaction> DeserializeTxs(ref RlpReader ctx, long maxTxSize = long.MaxValue, long maxBlobTxSize = long.MaxValue)
+        private static IOwnedReadOnlyList<Transaction> DeserializeTxsCore(ref RlpReader ctx, long maxTxSize, long maxBlobTxSize)
         {
             int checkPosition = ctx.ReadSequenceLength() + ctx.Position;
             int length = ctx.PeekNumberOfItemsRemaining(checkPosition);
@@ -75,6 +93,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                     if (IsOverSizeLimit(ref ctx, maxTxSize, maxBlobTxSize))
                     {
                         ctx.SkipItem();
+                        Metrics.OversizedTransactionsSkipped++;
                         continue;
                     }
 
@@ -94,10 +113,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         /// <summary>Whether the item at the reader's current position exceeds the configured size cap.</summary>
         /// <remarks>
-        /// Mirrors <see cref="Nethermind.TxPool.Filters.SizeTxFilter"/>'s post-decode measure
-        /// (<c>tx.GetLength(shouldCountBlobs: false)</c>), so a transaction the pool would accept is never
-        /// skipped here: a legacy item's comparable length includes its RLP prefix, but a typed item's
-        /// mempool-form wrapper prefix is not part of that measure, so only its content length is compared.
+        /// Mirrors <c>SizeTxFilter</c>'s post-decode measure (<c>tx.GetLength(shouldCountBlobs: false)</c>), so a
+        /// transaction the pool would accept is never skipped here: a legacy item's comparable length includes
+        /// its RLP prefix, but a typed item's mempool-form wrapper prefix is not part of that measure, so only
+        /// its content length is compared.
         /// </remarks>
         private static bool IsOverSizeLimit(ref RlpReader ctx, long maxTxSize, long maxBlobTxSize)
         {
@@ -108,9 +127,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             if (size <= maxTxSize) return false;
             if (!isTyped) return true;
 
-            // Items over MaxTxSize (128 KiB by default) are necessarily long-form, well above the 55-byte
-            // short-form cutoff, so PeekPrefixAndContentLength has already taken the long-form path and
-            // rejected a lying length header - the type byte right after it needs no bounds check of its own.
+            // Safe only because MaxTxSize >= 55 (default 128 KiB): any item reaching this branch has content
+            // length > MaxTxSize >= 55, which the RLP short-form's 55-byte cap cannot encode, so
+            // PeekPrefixAndContentLength must have taken the bounds-checked long-form path. A smaller MaxTxSize
+            // would let a truncated short-form item reach this peek unchecked.
             byte txType = ctx.Peek(prefixLength, 1)[0];
             return txType != (byte)TxType.Blob || size > maxBlobTxSize;
         }

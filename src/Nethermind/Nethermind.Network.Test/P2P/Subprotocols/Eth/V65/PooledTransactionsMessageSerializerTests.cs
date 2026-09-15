@@ -116,17 +116,23 @@ public class PooledTransactionsMessageSerializerTests
     public void Skips_an_oversized_item_instead_of_decoding_it()
     {
         const int maxTxSize = 500;
-        Transaction validTx = TransactionsMessageSerializerTests.SimpleSignedTx();
-        byte[] validTxBytes = TxDecoder.Instance.Encode(validTx, RlpBehaviors.InMempoolForm).Bytes;
+        Transaction validTxBefore = TransactionsMessageSerializerTests.SimpleSignedTx();
+        Transaction validTxAfter = TransactionsMessageSerializerTests.SimpleSignedTx(1);
+        byte[] validTxBeforeBytes = TxDecoder.Instance.Encode(validTxBefore, RlpBehaviors.InMempoolForm).Bytes;
+        byte[] validTxAfterBytes = TxDecoder.Instance.Encode(validTxAfter, RlpBehaviors.InMempoolForm).Bytes;
         byte[] oversizedItem = TransactionsMessageSerializerTests.EncodeOversizedTypedItem(maxTxSize + 1, (byte)TxType.EIP1559);
-        byte[] wireBytes = TransactionsMessageSerializerTests.EncodeAsSequence(validTxBytes, oversizedItem);
+        byte[] wireBytes = TransactionsMessageSerializerTests.EncodeAsSequence(validTxBeforeBytes, oversizedItem, validTxAfterBytes);
         using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(wireBytes).AsDisposable();
 
         PooledTransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = maxTxSize });
         using PooledTransactionsMessage deserialized = serializer.Deserialize(buffer);
 
-        Assert.That(deserialized.Transactions.Count, Is.EqualTo(1), "only the well-formed tx should survive");
-        Assert.That(deserialized.Transactions[0].Hash, Is.EqualTo(validTx.Hash), "cursor should have resynchronised on the valid tx");
+        Assert.That(deserialized.Transactions.Count, Is.EqualTo(2), "only the two well-formed txs should survive");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.Transactions[0].Hash, Is.EqualTo(validTxBefore.Hash), "the tx before the skip should decode unaffected");
+            Assert.That(deserialized.Transactions[1].Hash, Is.EqualTo(validTxAfter.Hash), "cursor should have resynchronised on the tx after the skip");
+        }
     }
 
     private static IEnumerable<PooledTransactionsMessage> GetTransactionMessages() =>

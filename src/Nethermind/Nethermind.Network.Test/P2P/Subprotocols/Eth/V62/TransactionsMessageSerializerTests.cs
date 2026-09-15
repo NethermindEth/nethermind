@@ -119,16 +119,22 @@ public class TransactionsMessageSerializerTests
     public void Skips_an_oversized_item_instead_of_decoding_it()
     {
         const int maxTxSize = 500;
-        Transaction validTx = SimpleSignedTx();
-        byte[] validTxBytes = TxDecoder.Instance.Encode(validTx, RlpBehaviors.InMempoolForm).Bytes;
+        Transaction validTxBefore = SimpleSignedTx();
+        Transaction validTxAfter = SimpleSignedTx(1);
+        byte[] validTxBeforeBytes = TxDecoder.Instance.Encode(validTxBefore, RlpBehaviors.InMempoolForm).Bytes;
+        byte[] validTxAfterBytes = TxDecoder.Instance.Encode(validTxAfter, RlpBehaviors.InMempoolForm).Bytes;
         byte[] oversizedItem = EncodeOversizedTypedItem(maxTxSize + 1, (byte)TxType.EIP1559);
-        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(EncodeAsSequence(validTxBytes, oversizedItem)).AsDisposable();
+        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(EncodeAsSequence(validTxBeforeBytes, oversizedItem, validTxAfterBytes)).AsDisposable();
 
         TransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = maxTxSize });
         using TransactionsMessage deserialized = serializer.Deserialize(buffer);
 
-        Assert.That(deserialized.Transactions.Count, Is.EqualTo(1), "only the well-formed tx should survive");
-        Assert.That(deserialized.Transactions[0].Hash, Is.EqualTo(validTx.Hash), "cursor should have resynchronised on the valid tx");
+        Assert.That(deserialized.Transactions.Count, Is.EqualTo(2), "only the two well-formed txs should survive");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.Transactions[0].Hash, Is.EqualTo(validTxBefore.Hash), "the tx before the skip should decode unaffected");
+            Assert.That(deserialized.Transactions[1].Hash, Is.EqualTo(validTxAfter.Hash), "cursor should have resynchronised on the tx after the skip");
+        }
     }
 
     [Test]
@@ -187,8 +193,9 @@ public class TransactionsMessageSerializerTests
         Assert.That(deserialized.Transactions.Count, Is.EqualTo(transactions.Count));
     }
 
-    internal static Transaction SimpleSignedTx() =>
+    internal static Transaction SimpleSignedTx(ulong nonce = 0) =>
         Build.A.Transaction
+            .WithNonce(nonce)
             .WithTo(TestItem.AddressA)
             .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
             .TestObject;
