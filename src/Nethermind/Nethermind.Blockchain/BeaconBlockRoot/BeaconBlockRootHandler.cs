@@ -16,8 +16,6 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
 {
     private const ulong GasLimit = 30_000_000UL;
 
-    // The storage-cell-free list depends only on the contract address, which every chainspec leaves
-    // at the canonical one; AccessList is immutable once built, so one shared instance covers them all.
     private static readonly AccessList BeaconRootsOnlyAccessList = BuildAddressOnlyAccessList(Eip4788Constants.BeaconRootsAddress);
 
     AccessList? IHasAccessList.GetAccessList(Block block, IReleaseSpec spec)
