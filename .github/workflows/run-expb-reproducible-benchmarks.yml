@@ -1689,7 +1689,7 @@ jobs:
 
             if [[ "${master_source}" == "unknown" ]]; then
               append_blank
-              append_line "_The cached master run predates source tracking and could hold either measurement, so the tables are PR-only until the next \`master\` push refreshes the cache._"
+              append_line "_The cached master run predates source tracking and could hold either measurement, so the comparison is PR-only until the next \`master\` push refreshes the cache._"
             fi
           }
 
@@ -3026,7 +3026,7 @@ jobs:
             echo ""
             echo "**Source:** SSE = client-side processing time from Nethermind's SSE data feed, TTFB = K6 HTTP time-to-first-byte (fallback)"
             echo ""
-            echo "**Delta vs First** shows the percentage change in AVG processing time compared to the first image in the list."
+            echo "**Delta vs First** shows the percentage change in AVG compared to the first image in the list, and reads n/a when the row's source differs from the first image's."
           } >> "${summary_file}"
 
           echo "--- Multi-Image Summary ---"
