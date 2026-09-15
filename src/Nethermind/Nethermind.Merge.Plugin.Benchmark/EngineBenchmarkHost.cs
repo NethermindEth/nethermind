@@ -104,7 +104,9 @@ internal static class EngineBenchmarkHost
         modules.Register(new SingletonModulePool<IEngineRpcModule>(engine, allowExclusive: true));
 
         return Build(
-            services => services.AddSingleton(_ => new GCKeeper(NoGCStrategy.Instance, LimboLogs.Instance)),
+            services => services
+                .AddSingleton<IGCStrategy>(NoGCStrategy.Instance)
+                .AddSingleton<GCKeeper>(),
             app =>
             {
                 GCKeeper gcKeeper = app.ApplicationServices.GetRequiredService<GCKeeper>();

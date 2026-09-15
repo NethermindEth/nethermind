@@ -31,8 +31,8 @@ public sealed class GCScheduler
     private readonly MallocHelper _mallocHelper;
     private readonly Stopwatch _stopwatch = new();
     private Task _lastGcTask = Task.CompletedTask;
-    private bool _isNextGcBlocking = false;
-    private bool _isNextGcCompacting = false;
+    internal bool _isNextGcBlocking = false;
+    internal bool _isNextGcCompacting = false;
     private bool _gcTimerSet = false;
     private bool _fireGC = false;
     private long _countToGC = 0L;
@@ -144,7 +144,7 @@ public sealed class GCScheduler
     /// <summary>
     /// Determines and performs the appropriate type of garbage collection.
     /// </summary>
-    private void PerformFullGC()
+    internal void PerformFullGC()
     {
         if (Interlocked.Exchange(ref _skipNextGC, false))
         {

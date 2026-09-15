@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Reflection;
 using System.Runtime;
 using Nethermind.Core.Memory;
 using NSubstitute;
@@ -113,13 +112,11 @@ public class GCSchedulerTests
     }
 
     [Test]
-    public void Refused_idle_compaction_does_not_arm_loh([Values] bool pruning)
+    public void Idle_compaction_never_arms_loh_explicitly([Values] bool pruning)
     {
         GCScheduler scheduler = new(sustainedSweepEnabled: false);
-        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
-        typeof(GCScheduler).GetField("_isNextGcBlocking", flags)!.SetValue(scheduler, true);
-        typeof(GCScheduler).GetField("_isNextGcCompacting", flags)!.SetValue(scheduler, true);
-        Action collect = typeof(GCScheduler).GetMethod("PerformFullGC", flags)!.CreateDelegate<Action>(scheduler);
+        scheduler._isNextGcBlocking = true;
+        scheduler._isNextGcCompacting = true;
         using GCScheduler.ForcedGCExclusionScope? exclusion = pruning ? scheduler.ExcludeForcedGC() : null;
         bool paused = !pruning && GCScheduler.MarkGCPaused();
         if (!pruning) Assert.That(paused, Is.True);
@@ -127,7 +124,7 @@ public class GCSchedulerTests
         try
         {
             GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.Default;
-            collect();
+            scheduler.PerformFullGC();
             Assert.That(GCSettings.LargeObjectHeapCompactionMode, Is.EqualTo(GCLargeObjectHeapCompactionMode.Default));
         }
         finally

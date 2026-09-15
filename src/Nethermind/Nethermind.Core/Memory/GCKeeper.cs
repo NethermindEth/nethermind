@@ -196,7 +196,7 @@ public class GCKeeper : IDisposable
         }
     }
 
-    private long _lastGcTimeMs;
+    private long? _lastGcTimeMs;
 
     private void ScheduleGC()
     {
@@ -205,23 +205,15 @@ public class GCKeeper : IDisposable
             lock (_lock)
             {
                 if (_disposed) return;
-                long timeStamp = Environment.TickCount64;
-                if (TimeSpan.FromMilliseconds(timeStamp - _lastGcTimeMs).TotalSeconds <= 3)
-                {
-                    return;
-                }
-
-                _lastGcTimeMs = timeStamp;
-
                 if (_gcScheduleTask.IsCompleted)
                 {
-                    _gcScheduleTask = ScheduleGCInternal();
+                    _gcScheduleTask = ScheduleGCInternal(throttle: true);
                 }
             }
         }
     }
 
-    internal async Task ScheduleGCInternal()
+    internal async Task ScheduleGCInternal(bool throttle = false)
     {
         (GcLevel generation, GcCompaction compacting) = _gcStrategy.GetForcedGCParams();
         if (generation > GcLevel.NoGC)
@@ -249,7 +241,7 @@ public class GCKeeper : IDisposable
                 }
 
                 if (pendingGcCts.IsCancellationRequested) return;
-                if (GCSettings.LatencyMode != GCLatencyMode.NoGCRegion)
+                if (!_runtime.IsActive)
                 {
                     long payloadsSinceDecommit = Interlocked.Read(ref _payloadsSinceDecommit);
                     int collectionsPerDecommit = _gcStrategy.CollectionsPerDecommit;
@@ -271,7 +263,18 @@ public class GCKeeper : IDisposable
                     // Claim only after all cancellable waits; never hold the gate during runtime collection.
                     lock (_lock)
                     {
-                        if (pendingGcCts.IsCancellationRequested || GCSettings.LatencyMode == GCLatencyMode.NoGCRegion) return;
+                        if (pendingGcCts.IsCancellationRequested || _runtime.IsActive) return;
+                        if (throttle)
+                        {
+                            long timeStamp = Environment.TickCount64;
+                            if (_lastGcTimeMs is long lastGcTimeMs && TimeSpan.FromMilliseconds(timeStamp - lastGcTimeMs).TotalSeconds <= 3)
+                            {
+                                return;
+                            }
+
+                            _lastGcTimeMs = timeStamp;
+                        }
+
                         if (ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
                     }
 

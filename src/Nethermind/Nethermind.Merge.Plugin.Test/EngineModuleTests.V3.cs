@@ -453,7 +453,7 @@ public partial class EngineModuleTests
                 Substitute.For<IEngineRequestsTracker>(),
                 Substitute.For<IBlobCustodyTracker>(),
                 chain.SpecProvider,
-                new GCKeeper(NoGCStrategy.Instance, chain.LogManager),
+                chain.Container.Resolve<GCKeeper>(),
                 Substitute.For<ILogManager>()));
         }
 

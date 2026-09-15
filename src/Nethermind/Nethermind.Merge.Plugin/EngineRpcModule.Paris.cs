@@ -95,8 +95,9 @@ public partial class EngineRpcModule : IEngineRpcModule
             long startTime = Stopwatch.GetTimestamp();
             try
             {
-                // Start tx-root computation ahead of TryGetBlock; keep it inside the lock so
-                // competing requests cannot run trie work concurrently.
+                // Start tx-root computation before asynchronous GC-region admission so it can
+                // overlap that work; keep it inside the lock so competing requests cannot run
+                // trie work concurrently.
                 _ = executionPayload.StartTxRootComputation();
                 using IDisposable region = _gcKeeper.TryStartNoGCRegion();
                 return await _newPayloadV1Handler.HandleAsync(executionPayload);

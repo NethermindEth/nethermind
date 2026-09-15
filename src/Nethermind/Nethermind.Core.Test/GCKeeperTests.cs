@@ -364,6 +364,45 @@ public class GCKeeperTests
     }
 
     [Test]
+    public async Task Cancelled_scheduled_collection_does_not_throttle_next_collection()
+    {
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.PostBlockDelayMs.Returns(1);
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        strategy.CollectionsPerDecommit.Returns(-1);
+        RegionRuntime runtime = new();
+        TaskCompletionSource firstDelay = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int delayCalls = 0;
+
+        async Task<bool> Delay(int _, CancellationToken token)
+        {
+            if (Interlocked.Increment(ref delayCalls) == 1)
+            {
+                firstDelay.SetResult();
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, token);
+                }
+                catch (OperationCanceledException)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, Delay);
+        Task first = keeper.ScheduleGCInternal(throttle: true);
+        await firstDelay.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        keeper.CancelPendingGC();
+        await first.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await keeper.ScheduleGCInternal(throttle: true).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(runtime.Collections, Has.Count.EqualTo(1));
+    }
+
+    [Test]
     public async Task Cancellation_after_yield_prevents_collection([Values(0, -1)] int delay)
     {
         using GCKeeper keeper = CreateKeeper(delay);
