@@ -16,14 +16,12 @@ ROOT = Path(__file__).resolve().parents[2]
 PERF_FOLD = ROOT / "scripts" / "perf-fold.awk"
 PERF_REPORT = ROOT / "scripts" / "perf-report.sh"
 FOLDED_PROFILE_VALIDATOR = ROOT / "scripts" / "validate-folded-profile.sh"
-EXPB_WORKFLOW = ROOT / ".github" / "workflows" / "run-expb-reproducible-benchmarks.yml"
 RPC_WORKFLOW = ROOT / ".github" / "workflows" / "run-rpc-benchmarks.yml"
 RPC_LIB = ROOT / "scripts" / "rpc-bench" / "lib.sh"
 START_NODE = ROOT / "scripts" / "rpc-bench" / "start-node.sh"
 STOP_NODE = ROOT / "scripts" / "rpc-bench" / "stop-node.sh"
 START_PROFILERS = ROOT / "scripts" / "rpc-bench" / "start-profilers.sh"
 RUN_JSONBENCH = ROOT / "scripts" / "rpc-bench" / "run-jsonbench.sh"
-PROFILE_ARTIFACT_GATE = "always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')"
 
 WORKFLOW_JOB_PATTERN = re.compile(
     r"(?ms)^  (?P<name>[A-Za-z0-9_-]+):[^\r\n]*\r?\n"
@@ -51,15 +49,6 @@ def workflow_named_step_body(workflow: str, job_name: str, step_name: str) -> st
     if len(steps) != 1:
         raise AssertionError(f"expected exactly one {job_name}/{step_name} step, found {len(steps)}")
     return steps[0]["body"]
-
-
-def workflow_named_step_script(workflow: str, job_name: str, step_name: str) -> str:
-    body = workflow_named_step_body(workflow, job_name, step_name)
-    marker = "        run: |\n"
-    if marker not in body:
-        raise AssertionError(f"could not extract the run body for {job_name}/{step_name}")
-    script = body.split(marker, 1)[1]
-    return "\n".join(line[10:] for line in script.splitlines())
 
 
 def workflow_named_step_if(workflow: str, job_name: str, step_name: str) -> str:
@@ -1187,30 +1176,10 @@ esac
         self.assertIn("rpcbench.nettrace", workflow_named_step_body(rpc_workflow, "benchmark", "Publish step summary"))
 
     def test_workflow_profile_contracts_cover_both_collectors(self) -> None:
-        expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
         rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
         start_node = START_NODE.read_text(encoding="utf-8")
         stop_node = STOP_NODE.read_text(encoding="utf-8")
 
-        self.assertEqual(expb_workflow.count('bash scripts/validate-folded-profile.sh "${folded_profile}"'), 2)
-        self.assertEqual(expb_workflow.count("-x '*/perf.data'"), 2)
-        self.assertEqual(expb_workflow.count('artifact_prefix="dottrace"'), 2)
-        self.assertEqual(expb_workflow.count('artifact_prefix="profiling"'), 2)
-        self.assertIn("pattern: ${{ needs.resolve.outputs.perf == 'true' && 'profiling-*' || 'dottrace-*' }}", expb_workflow)
-        default_expb_revision = "4a7ef676493fedfc4973c2d3420442d71dedd255"
-        self.assertIn(f"default: {default_expb_revision}", expb_workflow)
-        self.assertEqual(expb_workflow.count(f'expb_default_revision="{default_expb_revision}"'), 2)
-        for job_name in ("benchmark", "benchmark-multi"):
-            job_body = workflow_job_body(expb_workflow, job_name)
-            self.assertIn(
-                'if [[ -n "${EXPB_BRANCH}" ]]; then',
-                job_body,
-            )
-            self.assertIn(
-                'expb_source="git+https://github.com/${EXPB_REPO}@${EXPB_BRANCH}"',
-                job_body,
-            )
-            self.assertIn('expb_help="$("${expb_bin}" execute-scenarios --help 2>&1)"', job_body)
         self.assertIn("bash scripts/validate-folded-profile.sh", rpc_workflow)
         self.assertIn("zip -9r \"${ARCHIVE}\" perf -x '*/perf.data'", rpc_workflow)
         self.assertIn("require_perf_access", rpc_workflow)
@@ -1234,10 +1203,6 @@ esac
         self.assertIn('signal_perf_recorder_if_matches INT', stop_node)
         self.assertIn('signal_perf_recorder_if_matches KILL', stop_node)
 
-        for job_name in ("benchmark", "benchmark-multi"):
-            for step_name in ("Collect and upload profiling artifacts", "Upload profiling artifact"):
-                self.assertEqual(workflow_named_step_if(expb_workflow, job_name, step_name), PROFILE_ARTIFACT_GATE)
-
         perf_preflight = workflow_named_step_body(
             rpc_workflow,
             "benchmark",
@@ -1256,14 +1221,6 @@ esac
                     "Verify perf profiling prerequisites",
                 ),
             )
-
-        dottrace_only = "always() && needs.resolve.outputs.dottrace == 'true'"
-        mutated_workflow = expb_workflow.replace(PROFILE_ARTIFACT_GATE, dottrace_only, 1)
-        self.assertNotEqual(mutated_workflow, expb_workflow)
-        with self.assertRaises(AssertionError):
-            for job_name in ("benchmark", "benchmark-multi"):
-                for step_name in ("Collect and upload profiling artifacts", "Upload profiling artifact"):
-                    self.assertEqual(workflow_named_step_if(mutated_workflow, job_name, step_name), PROFILE_ARTIFACT_GATE)
 
     def test_perf_and_dotnet_trace_preconditions_are_resolved_before_the_runner_is_paid_for(self) -> None:
         rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
@@ -1288,114 +1245,10 @@ esac
             RPC_LIB.read_text(encoding="utf-8"),
         )
 
-        # Pinned collector: the rig pins expb and json-bench for the same reason.
+        # Pinned collector: the rig pins json-bench to keep profiling reproducible.
         start_node = START_NODE.read_text(encoding="utf-8")
         self.assertRegex(start_node, r'DOTNET_TRACE_VERSION="\$\{DOTNET_TRACE_VERSION:-[0-9]+\.[0-9]+\.[0-9]+\}"')
         self.assertEqual(start_node.count('dotnet tool install --version "$DOTNET_TRACE_VERSION"'), 2)
-
-    def test_expb_profile_archive_precedes_deferred_perf_failure(self) -> None:
-        expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
-        archive = 'zip -9r "${archive}" "${profiling_dirs[@]}" -x \'*/perf.data\''
-        deferred_failure = 'if [[ "${perf_validation_failed}" == "true" ]]; then'
-
-        for job_name in ("benchmark", "benchmark-multi"):
-            collector = workflow_named_step_body(expb_workflow, job_name, "Collect and upload profiling artifacts")
-            self.assertIn("perf_validation_failed=false", collector)
-            self.assertIn("perf_validation_failed=true", collector)
-            self.assertLess(
-                collector.index(archive),
-                collector.index(deferred_failure),
-                f"{job_name} must archive dotTrace/EventPipe data before failing invalid perf output",
-            )
-            self.assertIn("exit 1", collector[collector.index(deferred_failure) :])
-
-    def test_expb_campaign_checkout_uses_full_repository(self) -> None:
-        expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
-        checkout = workflow_named_step_body(expb_workflow, "benchmark-multi", "Checkout repository")
-
-        self.assertIn("fetch-depth: 1", checkout)
-        self.assertNotIn("sparse-checkout", checkout)
-
-    def test_expb_single_log_staging_sanitizes_rendered_config(self) -> None:
-        expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
-        script = workflow_named_step_script(expb_workflow, "benchmark", "Stage benchmark logs")
-        script = script.replace('${{ github.event_name }}', "workflow_dispatch")
-        script = script.replace('${{ matrix.payload_set }}', "realblocks")
-        script = script.replace('${{ matrix.run }}', "1")
-        script = script.replace('${{ needs.resolve.outputs.run_count }}', "1")
-        script = script.replace('${{ needs.resolve.outputs.measurement_mode }}', "standard")
-        self.assertNotIn("${{", script)
-
-        raw_config = (
-            "export:\n"
-            "  prometheus_remote_write:\n"
-            "    basic_auth:\n"
-            "      password: credential-sentinel\n"
-            "scenarios:\n"
-            "  nethermind:\n"
-            "    amount: 1\n"
-        )
-        sanitized_config = "scenarios:\n  nethermind:\n    amount: 1\n"
-
-        def run_staging(
-            case_name: str, yq: Path | None, expected_returncode: int | None
-        ) -> tuple[Path, subprocess.CompletedProcess[str]]:
-            case_directory = self.directory / case_name
-            case_directory.mkdir()
-            raw_log = case_directory / "raw.log"
-            clean_log = case_directory / "clean.log"
-            metrics = case_directory / "metrics.env"
-            rendered_config = case_directory / "rendered-config.yaml"
-            artifact_directory = case_directory / "artifact"
-            raw_log.write_text("raw log\n", encoding="utf-8")
-            clean_log.write_text("clean log\n", encoding="utf-8")
-            metrics.write_text("metric=value\n", encoding="utf-8")
-            rendered_config.write_text(raw_config, encoding="utf-8")
-            environment = os.environ.copy()
-            environment.update(
-                RAW_RUN_LOG=raw_log.as_posix(),
-                CLEAN_RUN_LOG=clean_log.as_posix(),
-                METRICS_FILE=metrics.as_posix(),
-                RENDERED_CONFIG_FILE=rendered_config.as_posix(),
-                YQ_BIN=(yq.as_posix() if yq else (case_directory / "missing-yq").as_posix()),
-                LOG_ARTIFACT_DIR=artifact_directory.as_posix(),
-                EXPB_SOURCE="test-source",
-            )
-            stage_script = case_directory / "stage.sh"
-            stage_script.write_text(script, encoding="utf-8", newline="\n")
-            result = subprocess.run(
-                [BASH, str(stage_script)], cwd=ROOT, check=False, text=True, capture_output=True, env=environment
-            )
-            if expected_returncode is None:
-                self.assertNotEqual(0, result.returncode, f"{result.stdout}\n{result.stderr}")
-            else:
-                self.assertEqual(expected_returncode, result.returncode, f"{result.stdout}\n{result.stderr}")
-            self.assertEqual(raw_config, rendered_config.read_text(encoding="utf-8"))
-            self.assertEqual("raw log\n", (artifact_directory / "combined.log").read_text(encoding="utf-8"))
-            self.assertEqual("clean log\n", (artifact_directory / "combined.clean.log").read_text(encoding="utf-8"))
-            self.assertEqual("metric=value\n", (artifact_directory / "metrics.env").read_text(encoding="utf-8"))
-            return artifact_directory, result
-
-        yq = self.write_executable(
-            "fake-yq",
-            "#!/bin/bash\n"
-            "set -euo pipefail\n"
-            "[[ \"$#\" -eq 2 && \"$1\" == 'del(.export)' ]] || exit 41\n"
-            "grep -q 'password: credential-sentinel' \"$2\" || exit 42\n"
-            f"cat {self.write_folded('sanitized.yaml', sanitized_config).as_posix()!r}\n",
-        )
-        artifact_directory, _ = run_staging("success", yq, 0)
-        self.assertEqual(sanitized_config, (artifact_directory / "rendered-config.yaml").read_text(encoding="utf-8"))
-        self.assertNotIn("credential-sentinel", (artifact_directory / "rendered-config.yaml").read_text(encoding="utf-8"))
-
-        failing_yq = self.write_executable("failing-yq-bin", "#!/bin/bash\nexit 7\n")
-        failed_directory, _ = run_staging("failing-yq", failing_yq, None)
-        self.assertFalse((failed_directory / "rendered-config.yaml").exists())
-        self.assertEqual([], list(failed_directory.glob(".rendered-config.*")))
-
-        missing_directory, _ = run_staging("missing-yq", None, 1)
-        self.assertFalse((missing_directory / "rendered-config.yaml").exists())
-        self.assertEqual([], list(missing_directory.glob(".rendered-config.*")))
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ import tempfile
 import threading
 ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 SSE = re.compile(r"\[payload-server\]\s+client_metric\s+block_number=(\d+)\s+processing_ms=(\d+(?:\.\d+)?)")
-K6 = re.compile(r"^\s*\|\s*(\d+)\s*\|\s*[^|]+\|\s*(\d+(?:\.\d+)?)\s*\|\s*$", re.M)
+K6 = re.compile(r"^\s*\|\s*(\d+)\s*\|\s*(\d+)\s*\|\s*(\d+(?:\.\d+)?)\s*\|\s*$", re.M)
 WARM_OK = re.compile(r"\[payload-server\]\s+warmup\s+block=(\d+)\s+ok\b", re.I)
 WARM_BAD = re.compile(r"\[payload-server\]\s+warmup\s+block=(\d+)\s+FAILED\b", re.I)
 SEVERE = re.compile(r"\b(?:Unhandled|Fatal|ERROR)\b", re.I)
@@ -100,6 +100,14 @@ def verify_clean(config: dict) -> None:
         if path.is_symlink(): raise RuntimeError(f"scratch is a symlink: {path}")
         if path.exists() and (not path.is_dir() or next(path.iterdir(), None) is not None): raise RuntimeError(f"scratch is not empty: {path}")
 def bounded(line: str) -> str: return line.rstrip("\r\n") if len(line.rstrip("\r\n")) <= LIMIT else line[:LIMIT] + " ... [truncated in console; full line retained in combined log]"
+
+def metric_stats(values: list[float]) -> dict:
+    if not values:
+        return {"count": 0, "avg": None, "median": None, "p90": None, "p95": None, "p99": None, "min": None, "max": None}
+    ordered = sorted(values)
+    def percentile(rank: int) -> float: return ordered[max(0, math.ceil(rank * len(ordered) / 100) - 1)]
+    return {"count": len(values), "avg": sum(values) / len(values), "median": (ordered[(len(ordered) - 1) // 2] + ordered[len(ordered) // 2]) / 2, "p90": percentile(90), "p95": percentile(95), "p99": percentile(99), "min": ordered[0], "max": ordered[-1]}
+
 def force(process) -> None:
     if process is current:
         try:
@@ -135,7 +143,7 @@ def collect_metrics(log_path: Path | str) -> tuple[dict, dict[str, list[str]]]:
             if match := SSE.search(line):
                 sse.append((int(match.group(1)), float(match.group(2))))
             if match := K6.match(line):
-                rows.append((int(match.group(1)), float(match.group(2))))
+                rows.append((int(match.group(1)), int(match.group(2)), float(match.group(3))))
             if match := WARM_OK.search(line):
                 warm_ok.add(int(match.group(1)))
             if match := WARM_BAD.search(line):
@@ -155,15 +163,33 @@ def collect_metrics(log_path: Path | str) -> tuple[dict, dict[str, list[str]]]:
             shutdown |= "Nethermind is shut down" in line
             cleanup |= "Cleanup completed" in line
 
-    values, source = sse or rows, "SSE" if sse else "TTFB"
+    processing_values = [value for _, value in sse] if sse else [value for _, _, value in rows]
+    request_values = [value for _, _, value in rows]
+    outside_values = [request - processing for (_, _, request), (_, processing) in zip(rows, sse)]
+    primary = metric_stats(processing_values)
+    processing = metric_stats([value for _, value in sse])
+    request = metric_stats(request_values)
+    outside = metric_stats(outside_values)
+    processing_source = "SSE" if sse else "TTFB"
+    mgas_s = None
+    if sse and rows:
+        paired = min(len(rows), len(sse))
+        processing_total = sum(value for _, value in sse[:paired])
+        if processing_total > 0:
+            mgas_s = sum(gas for _, gas, _ in rows[:paired]) / 1_000_000 / (processing_total / 1_000)
     parsed = {
-        "source": source if values else "none",
-        "count": len(values),
-        "avg": sum(value for _, value in values) / len(values) if values else None,
-        "ids": [block for block, _ in values],
-        "payload_indices": [index for index, _ in rows],
+        "source": processing_source if processing_values else "none",
+        "count": len(processing_values),
+        "avg": primary["avg"],
+        "ids": [block for block, _ in sse] if sse else [index for index, _, _ in rows],
+        "payload_indices": [index for index, _, _ in rows],
         "delivered": len(rows),
         "sse_count": len(sse),
+        "primary": primary,
+        "processing": processing,
+        "request": request,
+        "outside": outside if sse else metric_stats([]),
+        "mgas_s": mgas_s,
         "warm_ok": sorted(warm_ok),
         "warm_bad": sorted(warm_bad),
         "shutdown": shutdown,
@@ -270,8 +296,14 @@ def write_summary(root: Path, images: list[dict], run_count: int, samples: list[
     successful = {image["id"]: [sample for sample in samples if sample["status"] == "success" and sample["image_id"] == image["id"]] for image in images}
     baseline_id = images[0]["id"]
     stats = {image["id"]: image_stats(successful[image["id"]]) for image in images}
-    lines = ["## EXPB Campaign", "", f"Runner: {socket.gethostname()} ({platform.machine()})", f"Samples: {len(samples)}", "", "| Sample | Status | Source | Count | AVG ms |", "|---|---|---:|---:|---:|"]
-    lines += [f"| {x['sample_id']} | {x['status']} | {x['metrics'].get('source', 'n/a')} | {x['metrics'].get('count', 0)} | {x['metrics'].get('avg', 'n/a')} |" for x in samples]
+    lines = ["## EXPB Campaign", "", f"Runner: {socket.gethostname()} ({platform.machine()})", f"Samples: {len(samples)}", "", "| Sample | Status | Source | Count | Processing AVG ms | Request AVG ms | Outside AVG ms | MGas/s |", "|---|---|---|---:|---:|---:|---:|---:|"]
+    rows = []
+    for sample in samples:
+        metrics = sample["metrics"]
+        source = metrics.get("source", "n/a")
+        processing_avg = metrics.get("avg", "n/a") if source == "SSE" else "n/a"
+        rows.append(f"| {sample['sample_id']} | {sample['status']} | {source} | {metrics.get('count', 0)} | {processing_avg} | {metrics.get('request', {}).get('avg', 'n/a')} | {metrics.get('outside', {}).get('avg', 'n/a')} | {metrics.get('mgas_s', 'n/a')} |")
+    lines += rows
     lines.append("")
     for image in images:
         image_id = image["id"]
