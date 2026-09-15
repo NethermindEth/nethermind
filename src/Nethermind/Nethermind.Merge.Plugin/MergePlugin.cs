@@ -114,7 +114,7 @@ public class MergePluginModule : Module
             .AddModule(new BaseMergePluginModule())
 
             .ResolveOnServiceActivation<ProcessedTransactionsDbCleaner, IBlockTree>()
-            .ResolveOnServiceActivation<FrameTxWidthFinalizer, IBlockTree>();
+            .ResolveOnServiceActivation<FrameTxWidthFinalizer, ITxPool>();
 }
 
 /// <summary>
