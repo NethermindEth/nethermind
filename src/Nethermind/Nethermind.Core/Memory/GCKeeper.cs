@@ -13,6 +13,7 @@ using Nethermind.Core.Extensions;
 public class GCKeeper : IDisposable
 {
     private const int DecommitIdleDelayMs = 3_000;
+    private const int MinMsBetweenCollections = 3_000;
     private long _payloadsSinceDecommit;
     private readonly Lock _lock = new();
     private readonly IGCStrategy _gcStrategy;
@@ -212,7 +213,7 @@ public class GCKeeper : IDisposable
         }
     }
 
-    internal async Task ScheduleGCInternal(bool throttle = false)
+    internal async Task ScheduleGCInternal(bool throttle)
     {
         (GcLevel generation, GcCompaction compacting) = _gcStrategy.GetForcedGCParams();
         if (generation > GcLevel.NoGC)
@@ -266,7 +267,7 @@ public class GCKeeper : IDisposable
                         if (throttle)
                         {
                             long timeStamp = Environment.TickCount64;
-                            if (_lastGcTimeMs is long lastGcTimeMs && TimeSpan.FromMilliseconds(timeStamp - lastGcTimeMs).TotalSeconds <= 3)
+                            if (_lastGcTimeMs is long lastGcTimeMs && timeStamp - lastGcTimeMs <= MinMsBetweenCollections)
                             {
                                 return;
                             }

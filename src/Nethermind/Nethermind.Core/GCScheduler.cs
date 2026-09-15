@@ -31,8 +31,8 @@ public sealed class GCScheduler
     private readonly MallocHelper _mallocHelper;
     private readonly Stopwatch _stopwatch = new();
     private Task _lastGcTask = Task.CompletedTask;
-    internal bool _isNextGcBlocking = false;
-    internal bool _isNextGcCompacting = false;
+    private bool _isNextGcBlocking = false;
+    private bool _isNextGcCompacting = false;
     private bool _gcTimerSet = false;
     private bool _fireGC = false;
     private long _countToGC = 0L;
@@ -58,6 +58,12 @@ public sealed class GCScheduler
         {
             _sustainedSweepTimer = new Timer(_ => SweepIfAllocationBudgetExceeded(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         }
+    }
+
+    internal void SetNextGcForTest(bool blocking, bool compacting)
+    {
+        _isNextGcBlocking = blocking;
+        _isNextGcCompacting = compacting;
     }
 
     /// <summary>

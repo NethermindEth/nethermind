@@ -148,10 +148,10 @@ public class GCKeeperTests
         Assert.That(runtime.Collections, Is.Empty);
 
         runtime.CollectionSucceeds = false;
-        await keeper.ScheduleGCInternal();
+        await keeper.ScheduleGCInternal(throttle: false);
         runtime.CollectionSucceeds = true;
-        await keeper.ScheduleGCInternal();
-        await keeper.ScheduleGCInternal();
+        await keeper.ScheduleGCInternal(throttle: false);
+        await keeper.ScheduleGCInternal(throttle: false);
         Assert.That(runtime.Collections, Is.EqualTo(new[]
         {
             (GcLevel.Gen2, GCCollectionMode.Aggressive, GcCompaction.Full),
@@ -172,7 +172,7 @@ public class GCKeeperTests
         for (int i = 1; i <= 100; i++)
         {
             CountPayload(keeper, strategy);
-            await keeper.ScheduleGCInternal();
+            await keeper.ScheduleGCInternal(throttle: false);
             bool decommit = interval == 0 || (interval > 0 && i % interval == 0);
             using (Assert.EnterMultipleScope())
             {
@@ -198,7 +198,7 @@ public class GCKeeperTests
             delays.Add(milliseconds);
             return Task.FromResult(true);
         });
-        await keeper.ScheduleGCInternal();
+        await keeper.ScheduleGCInternal(throttle: false);
         int[] expected = decommit && postBlockDelayMs < 3000
             ? postBlockDelayMs == 0 ? [3000] : [postBlockDelayMs, 3000 - postBlockDelayMs]
             : postBlockDelayMs == 0 ? [] : [postBlockDelayMs];
@@ -238,7 +238,7 @@ public class GCKeeperTests
         {
             waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
             CountPayload(keeper, strategy);
-            Task pending = keeper.ScheduleGCInternal();
+            Task pending = keeper.ScheduleGCInternal(throttle: false);
             await waiting.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.That(runtime.Collections, Is.Empty);
             if (shutdown && i == cancellations - 1) keeper.Dispose();
@@ -247,14 +247,14 @@ public class GCKeeperTests
             Assert.That(runtime.Collections, Is.Empty);
         }
         wait = false;
-        await keeper.ScheduleGCInternal();
+        await keeper.ScheduleGCInternal(throttle: false);
         if (shutdown)
         {
             Assert.That(runtime.Collections, Is.Empty);
         }
         else
         {
-            await keeper.ScheduleGCInternal();
+            await keeper.ScheduleGCInternal(throttle: false);
             Assert.That(runtime.Collections, Is.EqualTo(new[]
             {
                 (GcLevel.Gen2, GCCollectionMode.Aggressive, GcCompaction.Full),
@@ -301,7 +301,7 @@ public class GCKeeperTests
         strategy.DidNotReceive().GetForcedGCParams();
         strategy.CanStartNoGCRegion().Returns(true);
         CountPayload(keeper, strategy);
-        await keeper.ScheduleGCInternal();
+        await keeper.ScheduleGCInternal(throttle: false);
         Assert.That(runtime.Collections, Is.EqualTo(new[] { (GcLevel.Gen1, GCCollectionMode.Forced, GcCompaction.No) }));
     }
 
@@ -350,17 +350,17 @@ public class GCKeeperTests
     public async Task Cancelling_a_collection_does_not_cancel_a_later_collection()
     {
         using GCKeeper keeper = CreateKeeper();
-        Task first = keeper.ScheduleGCInternal();
+        Task first = keeper.ScheduleGCInternal(throttle: false);
         keeper.CancelPendingGC();
         keeper.CancelPendingGC();
         await first.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Task second = keeper.ScheduleGCInternal();
+        Task second = keeper.ScheduleGCInternal(throttle: false);
         Assert.That(second.IsCompleted, Is.False);
         keeper.Dispose();
         await second.WaitAsync(TimeSpan.FromSeconds(5));
         keeper.CancelPendingGC();
-        Assert.That(keeper.ScheduleGCInternal().IsCompletedSuccessfully, Is.True);
+        Assert.That(keeper.ScheduleGCInternal(throttle: false).IsCompletedSuccessfully, Is.True);
     }
 
     [Test]
@@ -417,7 +417,7 @@ public class GCKeeperTests
         try
         {
             SynchronizationContext.SetSynchronizationContext(paused);
-            pending = keeper.ScheduleGCInternal();
+            pending = keeper.ScheduleGCInternal(throttle: false);
         }
         finally
         {

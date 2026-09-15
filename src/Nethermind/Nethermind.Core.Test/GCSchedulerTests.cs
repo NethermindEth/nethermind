@@ -115,8 +115,7 @@ public class GCSchedulerTests
     public void Idle_compaction_never_arms_loh_explicitly([Values] bool pruning)
     {
         GCScheduler scheduler = new(sustainedSweepEnabled: false);
-        scheduler._isNextGcBlocking = true;
-        scheduler._isNextGcCompacting = true;
+        scheduler.SetNextGcForTest(blocking: true, compacting: true);
         using GCScheduler.ForcedGCExclusionScope? exclusion = pruning ? scheduler.ExcludeForcedGC() : null;
         bool paused = !pruning && GCScheduler.MarkGCPaused();
         if (!pruning) Assert.That(paused, Is.True);

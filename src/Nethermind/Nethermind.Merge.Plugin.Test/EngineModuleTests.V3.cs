@@ -420,7 +420,9 @@ public partial class EngineModuleTests
     {
         async Task<(MergeTestBlockchain blockchain, IEngineRpcModule engineRpcModule)> MockRpc()
         {
-            MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
+            MergeTestBlockchain chain = await CreateBlockchain(
+                releaseSpec: Cancun.Instance,
+                configurer: builder => builder.AddSingleton<IGCStrategy>(NoGCStrategy.Instance));
             IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadHandlerMock =
                 Substitute.For<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>();
             newPayloadHandlerMock.HandleAsync(Arg.Any<ExecutionPayload>())

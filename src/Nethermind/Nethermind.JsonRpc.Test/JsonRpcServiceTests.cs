@@ -63,7 +63,7 @@ public class JsonRpcServiceTests
         strategy.PostBlockDelayMs.Returns(60_000);
         strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.Yes));
         using GCKeeper keeper = new(strategy, NullLogManager.Instance);
-        Task pending = keeper.ScheduleGCInternal();
+        Task pending = keeper.ScheduleGCInternal(throttle: false);
         IRpcModuleProvider provider = Substitute.For<IRpcModuleProvider>();
         provider.Check(Arg.Any<string>(), Arg.Any<JsonRpcContext>(), out Arg.Any<string?>(), out Arg.Any<RpcModuleProvider.ResolvedMethodInfo?>())
             .Returns(ModuleResolution.Unknown);
