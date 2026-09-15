@@ -82,7 +82,7 @@ public class FrameTxBlobRevalidationReloadMeasurement
         double fullPerTxUs = fullBest.TotalMicroseconds / SampleTxs;
         double elidedPerTxUs = elidedBest.TotalMicroseconds / SampleTxs;
 
-        _report.AppendLine($"blobs per tx: {blobsPerTx}, samples: {SampleTxs}, timed passes: {TimedPasses} after one discarded");
+        _report.AppendLine($"blobs per tx: {blobsPerTx}, samples: {SampleTxs}, timed passes: {TimedPasses} after one discarded; read+decode and allocated are both the best pass");
         _report.AppendLine($"  record bytes   full {fullBytes,10:N0}   elided {elidedBytes,10:N0}   ratio {(double)fullBytes / elidedBytes,8:N1}x");
         _report.AppendLine($"  read+decode/tx full {fullPerTxUs,10:N1}us elided {elidedPerTxUs,10:N1}us ratio {fullPerTxUs / elidedPerTxUs,8:N1}x");
         _report.AppendLine($"  worst pass/tx  full {fullWorst.TotalMicroseconds / SampleTxs,10:N1}us elided {elidedWorst.TotalMicroseconds / SampleTxs,10:N1}us ratio {fullWorst.TotalMicroseconds / elidedWorst.TotalMicroseconds,8:N1}x");
@@ -136,7 +136,8 @@ public class FrameTxBlobRevalidationReloadMeasurement
     /// Without the discarded pass the read that runs first is charged with JIT-compiling a decoder the second
     /// then finds warm, which lands on whichever side the caller happens to time first rather than on the one
     /// that is genuinely slower. The best pass is the reported figure and the worst is printed beside it, so a
-    /// spread wide enough to swallow the difference is visible rather than averaged away.
+    /// spread wide enough to swallow the difference is visible rather than averaged away. The allocation figure
+    /// is taken from that same best pass, so the two reported numbers describe one run rather than two.
     /// </remarks>
     private static (TimeSpan Best, TimeSpan Worst, long Allocated) Measure(Func<(TimeSpan, long)> pass)
     {
@@ -144,16 +145,15 @@ public class FrameTxBlobRevalidationReloadMeasurement
 
         TimeSpan best = TimeSpan.MaxValue;
         TimeSpan worst = TimeSpan.Zero;
-        long allocated = 0;
+        long bestAllocated = 0;
         for (int i = 0; i < TimedPasses; i++)
         {
             (TimeSpan elapsed, long passAllocated) = pass();
-            if (elapsed < best) best = elapsed;
+            if (elapsed < best) (best, bestAllocated) = (elapsed, passAllocated);
             if (elapsed > worst) worst = elapsed;
-            allocated = passAllocated;
         }
 
-        return (best, worst, allocated);
+        return (best, worst, bestAllocated);
     }
 
     private (TimeSpan, long) TimeFull()

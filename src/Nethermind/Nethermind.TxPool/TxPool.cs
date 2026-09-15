@@ -1177,19 +1177,15 @@ namespace Nethermind.TxPool
         /// alone it would hold its payer's reservation while no head ever reached a verdict on it — the defect the
         /// revalidation sweep exists to close. So once the carry is spent the full read decides, and a record even
         /// that cannot materialise is dropped: nothing can broadcast or include it either.
+        /// Neither the decline nor the escalation is counted: no verdict is lost either way, and the eviction
+        /// below already counts the one outcome an operator can act on.
         /// </remarks>
         private bool TryReadBlobFrameTransaction(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? tx)
         {
             if (_blobTransactions.TryGetValueWithoutBlobs(hash, out tx)) return true;
             if (!_blobTransactions.ContainsKey(hash)) return false;
 
-            if (TryDeferToNextHead(hash))
-            {
-                Interlocked.Increment(ref Metrics.FrameTxRevalidationsDeferred);
-                return false;
-            }
-
-            Interlocked.Increment(ref Metrics.FrameTxRevalidationDeferralsExhausted);
+            if (TryDeferToNextHead(hash)) return false;
             if (_blobTransactions.TryGetValue(hash, out tx)) return true;
 
             Hash256 unreadable = hash.ToCommitment();

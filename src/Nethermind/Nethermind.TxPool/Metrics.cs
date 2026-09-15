@@ -101,11 +101,11 @@ namespace Nethermind.TxPool
         public static long FrameTxRevalidationEvictions;
 
         [CounterMetric]
-        [Description("Number of EIP-8141 revalidations, a subset of FrameTxRevalidations, that reached no verdict because this node's own simulation bounds were spent; each is retried on the next head. A sustained count means revalidation is not keeping up.")]
+        [Description("Number of EIP-8141 revalidations, a subset of FrameTxRevalidations, that reached no verdict because this node's own simulation bounds were spent; each is retried on the next head. A sustained count means revalidation is not keeping up, and is the warning that precedes FrameTxRevalidationDeferralsExhausted.")]
         public static long FrameTxRevalidationsDeferred;
 
         [CounterMetric]
-        [Description("Number of EIP-8141 revalidations whose carry across `TxPool.FrameTxRevalidationDeferralBudget` heads was spent. One bound by simulation is left unjudged; one bound by a declined blob-pool read falls back to the full record, and is judged or dropped. A sustained count means the per-head simulation budget is too small for the deferral backlog.")]
+        [Description("Number of EIP-8141 revalidations, a subset of FrameTxRevalidationsDeferred, left permanently unjudged because their carry across `TxPool.FrameTxRevalidationDeferralBudget` heads was spent: the transaction stays pending with no later head queued to retry it. Any sustained count means the per-head simulation budget is too small for the deferral backlog and should be raised.")]
         public static long FrameTxRevalidationDeferralsExhausted;
 
         [CounterMetric]
