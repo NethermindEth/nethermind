@@ -17,6 +17,7 @@ namespace Nethermind.State.Proofs;
 /// </summary>
 public sealed partial class ReceiptTrie : PatriciaTrie<TxReceipt>
 {
+    private const int MinItemsForParallelReceiptRootHash = 16;
     private readonly IRlpDecoder<TxReceipt> _decoder;
     /// <inheritdoc/>
     /// <param name="receipts">The transaction receipts to build the trie of.</param>
@@ -78,7 +79,11 @@ public sealed partial class ReceiptTrie : PatriciaTrie<TxReceipt>
 
         RlpBehaviors behavior = (receiptSpec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)
             | RlpBehaviors.SkipTypedWrapping;
-        return new IndexedTrieRoot.Calculator<TxReceipt, ReceiptEncoder>(txReceipts, new(receiptDecoder, behavior)).Calculate();
+        // Each receipt leaf carries a 256-byte bloom plus its logs, so a receipt is roughly an order of
+        // magnitude heavier to encode and hash than a transaction leaf (which reuses cached RLP). That
+        // higher per-leaf cost pays off the parallel fan-out at a lower item count than the shared default.
+        return new IndexedTrieRoot.Calculator<TxReceipt, ReceiptEncoder>(txReceipts, new(receiptDecoder, behavior))
+            .Calculate(minItemsForParallel: MinItemsForParallelReceiptRootHash);
     }
     private readonly struct ReceiptEncoder(ReceiptMessageDecoder decoder, RlpBehaviors behavior) : IndexedTrieRoot.IValueEncoder<TxReceipt>
     {

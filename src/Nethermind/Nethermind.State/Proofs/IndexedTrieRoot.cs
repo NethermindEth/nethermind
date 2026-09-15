@@ -37,9 +37,9 @@ internal static class IndexedTrieRoot
         private readonly ReadOnlySpan<T> _items = items;
         private readonly ReadOnlySpan<NodeReference> _leaves = leaves;
 
-        public Hash256 Calculate(bool canBeParallel = true)
+        public Hash256 Calculate(bool canBeParallel = true, int minItemsForParallel = MinItemsForParallelRootHash)
             => _items.IsEmpty ? Keccak.EmptyTreeHash
-                : !canBeParallel || RuntimeInformation.IsSingleProcessor || _items.Length <= MinItemsForParallelRootHash
+                : !canBeParallel || RuntimeInformation.IsSingleProcessor || _items.Length <= minItemsForParallel
                 ? CalculateSequential()
                 : CalculateParallel();
 
