@@ -15,6 +15,7 @@ using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -213,6 +214,28 @@ public partial class DebugRpcModuleTests
             """
         )
         { TestName = "Contract with " + Native4ByteTracer.FourByteTracer };
+
+        yield return new TestCaseData(
+            transactions,
+            new GethTraceOptions { Tracer = NativeNoopTracer.NoopTracer },
+            """
+            {
+                "jsonrpc": "2.0",
+                "result": [
+                    {
+                        "result": {},
+                        "txHash": "0xb5a78a1eda0ae98d4f62eec3e0b7f5bf81810cd57bc75006b611982667bcdbe7"
+                    },
+                    {
+                        "result": {},
+                        "txHash": "0xdb3d8694a97364e8628aeb18993520ea6bac0b65b02eed1abddaaed1ddd04e7b"
+                    }
+                ],
+                "id": 67
+            }
+            """
+        )
+        { TestName = "Contract with " + NativeNoopTracer.NoopTracer };
 
         yield return new TestCaseData(
             transactions,

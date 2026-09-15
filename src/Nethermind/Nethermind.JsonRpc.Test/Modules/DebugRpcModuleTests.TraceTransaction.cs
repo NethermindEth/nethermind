@@ -11,6 +11,7 @@ using Nethermind.Int256;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -145,6 +146,13 @@ public partial class DebugRpcModuleTests
             """{"jsonrpc":"2.0","result":{},"id":67}"""
         )
         { TestName = "Transfer with " + Native4ByteTracer.FourByteTracer };
+
+        yield return new TestCaseData(
+            transferTransaction,
+            new GethTraceOptions { Tracer = NativeNoopTracer.NoopTracer },
+            """{"jsonrpc":"2.0","result":{},"id":67}"""
+        )
+        { TestName = "Transfer with " + NativeNoopTracer.NoopTracer };
 
         yield return new TestCaseData(
             transferTransaction,
