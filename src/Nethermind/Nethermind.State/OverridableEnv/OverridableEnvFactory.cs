@@ -16,22 +16,25 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
     public IOverridableEnv Create()
     {
         IOverridableWorldScope overridableScope = worldStateManager.CreateOverridableWorldScope();
+        StateReadOverlaySlot readOverlay = new();
         ILifetimeScope childLifetimeScope = parentLifetimeScope.BeginLifetimeScope((builder) => builder
-            .AddSingleton<IWorldStateScopeProvider>(overridableScope.WorldState)
+            .AddSingleton<IWorldStateScopeProvider>(new OverlaidScopeProvider(overridableScope.WorldState, readOverlay))
+            .AddSingleton<StateReadOverlaySlot>(readOverlay)
             .AddDecorator<ICodeInfoRepository, OverridableCodeInfoRepository>()
             .AddScoped<IOverridableCodeInfoRepository, ICodeInfoRepository>((codeInfoRepo) =>
                 codeInfoRepo as OverridableCodeInfoRepository
                 ?? throw new InvalidOperationException($"{nameof(ICodeInfoRepository)} must be decorated by {nameof(OverridableCodeInfoRepository)}.")));
 
         OverridableSpecProvider overridableSpecProvider = new(specProvider);
-        return new OverridableEnv(overridableScope, childLifetimeScope, specProvider, overridableSpecProvider);
+        return new OverridableEnv(overridableScope, childLifetimeScope, specProvider, overridableSpecProvider, readOverlay);
     }
 
     private class OverridableEnv(
         IOverridableWorldScope overridableScope,
         ILifetimeScope childLifetimeScope,
         ISpecProvider specProvider,
-        OverridableSpecProvider overridableSpecProvider
+        OverridableSpecProvider overridableSpecProvider,
+        StateReadOverlaySlot readOverlay
     ) : Module, IOverridableEnv, IDisposable
     {
         private IDisposable? _worldScopeCloser;
@@ -83,6 +86,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
 
         private void Reset()
         {
+            readOverlay.Disarm();
             _codeInfoRepository.ResetOverrides();
             overridableSpecProvider.ResetOverride();
 
@@ -94,6 +98,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
         protected override void Load(ContainerBuilder builder) =>
             builder
                 .AddScoped<IWorldState>(_worldState)
+                .AddScoped<StateReadOverlaySlot>(readOverlay)
                 .AddScoped<IStateReader>(overridableScope.GlobalStateReader)
                 .AddScoped<IOverridableEnv>(this)
                 .AddScoped<ICodeInfoRepository>(_codeInfoRepository)

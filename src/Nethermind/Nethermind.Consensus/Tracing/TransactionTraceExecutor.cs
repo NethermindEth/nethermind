@@ -5,7 +5,6 @@ using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -19,8 +18,8 @@ public sealed class TransactionTraceExecutor(
     ITransactionProcessorAdapter transactionProcessor,
     IWorldState state,
     IBlockAccessListManager balManager,
-    ISpecProvider specProvider,
-    BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessed = null)
+    BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessed = null,
+    StateReadOverlaySlot? readOverlay = null)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
     public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(in context);
@@ -38,12 +37,24 @@ public sealed class TransactionTraceExecutor(
         // A seeded prefix stands in for the transactions ahead of the target: they are neither executed nor traced,
         // and a block access list under construction would miss them, so seeding yields to it.
         int first = 0;
-        if (boundary.Seeds is { } seeds && !balManager.Enabled)
+        if (boundary.Seeds is { } seeds && readOverlay is not null && !balManager.Enabled)
         {
             int target = boundary.IndexOf(block);
-            if (target > 0 && seeds.TrySeed(block, target, state, specProvider.GetSpec(block.Header))) first = target;
+            if (target > 0 && seeds.TrySeed(block, target, readOverlay)) first = target;
         }
 
+        try
+        {
+            return Execute(block, options, tracer, token, boundary, first);
+        }
+        finally
+        {
+            readOverlay?.Disarm();
+        }
+    }
+
+    private TxReceipt[] Execute(Block block, ProcessingOptions options, BlockReceiptsTracer tracer, CancellationToken token, TransactionTraceBoundary boundary, int first)
+    {
         for (int i = first; i < block.Transactions.Length; i++)
         {
             token.ThrowIfCancellationRequested();

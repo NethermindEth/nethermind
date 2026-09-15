@@ -14,6 +14,7 @@ internal sealed class MidBlockOverlay
 {
     private readonly Dictionary<AddressAsKey, AccountOverlay> _accounts = [];
     private readonly Dictionary<StorageCell, StorageWrite> _storage = [];
+    private readonly HashSet<AddressAsKey> _storageAccounts = [];
 
     public ulong Block { get; private set; }
 
@@ -32,6 +33,7 @@ internal sealed class MidBlockOverlay
     {
         _accounts.Clear();
         _storage.Clear();
+        _storageAccounts.Clear();
         Block = block;
         Folded = 0;
     }
@@ -49,6 +51,10 @@ internal sealed class MidBlockOverlay
     }
 
     public bool TryGetAccount(Address address, [NotNullWhen(true)] out AccountOverlay? overlay) => _accounts.TryGetValue(address, out overlay);
+
+    /// <summary>Whether the prefix wrote or wiped any slot of the account.</summary>
+    public bool HasStorage(Address address) =>
+        _storageAccounts.Contains(address) || (_accounts.TryGetValue(address, out AccountOverlay? account) && account.StorageClearedAt != NeverCleared);
 
     /// <summary>A wiped account answers zero even where the overlay holds no write for the slot: the wipe applies to
     /// every slot the account held, not only to those the block touched.</summary>
@@ -71,6 +77,7 @@ internal sealed class MidBlockOverlay
     {
         StorageCell cell = new(new Address(entries.Address), new UInt256(entries.Index, isBigEndian: true));
         _storage[cell] = new StorageWrite(transactionIndex, new UInt256(entries.Value, isBigEndian: true));
+        _storageAccounts.Add(cell.Address);
     }
 
     private void FoldAccount(ref ChangesetCodec.Enumerator entries, ushort transactionIndex)

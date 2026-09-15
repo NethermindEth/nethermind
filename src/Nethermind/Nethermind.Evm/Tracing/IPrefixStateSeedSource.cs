@@ -2,19 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 
 namespace Nethermind.Evm.Tracing;
 
 /// <summary>Supplies the state a block's transactions wrote before a given one, so that a trace of that transaction
-/// can start from it instead of replaying the transactions ahead of it.</summary>
+/// can read it in place of replaying the transactions ahead of it.</summary>
 public interface IPrefixStateSeedSource
 {
-    /// <summary>Applies and commits onto <paramref name="state"/>, standing at the block's parent, everything the
-    /// transactions before <paramref name="transactionIndex"/> wrote. False leaves the state untouched and means the
-    /// caller replays the prefix as it always did.</summary>
-    bool TrySeed(Block block, int transactionIndex, IWorldState state, IReleaseSpec spec);
+    /// <summary>Arms <paramref name="slot"/> with an overlay of everything the transactions before
+    /// <paramref name="transactionIndex"/> wrote; reads of the scope in flight then see it ahead of the parent state.
+    /// False leaves the slot untouched and means the caller replays the prefix as it always did.</summary>
+    bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot);
 }
 
 public sealed class NullPrefixStateSeedSource : IPrefixStateSeedSource
@@ -25,5 +24,5 @@ public sealed class NullPrefixStateSeedSource : IPrefixStateSeedSource
     {
     }
 
-    public bool TrySeed(Block block, int transactionIndex, IWorldState state, IReleaseSpec spec) => false;
+    public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot) => false;
 }

@@ -55,6 +55,7 @@ using Nethermind.Init.Modules;
 using Nethermind.Db;
 using FlatHistoryColumns = Nethermind.State.Flat.FlatHistoryColumns;
 using Nethermind.State.Flat.History.Changesets;
+using Nethermind.State.OverridableEnv;
 using Nethermind.Trie;
 
 namespace Nethermind.Blockchain.Test;
@@ -194,8 +195,6 @@ public class BlockProcessorTests
         Hash256 target = block.Transactions[2].Hash!;
         GethTraceOptions traceOptions = new() { TxHash = target, Tracer = tracerName };
 
-        string expected = Replay(null, out int replayed);
-
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
         using (TransactionChangesetIndex.BlockCapture capture = index.StartBlock((ulong)block.Number))
@@ -206,25 +205,14 @@ public class BlockProcessorTests
             Assert.That(capture.Commit() && index.TryClaim((ulong)block.Number, (ulong)block.Number), Is.True, "precondition: the block must be indexed");
         }
 
-        string actual = Replay(new ChangesetPrefixStateSeedSource(index), out int seeded);
+        string expected = ReplayThroughTraceEnvironment(chain, parent, block, target, traceOptions, seeds: null, out int replayed);
+        string actual = ReplayThroughTraceEnvironment(chain, parent, block, target, traceOptions, new ChangesetPrefixStateSeedSource(index), out int seeded);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(replayed, Is.EqualTo(3), "the unbounded replay is the oracle");
             Assert.That(seeded, Is.EqualTo(1), "with the prefix seeded, only the target executes");
-            Assert.That(actual, Is.EqualTo(expected), "a trace over a seeded prefix must match a trace over a replayed one, prestate included");
-        }
-
-        string Replay(IPrefixStateSeedSource? seeds, out int count)
-        {
-            using IDisposable scope = chain.MainWorldState.BeginScope(parent);
-            IBlockTracer<GethLikeTxTrace> tracer = GethStyleTracer.CreateOptionsTracer(block.Header, traceOptions, chain.MainWorldState, chain.SpecProvider);
-            RecordingPrefixTracer recording = new(tracer);
-            chain.BlockProcessor.ProcessOne(block, TraceProcessingOptions.ReadOnlyReplay | ProcessingOptions.ForceSequentialBlockAccessList,
-                TransactionTraceBoundary.Wrap(recording, target, seeds), spec, CancellationToken.None);
-            count = recording.Started;
-            using GethLikeTxTraceCollection result = new(tracer.BuildResult());
-            return chain.JsonSerializer.Serialize(result);
+            Assert.That(actual, Is.EqualTo(expected), "a trace read through the prefix overlay must match a trace over a replayed prefix, prestate included");
         }
     }
 
@@ -236,16 +224,14 @@ public class BlockProcessorTests
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await AddThreeTransferBlock(chain);
         RefusingSeedSource seeds = new();
+        GethTraceOptions traceOptions = new() { TxHash = block.Transactions[2].Hash!, Tracer = "callTracer" };
 
-        using IDisposable scope = chain.MainWorldState.BeginScope(parent);
-        RecordingPrefixTracer recording = new(NullBlockTracer.Instance);
-        chain.BlockProcessor.ProcessOne(block, TraceProcessingOptions.ReadOnlyReplay | ProcessingOptions.ForceSequentialBlockAccessList,
-            TransactionTraceBoundary.Wrap(recording, block.Transactions[2].Hash!, seeds), spec, CancellationToken.None);
+        ReplayThroughTraceEnvironment(chain, parent, block, block.Transactions[2].Hash!, traceOptions, seeds, out int executed);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(seeds.AskedFor, Is.EqualTo(2), "the seed is asked for the state before the target");
-            Assert.That(recording.Started, Is.EqualTo(3), "a refused seed means the prefix is replayed as before");
+            Assert.That(executed, Is.EqualTo(3), "a refused seed means the prefix is replayed as before");
         }
     }
 
@@ -257,19 +243,41 @@ public class BlockProcessorTests
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await AddThreeTransferBlock(chain);
         RefusingSeedSource seeds = new();
+        GethTraceOptions traceOptions = new() { TxHash = block.Transactions[0].Hash!, Tracer = "callTracer" };
 
-        using IDisposable scope = chain.MainWorldState.BeginScope(parent);
-        chain.BlockProcessor.ProcessOne(block, TraceProcessingOptions.ReadOnlyReplay | ProcessingOptions.ForceSequentialBlockAccessList,
-            TransactionTraceBoundary.Wrap(NullBlockTracer.Instance, block.Transactions[0].Hash!, seeds), spec, CancellationToken.None);
+        ReplayThroughTraceEnvironment(chain, parent, block, block.Transactions[0].Hash!, traceOptions, seeds, out _);
 
         Assert.That(seeds.AskedFor, Is.EqualTo(-1), "there is nothing before the first transaction to seed");
+    }
+
+    /// <summary>Runs the block the way the debug RPC does: its own read-only processing environment, where the prefix
+    /// overlay can be armed on the read path.</summary>
+    private static string ReplayThroughTraceEnvironment(BasicTestBlockchain chain, BlockHeader parent, Block block, Hash256 target, GethTraceOptions traceOptions, IPrefixStateSeedSource? seeds, out int executed)
+    {
+        IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
+        IOverridableEnv env = chain.Container.Resolve<IOverridableEnvFactory>().Create();
+        using ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder => builder
+            .AddModule(validation)
+            .AddModule(new TransactionTraceModule(validation))
+            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
+            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+            .AddModule(env));
+        BlockchainProcessorFacade processor = scope.Resolve<BlockchainProcessorFacade>();
+        IWorldState state = scope.Resolve<IWorldState>();
+        using IDisposable pinned = env.BuildAndOverride(parent);
+        IBlockTracer<GethLikeTxTrace> tracer = GethStyleTracer.CreateOptionsTracer(block.Header, traceOptions, state, chain.SpecProvider);
+        RecordingPrefixTracer recording = new(tracer);
+        processor.Process(block, TraceProcessingOptions.ReadOnlyReplay, TransactionTraceBoundary.Wrap(recording, target, seeds), CancellationToken.None);
+        executed = recording.Started;
+        using GethLikeTxTraceCollection result = new(tracer.BuildResult());
+        return chain.JsonSerializer.Serialize(result);
     }
 
     private sealed class RefusingSeedSource : IPrefixStateSeedSource
     {
         public int AskedFor { get; private set; } = -1;
 
-        public bool TrySeed(Block block, int transactionIndex, IWorldState state, IReleaseSpec spec)
+        public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot)
         {
             AskedFor = transactionIndex;
             return false;
