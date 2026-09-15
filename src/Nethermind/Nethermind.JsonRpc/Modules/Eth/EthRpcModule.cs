@@ -213,8 +213,8 @@ public partial class EthRpcModule(
 
         try
         {
-            ReadOnlySpan<byte> storage = _stateReader.GetStorage(header!, address, positionIndex);
-            return ResultWrapper<byte[]>.Success(storage.IsEmpty ? Bytes32.Zero.Unwrap() : storage!.PadLeft(32));
+            _stateReader.GetStorage(header!, address, positionIndex, out UInt256 storage);
+            return ResultWrapper<byte[]>.Success(storage.IsZero ? Bytes32.Zero.Unwrap() : storage.ToBigEndian());
         }
         catch (MissingTrieNodeException e)
         {
@@ -242,7 +242,6 @@ public partial class EthRpcModule(
             return GetStateFailureResult<StorageValuesResult>(header);
 
         byte[] buffer = ArrayPool<byte>.Shared.Rent(requests.TotalSlots * 32);
-        buffer.AsSpan(0, requests.TotalSlots * 32).Clear();
         int bufferOffset = 0;
 
         Dictionary<Address, Memory<byte>[]> slots = new(requests.Entries.Count);
@@ -252,10 +251,9 @@ public partial class EthRpcModule(
             Memory<byte>[] values = new Memory<byte>[slotKeys.Length];
             for (int i = 0; i < slotKeys.Length; i++)
             {
-                ReadOnlySpan<byte> storage = _stateReader.GetStorage(header, entry.Key, slotKeys[i]);
+                _stateReader.GetStorage(header, entry.Key, in slotKeys[i], out UInt256 storage);
                 Memory<byte> slot = buffer.AsMemory(bufferOffset, 32);
-                if (!storage.IsEmpty)
-                    storage.CopyTo(slot.Span[(32 - storage.Length)..]);
+                storage.ToBigEndian(slot.Span);
                 values[i] = slot;
                 bufferOffset += 32;
             }
@@ -664,6 +662,13 @@ public partial class EthRpcModule(
 
     private ResultWrapper<BlockHeaderForRpc?> GetHeader(BlockParameter blockParameter)
     {
+        // The pending tag returns null as proposed in ethereum/execution-apis#877; the block methods
+        // keep their partially-nulled pending object, which that spec does not cover.
+        if (blockParameter.Type == BlockParameterType.Pending)
+        {
+            return ResultWrapper<BlockHeaderForRpc?>.Success(null);
+        }
+
         // SearchForHeader avoids loading the block body — header endpoints don't need transactions/uncles.
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
@@ -671,15 +676,7 @@ public partial class EthRpcModule(
             return ResultWrapper<BlockHeaderForRpc?>.Success(null);
         }
 
-        BlockHeaderForRpc result = _blockForRpcFactory.CreateHeader(searchResult.Object!, _specProvider);
-        if (blockParameter.Type == BlockParameterType.Pending)
-        {
-            result.Hash = null;
-            result.Nonce = null;
-            result.Miner = null;
-        }
-
-        return ResultWrapper<BlockHeaderForRpc?>.Success(result);
+        return ResultWrapper<BlockHeaderForRpc?>.Success(_blockForRpcFactory.CreateHeader(searchResult.Object!, _specProvider));
     }
 
     public virtual ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)
