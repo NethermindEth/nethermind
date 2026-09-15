@@ -66,7 +66,9 @@ public class BlockValidator(
     /// <param name="validateHashes">
     /// <c>false</c> to skip four keccaks: the header hash, which binds <see cref="BlockHeader.Hash"/> to the header
     /// contents, and the uncles hash, transactions root and withdrawals root, which bind the body to the header.
-    /// Everything else still runs, the EIP-4895 withdrawals presence rules included.
+    /// Everything else still runs, the EIP-4895 withdrawals presence rules included. Validators overriding
+    /// <see cref="ValidateWithdrawals(Block, IReleaseSpec, bool, ref string)"/> (Optimism's does) apply their own
+    /// withdrawals rules regardless of this flag.
     /// <para>
     /// Only pass <c>false</c> after deriving those three roots from the block's own body and verifying the header
     /// hash against the header contents (see <see cref="HeaderValidator.ValidateHash(BlockHeader)"/>). A payload

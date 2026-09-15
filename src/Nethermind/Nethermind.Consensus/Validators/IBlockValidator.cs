@@ -12,7 +12,8 @@ public interface IBlockValidator : IHeaderValidator, IWithdrawalValidator
     /// <param name="validateHashes">
     /// <c>false</c> to skip four keccaks: the header hash, which binds <see cref="BlockHeader.Hash"/> to the header
     /// contents, and the uncles hash, transactions root and withdrawals root, which bind the body to the header.
-    /// Everything else still runs, the EIP-4895 withdrawals presence rules included.
+    /// Everything else still runs, the EIP-4895 withdrawals presence rules included. Validators overriding the
+    /// withdrawals validation (Optimism's does) apply their own withdrawals rules regardless of this flag.
     /// <para>
     /// Only pass <c>false</c> after deriving those three roots from the block's own body and verifying the header
     /// hash against the header contents. A payload type that takes the roots off the wire instead - Taiko's is one -
