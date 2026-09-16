@@ -38,6 +38,7 @@ public class FlatDbConfig : IFlatDbConfig
     public int SpeculativeStorageRootWorkers { get; set; } = 2;
     /// <inheritdoc/>
     public int SpeculativeStorageRootContractCap { get; set; } = 256;
+    public bool SpeculativeAccountTrie { get; set; } = false;
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
     public ulong CompactSize { get; set; } = 32;
     public int MaxInFlightCompactJob { get; set; } = 32;

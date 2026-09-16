@@ -698,7 +698,7 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void SpeculativeStorageRoots_StreamedStorageRootReachesTheAccountLeaf()
     {
-        using TestContext ctx = new(new FlatDbConfig { SpeculativeStorageRoots = true });
+        using TestContext ctx = new(new FlatDbConfig { SpeculativeStorageRoots = true, SpeculativeAccountTrie = true });
         FlatWorldStateScope scope = ctx.Scope;
         Address address = TestItem.AddressA;
         Account account = TestItem.GenerateRandomAccount();
@@ -795,7 +795,7 @@ public class FlatWorldStateScopeProviderTests
     [Test]
     public void SpeculativeStorageRoots_AccountHintsMatchBlockEndRoot()
     {
-        using TestContext ctx = new(new FlatDbConfig { SpeculativeStorageRoots = true });
+        using TestContext ctx = new(new FlatDbConfig { SpeculativeStorageRoots = true, SpeculativeAccountTrie = true });
         FlatWorldStateScope scope = ctx.Scope;
         using ManualResetEventSlim released = new();
         scope.OnAccountSpeculationReleased = released.Set;

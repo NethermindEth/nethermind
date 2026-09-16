@@ -127,6 +127,14 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Slot writes per contract per block above which speculative storage root updates stop for that contract, leaving the rest to the parallel block-end bulk update. Only used with SpeculativeStorageRoots.", DefaultValue = "256")]
     int SpeculativeStorageRootContractCap { get; set; }
 
+    /// <summary>Whether committed account writes are also applied to the state trie on the speculation workers.</summary>
+    /// <remarks>
+    /// Account writes only become known when the block commits, so they share the workers with the last storage drains
+    /// and every storage trie's finalization then waits behind them. Measured as a net loss; kept for experiments.
+    /// </remarks>
+    [ConfigItem(Description = "Also apply committed account writes to the state trie on the speculation workers. Only used with SpeculativeStorageRoots.", DefaultValue = "false")]
+    bool SpeculativeAccountTrie { get; set; }
+
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "true")]
     bool EnableLongFinality { get; set; }
 
