@@ -301,6 +301,13 @@ public sealed class FlatStorageTree(
         // trie-node access), so it writes only the flat overlay. Pick the strategy once here.
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
 
+        return _background is null
+            ? CreateTrieWriteBatch(estimatedEntries, onRootUpdated)
+            : new DeferredStorageWriteBatch(this, estimatedEntries, onRootUpdated);
+    }
+
+    private IWorldStateScopeProvider.IStorageWriteBatch CreateTrieWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
+    {
         BackgroundStorageTrie? prepared = _background?.Complete() == true ? _background : null;
         if (prepared is not null) AdoptPreparedTree(prepared.Tree);
         StorageTree tree = GetTrees().Tree;
@@ -364,6 +371,32 @@ public sealed class FlatStorageTree(
             storageTree._scope.CountEarlyReconciled(_reused, restored);
             trieBatch.Dispose();
         }
+    }
+
+    // Batch creation runs serially; defer draining and applying the pending tail to the contract worker.
+    private sealed class DeferredStorageWriteBatch(
+        FlatStorageTree storageTree,
+        int estimatedEntries,
+        Action<Address, Hash256> onRootUpdated) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        private IWorldStateScopeProvider.IStorageWriteBatch? _batch;
+        private bool _initialized;
+
+        private IWorldStateScopeProvider.IStorageWriteBatch? GetBatch()
+        {
+            if (!_initialized)
+            {
+                _initialized = true;
+                _batch = storageTree.CreateTrieWriteBatch(estimatedEntries, onRootUpdated);
+            }
+            return _batch;
+        }
+
+        public void Set(in UInt256 index, in UInt256 value) => GetBatch()!.Set(in index, in value);
+
+        public void Clear() => GetBatch()!.Clear();
+
+        public void Dispose() => GetBatch()?.Dispose();
     }
 
     // Normal scope: maintain the storage trie (for the root) and mirror values into the flat overlay.
