@@ -26,13 +26,15 @@ public class FlatParallelStorageRootTests
 {
     private const int ContractCount = 6; // above the multi-threaded storage-root threshold
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Parallel_storage_root_matches_serial_flush_and_trie_backend(bool eagerHash)
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    [TestCase(true, true)]
+    public void Parallel_storage_root_matches_serial_flush_and_trie_backend(bool eagerHash, bool viaPrewarmerScope)
     {
-        Hash256 serialFlat = ComputeRoot(parallel: false, eagerHash: false);
+        Hash256 serialFlat = ComputeRoot(parallel: false, eagerHash: false, viaPrewarmerScope);
         long builderWritesBefore = Db.Metrics.ParallelStorageRootWrites;
-        Hash256 parallelFlat = ComputeRoot(parallel: true, eagerHash: eagerHash);
+        Hash256 parallelFlat = ComputeRoot(parallel: true, eagerHash, viaPrewarmerScope);
         Hash256 trie = ComputeRootOnTrieBackend();
 
         Assert.That(Db.Metrics.ParallelStorageRootWrites, Is.GreaterThan(builderWritesBefore), "the builder must have applied the committed writes");
@@ -40,7 +42,7 @@ public class FlatParallelStorageRootTests
         Assert.That(parallelFlat, Is.EqualTo(trie));
     }
 
-    private static Hash256 ComputeRoot(bool parallel, bool eagerHash)
+    private static Hash256 ComputeRoot(bool parallel, bool eagerHash, bool viaPrewarmerScope)
     {
         ConfigProvider configProvider = new();
         IFlatDbConfig flatConfig = configProvider.GetConfig<IFlatDbConfig>();
@@ -48,7 +50,14 @@ public class FlatParallelStorageRootTests
         flatConfig.ParallelStorageRoot = parallel;
         flatConfig.ParallelStorageRootEagerHash = eagerHash;
         using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule(configProvider)).Build();
-        WorldState worldState = new(container.Resolve<IWorldStateManager>().GlobalWorldState, LimboLogs.Instance);
+        IWorldStateScopeProvider scopeProvider = container.Resolve<IWorldStateManager>().GlobalWorldState;
+        if (viaPrewarmerScope)
+        {
+            // The node's main scope is decorated this way; the wrapper must forward the committed-value hints.
+            PrewarmerState mainScopeState = new(new PreBlockCaches(TestPreBlockCachesConfig.Small), isPrewarmer: false);
+            scopeProvider = new PrewarmerScopeProvider(scopeProvider, mainScopeState, LimboLogs.Instance);
+        }
+        WorldState worldState = new(scopeProvider, LimboLogs.Instance);
         return RunBlock(worldState);
     }
 

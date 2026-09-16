@@ -45,9 +45,17 @@ internal sealed class StorageRootBuilder
 
     public bool TryEnqueue(FlatStorageTree tree, in UInt256 index, in UInt256 value)
     {
-        if (_faulted || _pending.IsAddingCompleted) return false;
-        _pending.Add(new Delta(tree, index, value));
-        return true;
+        if (_faulted || _drained) return false;
+        try
+        {
+            _pending.Add(new Delta(tree, index, value));
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            // Adding completed concurrently; the caller falls back to the serial path for this write.
+            return false;
+        }
     }
 
     public void CompleteAndJoin()
@@ -55,8 +63,8 @@ internal sealed class StorageRootBuilder
         if (_drained) return;
         _pending.CompleteAdding();
         _thread.Join();
-        _pending.Dispose();
         _drained = true;
+        _pending.Dispose();
     }
 
     private void Run()
