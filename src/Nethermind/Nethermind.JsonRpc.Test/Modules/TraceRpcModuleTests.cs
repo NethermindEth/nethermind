@@ -86,13 +86,16 @@ public class TraceRpcModuleTests
     {
         Context context = new();
         await context.Build();
-        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = context.TraceRpcModule.trace_block(BlockParameter.Latest);
-        ParityTxTraceFromStore[] traces = result.Data.ToArray();
+        string serialized = await RpcTest.TestSerializedRequest(
+            context.TraceRpcModule,
+            "trace_block", "latest");
+        JArray traces = (JArray)JObject.Parse(serialized)["result"]!;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(traces.Select(static trace => trace.TransactionPosition), Is.EqualTo(Enumerable.Range(0, 9)));
-            Assert.That(traces.Select(static trace => trace.Type), Is.All.EqualTo("call"));
+            Assert.That(traces, Has.Count.EqualTo(9));
+            Assert.That(traces.Select(static trace => trace["transactionPosition"]!.Value<int>()), Is.EqualTo(Enumerable.Range(0, 9)));
+            Assert.That(traces.Select(static trace => trace["type"]!.Value<string>()), Is.All.EqualTo("call"));
         }
     }
 
