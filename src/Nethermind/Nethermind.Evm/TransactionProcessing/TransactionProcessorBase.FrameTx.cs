@@ -267,8 +267,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             {
                 inBatch = true;
                 batchStart = new FrameCheckpoint(
-                    WorldState.TakeSnapshot(), i, refundCounter, totalFrameStateGasUsed,
-                    frameContext.FrameJournalCheckpoint, accessTracker.DestroyList.TakeSnapshot());
+                    WorldState.TakeSnapshot(), Index: i, Refund: refundCounter, StateGas: totalFrameStateGasUsed,
+                    Journal: frameContext.FrameJournalCheckpoint, Destroys: accessTracker.DestroyList.TakeSnapshot());
                 batchTracker = accessTracker;
                 batchTracker.TakeSnapshot();
             }
@@ -366,8 +366,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 {
                     // End of the validation prefix: EIP-7906 keeps everything up to here when POST_TX reverts.
                     prefixEnd = new FrameCheckpoint(
-                        WorldState.TakeSnapshot(), i, refundCounter, totalFrameStateGasUsed,
-                        frameContext.FrameJournalCheckpoint, accessTracker.DestroyList.TakeSnapshot());
+                        WorldState.TakeSnapshot(), Index: i, Refund: refundCounter, StateGas: totalFrameStateGasUsed,
+                        Journal: frameContext.FrameJournalCheckpoint, Destroys: accessTracker.DestroyList.TakeSnapshot());
                 }
             }
             else if (!inBatch)
