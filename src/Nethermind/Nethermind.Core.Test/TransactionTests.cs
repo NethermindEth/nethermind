@@ -163,7 +163,7 @@ public class TransactionTests
         Transaction source = new()
         {
             Type = TxType.FrameTx,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, null, 50_000, 0, default)],
+            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 50_000, 0, default)],
             FrameSignatures = [new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, null, default, new byte[65])],
         };
         Transaction destination = new();

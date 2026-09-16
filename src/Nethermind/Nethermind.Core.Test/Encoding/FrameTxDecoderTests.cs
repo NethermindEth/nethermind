@@ -190,6 +190,39 @@ public class FrameTxDecoderTests
             .With.Message.Contains("Unexpected RLP prefix").And.Message.Contains("decoding Address"));
     }
 
+    /// <summary>A mode or flag byte outside the defined set decodes verbatim and is refused by the stateless
+    /// check, not by the decoder.</summary>
+    /// <remarks><see cref="FrameMode"/> and <see cref="FrameFlags"/> buy call-site safety, not wire safety: a CLR
+    /// enum holds any value of its underlying type, so a peer's out-of-range byte survives the decode and the
+    /// range checks in <see cref="FrameTxValidation.IsWellFormed"/> remain the only thing rejecting it.</remarks>
+    [TestCase((byte)7, (byte)0, FrameTxValidation.InvalidMode, TestName = "Decode_FrameModeAboveTheDefinedRange_DecodesAndFailsValidation")]
+    [TestCase((byte)1, (byte)8, FrameTxValidation.InvalidFlags, TestName = "Decode_FrameFlagsWithAnUndefinedBit_DecodesAndFailsValidation")]
+    public void Decode_FrameCarryingAnUndefinedWireValue_DecodesButFailsValidation(byte mode, byte flags, string expectedError)
+    {
+        byte[] payload = TypedPayload(FrameTxBody(frames: Rlp.Encode(new[] { RawFrame(mode, flags) })));
+        RlpReader reader = new(payload);
+
+        Transaction decoded = _txDecoder.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((byte)decoded.Frames![0].Mode, Is.EqualTo(mode), "the decoder silently normalized the mode");
+            Assert.That((byte)decoded.Frames[0].Flags, Is.EqualTo(flags), "the decoder silently normalized the flags");
+            Assert.That(FrameTxValidation.IsWellFormed(decoded, postTxEnabled: true, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(expectedError));
+        }
+    }
+
+    /// <summary>A frame tuple built from raw mode and flag bytes, bypassing <see cref="TxFrame"/>.</summary>
+    private static Rlp RawFrame(byte mode, byte flags) =>
+        Rlp.Encode([
+            Rlp.Encode(mode),
+            Rlp.Encode(flags),
+            Rlp.Encode(TestItem.AddressB.Bytes),
+            Rlp.Encode(Rlp.Encode(1_000L), Rlp.Encode(0L)), // limits
+            Rlp.Encode(0L),                                 // value
+            Rlp.Encode(Array.Empty<byte>())]);              // data
+
     [Test]
     public void ComputeSigHash_CanonicalHashSignatureBytesChange_HashUnchanged()
     {
@@ -302,12 +335,12 @@ public class FrameTxDecoderTests
     /// <param name="sender">Replaces the sender field; defaults to <see cref="TestItem.AddressA"/>.</param>
     /// <param name="signatures">Replaces the signatures field; defaults to the empty list.</param>
     /// <param name="trailing">Extra elements appended after <c>blob_versioned_hashes</c>.</param>
-    private static Rlp FrameTxBody(Rlp? chainId = null, Rlp? sender = null, Rlp? signatures = null, params Rlp[] trailing) =>
+    private static Rlp FrameTxBody(Rlp? chainId = null, Rlp? sender = null, Rlp? signatures = null, Rlp? frames = null, params Rlp[] trailing) =>
         Rlp.Encode([
             chainId ?? Rlp.Encode(TestBlockchainIds.ChainId),
             Rlp.Encode(0L),                                 // nonce
             sender ?? Rlp.Encode(TestItem.AddressA.Bytes),  // sender
-            Rlp.Encode(Array.Empty<Rlp>()),                 // frames
+            frames ?? Rlp.Encode(Array.Empty<Rlp>()),       // frames
             signatures ?? Rlp.Encode(Array.Empty<Rlp>()),   // signatures
             Rlp.Encode(Rlp.Encode(0L), Rlp.Encode(0L), Rlp.Encode(0L)), // fees
             Rlp.Encode(Array.Empty<Rlp>()),                 // blob_versioned_hashes
@@ -397,16 +430,16 @@ public class FrameTxDecoderTests
         yield return new TestCaseData(CreateFrameTx(frames:
         [
             Frame(),
-            Frame(mode: TxFrame.ModeVerify, flags: TxFrame.ApproveExecutionAndPayment, data: [1, 2, 3]),
-            Frame(mode: TxFrame.ModeSender, flags: TxFrame.AtomicBatchFlag, target: TestItem.AddressB, value: 123456789, data: FilledBytes(100, 0x5a)),
+            Frame(mode: FrameMode.Verify, flags: FrameFlags.ApproveExecutionAndPayment, data: [1, 2, 3]),
+            Frame(mode: FrameMode.Sender, flags: FrameFlags.AtomicBatch, target: TestItem.AddressB, value: 123456789, data: FilledBytes(100, 0x5a)),
             Frame(),
         ])).SetName("Roundtrip_AllModesFlagsTargetsAndData");
 
         yield return new TestCaseData(CreateFrameTx(frames:
         [
             Frame(gasLimit: 500_000, stateGasLimit: 183_600),
-            Frame(mode: TxFrame.ModeVerify, gasLimit: 90_000, stateGasLimit: 0),
-            Frame(mode: TxFrame.ModeSender, gasLimit: ulong.MaxValue - 1, stateGasLimit: 1),
+            Frame(mode: FrameMode.Verify, gasLimit: 90_000, stateGasLimit: 0),
+            Frame(mode: FrameMode.Sender, gasLimit: ulong.MaxValue - 1, stateGasLimit: 1),
         ])).SetName("Roundtrip_TwoDimensionalGasLimits");
 
         yield return new TestCaseData(CreateFrameTx(signatures:
@@ -835,7 +868,7 @@ public class FrameTxDecoderTests
             DecodedMaxFeePerGas = 30.GWei,
         };
 
-    private static TxFrame Frame(byte mode = TxFrame.ModeDefault, byte flags = 0, Address? target = null, ulong gasLimit = 100_000, ulong stateGasLimit = 0, UInt256 value = default, byte[]? data = null) =>
+    private static TxFrame Frame(FrameMode mode = FrameMode.Default, FrameFlags flags = FrameFlags.None, Address? target = null, ulong gasLimit = 100_000, ulong stateGasLimit = 0, UInt256 value = default, byte[]? data = null) =>
         new(mode, flags, target, gasLimit, stateGasLimit, value, data ?? Array.Empty<byte>());
 
     private static byte[] FilledBytes(int length, byte fill)

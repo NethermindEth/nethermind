@@ -3131,8 +3131,8 @@ namespace Nethermind.TxPool.Test
         {
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance));
             Transaction frameTx = SelfVerifyFrameTx(
-                new TxFrame(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>()),
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>()));
+                new TxFrame(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>()),
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>()));
 
             Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast),
                 Is.EqualTo(AcceptTxResult.FrameTxVerifyAfterPrefix));
@@ -3159,7 +3159,7 @@ namespace Nethermind.TxPool.Test
             TxFrame[] trailing = new TxFrame[trailingFrames];
             for (int i = 0; i < trailing.Length; i++)
             {
-                trailing[i] = new TxFrame(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, gasLimit: 0, UInt256.Zero, Array.Empty<byte>());
+                trailing[i] = new TxFrame(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, gasLimit: 0, UInt256.Zero, Array.Empty<byte>());
             }
 
             AcceptTxResult result = _txPool.SubmitTx(SelfVerifyFrameTx(trailing), TxHandlingOptions.PersistentBroadcast);
@@ -3175,19 +3175,19 @@ namespace Nethermind.TxPool.Test
 
         private static IEnumerable<TestCaseData> MalformedFrameLayoutCases()
         {
-            static TxFrame Sender(byte flags = TxFrame.ApproveScopeNone, UInt256 value = default) =>
-                new(TxFrame.ModeSender, flags, TestItem.AddressB, gasLimit: 1_000, value, Array.Empty<byte>());
+            static TxFrame Sender(FrameFlags flags = FrameFlags.None, UInt256 value = default) =>
+                new(FrameMode.Sender, flags, TestItem.AddressB, gasLimit: 1_000, value, Array.Empty<byte>());
 
-            yield return new TestCaseData(new[] { Sender(TxFrame.AtomicBatchFlag) }, FrameTxValidation.AtomicBatchOnLastFrame)
+            yield return new TestCaseData(new[] { Sender(FrameFlags.AtomicBatch) }, FrameTxValidation.AtomicBatchOnLastFrame)
                 .SetName("SubmitTx_AtomicBatchFlagOnTheLastFrame_IsRejected");
-            yield return new TestCaseData(new[] { Sender(TxFrame.AtomicBatchFlag), Sender(TxFrame.ApprovePayment) }, FrameTxValidation.ApprovalScopeInAtomicBatch)
+            yield return new TestCaseData(new[] { Sender(FrameFlags.AtomicBatch), Sender(FrameFlags.ApprovePayment) }, FrameTxValidation.ApprovalScopeInAtomicBatch)
                 .SetName("SubmitTx_ApprovalScopeOnABatchedFrame_IsRejected");
             yield return new TestCaseData(
-                    new[] { new TxFrame(TxFrame.ModeDefault, TxFrame.ApproveScopeNone, TestItem.AddressB, gasLimit: 1_000, UInt256.One, Array.Empty<byte>()) },
+                    new[] { new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressB, gasLimit: 1_000, UInt256.One, Array.Empty<byte>()) },
                     FrameTxValidation.ValueOutsideSenderMode)
                 .SetName("SubmitTx_ValueOnANonSenderFrame_IsRejected");
             yield return new TestCaseData(
-                    new[] { new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>()) },
+                    new[] { new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>()) },
                     FrameTxValidation.ExecutionApprovalWrongTarget)
                 .SetName("SubmitTx_ExecutionApprovalNamingAThirdParty_IsRejected");
         }
@@ -3219,8 +3219,8 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
 
             TxFrame trailing = trailingVerify
-                ? new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>())
-                : new TxFrame(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>());
+                ? new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>())
+                : new TxFrame(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>());
 
             AcceptTxResult result = _txPool.SubmitTx(UnrecognizedPrefixFrameTx(trailing), TxHandlingOptions.PersistentBroadcast);
 
@@ -3239,7 +3239,7 @@ namespace Nethermind.TxPool.Test
             SignedFrameTx([SelfVerifyPrefixFrame(), .. trailingFrames]);
 
         private static TxFrame SelfVerifyPrefixFrame() =>
-            new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>());
+            new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>());
 
         private Transaction SignedFrameTx(TxFrame[] frames, RecentRootReference[] recentRootReferences = null)
         {
@@ -3316,7 +3316,7 @@ namespace Nethermind.TxPool.Test
             {
                 case FrameForkGate.PostTx:
                     return SelfVerifyFrameTx(
-                        new TxFrame(TxFrame.ModePostTx, TxFrame.ApproveScopeNone, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>()));
+                        new TxFrame(FrameMode.PostTx, FrameFlags.None, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>()));
                 case FrameForkGate.RecentRoots:
                     return SignedFrameTx(
                         [SelfVerifyPrefixFrame()],
@@ -3344,7 +3344,7 @@ namespace Nethermind.TxPool.Test
         private Transaction ValueTransferFrameTx(ulong executionGasLimit) =>
             SignedFrameTx([
                 SelfVerifyPrefixFrame(),
-                new TxFrame(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, executionGasLimit, UInt256.One, Array.Empty<byte>())
+                new TxFrame(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, executionGasLimit, UInt256.One, Array.Empty<byte>())
             ]);
 
         // A locally built frame tx skips the decoder that measures its EIP-8272 reference calldata, so admission
@@ -3381,7 +3381,7 @@ namespace Nethermind.TxPool.Test
             Transaction ReferenceFrameTx(ulong executionGasLimit) => SignedFrameTx(
                 [
                     SelfVerifyPrefixFrame(),
-                    new TxFrame(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, executionGasLimit, UInt256.Zero, Array.Empty<byte>())
+                    new TxFrame(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, executionGasLimit, UInt256.Zero, Array.Empty<byte>())
                 ],
                 references);
         }
@@ -3407,7 +3407,7 @@ namespace Nethermind.TxPool.Test
                 ChainId = _specProvider.ChainId,
                 Nonce = 0,
                 SenderAddress = TestItem.PrivateKeyA.Address,
-                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, executionGasLimit, stateGasLimit, UInt256.Zero, frameData)],
+                Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, executionGasLimit, stateGasLimit, UInt256.Zero, frameData)],
                 FrameSignatures = [],
                 GasLimit = executionGasLimit + stateGasLimit,
                 GasPrice = 1.GWei,
@@ -3905,7 +3905,7 @@ namespace Nethermind.TxPool.Test
             frameTx.Frames =
             [
                 frameTx.Frames![0],
-                new TxFrame(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, gasLimit: 5_000_000, UInt256.Zero, default),
+                new TxFrame(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, gasLimit: 5_000_000, UInt256.Zero, default),
             ];
             frameTx.Hash = frameTx.CalculateHash();
 
@@ -4132,7 +4132,7 @@ namespace Nethermind.TxPool.Test
         {
             IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Reject("validation prefix frame reverted"));
             Transaction tx = SignedFrameTx([
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, executionGasLimit, UInt256.Zero, Array.Empty<byte>())
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, executionGasLimit, UInt256.Zero, Array.Empty<byte>())
             ]);
 
             AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
@@ -5071,7 +5071,7 @@ namespace Nethermind.TxPool.Test
             // target costs 12 more intrinsic gas, so the retargeted shape reserves slightly more.
             if (distinctHash)
             {
-                int i = Array.FindIndex(tx.Frames!, f => f.Flags == TxFrame.ApproveExecutionAndPayment);
+                int i = Array.FindIndex(tx.Frames!, f => f.Flags == FrameFlags.ApproveExecutionAndPayment);
                 Assert.That(i, Is.GreaterThanOrEqualTo(0), "the helper must still build a self_verify frame to retarget");
                 TxFrame frame = tx.Frames![i];
                 tx.Frames[i] = new TxFrame(frame.Mode, frame.Flags, TestItem.PrivateKeyA.Address, frame.GasLimit, frame.Value, frame.Data);
@@ -5089,7 +5089,7 @@ namespace Nethermind.TxPool.Test
         {
             List<TxFrame> frames =
             [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: verifyGasLimit, UInt256.Zero, default),
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: verifyGasLimit, UInt256.Zero, default),
             ];
 
             if (deadline is not null)
@@ -5196,14 +5196,14 @@ namespace Nethermind.TxPool.Test
             TxFrame[] frames = deadline is null
                 ?
                 [
-                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
-                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, target: sponsorKey.Address, gasLimit: 0, UInt256.Zero, Array.Empty<byte>()),
+                    new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
+                    new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, target: sponsorKey.Address, gasLimit: 0, UInt256.Zero, Array.Empty<byte>()),
                 ]
                 :
                 [
                     FrameTxTestFrames.ExpiryAt(deadline.Value, gasLimit: 50_000),
-                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
-                    new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, target: sponsorKey.Address, gasLimit: 0, UInt256.Zero, Array.Empty<byte>()),
+                    new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, target: null, gasLimit: 100_000, UInt256.Zero, Array.Empty<byte>()),
+                    new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, target: sponsorKey.Address, gasLimit: 0, UInt256.Zero, Array.Empty<byte>()),
                 ];
             Transaction tx = new()
             {
@@ -5248,7 +5248,7 @@ namespace Nethermind.TxPool.Test
                 Nonce = seq,
                 SenderAddress = sender,
                 NonceKeys = [nonceKey],
-                Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+                Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
                 FrameSignatures = [],
                 GasLimit = KeyedFrameTxGasLimit,
                 Value = value,
@@ -5928,7 +5928,7 @@ namespace Nethermind.TxPool.Test
                 Frames =
                 [
                     FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
-                    new TxFrame(TxFrame.ModePostTx, TxFrame.ApproveScopeNone, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>())
+                    new TxFrame(FrameMode.PostTx, FrameFlags.None, TestItem.AddressB, gasLimit: 1_000, UInt256.Zero, Array.Empty<byte>())
                 ],
                 FrameSignatures = [],
                 NonceKeys = [UInt256.One],
@@ -5970,7 +5970,7 @@ namespace Nethermind.TxPool.Test
                 Frames =
                 [
                     FrameTxTestFrames.SelfVerify(FrameTxTestFrames.PrefixFrameGas),
-                    new TxFrame(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, executionGasLimit, UInt256.One, Array.Empty<byte>())
+                    new TxFrame(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, executionGasLimit, UInt256.One, Array.Empty<byte>())
                 ],
                 FrameSignatures = [],
                 NonceKeys = [UInt256.One],

@@ -72,7 +72,7 @@ public class FrameTxSignatureTransactionTestTests : TransactionTestBase
             ChainId = MainnetSpecProvider.Instance.ChainId,
             Nonce = 0,
             SenderAddress = TestItem.PrivateKeyB.Address,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, null, 100_000, default, default)],
+            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 100_000, default, default)],
             GasPrice = 1,
             DecodedMaxFeePerGas = 100,
         };

@@ -489,7 +489,7 @@ public class FrameTxPrefixSimulatorTests
     {
         Type = TxType.FrameTx,
         SenderAddress = TestItem.AddressA,
-        Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 50_000, UInt256.Zero, default)],
+        Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 50_000, UInt256.Zero, default)],
         FrameSignatures = [],
         DecodedMaxFeePerGas = UInt256.One,
     };

@@ -97,7 +97,7 @@ public class FrameTxProducerRetryMeasurement
 
     private static byte[] Approves() =>
         Prepare.EvmCode
-            .PushData(TxFrame.ApproveExecutionAndPayment)
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment)
             .PushData(0)
             .PushData(0)
             .Op(Instruction.APPROVE)
@@ -384,7 +384,7 @@ public class FrameTxProducerRetryMeasurement
             ChainId = TestBlockchainIds.ChainId,
             Nonce = 0,
             SenderAddress = Sender,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: verifyGas, UInt256.Zero, default)],
+            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: verifyGas, UInt256.Zero, default)],
             FrameSignatures = [],
             GasPrice = 1,
             DecodedMaxFeePerGas = 1,

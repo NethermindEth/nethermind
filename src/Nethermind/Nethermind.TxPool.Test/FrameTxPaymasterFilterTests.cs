@@ -112,7 +112,7 @@ public class FrameTxPaymasterFilterTests
         PendingPaymasterCache cache = new();
         cache.Reserve(Sender);
 
-        TxFrame selfRelay = new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, targetSpelledOut ? Sender : null, gasLimit: PrefixFrameGas, UInt256.Zero, default);
+        TxFrame selfRelay = new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, targetSpelledOut ? Sender : null, gasLimit: PrefixFrameGas, UInt256.Zero, default);
         AcceptTxResult result = Accept(state, cache, FrameTx([selfRelay], nonce: 1));
 
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
@@ -284,8 +284,8 @@ public class FrameTxPaymasterFilterTests
 
     /// <remarks>A non-approving VERIFY frame, so the paymaster walk has to step over it to reach the PAY frame.</remarks>
     private static TxFrame SpacerVerifyFrame() =>
-        new(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, target: TestItem.AddressD, gasLimit: PrefixFrameGas, UInt256.Zero, default);
+        new(FrameMode.Verify, FrameFlags.None, target: TestItem.AddressD, gasLimit: PrefixFrameGas, UInt256.Zero, default);
 
     private static TxFrame DeployFrame() =>
-        new(TxFrame.ModeDefault, TxFrame.ApproveScopeNone, target: null, gasLimit: 50_000, UInt256.Zero, default);
+        new(FrameMode.Default, FrameFlags.None, target: null, gasLimit: 50_000, UInt256.Zero, default);
 }

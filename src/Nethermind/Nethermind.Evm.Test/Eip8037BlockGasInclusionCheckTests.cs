@@ -206,7 +206,7 @@ public class Eip8037BlockGasInclusionCheckTests
         }
 
         static TxFrame UnlimitedFrame()
-            => new(TxFrame.ModeDefault, TxFrame.ApproveScopeNone, null, ulong.MaxValue, UInt256.Zero, default);
+            => new(FrameMode.Default, FrameFlags.None, null, ulong.MaxValue, UInt256.Zero, default);
     }
 
     [TestCase(379_970UL, 281_520UL, 0UL, 98_450UL, TestName = "Calculate_block_execution_gas_subtracts_state_component")]

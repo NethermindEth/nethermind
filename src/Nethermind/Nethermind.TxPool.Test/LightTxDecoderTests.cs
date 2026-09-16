@@ -533,7 +533,7 @@ public class LightTxDecoderTests
             // An expiry verifier frame carries a deadline only where the spec permits it: at the head.
             byte[] expiryData = new byte[Eip8141Constants.ExpiryDataLength];
             BinaryPrimitives.WriteUInt64BigEndian(expiryData, deadline.Value);
-            tx.Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveScopeNone, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData), .. tx.Frames!];
+            tx.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.None, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 50_000, UInt256.Zero, expiryData), .. tx.Frames!];
         }
 
         tx.Hash = tx.CalculateHash();

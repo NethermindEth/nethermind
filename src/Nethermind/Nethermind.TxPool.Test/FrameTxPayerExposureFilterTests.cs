@@ -481,7 +481,7 @@ public class FrameTxPayerExposureFilterTests
     public void Accept_SelfPayingSender_CountsTheValueOfALeadingSenderFrame(int balanceDelta, bool rejected, SenderFramePosition position, bool payerless)
     {
         const int frameValue = 4_000;
-        TxFrame senderFrame = new(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressC, FrameTxTestFrames.PrefixFrameGas, (UInt256)frameValue, default);
+        TxFrame senderFrame = new(FrameMode.Sender, FrameFlags.None, TestItem.AddressC, FrameTxTestFrames.PrefixFrameGas, (UInt256)frameValue, default);
         Transaction tx = FrameTxTestFrames.FrameTx(FramesFor(position, senderFrame));
         tx.DecodedMaxFeePerGas = UInt256.One;
         tx.Hash = TestItem.KeccakA;
@@ -521,7 +521,7 @@ public class FrameTxPayerExposureFilterTests
     public void Accept_SponsoredFrameTx_HoldsTheSenderToItsOwnLeadingFrameValue(int balanceDelta, bool rejected)
     {
         const int frameValue = 4_000;
-        TxFrame senderFrame = new(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressC, FrameTxTestFrames.PrefixFrameGas, (UInt256)frameValue, default);
+        TxFrame senderFrame = new(FrameMode.Sender, FrameFlags.None, TestItem.AddressC, FrameTxTestFrames.PrefixFrameGas, (UInt256)frameValue, default);
         Transaction tx = FrameTxTestFrames.FrameTx(FrameTxTestFrames.OnlyVerify(), FrameTxTestFrames.Pay(Payer), senderFrame);
         tx.DecodedMaxFeePerGas = UInt256.One;
         tx.Hash = TestItem.KeccakA;
@@ -780,7 +780,7 @@ public class FrameTxPayerExposureFilterTests
     {
         Type = TxType.FrameTx,
         SenderAddress = TestItem.AddressA,
-        Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, frameGasLimit, UInt256.Zero, default)],
+        Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, frameGasLimit, UInt256.Zero, default)],
         FrameSignatures = [],
         DecodedMaxFeePerGas = UInt256.One,
         PayerAddress = payer ?? Payer,

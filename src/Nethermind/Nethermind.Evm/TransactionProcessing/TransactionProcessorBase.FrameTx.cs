@@ -42,7 +42,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         foreach (TxFrame frame in frames)
         {
-            if (frame.Mode == TxFrame.ModePostTx)
+            if (frame.Mode == FrameMode.PostTx)
             {
                 recorder.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
                 return recorder;
@@ -282,7 +282,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 batchStartDestroys = accessTracker.DestroyList.TakeSnapshot();
             }
 
-            bool isSender = frame.Mode == TxFrame.ModeSender;
+            bool isSender = frame.Mode == FrameMode.Sender;
             if (isSender && !frameContext.SenderApproved)
             {
                 WorldState.Restore(txSnapshot);
@@ -291,7 +291,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
             Address resolvedTarget = frame.Target ?? sender;
             Address caller = isSender ? sender : Eip8141Constants.EntryPointAddress;
-            bool isStatic = frame.Mode is TxFrame.ModeVerify or TxFrame.ModePostTx;
+            bool isStatic = frame.Mode is FrameMode.Verify or FrameMode.PostTx;
 
             // ORIGIN returns the frame's caller throughout all call depths.
             VirtualMachine.SetTxExecutionContext(new TxExecutionContext(
@@ -336,14 +336,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 frameLogs);
             frameContext.RecordFrameReceipt(i, frameGasUsed - frameStateGasUsed, frameStateGasUsed);
 
-            if (frame.Mode == TxFrame.ModeVerify && !frameSucceeded)
+            if (frame.Mode == FrameMode.Verify && !frameSucceeded)
             {
                 // A failed VERIFY frame invalidates the whole transaction.
                 WorldState.Restore(txSnapshot);
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("VERIFY frame reverted");
             }
 
-            if (frame.Mode == TxFrame.ModePostTx && !frameSucceeded)
+            if (frame.Mode == FrameMode.PostTx && !frameSucceeded)
             {
                 // A failed assertion discards the body down to the validation prefix, overriding any
                 // batch unroll, but unlike a VERIFY revert it leaves the transaction valid.
@@ -598,7 +598,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                 // EIP-8141 § Validation Prefix: the shortest prefix that sets a payer, so a non-VERIFY frame
                 // ends it. An opening deploy frame is the sole non-VERIFY frame the prefix admits.
-                if (!isDeployFrame && frame.Mode != TxFrame.ModeVerify)
+                if (!isDeployFrame && frame.Mode != FrameMode.Verify)
                 {
                     break;
                 }
@@ -748,7 +748,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         (i == 0 || (i == 1 && FrameTxValidation.IsExpiryVerifyFrame(frames[0])))
         && i + 1 < frames.Length
         && FrameTxValidation.IsDeployFrame(frames[i])
-        && frames[i + 1].Mode == TxFrame.ModeVerify;
+        && frames[i + 1].Mode == FrameMode.Verify;
 
     private TransactionSubstate ExecuteFrame(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed, out long stateGasUsed)
     {
@@ -786,7 +786,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // EIP-8141: a precompile dispatches in every mode, leaving default code to a VERIFY frame's codeless
         // non-precompile target. The repository decides what is a precompile, being what dispatches the frame.
-        if (frame.Mode == TxFrame.ModeVerify
+        if (frame.Mode == FrameMode.Verify
             && _codeInfoRepository.GetPrecompile(resolvedTarget, spec) is null
             && WorldState.GetCodeHash(resolvedTarget) == Keccak.OfAnEmptyString)
         {
@@ -921,13 +921,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         gasUsed = entryExecution;
         stateGasUsed = 0;
 
-        byte allowedScope = frame.AllowedApproveScope;
+        FrameFlags allowedScope = frame.AllowedApproveScope;
         if (allowedScope == 0)
         {
             return new TransactionSubstate(EvmExceptionType.Revert, tracer.IsTracingInstructions);
         }
 
-        int sigIndex = (allowedScope & TxFrame.ApproveExecution) != 0 ? 0 : 1;
+        int sigIndex = (allowedScope & FrameFlags.ApproveExecution) != 0 ? 0 : 1;
         TxFrameSignature[] signatures = frameContext.Signatures;
         if (signatures.Length <= sigIndex
             || signatures[sigIndex].Scheme != TxFrameSignature.SchemeSecp256k1

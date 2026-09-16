@@ -358,11 +358,11 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer, IFrameTxReceiptTr
     private NativeCallTracerCallFrame BuildUndispatchedFrame(int frameIndex, TxFrameReceipt frameReceipt)
     {
         TxFrame frame = _frames![frameIndex];
-        bool isStatic = frame.Mode is TxFrame.ModeVerify or TxFrame.ModePostTx;
+        bool isStatic = frame.Mode is FrameMode.Verify or FrameMode.PostTx;
         return new NativeCallTracerCallFrame
         {
             Type = isStatic ? Instruction.STATICCALL : Instruction.CALL,
-            From = frame.Mode == TxFrame.ModeSender ? _sender : Eip8141Constants.EntryPointAddress,
+            From = frame.Mode == FrameMode.Sender ? _sender : Eip8141Constants.EntryPointAddress,
             To = frame.Target ?? _sender,
             Value = isStatic ? null : frame.Value,
             Input = frame.Data.Span.ToPooledList(),

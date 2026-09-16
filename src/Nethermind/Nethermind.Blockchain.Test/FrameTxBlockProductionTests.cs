@@ -67,7 +67,7 @@ public class FrameTxBlockProductionTests
     {
         Transaction frameTx = FrameTx(Sender,
             SelfApprove(),
-            new TxFrame(TxFrame.ModeSender, 0, Observer, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default));
+            new TxFrame(FrameMode.Sender, 0, Observer, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default));
         Transaction unpayable = FrameTx(NeverApproves, SelfApprove());
 
         Produced produced = Produce([unpayable, frameTx], (Observer, EmitFirstTopic));
@@ -117,7 +117,7 @@ public class FrameTxBlockProductionTests
     {
         Transaction frameTx = FrameTx(
             SelfApprove(),
-            new TxFrame(TxFrame.ModeSender, 0, Observer, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default));
+            new TxFrame(FrameMode.Sender, 0, Observer, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default));
 
         byte[] observerCode = scenario switch
         {
@@ -150,8 +150,8 @@ public class FrameTxBlockProductionTests
     {
         Transaction frameTx = FrameTx(
             SelfApprove(),
-            new TxFrame(TxFrame.ModeSender, 0, Observer, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default),
-            new TxFrame(TxFrame.ModeSender, 0, SecondObserver, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default));
+            new TxFrame(FrameMode.Sender, 0, Observer, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Sender, 0, SecondObserver, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default));
 
         Produced produced = Produce([frameTx], (Observer, EmitFirstTopic), (SecondObserver, EmitSecondTopic));
 
@@ -253,7 +253,7 @@ public class FrameTxBlockProductionTests
                 new EthereumCodeInfoRepository(State), LimboLogs.Instance);
 
             Deploy(Sender, Prepare.EvmCode
-                .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done, 100.Ether);
+                .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done, 100.Ether);
             Deploy(NeverApproves, SpinForever, 100.Ether);
             foreach ((Address address, byte[] code) in contracts) Deploy(address, code);
             State.Commit(Spec);
@@ -275,7 +275,7 @@ public class FrameTxBlockProductionTests
     }
 
     private static TxFrame SelfApprove() =>
-        new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);
+        new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);
 
     private static Transaction FrameTx(params TxFrame[] frames) => FrameTx(Sender, frames);
 

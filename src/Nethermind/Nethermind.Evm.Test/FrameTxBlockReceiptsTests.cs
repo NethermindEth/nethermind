@@ -131,7 +131,7 @@ public class FrameTxBlockReceiptsTests
 
         stateProvider.CreateAccount(Sender, 1.Ether);
         stateProvider.InsertCode(Sender, Prepare.EvmCode
-            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done, spec);
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done, spec);
         stateProvider.CreateAccount(Observer, UInt256.Zero);
         stateProvider.InsertCode(Observer, observerCode, spec);
         stateProvider.Commit(spec);
@@ -145,8 +145,8 @@ public class FrameTxBlockReceiptsTests
             SenderAddress = Sender,
             Frames =
             [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, null, 200_000, UInt256.Zero, default),
-                new TxFrame(TxFrame.ModeSender, 0, Observer, 200_000, UInt256.Zero, default),
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 200_000, UInt256.Zero, default),
+                new TxFrame(FrameMode.Sender, 0, Observer, 200_000, UInt256.Zero, default),
             ],
             FrameSignatures = [],
             GasPrice = 1,
@@ -184,8 +184,8 @@ public class FrameTxBlockReceiptsTests
         EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         IReleaseSpec spec = specProvider.GenesisSpec;
 
-        Deploy(stateProvider, spec, Sender, Approve(TxFrame.ApproveExecution), 1.Ether);
-        Deploy(stateProvider, spec, Payer, Approve(TxFrame.ApprovePayment), 1.Ether);
+        Deploy(stateProvider, spec, Sender, Approve(FrameFlags.ApproveExecution), 1.Ether);
+        Deploy(stateProvider, spec, Payer, Approve(FrameFlags.ApprovePayment), 1.Ether);
         Deploy(stateProvider, spec, Observer, Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.LOG0).Op(Instruction.STOP).Done);
         Deploy(stateProvider, spec, Asserter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
         stateProvider.Commit(spec);
@@ -199,11 +199,11 @@ public class FrameTxBlockReceiptsTests
             SenderAddress = Sender,
             Frames =
             [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecution, null, 200_000, UInt256.Zero, default),
-                new TxFrame(TxFrame.ModeSender, 0, Observer, 200_000, UInt256.Zero, default),
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApprovePayment, Payer, 200_000, UInt256.Zero, default),
-                new TxFrame(TxFrame.ModeSender, 0, Observer, 200_000, UInt256.Zero, default),
-                new TxFrame(TxFrame.ModePostTx, 0, Asserter, 200_000, UInt256.Zero, default),
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecution, null, 200_000, UInt256.Zero, default),
+                new TxFrame(FrameMode.Sender, 0, Observer, 200_000, UInt256.Zero, default),
+                new TxFrame(FrameMode.Verify, FrameFlags.ApprovePayment, Payer, 200_000, UInt256.Zero, default),
+                new TxFrame(FrameMode.Sender, 0, Observer, 200_000, UInt256.Zero, default),
+                new TxFrame(FrameMode.PostTx, 0, Asserter, 200_000, UInt256.Zero, default),
             ],
             FrameSignatures = [],
             GasPrice = 1,
@@ -235,8 +235,8 @@ public class FrameTxBlockReceiptsTests
         }
     }
 
-    private static byte[] Approve(byte scope) =>
-        Prepare.EvmCode.PushData(scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+    private static byte[] Approve(FrameFlags scope) =>
+        Prepare.EvmCode.PushData((byte)scope).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
 
     private static void Deploy(IWorldState state, IReleaseSpec spec, Address address, byte[] code, UInt256 balance = default)
     {

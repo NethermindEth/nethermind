@@ -31,7 +31,7 @@ public class FrameTxValidationTests
     public void IsWellFormed_PostTxFrameGatedByItsFork_ReturnsExpectedError(bool postTxEnabled, string? expectedError)
     {
         Transaction tx = CreateValidFrameTx(static tx =>
-            tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModePostTx)]);
+            tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.PostTx)]);
 
         bool wellFormed = FrameTxValidation.IsWellFormed(tx, postTxEnabled, out string? error);
 
@@ -61,91 +61,91 @@ public class FrameTxValidationTests
 
         // assert frame.mode < 4 (EIP-7906 widened it from 3)
         yield return Case("FrameModeFour_InvalidMode",
-            static tx => tx.Frames = [Frame(mode: 4)], FrameTxValidation.InvalidMode);
+            static tx => tx.Frames = [Frame(mode: (FrameMode)4)], FrameTxValidation.InvalidMode);
 
         // POST_TX frames form a trailing suffix; the approval scope they may carry is enforced at the
         // opcode, so an unexercised permission bit is not an envelope defect.
         yield return Case("PostTxSuffix_Valid",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModePostTx), Frame(mode: TxFrame.ModePostTx)], null);
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.PostTx), Frame(mode: FrameMode.PostTx)], null);
         yield return Case("PostTxFollowedByDefault_PostTxNotTrailing",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModePostTx), DefaultModeFrame()],
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.PostTx), DefaultModeFrame()],
             FrameTxValidation.PostTxNotTrailing);
         yield return Case("PostTxAllowedToApprove_Valid",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModePostTx, flags: TxFrame.ApprovePayment)],
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.PostTx, flags: FrameFlags.ApprovePayment)],
             null);
 
         // assert frame.flags < 8
         yield return Case("FrameFlagsEight_InvalidFlags",
-            static tx => tx.Frames = [Frame(flags: 8)], FrameTxValidation.InvalidFlags);
+            static tx => tx.Frames = [Frame(flags: (FrameFlags)8)], FrameTxValidation.InvalidFlags);
 
         // assert frame.mode == SENDER or frame.value == 0
         yield return Case("ValueOnDefaultFrame_ValueOutsideSenderMode",
-            static tx => tx.Frames = [Frame(mode: TxFrame.ModeDefault, value: UInt256.One)],
+            static tx => tx.Frames = [Frame(mode: FrameMode.Default, value: UInt256.One)],
             FrameTxValidation.ValueOutsideSenderMode);
         yield return Case("ValueOnVerifyFrame_ValueOutsideSenderMode",
-            static tx => tx.Frames = [Frame(mode: TxFrame.ModeVerify, value: UInt256.One)],
+            static tx => tx.Frames = [Frame(mode: FrameMode.Verify, value: UInt256.One)],
             FrameTxValidation.ValueOutsideSenderMode);
         yield return Case("ValueOnSenderFrame_Valid",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModeSender, target: TestItem.AddressB, value: UInt256.One)],
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.Sender, target: TestItem.AddressB, value: UInt256.One)],
             null);
 
         // if frame.flags & APPROVE_EXECUTION: assert frame.target is None or frame.target == tx.sender
         yield return Case("ExecutionApprovalTargetsThirdParty_ExecutionApprovalWrongTarget",
-            static tx => tx.Frames = [Frame(mode: TxFrame.ModeVerify, flags: TxFrame.ApproveExecution, target: TestItem.AddressB)],
+            static tx => tx.Frames = [Frame(mode: FrameMode.Verify, flags: FrameFlags.ApproveExecution, target: TestItem.AddressB)],
             FrameTxValidation.ExecutionApprovalWrongTarget);
         yield return Case("ExecutionApprovalTargetsSenderExplicitly_Valid",
-            static tx => tx.Frames = [Frame(mode: TxFrame.ModeVerify, flags: TxFrame.ApproveExecution, target: TestItem.AddressA)],
+            static tx => tx.Frames = [Frame(mode: FrameMode.Verify, flags: FrameFlags.ApproveExecution, target: TestItem.AddressA)],
             null);
         // Only the execution bit binds the target; a payment-only approval may name a third party.
         yield return Case("PaymentApprovalTargetsThirdParty_Valid",
-            static tx => tx.Frames = [Frame(mode: TxFrame.ModeVerify, flags: TxFrame.ApprovePayment, target: TestItem.AddressB)],
+            static tx => tx.Frames = [Frame(mode: FrameMode.Verify, flags: FrameFlags.ApprovePayment, target: TestItem.AddressB)],
             null);
         yield return Case("ExecutionAndPaymentApprovalTargetsThirdParty_ExecutionApprovalWrongTarget",
-            static tx => tx.Frames = [Frame(mode: TxFrame.ModeVerify, flags: TxFrame.ApproveExecutionAndPayment, target: TestItem.AddressB)],
+            static tx => tx.Frames = [Frame(mode: FrameMode.Verify, flags: FrameFlags.ApproveExecutionAndPayment, target: TestItem.AddressB)],
             FrameTxValidation.ExecutionApprovalWrongTarget);
 
         // if frame.flags & ATOMIC_BATCH_FLAG: assert i + 1 < len(tx.frames)
         yield return Case("AtomicBatchFlagOnLastFrame_AtomicBatchOnLastFrame",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: TxFrame.AtomicBatchFlag)],
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: FrameFlags.AtomicBatch)],
             FrameTxValidation.AtomicBatchOnLastFrame);
         yield return Case("AtomicBatchFlagOnSoleFrame_AtomicBatchOnLastFrame",
-            static tx => tx.Frames = [Frame(flags: TxFrame.AtomicBatchFlag)],
+            static tx => tx.Frames = [Frame(flags: FrameFlags.AtomicBatch)],
             FrameTxValidation.AtomicBatchOnLastFrame);
         yield return Case("AtomicBatchFlagOnInnerFrame_Valid",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: TxFrame.AtomicBatchFlag), DefaultModeFrame()],
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: FrameFlags.AtomicBatch), DefaultModeFrame()],
             null);
 
         // EIP-8141: atomic batches contain only non-VERIFY frames.
         yield return Case("AtomicBatchFlagOnVerifyFrame_AtomicBatchOnVerifyFrame",
-            static tx => tx.Frames = [Frame(mode: TxFrame.ModeVerify, flags: TxFrame.AtomicBatchFlag), DefaultModeFrame()],
+            static tx => tx.Frames = [Frame(mode: FrameMode.Verify, flags: FrameFlags.AtomicBatch), DefaultModeFrame()],
             FrameTxValidation.AtomicBatchOnVerifyFrame);
         yield return Case("AtomicBatchFlagOnPostTxFrame_AtomicBatchOnPostTxFrame",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModePostTx, flags: TxFrame.AtomicBatchFlag), Frame(mode: TxFrame.ModePostTx)],
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.PostTx, flags: FrameFlags.AtomicBatch), Frame(mode: FrameMode.PostTx)],
             FrameTxValidation.AtomicBatchOnPostTxFrame);
         yield return Case("AtomicBatchFollowedByVerifyFrame_AtomicBatchFollowedByVerifyFrame",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: TxFrame.AtomicBatchFlag), Frame(mode: TxFrame.ModeVerify)],
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: FrameFlags.AtomicBatch), Frame(mode: FrameMode.Verify)],
             FrameTxValidation.AtomicBatchFollowedByVerifyFrame);
         yield return Case("AtomicBatchFollowedByPostTxFrame_AtomicBatchFollowedByPostTxFrame",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: TxFrame.AtomicBatchFlag), Frame(mode: TxFrame.ModePostTx)],
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: FrameFlags.AtomicBatch), Frame(mode: FrameMode.PostTx)],
             FrameTxValidation.AtomicBatchFollowedByPostTxFrame);
 
         // EIP-8141: a frame belonging to an atomic batch (flagged, or the terminating frame following
         // a flagged one) must not carry approval scope.
         yield return Case("ApprovePaymentOnBatchFrame_ApprovalScopeInAtomicBatch",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: (byte)(TxFrame.ApprovePayment | TxFrame.AtomicBatchFlag)), DefaultModeFrame()],
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: FrameFlags.ApprovePayment | FrameFlags.AtomicBatch), DefaultModeFrame()],
             FrameTxValidation.ApprovalScopeInAtomicBatch);
         yield return Case("ApproveExecutionOnBatchFrame_ApprovalScopeInAtomicBatch",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: (byte)(TxFrame.ApproveExecution | TxFrame.AtomicBatchFlag)), DefaultModeFrame()],
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: FrameFlags.ApproveExecution | FrameFlags.AtomicBatch), DefaultModeFrame()],
             FrameTxValidation.ApprovalScopeInAtomicBatch);
         yield return Case("ApprovalOnBatchTerminatingFrame_ApprovalScopeInAtomicBatch",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: TxFrame.AtomicBatchFlag), Frame(flags: TxFrame.ApprovePayment)],
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: FrameFlags.AtomicBatch), Frame(flags: FrameFlags.ApprovePayment)],
             FrameTxValidation.ApprovalScopeInAtomicBatch);
         yield return Case("BatchWithoutApprovalScope_Valid",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: TxFrame.AtomicBatchFlag), DefaultModeFrame()],
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: FrameFlags.AtomicBatch), DefaultModeFrame()],
             null);
         // The whole flags byte at its maximum is scope plus batch, which the batch rule refuses together.
         yield return Case("FrameFlagsSeven_ApprovalScopeInAtomicBatch",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: 7), DefaultModeFrame()],
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(flags: (FrameFlags)7), DefaultModeFrame()],
             FrameTxValidation.ApprovalScopeInAtomicBatch);
 
         // total_frame_gas accumulated across frames must not overflow 2^64 - 1
@@ -154,7 +154,7 @@ public class FrameTxValidationTests
             FrameTxValidation.FrameGasOverflow);
         // The two limits of a single frame are summed first, so one frame alone can overflow.
         yield return Case("FrameExecutionPlusStateGasOverflows_FrameGasOverflow",
-            static tx => tx.Frames = [new TxFrame(TxFrame.ModeDefault, flags: 0, target: null, ulong.MaxValue, 1, UInt256.Zero, default)],
+            static tx => tx.Frames = [new TxFrame(FrameMode.Default, flags: FrameFlags.None, target: null, ulong.MaxValue, 1, UInt256.Zero, default)],
             FrameTxValidation.FrameGasOverflow);
         yield return Case("TotalFrameGasAtItsMaximum_Valid",
             static tx => tx.Frames = [Frame(gasLimit: ulong.MaxValue - 1), Frame(gasLimit: 1)],
@@ -212,20 +212,20 @@ public class FrameTxValidationTests
         yield return Case("ExpiryFrameWellFormed_Valid",
             static tx => tx.Frames = [SelfVerifyFrame(), ExpiryFrame()], null);
         yield return Case("ExpiryFrameWithFlags_InvalidExpiryFrame",
-            static tx => tx.Frames = [Frame(mode: TxFrame.ModeVerify, flags: TxFrame.ApprovePayment, target: Eip8141Constants.ExpiryVerifierAddress, data: new byte[Eip8141Constants.ExpiryDataLength])],
+            static tx => tx.Frames = [Frame(mode: FrameMode.Verify, flags: FrameFlags.ApprovePayment, target: Eip8141Constants.ExpiryVerifierAddress, data: new byte[Eip8141Constants.ExpiryDataLength])],
             FrameTxValidation.InvalidExpiryFrame);
         yield return Case("ExpiryFrameWithShortData_InvalidExpiryFrame",
-            static tx => tx.Frames = [Frame(mode: TxFrame.ModeVerify, target: Eip8141Constants.ExpiryVerifierAddress, data: new byte[Eip8141Constants.ExpiryDataLength - 1])],
+            static tx => tx.Frames = [Frame(mode: FrameMode.Verify, target: Eip8141Constants.ExpiryVerifierAddress, data: new byte[Eip8141Constants.ExpiryDataLength - 1])],
             FrameTxValidation.InvalidExpiryFrame);
         yield return Case("ExpiryFrameWithStateGas_InvalidExpiryFrame",
-            static tx => tx.Frames = [new TxFrame(TxFrame.ModeVerify, flags: 0, Eip8141Constants.ExpiryVerifierAddress, 30_000, 1, UInt256.Zero, new byte[Eip8141Constants.ExpiryDataLength])],
+            static tx => tx.Frames = [new TxFrame(FrameMode.Verify, flags: FrameFlags.None, Eip8141Constants.ExpiryVerifierAddress, 30_000, 1, UInt256.Zero, new byte[Eip8141Constants.ExpiryDataLength])],
             FrameTxValidation.InvalidExpiryFrame);
         yield return Case("ExpiryFrameWithLongData_InvalidExpiryFrame",
-            static tx => tx.Frames = [Frame(mode: TxFrame.ModeVerify, target: Eip8141Constants.ExpiryVerifierAddress, data: new byte[Eip8141Constants.ExpiryDataLength + 1])],
+            static tx => tx.Frames = [Frame(mode: FrameMode.Verify, target: Eip8141Constants.ExpiryVerifierAddress, data: new byte[Eip8141Constants.ExpiryDataLength + 1])],
             FrameTxValidation.InvalidExpiryFrame);
         // The mode rule claims a valued expiry frame first, so its own value rule never decides one.
         yield return Case("ExpiryFrameWithValue_ValueOutsideSenderMode",
-            static tx => tx.Frames = [Frame(mode: TxFrame.ModeVerify, target: Eip8141Constants.ExpiryVerifierAddress, value: UInt256.One, data: new byte[Eip8141Constants.ExpiryDataLength])],
+            static tx => tx.Frames = [Frame(mode: FrameMode.Verify, target: Eip8141Constants.ExpiryVerifierAddress, value: UInt256.One, data: new byte[Eip8141Constants.ExpiryDataLength])],
             FrameTxValidation.ValueOutsideSenderMode);
         yield return Case("TwoExpiryFrames_MultipleExpiryFrames",
             static tx => tx.Frames = [SelfVerifyFrame(), ExpiryFrame(), ExpiryFrame()],
@@ -233,17 +233,17 @@ public class FrameTxValidationTests
         // Only VERIFY-mode frames targeting the verifier are expiry frames; a DEFAULT-mode call
         // to the same address is an ordinary frame.
         yield return Case("DefaultModeCallToExpiryVerifier_Valid",
-            static tx => tx.Frames = [Frame(mode: TxFrame.ModeDefault, target: Eip8141Constants.ExpiryVerifierAddress, data: new byte[3])],
+            static tx => tx.Frames = [Frame(mode: FrameMode.Default, target: Eip8141Constants.ExpiryVerifierAddress, data: new byte[3])],
             null);
 
         // Frame ordering is a public-mempool rule, not a validity one: a block carrying any of these stays
         // valid, and the pool filters are what refuse them.
         yield return Case("SenderFrameAheadOfTheApproval_Valid",
-            static tx => tx.Frames = [Frame(mode: TxFrame.ModeSender, target: TestItem.AddressB), SelfVerifyFrame()], null);
+            static tx => tx.Frames = [Frame(mode: FrameMode.Sender, target: TestItem.AddressB), SelfVerifyFrame()], null);
         yield return Case("VerifyFrameBehindTheValidationPrefix_Valid",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModeSender, target: TestItem.AddressB), SelfVerifyFrame()], null);
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.Sender, target: TestItem.AddressB), SelfVerifyFrame()], null);
         yield return Case("ExpiryFrameBehindTheLeadingFrame_Valid",
-            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: TxFrame.ModeSender, target: TestItem.AddressB), ExpiryFrame()], null);
+            static tx => tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.Sender, target: TestItem.AddressB), ExpiryFrame()], null);
     }
 
     private static IEnumerable<TestCaseData> PrefixWalkCases()
@@ -253,47 +253,47 @@ public class FrameTxValidationTests
 
         // Frame gas limits are distinct powers of two, so the summed validation work names exactly which
         // frames the recognized-prefix walk counted.
-        static TxFrame At(byte mode, byte flags, Address? target, ulong gas) =>
+        static TxFrame At(FrameMode mode, FrameFlags flags, Address? target, ulong gas) =>
             new(mode, flags, target, gas, UInt256.Zero, default);
 
         Address sponsor = TestItem.AddressC;
 
         // All three agree: a recognized prefix, its approving frame, and its priced length.
         yield return Walk("SelfRelay_AllThreeAgree",
-            [At(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, null, 1), At(TxFrame.ModeSender, 0, TestItem.AddressB, 2)],
+            [At(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 1), At(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, 2)],
             true, null, 1);
         yield return Walk("CanonicalPaymasterBehindADeploy_AllThreeAgree",
-            [ExpiryFrame(1), At(TxFrame.ModeDefault, 0, TestItem.AddressD, 2), At(TxFrame.ModeVerify, TxFrame.ApproveExecution, null, 4),
-             At(TxFrame.ModeVerify, TxFrame.ApprovePayment, sponsor, 8), At(TxFrame.ModeSender, 0, TestItem.AddressB, 16)],
+            [ExpiryFrame(1), At(FrameMode.Default, FrameFlags.None, TestItem.AddressD, 2), At(FrameMode.Verify, FrameFlags.ApproveExecution, null, 4),
+             At(FrameMode.Verify, FrameFlags.ApprovePayment, sponsor, 8), At(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, 16)],
             true, sponsor, 15);
 
         // No frame may approve payment at all, so there is no boundary for a trailing VERIFY frame to sit behind.
         yield return Walk("NoApprovingFrame_NoBoundaryToSitBehind",
-            [At(TxFrame.ModeVerify, TxFrame.ApproveExecution, null, 1), At(TxFrame.ModeSender, 0, TestItem.AddressB, 2)],
+            [At(FrameMode.Verify, FrameFlags.ApproveExecution, null, 1), At(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, 2)],
             false, null, 3);
         yield return Walk("LoneDeployFrame_NoBoundaryToSitBehind",
-            [At(TxFrame.ModeDefault, 0, TestItem.AddressD, 1)],
+            [At(FrameMode.Default, FrameFlags.None, TestItem.AddressD, 1)],
             false, null, 1);
 
         // An extra leading VERIFY frame: the boundary and the payer still agree, the grammar no longer matches.
         yield return Walk("ExtraLeadingVerifyFrame_GrammarAloneDiverges",
-            [At(TxFrame.ModeVerify, 0, TestItem.AddressD, 1), At(TxFrame.ModeVerify, TxFrame.ApprovePayment, sponsor, 2), At(TxFrame.ModeSender, 0, TestItem.AddressB, 4)],
+            [At(FrameMode.Verify, FrameFlags.None, TestItem.AddressD, 1), At(FrameMode.Verify, FrameFlags.ApprovePayment, sponsor, 2), At(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, 4)],
             true, sponsor, 7);
         yield return Walk("CheckBetweenOnlyVerifyAndPay_GrammarAloneDiverges",
-            [At(TxFrame.ModeVerify, TxFrame.ApproveExecution, null, 1), At(TxFrame.ModeVerify, 0, TestItem.AddressD, 2),
-             At(TxFrame.ModeVerify, TxFrame.ApprovePayment, sponsor, 4), At(TxFrame.ModeSender, 0, TestItem.AddressB, 8)],
+            [At(FrameMode.Verify, FrameFlags.ApproveExecution, null, 1), At(FrameMode.Verify, FrameFlags.None, TestItem.AddressD, 2),
+             At(FrameMode.Verify, FrameFlags.ApprovePayment, sponsor, 4), At(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, 8)],
             true, sponsor, 15);
 
         // A non-VERIFY approving frame ends the payer walk but must still bound the VERIFY-behind-prefix scan.
         yield return Walk("ApprovingDefaultFrame_OnlyTheBoundaryWalkFindsIt",
-            [At(TxFrame.ModeDefault, TxFrame.ApprovePayment, sponsor, 1), At(TxFrame.ModeSender, 0, TestItem.AddressB, 2)],
+            [At(FrameMode.Default, FrameFlags.ApprovePayment, sponsor, 1), At(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, 2)],
             true, null, 3);
         yield return Walk("PayFrameBehindASenderFrame_OnlyTheBoundaryWalkFindsIt",
-            [At(TxFrame.ModeSender, 0, TestItem.AddressB, 1), At(TxFrame.ModeVerify, TxFrame.ApprovePayment, sponsor, 2)],
+            [At(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, 1), At(FrameMode.Verify, FrameFlags.ApprovePayment, sponsor, 2)],
             true, null, 3);
         yield return Walk("ApprovingDefaultBehindADeploy_OnlyTheBoundaryWalkFindsIt",
-            [At(TxFrame.ModeDefault, 0, TestItem.AddressD, 1), At(TxFrame.ModeDefault, TxFrame.ApproveExecutionAndPayment, null, 2),
-             At(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, null, 4)],
+            [At(FrameMode.Default, FrameFlags.None, TestItem.AddressD, 1), At(FrameMode.Default, FrameFlags.ApproveExecutionAndPayment, null, 2),
+             At(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 4)],
             true, null, 7);
     }
 
@@ -304,7 +304,7 @@ public class FrameTxValidationTests
     {
         Transaction tx = CreateValidFrameTx(t => t.Frames = frames);
         // A trailing VERIFY frame is rejected only when the boundary walk found somewhere for it to sit behind.
-        Transaction probed = CreateValidFrameTx(t => t.Frames = [.. frames, Frame(mode: TxFrame.ModeVerify, flags: TxFrame.ApproveExecution)]);
+        Transaction probed = CreateValidFrameTx(t => t.Frames = [.. frames, Frame(mode: FrameMode.Verify, flags: FrameFlags.ApproveExecution)]);
 
         using (Assert.EnterMultipleScope())
         {
@@ -332,7 +332,7 @@ public class FrameTxValidationTests
     }
 
     private static TxFrame SelfVerifyFrame() =>
-        new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default);
+        new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default);
 
     private static TxFrame DefaultModeFrame() => Frame();
 
@@ -348,9 +348,9 @@ public class FrameTxValidationTests
     }
 
     private static TxFrame ExpiryFrame(ulong gasLimit = 30_000) =>
-        new(TxFrame.ModeVerify, flags: 0, Eip8141Constants.ExpiryVerifierAddress, gasLimit, UInt256.Zero, new byte[Eip8141Constants.ExpiryDataLength]);
+        new(FrameMode.Verify, flags: FrameFlags.None, Eip8141Constants.ExpiryVerifierAddress, gasLimit, UInt256.Zero, new byte[Eip8141Constants.ExpiryDataLength]);
 
-    private static TxFrame Frame(byte mode = TxFrame.ModeDefault, byte flags = 0, Address? target = null, ulong gasLimit = 50_000, UInt256 value = default, byte[]? data = null) =>
+    private static TxFrame Frame(FrameMode mode = FrameMode.Default, FrameFlags flags = FrameFlags.None, Address? target = null, ulong gasLimit = 50_000, UInt256 value = default, byte[]? data = null) =>
         new(mode, flags, target, gasLimit, value, data ?? Array.Empty<byte>());
 
     private static byte[] NonZeroDigest()
@@ -368,15 +368,15 @@ public class FrameTxValidationTests
         static TxFrameSignature Signature(byte scheme) => new(scheme, null, default, Array.Empty<byte>());
 
         static TxFrame OnlyVerifyFrame() =>
-            Frame(TxFrame.ModeVerify, TxFrame.ApproveExecution, gasLimit: 40_000);
+            Frame(FrameMode.Verify, FrameFlags.ApproveExecution, gasLimit: 40_000);
 
         static TxFrame PayFrame() =>
-            Frame(TxFrame.ModeVerify, TxFrame.ApprovePayment, TestItem.AddressB, gasLimit: 30_000);
+            Frame(FrameMode.Verify, FrameFlags.ApprovePayment, TestItem.AddressB, gasLimit: 30_000);
 
         // The prefix ends at the self-verify frame; the execution frame behind it is paid for out of
         // the transaction's own gas and is outside the budget.
         yield return Work("SelfVerify_CountsOnlyThePrefix",
-            [SelfVerifyFrame(), Frame(TxFrame.ModeSender, target: TestItem.AddressB, gasLimit: 5_000_000)],
+            [SelfVerifyFrame(), Frame(FrameMode.Sender, target: TestItem.AddressB, gasLimit: 5_000_000)],
             [], 100_000);
 
         // The expiry verifier frame is skipped when matching the shape, but its work is still the
@@ -388,7 +388,7 @@ public class FrameTxValidationTests
             [DefaultModeFrame(), SelfVerifyFrame()], [], 150_000);
 
         yield return Work("OnlyVerifyThenPay_CountsBothPrefixFrames",
-            [OnlyVerifyFrame(), PayFrame(), Frame(TxFrame.ModeSender, target: TestItem.AddressC, gasLimit: 900_000)],
+            [OnlyVerifyFrame(), PayFrame(), Frame(FrameMode.Sender, target: TestItem.AddressC, gasLimit: 900_000)],
             [], 70_000);
 
         yield return Work("DeployThenOnlyVerifyThenPay_CountsAllThree",
@@ -400,13 +400,13 @@ public class FrameTxValidationTests
             100_000 + Eip8141Constants.Secp256k1VerificationGasCost + Eip8141Constants.P256VerificationGasCost);
 
         yield return Work("OverflowingPrefixGas_Saturates",
-            [DefaultModeFrame(), Frame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, gasLimit: ulong.MaxValue)],
+            [DefaultModeFrame(), Frame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, gasLimit: ulong.MaxValue)],
             [], ulong.MaxValue);
 
         // Approving flags on a DEFAULT frame do not end a prefix: whether the target approves depends on code the
         // sender controls, so the frames behind it may still run unpaid and the whole list is charged.
         yield return Work("DefaultFrameWithApprovingFlags_ChargesTheWholeList",
-            [Frame(flags: TxFrame.ApproveExecutionAndPayment, gasLimit: 1_000), Frame(gasLimit: 3_000_000)],
+            [Frame(flags: FrameFlags.ApproveExecutionAndPayment, gasLimit: 1_000), Frame(gasLimit: 3_000_000)],
             [], 3_001_000);
 
         // APPROVE rejects a payment approval that no execution approval precedes.
@@ -415,15 +415,15 @@ public class FrameTxValidationTests
 
         // A verifier the sender does not control is third-party mutable state.
         yield return Work("SelfVerifyTargetingAThirdParty_ChargesTheWholeList",
-            [Frame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, TestItem.AddressB), Frame(gasLimit: 900_000)],
+            [Frame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, TestItem.AddressB), Frame(gasLimit: 900_000)],
             [], 950_000);
 
         yield return Work("PrefixFrameInAnAtomicBatch_ChargesTheWholeList",
-            [Frame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment | TxFrame.AtomicBatchFlag), Frame(gasLimit: 900_000)],
+            [Frame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment | FrameFlags.AtomicBatch), Frame(gasLimit: 900_000)],
             [], 950_000);
 
         yield return Work("OnlyVerifyWithoutPay_ChargesTheWholeList",
-            [OnlyVerifyFrame(), Frame(TxFrame.ModeSender, gasLimit: 900_000)], [], 940_000);
+            [OnlyVerifyFrame(), Frame(FrameMode.Sender, gasLimit: 900_000)], [], 940_000);
 
         yield return Work("NoApprovingFrameAtAll_ChargesTheWholeList",
             [Frame(gasLimit: 10_000), Frame(gasLimit: 20_000)], [], 30_000);
@@ -448,7 +448,7 @@ public class FrameTxValidationTests
         byte[] data = [0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
         Transaction tx = CreateValidFrameTx(t => t.Frames =
         [
-            new TxFrame(TxFrame.ModeVerify, flags: 0, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 30_000, UInt256.Zero, data),
+            new TxFrame(FrameMode.Verify, flags: FrameFlags.None, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 30_000, UInt256.Zero, data),
             SelfVerifyFrame(),
         ]);
 
@@ -466,7 +466,7 @@ public class FrameTxValidationTests
         Transaction tx = CreateValidFrameTx(t => t.Frames =
         [
             SelfVerifyFrame(),
-            new TxFrame(TxFrame.ModeVerify, flags: 0, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 30_000, UInt256.Zero, data),
+            new TxFrame(FrameMode.Verify, flags: FrameFlags.None, Eip8141Constants.ExpiryVerifierAddress, gasLimit: 30_000, UInt256.Zero, data),
         ]);
 
         bool found = FrameTxValidation.TryGetExpiryDeadline(tx, out ulong deadline);

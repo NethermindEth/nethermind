@@ -298,7 +298,7 @@ public class InclusionListBuilderTests
         SenderAddress = sender,
         Nonce = nonce,
         NonceKeys = nonceKeys,
-        Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+        Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
         FrameSignatures = [],
         GasLimit = 100_000,
         GasPrice = 1,

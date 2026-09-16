@@ -300,7 +300,7 @@ public sealed class FrameTxHeadFieldsTxValidator : ITxValidator
         {
             foreach (TxFrame frame in frames)
             {
-                if (frame.Mode == TxFrame.ModePostTx)
+                if (frame.Mode == FrameMode.PostTx)
                 {
                     return FrameTxValidation.PostTxNotEnabled;
                 }
