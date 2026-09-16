@@ -1671,8 +1671,8 @@ public class FrameTxProcessorTests
     /// <remarks>Driven through <c>CallAndRestore</c> (which runs with <see cref="ExecutionOptions.SkipValidation"/>)
     /// because static validation already refuses these modes; without the processor check the frame would run
     /// as a state-changing DEFAULT and report success.</remarks>
-    [TestCase((byte)(FrameMode.PostTx + 1), TestName = "CallAndRestore_FrameModeJustAboveTheDefinedRange_IsRejected")]
-    [TestCase(byte.MaxValue, TestName = "CallAndRestore_FrameModeMaxByte_IsRejected")]
+    [TestCase(FrameMode.PostTx + 1, TestName = "CallAndRestore_FrameModeJustAboveTheDefinedRange_IsRejected")]
+    [TestCase((FrameMode)byte.MaxValue, TestName = "CallAndRestore_FrameModeMaxByte_IsRejected")]
     public void CallAndRestore_UndefinedFrameMode_IsRejected(FrameMode mode)
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
