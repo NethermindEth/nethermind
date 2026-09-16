@@ -147,7 +147,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         // This gate is the precondition for the later ValidateSuggestedBlock(validateHashes: false) calls: the roots
         // below come from TryGetBlock, which derives them from the payload's own body, so a matching header hash
-        // binds the body to the header and the validator need not recompute any of them.
+        // binds the body to the header and the validator need not recompute any of them. See the caveat on
+        // IBlockValidator.ValidateSuggestedBlock for payload types that take those roots off the wire instead.
         if (!HeaderValidator.ValidateHash(block!.Header, out Hash256 actualHash))
         {
             if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, "invalid block hash"));
