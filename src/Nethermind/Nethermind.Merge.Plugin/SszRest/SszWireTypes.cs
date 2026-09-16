@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merge.Plugin.SszRest;
@@ -335,7 +336,7 @@ public partial struct GetPayloadResponseV6Wire
 [SszContainer]
 public partial struct GetBlobsRequestWire
 {
-    [SszList(128)] public Hash256[]? VersionedHashes { get; set; }
+    [SszList(SszRestLimits.MaxBlobsRequest)] public Hash256[]? VersionedHashes { get; set; }
 }
 
 [SszContainer]
@@ -355,7 +356,7 @@ public partial struct BlobV1EntryWire
 [SszContainer]
 public partial struct GetBlobsV1ResponseWire
 {
-    [SszList(128)] public BlobV1EntryWire[]? Entries { get; set; }
+    [SszList(SszRestLimits.MaxBlobsRequest)] public BlobV1EntryWire[]? Entries { get; set; }
 }
 
 [SszContainer(isCollectionItself: true)]
@@ -415,7 +416,7 @@ public partial struct ExecutionPayloadBodyV2Wire
 [SszContainer]
 public partial struct GetPayloadBodiesByHashRequestWire
 {
-    [SszList(32)] public Hash256[]? BlockHashes { get; set; }
+    [SszList(SszRestLimits.MaxBodiesRequest)] public Hash256[]? BlockHashes { get; set; }
 }
 
 [SszContainer]
@@ -438,7 +439,7 @@ public partial struct BodyEntryV1Wire
 [SszContainer]
 public partial struct PayloadBodiesV1ResponseWire
 {
-    [SszList(32)] public BodyEntryV1Wire[]? Entries { get; set; }
+    [SszList(SszRestLimits.MaxBodiesRequest)] public BodyEntryV1Wire[]? Entries { get; set; }
 }
 
 /// <summary>
@@ -454,7 +455,7 @@ public partial struct BodyEntryV2Wire
 [SszContainer]
 public partial struct PayloadBodiesV2ResponseWire
 {
-    [SszList(32)] public BodyEntryV2Wire[]? Entries { get; set; }
+    [SszList(SszRestLimits.MaxBodiesRequest)] public BodyEntryV2Wire[]? Entries { get; set; }
 }
 
 [SszContainer]
@@ -475,13 +476,13 @@ public partial struct BlobV2EntryWire
 [SszContainer]
 public partial struct GetBlobsV2ResponseWire
 {
-    [SszList(128)] public BlobV2EntryWire[]? Entries { get; set; }
+    [SszList(SszRestLimits.MaxBlobsRequest)] public BlobV2EntryWire[]? Entries { get; set; }
 }
 
 [SszContainer]
 public partial struct GetBlobsV4RequestWire
 {
-    [SszList(128)] public Hash256[]? BlobVersionedHashes { get; set; }
+    [SszList(SszRestLimits.MaxBlobsRequest)] public Hash256[]? BlobVersionedHashes { get; set; }
     [SszVector(128)] public BitArray? IndicesBitarray { get; set; }
 }
 
@@ -517,7 +518,7 @@ public partial struct BlobV4EntryWire
 [SszContainer]
 public partial struct GetBlobsV4ResponseWire
 {
-    [SszList(128)] public BlobV4EntryWire[]? Entries { get; set; }
+    [SszList(SszRestLimits.MaxBlobsRequest)] public BlobV4EntryWire[]? Entries { get; set; }
 }
 [SszContainer(isCollectionItself: true)]
 public partial struct SszWitnessItem

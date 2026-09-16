@@ -34,9 +34,8 @@ namespace Nethermind.Core.Test.Crypto
             Assert.That(ecdsa.Verify(TestItem.AddressA, tx), Is.False);
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Signature_test_sepolia(bool eip155)
+        [Test]
+        public void Signature_test_sepolia([Values] bool eip155)
         {
             EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
             PrivateKey key = Build.A.PrivateKey.TestObject;
@@ -78,9 +77,8 @@ namespace Nethermind.Core.Test.Crypto
             }
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Signature_test_sepolia_1559(bool eip155)
+        [Test]
+        public void Signature_test_sepolia_1559([Values] bool eip155)
         {
             EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
             PrivateKey key = Build.A.PrivateKey.TestObject;
@@ -90,9 +88,8 @@ namespace Nethermind.Core.Test.Crypto
             Assert.That(address, Is.EqualTo(key.Address));
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Signature_test_olympic(bool isEip155Enabled)
+        [Test]
+        public void Signature_test_olympic([Values] bool isEip155Enabled)
         {
             EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
             PrivateKey key = Build.A.PrivateKey.TestObject;

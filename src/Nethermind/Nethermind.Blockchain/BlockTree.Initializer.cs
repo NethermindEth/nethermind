@@ -109,12 +109,24 @@ public partial class BlockTree
     {
         if (_tryToRecoverFromHeaderBelowBodyCorruption && BestSuggestedHeader is not null)
         {
-            ulong blockNumber = _stateBoundary.BestPersistedState ?? BestSuggestedHeader.Number;
+            ulong? persistedNumber = _stateBoundary.BestPersistedState;
+            ulong blockNumber = persistedNumber ?? BestSuggestedHeader.Number;
             ChainLevelInfo chainLevelInfo = LoadLevel(blockNumber);
             BlockInfo? canonicalBlock = chainLevelInfo?.MainChainBlock;
-            if (canonicalBlock is not null && canonicalBlock.WasProcessed)
+            if (canonicalBlock?.WasProcessed == true && FindBlock(canonicalBlock.BlockHash, BlockTreeLookupOptions.None) is not null)
             {
                 SetHeadBlock(canonicalBlock.BlockHash!);
+            }
+            else if (canonicalBlock is { WasProcessed: false } && persistedNumber is null)
+            {
+                if (HasBlock(blockNumber, canonicalBlock.BlockHash))
+                {
+                    SetHeadBlock(canonicalBlock.BlockHash);
+                }
+                else if (Logger.IsInfo)
+                {
+                    Logger.Info("Skipping head rollback for 'header < body' recovery - persisted ceiling is unavailable and the surviving suggested candidate was not processed.");
+                }
             }
             else
             {
@@ -227,7 +239,7 @@ public partial class BlockTree
         BlockHeader? found = null;
         foreach (BlockInfo blockInfo in level.BlockInfos)
         {
-            if (blockInfo.IsBeaconHeader != findBeacon)
+            if (findBeacon ? !blockInfo.IsBeaconHeader : blockInfo.IsBeaconInfo)
             {
                 continue;
             }
@@ -268,7 +280,7 @@ public partial class BlockTree
         Block? found = null;
         foreach (BlockInfo blockInfo in level.BlockInfos)
         {
-            if (blockInfo.IsBeaconBody != findBeacon)
+            if (findBeacon ? !blockInfo.IsBeaconBody : blockInfo.IsBeaconInfo)
             {
                 continue;
             }

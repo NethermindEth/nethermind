@@ -32,11 +32,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         internal static ulong SoftOutgoingMessageSizeLimit = 2UL.MiB;
         internal static ulong HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
         internal static ulong HardOutgoingBodiesMessageSizeLimit = 15UL.MiB;
-        public Node Node => Session?.Node;
-        public string ClientId => Node?.ClientId;
+        public Node Node => Session.Node;
+        public string? ClientId => Node.ClientId;
         public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
         public PublicKey Id => Node.Id;
-        string ITxPoolPeer.Enode => Node?.ToString();
+        string ITxPoolPeer.Enode => Node.ToString();
 
         public virtual bool IncludeInTxPool => true;
         protected ISyncServer SyncServer { get; }
@@ -322,7 +322,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     ? ArrayPoolList<BlockHeader>.Empty()
                     : SyncServer.FindHeaders(startingHash, (int)msg.MaxHeaders, (int)msg.Skip, msg.Reverse == 1);
 
-            headers = FixHeadersForGeth(headers);
+            headers = TruncateHeadersAtFirstMissing(headers);
 
             return Task.FromResult(new BlockHeadersMessage(headers));
         }
@@ -427,25 +427,21 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return Task.FromResult(new ReceiptsMessage(txReceipts));
         }
 
-        private static IOwnedReadOnlyList<BlockHeader> FixHeadersForGeth(IOwnedReadOnlyList<BlockHeader> headers)
+        private static IOwnedReadOnlyList<BlockHeader> TruncateHeadersAtFirstMissing(IOwnedReadOnlyList<BlockHeader> headers)
         {
-            int emptyBlocksAtTheEnd = 0;
             ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
+            int toTake = headersSpan.Length;
             for (int i = 0; i < headersSpan.Length; i++)
             {
-                if (headersSpan[headersSpan.Length - 1 - i] is null)
+                if (headersSpan[i] is null)
                 {
-                    emptyBlocksAtTheEnd++;
-                }
-                else
-                {
+                    toTake = i;
                     break;
                 }
             }
 
-            if (emptyBlocksAtTheEnd != 0)
+            if (toTake != headersSpan.Length)
             {
-                int toTake = headersSpan.Length - emptyBlocksAtTheEnd;
                 if (headers is ArrayPoolList<BlockHeader> asArrayPoolList)
                 {
                     asArrayPoolList.Truncate(toTake);

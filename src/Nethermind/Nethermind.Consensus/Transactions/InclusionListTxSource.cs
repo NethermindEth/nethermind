@@ -28,7 +28,7 @@ public class InclusionListTxSource(
     private readonly ConditionalWeakTable<byte[][], Lazy<Transaction[]>> _decodedByAttributes = [];
 
     // gasLimit is ignored: the downstream tx selection pipeline enforces it.
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
     {
         if (payloadAttributes?.InclusionListTransactions is not { Length: > 0 } il) return [];
         if (!_decodedByAttributes.TryGetValue(il, out Lazy<Transaction[]>? decoded))

@@ -4,14 +4,17 @@
 using System;
 using System.IO;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Common.Utilities;
+using DotNetty.Handlers.Timeout;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using Snappier;
 
@@ -117,10 +120,9 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
 
     public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
     {
-        //In case of SocketException we log it as debug to avoid noise
-        if (exception is SocketException)
+        if (exception is SocketException or RlpException or ReadTimeoutException)
         {
-            if (_logger.IsTrace) _logger.Trace($"Error in communication with {GetClientId(_session)} (SocketException): {exception}");
+            if (_logger.IsTrace) TraceCommunicationError(exception);
         }
         else
         {
@@ -143,6 +145,10 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         {
             base.ExceptionCaught(context, exception);
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceCommunicationError(Exception communicationException) =>
+            _logger.Trace($"Error in communication with {GetClientId(_session)} ({communicationException.GetType().Name}): {communicationException}");
     }
 
     private static string GetClientId(ISession? session) =>

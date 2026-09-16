@@ -34,7 +34,7 @@ public class InclusionListBlockProducerTxSourceFactoryTests
             .TestObject;
 
         ITxSource mempoolSource = Substitute.For<ITxSource>();
-        mempoolSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
+        mempoolSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
             .Returns([mempoolTx]);
 
         IBlockProducerTxSourceFactory baseFactory = Substitute.For<IBlockProducerTxSourceFactory>();
@@ -52,7 +52,8 @@ public class InclusionListBlockProducerTxSourceFactoryTests
         ITxSource txSource = new InclusionListBlockProducerTxSourceFactory(baseFactory, il).Create();
 
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        List<Transaction> selectedTxs = [.. txSource.GetTransactions(parent, 30_000_000UL, payloadAttributes)];
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(parent.Number + 1).TestObject;
+        List<Transaction> selectedTxs = [.. txSource.GetTransactions(parent, targetBlock, 30_000_000UL, payloadAttributes)];
 
         using (Assert.EnterMultipleScope())
         {
@@ -71,7 +72,7 @@ public class InclusionListBlockProducerTxSourceFactoryTests
             .TestObject;
 
         ITxSource mempoolSource = Substitute.For<ITxSource>();
-        mempoolSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
+        mempoolSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
             .Returns([mempoolTx]);
 
         IBlockProducerTxSourceFactory baseFactory = Substitute.For<IBlockProducerTxSourceFactory>();
@@ -86,7 +87,8 @@ public class InclusionListBlockProducerTxSourceFactoryTests
         ITxSource txSource = new InclusionListBlockProducerTxSourceFactory(baseFactory, il).Create();
 
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        List<Transaction> selectedTxs = [.. txSource.GetTransactions(parent, 30_000_000UL)];
+        BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(parent.Number + 1).TestObject;
+        List<Transaction> selectedTxs = [.. txSource.GetTransactions(parent, targetBlock, 30_000_000UL)];
 
         using (Assert.EnterMultipleScope())
         {

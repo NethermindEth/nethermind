@@ -273,10 +273,13 @@ public class P2PProtocolHandler(
             return;
         }
 
+        // Nothing from the Hello may be applied until the identity it claims agrees with the authenticated one.
         if (!hello.NodeId.Equals(Session.RemoteNodeId))
         {
             if (Logger.IsDebug) DebugInconsistentNodeId(hello, isInbound);
-            // it does not really matter if there is mismatch - we do not use it anywhere
+            Session.InitiateDisconnect(DisconnectReason.UnexpectedIdentity,
+                $"expected {Session.RemoteNodeId}, received hello with {hello.NodeId}");
+            return;
         }
 
         RemoteClientId = hello.ClientId;
@@ -464,23 +467,10 @@ public class P2PProtocolHandler(
     private void Close(EthDisconnectReason ethDisconnectReason)
     {
         Dispose();
-        if (ethDisconnectReason != EthDisconnectReason.TooManyPeers &&
-            ethDisconnectReason != EthDisconnectReason.Other &&
-            ethDisconnectReason != EthDisconnectReason.DisconnectRequested)
-        {
-            if (Logger.IsDebug) DebugReceivedDisconnect(ethDisconnectReason);
-        }
-        else
-        {
-            if (Logger.IsTrace) TraceReceivedDisconnect(ethDisconnectReason);
-        }
+        if (Logger.IsTrace) TraceReceivedDisconnect(ethDisconnectReason);
 
         // Received disconnect message, triggering direct TCP disconnection
         Session.MarkDisconnected(ethDisconnectReason.ToDisconnectReason(), DisconnectType.Remote, "message");
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void DebugReceivedDisconnect(EthDisconnectReason reason)
-            => Logger.Debug($"{Session} received disconnect [{reason}]");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceReceivedDisconnect(EthDisconnectReason reason)

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -117,10 +118,27 @@ namespace Ethereum.Test.Base
             };
         }
 
+        /// <summary>
+        /// Parses the JSON-RPC error code an engine fixture expects <c>engine_newPayloadV*</c> to
+        /// answer with, or null when it expects the payload to be validated.
+        /// </summary>
+        /// <exception cref="FormatException">The fixture carries an <c>errorCode</c> that is not an integer.</exception>
+        public static int? ParseErrorCode(TestEngineNewPayloadsJson engineNewPayload)
+        {
+            if (engineNewPayload.ErrorCode is null)
+            {
+                return null;
+            }
+
+            return int.TryParse(engineNewPayload.ErrorCode, NumberStyles.Integer, CultureInfo.InvariantCulture, out int errorCode)
+                ? errorCode
+                : throw new FormatException($"Invalid engine payload errorCode: '{engineNewPayload.ErrorCode}'");
+        }
 
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson, ulong chainId = BlockchainIds.Mainnet)
         {
-            PrivateKey privateKey = new(transactionJson.SecretKey);
+            // A fixture that pins an explicit v/r/s carries no secret key that could reproduce it.
+            PrivateKey? privateKey = transactionJson.SecretKey is null ? null : new PrivateKey(transactionJson.SecretKey);
 
             // Invalid-tx state tests carry the actual signed tx in txbytes; the template below is
             // re-signed pre-EIP-155, which cannot reproduce signature-level invalidity (e.g. INVALID_CHAINID).
@@ -129,7 +147,7 @@ namespace Ethereum.Test.Base
                 try
                 {
                     Transaction decoded = Rlp.Decode<Transaction>(postStateJson.Txbytes, RlpBehaviors.SkipTypedWrapping);
-                    decoded.SenderAddress = privateKey.Address;
+                    decoded.SenderAddress = privateKey?.Address ?? new EthereumEcdsa(chainId).RecoverAddress(decoded);
                     return decoded;
                 }
                 catch (RlpException)
@@ -138,6 +156,11 @@ namespace Ethereum.Test.Base
                     // (e.g. intrinsic gas) is still caught by tx validation at execution time.
                 }
             }
+
+            // Without a secret key the template cannot be signed back into the transaction the fixture
+            // describes, and the only fixtures that omit one are the ones asserting a bad signature, so
+            // mark it intentionally invalid rather than hand the named sender a valid transfer.
+            Address senderAddress = privateKey?.Address ?? Address.Zero;
             Transaction transaction = new()
             {
                 Type = transactionJson.Type,
@@ -148,7 +171,7 @@ namespace Ethereum.Test.Base
                 Nonce = transactionJson.Nonce,
                 To = transactionJson.To,
                 Data = transactionJson.Data[postStateJson.Indexes.Data],
-                SenderAddress = privateKey.Address,
+                SenderAddress = senderAddress,
                 Signature = new Signature(1, 1, 27),
                 BlobVersionedHashes = transactionJson.BlobVersionedHashes,
                 MaxFeePerBlobGas = transactionJson.MaxFeePerBlobGas
@@ -237,7 +260,7 @@ namespace Ethereum.Test.Base
             // absent from the pre-state, TransactionProcessor.RecoverSenderIfNeeded re-recovers a
             // bogus sender from the placeholder signature and then crashes incrementing its nonce.
             // Address.Zero marks an intentionally-invalid transaction, so leave those as-is.
-            if (transaction.SenderAddress != Address.Zero)
+            if (privateKey is not null && transaction.SenderAddress != Address.Zero)
             {
                 new EthereumEcdsa(chainId).Sign(privateKey, transaction, isEip155Enabled: false);
                 transaction.Hash = transaction.CalculateHash();

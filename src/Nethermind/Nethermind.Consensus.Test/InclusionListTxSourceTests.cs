@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
@@ -29,13 +30,21 @@ public class InclusionListTxSourceTests
 
     private static PayloadAttributes Attributes(byte[][] inclusionList) => new() { InclusionListTransactions = inclusionList };
 
+    private static IEnumerable<Transaction> GetTransactions(
+        InclusionListTxSource source,
+        PayloadAttributes payloadAttributes = null) =>
+        source.GetTransactions(
+            Build.A.BlockHeader.WithNumber(0).TestObject,
+            Build.A.BlockHeader.WithNumber(1).TestObject,
+            30_000_000UL,
+            payloadAttributes);
+
     [Test]
     public void Empty_when_no_payload_attributes()
     {
         InclusionListTxSource source = CreateSource();
-        BlockHeader parent = Build.A.BlockHeader.TestObject;
 
-        Assert.That(source.GetTransactions(parent, 30_000_000UL), Is.Empty);
+        Assert.That(GetTransactions(source), Is.Empty);
     }
 
     [Test]
@@ -46,11 +55,11 @@ public class InclusionListTxSourceTests
         byte[][] il = [Encode(tx)];
         PayloadAttributes attrs = Attributes(il);
 
-        Assert.That(source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, attrs), Is.Empty);
+        Assert.That(GetTransactions(source, attrs), Is.Empty);
 
         source.Set(il, Bogota.Instance);
         Assert.That(
-            source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, attrs).Select(t => t.Nonce),
+            GetTransactions(source, attrs).Select(t => t.Nonce),
             Is.EqualTo([1ul]));
     }
 
@@ -70,8 +79,8 @@ public class InclusionListTxSourceTests
         source.Set(ilA, Bogota.Instance);
         source.Set(ilB, Bogota.Instance);
 
-        Assert.That(source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, attrsA).Select(t => t.Nonce), Is.EqualTo([1ul]));
-        Assert.That(source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, attrsB).Select(t => t.Nonce), Is.EqualTo([2ul]));
+        Assert.That(GetTransactions(source, attrsA).Select(t => t.Nonce), Is.EqualTo([1ul]));
+        Assert.That(GetTransactions(source, attrsB).Select(t => t.Nonce), Is.EqualTo([2ul]));
     }
 
     [Test]
@@ -82,7 +91,7 @@ public class InclusionListTxSourceTests
         PayloadAttributes attrs = Attributes(il);
 
         source.Set(il, Bogota.Instance);
-        Assert.That(source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, attrs), Is.Empty);
+        Assert.That(GetTransactions(source, attrs), Is.Empty);
     }
 
     // Decoding and sender recovery must stay off the engine thread: a forkchoice update that is about to be
@@ -98,7 +107,7 @@ public class InclusionListTxSourceTests
         source.Set(il, Bogota.Instance);
         Assert.That(ecdsa.Recoveries, Is.Zero);
 
-        Assert.That(source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, Attributes(il)), Is.Not.Empty);
+        Assert.That(GetTransactions(source, Attributes(il)), Is.Not.Empty);
         Assert.That(ecdsa.Recoveries, Is.EqualTo(1));
     }
 
@@ -130,7 +139,7 @@ public class InclusionListTxSourceTests
 
         source.Set(il, Bogota.Instance);
         Assert.That(
-            source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, attrs).Select(t => t.Nonce),
+            GetTransactions(source, attrs).Select(t => t.Nonce),
             Is.EqualTo([1ul]));
     }
 
@@ -146,7 +155,7 @@ public class InclusionListTxSourceTests
 
         source.Set(il, Bogota.Instance);
         Assert.That(
-            source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, attrs).Select(t => t.Nonce),
+            GetTransactions(source, attrs).Select(t => t.Nonce),
             Is.EqualTo([0ul, 1ul]));
     }
 
@@ -163,7 +172,7 @@ public class InclusionListTxSourceTests
 
         source.Set(il, Bogota.Instance);
         Assert.That(
-            source.GetTransactions(Build.A.BlockHeader.TestObject, 30_000_000UL, attrs).Select(t => (t.SenderAddress, t.Nonce)),
+            GetTransactions(source, attrs).Select(t => (t.SenderAddress, t.Nonce)),
             Is.EqualTo([
                 (TestItem.AddressB, 0ul),
                 (TestItem.AddressB, 1ul),

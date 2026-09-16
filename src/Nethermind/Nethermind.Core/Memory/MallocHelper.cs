@@ -20,7 +20,7 @@ public class MallocHelper
     private static MallocHelper? _instance;
     public static MallocHelper Instance => _instance ??= new MallocHelper();
 
-    public bool MallOpt(Option option, int value)
+    public virtual bool MallOpt(Option option, int value)
     {
         // Windows can't find libc and osx does not have the method for some reason
         // FreeBSD uses jemalloc by default anyway....

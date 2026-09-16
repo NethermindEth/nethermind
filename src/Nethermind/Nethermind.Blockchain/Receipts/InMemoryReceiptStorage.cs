@@ -85,6 +85,8 @@ namespace Nethermind.Blockchain.Receipts
 
         public void InsertForMigration(Block block, TxReceipt[] receipts) => Insert(block, receipts);
 
+        public TxReceipt?[] GetForMigration(ulong blockNumber, Hash256 blockHash) => Get(blockHash, recover: false);
+
         public bool HasBlock(ulong blockNumber, Hash256 hash)
             => _receipts.ContainsKey(hash);
 
@@ -106,6 +108,20 @@ namespace Nethermind.Blockchain.Receipts
             foreach (Transaction tx in block.Transactions)
             {
                 _transactions.TryRemove(tx.Hash, out _);
+            }
+        }
+
+        /// <summary>Takes the transaction index with it, for the same reason as <see cref="RemoveReceiptsRange"/>. The
+        /// number is not needed here: this store is keyed by hash alone.</summary>
+        public void RemoveReceipts(ulong blockNumber, Hash256 blockHash)
+        {
+            _blockNumbers.TryRemove(blockHash, out _);
+            if (_receipts.TryRemove(blockHash, out TxReceipt[]? removed))
+            {
+                foreach (TxReceipt receipt in removed)
+                {
+                    _transactions.TryRemove(receipt.TxHash, out _);
+                }
             }
         }
 

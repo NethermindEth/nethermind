@@ -62,5 +62,5 @@ public static class ContainerBuilderExtensions
                 return new NoopTunableDb();
             });
 
-    private static string GetTitleDbName(string dbName) => char.ToUpper(dbName[0]) + dbName[1..];
+    internal static string GetTitleDbName(string dbName) => char.ToUpper(dbName[0]) + dbName[1..];
 }

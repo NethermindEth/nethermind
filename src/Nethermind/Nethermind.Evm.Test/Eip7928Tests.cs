@@ -201,8 +201,8 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
     {
         AccountChangesAtIndex? accountChanges = bal.GetAccountChanges(address);
         Assert.That(accountChanges, Is.Not.Null);
-        Assert.That(accountChanges!.TryGetStorageChange(key, out StorageChange? slotChange), Is.True);
-        Assert.That(slotChange!.Value.Value, Is.EqualTo(value.ToBigEndianWord()));
+        Assert.That(accountChanges!.StorageChanges.TryGetValue(key, out StorageChange slotChange), Is.True);
+        Assert.That(slotChange.Value, Is.EqualTo(value));
     }
 
     private static void AssertNonceChange(BlockAccessListAtIndex bal, Address address, ulong value)
@@ -589,7 +589,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 
         AccountChangesAtIndex? testAddressChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(_testAddress);
         StorageChange? change = null;
-        if (testAddressChanges is not null && testAddressChanges.TryGetStorageChange(UInt256.Zero, out StorageChange? storageChange))
+        if (testAddressChanges is not null && testAddressChanges.StorageChanges.TryGetValue(UInt256.Zero, out StorageChange storageChange))
         {
             change = storageChange;
         }
@@ -599,7 +599,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             Assert.That(res.TransactionExecuted, Is.True);
             Assert.That(change, Is.Not.Null,
                 "EIP-7702 FastCall must succeed and propagate via SSTORE; missing slot 0 entry indicates the call failed.");
-            Assert.That(change!.Value.Value, Is.EqualTo(UInt256.One.ToBigEndianWord()),
+            Assert.That(change!.Value.Value, Is.EqualTo(UInt256.One),
                 "EIP-7702: delegation to a precompile must NOT execute the precompile - FastCall returns 1 regardless of forwarded gas.");
         }
     }
@@ -1276,7 +1276,7 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         ulong intrinsicGas = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance, block.Header.GasLimit).MinimalGas;
         // Enough gas to push CALL operands and reach the cold-access charge for the EOA, but
         // 1 gas short of the cold-access charge for its delegation target. CALL pushes 7 stack
-        // operands (3 each of GasCostOf.VeryLow), pays GasCostOf.Call, then ConsumeAccountAccessGas
+        // operands (3 each of GasCostOf.VeryLow), pays GasCostOf.Call, then TryConsumeAccountAccessGas
         // for codeSource (cold), then for delegated (cold) — we cap at codeSource cold + 1 short.
         ulong pushOperandsCost = 7 * GasCostOf.VeryLow;
         ulong executionGas = pushOperandsCost + GasCostOf.Call + Eip8038Constants.ColdAccountAccess + GasCostOf.WarmStateRead - 1;
@@ -1681,6 +1681,17 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
             changes = [testAccount];
             yield return new TestCaseData(changes, code, null, GasCostOf.SelfBalance, EvmExceptionType.OutOfGas)
             { TestName = "selfbalance_oog_post_state_access" };
+
+            code = new byte[1025];
+            code.AsSpan(0, 1024).Fill((byte)Instruction.PUSH0);
+            code[^1] = (byte)Instruction.SELFBALANCE;
+            foreach (bool sufficientGas in new[] { false, true })
+            {
+                yield return new TestCaseData(changes, code, null,
+                    1024UL * GasCostOf.Base + GasCostOf.SelfBalance - (sufficientGas ? 0UL : 1UL),
+                    sufficientGas ? EvmExceptionType.StackOverflow : EvmExceptionType.OutOfGas)
+                { TestName = sufficientGas ? "selfbalance_stack_overflow" : "selfbalance_oog_before_stack_overflow" };
+            }
 
             code = Prepare.EvmCode
                 .PushData(TestItem.AddressB)

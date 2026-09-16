@@ -3,11 +3,12 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 
@@ -47,15 +48,19 @@ public class BlockStore : IBlockStore, IClearableCache
 
     public byte[]? GetMetadata(byte[] key) => _blockDb.Get(key);
 
+    /// <inheritdoc/>
+    /// <remarks>Deliberately does not consult <c>_blockCache</c>: it is a bounded read accelerator whose entries
+    /// can be evicted at any time, and it holds blocks that were never written (a preloaded block cached by
+    /// <c>UpdateMainChainCore</c>), so a hit there would report a body that is about to vanish. The pending
+    /// overlay is durable - its entry is removed only after the write returns. Both key forms are probed, so this
+    /// agrees with <see cref="Get"/> on a database predating the block-number prefix.</remarks>
     public bool HasBlock(ulong blockNumber, Hash256 blockHash)
     {
-        ValueHash256 cacheKey = blockHash.ValueHash256;
-        if (_blockCache.TryGetNoRefresh(in cacheKey, out _)) return true;
         if (_pending?.Contains(blockHash) == true) return true;
 
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
-        return _blockDb.KeyExists(dbKey);
+        return _blockDb.KeyExists(dbKey) || _blockDb.KeyExists(blockHash.Bytes);
     }
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
@@ -121,23 +126,35 @@ public class BlockStore : IBlockStore, IClearableCache
     /// <remarks>Reaches only block-number-prefixed keys. A database predating those stores bodies under the bare
     /// 32-byte hash, which <see cref="Get"/> still reads, so it reclaims nothing here and keeps serving blocks below
     /// the announced boundary. Accepted: it needs a node that never resynced since keys gained their prefix.</remarks>
-    public void DeleteRange(ulong fromInclusive, ulong toExclusive)
+    public void DeleteRange(ulong fromInclusive, ulong toExclusive) => DeleteRanges([(fromInclusive, toExclusive)]);
+
+    /// <inheritdoc/>
+    public void DeleteRanges(IReadOnlyList<(ulong FromInclusive, ulong ToExclusive)> ranges)
     {
-        if (_pending is not null)
+        bool removedAny = false;
+        foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
         {
-            _pending.RemoveRange(fromInclusive, toExclusive, () => _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "blocks"));
-        }
-        else
-        {
-            _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "blocks");
+            if (_pending is not null)
+            {
+                _pending.RemoveRange(fromInclusive, toExclusive, () => _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "blocks"));
+            }
+            else
+            {
+                _blockDb.DeleteBlockNumberRange(fromInclusive, toExclusive, "blocks");
+            }
+
+            removedAny |= fromInclusive < toExclusive;
         }
 
-        if (fromInclusive >= toExclusive) return;
+        if (!removedAny) return;
 
         // Before the reclaim, not after: keyed by hash so it cannot be narrowed to the range, and a block already off
         // disk must stop being served whatever the reclaim does.
         _blockCache.Clear();
-        _blockDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
+        foreach ((ulong fromInclusive, ulong toExclusive) in ranges)
+        {
+            if (fromInclusive < toExclusive) _blockDb.ReclaimBlockNumberRange(fromInclusive, toExclusive);
+        }
     }
 
     public Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)

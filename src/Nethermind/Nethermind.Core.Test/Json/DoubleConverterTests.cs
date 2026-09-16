@@ -27,11 +27,8 @@ public class DoubleConverterTests
         Assert.That(json, Is.EqualTo(expected), "double serialization must preserve full IEEE 754 round-trip precision");
     }
 
-    [TestCase(0.678584082336891)]
-    [TestCase(0.9985787551520126)]
-    [TestCase(0.16666666666666666)]
-    [TestCase(0.3333333333333333)]
-    public void Roundtrip_PreservesValue(double value)
+    [Test]
+    public void Roundtrip_PreservesValue([Values(0.678584082336891, 0.9985787551520126, 0.16666666666666666, 0.3333333333333333)] double value)
     {
         string json = JsonSerializer.Serialize(value, Options);
         double deserialized = JsonSerializer.Deserialize<double>(json, Options);

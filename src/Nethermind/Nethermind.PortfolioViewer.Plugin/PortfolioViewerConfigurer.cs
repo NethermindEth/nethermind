@@ -14,6 +14,7 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Find;
+using Nethermind.History;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 
@@ -26,7 +27,8 @@ namespace Nethermind.PortfolioViewer.Plugin;
 /// </remarks>
 public sealed class PortfolioViewerConfigurer(
     IPortfolioViewerConfig config, IInitConfig initConfig, IBackgroundTaskScheduler scheduler,
-    ILogFinder logFinder, IBlockFinder blockFinder, ISpecProvider specProvider, ILogManager logManager) : IJsonRpcServiceConfigurer
+    ILogFinder logFinder, IBlockFinder blockFinder, ISpecProvider specProvider, ILogManager logManager,
+    IHistoryPruner? historyPruner = null) : IJsonRpcServiceConfigurer
 {
     public void Configure(IServiceCollection services)
     {
@@ -36,7 +38,7 @@ public sealed class PortfolioViewerConfigurer(
         services.AddSingleton<ISiblingNodeRegistry, SiblingNodeRegistry>();
         services.AddSingleton<IDetectionCache>(cache);
         services.AddSingleton<IPinnedCidStore>(new PinnedCidStore(initConfig.BaseDbPath, logManager));
-        services.AddSingleton<IDetectionScanner>(new DetectionScanner(scheduler, logFinder, blockFinder, cache, logManager, specProvider.ChainId));
+        services.AddSingleton<IDetectionScanner>(new DetectionScanner(scheduler, logFinder, blockFinder, cache, logManager, specProvider.ChainId, historyPruner));
         services.AddTransient<IStartupFilter, PortfolioViewerStartupFilter>();
     }
 }

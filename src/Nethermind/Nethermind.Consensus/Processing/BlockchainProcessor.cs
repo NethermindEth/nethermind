@@ -19,6 +19,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -40,6 +41,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public bool IsMainProcessor { get; init; }
 
     private readonly IBranchProcessor _branchProcessor;
+    private readonly ISpecProvider _specProvider;
     private readonly IReadOnlyList<IBlockPreprocessorStep> _preprocessorSteps;
     private readonly IStateReader _stateReader;
     private readonly Options _options;
@@ -76,6 +78,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private int _currentRecoveryQueueSize;
     private bool _isProcessingBlock;
     private const int MaxBranchSize = 8192;
+    private const int InitialBranchCapacity = 16;
     private readonly CompositeBlockTracer _compositeBlockTracer = new();
     private readonly Stopwatch _stopwatch = new();
     private readonly BlockProcessingPauseGate _pauseGate = new();
@@ -88,6 +91,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     /// </summary>
     /// <param name="blockTree"></param>
     /// <param name="branchProcessor"></param>
+    /// <param name="specProvider">Provider used to select fork rules while tracing invalid branches.</param>
     /// <param name="preprocessorSteps"></param>
     /// <param name="stateReader"></param>
     /// <param name="logManager"></param>
@@ -97,6 +101,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public BlockchainProcessor(
         IBlockTree blockTree,
         IBranchProcessor branchProcessor,
+        ISpecProvider specProvider,
         IReadOnlyList<IBlockPreprocessorStep> preprocessorSteps,
         IStateReader stateReader,
         ILogManager logManager,
@@ -107,6 +112,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _logger = logManager.GetClassLogger<BlockchainProcessor>();
         _blockTree = blockTree;
         _branchProcessor = branchProcessor;
+        _specProvider = specProvider;
         _preprocessorSteps = preprocessorSteps;
         _stateReader = stateReader;
         _options = options;
@@ -646,7 +652,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 TraceFailingBranch(
                     processingBranch,
                     options,
-                    new GethLikeBlockMemoryTracer(new GethTraceOptions { EnableMemory = true }),
+                    new GethLikeBlockMemoryTracer(new GethTraceOptions { EnableMemory = true }, _specProvider),
                     DumpOptions.Geth);
             }
 
@@ -668,7 +674,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         ArrayPoolList<Block> blocksToProcess = processingBranch.BlocksToProcess;
         if (options.ContainsFlag(ProcessingOptions.ForceProcessing))
         {
-            processingBranch.Blocks.Clear(); // TODO: investigate why if we clear it all we need to collect and iterate on all the blocks in PrepareProcessingBranch?
             blocksToProcess.Add(suggestedBlock);
         }
         else
@@ -719,7 +724,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private ProcessingBranch PrepareProcessingBranch(Block suggestedBlock, ProcessingOptions options)
     {
         BlockHeader? branchingPoint = null;
-        ArrayPoolList<Block> blocksToBeAddedToMain = new((int)Reorganization.PersistenceInterval);
+        ArrayPoolList<Block> blocksToBeAddedToMain = new(InitialBranchCapacity);
 
         bool branchingCondition;
 
@@ -734,7 +739,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 ThrowMaxBranchSizeReached();
             }
 
-            if (!options.ContainsFlag(ProcessingOptions.Trace))
+            if (!options.ContainsFlag(ProcessingOptions.ForceProcessing))
             {
                 blocksToBeAddedToMain.Add(toBeProcessed);
             }
@@ -745,9 +750,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 break;
             }
 
-            branchingPoint = options.ContainsFlag(ProcessingOptions.ForceSameBlock)
-                ? toBeProcessed.Header
-                : _blockTree.FindParentHeader(toBeProcessed.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            branchingPoint = _blockTree.FindParentHeader(toBeProcessed.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
 
             if (branchingPoint is null)
             {

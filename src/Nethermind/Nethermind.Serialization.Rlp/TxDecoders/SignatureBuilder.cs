@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Messages;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
@@ -13,7 +14,7 @@ public static class SignatureBuilder
     {
         bool allowUnsigned = rlpBehaviors.HasFlag(RlpBehaviors.AllowUnsigned);
         bool isSignatureOk = true;
-        string signatureError = null;
+        string? signatureError = null;
         if (rBytes.Length == 0 || sBytes.Length == 0)
         {
             isSignatureOk = false;
@@ -35,10 +36,15 @@ public static class SignatureBuilder
             signatureError = "Both 'r' and 's' are zero when decoding a transaction";
         }
 
+        if (isSignatureOk && v < Signature.VOffset)
+        {
+            throw new RlpException($"{TxErrorMessages.InvalidTxSignature} V must be at least {Signature.VOffset}.");
+        }
+
         return isSignatureOk
             ? new Signature(rBytes, sBytes, v)
             : allowUnsigned
                 ? null
-                : throw new RlpException(signatureError);
+                : throw new RlpException(signatureError ?? "Invalid transaction signature.");
     }
 }

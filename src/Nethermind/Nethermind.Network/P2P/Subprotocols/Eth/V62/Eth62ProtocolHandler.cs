@@ -257,7 +257,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private bool TryScheduleTransactions(TransactionsMessage msg, Func<TransactionsRequest, CancellationToken, ValueTask> handler)
         {
             IOwnedReadOnlyList<Transaction> iList = msg.Transactions;
-            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(iList, 0), handler, "Transactions"))
+            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(iList, 0), handler))
             {
                 foreach (Transaction tx in iList)
                 {
@@ -297,7 +297,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                             return ValueTask.CompletedTask;
                         }
 
-                        if (BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(transactions, currentIdx), _handleSlow, "Transactions"))
+                        if (BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(transactions, currentIdx), _handleSlow))
                         {
                             isTransferred = true;
                         }

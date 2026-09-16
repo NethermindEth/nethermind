@@ -100,6 +100,7 @@ namespace Nethermind.Blockchain
         public bool CanAcceptNewBlocks => _canAcceptNewBlocksCounter == 0;
 
         private ulong _oldestBlock;
+        private ulong _lowestServedBlock;
 
         private TaskCompletionSource? _taskCompletionSource;
 
@@ -423,8 +424,29 @@ namespace Nethermind.Blockchain
             }
 
             bool isKnown = IsKnownBlock(header.Number, header.Hash);
-            if (isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number)
+            if (IsKnownBlockAtOrBelowBestSuggestedHeader(header, isKnown))
             {
+                // A known header says nothing about the payloads hanging off it: fast sync inserts headers ahead of
+                // bodies and access lists, so this can still be the first time either arrives. Persist rather than
+                // discard - once a feed has finished its descent nothing fetches its payload again. The two feeds
+                // descend independently, so each write needs its own presence check.
+                // History pruning drops bodies and access lists while keeping levels and headers, so "known header,
+                // no payload" also describes a pruned block; no cutoff check is needed because that cutoff sits far
+                // below the head that Suggest callers work near, while below-cutoff payloads arrive through Insert.
+                if (block is not null)
+                {
+                    if (!_blockStore.HasBlock(header.Number, header.Hash))
+                    {
+                        _blockStore.InsertDeferred(block);
+                    }
+
+                    if ((block.EncodedBlockAccessList is not null || block.BlockAccessList is not null) &&
+                        !_balStore.Exists(header.Number, header.Hash))
+                    {
+                        _balStore.InsertFromBlockDeferred(block);
+                    }
+                }
+
                 if (Logger.IsTrace) Logger.Trace($"Block {header.ToString(BlockHeader.Format.FullHashAndNumber)} already known.");
                 return AddBlockResult.AlreadyKnown;
             }
@@ -493,6 +515,15 @@ namespace Nethermind.Blockchain
 
             return AddBlockResult.Added;
         }
+
+        /// <summary>Tells whether <paramref name="header"/> is one <see cref="Suggest"/> answers with
+        /// <see cref="AddBlockResult.AlreadyKnown"/> rather than adding.</summary>
+        /// <param name="isKnown">The caller's <see cref="IsKnownBlock"/> result for <paramref name="header"/>, taken as
+        /// a parameter because callers already need it for their own branches; this method does not re-derive it, so
+        /// passing a value read for another header or before a concurrent insert gives a wrong answer.</param>
+        /// <param name="header">The block header to compare with the best suggested header.</param>
+        protected bool IsKnownBlockAtOrBelowBestSuggestedHeader(BlockHeader header, bool isKnown) =>
+            isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number;
 
         public AddBlockResult SuggestHeader(BlockHeader header) => Suggest(null, header);
 
@@ -798,6 +829,13 @@ namespace Nethermind.Blockchain
 
         public void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive)
             => _blockStore.DeleteRange(fromInclusive, toExclusive);
+
+        /// <inheritdoc/>
+        public void DeleteOldBlockRanges(IReadOnlyList<(ulong FromInclusive, ulong ToExclusive)> ranges)
+            => _blockStore.DeleteRanges(ranges);
+
+        public void DeleteOldBlock(ulong blockNumber, Hash256 blockHash)
+            => _blockStore.Delete(blockNumber, blockHash);
 
         private void DeleteBlocks(Hash256 deletePointer)
         {
@@ -1896,6 +1934,10 @@ namespace Nethermind.Blockchain
         }
 
         public ulong GetLowestBlock() => _oldestBlock;
+
+        public ulong LowestServedBlock => Math.Max(_oldestBlock, Volatile.Read(ref _lowestServedBlock));
+
+        public void UpdateLowestServedBlock(ulong lowestServed) => Volatile.Write(ref _lowestServedBlock, lowestServed);
 
         public void NewOldestBlock(ulong oldestBlock) => _oldestBlock = oldestBlock;
     }

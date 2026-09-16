@@ -8,7 +8,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db.LogIndex;
 using Nethermind.History;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -61,8 +60,6 @@ public class BoundedModulePoolTests
             Substitute.For<IProtocolsManager>(),
             new BlocksConfig(),
             Substitute.For<IForkInfo>(),
-            Substitute.For<ILogIndexConfig>(),
-            new ReceiptConfig(),
             new EthCapabilitiesProvider(
                 blockTree.AsReadOnly(),
                 Substitute.For<IStateBoundary>(),
@@ -143,17 +140,15 @@ public class BoundedModulePoolTests
         await Task.WhenAll(a, b, c, d);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Can_rent_and_return(bool canBeShared)
+    [Test]
+    public async Task Can_rent_and_return([Values] bool canBeShared)
     {
         IEthRpcModule ethRpcModule = await _modulePool.GetModule(canBeShared);
         _modulePool.ReturnModule(ethRpcModule);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Can_rent_and_return_in_a_loop(bool canBeShared)
+    [Test]
+    public async Task Can_rent_and_return_in_a_loop([Values] bool canBeShared)
     {
         for (int i = 0; i < 1000; i++)
         {

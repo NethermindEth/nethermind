@@ -22,8 +22,8 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     private readonly IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result> _newPayloadWithWitnessHandlerV6 = newPayloadWithWitnessHandlerV6;
 
-    public Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1()
-        => getInclusionListTransactionsHandler.Handle();
+    public Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1(Hash256? parentBlockHash = null)
+        => getInclusionListTransactionsHandler.Handle(parentBlockHash);
 
     public Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
         => NewPayloadWithInclusionList(
@@ -74,7 +74,9 @@ public partial class EngineRpcModule : IEngineRpcModule
         ForkchoiceStateV1 forkchoiceState,
         PayloadAttributes? payloadAttributes = null,
         BitArray? custodyColumns = null)
-        => ForkchoiceUpdatedWithInclusionList(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V5);
+        => ValidateAndApplyCustodyColumns(custodyColumns) is { } error
+            ? Task.FromResult(ResultWrapper<ForkchoiceUpdatedV2Result>.Fail(error, ErrorCodes.InvalidParams))
+            : ForkchoiceUpdatedWithInclusionList(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V5);
 
     /// <summary>Registers any inclusion list for the build, then runs <see cref="ForkchoiceUpdated"/> and maps
     /// its result onto the Bogota <see cref="ForkchoiceUpdatedV2Result"/> shape.</summary>

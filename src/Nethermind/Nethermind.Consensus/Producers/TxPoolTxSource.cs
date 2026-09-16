@@ -7,11 +7,13 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -31,35 +33,54 @@ namespace Nethermind.Consensus.Producers
         ITransactionComparerProvider? transactionComparerProvider,
         ILogManager? logManager,
         ITxFilterPipeline? txFilterPipeline,
-        IBlocksConfig blocksConfig)
+        IBlocksConfig blocksConfig,
+        [KeyFilter(ITxValidator.SpecChangeTxValidatorKey)] ITxValidator? specChangeTxValidator)
         : ITxSource
     {
+        private const ulong BlobConsiderationMultiplier = 5;
+        private const ulong RejectedBlobReadMultiplier = 10;
+
         private readonly ITxPool _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
         private readonly ITransactionComparerProvider _transactionComparerProvider = transactionComparerProvider ?? throw new ArgumentNullException(nameof(transactionComparerProvider));
         private readonly ITxFilterPipeline _txFilterPipeline = txFilterPipeline ?? throw new ArgumentNullException(nameof(txFilterPipeline));
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        private readonly ITxValidator _specChangeTxValidator = specChangeTxValidator ?? throw new ArgumentNullException(nameof(specChangeTxValidator));
         protected readonly ILogger _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+        public IEnumerable<Transaction> GetTransactions(
+            BlockHeader parent,
+            BlockHeader targetBlock,
+            ulong gasLimit,
+            PayloadAttributes? payloadAttributes = null,
+            bool filterSource = false)
         {
-            ulong blockNumber = parent.Number + 1;
-            IReleaseSpec spec = NextBlockSpecHelper.GetSpec(_specProvider, parent, payloadAttributes, blocksConfig);
+            IReleaseSpec spec = _specProvider.GetSpec(targetBlock);
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
-            IDictionary<AddressAsKey, Transaction[]> pendingTransactions = filterSource ?
-                _transactionPool.GetPendingTransactionsBySender(filterToReadyTx: true, baseFee) :
-                _transactionPool.GetPendingTransactionsBySender();
-            IDictionary<AddressAsKey, Transaction[]> pendingBlobTransactionsEquivalences = filterSource
-                ? _transactionPool.GetPendingLightBlobTransactionsBySender(filterToReadyTx: true, baseFee)
-                : _transactionPool.GetPendingLightBlobTransactionsBySender();
-            IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, blockNumber))
+            PendingTransactionsView pending = _transactionPool.GetPendingForProduction(targetBlock, filterSource, baseFee);
+            bool isRevalidatedForTarget = pending.IsRevalidated;
+            IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions = pending.Transactions;
+            IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingBlobTransactionsEquivalences = pending.BlobTransactions;
+            IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, targetBlock.Number))
                 .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
             Func<Transaction, bool> filter = tx => _txFilterPipeline.Execute(tx, parent, spec);
             bool BlobFilter(Transaction tx) => HasFullBlobData(tx) && filter(tx);
+            // A revalidated pool has already rejected everything whose validity changes with the target spec.
+            Func<Transaction, bool> pendingTxFilter = isRevalidatedForTarget
+                ? filter
+                : tx => filter(tx) && IsForkSensitiveStateValid(tx, spec);
 
             ulong maxBlobCount = spec.MaxProductionBlobCount(blocksConfig.BlockProductionBlobLimit);
-            IEnumerable<Transaction> transactions = GetOrderedTransactions(pendingTransactions, comparer, filter, gasLimit);
-            IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(pendingBlobTransactionsEquivalences, comparer, BlobFilter, maxBlobCount);
+            IEnumerable<Transaction> transactions = GetOrderedTransactions(
+                pendingTransactions,
+                comparer,
+                pendingTxFilter,
+                gasLimit);
+            IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(
+                pendingBlobTransactionsEquivalences,
+                comparer,
+                BlobFilter,
+                maxBlobCount);
             if (_logger.IsTrace) _logger.Trace($"Collecting pending transactions at block gas limit {gasLimit}.");
 
             int checkedTransactions = 0;
@@ -67,7 +88,7 @@ namespace Nethermind.Consensus.Producers
 
             using ArrayPoolList<Transaction> selectedBlobTxs = new((int)maxBlobCount);
 
-            SelectBlobTransactions(blobTransactions, parent, spec, baseFee, selectedBlobTxs, maxBlobCount);
+            Dictionary<Hash256, Transaction>? fullBlobTxs = SelectBlobTransactions(blobTransactions, parent, spec, baseFee, selectedBlobTxs, maxBlobCount, !isRevalidatedForTarget);
 
             foreach (Transaction tx in transactions)
             {
@@ -82,7 +103,7 @@ namespace Nethermind.Consensus.Producers
 
                 foreach (Transaction blobTx in PickBlobTxsBetterThanCurrentTx(selectedBlobTxs, tx, comparer))
                 {
-                    if (ResolveBlob(blobTx, out Transaction fullBlobTx))
+                    if (TryResolveSelectedBlob(blobTx, out Transaction? fullBlobTx))
                     {
                         yield return fullBlobTx;
                     }
@@ -98,7 +119,7 @@ namespace Nethermind.Consensus.Producers
             {
                 foreach (Transaction blobTx in selectedBlobTxs)
                 {
-                    if (ResolveBlob(blobTx, out Transaction fullBlobTx))
+                    if (TryResolveSelectedBlob(blobTx, out Transaction? fullBlobTx))
                     {
                         yield return fullBlobTx;
                     }
@@ -107,46 +128,16 @@ namespace Nethermind.Consensus.Producers
 
             if (_logger.IsTrace) _logger.Trace($"Potentially selected {selectedTransactions} out of {checkedTransactions} pending transactions checked.");
 
-            bool ResolveBlob(Transaction blobTx, out Transaction fullBlobTx)
+            bool TryResolveSelectedBlob(Transaction blobTx, [NotNullWhen(true)] out Transaction? fullBlobTx)
             {
-                if (!TryGetFullBlobTx(blobTx, out fullBlobTx))
+                if (fullBlobTxs is not null
+                    && blobTx.Hash is Hash256 hash
+                    && fullBlobTxs.TryGetValue(hash, out fullBlobTx))
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
-                    return false;
-                }
-
-                if (fullBlobTx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, missing blob data.");
-                    return false;
-                }
-
-                if (spec.BlobProofVersion != wrapper.Version)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, {spec.BlobProofVersion} is wanted, but tx's proof version is {wrapper.Version}.");
-                    return false;
-                }
-
-                int blobCount = blobTx.BlobVersionedHashes?.Length ?? 0;
-                if (blobCount == 0)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, incorrect blob count.");
-                    return false;
-                }
-
-                if (wrapper.HasFullBlobs())
-                {
-                    if (wrapper.Blobs.Length != blobCount)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, incorrect blob count.");
-                        return false;
-                    }
-
                     return true;
                 }
 
-                if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, blob data is only sampled locally.");
-                return false;
+                return TryResolveBlob(blobTx, spec, out fullBlobTx);
             }
         }
 
@@ -174,15 +165,29 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        private void SelectBlobTransactions(IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions, BlockHeader parent, IReleaseSpec spec, in UInt256 baseFee, ArrayPoolList<Transaction> selectedBlobTxs, ulong maxBlobs)
+        private Dictionary<Hash256, Transaction>? SelectBlobTransactions(
+            IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions,
+            BlockHeader parent,
+            IReleaseSpec spec,
+            in UInt256 baseFee,
+            ArrayPoolList<Transaction> selectedBlobTxs,
+            ulong maxBlobs,
+            bool validateForkSensitiveState)
         {
-            ulong maxBlobsToConsider = maxBlobs * 5ul;
+            // Allow more rejected sidecar loads than valid candidates, but keep storage work bounded. Light-only
+            // rejections do no I/O and are bounded by the pool size instead, so they do not consume this budget.
+            ulong maxBlobsToConsider = maxBlobs * BlobConsiderationMultiplier;
+            ulong maxRejectedBlobsToConsider = maxBlobs * RejectedBlobReadMultiplier;
             ulong countOfRemainingBlobs = 0UL;
+            ulong consideredBlobCount = 0UL;
+            ulong rejectedBlobCount = 0UL;
+            Dictionary<Hash256, Transaction>? fullBlobTxs = null;
+            ILightTxValidator? lightTxValidator = _specChangeTxValidator as ILightTxValidator;
 
             if (!TryUpdateFeePerBlobGas(parent, spec, out UInt256 feePerBlobGas))
             {
                 if (_logger.IsTrace) _logger.Trace($"Declining blobs, failed to calculate gas price.");
-                return;
+                return null;
             }
 
             ArrayPoolList<(Transaction tx, ulong blobChain)>? candidates = null;
@@ -201,6 +206,36 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
+                if (validateForkSensitiveState)
+                {
+                    if (blobTx is LightTransaction lightTransaction
+                        && lightTxValidator is not null
+                        && !lightTxValidator.IsWellFormedLight(lightTransaction, spec))
+                    {
+                        continue;
+                    }
+
+                    if (!TryResolveBlob(blobTx, spec, out Transaction? fullBlobTx)
+                        || !IsForkSensitiveStateValid(fullBlobTx, spec))
+                    {
+                        rejectedBlobCount += txBlobCount;
+                        if (rejectedBlobCount > maxRejectedBlobsToConsider)
+                        {
+                            break;
+                        }
+
+                        continue;
+                    }
+
+                    if (blobTx.Hash is Hash256 hash)
+                    {
+                        (fullBlobTxs ??= [])[hash] = fullBlobTx;
+                    }
+                }
+
+                consideredBlobCount += txBlobCount;
+                bool reachedConsiderationLimit = consideredBlobCount > maxBlobsToConsider;
+
                 if (txBlobCount == 1UL && candidates is null)
                 {
                     selectedBlobTxs.Add(blobTx);
@@ -208,7 +243,7 @@ namespace Nethermind.Consensus.Producers
                     {
                         // Early exit, have complete set of 1 blob txs with maximal priority fees
                         // No need to consider other tx.
-                        return;
+                        return GetSelectedFullBlobTransactions();
                     }
                 }
                 else
@@ -219,7 +254,7 @@ namespace Nethermind.Consensus.Producers
                     countOfRemainingBlobs += txBlobCount;
                 }
 
-                if (countOfRemainingBlobs > maxBlobsToConsider)
+                if (reachedConsiderationLimit)
                 {
                     // Reached max blobs to consider, should have enough to fill the block.
                     break;
@@ -227,7 +262,7 @@ namespace Nethermind.Consensus.Producers
             }
 
             // No leftover candidates
-            if (candidates is null) return;
+            if (candidates is null) return GetSelectedFullBlobTransactions();
 
             using (candidates)
             {
@@ -244,6 +279,28 @@ namespace Nethermind.Consensus.Producers
                 {
                     ChooseBestBlobTransactions(candidates, (int)leftoverCapacity, baseFee, selectedBlobTxs);
                 }
+            }
+
+            return GetSelectedFullBlobTransactions();
+
+            Dictionary<Hash256, Transaction>? GetSelectedFullBlobTransactions()
+            {
+                if (fullBlobTxs is null || fullBlobTxs.Count == selectedBlobTxs.Count)
+                {
+                    return fullBlobTxs;
+                }
+
+                Dictionary<Hash256, Transaction> selectedFullBlobTxs = new(selectedBlobTxs.Count);
+                foreach (Transaction selectedBlobTx in selectedBlobTxs)
+                {
+                    if (selectedBlobTx.Hash is Hash256 hash
+                        && fullBlobTxs.TryGetValue(hash, out Transaction? fullBlobTx))
+                    {
+                        selectedFullBlobTxs[hash] = fullBlobTx;
+                    }
+                }
+
+                return selectedFullBlobTxs;
             }
         }
 
@@ -370,17 +427,45 @@ namespace Nethermind.Consensus.Producers
             selectedBlobTxs.AsSpan()[start..].Reverse();
         }
 
-        private bool TryGetFullBlobTx(Transaction blobTx, [NotNullWhen(true)] out Transaction? fullBlobTx)
+        private bool TryResolveBlob(Transaction blobTx, IReleaseSpec spec, [NotNullWhen(true)] out Transaction? fullBlobTx)
         {
-            if (blobTx.NetworkWrapper is not null)
+            fullBlobTx = blobTx;
+            if (blobTx.NetworkWrapper is null
+                && (blobTx.Hash is null || !_transactionPool.TryGetPendingBlobTransaction(blobTx.Hash, out fullBlobTx)))
             {
-                fullBlobTx = blobTx;
-                return true;
+                if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
+                return false;
             }
 
-            fullBlobTx = null;
-            return blobTx.Hash is not null && _transactionPool.TryGetPendingBlobTransaction(blobTx.Hash, out fullBlobTx);
+            if (fullBlobTx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, missing blob data.");
+                return false;
+            }
+
+            if (wrapper.Version != spec.BlobProofVersion)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, {spec.BlobProofVersion} is wanted, but tx's proof version is {wrapper.Version}.");
+                return false;
+            }
+
+            if (!wrapper.HasFullBlobs())
+            {
+                if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, blob data is only sampled locally.");
+                return false;
+            }
+
+            if (wrapper.Blobs.Length != blobTx.BlobVersionedHashes?.Length)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, incorrect blob count.");
+                return false;
+            }
+
+            return true;
         }
+
+        private bool IsForkSensitiveStateValid(Transaction tx, IReleaseSpec spec) =>
+            _specChangeTxValidator.IsWellFormed(tx, spec);
 
         private bool TryUpdateFeePerBlobGas(BlockHeader parent, IReleaseSpec spec, out UInt256 feePerBlobGas)
         {
@@ -402,20 +487,20 @@ namespace Nethermind.Consensus.Producers
             return true;
         }
 
-        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit) =>
+        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit) =>
             Order(pendingTransactions, comparer, filter, gasLimit);
 
-        private static IEnumerable<(Transaction tx, ulong blobChain)> GetOrderedBlobTransactions(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong maxBlobs = 0ul) =>
+        private static IEnumerable<(Transaction tx, ulong blobChain)> GetOrderedBlobTransactions(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong maxBlobs = 0ul) =>
             OrderCore(pendingTransactions, comparer, static tx => (ulong)tx.GetBlobCount(), filter, maxBlobs, enforceSequentialNonces: true);
 
         protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
-        internal static IEnumerable<Transaction> Order(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit) =>
+        internal static IEnumerable<Transaction> Order(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit) =>
             OrderCore(pendingTransactions, comparer, static tx => tx.BlockGasUsed, filter, gasLimit, enforceSequentialNonces: false).Select(static tx => tx.tx);
 
         private static IEnumerable<(Transaction tx, ulong resource)> OrderCore(
-            IDictionary<AddressAsKey, Transaction[]> pendingTransactions,
+            IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions,
             IComparer<Transaction> comparer,
             Func<Transaction, ulong> resourceSelector,
             Func<Transaction, bool> filter,

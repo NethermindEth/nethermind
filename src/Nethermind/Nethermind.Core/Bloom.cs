@@ -221,7 +221,7 @@ public class Bloom : IEquatable<Bloom>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static BloomExtract GetExtract(ReadOnlySpan<byte> sequence)
     {
-        ref byte k = ref MemoryMarshal.GetReference(ValueKeccak.Compute(sequence).BytesAsSpan);
+        ref byte k = ref MemoryMarshal.GetReference(KeccakCache.Compute(sequence).BytesAsSpan);
         ulong u = Unsafe.ReadUnaligned<ulong>(ref k);
         u = BinaryPrimitives.ReverseEndianness(u);
         return new BloomExtract(u);

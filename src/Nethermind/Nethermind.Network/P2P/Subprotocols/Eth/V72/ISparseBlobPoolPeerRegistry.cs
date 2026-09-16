@@ -29,7 +29,11 @@ public interface ISparseBlobPoolPeerRegistry
     /// Forgets a single peer's announcement for a transaction, e.g. after the peer answered
     /// a cell request with an empty response, so retries converge on other providers.
     /// </summary>
-    void RemoveAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash);
+    /// <returns>
+    /// The mask the peer had announced, so a caller that backs the peer off temporarily can restore
+    /// it later; <see cref="BlobCellMask.Empty"/> when the peer had no announcement.
+    /// </returns>
+    BlobCellMask RemoveAnnouncement(ISparseBlobPoolPeer peer, Hash256 hash);
 
     /// <summary>
     /// Requests cells from a randomly selected announcing peer. Cells already held in the local

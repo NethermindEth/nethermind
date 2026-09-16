@@ -257,7 +257,7 @@ public class CarryForwardCachingPersistenceTests
         yield return new TestCaseData((Action<CarryForwardCachingPersistence, FakePersistence>)((cache, inner) =>
         {
             using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
-                batch.SetStorage(Address, 2, SlotValue.FromSpanWithoutLeadingZero([0x22]));
+                batch.SetStorage(Address, 2, BaseFlatPersistence.DecodeSlotValue([0x22]));
             inner.ReaderState = Basis1;
         }), 1)
         { TestName = "unwritten_slot_carried_forward" };
@@ -265,7 +265,7 @@ public class CarryForwardCachingPersistenceTests
         yield return new TestCaseData((Action<CarryForwardCachingPersistence, FakePersistence>)((cache, inner) =>
         {
             using (IPersistence.IWriteBatch batch = cache.CreateWriteBatch(Basis0, Basis1))
-                batch.SetStorage(Address, 1, SlotValue.FromSpanWithoutLeadingZero([0x22]));
+                batch.SetStorage(Address, 1, BaseFlatPersistence.DecodeSlotValue([0x22]));
             inner.ReaderState = Basis1;
         }), 2)
         { TestName = "written_slot_invalidated" };
@@ -326,7 +326,7 @@ public class CarryForwardCachingPersistenceTests
     private static void ReadSlot(IPersistence persistence, UInt256 slot)
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        SlotValue value = default;
+        UInt256 value = default;
         reader.TryGetSlot(Address, slot, ref value);
     }
 
@@ -350,7 +350,7 @@ public class CarryForwardCachingPersistenceTests
         }
 
         UInt256 slot = new((ulong)key);
-        SlotValue value = default;
+        UInt256 value = default;
         return reader.TryGetSlot(Address, slot, ref value);
     }
 
@@ -364,8 +364,7 @@ public class CarryForwardCachingPersistenceTests
         }
 
         UInt256 slot = new((ulong)key);
-        SlotValue value = SlotValue.FromSpanWithoutLeadingZero([0x22]);
-        batch.SetStorage(Address, slot, value);
+        batch.SetStorage(Address, slot, BaseFlatPersistence.DecodeSlotValue([0x22]));
     }
 
     private static Address GetAddress(int key) => key == 1 ? Address : TestItem.AddressB;
@@ -415,11 +414,11 @@ public class CarryForwardCachingPersistenceTests
                 return parent.AccountExists ? new Account(1, 100) : null;
             }
 
-            public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue)
+            public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
             {
                 parent.SlotReads++;
                 if (!parent.SlotExists) return false;
-                outValue = SlotValue.FromSpanWithoutLeadingZero([0x11]);
+                outValue = BaseFlatPersistence.DecodeSlotValue([0x11]);
                 return true;
             }
 
@@ -427,7 +426,7 @@ public class CarryForwardCachingPersistenceTests
             public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
             public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
             public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
-            public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => false;
+            public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
             public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
             public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
             public bool IsPreimageMode => false;

@@ -42,6 +42,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             // Validators
             .AddSingleton<TxValidator, ISpecProvider>((spec) => new TxValidator(spec.ChainId))
             .Bind<ITxValidator, TxValidator>()
+            .AddKeyedSingleton<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey,
+                static ctx => new SpecChangeTxValidator(ctx.Resolve<ISpecProvider>().ChainId))
             .AddSingleton<IBlockValidator, BlockValidator>()
             .AddSingleton<IHeaderValidator, HeaderValidator>()
             .AddSingleton<IUnclesValidator, UnclesValidator>()
@@ -68,7 +70,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IBlockhashStore, BlockhashStore>()
             .AddScoped<IBranchProcessor, BranchProcessor>()
             .AddScoped<IInclusionListSatisfactionChecker, InclusionListSatisfactionChecker>()
-            .AddScoped<IBlockProcessor, BlockProcessor>()
+            .AddScoped<IBlockProcessor, StandardBlockProcessor>()
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
             .AddSingleton<IWithdrawalProcessorFactory, WithdrawalProcessorFactory>()
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
@@ -156,6 +158,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 
     private class StandardBlockValidationModule : Module, IBlockValidationModule
     {
+        public bool SupportsTransactionTracePrefix => true;
+
         protected override void Load(ContainerBuilder builder) => builder
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
             .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.ParallelBlockValidationTransactionsExecutor>();

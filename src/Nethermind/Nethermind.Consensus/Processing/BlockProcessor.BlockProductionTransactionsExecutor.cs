@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.Processing
                 balManager.SetBlockExecutionContext(blockExecutionContext);
             }
 
-            public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
+            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
                 BlockReceiptsTracer receiptsTracer, CancellationToken token = default)
             {
                 balManager.NextTransaction();

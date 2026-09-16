@@ -34,6 +34,7 @@ public class PruningTrieStateFactory(
     IFullPrunerFactory fullPrunerFactory,
     CompositePruningTrigger compositePruningTrigger,
     Lazy<IPathRecovery> pathRecovery,
+    Lazy<ICodeRecovery> codeRecovery,
     StateBoundaryStore boundaryStore,
     ILogManager logManager,
     NodeStorageCache? nodeStorageCache = null
@@ -59,6 +60,7 @@ public class PruningTrieStateFactory(
                 codeDb,
                 mainNodeStorage,
                 pathRecovery,
+                codeRecovery,
                 logManager)
             : new TrieStoreScopeProvider(
                 mainWorldTrieStore,
@@ -152,7 +154,7 @@ public class MainPruningTrieStoreFactory
 
         if (stateDb is IFullPruningDb fullPruningDb)
         {
-            pruningStrategy = new PruningTriggerPruningStrategy(fullPruningDb, pruningStrategy);
+            pruningStrategy = new PruningTriggerPruningStrategy(fullPruningDb, pruningStrategy, pruningConfig.PruningBoundary);
         }
 
         // Interpose the barrier on the node storage flush so a block's deferred block-data is made durable

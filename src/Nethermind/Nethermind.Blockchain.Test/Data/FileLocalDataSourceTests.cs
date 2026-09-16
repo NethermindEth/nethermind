@@ -289,7 +289,8 @@ public class FileLocalDataSourceTests
             existsChecked.Release();
         });
         using AllocatingDefaultFileLocalDataSource fileLocalDataSource = new("file", new EthereumJsonSerializer(), fileSystem, LimboLogs.Instance, 10);
-        object initialData = fileLocalDataSource.Data;
+        object initialData = fileLocalDataSource.Data
+            ?? throw new AssertionException("Allocating default data source returned null.");
         SemaphoreSlim handle = new(0);
         int changedRaised = 0;
         fileLocalDataSource.Changed += (sender, args) =>

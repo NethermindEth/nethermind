@@ -49,9 +49,8 @@ public class KeyedNonceManagerTests
         Assert.That(slotB1.Index, Is.Not.EqualTo(slotA1.Index), "distinct senders must yield distinct slots");
     }
 
-    [TestCase(8)]
-    [TestCase(Eip8250Constants.MaxNonceKeys)]
-    public void Batched_storage_indices_match_individual_slots(int count)
+    [Test]
+    public void Batched_storage_indices_match_individual_slots([Values(8, Eip8250Constants.MaxNonceKeys)] int count)
     {
         UInt256[] keys = StrictlyIncreasing(count);
         UInt256[] indices = new UInt256[count];
@@ -94,7 +93,7 @@ public class KeyedNonceManagerTests
     public void CurrentNonceSeq_clamps_slot_value_above_ulong_max(UInt256 storedValue)
     {
         StorageCell slot = KeyedNonceManager.StorageSlot(TestItem.AddressA, (UInt256)5);
-        _state.Set(slot, storedValue.ToBigEndian().WithoutLeadingZeros().ToArray());
+        _state.Set(slot, storedValue);
 
         Assert.That(KeyedNonceManager.CurrentNonceSeq(_state, TestItem.AddressA, (UInt256)5), Is.EqualTo(ulong.MaxValue));
     }

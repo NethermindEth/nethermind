@@ -48,6 +48,24 @@ JB_DEEP_CHECK="${JB_DEEP_CHECK:-false}"
 JB_ETH_CALL_CORPUS="${JB_ETH_CALL_CORPUS:-false}"
 # Follows the selected runner: the workflow exports this, and CORPUS_DIR covers direct invocation.
 JB_ETH_CALL_CORPUS_FILE="${JB_ETH_CALL_CORPUS_FILE:-${CORPUS_DIR:-/data/expb-data/rpc-bench}/eth-call-corpus.jsonl.gz}"
+# Replay the same captured calls as a tracing method instead of eth_call (corpus mode only):
+# debug_traceCall (geth-style, Debug module) or trace_call (Parity-style, Trace module). The
+# rewrite happens while the k6 fixture is built, before the node sees any load, so a trace cell
+# costs exactly what an eth_call cell costs to prepare — only the method and the response differ.
+CORPUS_METHOD="${CORPUS_METHOD:-eth_call}"
+# '-' not ':-': an explicitly empty tracer selects the struct logger, and ':-' would silently
+# turn that into callTracer. Only a wholly unset variable takes the default.
+CORPUS_TRACER="${CORPUS_TRACER-callTracer}"
+CORPUS_TRACE_TYPES="${CORPUS_TRACE_TYPES-trace}"
+# Human-readable form, for the fixture log and the k6 scenario name.
+case "$CORPUS_METHOD" in
+  debug_traceCall) CORPUS_METHOD_LABEL="debug_traceCall (tracer=${CORPUS_TRACER:-structLog})" ;;
+  trace_call)      CORPUS_METHOD_LABEL="trace_call (types=${CORPUS_TRACE_TYPES})" ;;
+  *)               CORPUS_METHOD_LABEL="eth_call" ;;
+esac
+# The scenario name reaches the published per-category rows; an eth_call run keeps the name its
+# historical results carry.
+CORPUS_CALL_NAME="${CORPUS_METHOD} corpus"
 # Response differences are reported (and warned about) by default; opt in to
 # failing the step on any diff once the method set is curated for the clients.
 JB_FAIL_ON_DIFF="${JB_FAIL_ON_DIFF:-false}"
@@ -55,6 +73,11 @@ JB_FAIL_ON_DIFF="${JB_FAIL_ON_DIFF:-false}"
 # fails itself when the summary.json fail rate exceeds this percentage.
 JB_MAX_FAIL_RATE_PCT="${JB_MAX_FAIL_RATE_PCT:-1}"
 JB_EXTRA_ARGS="${JB_EXTRA_ARGS:-}"
+# A warm-up and the measured cell that follows it prepare the same tool twice. With true, a
+# preparation left by the previous invocation (same repo, ref and corpus file) is reused and this
+# one is left in place, so the measured cell — and a profile started just before it — begins within
+# seconds of the profilers instead of after a re-clone, image rebuild and corpus re-conversion.
+JB_REUSE_PREPARED="${JB_REUSE_PREPARED:-false}"
 CONTAINER_NAME="${JB_CONTAINER_NAME:-jsonbench-bench}"
 
 if [[ -z "$JB_MODE" ]]; then
@@ -71,6 +94,19 @@ case "$JB_ETH_CALL_CORPUS" in
   true|false) ;;
   *) die "JB_ETH_CALL_CORPUS must be true or false" ;;
 esac
+case "$CORPUS_METHOD" in
+  eth_call|debug_traceCall|trace_call) ;;
+  *) die "CORPUS_METHOD must be eth_call, debug_traceCall or trace_call" ;;
+esac
+# The corpus is the only source of calls this knob can rewrite, so a run without it that sets the
+# knob would silently benchmark eth_call and report itself as a trace run.
+[[ "$CORPUS_METHOD" == "eth_call" || "$JB_ETH_CALL_CORPUS" == "true" ]] \
+  || die "CORPUS_METHOD=$CORPUS_METHOD requires the eth_call corpus (JB_ETH_CALL_CORPUS=true)"
+# Always exported, never merely inherited: the resolved values are what corpus_parity.py and the
+# fixture converter must agree on, and both are separate processes.
+export RPC_BENCH_CORPUS_METHOD="$CORPUS_METHOD"
+export RPC_BENCH_CORPUS_TRACER="$CORPUS_TRACER"
+export RPC_BENCH_CORPUS_TRACE_TYPES="$CORPUS_TRACE_TYPES"
 if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   [[ "$JB_MODE" == "benchmark" ]] || die "eth_call corpus is supported only in benchmark mode"
   [[ -f "$JB_ETH_CALL_CORPUS_FILE" ]] || die "eth_call corpus file not found: $JB_ETH_CALL_CORPUS_FILE"
@@ -84,32 +120,74 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   JB_HTML_REPORT="false"
 fi
 
+probe_corpus_node() {
+  local url="$1"
+  python3 "$HERE/corpus_parity.py" probe \
+    --corpus "$JB_ETH_CALL_CORPUS_FILE" --rpc-url "$url" \
+    || die "corpus method capability probe failed for $url"
+}
+if [[ "$JB_ETH_CALL_CORPUS" == "true" && "$CORPUS_METHOD" != "eth_call" ]]; then
+  # Check support outside the measured window on every invocation, including prepared-fixture reuse.
+  probe_corpus_node "$RPC_URL"
+  [[ -z "$REFERENCE_RPC_URL" ]] || probe_corpus_node "$REFERENCE_RPC_URL"
+fi
+
 mkdir -p "$OUT_DIR"
 SCRATCH_ROOT="$(realpath -m -- "$SCRATCH_ROOT")"
 assert_sane_dir "$SCRATCH_ROOT" "SCRATCH_ROOT"
 work="$SCRATCH_ROOT/jsonbench"
-# The runner container may have left non-owner files in scratch on a prior run.
-as_root rm -rf "$work"
-mkdir -p "$work/io/out"
-
-# Fetch the tool source and build the runner image (bundles k6).
-log "Cloning $JB_REPO@$JB_REF..."
-# Shallow-fetch a single ref; accepts a commit sha, tag, or branch (GitHub
-# serves reachable commit shas), unlike 'git clone --branch'.
-git init -q "$work/src"
-git -C "$work/src" remote add origin "$JB_REPO"
-git -C "$work/src" fetch -q --depth 1 origin "$JB_REF" \
-  || die "failed to fetch $JB_REF from $JB_REPO"
-git -C "$work/src" checkout -q FETCH_HEAD
-
-runner_dockerfile="$work/src/runner/Dockerfile"
-[[ -f "$runner_dockerfile" ]] || die "json-bench runner Dockerfile not found at $runner_dockerfile"
 # Branch refs may contain '/' etc. — sanitize into a valid docker tag.
 tag_ref="${JB_REF//[^a-zA-Z0-9_.-]/-}"
 image_tag="jsonbench-runner:${tag_ref:0:24}"
-log "Building $image_tag from runner/Dockerfile..."
-docker build -q -f "$runner_dockerfile" -t "$image_tag" "$work/src" >/dev/null \
-  || die "failed to build the json-bench runner image"
+corpus_fixture="$work/src/rpc-calls/runner-eth-call-corpus.json"
+# What a reusable preparation consists of; written last, so one that died halfway is never reused.
+prepared_marker="$work/prepared"
+# Keyed on the commit the ref resolves to, not its name: a branch that moved upstream since a
+# hard-cancelled job left a marker behind would otherwise match both the marker and the image tag
+# (derived from the same name) and be reused silently. ls-remote lists nothing for a raw commit sha,
+# which is already exact.
+resolved_ref="$(git ls-remote "$JB_REPO" "$JB_REF" | awk 'NR == 1 { print $1 }')" \
+  || die "failed to reach $JB_REPO to resolve $JB_REF"
+prepared_id="$JB_REPO@${resolved_ref:-$JB_REF}"
+if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
+  # Size and mtime rather than a digest: corpora are swapped, not edited in place, and hashing one
+  # costs about as much as converting it.
+  prepared_id+=" corpus=$(realpath -e -- "$JB_ETH_CALL_CORPUS_FILE") $(stat -c '%s %Y' -- "$JB_ETH_CALL_CORPUS_FILE")"
+  # The fixture holds the rewritten bodies, so a warm-up prepared as eth_call must not be reused
+  # for a measured trace cell (nor the reverse): same file, different requests.
+  prepared_id+=" method=${CORPUS_METHOD}/${CORPUS_TRACER}/${CORPUS_TRACE_TYPES}"
+fi
+reuse_prepared=false
+if [[ "$JB_REUSE_PREPARED" == "true" && -f "$prepared_marker" && "$(cat "$prepared_marker")" == "$prepared_id" ]] \
+    && docker image inspect "$image_tag" >/dev/null 2>&1 \
+    && [[ "$JB_ETH_CALL_CORPUS" != "true" || -s "$corpus_fixture" ]]; then
+  reuse_prepared=true
+  log "Reusing the json-bench checkout, runner image and fixture prepared by the previous invocation ($prepared_id)"
+  # Only the previous outputs must go: a leftover summary.json would be published as this run's.
+  as_root rm -rf "$work/io"
+else
+  # The runner container may have left non-owner files in scratch on a prior run.
+  as_root rm -rf "$work"
+fi
+mkdir -p "$work/io/out"
+
+if [[ "$reuse_prepared" != "true" ]]; then
+  # Fetch the tool source and build the runner image (bundles k6).
+  log "Cloning $JB_REPO@$JB_REF..."
+  # Shallow-fetch a single ref; accepts a commit sha, tag, or branch (GitHub
+  # serves reachable commit shas), unlike 'git clone --branch'.
+  git init -q "$work/src"
+  git -C "$work/src" remote add origin "$JB_REPO"
+  git -C "$work/src" fetch -q --depth 1 origin "$JB_REF" \
+    || die "failed to fetch $JB_REF from $JB_REPO"
+  git -C "$work/src" checkout -q FETCH_HEAD
+
+  runner_dockerfile="$work/src/runner/Dockerfile"
+  [[ -f "$runner_dockerfile" ]] || die "json-bench runner Dockerfile not found at $runner_dockerfile"
+  log "Building $image_tag from runner/Dockerfile..."
+  docker build -q -f "$runner_dockerfile" -t "$image_tag" "$work/src" >/dev/null \
+    || die "failed to build the json-bench runner image"
+fi
 
 # Render the client registry (and, for benchmark mode, the default workload).
 clients_yaml="$work/io/clients.yaml"
@@ -254,19 +332,22 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
     || python3 -m pip install --user pyyaml 2>/dev/null \
     || python3 -m pip install --user --break-system-packages pyyaml \
     || die "PyYAML is required to prepare the eth_call corpus workload and could not be installed"
-  corpus_fixture="$work/src/rpc-calls/runner-eth-call-corpus.json"
-  mkdir -p "$work/src/rpc-calls"
-  log "Preparing eth_call corpus fixture from $(basename "$JB_ETH_CALL_CORPUS_FILE") (contents stay on this machine)..."
-  python3 "$HERE/prepare-eth-call-corpus.py" "$JB_ETH_CALL_CORPUS_FILE" "$corpus_fixture" \
-    || die "failed to convert the eth_call corpus (see converter error above — it names line numbers, not contents)"
-  python3 - "$work/io/benchmark.yaml" <<'PY'
+  if [[ "$reuse_prepared" == "true" ]]; then
+    log "Reusing the eth_call corpus fixture prepared by the previous invocation"
+  else
+    mkdir -p "$work/src/rpc-calls"
+    log "Preparing ${CORPUS_METHOD_LABEL} corpus fixture from $(basename "$JB_ETH_CALL_CORPUS_FILE") (contents stay on this machine)..."
+    python3 "$HERE/prepare-eth-call-corpus.py" "$JB_ETH_CALL_CORPUS_FILE" "$corpus_fixture" \
+      || die "failed to convert the eth_call corpus (see converter error above — it names line numbers, not contents)"
+  fi
+  python3 - "$work/io/benchmark.yaml" "$CORPUS_CALL_NAME" <<'PY'
 import sys, yaml
 
 path = sys.argv[1]
 with open(path) as f:
     cfg = yaml.safe_load(f) or {}
 cfg["calls"] = [{
-    "name": "eth_call corpus",
+    "name": sys.argv[2],
     "file": "./rpc-calls/runner-eth-call-corpus.json",
     "file_type": "json",
     "weight": 1,
@@ -276,6 +357,8 @@ with open(path, "w") as f:
     yaml.safe_dump(cfg, f, sort_keys=False, default_flow_style=False)
 PY
 fi
+
+printf '%s\n' "$prepared_id" > "$prepared_marker"
 
 # The runner image executes as a non-root user (uid 1001) — open up the io
 # mount so it can write outputs there (scratch-only, wiped next run).
@@ -349,7 +432,10 @@ else
       --output /io/out \
       ${extra_args_arr[@]+"${extra_args_arr[@]}"} > "$work/jsonbench-tool.log" 2>&1 \
       || tool_failed=1
-    rm -f "$corpus_fixture"
+    # Kept for the next invocation under JB_REUSE_PREPARED, which stretches the retention window
+    # for the converted call bodies from "until the tool exits" to "until job cleanup": cleanup.sh
+    # wipes scratch, and it runs if: always().
+    [[ "$JB_REUSE_PREPARED" == "true" ]] || rm -f "$corpus_fixture"
     if [[ "$tool_failed" == "1" ]]; then
       die "json-bench exited non-zero — $(wc -l < "$work/jsonbench-tool.log" | tr -d ' ') tool log lines retained on the runner at $work/jsonbench-tool.log"
     fi
