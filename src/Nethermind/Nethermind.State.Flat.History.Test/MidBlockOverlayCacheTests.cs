@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -112,6 +113,40 @@ public class MidBlockOverlayCacheTests
         _columns.GetColumnDb(FlatHistoryColumns.TransactionChangesets).Remove(key);
 
         Assert.That(_cache.TryRent(Block, 6, out _), Is.False, "a gap in the prefix would be folded over silently and change the target's state");
+    }
+
+    [Test]
+    public void ARowTheCodecCannotRead_IsRefused_AndLeavesNothingOfItselfBehind()
+    {
+        // The row holds an account entry the fold applies and a storage entry it cannot read, so the refusal happens
+        // with part of transaction 3's own writes already in the overlay.
+        WriteHalfReadableRow(3, 99);
+
+        bool past = _cache.TryRent(Block, 6, out MidBlockOverlayCache.Lease pastLease);
+        bool atTheBoundary = _cache.TryRent(Block, 3, out MidBlockOverlayCache.Lease boundaryLease);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(past, Is.False, "a row the codec cannot read is a refusal, and the trace replays the prefix");
+            Assert.That(atTheBoundary, Is.True, "the transactions before the unreadable one are still readable, so a trace of it is still seeded");
+            Assert.That(BalanceOf(boundaryLease.Overlay), Is.EqualTo((UInt256)3),
+                "what the refused fold had already applied is transaction 3's own writes, and lending them would seed the target with itself");
+        }
+
+        if (past) pastLease.Dispose();
+        if (atTheBoundary) boundaryLease.Dispose();
+    }
+
+    private void WriteHalfReadableRow(ushort transactionIndex, UInt256 balance)
+    {
+        ChangesetCollector collector = new();
+        collector.Balance(TestItem.AddressA, balance);
+        collector.Storage(new StorageCell(TestItem.AddressA, 1), [0x11]);
+        byte[] packed = collector.Pack().ToArray();
+        collector.Release();
+
+        using IColumnsWriteBatch<FlatHistoryColumns> batch = _columns.StartWriteBatch();
+        _store.Write(Block, transactionIndex, packed.AsSpan(0, packed.Length - 1), batch.GetColumnBatch(FlatHistoryColumns.TransactionChangesets));
     }
 
     private static UInt256? BalanceOf(MidBlockOverlay overlay)

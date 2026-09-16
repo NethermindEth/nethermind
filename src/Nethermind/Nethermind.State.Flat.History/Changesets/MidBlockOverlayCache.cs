@@ -78,6 +78,12 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
         {
             lock (_lock)
             {
+                // The fold applies a row's entries as it reads them, so a row that throws part way through leaves the
+                // overlay holding part of that transaction's own writes while still reporting the boundary before it.
+                // Discarding what it holds keeps the next rent at that boundary a refusal, rather than a prefix that
+                // already contains the target. The pin is this thread's: an overlay is only extended when it was
+                // selected with none.
+                overlay.Reset(overlay.Block);
                 overlay.Extending = false;
                 overlay.Pins--;
             }
