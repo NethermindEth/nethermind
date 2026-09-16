@@ -1212,7 +1212,9 @@ internal static class SszCodecHelpers
                 : string.Join("\n",
                 [
                     $"Span<UInt256> chunks = stackalloc UInt256[{chunkCount}];",
-                    decl.Members.Length == 0 ? "// With no fields fed, CalculateRoot reads the unwritten top chunk.\nchunks.Clear();" : string.Empty,
+                    ..(decl.Members.Length == 0
+                        ? new[] { "// With no fields fed, CalculateRoot reads the unwritten top chunk.", "chunks.Clear();" }
+                        : []),
                     "Merkleizer merkleizer = new(chunks);",
                     ..decl.Members.Select(m => MerkleizeFeedStatement(m, $"container.{m.Name}")),
                     "merkleizer.CalculateRoot(out root);",

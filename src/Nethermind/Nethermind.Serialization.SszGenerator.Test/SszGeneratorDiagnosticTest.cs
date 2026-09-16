@@ -22,6 +22,7 @@ public class SszGeneratorDiagnosticTest
     [TestCase(3, false)]
     [TestCase(4, false)]
     [TestCase(5, false)]
+    [TestCase(33, false)]
     [TestCase(32, true)]
     [TestCase(33, true)]
     public void Generated_scratch_boundaries_preserve_roots(int fieldCount, bool progressive)
@@ -75,7 +76,7 @@ public class SszGeneratorDiagnosticTest
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual, Is.EqualTo(expected));
-            Assert.That(allocated, fieldCount <= ProgressiveContainerStackAllocationLimit ? Is.Zero : Is.GreaterThan(0));
+            Assert.That(allocated, progressive && fieldCount > ProgressiveContainerStackAllocationLimit ? Is.GreaterThan(0) : Is.Zero);
         }
     }
 
