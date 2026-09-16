@@ -416,12 +416,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             Db.Metrics.IncrementStorageTreeWrites(writes);
     }
 
-    /// <summary>Rejects pooling contract states while storage journal entries or originals remain.</summary>
+    /// <summary>Rejects pooling contract states while storage journal entries remain.</summary>
     /// <remarks>Always on, not a debug assert: release CI never runs debug builds, both callers run once
     /// per block, and the journal gate's safety rests on this ordering.</remarks>
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowJournalNotEmpty()
-        => throw new InvalidOperationException("storage states must not be pooled while storage journal entries or original values remain");
+        => throw new InvalidOperationException("storage states must not be pooled while storage journal entries remain");
 
     /// <summary>Drops the block's storage changes, returning each contract's state to the pool.</summary>
     /// <remarks>
@@ -431,7 +431,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </remarks>
     public void ClearStorageMap()
     {
-        if (_intraBlockCache.Count != 0 || _originalValues.Count != 0) ThrowJournalNotEmpty();
+        if (_intraBlockCache.Count != 0) ThrowJournalNotEmpty();
+        EndOriginalsRound();
         _storages.ResetAndClear();
         InvalidateStorageMemo();
     }
@@ -448,7 +449,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <returns>The changes; the caller owns the snapshot and must dispose it.</returns>
     internal IWorldStateScopeProvider.IBlockChangeSnapshot DetachBlockChanges()
     {
-        if (_intraBlockCache.Count != 0 || _originalValues.Count != 0) ThrowJournalNotEmpty();
+        if (_intraBlockCache.Count != 0) ThrowJournalNotEmpty();
+        EndOriginalsRound();
         foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
         {
             storage.Value.BlockEndFate = FateOf(storage);

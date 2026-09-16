@@ -1467,17 +1467,34 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Storage_map_cannot_be_dropped_before_originals_are_committed([Values] bool detach)
+    public void Storage_map_release_rejects_pending_writes_and_ends_the_originals_round([Values] bool detach)
     {
         using Context ctx = new(useFlat, setInitialState: false);
         WorldState provider = BuildStorageProvider(ctx);
-        using IDisposable scope = provider.BeginScope(IWorldState.PreGenesis);
-        provider.CreateAccount(TestItem.AddressA, 1);
-        provider.Get(new StorageCell(TestItem.AddressA, 1), out _);
+        StorageCell cell = new(TestItem.AddressA, 1);
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(TestItem.AddressA, 1);
+            provider.Set(cell, (UInt256)42);
+            Assert.That(DropMap, Throws.InvalidOperationException);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
 
-        Assert.That(DropMap, Throws.InvalidOperationException);
-        provider.Commit(Frontier.Instance);
+        using IDisposable scope = provider.BeginScope(baseBlock);
+        provider.Get(cell, out _);
+        provider.GetOriginal(cell, out _);
         Assert.That(DropMap, Throws.Nothing);
+        Assert.That(() => provider.GetOriginal(cell, out _), Throws.InvalidOperationException);
+        provider.Get(cell, out UInt256 value);
+        provider.GetOriginal(cell, out UInt256 original);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(value, Is.EqualTo((UInt256)42));
+            Assert.That(original, Is.EqualTo(value));
+        }
 
         void DropMap()
         {
