@@ -38,7 +38,7 @@ public sealed class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel?
 
         if (_inboundQueue.Writer.TryWrite(queuedPacket))
         {
-            if (_logger.IsTrace) _logger.Trace($"Queued discv5 UDP packet from {NormalizeEndpoint((IPEndPoint)msg.Sender)}, bytes: {msg.Content.ReadableBytes}.");
+            if (_logger.IsTrace) _logger.Trace($"Queued discv5 UDP packet from {msg.Sender}, bytes: {msg.Content.ReadableBytes}.");
             return;
         }
 
@@ -131,11 +131,6 @@ public sealed class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel?
         static void ThrowMissingArraySegment()
             => throw new InvalidOperationException("Pooled UDP receive buffer must be array-backed.");
     }
-
-    private static IPEndPoint NormalizeEndpoint(IPEndPoint endpoint)
-        => endpoint.Address.IsIPv4MappedToIPv6
-            ? new IPEndPoint(endpoint.Address.MapToIPv4(), endpoint.Port)
-            : endpoint;
 
     public void Close()
     {

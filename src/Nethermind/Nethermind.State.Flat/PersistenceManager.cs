@@ -274,6 +274,9 @@ public class PersistenceManager(
                     break;
                 }
             }
+
+            // Finality can rule out forks before the depth/compaction gates allow a RocksDB persist.
+            snapshotRepository.RemoveFinalizedPersistedForks(GetCurrentPersistedStateId());
         }
         finally
         {
@@ -506,7 +509,7 @@ public class PersistenceManager(
                 batch.SetAccount(kv.Key.Key, kv.Value);
             }
 
-            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
+            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
             {
                 (Address addr, UInt256 slot) = kv.Key.Key;
 
