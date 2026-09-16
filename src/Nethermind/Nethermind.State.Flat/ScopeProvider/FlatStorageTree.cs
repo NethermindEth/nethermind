@@ -83,6 +83,8 @@ public sealed class FlatStorageTree(
 
     public Hash256 RootHash => Volatile.Read(ref _trees)?.Tree.RootHash ?? _storageRoot;
 
+    internal int BuilderShardKey => AddressHash.GetHashCode();
+
     internal bool IsDisposed => _scope.IsDisposed;
 
     public void Get(in UInt256 index, out UInt256 value)
