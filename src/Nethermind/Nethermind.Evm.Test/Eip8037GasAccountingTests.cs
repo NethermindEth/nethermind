@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Specs;
@@ -95,11 +94,9 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
             EthereumGasPolicy.ClearExecutionGas(ref gas);
 
         // Receipt accounting excludes gas_left on halt, so observe the settled policy as well.
-        MethodInfo settle = typeof(TransactionProcessorBase<EthereumGasPolicy>)
-            .GetMethod("CompleteEip8037Halt", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        object[] arguments = [tx, Spec, ExecutionOptions.None, gas, UInt256.Zero, intrinsic, 0UL, reservoir, executionRefund];
-        GasConsumed consumed = (GasConsumed)settle.Invoke(_processor, arguments)!;
-        gas = (EthereumGasPolicy)arguments[3];
+        UInt256 gasPrice = UInt256.Zero;
+        GasConsumed consumed = ((TransactionProcessorBase<EthereumGasPolicy>)_processor).CompleteEip8037Halt(
+            tx, Spec, ExecutionOptions.None, ref gas, in gasPrice, in intrinsic, 0, reservoir, executionRefund);
 
         using (Assert.EnterMultipleScope())
         {

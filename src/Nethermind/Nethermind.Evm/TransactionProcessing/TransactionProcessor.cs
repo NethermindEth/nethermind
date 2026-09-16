@@ -1494,10 +1494,6 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             else
             {
-                if (spec.ChargeForTopLevelCreate)
-                {
-                    TGasPolicy.ClearExecutionGas(ref gasAvailable);
-                }
                 gasConsumed = RefundOnFail(tx, spec, opts, in gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, floorGasLong);
             }
         Complete:
@@ -1520,7 +1516,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private GasConsumed CompleteEip8037Halt(
+        internal GasConsumed CompleteEip8037Halt(
             Transaction tx,
             IReleaseSpec spec,
             ExecutionOptions opts,
