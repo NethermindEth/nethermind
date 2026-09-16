@@ -84,6 +84,30 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Eip_158_recreation_does_not_suppress_deletion_of_persisted_account()
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
+        BlockHeader baseBlock;
+        using (IDisposable _ = provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(_address1, 0);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using IDisposable scope = provider.BeginScope(baseBlock);
+        provider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
+        provider.DeleteAccount(_address1);
+        provider.CreateAccount(_address1, 0, nonce: 1);
+        provider.DeleteAccount(_address1);
+        provider.Commit(SpuriousDragon.Instance);
+
+        Assert.That(provider.AccountExists(_address1), Is.False);
+    }
+
+    [Test]
     public void Cold_account_read_tracks_writes_and_rollback([Values] bool exists)
     {
         using Context ctx = new(useFlat);
