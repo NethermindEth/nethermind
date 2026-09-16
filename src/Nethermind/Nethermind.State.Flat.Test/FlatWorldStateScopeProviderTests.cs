@@ -54,7 +54,7 @@ public class FlatWorldStateScopeProviderTests
         });
 
         IWorldStateScopeProvider provider = manager.GlobalWorldState;
-        Assert.That(provider.HasStateForTarget(target), Is.True);
+        Assert.That(provider.HasStateForTargetBlock(target), Is.True);
 
         stateAvailable = false;
         Assert.That(provider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.False);
@@ -82,12 +82,12 @@ public class FlatWorldStateScopeProviderTests
 
         foreach (IWorldStateScopeProvider provider in providers)
         {
-            Assert.That(provider.HasStateForTarget(target), Is.True);
+            Assert.That(provider.HasStateForTargetBlock(target), Is.True);
             Assert.That(provider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.True);
             scope!.Dispose();
         }
 
-        Assert.That(manager.GlobalWorldState.HasStateForTarget(sameParentDifferentTimestamp), Is.True);
+        Assert.That(manager.GlobalWorldState.HasStateForTargetBlock(sameParentDifferentTimestamp), Is.True);
         Assert.That(manager.GlobalWorldState.TryBeginScopeAtTarget(sameParentDifferentTimestamp, new LocalMetrics(), out IWorldStateScopeProvider.IScope? secondScope), Is.True);
         secondScope!.Dispose();
         blockTree.Received(8).FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>());

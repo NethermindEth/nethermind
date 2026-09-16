@@ -78,7 +78,7 @@ public class ScopeProviderTests(bool useFlat)
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(ctx.ScopeProvider.HasStateForTarget(target), Is.True);
+            Assert.That(ctx.ScopeProvider.HasStateForTargetBlock(target), Is.True);
             Assert.That(ctx.ScopeProvider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.True);
             Assert.That(scope, Is.Not.Null);
             Assert.That(scope!.Get(TestItem.AddressA), Is.Not.Null);
@@ -109,7 +109,7 @@ public class ScopeProviderTests(bool useFlat)
         using Context ctx = new(useFlat, stateHeaderProvider: stateHeaderProvider);
         BlockHeader target = Build.A.BlockHeader.WithNumber(2).WithParentHash(TestItem.KeccakA).TestObject;
 
-        Assert.That(ctx.ScopeProvider.HasStateForTarget(target), Is.False);
+        Assert.That(ctx.ScopeProvider.HasStateForTargetBlock(target), Is.False);
         Assert.That(ctx.ScopeProvider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.False);
         Assert.That(scope, Is.Null);
 
@@ -125,7 +125,7 @@ public class ScopeProviderTests(bool useFlat)
         using Context ctx = new(useFlat, stateHeaderProvider: new TestStateHeaderProvider { Parent = parent });
         BlockHeader target = Build.A.BlockHeader.WithParent(parent).WithTimestamp(54321).TestObject;
 
-        Assert.That(ctx.ScopeProvider.HasStateForTarget(target), Is.False);
+        Assert.That(ctx.ScopeProvider.HasStateForTargetBlock(target), Is.False);
         Assert.That(ctx.ScopeProvider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.False);
         Assert.That(scope, Is.Null);
     }
@@ -151,10 +151,10 @@ public class ScopeProviderTests(bool useFlat)
         BlockHeader firstTarget = Build.A.BlockHeader.WithTimestamp(9876).TestObject;
         BlockHeader secondTarget = Build.A.BlockHeader.WithTimestamp(5432).TestObject;
 
-        Assert.That(decorated.HasStateForTarget(firstTarget), Is.True);
+        Assert.That(decorated.HasStateForTargetBlock(firstTarget), Is.True);
         Assert.That(decorated.TryBeginScopeAtTarget(firstTarget, new LocalMetrics(), out IWorldStateScopeProvider.IScope firstScope), Is.True);
         firstScope!.Dispose();
-        Assert.That(decorated.HasStateForTarget(secondTarget), Is.True);
+        Assert.That(decorated.HasStateForTargetBlock(secondTarget), Is.True);
         Assert.That(decorated.TryBeginScopeAtTarget(secondTarget, new LocalMetrics(), out IWorldStateScopeProvider.IScope secondScope), Is.True);
         secondScope!.Dispose();
 
@@ -174,7 +174,7 @@ public class ScopeProviderTests(bool useFlat)
         PrewarmerScopeProvider decorated = new(inner, new PrewarmerState(NewCaches(), isPrewarmer: true), LimboLogs.Instance);
         BlockHeader target = Build.A.BlockHeader.WithTimestamp(6543).TestObject;
 
-        Assert.That(decorated.HasStateForTarget(target), Is.True);
+        Assert.That(decorated.HasStateForTargetBlock(target), Is.True);
         Assert.That(decorated.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.True);
         scope!.Dispose();
 
@@ -188,7 +188,7 @@ public class ScopeProviderTests(bool useFlat)
         using Context context = new(false, TestStateHeaderProvider.Unavailable);
         BlockHeader target = Build.A.BlockHeader.WithNumber(1).WithParentHash(TestItem.KeccakA).TestObject;
 
-        Assert.That(context.ScopeProvider.HasStateForTarget(target), Is.False);
+        Assert.That(context.ScopeProvider.HasStateForTargetBlock(target), Is.False);
         Assert.That(context.ScopeProvider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.False);
         Assert.That(scope, Is.Null);
     }
@@ -199,7 +199,7 @@ public class ScopeProviderTests(bool useFlat)
         using Context context = new(useFlat, stateHeaderProvider: TestStateHeaderProvider.Unavailable);
         BlockHeader target = Build.A.BlockHeader.WithNumber(1).WithParentHash(TestItem.KeccakA).TestObject;
 
-        Assert.That(context.ScopeProvider.HasStateForTarget(target), Is.False);
+        Assert.That(context.ScopeProvider.HasStateForTargetBlock(target), Is.False);
         Assert.That(context.ScopeProvider.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope scope), Is.False);
         Assert.That(scope, Is.Null);
     }
@@ -210,7 +210,7 @@ public class ScopeProviderTests(bool useFlat)
         IWorldStateScopeProvider provider = new LegacyScopeProvider();
         BlockHeader target = Build.A.BlockHeader.WithNumber(1).TestObject;
 
-        Assert.That(() => provider.HasStateForTarget(target), Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => provider.HasStateForTargetBlock(target), Throws.TypeOf<NotSupportedException>());
         Assert.That(() => provider.TryBeginScopeAtTarget(target, new LocalMetrics(), out _), Throws.TypeOf<NotSupportedException>());
     }
 
@@ -223,7 +223,7 @@ public class ScopeProviderTests(bool useFlat)
             : new WorldState(provider, LimboLogs.Instance);
         BlockHeader target = Build.A.BlockHeader.WithTimestamp(1).TestObject;
 
-        Assert.That(state.HasStateForTarget(target), Is.False);
+        Assert.That(state.HasStateForTargetBlock(target), Is.False);
         Assert.That(provider.LastTarget, Is.SameAs(target));
         Assert.That(state.TryBeginScopeAtTarget(target, out IDisposable failedScope), Is.False);
         Assert.That(provider.LastTarget, Is.SameAs(target));
@@ -231,7 +231,7 @@ public class ScopeProviderTests(bool useFlat)
         Assert.That(state.IsInScope, Is.False);
 
         provider.TryResult = true;
-        Assert.That(state.HasStateForTarget(target), Is.True);
+        Assert.That(state.HasStateForTargetBlock(target), Is.True);
         Assert.That(provider.LastTarget, Is.SameAs(target));
         Assert.That(state.TryBeginScopeAtTarget(target, out IDisposable scope), Is.True);
         Assert.That(provider.LastTarget, Is.SameAs(target));
@@ -1806,7 +1806,7 @@ public class ScopeProviderTests(bool useFlat)
 
         public bool HasRoot(BlockHeader baseBlock) => true;
 
-        public bool HasStateForTarget(BlockHeader targetBlock)
+        public bool HasStateForTargetBlock(BlockHeader targetBlock)
         {
             LastTarget = targetBlock;
             Targets.Add(targetBlock);

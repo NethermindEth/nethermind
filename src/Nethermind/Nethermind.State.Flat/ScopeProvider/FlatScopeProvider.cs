@@ -34,7 +34,7 @@ public class FlatScopeProvider(
 
     public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 
-    public bool HasStateForTarget(BlockHeader targetBlock)
+    public bool HasStateForTargetBlock(BlockHeader targetBlock)
     {
         ArgumentNullException.ThrowIfNull(targetBlock);
         return TryGetBaseBlock(targetBlock, out BlockHeader? parent) && HasRoot(parent);

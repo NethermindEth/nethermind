@@ -138,21 +138,19 @@ public static class StatelessExecutor
             return false;
         }
 
-        using (scope)
+        using IDisposable _ = scope;
+        IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
+
+        (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(
+            suggestedBlock,
+            ProcessingOptions.ReadOnlyChain,
+            NullBlockTracer.Instance,
+            specProvider.GetSpec(suggestedBlock.Header));
+
+        if (!blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error))
         {
-            IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
-
-            (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(
-                suggestedBlock,
-                ProcessingOptions.ReadOnlyChain,
-                NullBlockTracer.Instance,
-                specProvider.GetSpec(suggestedBlock.Header));
-
-            if (!blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error))
-            {
-                Debug.Fail(error);
-                return false;
-            }
+            Debug.Fail(error);
+            return false;
         }
 
         return true;

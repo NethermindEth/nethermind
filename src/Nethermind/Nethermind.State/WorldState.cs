@@ -339,10 +339,10 @@ namespace Nethermind.State
         public bool IsInScope => _currentScope is not null;
         public IWorldStateScopeProvider ScopeProvider { get; }
 
-        public bool HasStateForTarget(BlockHeader targetBlock)
+        public bool HasStateForTargetBlock(BlockHeader targetBlock)
         {
             ArgumentNullException.ThrowIfNull(targetBlock);
-            return ScopeProvider.HasStateForTarget(targetBlock);
+            return ScopeProvider.HasStateForTargetBlock(targetBlock);
         }
 
         public Task HintBal(ReadOnlyBlockAccessList bal)

@@ -30,8 +30,8 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public bool TryBeginScopeAtTarget(BlockHeader targetBlock, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IDisposable? scopeCloser)
         => State.TryBeginScopeAtTarget(targetBlock, out scopeCloser);
 
-    public bool HasStateForTarget(BlockHeader targetBlock)
-        => State.HasStateForTarget(targetBlock);
+    public bool HasStateForTargetBlock(BlockHeader targetBlock)
+        => State.HasStateForTargetBlock(targetBlock);
 
     public Task HintBal(ReadOnlyBlockAccessList bal)
         => State.HintBal(bal);

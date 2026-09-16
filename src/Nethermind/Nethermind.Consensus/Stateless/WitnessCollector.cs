@@ -30,10 +30,8 @@ public class WitnessCollector(
             throw new InvalidOperationException($"Parent state is unavailable for target block {block.ToString(Block.Format.FullHashAndNumber)}.");
         }
 
-        using (scope)
-        {
-            blockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, specProvider.GetSpec(block.Header));
-            return worldState.GetWitness(parentHeader);
-        }
+        using IDisposable _ = scope;
+        blockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, specProvider.GetSpec(block.Header));
+        return worldState.GetWitness(parentHeader);
     }
 }

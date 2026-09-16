@@ -22,8 +22,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     public bool HasRoot(BlockHeader? baseBlock) =>
         baseScopeProvider.HasRoot(baseBlock);
 
-    public bool HasStateForTarget(BlockHeader targetBlock) =>
-        baseScopeProvider.HasStateForTarget(targetBlock);
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) =>
+        baseScopeProvider.HasStateForTargetBlock(targetBlock);
 
     public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
