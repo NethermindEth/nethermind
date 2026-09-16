@@ -32,6 +32,8 @@ public class FlatDbConfig : IFlatDbConfig
     public bool InlineCompaction { get; set; } = false;
     public bool RegenerateCompactionOffset { get; set; } = false;
     public bool VerifyWithTrie { get; set; } = false;
+    public bool ParallelStorageRoot { get; set; } = false;
+    public bool ParallelStorageRootEagerHash { get; set; } = true;
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
     public ulong CompactSize { get; set; } = 32;
     public int MaxInFlightCompactJob { get; set; } = 32;

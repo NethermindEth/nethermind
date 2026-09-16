@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -84,6 +85,22 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     // path instead.
     public void HintSet(in UInt256 index) => WarmUpSlot(index);
 
+    public void HintSet(in UInt256 index, in UInt256 value)
+    {
+        StorageRootBuilder? builder = _scope.StorageRootBuilder;
+        if (builder is null || !builder.TryEnqueue(this, in index, in value)) WarmUpSlot(index);
+    }
+
+    // Builder thread only, until the scope drains the builder.
+    internal void ApplyCommitted(in UInt256 index, in UInt256 value)
+    {
+        Span<byte> buffer = stackalloc byte[32];
+        value.ToBigEndian(buffer);
+        _tree.Set(in index, value.IsZero ? StorageTree.ZeroBytes : buffer.WithoutLeadingZeros());
+    }
+
+    internal void HashDirtyPaths() => _tree.UpdateRootHash(canBeParallel: false);
+
     private void WarmUpSlot(UInt256 index)
     {
         if (_bundle.ShouldQueuePrewarm(_address, index))
@@ -147,6 +164,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         // A trie-less (history-backed) scope can't maintain the storage trie (its persistence reader throws on
         // trie-node access), so it writes only the flat overlay. Pick the strategy once here.
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
+        if (_scope.UsePrebuiltStorageTries) return new PrebuiltStorageWriteBatch(this, onRootUpdated);
 
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, _tree, onRootUpdated, _address, commit: true);
         return new StorageTreeBulkWriteBatch(trieBatch, this);
@@ -170,6 +188,33 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         }
 
         public void Dispose() => trieBatch.Dispose();
+    }
+
+    // ParallelStorageRoot: the builder already applied every committed write into the trie, so only mirror the values
+    // into the flat overlay and commit. A clear resets the trie, after which the remaining writes must go in again.
+    private sealed class PrebuiltStorageWriteBatch(
+        FlatStorageTree storageTree,
+        Action<Address, Hash256> onRootUpdated) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        private bool _cleared;
+
+        public void Set(in UInt256 index, in UInt256 value)
+        {
+            if (_cleared) storageTree.ApplyCommitted(in index, in value);
+            storageTree.Set(index, value);
+        }
+
+        public void Clear()
+        {
+            storageTree.ClearStorage();
+            _cleared = true;
+        }
+
+        public void Dispose()
+        {
+            storageTree._tree.Commit();
+            onRootUpdated(storageTree._address, storageTree._tree.RootHash);
+        }
     }
 
     // Trie-less scope: only the flat overlay is written; there is no storage trie to maintain.

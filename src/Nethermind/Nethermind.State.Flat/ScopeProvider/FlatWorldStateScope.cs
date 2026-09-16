@@ -33,6 +33,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly PatriciaTree _warmupStateTree;
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
+    private readonly StorageRootBuilder? _storageRootBuilder;
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
     private bool _isDisposed = false;
 
@@ -94,12 +95,32 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
         _trieless = snapshotBundle.IsHistorical;
+
+        // VerifyWithTrie reads the tries on the block thread during execution, which the builder must own exclusively.
+        if (configuration.ParallelStorageRoot && !configuration.VerifyWithTrie && !isReadOnly && !_trieless)
+            _storageRootBuilder = new StorageRootBuilder(configuration.ParallelStorageRootEagerHash, logManager);
+    }
+
+    /// <summary>The builder to hand committed storage writes to, or null once it has drained or faulted.</summary>
+    internal StorageRootBuilder? StorageRootBuilder =>
+        _storageRootBuilder is { IsFaulted: false, IsDrained: false } ? _storageRootBuilder : null;
+
+    /// <summary>True when the drained builder left every storage trie already built, so the flush only commits them.</summary>
+    internal bool UsePrebuiltStorageTries => _storageRootBuilder is { IsDrained: true, IsFaulted: false };
+
+    private void DrainStorageRootBuilder()
+    {
+        if (_storageRootBuilder is null) return;
+        _storageRootBuilder.CompleteAndJoin();
+        // A faulted builder may have left a trie half-applied; drop them all so the flush rebuilds from the committed parent.
+        if (_storageRootBuilder.IsFaulted) _storages.Clear();
     }
 
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
         CancelHintBal();
+        _storageRootBuilder?.CompleteAndJoin();
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
@@ -452,6 +473,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
         CancelHintBal();
+        DrainStorageRootBuilder();
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
