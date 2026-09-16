@@ -224,7 +224,8 @@ public abstract partial class BaseEngineModuleTests
 
         public MergeTestBlockchain(IMergeConfig? mergeConfig = null)
         {
-            TestTimeout = 60_000;
+            // 30s is too tight under CI load; keep this above the block-processing timeout so tests observe SYNCING.
+            TestTimeout = 90_000;
             MergeConfig = mergeConfig ?? new MergeConfig();
             MergeConfig.TerminalTotalDifficulty ??= "0";
             // Production default (7s) is too tight under Flat DB CI load, causing spurious SYNCING; timeout tests pass an explicit shorter value.

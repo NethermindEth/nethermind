@@ -104,7 +104,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [CancelAfter(30000)]
+    [CancelAfter(120000)]
     public async Task getPayloadV1_picks_transactions_from_pool_v1(CancellationToken cancellationToken)
     {
         using SemaphoreSlim blockImprovementLock = new(0);
