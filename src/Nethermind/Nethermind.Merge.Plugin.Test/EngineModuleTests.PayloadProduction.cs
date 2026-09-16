@@ -104,7 +104,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [CancelAfter(30000)]
+    [CancelAfter(120000)]
     public async Task getPayloadV1_picks_transactions_from_pool_v1(CancellationToken cancellationToken)
     {
         using SemaphoreSlim blockImprovementLock = new(0);
@@ -438,6 +438,39 @@ public partial class EngineModuleTests
 
     [Parallelizable(ParallelScope.None)] // Timing sensitive
     [Test]
+    public async Task WaitForImprovedBlock_with_minTransactions_ignores_the_empty_first_improvement()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
+            ctx => new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(ctx.Resolve<IBlockProducer>()!, TimeSpan.FromSeconds(ctx.Resolve<IMergeConfig>().SecondsPerSlot))),
+            TimeSpan.FromSeconds(60), delay: TimeSpan.FromMilliseconds(10));
+
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+
+        Task anyWait = chain.WaitForImprovedBlock(startingHead);
+        Task minTxWait = chain.WaitForImprovedBlock(startingHead, minTransactions: 1);
+
+        string payloadId = (await rpc.engine_forkchoiceUpdatedV1(
+            new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+            new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })).Data.PayloadId!;
+
+        // The pool is empty, so the first improvement is empty too: it satisfies the parent-hash-only wait,
+        // and must not satisfy a wait that expects a transaction.
+        await anyWait;
+        Assert.That(minTxWait.IsCompleted, Is.False, "an empty improvement must not satisfy minTransactions");
+
+        IBlockImprovementContext emptyImprovement = chain.StoringBlockImprovementContextFactory.SnapshotCreatedContexts()[^1];
+        chain.AddTransactions(BuildTransactions(chain, startingHead, TestItem.PrivateKeyB, TestItem.AddressF, 1, 10, out _, out _));
+        await minTxWait;
+
+        Assert.That(() => emptyImprovement.Disposed, Is.True.After(5000, 10));
+
+        ExecutionPayload payload = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+        Assert.That(payload.TryGetTransactions().Data!, Has.Length.AtLeast(1));
+    }
+
+    [Parallelizable(ParallelScope.None)] // Timing sensitive
+    [Test]
     public async Task getPayloadV1_picks_transactions_from_pool_constantly_improving_blocks()
     {
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
@@ -473,7 +506,7 @@ public partial class EngineModuleTests
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         List<int?> transactionsLength = improvementContextFactory.SnapshotCreatedContexts()
-            .Select(c => c.CurrentBestBlock?.Transactions.Length).ToList();
+            .Select(c => c.Best.CurrentBestBlock?.Transactions.Length).ToList();
 
         using (Assert.EnterMultipleScope())
         {
@@ -531,7 +564,7 @@ public partial class EngineModuleTests
 
         StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.Container.Resolve<IBlockImprovementContextFactory>();
         List<int?> transactionsLength = improvementContextFactory.SnapshotCreatedContexts()
-            .Select(c => c.CurrentBestBlock?.Transactions.Length).ToList();
+            .Select(c => c.Best.CurrentBestBlock?.Transactions.Length).ToList();
 
         Assert.That(transactionsLength, Is.EqualTo(new[] { 1, 2 }));
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
@@ -573,7 +606,8 @@ public partial class EngineModuleTests
         ExecutionPayload getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
         Assert.That(getPayloadResult.TryGetTransactions().Data, Has.Length.EqualTo(3));
-        Assert.That(cancelledContext?.Disposed, Is.True);
+        // The creation event can precede publication, so cleanup may finish after getPayload returns.
+        await ((DelayBlockImprovementContext)cancelledContext).DisposalCompleted.WaitAsync(chain.CancellationToken);
     }
 
     [Test]

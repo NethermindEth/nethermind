@@ -84,9 +84,8 @@ public class ValueHash256KademliaDistanceTests
 
     }
 
-    [TestCase(-1)]
-    [TestCase(257)]
-    public void RandomHashAtDistance_RejectsInvalidDistance(int distance)
+    [Test]
+    public void RandomHashAtDistance_RejectsInvalidDistance([Values(-1, 257)] int distance)
     {
         ValueHash256 hash = new("0x0000000000000000000000000000000000000000000000000000000000000000");
 

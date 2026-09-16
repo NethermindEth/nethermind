@@ -20,9 +20,8 @@ public class KeyedMapperRegistrationSourceTests
         Assert.That(cont.ResolveKeyed<ClassB>("Key").Property, Is.EqualTo("Property1"));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void TestDisposeWhenNotOwned(bool shouldDispose)
+    [Test]
+    public void TestDisposeWhenNotOwned([Values] bool shouldDispose)
     {
         bool adapterWasDisposed = false;
 

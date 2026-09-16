@@ -836,9 +836,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     // Migration deletes the legacy key after re-inserting, so a skipped write there would destroy the bodies.
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Deriving_from_state_does_not_skip_bodies_outside_block_processing(bool viaMigration)
+    [Test]
+    public void Deriving_from_state_does_not_skip_bodies_outside_block_processing([Values] bool viaMigration)
     {
         _receiptConfig.DeriveFromState = true;
         CreateStorage();
@@ -853,10 +852,9 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     // A body skipped while capture is unhealthy is lost once the block leaves the in-memory tier.
-    [TestCase(false)]
-    [TestCase(null)]
+    [Test]
     [MaxTime(Timeout.MaxTestTime)]
-    public void Deriving_from_state_stores_bodies_without_healthy_history_capture(bool? captureHealthy)
+    public void Deriving_from_state_stores_bodies_without_healthy_history_capture([Values(false, null)] bool? captureHealthy)
     {
         _receiptConfig.DeriveFromState = true;
         if (captureHealthy is { } health)

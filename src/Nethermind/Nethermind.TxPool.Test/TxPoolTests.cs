@@ -149,11 +149,8 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        [TestCase(true, false)]
-        [TestCase(true, true)]
-        [TestCase(false, false)]
-        [TestCase(false, true)]
-        public void should_validate_eip2780_intrinsic_gas_after_sender_recovery(bool selfTransfer, bool valueTransfer)
+        [Test]
+        public void should_validate_eip2780_intrinsic_gas_after_sender_recovery([Values] bool selfTransfer, [Values] bool valueTransfer)
         {
             _txPool = CreatePool(null, new TestSpecProvider(Amsterdam.Instance));
             Address sender = TestItem.PrivateKeyA.Address;
@@ -347,12 +344,13 @@ namespace Nethermind.TxPool.Test
             }
 
             await AddEmptyBlock();
-            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+            AssertRevalidatedForHead();
 
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
 
             _blockTree.BestSuggestedHeader = head.Header;
             await RaiseBlockAddedToMainAndWaitForNewHead(head);
+            AssertRevalidatedForHead();
 
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
         }
@@ -406,7 +404,7 @@ namespace Nethermind.TxPool.Test
 
             EnsureSenderBalance(TestItem.AddressA, UInt256.Zero);
             await AddEmptyBlock();
-            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+            AssertRevalidatedForHead();
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
             int pendingTransactionsCount = _txPool.GetPendingTransactionsCount();
             AcceptTxResult resubmissionResult = _txPool.SubmitTx(transaction, TxHandlingOptions.None);
@@ -442,7 +440,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
 
             await AddEmptyBlock();
-            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+            AssertRevalidatedForHead();
 
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
         }
@@ -508,7 +506,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
             await AddEmptyBlock();
-            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+            AssertRevalidatedForHead();
 
             using (Assert.EnterMultipleScope())
             {
@@ -542,7 +540,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
             await AddEmptyBlock();
-            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+            AssertRevalidatedForHead();
 
             using (Assert.EnterMultipleScope())
             {
@@ -584,7 +582,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
             await AddEmptyBlock();
-            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+            AssertRevalidatedForHead();
 
             using (Assert.EnterMultipleScope())
             {
@@ -654,7 +652,7 @@ namespace Nethermind.TxPool.Test
 
             await AddEmptyBlock();
 
-            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+            AssertRevalidatedForHead();
         }
 
         [Test]
@@ -1615,9 +1613,8 @@ namespace Nethermind.TxPool.Test
             Assert.That(result, Is.EqualTo(expected));
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void should_add_underpaid_txs_to_full_TxPool_only_if_local(bool isLocal)
+        [Test]
+        public void should_add_underpaid_txs_to_full_TxPool_only_if_local([Values] bool isLocal)
         {
             TxHandlingOptions txHandlingOptions = isLocal ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None;
 
@@ -1648,11 +1645,8 @@ namespace Nethermind.TxPool.Test
             Assert.That(result, Is.EqualTo(isLocal ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLow));
         }
 
-        [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(2)]
-        [TestCase(10)]
-        public void should_not_add_tx_if_already_pending_lower_nonces_are_exhausting_balance(int numberOfTxsPossibleToExecuteBeforeGasExhaustion)
+        [Test]
+        public void should_not_add_tx_if_already_pending_lower_nonces_are_exhausting_balance([Values(0, 1, 2, 10)] int numberOfTxsPossibleToExecuteBeforeGasExhaustion)
         {
             const int gasPrice = 10;
             const int value = 1;
@@ -2463,13 +2457,8 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        [TestCase(TxType.Legacy, 0)]
-        [TestCase(TxType.Legacy, 1)]
-        [TestCase(TxType.Legacy, 1000000)]
-        [TestCase(TxType.EIP1559, 0)]
-        [TestCase(TxType.EIP1559, 1)]
-        [TestCase(TxType.EIP1559, 1000000)]
-        public void should_always_replace_zero_fee_tx(TxType txType, int newFee)
+        [Test]
+        public void should_always_replace_zero_fee_tx([Values(TxType.Legacy, TxType.EIP1559)] TxType txType, [Values(0, 1, 1000000)] int newFee)
         {
             ISpecProvider specProvider = GetLondonSpecProvider();
             _txPool = CreatePool(null, specProvider);
@@ -3060,9 +3049,8 @@ namespace Nethermind.TxPool.Test
             Assert.That(result, Is.EqualTo(expected));
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void SetCode_tx_has_authority_with_pending_transaction_is_rejected_then_is_accepted_after_tx_removal(bool withRemoval)
+        [Test]
+        public void SetCode_tx_has_authority_with_pending_transaction_is_rejected_then_is_accepted_after_tx_removal([Values] bool withRemoval)
         {
             ISpecProvider specProvider = GetPragueSpecProvider();
             TxPoolConfig txPoolConfig = new() { Size = 30, PersistentBlobStorageSize = 0 };
@@ -3104,9 +3092,8 @@ namespace Nethermind.TxPool.Test
             Assert.That(result, Is.EqualTo(withRemoval ? AcceptTxResult.Accepted : AcceptTxResult.DelegatorHasPendingTx));
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Tx_is_accepted_if_conflicting_pending_delegation_is_only_local(bool isLocalDelegation)
+        [Test]
+        public void Tx_is_accepted_if_conflicting_pending_delegation_is_only_local([Values] bool isLocalDelegation)
         {
             // tx pool capacity is only 1. As a first step, we add a transaction named poolTxFiller to fill the transaction pool, but it is not related to the test.
             // Then sending firstTx with delegation which is underpaid if isLocalDelegation is true.
@@ -3537,6 +3524,9 @@ namespace Nethermind.TxPool.Test
                 await semaphoreSlim.WaitAsync(1000);
             }
         }
+
+        private void AssertRevalidatedForHead() =>
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
 
         private async Task RaiseBlockAddedToMainAndWaitForNewHead(Block block, Block previousBlock = null)
         {

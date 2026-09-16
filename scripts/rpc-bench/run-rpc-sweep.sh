@@ -33,6 +33,13 @@ DIAG_DIR="${DIAG_DIR:-$SCRATCH_ROOT/diag}"
 JB_ETH_CALL_CORPUS="${JB_ETH_CALL_CORPUS:-false}"
 CORPUS_DIR="${CORPUS_DIR:-/data/expb-data/rpc-bench}"
 CORPUS_GLOB="${CORPUS_GLOB:-eth-call-corpus*.jsonl.gz}"
+# Replay every corpus as debug_traceCall (geth-style) or trace_call (Parity-style) instead of
+# eth_call. Each record is rewritten once, when the corpus is loaded or converted into the k6
+# fixtures - never per request - so the cells measure the node, not the rewrite. Parity still holds:
+# an outcome becomes a digest of the trace instead of the returned bytes.
+CORPUS_METHOD="${CORPUS_METHOD:-eth_call}"
+CORPUS_TRACER="${CORPUS_TRACER-callTracer}"   # '-' not ':-': an explicitly empty tracer selects the struct logger
+CORPUS_TRACE_TYPES="${CORPUS_TRACE_TYPES-trace}"
 CORPUS_REQUESTS="${CORPUS_REQUESTS:-}"      # size a cell by request count (absolute) ...
 CORPUS_PASSES="${CORPUS_PASSES:-}"          # ... or as a multiple of the corpus record count
 CORPUS_TIMINGS_PASSES="${CORPUS_TIMINGS_PASSES:-}"   # per-record replay; 0 rps = closed loop at CORPUS_TIMINGS_CONCURRENCY
@@ -82,6 +89,21 @@ case "$CORPUS_BASELINE" in
   none|save|use) ;;
   *) echo "::error::CORPUS_BASELINE must be none, save or use, got '$CORPUS_BASELINE'"; exit 1 ;;
 esac
+case "$CORPUS_METHOD" in
+  eth_call|debug_traceCall|trace_call) ;;
+  *) echo "::error::CORPUS_METHOD must be eth_call, debug_traceCall or trace_call"; exit 1 ;;
+esac
+if [[ "$CORPUS_METHOD" != "eth_call" ]]; then
+  [[ "$JB_ETH_CALL_CORPUS" == "true" ]] \
+    || { echo "::error::CORPUS_METHOD=$CORPUS_METHOD requires eth_call_corpus - there are no captured calls to rewrite"; exit 1; }
+  # A trace outcome is a digest of the whole response, so a word-level characterisation would
+  # describe the hash. corpus_parity refuses the combination; say so before the sweep starts.
+  [[ "$CORPUS_PARITY_DIFFS" != "true" ]] \
+    || { echo "::error::parity_diffs cannot characterise trace responses - drop it or run the corpus as eth_call"; exit 1; }
+fi
+export RPC_BENCH_CORPUS_METHOD="$CORPUS_METHOD"
+export RPC_BENCH_CORPUS_TRACER="$CORPUS_TRACER"
+export RPC_BENCH_CORPUS_TRACE_TYPES="$CORPUS_TRACE_TYPES"
 # Each client type has its own block-tagged snapshot set under SNAPSHOT_ROOT, mirroring the single-node
 # path's `<root>/<client>-<block>`; the Nethermind set is the layout-resolved one above. `ctype@image`
 # variants share their type's set, so within one type the image is the only variable.
@@ -132,6 +154,7 @@ run_cell() {
     JB_BENCHMARK_CONFIG="$1" JB_RPS="$2" JB_DURATION="$3" JB_SEED="$JB_SEED" JB_HTML_REPORT="false" \
     JB_DEEP_CHECK="$([[ -n "$corpus" ]] && echo false || echo true)" \
     JB_ETH_CALL_CORPUS="$([[ -n "$corpus" ]] && echo true || echo false)" JB_ETH_CALL_CORPUS_FILE="$corpus" \
+    CORPUS_METHOD="$CORPUS_METHOD" CORPUS_TRACER="$CORPUS_TRACER" CORPUS_TRACE_TYPES="$CORPUS_TRACE_TYPES" \
     RESOURCE_SAMPLER_CONTAINER="$sampler_container" RESOURCE_SAMPLER_OUT="$sampler_out" \
     "$here/run-jsonbench.sh"
 }

@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-
 namespace Nethermind.Db.Rocks.Config;
 
 public interface IRocksDbConfig
@@ -21,7 +19,7 @@ public interface IRocksDbConfig
     bool EnableFileWarmer { get; }
     double CompressibilityHint { get; }
     FlushOnExitMode FlushOnExit { get; }
-    IntPtr? BlockCache { get; }
+    nint? BlockCache { get; }
 
     /// <summary>Marks SST files whose recent keys are tombstone-heavy for compaction as they are written, so a
     /// store that mass-deletes gives its space back without an external trigger - deletions shrink levels, and

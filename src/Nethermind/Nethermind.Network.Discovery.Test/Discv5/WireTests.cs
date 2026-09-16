@@ -25,6 +25,7 @@ using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Discovery.Discv5.Kademlia;
 using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Discovery.Discv5.Packets;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
@@ -500,6 +501,12 @@ public class WireTests
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
         ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
             new IIPResolver.NethermindIp(endpoint.Address, endpoint.Address)));
+        NetworkListenerState listenerState = new(
+            new NetworkConfig { LocalIp = endpoint.Address.ToString() },
+            ipResolver,
+            LimboLogs.Instance);
+        listenerState.SetRlpxAddress(endpoint.Address);
+        listenerState.SetDiscoveryAddress(endpoint.Address);
         Node currentNode = new(privateKey.PublicKey, endpoint, true);
         KademliaAdapter adapter = new(
             new Lazy<IKademlia<PublicKey, Node>>(table),
@@ -512,7 +519,8 @@ public class WireTests
             new KademliaConfig<Node> { CurrentNodeId = currentNode, KSize = bucketSize },
             new CryptoRandom(),
             ValueHash256KademliaDistance.Instance,
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            listenerState);
 
         return new TestPeer(adapter, handler, channel, outbound, packetCodec, table, nodeRecordProvider, endpoint);
     }

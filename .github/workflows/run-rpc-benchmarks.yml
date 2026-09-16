@@ -143,8 +143,40 @@ on:
         description: Extra Nethermind flags for single-node runs (e.g. --Pruning.CacheMb=4000).
         required: false
         default: ""
+      debug_trace_call_corpus:
+        description: >-
+          Replay the eth_call corpus as debug_traceCall — the geth-style Debug-module method, NOT
+          Parity's trace_call (see trace_call_corpus). Requires a corpus run, and is mutually
+          exclusive with trace_call_corpus. eth_call's positional overrides move into
+          debug_traceCall's options object ([tx, block, {tracer, stateOverrides, blockOverrides}]);
+          both methods build the transaction identically, so every record replays unchanged.
+          Defaults to callTracer; tool_config.trace_call_tracer selects another (prestateTracer,
+          4byteTracer, stateGasTracer, or "" for the struct logger, whose responses are orders of
+          magnitude larger).
+        required: false
+        type: boolean
+        default: false
+      trace_call_corpus:
+        description: >-
+          Replay the eth_call corpus as trace_call — the Parity-style Trace-module method, NOT
+          geth's debug_traceCall (see debug_trace_call_corpus). Requires a corpus run, and is
+          mutually exclusive with debug_trace_call_corpus. trace_call orders its parameters
+          [tx, traceTypes, block, stateOverride], so the trace-type array comes second. It has no
+          block-override parameter: a record carrying blockOverrides is REFUSED at validation
+          rather than replayed against a different block context. Defaults to the "trace" type;
+          tool_config.trace_call_types selects others (vmTrace, stateDiff, rewards, all — each
+          multiplies the response size).
+        required: false
+        type: boolean
+        default: false
       tool_config:
-        description: Advanced — JSON merged over the values derived from the inputs above (its keys win). Templates and all keys in README "Triggering".
+        description: >-
+          Advanced — JSON merged over the values derived from the inputs above (its keys win).
+          Templates and all keys in README "Triggering". Trace replays add trace_call_tracer
+          (debug_traceCall: callTracer (default), prestateTracer, 4byteTracer, stateGasTracer, or ""
+          for struct logs), trace_call_types (trace_call: trace (default), vmTrace, stateDiff,
+          rewards, all) and max_response_bytes (positive cap on a replayed response, default 16 MiB);
+          parity_diffs is refused in either trace mode.
         required: false
         default: ""
       node_config:
@@ -216,6 +248,9 @@ jobs:
       cpu_max_freq_khz: ${{ steps.resolve.outputs.cpu_max_freq_khz }}
       cpu_stabilize: ${{ steps.resolve.outputs.cpu_stabilize }}
       eth_call_corpus: ${{ steps.resolve.outputs.eth_call_corpus }}
+      corpus_method: ${{ steps.resolve.outputs.corpus_method }}
+      trace_call_tracer: ${{ steps.resolve.outputs.trace_call_tracer }}
+      trace_call_types: ${{ steps.resolve.outputs.trace_call_types }}
       warmup_seconds: ${{ steps.resolve.outputs.warmup_seconds }}
       warmup_rps: ${{ steps.resolve.outputs.warmup_rps }}
       tool_config: ${{ steps.resolve.outputs.tool_config }}
@@ -245,6 +280,8 @@ jobs:
           IN_PERF: ${{ inputs.perf }}
           IN_DOTNET_TRACE: ${{ inputs.dotnet_trace }}
           IN_STATE_LAYOUT: ${{ inputs.state_layout }}
+          IN_TRACE_CALL_CORPUS: ${{ inputs.trace_call_corpus }}
+          IN_DEBUG_TRACE_CALL_CORPUS: ${{ inputs.debug_trace_call_corpus }}
           IN_FLAGS: ${{ inputs.additional_nethermind_flags }}
           IN_TOOL_CONFIG: ${{ inputs.tool_config }}
           IN_NODE_CONFIG: ${{ inputs.node_config }}
@@ -457,6 +494,36 @@ jobs:
             case "${benchmark_tool}" in jsonbench|jsonbench-sweep) ;; *) fail "eth_call_corpus requires benchmark_tool=jsonbench or jsonbench-sweep." ;; esac
             [[ "${comparison}" != "true" ]] || fail "eth_call_corpus is benchmark-only; leave reference_client=none."
           fi
+          # The corpus can be replayed as a tracing method instead of eth_call. A run replays it as
+          # exactly one method: the two are dispatched separately so each has its own baseline.
+          [[ "${IN_TRACE_CALL_CORPUS:-false}" != "true" || "${IN_DEBUG_TRACE_CALL_CORPUS:-false}" != "true" ]] \
+            || fail "trace_call_corpus and debug_trace_call_corpus are mutually exclusive - dispatch twice to compare them."
+          corpus_method="eth_call"
+          [[ "${IN_TRACE_CALL_CORPUS:-false}" != "true" ]] || corpus_method="trace_call"
+          [[ "${IN_DEBUG_TRACE_CALL_CORPUS:-false}" != "true" ]] || corpus_method="debug_traceCall"
+          [[ "${corpus_method}" == "eth_call" || "${eth_call_corpus}" == "true" ]] \
+            || fail "${corpus_method} replay requires a corpus run - there are no captured calls to rewrite."
+          trace_call_tracer="callTracer"
+          if echo "${tool_config}" | jq -e 'has("trace_call_tracer")' >/dev/null 2>&1; then
+            trace_call_tracer="$(echo "${tool_config}" | jq -r '.trace_call_tracer')"
+            case "${trace_call_tracer}" in
+              callTracer|prestateTracer|4byteTracer|stateGasTracer|"") ;;
+              *) fail "trace_call_tracer must be callTracer, prestateTracer, 4byteTracer, stateGasTracer, or \"\" (struct logs), got '${trace_call_tracer}'." ;;
+            esac
+          fi
+          trace_call_types="$(echo "${tool_config}" | jq -r '.trace_call_types // "trace"')"
+          for trace_type in ${trace_call_types//,/ }; do
+            case "${trace_type}" in
+              vmTrace|stateDiff|trace|rewards|all) ;;
+              *) fail "trace_call_types must be any of vmTrace, stateDiff, trace, rewards, all; got '${trace_type}'." ;;
+            esac
+          done
+          # The replay caps a response at 16 MiB by default; a struct-log trace legitimately exceeds it.
+          max_response_bytes_type="$(echo "${tool_config}" | jq -r 'if has("max_response_bytes") then (.max_response_bytes|type) else "absent" end')"
+          max_response_bytes="$(echo "${tool_config}" | jq -r '.max_response_bytes // empty')"
+          if [[ "${max_response_bytes_type}" != "absent" ]] && ! [[ "${max_response_bytes_type}" == "number" && "${max_response_bytes}" =~ ^[1-9][0-9]*$ ]]; then
+            fail "max_response_bytes must be a positive JSON integer, got '${max_response_bytes}'."
+          fi
           # Single-node jsonbench warm-up: discarded load before the measured cell, after which the profilers start. The
           # sweep reads the same key itself; here the default stays 0 so an unconfigured run measures what it always did.
           warmup_seconds="0"; warmup_rps="400"
@@ -536,8 +603,19 @@ jobs:
           fi
           scratch_root="$(nc '.scratch_root')"; [[ -n "${scratch_root}" ]] || scratch_root="${bench_data_dir}/rpc-bench-scratch"
           network="$(nc '.network')"; [[ -n "${network}" ]] || network="mainnet"
-          jsonrpc_modules="$(nc '.jsonrpc_modules')"; [[ -n "${jsonrpc_modules}" ]] || jsonrpc_modules="Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug"
-          [[ "${eth_call_corpus}" != "true" ]] || jsonrpc_modules="Eth"
+          jsonrpc_modules="$(nc '.jsonrpc_modules')"
+          if [[ -z "${jsonrpc_modules}" ]]; then
+            if [[ "${eth_call_corpus}" == "true" ]]; then
+              # A corpus run exercises one method, so serve only the module that method lives in.
+              case "${corpus_method}" in
+                debug_traceCall) jsonrpc_modules="Eth,Debug" ;;
+                trace_call)      jsonrpc_modules="Eth,Trace" ;;
+                *)               jsonrpc_modules="Eth" ;;
+              esac
+            else
+              jsonrpc_modules="Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug"
+            fi
+          fi
           health_min="$(nc '.health_timeout_minutes')"; [[ -n "${health_min}" ]] || health_min="30"
           [[ "${health_min}" =~ ^[0-9]+$ && "${health_min}" -ge 1 ]] || fail "node_config.health_timeout_minutes must be a positive integer, got '${health_min}'."
           health_timeout=$(( health_min * 60 ))
@@ -555,11 +633,14 @@ jobs:
           # `clients` and `corpus_baseline` are excluded on purpose (they differ between a baseline run and a PR run),
           # and so is `rounds`, which repeats the cell rather than reshaping it.
           cell_keys='["benchmark_config","corpus_dir","corpus_glob","corpus_passes","corpus_requests","corpus_warmup_duration",
-                      "corpus_warmup_rps","corpus_warmup_rps_max","db_isolation_all","duration","max_corpus_records","node_env_vars",
-                      "ref","rps_list","seed","snapshot_block","state_layout","timings_concurrency","timings_passes","timings_rps","vus"]'
+                      "corpus_warmup_rps","corpus_warmup_rps_max","db_isolation_all","duration","max_corpus_records","max_response_bytes",
+                      "node_env_vars","ref","rps_list","seed","snapshot_block","state_layout","timings_concurrency","timings_passes",
+                      "timings_rps","vus"]'
           cell_shape="$(jq -S -c -n --argjson t "${tool_config}" --argjson keys "${cell_keys}" \
             --arg freq "${cpu_max_freq_khz}" --arg stab "${cpu_stabilize}" --arg cpuset "${node_cpuset}" --arg memory "${node_memory}" \
+            --arg method "${corpus_method}" --arg tracer "${trace_call_tracer}" --arg types "${trace_call_types}" \
             '{cell: ($t | with_entries(select(.key as $k | $keys | index($k)))),
+              replay: {corpus_method: $method, trace_call_tracer: $tracer, trace_call_types: $types},
               node: {cpu_max_freq_khz: $freq, cpu_stabilize: $stab, cpuset: $cpuset, memory: $memory}}')"
           cell_key="$(printf '%s' "${cell_shape}" | sha256sum | cut -c1-12)"
 
@@ -624,6 +705,9 @@ jobs:
             echo "cpu_max_freq_khz=${cpu_max_freq_khz}"
             echo "cpu_stabilize=${cpu_stabilize}"
             echo "eth_call_corpus=${eth_call_corpus}"
+            echo "corpus_method=${corpus_method}"
+            echo "trace_call_tracer=${trace_call_tracer}"
+            echo "trace_call_types=${trace_call_types}"
             echo "warmup_seconds=${warmup_seconds}"
             echo "warmup_rps=${warmup_rps}"
             echo "tool_config<<TOOLCFG"
@@ -885,6 +969,9 @@ jobs:
           SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
           RESOLVED_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
+          CORPUS_METHOD: ${{ needs.resolve.outputs.corpus_method }}
+          CORPUS_TRACER: ${{ needs.resolve.outputs.trace_call_tracer }}
+          CORPUS_TRACE_TYPES: ${{ needs.resolve.outputs.trace_call_types }}
           RESOLVED_CORPUS_DIR: ${{ needs.resolve.outputs.corpus_dir }}
           CLIENT_TYPE: ${{ needs.resolve.outputs.client }}
           WARMUP_SECONDS: ${{ needs.resolve.outputs.warmup_seconds }}
@@ -911,6 +998,9 @@ jobs:
           [[ -z "${jb_corpus}" && -n "${RESOLVED_CORPUS_DIR:-}" ]] && jb_corpus="${RESOLVED_CORPUS_DIR}/eth-call-corpus.jsonl.gz"
           [[ -n "${jb_corpus}" ]] && export JB_ETH_CALL_CORPUS_FILE="${jb_corpus}"
           max_records="$(get '.max_corpus_records')"; [[ -n "${max_records}" ]] && export RPC_BENCH_MAX_CORPUS_RECORDS="${max_records}"
+          # The warm-up replays the measured cell's workload, so it must accept the same responses.
+          max_response_bytes="$(get '.max_response_bytes')"
+          [[ -z "${max_response_bytes}" ]] || export RPC_BENCH_MAX_RESPONSE_BYTES="${max_response_bytes}"
           export JB_EXTRA_ARGS="$(get '.extra_args')"
           # Discarded output stays OUT of OUT_DIR so it is never staged or published; the
           # fail-rate gate is lifted because absorbing the cold failures is the point of this cell.
@@ -947,6 +1037,9 @@ jobs:
           SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
           JB_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
+          CORPUS_METHOD: ${{ needs.resolve.outputs.corpus_method }}
+          CORPUS_TRACER: ${{ needs.resolve.outputs.trace_call_tracer }}
+          CORPUS_TRACE_TYPES: ${{ needs.resolve.outputs.trace_call_types }}
           RESOLVED_CORPUS_DIR: ${{ needs.resolve.outputs.corpus_dir }}
           CLIENT_TYPE: ${{ needs.resolve.outputs.client }}
           COMPARISON: ${{ needs.resolve.outputs.comparison }}
@@ -962,7 +1055,7 @@ jobs:
           getb() { echo "${TOOL_CONFIG}" | jq -r "$1 | if . == null then \"\" else tostring end"; }
           # Only override what is set; the script defaults (incl. the json-bench pin) apply otherwise.
           for pair in ref:JB_REF compare_config:JB_COMPARE_CONFIG rps:JB_RPS duration:JB_DURATION vus:JB_VUS seed:JB_SEED \
-                      concurrency:JB_CONCURRENCY timeout:JB_TIMEOUT max_corpus_records:RPC_BENCH_MAX_CORPUS_RECORDS; do
+                      concurrency:JB_CONCURRENCY timeout:JB_TIMEOUT max_corpus_records:RPC_BENCH_MAX_CORPUS_RECORDS                       max_response_bytes:RPC_BENCH_MAX_RESPONSE_BYTES; do
             v="$(get ".${pair%%:*}")"; [[ -z "${v}" ]] || export "${pair#*:}=${v}"
           done
           for pair in html_report:JB_HTML_REPORT max_fail_rate_pct:JB_MAX_FAIL_RATE_PCT; do
@@ -1064,6 +1157,9 @@ jobs:
           NETWORK: ${{ needs.resolve.outputs.network }}
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
           JB_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
+          CORPUS_METHOD: ${{ needs.resolve.outputs.corpus_method }}
+          CORPUS_TRACER: ${{ needs.resolve.outputs.trace_call_tracer }}
+          CORPUS_TRACE_TYPES: ${{ needs.resolve.outputs.trace_call_types }}
           CORPUS_DIR: ${{ needs.resolve.outputs.corpus_dir }}
           SNAPSHOT_ROOT: ${{ needs.resolve.outputs.snapshot_root }}
           BASELINE_MODE: ${{ needs.resolve.outputs.baseline_mode }}
@@ -1085,7 +1181,8 @@ jobs:
                       corpus_warmup_duration:CORPUS_WARMUP_DURATION corpus_warmup_rps:CORPUS_WARMUP_RPS corpus_warmup_rps_max:CORPUS_WARMUP_RPS_MAX max_corpus_records:RPC_BENCH_MAX_CORPUS_RECORDS \
                       corpus_baseline:CORPUS_BASELINE \
                       timings_passes:CORPUS_TIMINGS_PASSES timings_rps:CORPUS_TIMINGS_RPS timings_concurrency:CORPUS_TIMINGS_CONCURRENCY \
-                      max_divergence_indexes:RPC_BENCH_MAX_DIVERGENCE_INDEXES node_env_vars:NODE_ENV_VARS; do
+                      max_divergence_indexes:RPC_BENCH_MAX_DIVERGENCE_INDEXES node_env_vars:NODE_ENV_VARS \
+                      max_response_bytes:RPC_BENCH_MAX_RESPONSE_BYTES; do
             v="$(get ".${pair%%:*}")"; [[ -z "${v}" ]] || export "${pair#*:}=${v}"
           done
           for pair in db_isolation_allow_snapshot_mutation:DB_ISOLATION_ALLOW_SNAPSHOT_MUTATION resource_sampling:CORPUS_RESOURCE_SAMPLING parity_diffs:CORPUS_PARITY_DIFFS \

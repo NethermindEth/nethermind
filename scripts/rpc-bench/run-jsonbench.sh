@@ -36,6 +36,20 @@ JB_HTML_REPORT="${JB_HTML_REPORT:-true}"
 JB_DEEP_CHECK="${JB_DEEP_CHECK:-false}"
 JB_ETH_CALL_CORPUS="${JB_ETH_CALL_CORPUS:-false}"
 JB_ETH_CALL_CORPUS_FILE="${JB_ETH_CALL_CORPUS_FILE:-${CORPUS_DIR:-/data/expb-data/rpc-bench}/eth-call-corpus.jsonl.gz}"
+# Replay the same captured calls as a tracing method instead of eth_call (corpus mode only):
+# debug_traceCall (geth-style, Debug module) or trace_call (Parity-style, Trace module). The rewrite
+# happens while the fixtures are built, before the node sees any load, so a trace cell costs exactly
+# what an eth_call cell costs to prepare - only the method and the response differ.
+CORPUS_METHOD="${CORPUS_METHOD:-eth_call}"
+# '-' not ':-': an explicitly empty tracer selects the struct logger, and ':-' would silently turn
+# that into callTracer. Only a wholly unset variable takes the default.
+CORPUS_TRACER="${CORPUS_TRACER-callTracer}"
+CORPUS_TRACE_TYPES="${CORPUS_TRACE_TYPES-trace}"
+case "$CORPUS_METHOD" in
+  debug_traceCall) CORPUS_METHOD_LABEL="debug_traceCall (tracer=${CORPUS_TRACER:-structLog})" ;;
+  trace_call)      CORPUS_METHOD_LABEL="trace_call (types=${CORPUS_TRACE_TYPES})" ;;
+  *)               CORPUS_METHOD_LABEL="eth_call" ;;
+esac
 JB_FAIL_ON_DIFF="${JB_FAIL_ON_DIFF:-false}"
 JB_MAX_FAIL_RATE_PCT="${JB_MAX_FAIL_RATE_PCT:-1}"   # k6 exits 0 even at 100% failures
 JB_EXTRA_ARGS="${JB_EXTRA_ARGS:-}"
@@ -57,6 +71,18 @@ case "$JB_ETH_CALL_CORPUS" in
   *) die "JB_ETH_CALL_CORPUS must be true or false" ;;
 esac
 [[ "$JB_SEED" =~ ^[0-9]+$ ]] || die "JB_SEED must be a non-negative integer, got '$JB_SEED'"
+case "$CORPUS_METHOD" in
+  eth_call|debug_traceCall|trace_call) ;;
+  *) die "CORPUS_METHOD must be eth_call, debug_traceCall or trace_call" ;;
+esac
+# The corpus is the only source of calls this knob can rewrite, so a run without it that sets the
+# knob would silently benchmark eth_call and report itself as a trace run.
+[[ "$CORPUS_METHOD" == "eth_call" || "$JB_ETH_CALL_CORPUS" == "true" ]] \
+  || die "CORPUS_METHOD=$CORPUS_METHOD requires the eth_call corpus (JB_ETH_CALL_CORPUS=true)"
+export RPC_BENCH_CORPUS_METHOD="$CORPUS_METHOD"
+export RPC_BENCH_CORPUS_TRACER="$CORPUS_TRACER"
+export RPC_BENCH_CORPUS_TRACE_TYPES="$CORPUS_TRACE_TYPES"
+
 if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   [[ "$JB_MODE" == "benchmark" ]] || die "eth_call corpus is supported only in benchmark mode"
   [[ -f "$JB_ETH_CALL_CORPUS_FILE" ]] || die "eth_call corpus file not found: $JB_ETH_CALL_CORPUS_FILE"
@@ -85,7 +111,7 @@ if [[ "$JB_REUSE_PREPARED" == "true" ]]; then
   prepared_id="$JB_REPO@${resolved_ref:-$JB_REF}"
   # Size and mtime rather than a digest: corpora are swapped, not edited in place, and hashing one costs about
   # as much as converting it.
-  [[ "$JB_ETH_CALL_CORPUS" != "true" ]] || prepared_id+=" corpus=$(realpath -e -- "$JB_ETH_CALL_CORPUS_FILE") $(stat -c '%s %Y' -- "$JB_ETH_CALL_CORPUS_FILE")"
+  [[ "$JB_ETH_CALL_CORPUS" != "true" ]] || prepared_id+=" corpus=$(realpath -e -- "$JB_ETH_CALL_CORPUS_FILE") $(stat -c '%s %Y' -- "$JB_ETH_CALL_CORPUS_FILE") method=${CORPUS_METHOD}/${CORPUS_TRACER}/${CORPUS_TRACE_TYPES}"
   if [[ -f "$prepared_marker" && "$(cat "$prepared_marker")" == "$prepared_id" ]] \
       && docker image inspect "$image_tag" >/dev/null 2>&1 \
       && [[ "$JB_ETH_CALL_CORPUS" != "true" || -s "$corpus_fixtures/classes.json" ]]; then
@@ -173,12 +199,13 @@ if [[ "$JB_MODE" == "benchmark" ]]; then
       log "Reusing the eth_call corpus fixtures prepared by the previous invocation"
     else
       mkdir -p "$corpus_dir"
-      log "Splitting eth_call corpus $(basename "$JB_ETH_CALL_CORPUS_FILE") into selector-class fixtures (contents stay on this machine)..."
+      log "Splitting corpus $(basename "$JB_ETH_CALL_CORPUS_FILE") into ${CORPUS_METHOD_LABEL} selector-class fixtures (contents stay on this machine)..."
       python3 "$HERE/prepare-eth-call-corpus.py" "$JB_ETH_CALL_CORPUS_FILE" "$corpus_dir" || die "failed to convert the eth_call corpus"
     fi
   fi
   JB_SRC_BENCH="$src_bench" JB_PRIMARY_LABEL="$LABEL" JB_REF_LABEL="${REFERENCE_RPC_URL:+$REFERENCE_LABEL}" \
   JB_CORPUS_CLASSES="${corpus_dir:+$corpus_dir/classes.json}" \
+  JB_CORPUS_METHOD="$CORPUS_METHOD" \
   python3 - "$work/io/benchmark.yaml" <<'PY'
 import json, os, sys, yaml
 
@@ -216,7 +243,10 @@ if env("JB_DURATION", "").strip():
 if env("JB_CORPUS_CLASSES"):
     with open(env("JB_CORPUS_CLASSES")) as f:
         classes = json.load(f)
-    cfg["calls"] = [{"name": name, "file": f"./rpc-calls/corpus/{name}.json", "file_type": "json", "weight": count}
+    method = env("JB_CORPUS_METHOD", "eth_call")
+    prefix = "" if method == "eth_call" else f"{method} "
+    cfg["calls"] = [{"name": f"{prefix}{name}", "file": f"./rpc-calls/corpus/{name}.json",
+                     "file_type": "json", "weight": count}
                     for name, count in classes.items()]
 for call in cfg.get("calls", []) or []:
     call.setdefault("thresholds", threshold)

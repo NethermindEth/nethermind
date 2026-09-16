@@ -64,15 +64,15 @@ public class HistoryBackedPersistenceReaderTests
     [Test]
     public void Resolves_storage_as_of_pinned_block()
     {
-        SlotValue present = default;
-        SlotValue absent = default;
+        UInt256 present = default;
+        UInt256 absent = default;
         bool foundPresent = Reader(10).TryGetSlot(Address, Slot, ref present);
         bool foundAbsent = Reader(3).TryGetSlot(Address, Slot, ref absent);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(foundPresent, Is.True);
-            Assert.That(present.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0xAA }));
+            Assert.That(present.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0xAA }));
             Assert.That(foundAbsent, Is.False);
         }
     }
@@ -93,7 +93,7 @@ public class HistoryBackedPersistenceReaderTests
 
         Assert.That(() =>
         {
-            SlotValue value = default;
+            UInt256 value = default;
             Reader(10).TryGetSlot(Address, Slot, ref value);
         }, Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
     }
@@ -111,7 +111,7 @@ public class HistoryBackedPersistenceReaderTests
             Assert.That(() => reader.TryLoadStateRlp(default, ReadFlags.None), Throws.InstanceOf<NotSupportedException>());
             Assert.That(() => reader.TryLoadStorageRlp(Keccak.Zero, default, ReadFlags.None), Throws.InstanceOf<NotSupportedException>());
             Assert.That(() => reader.GetAccountRaw(default), Throws.InstanceOf<NotSupportedException>());
-            Assert.That(() => { SlotValue raw = default; reader.TryGetStorageRaw(default, default, ref raw); }, Throws.InstanceOf<NotSupportedException>());
+            Assert.That(() => { UInt256 raw = default; reader.TryGetStorageRaw(default, default, ref raw); }, Throws.InstanceOf<NotSupportedException>());
             Assert.That(() => reader.CreateAccountIterator(default, default), Throws.InstanceOf<NotSupportedException>());
             Assert.That(() => reader.CreateStorageIterator(default, default, default), Throws.InstanceOf<NotSupportedException>());
             Assert.That(reader.IsPreimageMode, Is.False);
@@ -150,7 +150,7 @@ public class HistoryBackedPersistenceReaderTests
         }
         HistoryColumnsWriter.SetWatermarkV3(historyColumns, 10);
 
-        FlatDbConfig config = new() { HistoryRetentionBlocks = 2 };
+        FlatDbConfig config = new() { HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 2 };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(historyColumns, config);
         HistoryReader historyReader = new(db, historyColumns, availability, rowFormat, LimboLogs.Instance);
 
@@ -248,18 +248,18 @@ public class RestrictedModeHistoryBackedPersistenceReaderTests
     [Test]
     public void TryGetSlot_ForAnAddressCoveredByASliceScope_Resolves()
     {
-        SlotValue value = default;
+        UInt256 value = default;
         bool found = Reader(3).TryGetSlot(SlicedAddress, Slot, ref value);
 
         Assert.That(found, Is.True);
-        Assert.That(value.AsReadOnlySpan.WithoutLeadingZeros().ToArray(), Is.EqualTo(new byte[] { 0xAA }));
+        Assert.That(value.ToMinimalBigEndian(), Is.EqualTo(new byte[] { 0xAA }));
     }
 
     [Test]
     public void TryGetSlot_ForAnAddressNotCoveredByAnySliceScope_ThrowsMissingTrieNode() =>
         Assert.That(() =>
         {
-            SlotValue value = default;
+            UInt256 value = default;
             Reader(3).TryGetSlot(NonSlicedAddress, Slot, ref value);
         }, Throws.InstanceOf<MissingTrieNodeException>().With.InnerException.InstanceOf<StateUnavailableException>());
 
@@ -274,14 +274,11 @@ public class RestrictedModeHistoryBackedPersistenceReaderTests
         Assert.That(gate.TryDrainForFloorAdvance(TimeSpan.FromSeconds(5), CancellationToken.None), Is.True);
     }
 
-    private static byte[] AccountKeyOf(Address address) =>
-        address.ToAccountPath.Bytes[..HistoryKeyLayout.ScopeKeyLength].ToArray();
-
     private HistoryBackedPersistenceReader Reader(ulong block, ulong sliceFloor = 0, HistoryScopeGate? scopeGate = null, Hash256? stateRoot = null)
     {
-        FlatDbConfig config = new() { HistoryRetentionBlocks = 2 };
+        FlatDbConfig config = new() { HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 2 };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        availability.PublishScope(AccountKeyOf(SlicedAddress), sliceFloor);
+        availability.PublishScope(HistoryColumnsWriter.ScopeKeyOf(SlicedAddress), sliceFloor);
         HistoryReader reader = new(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
         return new HistoryBackedPersistenceReader(reader, new StateId(block, stateRoot ?? Keccak.EmptyTreeHash), scopeGate ?? new HistoryScopeGate(), restrictToSlices: true);
     }

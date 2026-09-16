@@ -19,7 +19,9 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
         ILifetimeScope childLifetimeScope = parentLifetimeScope.BeginLifetimeScope((builder) => builder
             .AddSingleton<IWorldStateScopeProvider>(overridableScope.WorldState)
             .AddDecorator<ICodeInfoRepository, OverridableCodeInfoRepository>()
-            .AddScoped<IOverridableCodeInfoRepository, ICodeInfoRepository>((codeInfoRepo) => (codeInfoRepo as OverridableCodeInfoRepository)!));
+            .AddScoped<IOverridableCodeInfoRepository, ICodeInfoRepository>((codeInfoRepo) =>
+                codeInfoRepo as OverridableCodeInfoRepository
+                ?? throw new InvalidOperationException($"{nameof(ICodeInfoRepository)} must be decorated by {nameof(OverridableCodeInfoRepository)}.")));
 
         OverridableSpecProvider overridableSpecProvider = new(specProvider);
         return new OverridableEnv(overridableScope, childLifetimeScope, specProvider, overridableSpecProvider);

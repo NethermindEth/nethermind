@@ -32,6 +32,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
@@ -48,6 +49,7 @@ using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -255,6 +257,12 @@ public class EthereumRunnerTests
                 api.Context.Resolve<InvalidChainTracker>();
                 api.Context.Resolve<IBeaconPivot>();
                 api.Context.Resolve<BeaconPivot>();
+            }
+            if (api.Context.IsRegistered<NoSyncGcRegionStrategy>())
+            {
+                Assert.That(api.Context.Resolve<IGCStrategy>(), Is.TypeOf(api.Config<IInitConfig>().DisableGcOnNewPayload
+                    ? typeof(NoSyncGcRegionStrategy)
+                    : typeof(NoGCStrategy)));
             }
             api.Context.Resolve<IPoSSwitcher>();
             api.Context.Resolve<ISynchronizer>();

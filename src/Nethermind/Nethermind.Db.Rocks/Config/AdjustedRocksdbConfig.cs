@@ -1,15 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-
 namespace Nethermind.Db.Rocks.Config;
 
 public class AdjustedRocksdbConfig(
     IRocksDbConfig baseConfig,
     string additionalRocksDbOptions,
     ulong writeBufferSize,
-    IntPtr? blockCache = null,
+    nint? blockCache = null,
     bool compactOnDeletions = false
 ) : IRocksDbConfig
 {
@@ -41,7 +39,7 @@ public class AdjustedRocksdbConfig(
     public double CompressibilityHint => baseConfig.CompressibilityHint;
 
     public FlushOnExitMode FlushOnExit => baseConfig.FlushOnExit;
-    public IntPtr? BlockCache => blockCache ?? baseConfig.BlockCache;
+    public nint? BlockCache => blockCache ?? baseConfig.BlockCache;
     /// <inheritdoc/>
     public bool CompactOnDeletions => compactOnDeletions || baseConfig.CompactOnDeletions;
 }

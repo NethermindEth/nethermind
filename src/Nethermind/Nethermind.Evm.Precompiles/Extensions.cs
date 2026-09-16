@@ -58,7 +58,7 @@ public static class Extensions
 
         return precompiles;
 
-        void AddPrecompile<T>() where T : IPrecompile<T> => precompiles[T.Name] = T.Address;
+        void AddPrecompile<T>() where T : IPrecompile<T> => precompiles[T.Instance.Name] = T.Address;
     }
 
     public static OrderedDictionary<string, Address> ListSystemContracts(this IReleaseSpec spec)

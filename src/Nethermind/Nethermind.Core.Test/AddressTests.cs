@@ -259,6 +259,18 @@ public class AddressTests
         }
     }
 
+    [Test]
+    public void Hash_matches_the_ValueAddress_hash_of_the_same_bytes()
+    {
+        Random random = new(42);
+        byte[] bytes = new byte[Address.Size];
+        for (int i = 0; i < 256; i++)
+        {
+            random.NextBytes(bytes);
+            Assert.That(new ValueAddress(bytes).GetHashCode(), Is.EqualTo(new Address(bytes).GetHashCode()));
+        }
+    }
+
     public static IEnumerable PointEvaluationPrecompileTestCases
     {
         get

@@ -7,6 +7,10 @@
 Writes ``<dest>/class_<k>.json`` (k ranked by record count) plus ``<dest>/classes.json``
 mapping class name to record count. Selectors themselves are never written: the mapping
 stays implicit in the fixture files, which never leave the runner.
+
+RPC_BENCH_CORPUS_METHOD rewrites each record to ``debug_traceCall`` or ``trace_call`` as it is
+converted, so the fixtures k6 replays already carry the rewritten bodies — the conversion is one
+pass over the corpus before the node is loaded, so it costs the measured cell nothing.
 """
 
 import argparse
@@ -19,6 +23,15 @@ from pathlib import Path
 from typing import Sequence, TextIO
 
 SELECTOR_LENGTH = 10  # "0x" + 4 bytes
+
+sys.path.insert(0, str(Path(__file__).parent))
+# corpus_parity owns what a legal corpus is and how a record is rewritten; importing keeps the
+# k6 fixture and the parity/timings replay from drifting into two different transforms.
+from corpus_parity import (  # noqa: E402
+    CorpusParityError,
+    corpus_rewrite,
+    rewrite_record,
+)
 
 
 class CorpusError(ValueError):
@@ -38,7 +51,7 @@ def _open_source(source: Path) -> TextIO:
     raise CorpusError(source, 0, "source must have a .jsonl or .jsonl.gz extension")
 
 
-def _parse_record(source: Path, line_number: int, line: str) -> dict:
+def _parse_record(source: Path, line_number: int, line: str, method: str, options: dict) -> dict:
     try:
         record = json.loads(line, parse_constant=_reject_non_json_constant)
     except json.JSONDecodeError as error:
@@ -51,10 +64,17 @@ def _parse_record(source: Path, line_number: int, line: str) -> dict:
         raise CorpusError(source, line_number, "method must be exactly 'eth_call'")
     if not isinstance(record.get("params"), list):
         raise CorpusError(source, line_number, "params must be a JSON array")
-    return {"method": record["method"], "params": record["params"]}
+    if method == "eth_call":
+        return {"method": record["method"], "params": record["params"]}
+    try:
+        return {"method": method, "params": rewrite_record(record["params"], method, options)}
+    except CorpusParityError as error:
+        raise CorpusError(source, line_number, str(error)) from None
 
 
 def selector(params: list) -> str:
+    # Every rewrite keeps the call object first, so a class is the same set of records whatever
+    # method the fixture ends up carrying.
     call = params[0] if params and isinstance(params[0], dict) else {}
     data = call.get("data") or call.get("input") or ""
     if isinstance(data, str) and data.startswith("0x") and len(data) >= SELECTOR_LENGTH:
@@ -103,6 +123,7 @@ def convert(source: str | os.PathLike[str], destination: str | os.PathLike[str])
     source_path = Path(source)
     destination_dir = Path(destination)
     destination_dir.mkdir(parents=True, exist_ok=True)
+    method, options = corpus_rewrite()
     writers: dict[str, _ClassWriter] = {}
     line_number = 0
     try:
@@ -115,7 +136,7 @@ def convert(source: str | os.PathLike[str], destination: str | os.PathLike[str])
                 for line_number, line in enumerate(source_file, start=1):
                     if not line.strip():
                         continue
-                    record = _parse_record(source_path, line_number, line)
+                    record = _parse_record(source_path, line_number, line, method, options)
                     key = selector(record["params"])
                     if key not in writers:
                         writers[key] = _ClassWriter(destination_dir)
@@ -150,7 +171,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     try:
         classes = convert(arguments.source, arguments.destination)
-    except (CorpusError, OSError) as error:
+    except (CorpusError, CorpusParityError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
     print(f"corpus classes: {len(classes)} ({', '.join(f'{k}={v}' for k, v in classes.items())})")

@@ -14,6 +14,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -25,7 +26,6 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
@@ -52,7 +52,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?> getBlobsHandlerV4,
         IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
         IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
-        IHandler<InclusionListBytes> getInclusionListTransactionsHandler,
+        IHandler<Hash256?, InclusionListBytes> getInclusionListTransactionsHandler,
         IInclusionListTxSource inclusionListTxSource,
         IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV4,
         IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV5,
@@ -116,7 +116,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         IAsyncHandler<GetBlobsHandlerV4Request, IReadOnlyList<BlobCellsAndProofs?>?> getBlobsHandlerV4,
         IHandler<IReadOnlyList<Hash256>, IReadOnlyList<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
         IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
-        IHandler<InclusionListBytes> getInclusionListTransactionsHandler,
+        IHandler<Hash256?, InclusionListBytes> getInclusionListTransactionsHandler,
         IInclusionListTxSource inclusionListTxSource,
         IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV4,
         IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV5,

@@ -20,7 +20,8 @@ namespace Nethermind.State.Repositories
 
         private readonly object _writeLock = new();
         private readonly ClockCache<ulong, ChainLevelInfo> _blockInfoCache = new(CacheSize);
-        private readonly IRlpDecoder<ChainLevelInfo> _decoder = Rlp.GetDecoder<ChainLevelInfo>();
+        private readonly IRlpDecoder<ChainLevelInfo> _decoder = Rlp.GetDecoder<ChainLevelInfo>()
+            ?? throw new InvalidOperationException($"No RLP decoder is registered for {nameof(ChainLevelInfo)}.");
 
         private readonly IDb _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
 
@@ -32,8 +33,7 @@ namespace Nethermind.State.Repositories
                 _blockInfoDb.Delete(number);
             }
 
-            bool needLock = batch?.Disposed != false;
-            if (needLock)
+            if (batch is null || batch.Disposed)
             {
                 lock (_writeLock)
                 {
@@ -56,8 +56,7 @@ namespace Nethermind.State.Repositories
                 _blockInfoDb.PutSpan(number.ToBigEndianSpanWithoutLeadingZeros(out _), rlp);
             }
 
-            bool needLock = batch?.Disposed != false;
-            if (needLock)
+            if (batch is null || batch.Disposed)
             {
                 lock (_writeLock)
                 {
@@ -88,7 +87,7 @@ namespace Nethermind.State.Repositories
 
             return data.Select(kv =>
                 {
-                    if (kv.Value == null || kv.Value.Length == 0) return null;
+                    if (kv.Value is null || kv.Value.Length == 0) return null;
                     RlpReader reader = new(kv.Value);
                     return _decoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes);
                 })

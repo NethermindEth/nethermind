@@ -17,8 +17,8 @@ jobs:
   update-docs:
     name: Update docs
     runs-on: ubuntu-latest
-    # Component releases (e.g. the ZisK guest) ship no docs
-    if: github.event_name != 'release' || !startsWith(github.event.release.tag_name, 'zisk-guest-')
+    # Component releases (e.g. the ZisK guest and Bootnode) ship no docs
+    if: github.event_name != 'release' || (!startsWith(github.event.release.tag_name, 'zisk-guest-') && !startsWith(github.event.release.tag_name, 'bootnode-'))
     steps:
       - name: Create GitHub app token
         id: gh-app

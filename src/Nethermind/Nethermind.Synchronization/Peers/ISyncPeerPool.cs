@@ -23,8 +23,6 @@ namespace Nethermind.Synchronization.Peers
             int timeoutMilliseconds = 0,
             CancellationToken cancellationToken = default);
 
-        void Free(SyncPeerAllocation syncPeerAllocation);
-
         void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts allocationContexts);
 
         void ReportBreachOfProtocol(PeerInfo peerInfo, DisconnectReason disconnectReason, string details);
@@ -127,20 +125,13 @@ namespace Nethermind.Synchronization.Peers
             AllocationContexts allocationContexts,
             CancellationToken cancellationToken)
         {
-            SyncPeerAllocation? allocation = await syncPeerPool.Allocate(
+            using SyncPeerAllocation? allocation = await syncPeerPool.Allocate(
                 peerAllocationStrategy,
                 allocationContexts,
                 timeoutMilliseconds: int.MaxValue,
                 cancellationToken: cancellationToken);
-            try
-            {
-                if (allocation?.Current is null) return default;
-                return await func(allocation.Current);
-            }
-            finally
-            {
-                syncPeerPool.Free(allocation);
-            }
+            if (allocation?.Current is null) return default;
+            return await func(allocation.Current);
         }
 
 

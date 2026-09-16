@@ -85,6 +85,10 @@ class RpcBenchmarkWorkflowTests(unittest.TestCase):
         shape = re.search(r"cell_shape=\"\$\(jq.*?\)\"", resolve, re.S).group(0)
         for knob in ("cpu_max_freq_khz", "cpuset", "memory"):
             self.assertIn(knob, shape)
+
+        # A baseline measured as eth_call is not a baseline for a debug_traceCall or trace_call run.
+        for knob in ("corpus_method", "trace_call_tracer", "trace_call_types"):
+            self.assertIn(knob, shape)
         self.assertIn('cell_key="$(printf', resolve)
 
     def test_the_recorded_baseline_names_the_cell_it_was_measured_on(self):
