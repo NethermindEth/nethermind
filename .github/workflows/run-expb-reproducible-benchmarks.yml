@@ -171,6 +171,20 @@ on:
           scenario, including each image of a multi-image run.
         required: false
         default: ""
+      docker_cpu:
+        description: >-
+          Override the client container's CPU quota (expb `resources.cpu`, Docker --cpus) for this
+          dispatch only. Empty keeps the runner's configured value. The rendered config is a temporary
+          copy, so the shared config on the box is never changed.
+        required: false
+        default: ""
+      docker_cpuset:
+        description: >-
+          Override the client container's CPU pinning (expb `resources.cpuset`, Docker --cpuset-cpus,
+          e.g. 2-7,10-15) for this dispatch only. Empty keeps the runner's configured value. expb offlines
+          the SMT siblings of the pinned cores itself, so pin whole physical cores.
+        required: false
+        default: ""
   pull_request:
     types: [labeled]
   push:
@@ -221,6 +235,8 @@ jobs:
       dottrace_mode: ${{ steps.resolve.outputs.dottrace_mode }}
       trace_blocks: ${{ steps.resolve.outputs.trace_blocks }}
       client_env: ${{ steps.resolve.outputs.client_env }}
+      docker_cpu: ${{ steps.resolve.outputs.docker_cpu }}
+      docker_cpuset: ${{ steps.resolve.outputs.docker_cpuset }}
       client: ${{ steps.resolve.outputs.client }}
       measurement_source: ${{ steps.resolve.outputs.measurement_source }}
       client_snapshot_dir: ${{ steps.resolve.outputs.client_snapshot_dir }}
@@ -258,6 +274,8 @@ jobs:
           DISPATCH_PERF: ${{ inputs.perf }}
           DISPATCH_TRACE_BLOCKS: ${{ inputs.trace_blocks }}
           DISPATCH_CLIENT_ENV: ${{ inputs.client_env }}
+          DISPATCH_DOCKER_CPU: ${{ inputs.docker_cpu }}
+          DISPATCH_DOCKER_CPUSET: ${{ inputs.docker_cpuset }}
         run: |
           set -euo pipefail
 
@@ -331,6 +349,16 @@ jobs:
             fi
             if [[ -n "${dottrace_mode}" ]]; then dottrace="true"; else dottrace="false"; fi
             client_env="${DISPATCH_CLIENT_ENV:-}"
+            docker_cpu="$(printf '%s' "${DISPATCH_DOCKER_CPU:-}" | tr -d '[:space:]')"
+            docker_cpuset="$(printf '%s' "${DISPATCH_DOCKER_CPUSET:-}" | tr -d '[:space:]')"
+            if [[ -n "${docker_cpu}" && ! "${docker_cpu}" =~ ^[1-9][0-9]?$ ]]; then
+              echo "::error::docker_cpu must be a whole number of CPUs between 1 and 99 (got '${docker_cpu}')."
+              exit 1
+            fi
+            if [[ -n "${docker_cpuset}" && ! "${docker_cpuset}" =~ ^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$ ]]; then
+              echo "::error::docker_cpuset must be a Docker cpuset list such as 2-7,10-15 (got '${docker_cpuset}')."
+              exit 1
+            fi
             if [[ -n "${docker_images}" || "${enable_retrospective}" == "true" ]]; then
               mode="multi"
             fi
@@ -359,6 +387,8 @@ jobs:
             dottrace_mode=""
             trace_blocks=""
             client_env=""
+            docker_cpu=""
+            docker_cpuset=""
             client="nethermind"
             measurement_source="auto"
           else
@@ -380,6 +410,8 @@ jobs:
             dottrace_mode=""
             trace_blocks=""
             client_env=""
+            docker_cpu=""
+            docker_cpuset=""
             client="nethermind"
             measurement_source="auto"
           fi
@@ -594,6 +626,8 @@ jobs:
             echo "dottrace_mode=${dottrace_mode}"
             echo "trace_blocks=${trace_blocks}"
             echo "client_env=${client_env}"
+            echo "docker_cpu=${docker_cpu}"
+            echo "docker_cpuset=${docker_cpuset}"
             echo "client=${client}"
             echo "measurement_source=${measurement_source}"
             echo "client_snapshot_dir=${client_snapshot_dir}"
@@ -863,6 +897,8 @@ jobs:
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
           TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
           CLIENT_ENV: ${{ needs.resolve.outputs.client_env }}
+          DOCKER_CPU: ${{ needs.resolve.outputs.docker_cpu }}
+          DOCKER_CPUSET: ${{ needs.resolve.outputs.docker_cpuset }}
         run: |
           set -euo pipefail
           if [[ -z "${AMOUNT}" ]]; then
@@ -967,6 +1003,17 @@ jobs:
                 "${YQ}" -i '.scenarios.[strenv(SK)].extra_env.[strenv(K)] = strenv(V)' "${RENDERED_CONFIG_FILE}"
               echo "Set client env ${env_key}=${env_value}."
             done
+          fi
+
+          # Per-dispatch CPU quota / pinning override for the client container. Only the rendered copy
+          # changes; empty inputs leave the runner's resources block as is.
+          if [[ -n "${DOCKER_CPU:-}" ]]; then
+            C="${DOCKER_CPU}" "${YQ}" -i '.resources.cpu = (strenv(C) | tonumber)' "${RENDERED_CONFIG_FILE}"
+            echo "Set resources.cpu=${DOCKER_CPU}."
+          fi
+          if [[ -n "${DOCKER_CPUSET:-}" ]]; then
+            S="${DOCKER_CPUSET}" "${YQ}" -i '.resources.cpuset = strenv(S)' "${RENDERED_CONFIG_FILE}"
+            echo "Set resources.cpuset=${DOCKER_CPUSET}."
           fi
 
           expected_amount="$("${YQ}" -r ".scenarios.\"${scenario_key}\".amount // \"\"" "${RENDERED_CONFIG_FILE}")"
@@ -2357,6 +2404,8 @@ jobs:
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
           TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
           CLIENT_ENV: ${{ needs.resolve.outputs.client_env }}
+          DOCKER_CPU: ${{ needs.resolve.outputs.docker_cpu }}
+          DOCKER_CPUSET: ${{ needs.resolve.outputs.docker_cpuset }}
           CLIENT: ${{ needs.resolve.outputs.client }}
           CLIENT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.client_snapshot_dir }}
           SNAPSHOT_MOUNT_PATH: ${{ needs.resolve.outputs.snapshot_mount_path }}
@@ -2474,6 +2523,17 @@ jobs:
                 "${YQ}" -i '.scenarios.[strenv(SK)].extra_env.[strenv(K)] = strenv(V)' "${RENDERED_CONFIG_FILE}"
               echo "Set client env ${env_key}=${env_value}."
             done
+          fi
+
+          # Per-dispatch CPU quota / pinning override for the client container. Only the rendered copy
+          # changes; empty inputs leave the runner's resources block as is.
+          if [[ -n "${DOCKER_CPU:-}" ]]; then
+            C="${DOCKER_CPU}" "${YQ}" -i '.resources.cpu = (strenv(C) | tonumber)' "${RENDERED_CONFIG_FILE}"
+            echo "Set resources.cpu=${DOCKER_CPU}."
+          fi
+          if [[ -n "${DOCKER_CPUSET:-}" ]]; then
+            S="${DOCKER_CPUSET}" "${YQ}" -i '.resources.cpuset = strenv(S)' "${RENDERED_CONFIG_FILE}"
+            echo "Set resources.cpuset=${DOCKER_CPUSET}."
           fi
 
           expected_amount="$("${YQ}" -r ".scenarios.\"${scenario_key}\".amount // \"\"" "${RENDERED_CONFIG_FILE}")"
