@@ -21,7 +21,7 @@ namespace Nethermind.TxPool
         public static int GetLength(this Transaction tx, bool shouldCountBlobs = true) => tx.GetLength(_transactionSizeCalculator, shouldCountBlobs);
 
         /// <summary>
-        /// Length of the blob-elided typed transaction encoding of <paramref name="tx"/>, as announced in
+        /// Size in bytes of the blob-elided typed transaction encoding of <paramref name="tx"/>, as announced in
         /// <c>NewPooledTransactionHashes</c> for eth/72 and measured by peers after decoding a
         /// <c>PooledTransactions</c> response.
         /// </summary>
@@ -29,7 +29,7 @@ namespace Nethermind.TxPool
         /// The current devp2p text calls for the consensus encoding size, but established clients size-check the
         /// delivered encoding instead. See <see href="https://github.com/ethereum/devp2p/pull/281"/>.
         /// </remarks>
-        public static int GetElidedNetworkLength(this Transaction tx)
+        public static int GetElidedNetworkEncodingSize(this Transaction tx)
         {
             if (!tx.SupportsBlobs)
             {
@@ -55,7 +55,7 @@ namespace Nethermind.TxPool
             return GetTypedSequenceLength(contentLength);
         }
 
-        internal static int GetElidedNetworkLength(int consensusEncodingSize, ProofVersion? proofVersion, int blobCount)
+        internal static int CalculateElidedNetworkEncodingSize(int consensusEncodingSize, ProofVersion? proofVersion, int blobCount)
         {
             if (consensusEncodingSize <= 1 || blobCount <= 0 || proofVersion is null)
             {

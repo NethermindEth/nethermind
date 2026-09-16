@@ -270,7 +270,7 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void should_announce_persisted_light_v1_blob_tx_with_elided_network_size()
+    public void should_announce_persisted_light_v1_blob_tx_with_elided_network_encoding_size()
     {
         Transaction tx = BuildBlobTransaction(fullProvider: true);
         LightTransaction lightTx = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
@@ -312,7 +312,7 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void should_not_announce_legacy_light_v1_blob_tx_with_unknown_network_size()
     {
-        // The elided network size is not present in legacy entries.
+        // The elided network-encoding size is not present in legacy entries.
         Transaction tx = BuildBlobTransaction(fullProvider: true);
         LightTransaction legacyLightTx = new(
             timestamp: tx.Timestamp,
@@ -821,7 +821,7 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void should_announce_v0_blob_tx_with_elided_network_size()
+    public void should_announce_v0_blob_tx_with_elided_network_encoding_size()
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Cancun.Instance)
@@ -970,7 +970,7 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void should_announce_sparse_blob_tx_with_elided_network_size()
+    public void should_announce_sparse_blob_tx_with_elided_network_encoding_size()
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)

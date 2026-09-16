@@ -313,7 +313,7 @@ public class Eth72ProtocolHandler(
 
         // Light entries persisted before the versioned consensus-size field cannot derive a safe eth/72
         // announcement size. They keep propagating via eth/68-71 sessions until they churn out.
-        if (tx is LightTransaction lightTx && lightTx.GetElidedNetworkSize() == 0)
+        if (tx is LightTransaction lightTx && lightTx.GetElidedNetworkEncodingSize() == 0)
         {
             return false;
         }
@@ -1842,17 +1842,17 @@ public class Eth72ProtocolHandler(
         // eth/72 peers size-check the blob-elided bytes served in PooledTransactions and geth disconnects for
         // larger mismatches. The current devp2p text still says consensus encoding; its correction is tracked at
         // https://github.com/ethereum/devp2p/pull/281
-        int elidedNetworkSize = tx is LightTransaction lightTx
-            ? lightTx.GetElidedNetworkSize()
-            : tx.GetElidedNetworkLength();
-        if (elidedNetworkSize <= 0)
+        int elidedNetworkEncodingSize = tx is LightTransaction lightTx
+            ? lightTx.GetElidedNetworkEncodingSize()
+            : tx.GetElidedNetworkEncodingSize();
+        if (elidedNetworkEncodingSize <= 0)
         {
             return 0;
         }
 
         return tx is not LightTransaction
             || tx is LightTransaction { ProofVersion: not null, BlobVersionedHashes.Length: > 0 }
-            ? elidedNetworkSize
+            ? elidedNetworkEncodingSize
             : 0;
     }
 

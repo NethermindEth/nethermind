@@ -16,7 +16,7 @@ namespace Nethermind.TxPool;
 public class LightTransaction : Transaction
 {
     private readonly int _consensusEncodingSize;
-    private int _elidedNetworkSize;
+    private int _elidedNetworkEncodingSize;
     private StrongBox<BlobCellMask>? _blobCellMask;
 
     public LightTransaction(Transaction fullTx)
@@ -125,7 +125,7 @@ public class LightTransaction : Transaction
         ProofVersion proofVersion,
         BlobCellMask blobCellMask,
         int consensusEncodingSize,
-        int elidedNetworkSize)
+        int elidedNetworkEncodingSize)
     {
         Type = TxType.Blob;
         Hash = hash;
@@ -142,7 +142,7 @@ public class LightTransaction : Transaction
         ProofVersion = proofVersion;
         BlobCellMask = blobCellMask;
         _consensusEncodingSize = consensusEncodingSize;
-        _elidedNetworkSize = elidedNetworkSize;
+        _elidedNetworkEncodingSize = elidedNetworkEncodingSize;
         _size = size;
     }
 
@@ -165,9 +165,9 @@ public class LightTransaction : Transaction
     internal void UpdateBlobPoolMetadata(Transaction blobTx)
     {
         _size = blobTx.GetLength();
-        if (GetElidedNetworkSize() == 0)
+        if (GetElidedNetworkEncodingSize() == 0)
         {
-            Volatile.Write(ref _elidedNetworkSize, blobTx.GetElidedNetworkLength());
+            Volatile.Write(ref _elidedNetworkEncodingSize, blobTx.GetElidedNetworkEncodingSize());
         }
 
         BlobCellMask = (blobTx.NetworkWrapper as ShardBlobNetworkWrapper)?.GetAvailableCellMask() ?? default;
@@ -178,14 +178,14 @@ public class LightTransaction : Transaction
     public int GetConsensusEncodingSize() => _consensusEncodingSize;
 
     /// <summary>
-    /// Length of the blob-elided eth/72 network encoding of this transaction, or <c>0</c> when it cannot
-    /// be derived from the persisted metadata. See <see cref="TransactionExtensions.GetElidedNetworkLength"/>.
+    /// Size in bytes of the blob-elided eth/72 network encoding of this transaction, or <c>0</c> when it cannot
+    /// be derived from the persisted metadata. See <see cref="TransactionExtensions.GetElidedNetworkEncodingSize"/>.
     /// </summary>
-    public int GetElidedNetworkSize()
+    public int GetElidedNetworkEncodingSize()
     {
-        int elidedNetworkSize = Volatile.Read(ref _elidedNetworkSize);
-        return elidedNetworkSize > 0
-            ? elidedNetworkSize
-            : TransactionExtensions.GetElidedNetworkLength(_consensusEncodingSize, ProofVersion, BlobVersionedHashes?.Length ?? 0);
+        int elidedNetworkEncodingSize = Volatile.Read(ref _elidedNetworkEncodingSize);
+        return elidedNetworkEncodingSize > 0
+            ? elidedNetworkEncodingSize
+            : TransactionExtensions.CalculateElidedNetworkEncodingSize(_consensusEncodingSize, ProofVersion, BlobVersionedHashes?.Length ?? 0);
     }
 }

@@ -37,7 +37,7 @@ public class LightTxDecoderTests
             Assert.That(decoded.BlobCellMask, Is.EqualTo(cellMask));
             Assert.That(decoded.ProofVersion, Is.EqualTo(ProofVersion.V1));
             Assert.That(decoded.GetConsensusEncodingSize(), Is.EqualTo(tx.GetLength(shouldCountBlobs: false)));
-            Assert.That(decoded.GetElidedNetworkSize(), Is.EqualTo(tx.GetElidedNetworkLength()));
+            Assert.That(decoded.GetElidedNetworkEncodingSize(), Is.EqualTo(tx.GetElidedNetworkEncodingSize()));
             Assert.That(decoded.Hash, Is.EqualTo(tx.Hash));
         }
     }
@@ -77,7 +77,7 @@ public class LightTxDecoderTests
         {
             Assert.That(second.ProofVersion, Is.EqualTo(first.ProofVersion));
             Assert.That(second.BlobCellMask, Is.EqualTo(first.BlobCellMask));
-            Assert.That(second.GetElidedNetworkSize(), Is.EqualTo(first.GetElidedNetworkSize()));
+            Assert.That(second.GetElidedNetworkEncodingSize(), Is.EqualTo(first.GetElidedNetworkEncodingSize()));
         }
     }
 
@@ -98,12 +98,12 @@ public class LightTxDecoderTests
         {
             Assert.That(decoded.BlobCellMask, Is.EqualTo(cellMask));
             Assert.That(decoded.GetConsensusEncodingSize(), Is.EqualTo(hasConsensusSizeMarker ? tx.GetLength(shouldCountBlobs: false) : 0));
-            Assert.That(decoded.GetElidedNetworkSize(), Is.EqualTo(hasConsensusSizeMarker ? tx.GetElidedNetworkLength() : 0));
+            Assert.That(decoded.GetElidedNetworkEncodingSize(), Is.EqualTo(hasConsensusSizeMarker ? tx.GetElidedNetworkEncodingSize() : 0));
         }
     }
 
     [Test]
-    public void elided_network_size_is_the_blob_elided_wire_length(
+    public void elided_network_encoding_size_matches_the_blob_elided_wire_length(
         [Values(1, 6)] int blobCount,
         [Values] ProofVersion proofVersion)
     {
@@ -122,37 +122,37 @@ public class LightTxDecoderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(
-                lightTx.GetElidedNetworkSize(),
+                lightTx.GetElidedNetworkEncodingSize(),
                 Is.EqualTo(1 + Rlp.LengthOfSequence(consensusSize - 1 + wrapperOverhead)));
-            Assert.That(lightTx.GetElidedNetworkSize(), Is.LessThan(tx.GetLength()));
-            Assert.That(lightTx.GetElidedNetworkSize() - consensusSize, Is.GreaterThan(8));
+            Assert.That(lightTx.GetElidedNetworkEncodingSize(), Is.LessThan(tx.GetLength()));
+            Assert.That(lightTx.GetElidedNetworkEncodingSize() - consensusSize, Is.GreaterThan(8));
         }
     }
 
     [Test]
     public void overflowing_derived_elided_size_is_rejected([Values] ProofVersion proofVersion) =>
         Assert.That(
-            TransactionExtensions.GetElidedNetworkLength(int.MaxValue, proofVersion, blobCount: 128),
+            TransactionExtensions.CalculateElidedNetworkEncodingSize(int.MaxValue, proofVersion, blobCount: 128),
             Is.Zero);
 
     [Test]
-    public void should_read_and_preserve_elided_size_records_written_by_earlier_branch_versions()
+    public void should_read_and_preserve_elided_network_encoding_size_records_written_by_earlier_branch_versions()
     {
         Transaction tx = BuildBlobTx();
-        int elidedNetworkSize = tx.GetElidedNetworkLength();
+        int elidedNetworkEncodingSize = tx.GetElidedNetworkEncodingSize();
         LightTransaction decoded = LightTxDecoder.Decode(EncodeLegacy(
             tx,
             includeProofVersion: true,
             BlobCellMask.Full,
-            elidedNetworkSize,
+            elidedNetworkEncodingSize,
             sizeFormatVersion: 2));
         LightTransaction reencoded = LightTxDecoder.Decode(LightTxDecoder.Encode(decoded));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded.GetConsensusEncodingSize(), Is.Zero);
-            Assert.That(decoded.GetElidedNetworkSize(), Is.EqualTo(elidedNetworkSize));
-            Assert.That(reencoded.GetElidedNetworkSize(), Is.EqualTo(elidedNetworkSize));
+            Assert.That(decoded.GetElidedNetworkEncodingSize(), Is.EqualTo(elidedNetworkEncodingSize));
+            Assert.That(reencoded.GetElidedNetworkEncodingSize(), Is.EqualTo(elidedNetworkEncodingSize));
         }
     }
 
@@ -168,20 +168,20 @@ public class LightTxDecoderTests
         {
             Assert.That(decoded.BlobCellMask, Is.EqualTo(BlobCellMask.Full));
             Assert.That(decoded.ProofVersion, Is.EqualTo(includeProofVersion ? ProofVersion.V1 : ProofVersion.V0));
-            Assert.That(decoded.GetElidedNetworkSize(), Is.Zero);
+            Assert.That(decoded.GetElidedNetworkEncodingSize(), Is.Zero);
             Assert.That(decoded.Hash, Is.EqualTo(tx.Hash));
         }
     }
 
     [Test]
-    public void should_refresh_unknown_elided_network_size_with_blob_pool_metadata()
+    public void should_refresh_unknown_elided_network_encoding_size_with_blob_pool_metadata()
     {
         Transaction tx = BuildBlobTx();
         LightTransaction lightTx = LightTxDecoder.Decode(EncodeLegacy(tx, includeProofVersion: true));
 
         lightTx.UpdateBlobPoolMetadata(tx);
 
-        Assert.That(lightTx.GetElidedNetworkSize(), Is.EqualTo(tx.GetElidedNetworkLength()));
+        Assert.That(lightTx.GetElidedNetworkEncodingSize(), Is.EqualTo(tx.GetElidedNetworkEncodingSize()));
     }
 
     [Test]
@@ -202,7 +202,7 @@ public class LightTxDecoderTests
             Assert.That(typeof(ITxPool).GetMethod(nameof(ITxPool.TryMergeBlobCells), [typeof(Hash256), typeof(BlobCellMask), typeof(byte[][])]), Is.Not.Null);
             Assert.That(typeof(BlobTxDistinctSortedPool).GetMethod(nameof(BlobTxDistinctSortedPool.TryMergeCells), [typeof(ValueHash256), typeof(BlobCellMask), typeof(byte[][])]), Is.Not.Null);
             Assert.That(lightTx.GetConsensusEncodingSize(), Is.EqualTo(fullTx.GetLength(shouldCountBlobs: false)));
-            Assert.That(lightTx.GetElidedNetworkSize(), Is.EqualTo(fullTx.GetElidedNetworkLength()));
+            Assert.That(lightTx.GetElidedNetworkEncodingSize(), Is.EqualTo(fullTx.GetElidedNetworkEncodingSize()));
         }
     }
 
