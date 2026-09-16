@@ -20,23 +20,28 @@ public static class TxsDecoder
     /// </param>
     /// <remarks>Long lists decode in parallel and fall back to the serial pass on any failure, so the
     /// reported error is always the one a single-threaded decode would have produced.</remarks>
-    public static TransactionDecodingResult DecodeTxs(byte[][] txData, bool skipErrors)
+    public static TransactionDecodingResult DecodeTxs(byte[][] txData, bool skipErrors) => DecodeTxs(txData, skipErrors, borrowMemory: false);
+
+    /// <summary>Decodes transactions backed by buffers that remain immutable for the decoded transactions' lifetime.</summary>
+    internal static TransactionDecodingResult DecodeOwnedTxs(byte[][] txData, bool skipErrors) => DecodeTxs(txData, skipErrors, borrowMemory: true);
+
+    private static TransactionDecodingResult DecodeTxs(byte[][] txData, bool skipErrors, bool borrowMemory)
     {
         IRlpDecoder<Transaction>? rlpDecoder = Rlp.GetDecoder<Transaction>();
         if (rlpDecoder is null) return new TransactionDecodingResult($"{nameof(Transaction)} decoder is not registered");
 
         return txData.Length < ParallelDecodeThreshold
-            ? DecodeSequential(txData, rlpDecoder, skipErrors)
-            : DecodeParallel(txData, rlpDecoder, skipErrors);
+            ? DecodeSequential(txData, rlpDecoder, skipErrors, borrowMemory)
+            : DecodeParallel(txData, rlpDecoder, skipErrors, borrowMemory);
     }
 
-    private static Transaction DecodeTransaction(IRlpDecoder<Transaction> rlpDecoder, byte[] rlp)
+    private static Transaction DecodeTransaction(IRlpDecoder<Transaction> rlpDecoder, byte[] rlp, bool borrowMemory)
     {
-        RlpReader ctx = new(rlp);
+        RlpReader ctx = borrowMemory ? new(rlp.AsMemory()) : new(rlp);
         return rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
     }
 
-    private static TransactionDecodingResult DecodeSequential(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors)
+    private static TransactionDecodingResult DecodeSequential(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors, bool borrowMemory)
     {
         Transaction[] transactions = new Transaction[txData.Length];
         int added = 0;
@@ -44,7 +49,7 @@ public static class TxsDecoder
         {
             try
             {
-                transactions[added] = DecodeTransaction(rlpDecoder, txData[i]);
+                transactions[added] = DecodeTransaction(rlpDecoder, txData[i], borrowMemory);
                 added++;
             }
             catch (RlpException e)
@@ -69,10 +74,10 @@ public static class TxsDecoder
 
 #if ZK_EVM
     // Zisk stateless guest builds with --no-pthread; parallelism is unavailable, so always decode sequentially.
-    private static TransactionDecodingResult DecodeParallel(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors) =>
-        DecodeSequential(txData, rlpDecoder, skipErrors);
+    private static TransactionDecodingResult DecodeParallel(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors, bool borrowMemory) =>
+        DecodeSequential(txData, rlpDecoder, skipErrors, borrowMemory);
 #else
-    private static TransactionDecodingResult DecodeParallel(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors)
+    private static TransactionDecodingResult DecodeParallel(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors, bool borrowMemory)
     {
         Transaction[] decoded = new Transaction[txData.Length];
         bool[] failed = new bool[1];
@@ -81,12 +86,12 @@ public static class TxsDecoder
             0,
             txData.Length,
             ParallelUnbalancedWork.DefaultOptions,
-            (rlpDecoder, txData, decoded, failed),
+            (rlpDecoder, txData, decoded, failed, borrowMemory),
             static (i, state) =>
             {
                 try
                 {
-                    state.decoded[i] = DecodeTransaction(state.rlpDecoder, state.txData[i]);
+                    state.decoded[i] = DecodeTransaction(state.rlpDecoder, state.txData[i], state.borrowMemory);
                 }
                 catch
                 {
@@ -99,7 +104,7 @@ public static class TxsDecoder
             });
 
         return Volatile.Read(ref failed[0])
-            ? DecodeSequential(txData, rlpDecoder, skipErrors)
+            ? DecodeSequential(txData, rlpDecoder, skipErrors, borrowMemory)
             : new TransactionDecodingResult(decoded);
     }
 #endif

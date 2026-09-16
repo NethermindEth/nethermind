@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using MemoryMarshal = System.Runtime.InteropServices.MemoryMarshal;
 using System.Threading.Tasks;
 using Nethermind.Core.Cpu;
 using Nethermind.Core;
@@ -20,6 +22,56 @@ namespace Nethermind.Merge.Plugin.Test;
 public class ExecutionPayloadTests
 {
     private static TxType[] TxTypes() => [TxType.AccessList, TxType.EIP1559, TxType.Blob];
+
+    [Test]
+    public void Payload_decoding_borrows_data_and_preserves_hash_after_replacement(
+        [Values(TxType.Legacy, TxType.EIP1559)] TxType type,
+        [Values(68, 8192, 65536)] int dataLength,
+        [Values(1, 64)] int count)
+    {
+        byte[] data = new byte[dataLength];
+        data.AsSpan().Fill(0x42);
+        byte[] encoded = EncodeTx(type, data: data);
+        Hash256 expectedHash = Keccak.Compute(encoded);
+        ExecutionPayload payload = new() { Transactions = Enumerable.Repeat(encoded, count).ToArray() };
+
+        Result<Transaction[]> result = payload.TryGetTransactions();
+        Assert.That(result.Error, Is.Null);
+        payload.Transactions = [];
+
+        foreach (Transaction tx in result.Data!)
+        {
+            Assert.That(MemoryMarshal.TryGetArray(tx.Data, out ArraySegment<byte> segment), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(segment.Array, Is.SameAs(encoded));
+                Assert.That(tx.Data.ToArray(), Is.EqualTo(data));
+                Assert.That(tx.Hash, Is.EqualTo(expectedHash));
+                Assert.That(TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes, Is.EqualTo(encoded));
+            }
+        }
+    }
+
+    [Test]
+    public void Public_decoder_keeps_data_and_lazy_hash_independent_of_input(
+        [Values(TxType.Legacy, TxType.EIP1559)] TxType type, [Values(1, 64)] int count)
+    {
+        byte[] data = [1, 2, 3, 4];
+        byte[] encoded = EncodeTx(type, data: data);
+        Hash256 expectedHash = Keccak.Compute(encoded);
+        TransactionDecodingResult result = TxsDecoder.DecodeTxs(Enumerable.Repeat(encoded, count).ToArray(), skipErrors: false);
+        Assert.That(result.Error, Is.Null);
+        encoded.AsSpan().Clear();
+
+        foreach (Transaction tx in result.Transactions)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tx.Data.ToArray(), Is.EqualTo(data));
+                Assert.That(tx.Hash, Is.EqualTo(expectedHash));
+            }
+        }
+    }
 
     [TestCaseSource(nameof(TxTypes))]
     public void TryGetTransactions_accepts_clean_typed_tx(TxType txType)
@@ -140,11 +192,12 @@ public class ExecutionPayloadTests
         return rlps;
     }
 
-    private static byte[] EncodeTx(TxType txType, ulong nonce = 0)
+    private static byte[] EncodeTx(TxType txType, ulong nonce = 0, byte[]? data = null)
     {
         TransactionBuilder<Transaction> builder = Build.A.Transaction
             .WithType(txType)
             .WithNonce(nonce)
+            .WithData(data ?? [])
             .WithChainId(TestBlockchainIds.ChainId);
 
         builder = txType switch

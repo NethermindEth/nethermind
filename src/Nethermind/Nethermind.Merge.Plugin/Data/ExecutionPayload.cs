@@ -61,6 +61,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// representing <c>TransactionType || TransactionPayload</c> or <c>LegacyTransaction</c> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-2718">EIP-2718</see>.
     /// </summary>
+    /// <remarks>Decoded transactions borrow these buffers. Replace the property to change transactions;
+    /// do not mutate buffers after decoding or starting root computation.</remarks>
     [JsonConverter(typeof(TransactionsByteArrayArrayConverter))]
     public byte[][] Transactions
     {
@@ -242,7 +244,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     {
         if (_transactions is not null) return _transactions;
 
-        TransactionDecodingResult res = TxsDecoder.DecodeTxs(Transactions, skipErrors: false);
+        TransactionDecodingResult res = TxsDecoder.DecodeOwnedTxs(Transactions, skipErrors: false);
         if (res.Error is not null) return res.Error;
         return _transactions = res.Transactions;
     }
