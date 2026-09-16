@@ -1329,9 +1329,17 @@ jobs:
             echo "Could not extract any processing_ms data from benchmark output."
             exit 1
           fi
-          if [[ "${MEASUREMENT_SOURCE}" == "engine-api" && -n "${EXPECTED_AMOUNT}" && "${EXPECTED_AMOUNT}" =~ ^[0-9]+$ && "${count}" -ne "${EXPECTED_AMOUNT}" ]]; then
-            echo "Expected ${EXPECTED_AMOUNT} K6 TTFB samples, extracted ${count}; refusing a partial engine-api measurement."
-            exit 1
+          if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then
+            if [[ "${EXPECTED_AMOUNT}" =~ ^[0-9]+$ ]]; then
+              if [[ "${count}" -ne "${EXPECTED_AMOUNT}" ]]; then
+                echo "Expected ${EXPECTED_AMOUNT} K6 TTFB samples, extracted ${count}; refusing a partial engine-api measurement."
+                exit 1
+              fi
+            else
+              # The config carries no usable `amount`, so nothing can say whether the run is complete -
+              # and a partial cross-client run biases the comparison it was dispatched to make.
+              echo "::warning::No usable amount ('${EXPECTED_AMOUNT}') in the rendered config; the engine-api completeness check is disabled for this run."
+            fi
           fi
 
           compute_percentiles() {
@@ -2868,16 +2876,24 @@ jobs:
             } > "${metrics_dir}/metrics.env"
             exit 1
           fi
-          if [[ "${MEASUREMENT_SOURCE}" == "engine-api" && -n "${EXPECTED_AMOUNT}" && "${EXPECTED_AMOUNT}" =~ ^[0-9]+$ && "${count}" -ne "${EXPECTED_AMOUNT}" ]]; then
-            echo "Expected ${EXPECTED_AMOUNT} K6 TTFB samples, extracted ${count}; refusing a partial engine-api measurement."
-            {
-              echo "TAG=${TAG}"
-              echo "RUN=${RUN}"
-              echo "EXCEPTION_FOUND=${exception_found}"
-              echo "INVALID_BLOCK_FOUND=${invalid_block_found}"
-              echo "ERROR=partial_engine_api_metrics"
-            } > "${metrics_dir}/metrics.env"
-            exit 1
+          if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then
+            if [[ "${EXPECTED_AMOUNT}" =~ ^[0-9]+$ ]]; then
+              if [[ "${count}" -ne "${EXPECTED_AMOUNT}" ]]; then
+                echo "Expected ${EXPECTED_AMOUNT} K6 TTFB samples, extracted ${count}; refusing a partial engine-api measurement."
+                {
+                  echo "TAG=${TAG}"
+                  echo "RUN=${RUN}"
+                  echo "EXCEPTION_FOUND=${exception_found}"
+                  echo "INVALID_BLOCK_FOUND=${invalid_block_found}"
+                  echo "ERROR=partial_engine_api_metrics"
+                } > "${metrics_dir}/metrics.env"
+                exit 1
+              fi
+            else
+              # The config carries no usable `amount`, so nothing can say whether the run is complete -
+              # and a partial cross-client run biases the comparison it was dispatched to make.
+              echo "::warning::No usable amount ('${EXPECTED_AMOUNT}') in the rendered config; the engine-api completeness check is disabled for this run."
+            fi
           fi
 
           compute_percentiles() {

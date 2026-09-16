@@ -111,6 +111,10 @@ class ExpbWorkflowTests(unittest.TestCase):
         cls.installers = extract_steps(WORKFLOW, "Install or upgrade expb")
         if len(cls.installers) != 2:
             raise AssertionError("expected both single and multi-image EXPB install steps")
+        cls.analyzers = extract_steps(WORKFLOW, "Analyze benchmark output")
+        if len(cls.analyzers) != 2:
+            raise AssertionError("expected both single and multi-image analyze steps")
+        cls.snapshot_preflight = extract_step(WORKFLOW, "Verify client snapshot and provenance")
 
     def run_body(self, body, values, output_name="github-output"):
         with tempfile.TemporaryDirectory(prefix="expb-workflow-test-") as temp_dir:
@@ -334,6 +338,146 @@ fi
             text = summary.read_bytes().decode("utf-8").replace("\r", "")
             self.assertIn("`latest-0` → `a/x:latest`", text)
             self.assertIn("`latest-1` → `b/x:latest`", text)
+
+    def run_analyzer(self, body, log_text, **overrides):
+        """Run one `Analyze benchmark output` body over a synthetic expb run log."""
+        with tempfile.TemporaryDirectory(prefix="expb-analyze-test-") as temp_dir:
+            temp_path = Path(temp_dir)
+            run_log = temp_path / "expb-run.log"
+            run_log.write_text(log_text, encoding="utf-8")
+            output = temp_path / "github-output"
+            output.touch()
+            summary = temp_path / "step-summary.md"
+            summary.touch()
+            env = dict(os.environ)
+            env.update(
+                {
+                    "RAW_RUN_LOG": to_bash(run_log),
+                    "RUNNER_TEMP": to_bash(temp_path),
+                    "TAG": "latest-0",
+                    "RUN": "1",
+                    "MEASUREMENT_SOURCE": "engine-api",
+                    "EXPECTED_AMOUNT": "3",
+                    "GITHUB_OUTPUT": to_bash(output),
+                    "GITHUB_STEP_SUMMARY": to_bash(summary),
+                }
+            )
+            env.update(overrides)
+            script = temp_path / "analyze.sh"
+            script.write_text(body, encoding="utf-8")
+            proc = subprocess.run(
+                [self.bash, "--noprofile", "--norc", to_bash(script)],
+                env=env,
+                cwd=REPO,
+                capture_output=True,
+                text=True,
+            )
+            metrics = temp_path / "expb-metrics-latest-0-run1" / "metrics.env"
+            return proc, metrics.read_text(encoding="utf-8") if metrics.is_file() else ""
+
+    @staticmethod
+    def k6_table(rows):
+        """The per-payload metrics table expb prints, which is the engine-api timing source."""
+        return "".join("| {} | 30000000 | {}.0 |\n".format(index, 20 + index) for index in range(1, rows + 1))
+
+    def test_engine_api_gate_refuses_a_partial_run_in_both_analyze_copies(self):
+        # The gate is the only thing keeping a truncated run from being averaged into a cross-client
+        # comparison, and it can abort a multi-hour benchmark - so both copies have to behave alike.
+        for index, analyzer in enumerate(self.analyzers):
+            with self.subTest(copy=("single", "multi")[index]):
+                complete, _ = self.run_analyzer(analyzer, self.k6_table(3))
+                self.assertEqual(0, complete.returncode, complete.stdout + complete.stderr)
+
+                partial, metrics = self.run_analyzer(analyzer, self.k6_table(2))
+                self.assertNotEqual(0, partial.returncode)
+                self.assertIn("refusing a partial engine-api measurement", partial.stdout)
+                if metrics:
+                    self.assertIn("ERROR=partial_engine_api_metrics", metrics)
+
+                # The same short run is a valid measurement when the caller did not ask for the
+                # common Engine API timing source.
+                auto, _ = self.run_analyzer(analyzer, self.k6_table(2), MEASUREMENT_SOURCE="auto")
+                self.assertEqual(0, auto.returncode, auto.stdout + auto.stderr)
+
+    def test_an_unusable_amount_disables_the_gate_but_says_so(self):
+        # `expected_amount` is `.amount // ""` from the rendered config, so it can arrive empty - and
+        # a silently skipped completeness check is exactly what the gate exists to prevent.
+        for index, analyzer in enumerate(self.analyzers):
+            for amount in ("", "all"):
+                with self.subTest(copy=("single", "multi")[index], amount=amount):
+                    proc, _ = self.run_analyzer(analyzer, self.k6_table(2), EXPECTED_AMOUNT=amount)
+                    self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
+                    self.assertIn("completeness check is disabled", proc.stdout)
+
+    def test_no_metrics_at_all_still_fails_before_the_completeness_gate(self):
+        for index, analyzer in enumerate(self.analyzers):
+            with self.subTest(copy=("single", "multi")[index]):
+                proc, metrics = self.run_analyzer(analyzer, "nothing parseable here\n")
+                self.assertNotEqual(0, proc.returncode)
+                self.assertIn("Could not extract any processing_ms data", proc.stdout)
+                if metrics:
+                    self.assertIn("ERROR=no_metrics", metrics)
+
+    def run_snapshot_preflight(self, client, build):
+        """Run the reference-client snapshot preflight against a synthetic snapshot directory."""
+        with tempfile.TemporaryDirectory(prefix="expb-snapshot-test-") as temp_dir:
+            temp_path = Path(temp_dir)
+            source = build(temp_path)
+            env = dict(os.environ)
+            env.update(
+                {
+                    "CLIENT": client,
+                    "SNAPSHOT_SOURCE": to_bash(source) if source else "",
+                    "SNAPSHOT_MOUNT_PATH": "/snapshot",
+                }
+            )
+            script = temp_path / "preflight.sh"
+            script.write_text(self.snapshot_preflight, encoding="utf-8")
+            return subprocess.run(
+                [self.bash, "--noprofile", "--norc", to_bash(script)],
+                env=env,
+                cwd=REPO,
+                capture_output=True,
+                text=True,
+            )
+
+    def test_snapshot_preflight_rejects_a_snapshot_that_cannot_serve_the_client(self):
+        # This preflight runs before a multi-hour benchmark; a wrong or absent snapshot must stop it
+        # here rather than surface as a client that never reaches head.
+        def absent(_root):
+            return None
+
+        def empty(root):
+            directory = root / "snapshot"
+            directory.mkdir()
+            return directory
+
+        def with_child(name):
+            def build(root):
+                directory = root / "snapshot"
+                (directory / name).mkdir(parents=True)
+                (directory / "_snapshot_metadata.json").write_text('{"head":25490000}', encoding="utf-8")
+                return directory
+
+            return build
+
+        for client, build, expected in (
+            ("reth", absent, "does not exist on this runner"),
+            ("reth", empty, "does not contain the db directory"),
+            ("geth", empty, "does not contain chaindata contents"),
+            ("geth", with_child("db"), "does not contain chaindata contents"),
+        ):
+            with self.subTest(client=client, rejected=expected):
+                proc = self.run_snapshot_preflight(client, build)
+                self.assertNotEqual(0, proc.returncode, proc.stdout + proc.stderr)
+                self.assertIn(expected, proc.stdout + proc.stderr)
+
+        for client, directory in (("reth", "db"), ("geth", "chaindata")):
+            with self.subTest(client=client, accepted=directory):
+                proc = self.run_snapshot_preflight(client, with_child(directory))
+                self.assertEqual(0, proc.returncode, proc.stdout + proc.stderr)
+                self.assertIn("Snapshot provenance: client={}".format(client), proc.stdout)
+                self.assertIn("_snapshot_metadata.json", proc.stdout)
 
 
 if __name__ == "__main__":  # pragma: no cover

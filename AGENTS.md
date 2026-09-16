@@ -142,8 +142,8 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - Workflow file: [`.github/workflows/run-expb-reproducible-benchmarks.yml`](./.github/workflows/run-expb-reproducible-benchmarks.yml)
 - Execution runner: chosen by the `arch` input — `amd64` (default) runs on `reproducible-benchmarks`
   with snapshots under `/mnt/sda`; `arm64` runs on `reproducible-benchmarks-arm` with snapshots under
-  `/data`. ARM requires flat layout and prebuilt images; it supports Nethermind and the Reth Fusaka
-  snapshot at `/data/reth/reth-25490000`, while Geth requires amd64. Reference-client runs are
+  `/data`. ARM requires flat layout; it supports Nethermind and the Reth Fusaka snapshot at
+  `/data/reth/reth-25490000`, while Geth requires amd64. Reference-client runs are
   workflow-dispatch Fusaka runs with explicit `docker_images` and `state_layout=flat`; the workflow
   rejects Nethermind-only flags and environment settings. **Never compare timings across the two boxes.**
 
