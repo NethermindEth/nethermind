@@ -18,9 +18,14 @@ public class InvalidBlockInterceptor(
 
     public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) => blockValidator.ValidateOrphanedBlock(block, out error);
 
-    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error)
+    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error) =>
+        TrackValidationResult(header, blockValidator.Validate(header, parent, isUncle, out error));
+
+    public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error, bool validateHash) =>
+        TrackValidationResult(header, blockValidator.Validate(header, parent, isUncle, out error, validateHash));
+
+    private bool TrackValidationResult(BlockHeader header, bool result)
     {
-        bool result = blockValidator.Validate(header, parent, isUncle, out error);
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad header {header}");

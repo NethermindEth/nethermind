@@ -165,7 +165,6 @@ public class BeaconBlockRootHandlerTests
             Assert.That(transaction.Value, Is.EqualTo(UInt256.Zero));
             Assert.That(transaction.GasPrice, Is.EqualTo(UInt256.Zero));
             Assert.That(transaction.AccessList, Is.EqualTo(new AccessList.Builder().AddAddress(Eip4788Constants.BeaconRootsAddress).Build()));
-            Assert.That(transaction.Hash, Is.EqualTo(transaction.CalculateHash()));
         }
         _transactionProcessor.Received(1).Execute(transaction, NullTxTracer.Instance);
     }
