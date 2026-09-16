@@ -10,6 +10,6 @@ public interface IPersistenceManager
     IPersistence.IPersistenceReader LeaseReader();
     StateId GetCurrentPersistedStateId();
     Task AddToPersistence(StateId latestSnapshot);
-    StateId FlushToPersistence();
+    StateId FlushToPersistence(CancellationToken cancellationToken);
     void ResetPersistedStateId();
 }

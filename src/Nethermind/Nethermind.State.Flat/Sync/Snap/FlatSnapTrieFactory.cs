@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -68,19 +69,32 @@ public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfi
     private sealed class LazyReader(IPersistence persistence, ReaderFlags readerFlags) : IPersistence.IPersistenceReader
     {
         private IPersistence.IPersistenceReader? _inner;
+        private bool _disposed;
 
-        private IPersistence.IPersistenceReader Inner => _inner ??= persistence.CreateReader(readerFlags);
+        private IPersistence.IPersistenceReader Inner
+        {
+            get
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                return _inner ??= persistence.CreateReader(readerFlags);
+            }
+        }
 
         public StateId CurrentState => Inner.CurrentState;
         public bool IsPreimageMode => Inner.IsPreimageMode;
         public Account? GetAccount(Address address) => Inner.GetAccount(address);
-        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) => Inner.TryGetSlot(address, slot, ref outValue);
+        public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => Inner.TryGetSlot(address, slot, ref outValue);
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => Inner.TryLoadStateRlp(path, flags);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => Inner.TryLoadStorageRlp(address, path, flags);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => Inner.GetAccountRaw(addrHash);
-        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => Inner.TryGetStorageRaw(addrHash, slotHash, ref value);
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => Inner.TryGetStorageRaw(addrHash, slotHash, ref value);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => Inner.CreateAccountIterator(startKey, endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => Inner.CreateStorageIterator(accountKey, startSlotKey, endSlotKey);
-        public void Dispose() => _inner?.Dispose();
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _inner?.Dispose();
+        }
     }
 }

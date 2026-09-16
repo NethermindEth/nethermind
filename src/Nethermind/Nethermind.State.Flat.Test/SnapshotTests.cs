@@ -1,11 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
 using NSubstitute;
@@ -19,6 +23,17 @@ public class SnapshotTests
 
     [SetUp]
     public void SetUp() => _pool = new ResourcePool(new FlatDbConfig());
+
+    [Test]
+    public void Storage_value_layout_matches_memory_estimate_assumptions()
+    {
+        // SnapshotContentCounts budgets both the UInt256 key and nullable value at these sizes.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Unsafe.SizeOf<UInt256>(), Is.EqualTo(32));
+            Assert.That(Unsafe.SizeOf<UInt256?>(), Is.EqualTo(40));
+        }
+    }
 
     [Test]
     public void CountsSealOnFirstObservationNotBefore()
@@ -45,7 +60,7 @@ public class SnapshotTests
         using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_pool, content =>
         {
             content.Accounts[new(TestItem.AddressA)] = new(1, 100);
-            content.Storages[new((TestItem.AddressA, 1))] = new SlotValue(TestItem.KeccakA.Bytes);
+            content.Storages[new((TestItem.AddressA, 1))] = new UInt256(TestItem.KeccakA.Bytes, isBigEndian: true);
         });
 
         long estimate = snapshot.EstimateMemory();
@@ -130,37 +145,54 @@ public class SnapshotTests
         }
     }
 
-    [TestCase(256, false)]
-    [TestCase(8_192, true)]
-    public void AddressOwnedStorageNodesRetainBoundedInnerCapacityAfterQuiescentClear(
-        int requestedCapacity,
-        bool shouldShrink)
+    [TestCase(256)]
+    [TestCase(8_192)]
+    public void AddressNodesResetForPoolingKeepsSmallCapacityAndDropsLargeCapacity(int requestedCapacity)
     {
-        AddressStorageNodeDictionary storageNodes = new();
-        Hash256 addressA = TestItem.AddressA.ToAccountPath.ToCommitment();
-        Hash256 addressB = TestItem.AddressB.ToAccountPath.ToCommitment();
-        AddressStorageNodeDictionary.AddressNodes original = storageNodes.GetOrAddAddress(addressA);
-        original.EnsureAdditionalCapacity(requestedCapacity);
-        original.Set(TreePath.Empty, new TrieNode(NodeType.Unknown, TestItem.KeccakA));
-        int capacityBeforeClear = original.Nodes.Capacity;
+        AddressStorageNodeDictionary.AddressNodes nodes = new();
+        nodes.EnsureAdditionalCapacity(requestedCapacity);
+        nodes.Set(TreePath.Empty, new TrieNode(NodeType.Unknown, TestItem.KeccakA));
+        int capacityBeforeReset = nodes.Nodes.Capacity;
 
-        storageNodes.NoLockClear();
-        AddressStorageNodeDictionary.AddressNodes reused = storageNodes.GetOrAddAddress(addressB);
+        nodes.ResetForPooling();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(original.Nodes, Is.Empty);
-            Assert.That(reused.Nodes, Is.Empty);
+            Assert.That(nodes.Nodes, Is.Empty);
 
-            if (shouldShrink)
+            if (requestedCapacity > 4_096)
             {
-                Assert.That(original.Nodes.Capacity, Is.GreaterThan(0));
-                Assert.That(original.Nodes.Capacity, Is.LessThan(capacityBeforeClear));
+                Assert.That(nodes.Nodes.Capacity, Is.Zero);
             }
             else
             {
-                Assert.That(original.Nodes.Capacity, Is.EqualTo(capacityBeforeClear));
+                Assert.That(nodes.Nodes.Capacity, Is.EqualTo(capacityBeforeReset));
             }
+        }
+    }
+
+    [Test]
+    public void AddressOwnedStorageNodesReuseRetainedLargeDictionaryForLargeBatches()
+    {
+        const int LargeBatch = 12_345;
+        AddressStorageNodeDictionary storageNodes = new();
+        Hash256 addressA = TestItem.AddressA.ToAccountPath.ToCommitment();
+        Hash256 addressB = TestItem.AddressB.ToAccountPath.ToCommitment();
+        AddressStorageNodeDictionary.AddressNodes first = storageNodes.GetOrAddAddress(addressA);
+        first.EnsureAdditionalCapacity(LargeBatch);
+        first.Set(TreePath.Empty, new TrieNode(NodeType.Unknown, TestItem.KeccakA));
+
+        storageNodes.NoLockClear();
+        AddressStorageNodeDictionary.AddressNodes second = storageNodes.GetOrAddAddress(addressB);
+        Dictionary<HashedKey<TreePath>, TrieNode> beforeBatch = second.Nodes;
+        second.EnsureAdditionalCapacity(LargeBatch);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Growing in place keeps the dictionary instance, so a new instance means one was rented from the retained pool.
+            Assert.That(second.Nodes, Is.Not.SameAs(beforeBatch));
+            Assert.That(second.Nodes, Is.Empty);
+            Assert.That(second.Nodes.Capacity, Is.GreaterThanOrEqualTo(LargeBatch));
         }
     }
 

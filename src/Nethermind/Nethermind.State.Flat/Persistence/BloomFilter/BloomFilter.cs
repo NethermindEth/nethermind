@@ -13,7 +13,7 @@ namespace Nethermind.State.Flat.Persistence.BloomFilter;
 /// Pure in-memory cache-local (64B / 512-bit) Bloom filter.
 /// Owns its memory and supports atomic adds + AVX2-optimized queries.
 /// Optimized for Linux Transparent Huge Pages (THP).
-/// AI-generated based on RocksDB's bloom filter implementation.
+/// Based on RocksDB's bloom filter implementation.
 /// </summary>
 public sealed unsafe class BloomFilter : IDisposable
 {

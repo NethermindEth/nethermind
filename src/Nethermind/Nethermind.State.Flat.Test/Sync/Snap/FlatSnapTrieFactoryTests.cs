@@ -42,7 +42,7 @@ public class FlatSnapTrieFactoryTests
     {
         public void SelfDestruct(Address addr) { }
         public void SetAccount(Address addr, Account? account) { }
-        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value) { }
+        public void SetStorage(Address addr, in UInt256 slot, in UInt256? value) { }
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
         public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) { }
@@ -92,9 +92,19 @@ public class FlatSnapTrieFactoryTests
         persistence.DidNotReceive().Clear();
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Factory_CreatesTreesWithoutThrowing_ForBothDoubleWriteFlagValues(bool doubleWriteCheck)
+    [Test]
+    public void RangePhase_NeverCarriesIntoTheNextRun()
+    {
+        (FlatSnapTrieFactory flatFactory, _, _) = Build();
+        ISnapTrieFactory factory = flatFactory;
+
+        factory.MarkRangePhaseFinished();
+
+        Assert.That(factory.IsRangePhaseFinished(), Is.False);
+    }
+
+    [Test]
+    public void Factory_CreatesTreesWithoutThrowing_ForBothDoubleWriteFlagValues([Values] bool doubleWriteCheck)
     {
         (FlatSnapTrieFactory factory, _, _) = Build(doubleWriteCheck);
 
@@ -125,19 +135,25 @@ public class FlatSnapTrieFactoryTests
         persistence.DidNotReceive().CreateReader(Arg.Any<ReaderFlags>());
     }
 
-    [Test]
-    public void IsPersisted_CreatesReaderOnce_AndDisposesItWithTree()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Reader_IsCreatedOnlyOnUse_AndCannotBeUsedAfterDisposal(bool readBeforeDisposal)
     {
         (FlatSnapTrieFactory factory, IPersistence persistence, IPersistence.IPersistenceReader reader) = Build();
 
         ISnapTree<PathWithStorageSlot> storageTree = factory.CreateStorageTree(default);
         TreePath path = TreePath.Empty;
-        storageTree.IsPersisted(path, Keccak.EmptyTreeHash.ValueHash256);
-        storageTree.IsPersisted(path, Keccak.EmptyTreeHash.ValueHash256);
-
-        persistence.Received(1).CreateReader(Arg.Any<ReaderFlags>());
+        if (readBeforeDisposal)
+        {
+            storageTree.IsPersisted(path, Keccak.EmptyTreeHash.ValueHash256);
+            storageTree.IsPersisted(path, Keccak.EmptyTreeHash.ValueHash256);
+        }
 
         storageTree.Dispose();
-        reader.Received(1).Dispose();
+        storageTree.Dispose();
+
+        Assert.Throws<ObjectDisposedException>(() => storageTree.IsPersisted(path, Keccak.EmptyTreeHash.ValueHash256));
+        persistence.Received(readBeforeDisposal ? 1 : 0).CreateReader(ReaderFlags.Sync);
+        reader.Received(readBeforeDisposal ? 1 : 0).Dispose();
     }
 }

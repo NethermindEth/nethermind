@@ -21,13 +21,12 @@ public class TraceModuleFactory(
     IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules
 ) : ModuleFactoryBase<ITraceRpcModule>
 {
-    private ContainerBuilder ConfigureCommonBlockProcessing<T>(ContainerBuilder builder) where T : ITransactionProcessorAdapter =>
+    private ContainerBuilder ConfigureCommonBlockProcessing(ContainerBuilder builder, TransactionProcessorAdapterFactory adapterFactory) =>
         builder
             .AddModule(validationBlockProcessingModules)
+            .AddModule(new TransactionTraceModule(validationBlockProcessingModules))
 
-            // More or less standard except for configurable `ITransactionProcessorAdapter`.
-            // Note: Not overriding `IReceiptStorage` to null.
-            .AddScoped<ITransactionProcessorAdapter, T>() // T can be trace or execute
+            .AddScoped<TransactionProcessorAdapterFactory>(adapterFactory)
             .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
             .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
             .AddScoped<IBlockValidator>(Always.Valid) // Why?
@@ -41,10 +40,10 @@ public class TraceModuleFactory(
         // Note: The processing block has no concern with override's and scoping. As far as its concern, a standard
         // world state and code info repository is used.
         ILifetimeScope rpcProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            ConfigureCommonBlockProcessing<TraceTransactionProcessorAdapter>(builder)
+            ConfigureCommonBlockProcessing(builder, static p => new TraceTransactionProcessorAdapter(p))
                 .AddModule(env));
         ILifetimeScope validationProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
-            ConfigureCommonBlockProcessing<ExecuteTransactionProcessorAdapter>(builder)
+            ConfigureCommonBlockProcessing(builder, static p => new ExecuteTransactionProcessorAdapter(p))
                 .AddModule(env));
 
         ILifetimeScope tracerLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
@@ -52,8 +51,7 @@ public class TraceModuleFactory(
             .AddScoped<ITracer, IStateReader>((stateReader) => new Tracer(
                 stateReader,
                 rpcProcessingScope.Resolve<BlockchainProcessorFacade>(),
-                validationProcessingScope.Resolve<BlockchainProcessorFacade>(),
-                traceOptions: ProcessingOptions.TraceTransactions)));
+                validationProcessingScope.Resolve<BlockchainProcessorFacade>())));
 
         // Split out only the env to prevent accidental leak
         IOverridableEnv<ITracer> tracerEnv = tracerLifetimeScope.Resolve<IOverridableEnv<ITracer>>();

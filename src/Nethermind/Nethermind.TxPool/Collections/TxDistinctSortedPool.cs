@@ -76,6 +76,21 @@ namespace Nethermind.TxPool.Collections
         {
             using McsLock.Disposable lockRelease = Lock.Acquire();
 
+            UpdatePoolNonLocked(accounts, updateElements);
+        }
+
+        /// <summary>
+        /// Updates every account bucket during a fork revalidation pass.
+        /// </summary>
+        /// <remarks>
+        /// A fork revalidation may evict many transactions at once. Persistent pools override this method to
+        /// coalesce their storage deletions into a single write batch.
+        /// </remarks>
+        internal virtual void UpdatePoolForRevalidation(IAccountStateProvider accounts, UpdateGroupDelegate updateElements) =>
+            UpdatePool(accounts, updateElements);
+
+        private protected void UpdatePoolNonLocked(IAccountStateProvider accounts, UpdateGroupDelegate updateElements)
+        {
             EnsureCapacity();
             foreach ((AddressAsKey address, EnhancedSortedSet<Transaction> bucket) in _buckets)
             {

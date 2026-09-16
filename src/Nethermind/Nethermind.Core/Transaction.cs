@@ -19,7 +19,7 @@ using Nethermind.Int256;
 namespace Nethermind.Core
 {
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
-    public class Transaction
+    public partial class Transaction
     {
         public const byte MaxTxType = 0x7F;
         public const uint BaseTxGasCost = 21000;
@@ -95,16 +95,23 @@ namespace Nethermind.Core
             Hash256? hash = _hash;
             if (hash is not null) return hash;
 
-            lock (this)
-            {
-                hash = _hash;
-                if (hash is not null) return hash;
+            return CalculateHashSynchronized();
+        }
 
-                if (_preHash.Length > 0)
-                {
-                    _hash = hash = Keccak.Compute(_preHash.Span);
-                    ClearPreHashInternal();
-                }
+        /// <summary>Computes and memoizes the hash, holding whatever exclusion the target needs.</summary>
+        /// <remarks>Split per target: see <c>Transaction.std.cs</c> and <c>Transaction.zkevm.cs</c>.</remarks>
+        private partial Hash256 CalculateHashSynchronized();
+
+        /// <summary>The memoizing computation itself, with no exclusion of its own.</summary>
+        private Hash256 ComputeAndMemoizeHash()
+        {
+            Hash256? hash = _hash;
+            if (hash is not null) return hash;
+
+            if (_preHash.Length > 0)
+            {
+                _hash = hash = Keccak.Compute(_preHash.Span);
+                ClearPreHashInternal();
             }
 
             return hash!;
@@ -222,6 +229,11 @@ namespace Nethermind.Core
               ? _size ??= sizeCalculator.GetLength(this, true)
               : sizeCalculator.GetLength(this, false);
 
+        /// <summary>
+        /// Clears the cached encoded length after mutating fields that affect network serialization.
+        /// </summary>
+        public void ClearLengthCache() => _size = null;
+
         public string ToShortString()
         {
             string gasPriceString =
@@ -323,8 +335,24 @@ namespace Nethermind.Core
             }
         }
 
-        public void CopyTo(Transaction tx)
+        /// <summary>
+        /// Copies this transaction to <paramref name="tx"/> without its cached hash.
+        /// </summary>
+        /// <param name="tx">The destination transaction.</param>
+        public void CopyTo(Transaction tx) => CopyTo(tx, copyHash: false);
+
+        /// <summary>
+        /// Copies this transaction to <paramref name="tx"/> and optionally copies its cached hash.
+        /// </summary>
+        /// <param name="tx">The destination transaction.</param>
+        /// <param name="copyHash">Whether to copy the cached transaction hash.</param>
+        public void CopyTo(Transaction tx, bool copyHash)
         {
+            if (copyHash)
+            {
+                tx.Hash = Hash;
+            }
+
             tx.ChainId = ChainId;
             tx.Type = Type;
             tx.IsAnchorTx = IsAnchorTx;
@@ -386,9 +414,70 @@ namespace Nethermind.Core
     }
 
     /// <summary>
-    /// Holds network form fields for <see cref="TxType.Blob" /> transactions
+    /// Holds network form fields for <see cref="TxType.Blob" /> transactions.
     /// </summary>
-    public record ShardBlobNetworkWrapper(byte[][] Blobs, byte[][] Commitments, byte[][] Proofs, ProofVersion Version);
+    /// <param name="Blobs">Complete blob payloads, or empty entries when only cells are available.</param>
+    /// <param name="Commitments">One KZG commitment per blob.</param>
+    /// <param name="Proofs">Blob proofs for V0 or all cell proofs in blob-major order for V1.</param>
+    /// <param name="Version">The proof representation used by this wrapper.</param>
+    /// <param name="CellMask">The cell indices available for every blob when full blobs are absent.</param>
+    /// <param name="Cells">Sparse cells in blob-major order and ascending cell-index order.</param>
+    public record ShardBlobNetworkWrapper(
+        byte[][] Blobs,
+        byte[][] Commitments,
+        byte[][] Proofs,
+        ProofVersion Version,
+        BlobCellMask CellMask = default,
+        byte[][]? Cells = null)
+    {
+        /// <summary>
+        /// Creates a blob network wrapper without sparse-cell data.
+        /// </summary>
+        /// <param name="blobs">Complete blob payloads.</param>
+        /// <param name="commitments">One KZG commitment per blob.</param>
+        /// <param name="proofs">Proofs corresponding to <paramref name="version"/>.</param>
+        /// <param name="version">The proof representation used by this wrapper.</param>
+        public ShardBlobNetworkWrapper(byte[][] blobs, byte[][] commitments, byte[][] proofs, ProofVersion version)
+            : this(blobs, commitments, proofs, version, default, null)
+        {
+        }
+
+        /// <summary>
+        /// Deconstructs the wrapper into the fields exposed before sparse-cell support.
+        /// </summary>
+        /// <param name="blobs">Complete blob payloads.</param>
+        /// <param name="commitments">KZG commitments.</param>
+        /// <param name="proofs">Blob or cell proofs.</param>
+        /// <param name="version">The proof representation.</param>
+        public void Deconstruct(out byte[][] blobs, out byte[][] commitments, out byte[][] proofs, out ProofVersion version)
+        {
+            blobs = Blobs;
+            commitments = Commitments;
+            proofs = Proofs;
+            version = Version;
+        }
+
+        /// <summary>
+        /// Returns whether every blob payload is available locally.
+        /// </summary>
+        public bool HasFullBlobs()
+        {
+            for (int i = 0; i < Blobs.Length; i++)
+            {
+                if (Blobs[i].Length == 0)
+                {
+                    return false;
+                }
+            }
+
+            return Blobs.Length != 0;
+        }
+
+        /// <summary>
+        /// Returns the complete mask for full blobs, or the stored sparse-cell mask otherwise.
+        /// </summary>
+        public BlobCellMask GetAvailableCellMask() => HasFullBlobs() ? BlobCellMask.Full : CellMask;
+    }
 
     public enum ProofVersion : byte
     {

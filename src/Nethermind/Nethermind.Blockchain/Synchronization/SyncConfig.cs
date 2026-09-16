@@ -56,6 +56,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool SnapSync { get; set; } = false;
         public bool StaticSnapPivot { get; set; } = false;
         public int SnapSyncAccountRangePartitionCount { get; set; } = 8;
+        public bool BalHealing { get; set; } = true;
         public bool FixReceipts { get; set; } = false;
         public ulong? FixReceiptsStartingBlock { get; set; } = null;
         public ulong? FixReceiptsLastBlock { get; set; } = null;
@@ -93,7 +94,7 @@ namespace Nethermind.Blockchain.Synchronization
         public ulong HeaderStateDistance { get; set; } = 0;
 
         public ulong FastHeadersMemoryBudget { get; set; } = 128UL.MB;
-        public bool EnableSnapSyncStorageRangeSplit { get; set; } = true;
+        public bool EnableSnapSyncStorageRangeSplit { get; set; } = false;
         public bool EnableSnapDoubleWriteCheck { get; set; } = false;
         public long ForwardSyncDownloadBufferMemoryBudget { get; set; } = 200.MiB;
         public long ForwardSyncBlockProcessingQueueMemoryBudget { get; set; } = 200.MiB;

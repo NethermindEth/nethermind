@@ -38,5 +38,10 @@ public enum ProcessingResult
     /// <summary>
     /// Processing failed
     /// </summary>
-    ProcessingError
+    ProcessingError,
+
+    /// <summary>
+    /// Invalid inclusion list
+    /// </summary>
+    InclusionListUnsatisfied
 }

@@ -25,7 +25,8 @@ namespace Nethermind.Facade.Find
         IReceiptStorage? receiptStorage,
         ILogManager? logManager,
         IReceiptsRecovery? receiptsRecovery,
-        IReceiptConfig? receiptConfig = null)
+        IReceiptConfig? receiptConfig = null,
+        IPrunedLogsRetention? prunedLogsRetention = null)
         : ILogFinder
     {
         private static int ParallelExecutions = 0;
@@ -45,8 +46,16 @@ namespace Nethermind.Facade.Find
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
+            (BlockHeader fromBlock, BlockHeader toBlock) = ResolveRange(_blockFinder, filter, cancellationToken);
+            return FindLogs(filter, fromBlock, toBlock, cancellationToken);
+        }
+
+        /// <summary> Resolves a filter's block parameters into the headers bounding the scan. </summary>
+        /// <exception cref="ResourceNotFoundException"> Either parameter does not resolve to a known block. </exception>
+        internal static (BlockHeader FromBlock, BlockHeader ToBlock) ResolveRange(IBlockFinder blockFinder, LogFilter filter, CancellationToken cancellationToken)
+        {
             BlockHeader FindHeader(BlockParameter blockParameter, string name, bool headLimit) =>
-                _blockFinder.FindHeader(blockParameter, headLimit) ?? throw new ResourceNotFoundException($"Block not found: {name} {blockParameter}");
+                blockFinder.FindHeader(blockParameter, headLimit) ?? throw new ResourceNotFoundException($"Block not found: {name} {blockParameter}");
 
             cancellationToken.ThrowIfCancellationRequested();
             BlockHeader toBlock = FindHeader(filter.ToBlock, nameof(filter.ToBlock), false);
@@ -55,7 +64,7 @@ namespace Nethermind.Facade.Find
                 toBlock :
                 FindHeader(filter.FromBlock, nameof(filter.FromBlock), false);
 
-            return FindLogs(filter, fromBlock, toBlock, cancellationToken);
+            return (fromBlock, toBlock);
         }
 
         public virtual IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
@@ -68,20 +77,28 @@ namespace Nethermind.Facade.Find
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (_bodiesOnDisk && fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Number, fromBlock.Hash!))
+            if (_bodiesOnDisk)
             {
-                throw new ResourceNotFoundException($"Receipt not available for From block {fromBlock.Number}.");
-            }
-            cancellationToken.ThrowIfCancellationRequested();
+                bool fromMissing = fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Number, fromBlock.Hash!);
+                cancellationToken.ThrowIfCancellationRequested();
+                bool toMissing = toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Number, toBlock.Hash!);
 
-            if (_bodiesOnDisk && toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Number, toBlock.Hash!))
-            {
-                throw new ResourceNotFoundException($"Receipt not available for To block {toBlock.Number}.");
+                if ((fromMissing || toMissing) && !RetainsLogsForFilter(filter, fromBlock.Number, toBlock.Number))
+                {
+                    throw new ResourceNotFoundException(fromMissing
+                        ? $"Receipt not available for From block {fromBlock.Number}."
+                        : $"Receipt not available for To block {toBlock.Number}.");
+                }
             }
             cancellationToken.ThrowIfCancellationRequested();
 
             return FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
         }
+
+        protected bool RetainsLogsForFilter(LogFilter filter, ulong fromBlock, ulong toBlock) =>
+            prunedLogsRetention is not null
+            && filter.AddressFilter.Addresses.Count != 0
+            && prunedLogsRetention.RetainsLogsFor(filter.AddressFilter.Addresses, fromBlock, toBlock);
 
         protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<ulong> blockNumbers, bool tryParallel = true, CancellationToken cancellationToken = default) =>
             RunParallel(blockNumbers,
@@ -213,7 +230,7 @@ namespace Nethermind.Facade.Find
                     cancellationToken.ThrowIfCancellationRequested();
 
                     LogEntriesIterator logsIterator = iterator.IterateLogs(receipt);
-                    if (!iterator.CanDecodeBloom || filter.Matches(ref receipt.Bloom))
+                    if (!iterator.CanDecodeBloom || receipt.Bloom.Bytes.IsEmpty || filter.Matches(ref receipt.Bloom))
                     {
                         while (logsIterator.TryGetNext(out LogEntryStructRef log))
                         {

@@ -114,6 +114,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "The number of account range partitions to create. Increases the Snap sync request concurrency at the cost of more partition boundaries to heal. Allowed values are between 1 and 256.", DefaultValue = "8")]
     int SnapSyncAccountRangePartitionCount { get; set; }
 
+    [ConfigItem(Description = "_Technical._ Whether to heal the state left by Snap sync using block access lists instead of trie nodes. Only applies to the flat state layout.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool BalHealing { get; set; }
+
     [ConfigItem(Description = $"Whether to enable receipts validation that checks for receipts that might be missing because of a bug. If needed, receipts are downloaded from the network. The range to verify is `{nameof(FixReceiptsStartingBlock)}`..`{nameof(FixReceiptsLastBlock)}`.", DefaultValue = "false")]
     public bool FixReceipts { get; set; }
 
@@ -145,7 +148,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Configure the blocks database for write optimizations during sync.", DefaultValue = nameof(ITunableDb.TuneType.EnableBlobFiles), HiddenFromDocs = true)]
     ITunableDb.TuneType BlocksDbTuneDbMode { get; set; }
 
-    [ConfigItem(Description = "The max number of sync responses processed concurrently. `0` to use the number of logical processors. It does not bound in-flight network requests, which are limited by peer availability.", DefaultValue = "0")]
+    [ConfigItem(Description = "The max number of threads used for syncing. `0` to use the number of logical processors. Snap and state sync allow up to twice this many in-flight requests while limiting concurrent response processing to this value.", DefaultValue = "0")]
     public int MaxProcessingThreads { get; set; }
 
     [ConfigItem(Description = "Enables healing trie from network when state is corrupted.", DefaultValue = "true", HiddenFromDocs = true)]
@@ -190,7 +193,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Max distance of state sync from best suggested header.", DefaultValue = "128", HiddenFromDocs = true)]
     ulong StateMaxDistanceFromHead { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Min distance of state sync from best suggested header.", DefaultValue = "32", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Min distance of state sync from best suggested header. Also the minimum head advance before a snap failure-streak pivot update is honoured, so lowering it re-enables the forced-pivot chase on fast chains.", DefaultValue = "32", HiddenFromDocs = true)]
     ulong StateMinDistanceFromHead { get; set; }
 
     [ConfigItem(Description = "_Technical._ Run explicit GC after state sync finished.", DefaultValue = "true", HiddenFromDocs = true)]
@@ -202,7 +205,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Memory budget for in memory dependencies of fast headers.", DefaultValue = "0", HiddenFromDocs = true)]
     ulong FastHeadersMemoryBudget { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Enable storage range split, which downloads large contract storages in parallel ranges at the cost of extra healing for the unstitched range boundaries. Previously disabled by default due to intermittent snap sync hangs; splits are now limited to large remaining ranges and unstitchable roots are force-healed.", DefaultValue = "true", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Enable storage range split.", DefaultValue = "false", HiddenFromDocs = true)]
     bool EnableSnapSyncStorageRangeSplit { get; set; }
 
     [ConfigItem(Description = "_Technical._ Enable double write check during snap sync for debugging.", DefaultValue = "false", HiddenFromDocs = true)]

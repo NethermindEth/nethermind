@@ -11,7 +11,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Db.LogIndex;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -55,8 +54,6 @@ public class OptimismEthRpcModule(
     IJsonRpcClient? sequencerRpcClient,
     IEthereumEcdsa ecdsa,
     ITxSealer sealer,
-    ILogIndexConfig? logIndexConfig,
-    IReceiptConfig receiptConfig,
     IOptimismSpecHelper opSpecHelper,
     HeadBlockSignal headBlockSignal,
     IEthCapabilitiesProvider capabilitiesProvider,
@@ -77,8 +74,6 @@ public class OptimismEthRpcModule(
         feeHistoryOracle,
         protocolsManager,
         forkInfo,
-        logIndexConfig,
-        receiptConfig,
         secondsPerSlot,
         headBlockSignal,
         capabilitiesProvider,
@@ -126,11 +121,14 @@ public class OptimismEthRpcModule(
         }
 
         tx.ChainId = _blockchainBridge.GetChainId();
-        tx.SenderAddress ??= ecdsa.RecoverAddress(tx);
-
         if (tx.SenderAddress is null)
         {
-            return ResultWrapper<Hash256>.Fail("Failed to recover sender");
+            if (!ecdsa.TryRecoverAddress(tx, out Address? senderAddress))
+            {
+                return ResultWrapper<Hash256>.Fail(TxPoolErrorMessages.FailedToRecoverSender, ErrorCodes.TransactionRejected);
+            }
+
+            tx.SenderAddress = senderAddress;
         }
 
         if (!sealer.TrySeal(tx, TxHandlingOptions.None))

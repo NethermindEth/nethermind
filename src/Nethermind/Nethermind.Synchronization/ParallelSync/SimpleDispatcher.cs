@@ -110,6 +110,7 @@ public class SimpleDispatcher<T>(
 
                     if (peer is null)
                     {
+                        allocation.Dispose();
                         HandleResponse(request, null);
                         continue;
                     }
@@ -136,7 +137,7 @@ public class SimpleDispatcher<T>(
                         // If Task.Run itself fails the dispatch never runs: undo its in-flight count
                         // (or the drain below wedges forever) and free the peer it would have freed.
                         SignalDispatchCompleted();
-                        peerPool.Free(allocation);
+                        allocation.Dispose();
                         throw;
                     }
                 }
@@ -165,50 +166,40 @@ public class SimpleDispatcher<T>(
         CancellationToken token)
     {
         long dispatchTime = Stopwatch.GetTimestamp();
-        try
+        using (allocation)
         {
-            await downloader.Dispatch(peer, request, token);
-        }
-        catch (ConcurrencyLimitReachedException)
-        {
-            if (_logger.IsDebug) _logger.Debug($"{request} - concurrency limit reached. Peer: {peer}");
-        }
-        catch (TimeoutException)
-        {
-            if (_logger.IsDebug) _logger.Debug($"{request} - timed out. Peer: {peer}");
-        }
-        catch (OperationCanceledException)
-        {
-            if (_logger.IsTrace) _logger.Trace($"{request} - cancelled");
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Failure when executing request {e}");
-        }
-        Metrics.SyncDispatcherDispatchTimeMicros.Observe(
-            Stopwatch.GetElapsedTime(dispatchTime).TotalMicroseconds, new StringLabel(_feedName));
-
-        // When already cancelled, free the peer without queueing for a processing slot — on
-        // shutdown a full peer-pool's worth of dispatches would otherwise serialise in batches
-        // of maxThreads behind HandleResponse DB work just to reach Free.
-        if (token.IsCancellationRequested)
-        {
-            peerPool.Free(allocation);
-            return;
-        }
-
-        // Acquire a processing slot before freeing the peer so that unprocessed responses stay
-        // bounded by peer count. Waiting without the caller token cannot deadlock — slots are
-        // held only for the synchronous HandleResponse and always released — and it guarantees
-        // the allocation below is freed even when the caller cancels mid-wait.
-        await processingSemaphore.WaitAsync(CancellationToken.None);
-        try
-        {
-            peerPool.Free(allocation);
+            try
+            {
+                await downloader.Dispatch(peer, request, token);
+            }
+            catch (ConcurrencyLimitReachedException)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{request} - concurrency limit reached. Peer: {peer}");
+            }
+            catch (TimeoutException)
+            {
+                if (_logger.IsDebug) _logger.Debug($"{request} - timed out. Peer: {peer}");
+            }
+            catch (OperationCanceledException)
+            {
+                if (_logger.IsTrace) _logger.Trace($"{request} - cancelled");
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failure when executing request {e}");
+            }
+            Metrics.SyncDispatcherDispatchTimeMicros.Observe(
+                Stopwatch.GetElapsedTime(dispatchTime).TotalMicroseconds, new StringLabel(_feedName));
 
             if (token.IsCancellationRequested) return;
 
-            HandleResponse(request, peer);
+            // Hold the peer until processing has room, bounding downloaded responses even when disk writes stall.
+            await processingSemaphore.WaitAsync(CancellationToken.None);
+        }
+
+        try
+        {
+            if (!token.IsCancellationRequested) HandleResponse(request, peer);
         }
         finally
         {

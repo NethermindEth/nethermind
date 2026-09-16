@@ -22,7 +22,7 @@ namespace Nethermind.Synchronization.Test.Mocks;
 /// </summary>
 /// <remarks>
 /// Mirrors <see cref="SyncPeerPool.Allocate"/> failure semantics: it never throws, returning
-/// <see cref="SyncPeerAllocation.FailedAllocation"/> on cancellation — and on timeout when
+/// an empty allocation on cancellation — and on timeout when
 /// <see cref="HonorAllocationTimeout"/> is set. Timeout-honoring is opt-in because several
 /// dispatcher tests use the indefinitely-blocking wait as a scheduling fence.
 /// </remarks>
@@ -33,7 +33,7 @@ public class TestSyncPeerPool(int peerCount = 1) : ISyncPeerPool
     private int _freedCount;
     private int _allocatedCount;
 
-    /// <summary>Total number of <see cref="Free"/> calls, for asserting that allocations are not leaked.</summary>
+    /// <summary>Total number of allocation disposals, for asserting that allocations are not leaked.</summary>
     public int FreedCount => Volatile.Read(ref _freedCount);
 
     /// <summary>Total number of successful allocations, for pairing with <see cref="FreedCount"/>.</summary>
@@ -53,16 +53,21 @@ public class TestSyncPeerPool(int peerCount = 1) : ISyncPeerPool
         {
             int timeout = HonorAllocationTimeout && timeoutMilliseconds > 0 ? timeoutMilliseconds : Timeout.Infinite;
             if (!await _peerSemaphore.WaitAsync(timeout, cancellationToken))
-                return SyncPeerAllocation.FailedAllocation;
+                return new SyncPeerAllocation(contexts);
         }
         catch (OperationCanceledException)
         {
-            return SyncPeerAllocation.FailedAllocation;
+            return new SyncPeerAllocation(contexts);
         }
 
         Interlocked.Increment(ref _allocatedCount);
         ISyncPeer syncPeer = new MockSyncPeer("Nethermind", UInt256.One);
-        SyncPeerAllocation allocation = new(new PeerInfo(syncPeer), contexts, _lock);
+        SyncPeerAllocation allocation = new(contexts, _lock, () =>
+        {
+            Interlocked.Increment(ref _freedCount);
+            _peerSemaphore.Release();
+        });
+        allocation.AllocatePeer(new PeerInfo(syncPeer));
         return allocation;
     }
 
@@ -72,11 +77,7 @@ public class TestSyncPeerPool(int peerCount = 1) : ISyncPeerPool
         public override UInt256? TotalDifficulty => totalDifficulty;
     }
 
-    public void Free(SyncPeerAllocation syncPeerAllocation)
-    {
-        Interlocked.Increment(ref _freedCount);
-        _peerSemaphore.Release();
-    }
+    public int AvailablePeers => _peerSemaphore.CurrentCount;
 
     public void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts contexts)
     {

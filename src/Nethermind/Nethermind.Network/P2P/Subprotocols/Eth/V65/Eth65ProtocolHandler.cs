@@ -6,6 +6,7 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
@@ -20,6 +21,7 @@ using Nethermind.TxPool;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -47,6 +49,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         public override byte ProtocolVersion => EthVersions.Eth65;
 
         private const int MaxNumberOfTxsInOneMsg = 256;
+        private static readonly int PooledTransactionsResponseSoftLimit = (int)2.MiB;
 
         protected override bool HandleMessageCore(ZeroPacket message)
         {
@@ -124,34 +127,70 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         internal Task<PooledTransactionsMessage> FulfillPooledTransactionsRequest(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
-            ArrayPoolList<Transaction> txsToSend = new(msg.Hashes.Count);
+            ArrayPoolList<Transaction> txsToSend = new(Math.Min(msg.Hashes.Count, MaxNumberOfTxsInOneMsg));
 
-            int packetSizeLeft = TransactionsMessage.MaxPacketSize;
+            // Once a response is non-empty, enforce the eth spec's 256-hash soft limit. If the
+            // first 256 hashes miss, keep scanning without growing the deduplication set.
+            HashSet<ValueHash256> seenHashes = new(Math.Min(msg.Hashes.Count, MaxNumberOfTxsInOneMsg));
+
+            // Eth/68 and later use the 2 MiB pooled-transactions soft response limit from the devp2p eth capability.
+            int packetSizeLeft = ProtocolVersion >= EthVersions.Eth68
+                ? PooledTransactionsResponseSoftLimit
+                : TransactionsMessage.MaxPacketSize;
             foreach (Hash256 hash in msg.Hashes.AsSpan())
             {
                 if (cancellationToken.IsCancellationRequested) break;
 
-                if (_txPool.TryGetPendingTransaction(hash, out Transaction tx))
+                if (seenHashes.Count >= MaxNumberOfTxsInOneMsg && txsToSend.Count > 0)
                 {
-                    int txSize = tx.GetLength();
+                    break;
+                }
+
+                if (seenHashes.Count < MaxNumberOfTxsInOneMsg && !seenHashes.Add(hash.ValueHash256))
+                {
+                    continue;
+                }
+
+                if (TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx))
+                {
+                    Transaction responseTx = PreparePooledTransactionForResponse(tx);
+                    int txSize = responseTx.GetLength();
 
                     if (txSize > packetSizeLeft && txsToSend.Count > 0)
                     {
                         break;
                     }
 
-                    txsToSend.Add(tx);
+                    txsToSend.Add(responseTx);
                     packetSizeLeft -= txSize;
                     TxPool.Metrics.PendingTransactionsSent++;
                 }
             }
 
-            return Task.FromResult(new PooledTransactionsMessage(txsToSend));
+            return Task.FromResult(CreatePooledTransactionsMessage(txsToSend));
         }
+
+        protected virtual bool CanServePooledTransaction(Transaction tx) => true;
+
+        /// <summary>
+        /// Gets the representation of a pooled transaction that this protocol version can serve.
+        /// </summary>
+        protected virtual bool TryGetPooledTransactionToServe(Hash256 hash, [NotNullWhen(true)] out Transaction? tx)
+            => _txPool.TryGetPendingTransaction(hash, out tx);
+
+        protected virtual Transaction PreparePooledTransactionForResponse(Transaction tx) => tx;
+
+        /// <summary>Builds the response to a <see cref="GetPooledTransactionsMessage"/>.</summary>
+        /// <remarks>Overridden by protocol versions that carry the response on a different message code.</remarks>
+        protected virtual PooledTransactionsMessage CreatePooledTransactionsMessage(IOwnedReadOnlyList<Transaction> transactions) => new(transactions);
+
+        /// <summary>Builds a transaction hash announcement.</summary>
+        /// <inheritdoc cref="CreatePooledTransactionsMessage" path="/remarks"/>
+        protected virtual NewPooledTransactionHashesMessage CreateAnnouncementMessage(IOwnedReadOnlyList<Hash256> hashes) => new(hashes);
 
         protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
         {
-            void SendNewPooledTransactionMessage(IOwnedReadOnlyList<Hash256> hashes) => Send(new NewPooledTransactionHashesMessage(hashes));
+            void SendNewPooledTransactionMessage(IOwnedReadOnlyList<Hash256> hashes) => Send(CreateAnnouncementMessage(hashes));
 
             if (sendFullTx)
             {

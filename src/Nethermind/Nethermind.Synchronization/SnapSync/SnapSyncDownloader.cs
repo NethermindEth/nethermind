@@ -44,9 +44,12 @@ namespace Nethermind.Synchronization.SnapSync
                         // Refresh a single account via GetAccountRange so its storage root is verified against
                         // the state root. Use limit = path + 1 to avoid start == limit, which some peers treat as
                         // an empty range. (IncrementPath is a no-op only for the unreachable MaxValue path.)
-                        AccountWithStorageStartingHash account = batch.AccountsToRefreshRequest.Paths[0];
-                        ValueHash256 path = account.PathAndAccount.Path;
-                        AccountRange range = new(batch.AccountsToRefreshRequest.RootHash, path, path.IncrementPath());
+                        AccountsToRefreshRequest request = batch.AccountsToRefreshRequest;
+                        AccountWithStorageStartingHash account = request.Paths[0];
+                        PathWithAccount pathAndAccount = account.PathAndAccount
+                            ?? throw new InvalidOperationException("An account refresh request requires an account path.");
+                        ValueHash256 path = pathAndAccount.Path;
+                        AccountRange range = new(request.RootHash, path, path.IncrementPath());
                         batch.AccountsToRefreshResponse = await handler.GetAccountRange(range, cancellationToken);
                     }
                 }

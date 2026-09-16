@@ -16,7 +16,15 @@ namespace Nethermind.Serialization.Json
         public override TxType Read(
             ref Utf8JsonReader reader,
             Type typeToConvert,
-            JsonSerializerOptions options) => (TxType)Convert.ToByte(reader.GetString(), 16);
+            JsonSerializerOptions options)
+        {
+            if (reader.TokenType != JsonTokenType.String || reader.GetString() is not string txType)
+            {
+                throw new JsonException("Invalid transaction type.");
+            }
+
+            return (TxType)Convert.ToByte(txType, 16);
+        }
 
         public override void Write(
             Utf8JsonWriter writer,
