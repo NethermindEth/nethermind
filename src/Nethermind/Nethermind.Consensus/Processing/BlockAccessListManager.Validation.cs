@@ -113,6 +113,8 @@ public partial class BlockAccessListManager
         }
         else
         {
+            // Defensive: a decoded block carries its frames, so an unpriceable transaction cannot reach
+            // here. The scalar limit sums both dimensions, so were it reached it would only over-reject.
             outcome = Eip8037BlockGasInclusionCheck.Validate(
                 block.Header.GasLimit,
                 cumulativeExecution,
