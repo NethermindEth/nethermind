@@ -1429,6 +1429,7 @@ public class StorageProviderTests(bool useFlat)
 
             provider.ClearStorage(TestItem.AddressA);
             AssertSlots(UInt256.Zero);
+            AssertOtherOriginal();
             if (!readBeforeClear && !writeBeforeClear)
             {
                 provider.GetOriginal(clearedCell, out UInt256 original);
@@ -1437,6 +1438,7 @@ public class StorageProviderTests(bool useFlat)
 
             provider.Restore(snapshot);
             AssertSlots(writeBeforeClear ? (UInt256)8 : (UInt256)7);
+            AssertOtherOriginal();
 
             provider.ClearStorage(TestItem.AddressA);
             provider.Commit(Frontier.Instance);
@@ -1446,6 +1448,12 @@ public class StorageProviderTests(bool useFlat)
 
         using (provider.BeginScope(baseBlock)) AssertSlots(UInt256.Zero);
 
+        void AssertOtherOriginal()
+        {
+            provider.GetOriginal(otherCell, out UInt256 original);
+            Assert.That(original, Is.EqualTo(UInt256.Zero));
+        }
+
         void AssertSlots(UInt256 expected)
         {
             provider.Get(clearedCell, out UInt256 clearedValue);
@@ -1454,6 +1462,32 @@ public class StorageProviderTests(bool useFlat)
             {
                 Assert.That(clearedValue, Is.EqualTo(expected));
                 Assert.That(otherValue, Is.EqualTo((UInt256)9));
+            }
+        }
+    }
+
+    [Test]
+    public void Storage_map_cannot_be_dropped_before_originals_are_committed([Values] bool detach)
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        using IDisposable scope = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(TestItem.AddressA, 1);
+        provider.Get(new StorageCell(TestItem.AddressA, 1), out _);
+
+        Assert.That(DropMap, Throws.InvalidOperationException);
+        provider.Commit(Frontier.Instance);
+        Assert.That(DropMap, Throws.Nothing);
+
+        void DropMap()
+        {
+            if (detach)
+            {
+                using IWorldStateScopeProvider.IBlockChangeSnapshot snapshot = provider._persistentStorageProvider.DetachBlockChanges();
+            }
+            else
+            {
+                provider._persistentStorageProvider.ClearStorageMap();
             }
         }
     }
