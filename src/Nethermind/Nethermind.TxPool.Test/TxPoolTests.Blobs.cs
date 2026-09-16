@@ -4929,7 +4929,9 @@ namespace Nethermind.TxPool.Test
             Transaction restored = Sponsored(TestItem.PrivateKeyA);
             Assert.That(_txPool.SubmitTx(restored, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-            // A fresh pool over the same storage stands in for a node restart.
+            // A fresh pool over the same storage stands in for a node restart, and the old one is disposed so
+            // that only one of them answers the head below.
+            await _txPool.DisposeAsync();
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the reloaded record is what the rest reads against");
 
@@ -5057,7 +5059,9 @@ namespace Nethermind.TxPool.Test
 
             if (restart)
             {
-                // A fresh pool over the same storage stands in for a node restart.
+                // A fresh pool over the same storage stands in for a node restart, and the old one is disposed
+                // so that only one of them answers the head below.
+                await _txPool.DisposeAsync();
                 _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
             }
 
@@ -5090,8 +5094,10 @@ namespace Nethermind.TxPool.Test
                 Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             }
 
-            // AddressA's record goes stale once that account moves on, so restoring the pool evicts it.
+            // AddressA's record goes stale once that account moves on, so restoring the pool evicts it. The old
+            // pool is disposed so that only one of them answers the head below.
             _stateProvider.IncrementNonce(TestItem.AddressA);
+            await _txPool.DisposeAsync();
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage);
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the restart must evict the stale record and keep the other");
 
@@ -5460,7 +5466,7 @@ namespace Nethermind.TxPool.Test
 
             // The gauge, not a second submission: the payer here is the sender, whose balance already covers
             // several such reservations, so nothing it submits later can observe the leak. The baseline absorbs
-            // residue from earlier tests, whose pools are never disposed.
+            // the residue of the pools that sibling tests hold while this one runs.
             long payersBefore = Metrics.FrameTxPayersWithReservedExposure;
 
             Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -5476,7 +5482,7 @@ namespace Nethermind.TxPool.Test
         // fields without seeding the ledger would be worse than not persisting them: the record's removal
         // would subtract against another transaction's reservation for the same payer.
         [Test]
-        public void Restored_blob_carrying_frame_tx_still_counts_against_its_payer()
+        public async Task Restored_blob_carrying_frame_tx_still_counts_against_its_payer()
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, FrameTxMaxVerifyGas = 200_000 };
             BlobTxStorage blobTxStorage = new();
@@ -5494,7 +5500,9 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(first.PayerAddress, Is.EqualTo(TestItem.AddressF), "nothing is reserved unless the payer resolves");
 
-            // A fresh pool over the same storage stands in for a node restart.
+            // A fresh pool over the same storage stands in for a node restart, and the old one is disposed so
+            // that only one of them holds the reservations the bound is read against.
+            await _txPool.DisposeAsync();
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
             Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.EqualTo(1), "the reloaded record is what the rest reads against");
 
@@ -5506,7 +5514,7 @@ namespace Nethermind.TxPool.Test
         // The round trip the seeding exists for: a restored record's removal has to release what admission
         // took, or the sponsor stays locked out for the life of the pool.
         [Test]
-        public void Removing_a_restored_blob_carrying_frame_tx_releases_its_payer_exposure()
+        public async Task Removing_a_restored_blob_carrying_frame_tx_releases_its_payer_exposure()
         {
             TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.StorageWithReorgs, FrameTxMaxVerifyGas = 200_000 };
             BlobTxStorage blobTxStorage = new();
@@ -5521,6 +5529,8 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
+            // The old pool is disposed so that only one of them holds the reservations the bound is read against.
+            await _txPool.DisposeAsync();
             _txPool = CreatePool(txPoolConfig, GetBogotaSpecProvider(), txStorage: blobTxStorage, frameTxPrefixSimulator: simulator);
             Assert.That(_txPool.RemoveTransaction(first.Hash), Is.True);
 
@@ -5665,7 +5675,9 @@ namespace Nethermind.TxPool.Test
             Transaction tx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, nonceKeys: [0xbeef]);
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
 
-            // A fresh pool over the same storage stands in for a node restart.
+            // A fresh pool over the same storage stands in for a node restart, and the old one is disposed so
+            // that only one of them answers the head below.
+            await _txPool.DisposeAsync();
             _txPool = CreatePool(txPoolConfig, KeyedNonceSpecProvider(), txStorage: blobTxStorage);
             Transaction[] restored = _txPool.GetPendingLightBlobTransactionsBySender(TestItem.AddressA);
             Assert.That(restored, Has.Length.EqualTo(1), "the restart must not evict a keyed transaction whose sequence is current");
