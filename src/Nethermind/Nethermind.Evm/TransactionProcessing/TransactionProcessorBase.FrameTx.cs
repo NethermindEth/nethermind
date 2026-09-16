@@ -243,20 +243,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         // A batch is the maximal run [i, j] where i..j-1 carry ATOMIC_BATCH_FLAG and j does not; any
         // failure inside it rolls back to before the run and skips the rest of it.
         bool inBatch = false;
-        Snapshot batchStartSnapshot = Snapshot.Empty;
         StackAccessTracker batchTracker = default;
-        int batchStartIndex = 0;
-        long batchStartRefund = 0;
-        long batchStartStateGas = 0;
-        int batchStartJournal = 0;
-        int batchStartDestroys = accessTracker.DestroyList.TakeSnapshot();
+        FrameCheckpoint batchStart = new(
+            Snapshot.Empty, Index: 0, Refund: 0, StateGas: 0, Journal: 0,
+            Destroys: accessTracker.DestroyList.TakeSnapshot());
 
-        Snapshot prefixEndSnapshot = txSnapshot;
-        int prefixEndIndex = -1;
-        long prefixEndRefund = 0;
-        long prefixEndStateGas = 0;
-        int prefixEndJournal = 0;
-        int prefixEndDestroys = accessTracker.DestroyList.TakeSnapshot();
+        FrameCheckpoint prefixEnd = new(
+            txSnapshot, Index: -1, Refund: 0, StateGas: 0, Journal: 0,
+            Destroys: accessTracker.DestroyList.TakeSnapshot());
         bool postTxReverted = false;
         // EIP-161: once any frame touches RIPEMD-160, the touch outlives every later rollback that
         // leaves the transaction valid, so it is tracked for the whole transaction rather than per frame.
@@ -272,14 +266,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             if (!inBatch && frame.IsAtomicBatch)
             {
                 inBatch = true;
-                batchStartSnapshot = WorldState.TakeSnapshot();
+                batchStart = new FrameCheckpoint(
+                    WorldState.TakeSnapshot(), Index: i, Refund: refundCounter, StateGas: totalFrameStateGasUsed,
+                    Journal: frameContext.FrameJournalCheckpoint, Destroys: accessTracker.DestroyList.TakeSnapshot());
                 batchTracker = accessTracker;
                 batchTracker.TakeSnapshot();
-                batchStartIndex = i;
-                batchStartRefund = refundCounter;
-                batchStartStateGas = totalFrameStateGasUsed;
-                batchStartJournal = frameContext.FrameJournalCheckpoint;
-                batchStartDestroys = accessTracker.DestroyList.TakeSnapshot();
             }
 
             bool isSender = frame.Mode == FrameMode.Sender;
@@ -347,25 +338,17 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             {
                 // A failed assertion discards the body down to the validation prefix, overriding any
                 // batch unroll, but unlike a VERIFY revert it leaves the transaction valid.
-                WorldState.Restore(prefixEndSnapshot);
-                accessTracker.DestroyList.Restore(prefixEndDestroys);
+                WorldState.Restore(prefixEnd.Snapshot);
+                accessTracker.DestroyList.Restore(prefixEnd.Destroys);
                 VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, shouldRestoreRipemdTouch);
-                refundCounter = prefixEndRefund;
+                refundCounter = prefixEnd.Refund;
 
                 // Body logs go with the state that produced them, and the bloom derives from these receipts.
-                for (int s = prefixEndIndex + 1; s < i; s++)
-                {
-                    TxFrameReceipt reverted = frameReceipts[s];
-                    if (reverted.Logs.Length > 0 || reverted.StateGasUsed > 0)
-                    {
-                        frameReceipts[s] = new TxFrameReceipt(reverted.Status, reverted.ExecutionGasUsed, 0, []);
-                        frameContext.ClearFrameStateGasUsed(s);
-                    }
-                }
+                FrameTxRollback.ScrubReceipts(frameReceipts, frameContext, prefixEnd.Index + 1, i);
 
-                totalFrameGasUsed -= (ulong)(totalFrameStateGasUsed - prefixEndStateGas);
-                totalFrameStateGasUsed = prefixEndStateGas;
-                frameContext.RestoreFrameJournal(prefixEndJournal);
+                totalFrameGasUsed -= (ulong)(totalFrameStateGasUsed - prefixEnd.StateGas);
+                totalFrameStateGasUsed = prefixEnd.StateGas;
+                frameContext.RestoreFrameJournal(prefixEnd.Journal);
 
                 for (int s = i + 1; s < frames.Length; s++)
                 {
@@ -382,12 +365,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 if (!payerWasSet && frameContext.Payer is not null)
                 {
                     // End of the validation prefix: EIP-7906 keeps everything up to here when POST_TX reverts.
-                    prefixEndSnapshot = WorldState.TakeSnapshot();
-                    prefixEndIndex = i;
-                    prefixEndRefund = refundCounter;
-                    prefixEndStateGas = totalFrameStateGasUsed;
-                    prefixEndJournal = frameContext.FrameJournalCheckpoint;
-                    prefixEndDestroys = accessTracker.DestroyList.TakeSnapshot();
+                    prefixEnd = new FrameCheckpoint(
+                        WorldState.TakeSnapshot(), Index: i, Refund: refundCounter, StateGas: totalFrameStateGasUsed,
+                        Journal: frameContext.FrameJournalCheckpoint, Destroys: accessTracker.DestroyList.TakeSnapshot());
                 }
             }
             else if (!inBatch)
@@ -401,38 +381,25 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 {
                     // Unroll: restore pre-batch state and skip the rest (status 0x2); the failed frame
                     // keeps its failure receipt.
-                    WorldState.Restore(batchStartSnapshot);
+                    WorldState.Restore(batchStart.Snapshot);
                     VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, shouldRestoreRipemdTouch);
                     batchTracker.Restore();
 
                     // Earlier frames' logs go with their state; status and gas_used stay.
-                    for (int s = batchStartIndex; s < i; s++)
-                    {
-                        TxFrameReceipt earlier = frameReceipts[s];
-                        if (earlier.Logs.Length > 0 || earlier.StateGasUsed > 0)
-                        {
-                            frameReceipts[s] = new TxFrameReceipt(earlier.Status, earlier.ExecutionGasUsed, 0, []);
-                            frameContext.ClearFrameStateGasUsed(s);
-                        }
-                    }
+                    FrameTxRollback.ScrubReceipts(frameReceipts, frameContext, batchStart.Index, i);
 
                     // The unrolled frames' writes are gone with the snapshot, so their state charges
                     // are not owed either; the counter only grows, so the batch-start value undoes them.
-                    totalFrameGasUsed -= (ulong)(totalFrameStateGasUsed - batchStartStateGas);
-                    totalFrameStateGasUsed = batchStartStateGas;
-                    frameContext.RestoreFrameJournal(batchStartJournal);
+                    totalFrameGasUsed -= (ulong)(totalFrameStateGasUsed - batchStart.StateGas);
+                    totalFrameStateGasUsed = batchStart.StateGas;
+                    frameContext.RestoreFrameJournal(batchStart.Journal);
                     // Refunds from the reverted batch are discarded with its state, so roll the counter back.
-                    refundCounter = batchStartRefund;
+                    refundCounter = batchStart.Refund;
 
-                    if (prefixEndIndex >= batchStartIndex)
+                    if (prefixEnd.Index >= batchStart.Index)
                     {
                         // Its snapshot points past the truncated journal; unwinding to it would throw.
-                        prefixEndSnapshot = batchStartSnapshot;
-                        prefixEndIndex = batchStartIndex - 1;
-                        prefixEndRefund = batchStartRefund;
-                        prefixEndDestroys = batchStartDestroys;
-                        prefixEndStateGas = batchStartStateGas;
-                        prefixEndJournal = batchStartJournal;
+                        prefixEnd = batchStart with { Index = batchStart.Index - 1 };
                     }
 
                     int terminal = i;
@@ -454,6 +421,64 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
         }
 
+        return SettleFrameTx(
+            tx: tx,
+            tracer: tracer,
+            frameReceiptTracer: frameReceiptTracer,
+            opts: opts,
+            header: header,
+            spec: spec,
+            frameContext: frameContext,
+            frameReceipts: frameReceipts,
+            accessTracker: in accessTracker,
+            txSnapshot: in txSnapshot,
+            intrinsicGas: intrinsicGas,
+            floorGas: floorGas,
+            totalFrameGasUsed: totalFrameGasUsed,
+            totalFrameStateGasUsed: totalFrameStateGasUsed,
+            refundCounter: refundCounter,
+            effectiveGasPrice: in effectiveGasPrice,
+            premiumPerGas: in premiumPerGas,
+            blobFee: in blobFee,
+            maxCost: in maxCost,
+            postTxReverted: postTxReverted);
+    }
+
+    /// <summary>Settles a frame transaction once every frame has run: nets the EIP-3529 refund, computes the
+    /// payer and block gas, returns the unspent <c>max_cost</c> escrow, credits the fee recipients, finalizes
+    /// EIP-6780 destructions and commits or restores the transaction-wide snapshot.</summary>
+    /// <remarks>Straight-line tail of <see cref="ExecuteFrameTx"/>, taking the loop's accumulated totals as
+    /// inputs. The only failure it can report is a transaction that never set a payer, which unwinds to
+    /// <paramref name="txSnapshot"/>.</remarks>
+    /// <param name="intrinsicGas">The transaction's intrinsic gas, gross of any frame execution.</param>
+    /// <param name="floorGas">The EIP-7623 calldata floor the net charge cannot fall below.</param>
+    /// <param name="totalFrameGasUsed">Gas charged across all frames whose effects survived the loop.</param>
+    /// <param name="totalFrameStateGasUsed">The state-gas dimension of that total, before correction.</param>
+    /// <param name="refundCounter">The EIP-3529 refund accumulated by committed frames.</param>
+    /// <param name="maxCost">The escrow charged to the payer at approval, per TXPARAM 0x06.</param>
+    /// <param name="postTxReverted">Whether a POST_TX frame discarded the body, which the receipt reports as a failure.</param>
+    private TransactionResult SettleFrameTx(
+        Transaction tx,
+        ITxTracer tracer,
+        IFrameTxReceiptTracer? frameReceiptTracer,
+        ExecutionOptions opts,
+        BlockHeader header,
+        IReleaseSpec spec,
+        FrameTxContext frameContext,
+        TxFrameReceipt[] frameReceipts,
+        in StackAccessTracker accessTracker,
+        in Snapshot txSnapshot,
+        ulong intrinsicGas,
+        ulong floorGas,
+        ulong totalFrameGasUsed,
+        long totalFrameStateGasUsed,
+        long refundCounter,
+        in UInt256 effectiveGasPrice,
+        in UInt256 premiumPerGas,
+        in UInt256 blobFee,
+        in UInt256 maxCost,
+        bool postTxReverted)
+    {
         if (frameContext.Payer is null)
         {
             WorldState.Restore(txSnapshot);
@@ -967,4 +992,45 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
     private static TransactionSubstate DefaultCodeSuccess() =>
         new(ReadOnlyMemory<byte>.Empty, refund: 0, destroyList: null, logs: null, shouldRevert: false);
+}
+
+/// <summary>A point in the frame loop a later failure can unwind the transaction to.</summary>
+/// <remarks>The six members are only meaningful together: restoring <see cref="Snapshot"/> without
+/// <see cref="Journal"/> would leave the frame journal indexing past its truncated end, and unwinding to it
+/// would throw. Holding them as one value is what stops the two checkpoints the loop keeps from drifting.
+/// The batch's <see cref="StackAccessTracker"/> copy stays outside: it carries its own snapshot/restore pair,
+/// and the prefix-end checkpoint has no counterpart to it.</remarks>
+/// <param name="Snapshot">World-state snapshot taken at the checkpoint.</param>
+/// <param name="Index">Index of the last frame whose effects the checkpoint includes.</param>
+/// <param name="Refund">The EIP-3529 refund counter at the checkpoint.</param>
+/// <param name="StateGas">Accumulated frame state gas at the checkpoint.</param>
+/// <param name="Journal">The frame journal position at the checkpoint.</param>
+/// <param name="Destroys">The EIP-6780 destroy-list position at the checkpoint.</param>
+file readonly record struct FrameCheckpoint(
+    Snapshot Snapshot,
+    int Index,
+    long Refund,
+    long StateGas,
+    int Journal,
+    int Destroys);
+
+/// <summary>Frame-loop rollback bookkeeping that does not depend on the processor's gas policy.</summary>
+file static class FrameTxRollback
+{
+    /// <summary>Drops the logs and state-gas charge from the receipts of frames over the half-open range
+    /// <paramref name="from"/>..<paramref name="to"/>, whose writes a rollback has just discarded.</summary>
+    /// <remarks>Status and execution gas stay: those frames ran and are charged for it. Callers pass the
+    /// first rolled-back frame and the frame that failed, which keeps its own receipt.</remarks>
+    public static void ScrubReceipts(TxFrameReceipt[] frameReceipts, FrameTxContext frameContext, int from, int to)
+    {
+        for (int s = from; s < to; s++)
+        {
+            TxFrameReceipt receipt = frameReceipts[s];
+            if (receipt.Logs.Length > 0 || receipt.StateGasUsed > 0)
+            {
+                frameReceipts[s] = new TxFrameReceipt(receipt.Status, receipt.ExecutionGasUsed, 0, []);
+                frameContext.ClearFrameStateGasUsed(s);
+            }
+        }
+    }
 }
