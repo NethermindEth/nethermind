@@ -15,7 +15,7 @@ public sealed class BlockTreeStateHeaderProvider(IBlockTree blockTree) : IStateH
     public BlockHeader? FindParentHeader(BlockHeader target) =>
         target.ParentHash is null
             ? null
-            : blockTree.FindHeader(target.ParentHash, BlockTreeLookupOptions.None, target.Number - 1);
+            : blockTree.FindHeader(target.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing, target.Number - 1);
 
     /// <inheritdoc />
     public BlockHeader? GetFinalizedHeader(ulong blockNumber)
