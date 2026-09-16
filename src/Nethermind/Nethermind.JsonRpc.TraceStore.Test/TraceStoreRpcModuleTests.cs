@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -151,6 +153,37 @@ public class TraceStoreRpcModuleTests
         test.InnerModule.DidNotReceive().trace_block(BlockParameter.Latest);
     }
 
+    [Test]
+    public async Task trace_block_filters_reward_traces_from_store_when_streaming()
+    {
+        TestContext test = new(includeRewardTrace: true);
+        test.JsonRpcConfig.EnableTracingStreamMode = true;
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = test.Module.trace_block(BlockParameter.Latest);
+        Assert.That(result.Data, Is.AssignableTo<IStreamableResult>());
+
+        byte[] json = await WriteStreamableAsync((IStreamableResult)result.Data);
+        JArray traces = JArray.Parse(Encoding.UTF8.GetString(json));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces, Has.Count.EqualTo(1));
+            Assert.That(traces.Select(static trace => trace["type"]!.Value<string>()), Is.All.EqualTo("call"));
+        }
+
+        test.InnerModule.DidNotReceive().trace_block(BlockParameter.Latest);
+    }
+
+    private static async Task<byte[]> WriteStreamableAsync(IStreamableResult result)
+    {
+        using MemoryStream stream = new();
+        PipeWriter writer = PipeWriter.Create(stream, new StreamPipeWriterOptions(leaveOpen: true));
+        await result.WriteToAsync(writer, CancellationToken.None);
+        await writer.FlushAsync();
+        await writer.CompleteAsync();
+        return stream.ToArray();
+    }
+
     private class TestContext
     {
         public ParityLikeTxTrace DbTrace { get; }
@@ -160,6 +193,7 @@ public class TraceStoreRpcModuleTests
         public MemDb Store { get; }
         public IBlockFinder BlockFinder { get; }
         public IReceiptFinder ReceiptFinder { get; }
+        public JsonRpcConfig JsonRpcConfig { get; }
         public TraceStoreRpcModule Module { get; }
 
         public TestContext(int parallelization = 0, bool includeRewardTrace = false)
@@ -169,7 +203,8 @@ public class TraceStoreRpcModuleTests
             BlockFinder = Build.A.BlockTree().OfChainLength(3).TestObject;
             ReceiptFinder = Substitute.For<IReceiptFinder>();
             ParityLikeTraceSerializer serializer = new(LimboLogs.Instance);
-            Module = new TraceStoreRpcModule(InnerModule, Store, BlockFinder, ReceiptFinder, serializer, new JsonRpcConfig(), LimboLogs.Instance, parallelization);
+            JsonRpcConfig = new JsonRpcConfig();
+            Module = new TraceStoreRpcModule(InnerModule, Store, BlockFinder, ReceiptFinder, serializer, JsonRpcConfig, LimboLogs.Instance, parallelization);
             Hash256 dbTransaction = Build.A.Transaction.TestObject.Hash!;
             Hash256 dbBlock = BlockFinder.Head!.Hash!;
             DbTrace = includeRewardTrace ? BuildCallTrace(dbBlock, dbTransaction) : new() { BlockHash = dbBlock, TransactionHash = dbTransaction };
