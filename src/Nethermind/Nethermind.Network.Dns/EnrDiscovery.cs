@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using DnsClient;
 using DotNetty.Buffers;
@@ -69,7 +70,7 @@ public class EnrDiscovery : INodeSource
                     NodeRecord nodeRecord = _parser.ParseRecord(nodeRecordText, buffer);
                     if (_forkInfo.IsNodeRecordForkCompatible(nodeRecord))
                     {
-                        TryCreateVerifiedNode(nodeRecord, out node);
+                        node = CreateVerifiedNode(nodeRecord);
                     }
                     else if (_logger.IsTrace)
                     {
@@ -94,17 +95,17 @@ public class EnrDiscovery : INodeSource
         }
     }
 
-    internal static bool TryCreateNode(NodeRecord nodeRecord, out Node? node) =>
+    internal static bool TryCreateNode(NodeRecord nodeRecord, [NotNullWhen(true)] out Node? node) =>
         Node.TryFromEnr(nodeRecord, out node);
 
-    internal static bool TryCreateVerifiedNode(NodeRecord nodeRecord, out Node? node)
+    internal static Node? CreateVerifiedNode(NodeRecord nodeRecord)
     {
-        if (!TryCreateNode(nodeRecord, out node))
+        if (!TryCreateNode(nodeRecord, out Node? node) || !node.SetVerifiedEnr(nodeRecord))
         {
-            return false;
+            return null;
         }
 
-        return node!.SetVerifiedEnr(nodeRecord);
+        return node;
     }
 
     public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }

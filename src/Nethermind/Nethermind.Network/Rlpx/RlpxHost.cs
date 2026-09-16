@@ -260,6 +260,14 @@ namespace Nethermind.Network.Rlpx
                 return false;
             }
 
+            bool exactOnly = alternate.IsStatic || alternate.IsBootnode;
+            bool privileged = _privilegedIpProvider.IsPrivileged(alternate.Address.Address);
+            if (!privileged && !_nodeFilter.WouldAccept(alternate.Address.Address, exactOnly))
+            {
+                if (_logger.IsTrace) TraceFilteredDialEndpoint(alternate);
+                return false;
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
             if (_logger.IsDebug)
             {
@@ -267,7 +275,13 @@ namespace Nethermind.Network.Rlpx
                 _logger.Debug($"{reason} for {node:s} on {node.Address}, retrying on {alternate.Address}");
             }
 
-            return await TryConnect(alternate, cancellationToken);
+            bool connected = await TryConnect(alternate, cancellationToken);
+            if (connected && !privileged)
+            {
+                _nodeFilter.Touch(alternate.Address.Address, exactOnly);
+            }
+
+            return connected;
         }
 
         private async Task<bool> TryConnect(Node node, CancellationToken cancellationToken)
@@ -397,6 +411,10 @@ namespace Nethermind.Network.Rlpx
         private void TraceRejectedDialEndpoint(Node node, IPEndPoint endpoint) =>
             _logger.Trace($"|NetworkTrace| {node:s} rejected OUT endpoint {endpoint}");
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceFilteredDialEndpoint(Node node) =>
+            _logger.Trace($"|NetworkTrace| {node:s} rejected filtered OUT endpoint {node.Address}");
+
         public event EventHandler<SessionEventArgs> SessionCreated;
         public event SessionDisconnectedEventHandler SessionDisconnected;
 
@@ -417,7 +435,8 @@ namespace Nethermind.Network.Rlpx
 
         /// <summary>
         /// Rejects inbound connections from IPs already seen within the filter window.
-        /// Outgoing connections are filtered earlier by <see cref="ShouldContact"/> before <see cref="ConnectAsync"/>.
+        /// Primary outgoing endpoints are recorded by <see cref="ShouldContact"/> before <see cref="ConnectAsync"/>;
+        /// fallback endpoints are checked without mutation and recorded only after connecting.
         /// </summary>
         private bool ShouldRejectInbound(ISession session, IChannel channel, IPAddress? inboundRemoteIp)
         {

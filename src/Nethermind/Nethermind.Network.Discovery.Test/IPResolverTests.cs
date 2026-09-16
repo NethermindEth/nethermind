@@ -159,6 +159,62 @@ public class IPResolverTests
     }
 
     [Test]
+    public async Task Automatic_resolution_can_be_disabled_without_ignoring_overrides()
+    {
+        IPResolver ipResolver = CreateResolver(
+            new NetworkConfig
+            {
+                ExternalIpV4 = "8.8.8.8",
+                EnableExternalIpResolution = false
+            },
+            _ => throw new InvalidOperationException("Automatic sources must not be queried."));
+
+        IIPResolver.NethermindIp ip = await ipResolver.Resolve();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ip.ExternalIp, Is.EqualTo(IPAddress.Parse("8.8.8.8")));
+            Assert.That(ip.ExternalIpV4, Is.EqualTo(IPAddress.Parse("8.8.8.8")));
+            Assert.That(ip.ExternalIpV6, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Unsupported_or_unbound_family_is_not_automatically_resolved(
+        [Values(null, "0.0.0.0")] string? localIp)
+    {
+        List<AddressFamily> requestedFamilies = [];
+        IPResolver ipResolver = CreateResolver(
+            new NetworkConfig { LocalIp = localIp },
+            family =>
+            {
+                requestedFamilies.Add(family);
+                return family == AddressFamily.InterNetwork ? [SuccessfulSource("8.8.8.8")] : [];
+            },
+            hasLocalAddressFamily: family => family == AddressFamily.InterNetwork);
+
+        IIPResolver.NethermindIp ip = await ipResolver.Resolve();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requestedFamilies, Is.EqualTo(new[] { AddressFamily.InterNetwork }));
+            Assert.That(ip.ExternalIpV4, Is.EqualTo(IPAddress.Parse("8.8.8.8")));
+            Assert.That(ip.ExternalIpV6, Is.Null);
+        }
+    }
+
+    [TestCase("169.254.10.20", AddressFamily.InterNetwork, false)]
+    [TestCase("192.168.10.20", AddressFamily.InterNetwork, true)]
+    [TestCase("fe80::1", AddressFamily.InterNetworkV6, false)]
+    [TestCase("fd00::1", AddressFamily.InterNetworkV6, true)]
+    [TestCase("2001:db8::1", AddressFamily.InterNetworkV6, true)]
+    public void Local_address_capability_excludes_link_local_addresses(
+        string address,
+        AddressFamily family,
+        bool expected)
+        => Assert.That(IPResolver.IsUsableLocalAddress(IPAddress.Parse(address), family), Is.EqualTo(expected));
+
+    [Test]
     public async Task Wrong_family_source_result_is_rejected()
     {
         IPResolver ipResolver = CreateResolver(
@@ -210,6 +266,36 @@ public class IPResolverTests
             Assert.That(ip.ExternalIpV6, Is.Null);
             await ipv4Source.Received(1).TryGetIP();
             await ipv6Source.Received(1).TryGetIP();
+        }
+    }
+
+    [Test]
+    public async Task Fully_unresolved_startup_retries_after_short_delay()
+    {
+        ManualTimeProvider timeProvider = new();
+        Queue<(bool Success, IPAddress Ip)> results = new(
+        [
+            (false, IPAddress.None),
+            (true, IPAddress.Parse("8.8.8.8"))
+        ]);
+        IIPSource source = new StubIpSource(() => Task.FromResult(results.Dequeue()));
+        IPResolver ipResolver = CreateResolver(
+            new NetworkConfig(),
+            family => family == AddressFamily.InterNetwork ? [source] : [],
+            timeProvider: timeProvider);
+
+        IIPResolver.NethermindIp unresolved = await ipResolver.Resolve();
+        timeProvider.Advance(TimeSpan.FromSeconds(9));
+        IIPResolver.NethermindIp cached = await ipResolver.Resolve();
+        timeProvider.Advance(TimeSpan.FromSeconds(1));
+        IIPResolver.NethermindIp resolved = await ResolveAfterRefresh(ipResolver);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(unresolved.ExternalIp, Is.EqualTo(IPAddress.None));
+            Assert.That(cached, Is.EqualTo(unresolved));
+            Assert.That(resolved.ExternalIpV4, Is.EqualTo(IPAddress.Parse("8.8.8.8")));
+            Assert.That(results, Is.Empty);
         }
     }
 
@@ -642,8 +728,14 @@ public class IPResolverTests
         INetworkConfig networkConfig,
         Func<AddressFamily, IEnumerable<IIPSource>>? externalIpSources = null,
         ILogManager? logManager = null,
-        TimeProvider? timeProvider = null)
-        => new(networkConfig, logManager ?? LimboLogs.Instance, externalIpSources ?? (_ => []), timeProvider);
+        TimeProvider? timeProvider = null,
+        Func<AddressFamily, bool>? hasLocalAddressFamily = null)
+        => new(
+            networkConfig,
+            logManager ?? LimboLogs.Instance,
+            externalIpSources ?? (_ => []),
+            timeProvider,
+            hasLocalAddressFamily ?? (_ => true));
 
     /// <summary>
     /// An expired call serves the cached result and starts the refresh, which the synchronously completing

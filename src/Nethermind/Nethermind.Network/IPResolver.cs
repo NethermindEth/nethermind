@@ -4,12 +4,14 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery;
 using Nethermind.Network.IP;
 
 namespace Nethermind.Network;
@@ -17,12 +19,14 @@ namespace Nethermind.Network;
 public class IPResolver : IIPResolver
 {
     private static readonly TimeSpan ResolutionCacheDuration = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan UnresolvedRetryDelay = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan AutoAddressMaxStaleAge = TimeSpan.FromHours(1);
 
     private readonly ILogger _logger;
     private readonly ILogManager _logManager;
     private readonly INetworkConfig _networkConfig;
     private readonly Func<AddressFamily, IEnumerable<IIPSource>> _externalIpSources;
+    private readonly Func<AddressFamily, bool> _hasLocalAddressFamily;
     private readonly TimeProvider _timeProvider;
 
     private readonly Lock _lock = new();
@@ -30,6 +34,7 @@ public class IPResolver : IIPResolver
     private bool _refreshInProgress;
     private long _resolvedAtTimestamp;
     private int _usesAutomaticResolution;
+    private int _retryUnresolvedResolution;
     private ConfiguredAddresses? _configured;
     private AutoResolvedIp? _lastExternalIpV4;
     private AutoResolvedIp? _lastExternalIpV6;
@@ -46,7 +51,8 @@ public class IPResolver : IIPResolver
         INetworkConfig networkConfig,
         ILogManager logManager,
         Func<AddressFamily, IEnumerable<IIPSource>>? externalIpSources,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        Func<AddressFamily, bool>? hasLocalAddressFamily = null)
     {
         ArgumentNullException.ThrowIfNull(networkConfig);
         ArgumentNullException.ThrowIfNull(logManager);
@@ -55,6 +61,7 @@ public class IPResolver : IIPResolver
         _logManager = logManager;
         _logger = logManager.GetClassLogger<IPResolver>();
         _externalIpSources = externalIpSources ?? (family => CreateExternalIpSources(family, logManager));
+        _hasLocalAddressFamily = hasLocalAddressFamily ?? HasLocalAddressFamily;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
@@ -99,7 +106,8 @@ public class IPResolver : IIPResolver
     private bool IsExpired(Task<IIPResolver.NethermindIp> task)
         => task.IsCompletedSuccessfully &&
            Volatile.Read(ref _usesAutomaticResolution) != 0 &&
-           _timeProvider.GetElapsedTime(Volatile.Read(ref _resolvedAtTimestamp)) >= ResolutionCacheDuration;
+           _timeProvider.GetElapsedTime(Volatile.Read(ref _resolvedAtTimestamp)) >=
+           (Volatile.Read(ref _retryUnresolvedResolution) != 0 ? UnresolvedRetryDelay : ResolutionCacheDuration);
 
     private async Task CompleteResolution(TaskCompletionSource<IIPResolver.NethermindIp> completion)
     {
@@ -146,6 +154,9 @@ public class IPResolver : IIPResolver
     private async Task<IIPResolver.NethermindIp> ResolveAndRecord()
     {
         (IIPResolver.NethermindIp result, bool usedAutomaticResolution) = await ResolveCore();
+        bool unresolvedAutomaticResolution = usedAutomaticResolution &&
+            result.ExternalIpV4 is null && result.ExternalIpV6 is null;
+        Volatile.Write(ref _retryUnresolvedResolution, unresolvedAutomaticResolution ? 1 : 0);
         Volatile.Write(ref _resolvedAtTimestamp, _timeProvider.GetTimestamp());
         Volatile.Write(ref _usesAutomaticResolution, usedAutomaticResolution ? 1 : 0);
         return result;
@@ -169,8 +180,13 @@ public class IPResolver : IIPResolver
     private async Task<(IIPResolver.NethermindIp Result, bool UsedAutomaticResolution)> ResolveCore()
     {
         ConfiguredAddresses configured = _configured ??= await ReadConfiguredAddresses();
-        bool resolveExternalIpV4 = configured.ExternalIpV4 is null;
-        bool resolveExternalIpV6 = configured.ExternalIpV6 is null;
+        bool automaticResolutionEnabled = _networkConfig.EnableExternalIpResolution;
+        bool resolveExternalIpV4 = automaticResolutionEnabled &&
+            configured.ExternalIpV4 is null &&
+            SupportsAutomaticResolution(configured.LocalIp, AddressFamily.InterNetwork);
+        bool resolveExternalIpV6 = automaticResolutionEnabled &&
+            configured.ExternalIpV6 is null &&
+            SupportsAutomaticResolution(configured.LocalIp, AddressFamily.InterNetworkV6);
 
         // Start both missing-family lookups before awaiting either.
         Task<IPAddress?> externalIpV4Task = resolveExternalIpV4
@@ -203,7 +219,13 @@ public class IPResolver : IIPResolver
 
         return (
             new IIPResolver.NethermindIp(configured.LocalIp, externalIp, externalIpV4, externalIpV6),
-            resolveExternalIpV4 || resolveExternalIpV6);
+            automaticResolutionEnabled && (configured.ExternalIpV4 is null || configured.ExternalIpV6 is null));
+    }
+
+    private bool SupportsAutomaticResolution(IPAddress localIp, AddressFamily family)
+    {
+        IPAddress listenerAddress = NetworkHelper.GetInboundBindAddress(localIp, _networkConfig.LocalIp);
+        return DiscoveryAddressSupport.SupportsFamily(listenerAddress, family) && _hasLocalAddressFamily(family);
     }
 
     private async Task<ConfiguredAddresses> ReadConfiguredAddresses()
@@ -350,6 +372,63 @@ public class IPResolver : IIPResolver
             AddressFamily.InterNetworkV6 => "IPv6",
             _ => family.ToString()
         };
+
+    private static bool HasLocalAddressFamily(AddressFamily family)
+    {
+        if (family switch
+        {
+            AddressFamily.InterNetwork => !Socket.OSSupportsIPv4,
+            AddressFamily.InterNetworkV6 => !Socket.OSSupportsIPv6,
+            _ => true
+        })
+        {
+            return false;
+        }
+
+        try
+        {
+            foreach (NetworkInterface networkInterface in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (networkInterface.OperationalStatus != OperationalStatus.Up ||
+                    networkInterface.NetworkInterfaceType == NetworkInterfaceType.Loopback)
+                {
+                    continue;
+                }
+
+                foreach (UnicastIPAddressInformation unicastAddress in networkInterface.GetIPProperties().UnicastAddresses)
+                {
+                    IPAddress address = unicastAddress.Address;
+                    if (IsUsableLocalAddress(address, family))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        catch (Exception e) when (e is NetworkInformationException or PlatformNotSupportedException)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    internal static bool IsUsableLocalAddress(IPAddress address, AddressFamily family)
+    {
+        if (DiscoveryAddressSupport.GetFamily(address) != family ||
+            address.IsWildcardOrNone || IPAddress.IsLoopback(address) || address.IsIPv6LinkLocal)
+        {
+            return false;
+        }
+
+        if (family != AddressFamily.InterNetwork)
+        {
+            return true;
+        }
+
+        Span<byte> bytes = stackalloc byte[4];
+        return address.TryWriteBytes(bytes, out _) && bytes is not [169, 254, ..];
+    }
 
     private IPAddress? TryGetExternalIpOverride(string? ipOverride, string configName, AddressFamily? expectedFamily)
     {

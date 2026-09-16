@@ -18,12 +18,11 @@ namespace Nethermind.Network.IP
         {
             try
             {
-                using HttpClientHandler handler = new()
+                using HttpClient httpClient = new(new HttpClientHandler
                 {
                     // A proxy would report its own egress address, which is not necessarily reachable at this node.
                     UseProxy = false
-                };
-                using HttpClient httpClient = new(handler)
+                })
                 {
                     Timeout = TimeSpan.FromSeconds(3),
                     MaxResponseContentBufferSize = 64

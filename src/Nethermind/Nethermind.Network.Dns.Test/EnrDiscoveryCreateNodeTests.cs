@@ -55,14 +55,22 @@ public class EnrDiscoveryCreateNodeTests
         EnrRecordParser parser = new(signer);
 
         NodeRecord parsed = parser.ParseRecord(record.ToString());
-        bool created = EnrDiscovery.TryCreateVerifiedNode(parsed, out Node? node);
+        Node? node = EnrDiscovery.CreateVerifiedNode(parsed);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(created, Is.True);
+            Assert.That(node, Is.Not.Null);
             Assert.That(node!.IsVerifiedEnr(parsed), Is.True);
             Assert.That(node.HighestObservedEnrSequence, Is.EqualTo(parsed.EnrSequence));
         }
+    }
+
+    [Test]
+    public void Record_without_tcp_endpoint_does_not_create_verified_peer_candidate()
+    {
+        NodeRecord record = CreateNodeRecord(tcpPort: null, udpPort: 30303);
+
+        Assert.That(EnrDiscovery.CreateVerifiedNode(record), Is.Null);
     }
 
     [Test]

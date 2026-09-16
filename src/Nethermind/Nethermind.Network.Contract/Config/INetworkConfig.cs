@@ -17,27 +17,34 @@ public interface INetworkConfig : IConfig
     /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
     /// supplies an override.
     /// </remarks>
-    [ConfigItem(Description = $"The primary external IP address used for the legacy enode string, discovery, and peer filtering. Missing IPv4 or IPv6 addresses are resolved independently; use this only to override the preferred primary address. An address family is advertised in the ENR only when every currently bound inbound transport serves it; only bound transports get port entries.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The primary external IP address used for the legacy enode string, discovery, and peer filtering. Missing IPv4 or IPv6 addresses are resolved independently when `{nameof(EnableExternalIpResolution)}` is enabled; use this only to override the preferred primary address. An address family is advertised in the ENR only when every currently bound inbound transport serves it; only bound transports get port entries.", DefaultValue = "null")]
     string? ExternalIp { get; set; }
 
     /// <summary>
     /// Gets or sets the external IPv4 address to advertise.
     /// </summary>
     /// <remarks>
-    /// When unset, the external IPv4 address is resolved automatically.
+    /// When unset and <see cref="EnableExternalIpResolution"/> is enabled, the external IPv4 address is resolved automatically.
     /// This address is advertised only when every currently bound inbound transport serves IPv4.
     /// On platforms with dual-mode wildcard support, leave <see cref="LocalIp"/> unset or set it to
     /// <c>::</c> to advertise both automatically resolved families.
     /// </remarks>
-    [ConfigItem(Description = $"The external IPv4 address to advertise. When unset, it is resolved automatically. Its ENR entry is published only when every currently bound inbound transport serves IPv4; only bound transports get port entries.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The external IPv4 address to advertise. When unset and `{nameof(EnableExternalIpResolution)}` is enabled, it is resolved automatically. Its ENR entry is published only when every currently bound inbound transport serves IPv4; only bound transports get port entries.", DefaultValue = "null")]
     string? ExternalIpV4 { get; set; }
 
     /// <remarks>
     /// User-facing override only. Code that needs the actual external IPv6 address must resolve it
-    /// through <c>IIPResolver.Resolve</c>. When unset, the external IPv6 address is resolved automatically.
+    /// through <c>IIPResolver.Resolve</c>. When unset and <see cref="EnableExternalIpResolution"/> is enabled,
+    /// the external IPv6 address is resolved automatically.
     /// </remarks>
-    [ConfigItem(Description = "The external IPv6 address to advertise in the ENR. When unset, it is resolved automatically. Its entry is published only when every currently bound inbound transport serves IPv6; only bound transports get port entries.", DefaultValue = "null")]
+    [ConfigItem(Description = $"The external IPv6 address to advertise in the ENR. When unset and `{nameof(EnableExternalIpResolution)}` is enabled, it is resolved automatically. Its entry is published only when every currently bound inbound transport serves IPv6; only bound transports get port entries.", DefaultValue = "null")]
     string? ExternalIpV6 { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether missing external IPv4 and IPv6 addresses are resolved through public HTTPS services.
+    /// </summary>
+    [ConfigItem(Description = "Whether to resolve missing external IPv4 and IPv6 addresses through public HTTPS services. Disable this for restricted networks; explicit external IP overrides are still used.", DefaultValue = "true")]
+    bool EnableExternalIpResolution { get; set; }
 
     /// <remarks>
     /// User-facing override only. Code that needs the actual local IP must resolve it through

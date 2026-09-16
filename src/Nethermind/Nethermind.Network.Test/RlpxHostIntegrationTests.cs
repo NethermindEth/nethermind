@@ -475,12 +475,69 @@ public class RlpxHostIntegrationTests
                 Assert.That(session.Node.Address, Is.EqualTo(new IPEndPoint(IPAddress.IPv6Loopback, listeningPort)));
                 Assert.That(node.Address, Is.EqualTo(originalAddress), "dial fallback must not mutate the shared node endpoint");
                 Assert.That(node.DiscoveryPort, Is.EqualTo(originalDiscoveryPort), "dial fallback must not mutate discovery state");
+                Assert.That(host.ShouldContact(IPAddress.IPv6Loopback), Is.False,
+                    "a connected fallback must be recorded in the peer filter");
             }
         }
         finally
         {
             await host.Shutdown();
             ipv6Listener.Stop();
+        }
+    }
+
+    [Test]
+    public async Task ConnectAsync_DoesNotDialFilteredAlternate()
+    {
+        if (!Socket.OSSupportsIPv6)
+        {
+            Assert.Ignore("IPv6 is not supported on this host.");
+        }
+
+        using TcpListener ipv6Listener = new(IPAddress.IPv6Loopback, 0);
+        ipv6Listener.Start();
+        int listeningPort = ((IPEndPoint)ipv6Listener.LocalEndpoint).Port;
+        int refusedPort = GetAvailablePort();
+        await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, GetAvailablePort());
+        RlpxHost host = container.Resolve<RlpxHost>();
+
+        try
+        {
+            await host.Init();
+            Assert.That(host.ShouldContact(IPAddress.IPv6Loopback), Is.True);
+
+            Assert.That(await host.ConnectAsync(CreateDualStackNode(refusedPort, listeningPort)), Is.False);
+            Assert.That(ipv6Listener.Pending(), Is.False, "a filtered fallback endpoint must not be dialed");
+        }
+        finally
+        {
+            await host.Shutdown();
+            ipv6Listener.Stop();
+        }
+    }
+
+    [Test]
+    public async Task ConnectAsync_FailedAlternateDoesNotConsumeInboundFilterCapacity()
+    {
+        if (!Socket.OSSupportsIPv6)
+        {
+            Assert.Ignore("IPv6 is not supported on this host.");
+        }
+
+        await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, GetAvailablePort());
+        RlpxHost host = container.Resolve<RlpxHost>();
+
+        try
+        {
+            await host.Init();
+
+            Assert.That(await host.ConnectAsync(CreateDualStackNode(GetAvailablePort(), GetAvailablePort())), Is.False);
+            Assert.That(host.ShouldContact(IPAddress.IPv6Loopback), Is.True,
+                "a failed speculative fallback must not suppress inbound peers from the same filter bucket");
+        }
+        finally
+        {
+            await host.Shutdown();
         }
     }
 
