@@ -1132,8 +1132,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             // early when nothing was read or written - so drop the memo here rather than rely on that.
             ForgetLastRead();
             EnsureStorageTree();
-            using IWorldStateScopeProvider.IStorageWriteBatch _ = storageWriteBatch;
             using IWorldStateScopeProvider.IStorageWriteBatch? background = _backgroundWriteBatch;
+            using IWorldStateScopeProvider.IStorageWriteBatch _ = storageWriteBatch;
             _backgroundWriteBatch = null;
 
             int writes = 0;

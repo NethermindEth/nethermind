@@ -90,12 +90,55 @@ public class FlatWorldStateScopeProviderTests
     public enum BackgroundStorageScenario
     {
         Overwrite,
+        RestoreAll,
         Clear,
         RevertedClear,
         DestroyAndRecreate,
         Reset,
         RevertedWrites,
         AbandonedBlock
+    }
+
+    [Test]
+    public async Task Background_storage_batch_creation_does_not_wait_for_worker([Values] bool write)
+    {
+        using TestContext ctx = new(new FlatDbConfig { BackgroundStorageTrieUpdates = true });
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim resume = new();
+        ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(new Account(1, 1).WithChangedStorageRoot(TestItem.KeccakA));
+        ctx.PersistenceReader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
+            .Returns(_ =>
+            {
+                entered.Set();
+                if (!resume.Wait(TimeSpan.FromSeconds(30))) throw new TimeoutException();
+                throw new InvalidOperationException("background read failed");
+            });
+
+        FlatWorldStateScope scope = ctx.Scope;
+        using BackgroundStorageTrie background = (BackgroundStorageTrie)scope.CreateStorageTree(TestItem.AddressA).StartBackgroundWriteBatch()!;
+        using IWorldStateScopeProvider.IWorldStateWriteBatch accounts = scope.StartWriteBatch(1);
+        Task<IWorldStateScopeProvider.IStorageWriteBatch>? creation = null;
+        try
+        {
+            for (int i = 0; i < BackgroundStorageTrie.MinimumBatchSize; i++) background.Set((UInt256)i, UInt256.One);
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(30)), Is.True);
+            creation = Task.Run(() => accounts.CreateStorageWriteBatch(TestItem.AddressA, 128));
+            await creation.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(background.Worker!.IsCompleted, Is.False);
+        }
+        finally
+        {
+            resume.Set();
+            if (background.Worker is not null) await background.Worker.WaitAsync(TimeSpan.FromSeconds(30));
+        }
+
+        using IWorldStateScopeProvider.IStorageWriteBatch batch = await creation!;
+        InvalidOperationException? failure = Assert.Throws<InvalidOperationException>(() =>
+        {
+            if (write) batch.Set(UInt256.Zero, UInt256.One);
+            else batch.Dispose();
+        });
+        Assert.That(failure!.Message, Does.Contain("background read failed"));
     }
 
     [Test]
@@ -219,11 +262,11 @@ public class FlatWorldStateScopeProviderTests
             Assert.That(actual.root, Is.EqualTo(expected.root));
             Assert.That(actual.slots, Is.EqualTo(expected.slots));
         }
-        if (scenario == BackgroundStorageScenario.Overwrite)
+        if (scenario is BackgroundStorageScenario.Overwrite or BackgroundStorageScenario.RestoreAll)
         {
             for (int i = 0; i < 256; i++)
             {
-                UInt256 expectedValue = i % 2 == 0 ? (UInt256)(i + 1) : UInt256.Zero;
+                UInt256 expectedValue = scenario == BackgroundStorageScenario.RestoreAll || i % 2 == 0 ? (UInt256)(i + 1) : UInt256.Zero;
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(expected.slots[i], Is.EqualTo(expectedValue), $"foreground slot {i}");
@@ -277,9 +320,10 @@ public class FlatWorldStateScopeProviderTests
             switch (scenario)
             {
                 case BackgroundStorageScenario.Overwrite:
+                case BackgroundStorageScenario.RestoreAll:
                     foreach (Address address in addresses)
                         for (int i = 0; i < slotCount; i++)
-                            state.Set(new StorageCell(address, (UInt256)i), i % 2 == 0 ? (UInt256)(i + 1) : UInt256.Zero);
+                            state.Set(new StorageCell(address, (UInt256)i), scenario == BackgroundStorageScenario.RestoreAll || i % 2 == 0 ? (UInt256)(i + 1) : UInt256.Zero);
                     break;
                 case BackgroundStorageScenario.Clear:
                     state.ClearStorage(target);
