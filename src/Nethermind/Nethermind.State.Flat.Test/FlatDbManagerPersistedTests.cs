@@ -176,13 +176,13 @@ public class FlatDbManagerPersistedTests
         Commit(manager, tier.ResourcePool, head, reprocessed1, balance: 3);
 
         using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(reprocessed1);
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(manager.HasStateForBlock(abandoned1), Is.False);
             Assert.That(manager.HasStateForBlock(abandoned2), Is.False);
             Assert.That(manager.HasStateForBlock(reprocessed1), Is.True);
             Assert.That(bundle.GetAccount(TestItem.AddressA)?.Balance, Is.EqualTo((UInt256)3));
-        });
+        }
     }
 
     private static void Commit(FlatDbManager manager, ResourcePool pool, StateId from, StateId to, ulong balance)

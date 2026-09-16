@@ -104,12 +104,13 @@ public class DebugBridge : IDebugBridge
 
     public bool UpdateHeadBlock(Hash256 blockHash)
     {
-        _blockTree.UpdateHeadBlock(blockHash);
         BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
         if (header is null) return false;
 
         // Move the live head first, by the route forkchoiceUpdated takes, so `latest` and the state kept
         // below agree; pruning against a head the node does not advertise would drop the state it serves.
+        // A successful move also writes the persisted head pointer; a rejected one must not, or a restart
+        // would start from a head the node never reached.
         if (_blockTree.Head?.Hash != header.Hash
             && !_blockTree.TryUpdateMainChain(header, wereProcessed: true, forceUpdateHeadBlock: true))
         {

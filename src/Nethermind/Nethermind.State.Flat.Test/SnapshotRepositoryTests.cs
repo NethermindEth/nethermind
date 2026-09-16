@@ -520,17 +520,17 @@ public class SnapshotRepositoryTests
         using ArrayPoolList<StateId> remaining = _repository.GetStatesUpToBlock(long.MaxValue);
         if (!knownHead)
         {
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(pruned, Is.EqualTo(0));
                 Assert.That(_repository.SnapshotCount, Is.EqualTo(snapshotCountBefore));
                 Assert.That(_repository.PersistedSnapshotCount, Is.EqualTo(persistedCountBefore));
                 Assert.That(_repository.GetLastCommittedStateId(), Is.Null);
-            });
+            }
             return;
         }
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(pruned, Is.EqualTo(sideBranchPersisted ? 7 : 6));
             for (ulong block = 1; block <= 5; block++)
@@ -543,6 +543,6 @@ public class SnapshotRepositoryTests
             Assert.That(_repository.HasBasePersistedSnapshot(CreateStateId(6, rootByte: 1)), Is.False);
             Assert.That(remaining, Is.EquivalentTo(new[] { CreateStateId(1), CreateStateId(2), CreateStateId(3), CreateStateId(4), CreateStateId(5) }));
             Assert.That(_repository.GetLastCommittedStateId(), Is.EqualTo(head));
-        });
+        }
     }
 }

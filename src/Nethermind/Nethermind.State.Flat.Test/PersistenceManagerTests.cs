@@ -1624,13 +1624,13 @@ public class PersistenceManagerTests
         _persistenceManager.DropStateNotReachableFrom(CreateStateId(headBlock, rootByte: (byte)headRootByte));
 
         HashSet<ulong> kept = [.. remaining];
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             for (ulong block = 1; block <= 4; block++)
                 Assert.That(_snapshotRepository.HasState(CreateStateId(block)), Is.EqualTo(kept.Contains(block)), $"block {block}");
             Assert.That(_snapshotRepository.HasState(fork4), Is.EqualTo(kept.Contains(4)), "fork");
             Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(persisted));
-        });
+        }
     }
 
     private PersistenceManager.ConversionCandidate? InvokeTryFindSnapshotToConvert(StateId currentPersistedState)
