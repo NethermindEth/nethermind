@@ -19,12 +19,47 @@ snapshot set — Nethermind in the **flat** layout — so there `client`,
 and an image it would have to build is refused as well (that box's ~19G root disk
 dies under a build). `resolve` checks those limits against the selected runner.
 
-Independently of the runner, **sweep mode** (`jsonbench-sweep`) resolves one
-Nethermind flat snapshot and varies only the image, so `run-rpc-sweep.sh` refuses
-a non-Nethermind entry in `tool_config.clients`
-instead of those inputs. `start-node.sh` stays client-generic, so re-enabling
-geth/reth or a second layout is a matter of provisioning the snapshot set and
-widening those two guards.
+**Sweep mode** (`jsonbench-sweep`) resolves a snapshot set per client type, the
+same `<snapshot root>/<client>-<block>` layout the single-node path uses, so
+`tool_config.clients` may name `geth` and `reth` entries alongside Nethermind
+ones. `run-rpc-sweep.sh` checks every requested type's set exists before it
+starts a node, so a type the selected box cannot serve is one clear error rather
+than a per-client warning and a partly-empty matrix reported as success. As of
+2026-08 the amd64 box carries `nethermind-flat-25490000`,
+`nethermind-25490000`, `nethermind-flat-snapshot`, `geth-25490000` and
+`reth-25490000`; the arm64 box carries the Nethermind flat set only.
+
+Isolation is per client type too. reth's DB is a single large `mdbx.dat` whose
+first write forces overlayfs to copy the whole file up before the node opens, so
+reth runs `direct` (a read-write bind mount of its own set, which is not shared
+with expb); everything else stays on `overlay`. Across types the isolation
+therefore differs, so **never read a cross-type disk-read delta as a code
+difference** — within one type it is uniform, which is what a version comparison
+needs.
+
+Sweep arms run sequentially. This is safe for overlay-backed clients, but reth's
+direct isolation intentionally opens its snapshot read-write: each arm and each
+later dispatch inherits the startup writes left by the previous one. Consequently
+reth multi-arm results are order-dependent and are **not a clean A/B comparison**;
+the direct reth path does not refresh the cross-run fingerprint anchor. If an old anchor exists,
+it is diagnostic only: it cannot monitor the accumulated writes, restore isolation, or make those timings
+comparable. Use separate fresh reth
+snapshots/runs when a clean A/B is required.
+
+### Per-arm flags
+
+`tool_config.clients` entries use `client[@image][+flag;flag;...]`. The semicolon
+is the flag separator, so comma-valued flags remain intact; for example:
+
+```json
+{"clients":"nethermind@nethermindeth/nethermind:master+--JsonRpc.EnabledModules=Eth,Debug;--Pruning.Mode=None nethermind@nethermindeth/nethermind:master+--JsonRpc.EnabledModules=Eth"}
+```
+
+Entries and flags must be non-empty, and each flag must start with `--` and have
+no whitespace or semicolon. `{ARM_SCRATCH}` is replaced with a freshly recreated
+host directory for that arm and bind-mounted at the same absolute path inside
+the node container, so a flag can direct client-owned scratch state there without
+sharing a predecessor's files.
 
 ## Goals
 
@@ -133,11 +168,11 @@ no longer byte-identical — acceptable for read-only benchmarks (no transaction
 no `newPayload`), where the only writes are engine startup housekeeping.
 
 **`direct` caveats:** (1) the tamper tripwire records the diff and warns instead
-of failing (below); (2) never point two nodes at the same `direct` snapshot
-concurrently (DB lock conflict) — comparison runs are fine, each client uses its
-own snapshot; (3) if a snapshot is shared with another consumer (e.g. expb reuses
-the nethermind sets), don't put that client on `direct` — hence nethermind/geth
-stay on `overlay`.
+of failing (below); it is a diagnostic, not an isolation mechanism; (2) never
+point two nodes at the same `direct` snapshot concurrently (DB lock conflict) —
+comparison runs are fine only when each client uses its own fresh snapshot; (3) if
+a snapshot is shared with another consumer (e.g. expb reuses the nethermind sets),
+don't put that client on `direct` — hence nethermind/geth stay on `overlay`.
 
 ### Tamper tripwire (active verification of goal #2)
 
@@ -147,12 +182,13 @@ size, mtime, mode, owner, symlink target) plus a sha256 of the small RocksDB
 control files rewritten the instant a DB is opened read-write (`CURRENT`,
 `IDENTITY`, `MANIFEST-*`, `OPTIONS-*`). Any difference **fails the job** — except
 under `direct`, where changes are expected: it warns, logs the changed-line
-count, and does not update the cross-run anchor. Hashing only the control files
+count, and does not update the cross-run anchor. The direct reth path therefore
+does not refresh an old anchor; any anchor it finds is diagnostic only. Hashing only the control files
 keeps the check fast on a multi-TB DB; listing errors are fatal rather than
-producing a partial fingerprint. After a clean verify the fingerprint persists
-(`<scratch_root>/fingerprints/`) as a **cross-run anchor** — the next run warns
-if the snapshot changed in between (e.g. a hard-interrupted run whose verify
-never ran).
+producing a partial fingerprint. After a clean non-direct verify the fingerprint
+persists (`<scratch_root>/fingerprints/`) as a **cross-run anchor** — the next
+non-direct run warns if the snapshot changed in between (e.g. a hard-interrupted
+run whose verify never ran).
 
 Path safety is layered: `resolve` validates `db_source`/`scratch_root` shape, and
 every script canonicalizes them (`realpath`, symlink-proof), rejects shallow
@@ -165,10 +201,10 @@ the workflow's defensive-cleanup step).
 | Input | Meaning |
 |---|---|
 | `benchmark_tool` | `flood`, `ethcallchaos`, `jsonbench`, or `jsonbench-sweep`. |
-| `client` | `nethermind` — the only client with a snapshot set on this runner. |
-| `reference_client` | `none` — cross-client comparison needs a second client's snapshot, which this runner does not carry. Compare two Nethermind builds with a `jsonbench-sweep` instead. |
+| `client` | `nethermind`, `geth` or `reth` — whichever has a snapshot set on the selected runner (arm64 serves Nethermind only). |
+| `reference_client` | Second client to compare against, or `none`. Needs that client's same-block set on the selected runner. For a perf A/B prefer two single-node runs or a `jsonbench-sweep`; a comparison run shares the box between both nodes, so it measures correctness rather than clean latency. |
 | `arch` | Benchmark runner: `amd64` (default, `/mnt/sda`) or `arm64` (`/data`). Drives every path. |
-| `snapshot_block` | Snapshot set tag (`<snapshot root>/nethermind-flat-<tag>`); empty = `25490000`. |
+| `snapshot_block` | Snapshot set tag (`<snapshot root>/<client>-<tag>`, or `<snapshot root>/nethermind-flat-<tag>` for Nethermind's flat set); empty = `25490000`. |
 | `docker_image` | Optional explicit image for the benchmarked client (skips build/reuse resolution). |
 | `dottrace` | `false` (default), `sampling`, `tracing`, or `timeline` — profiling mode for the node. Works with **any** Nethermind image. `sampling`/`tracing` are post-processed to XML; `timeline` is a UI-only snapshot. `true` is a legacy alias for `sampling`. |
 | `state_layout` | `flat` — the only layout with a snapshot set on this runner. |

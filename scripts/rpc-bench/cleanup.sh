@@ -35,7 +35,7 @@ while IFS= read -r m; do
   as_root umount "$m" 2>/dev/null || as_root umount -l "$m" 2>/dev/null || true
 done < <(awk -v d="$SCRATCH_ROOT" '$2 == d || index($2, d "/") == 1 { print $2 }' /proc/self/mounts 2>/dev/null | sort -r)
 
-for sub in run run-reference diag ethcallchaos jsonbench parity warmup-cell; do
+for sub in run run-reference diag ethcallchaos jsonbench parity warmup-cell arm; do
   target="$SCRATCH_ROOT/$sub"
   [[ -e "$target" ]] || continue
   if ! (assert_no_mounts_under "$target") 2>/dev/null; then
