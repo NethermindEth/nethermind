@@ -28,6 +28,9 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     // This is passed to TryGetSlot which prevent it from reading before self destruct.
     private int _selfDestructKnownStateIdx;
 
+    // Set by the builder thread; read by the flush only after the scope has joined the builder.
+    private bool _builtByBuilder;
+
     public FlatStorageTree(
         FlatWorldStateScope scope,
         ITrieWarmer trieCacheWarmer,
@@ -94,6 +97,8 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     // Builder thread only, until the scope drains the builder.
     internal void ApplyCommitted(in UInt256 index, in UInt256 value)
     {
+        _builtByBuilder = true;
+        Db.Metrics.IncrementParallelStorageRootWrites();
         Span<byte> buffer = stackalloc byte[32];
         value.ToBigEndian(buffer);
         _tree.Set(in index, value.IsZero ? StorageTree.ZeroBytes : buffer.WithoutLeadingZeros());
@@ -164,7 +169,8 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         // A trie-less (history-backed) scope can't maintain the storage trie (its persistence reader throws on
         // trie-node access), so it writes only the flat overlay. Pick the strategy once here.
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
-        if (_scope.UsePrebuiltStorageTries) return new PrebuiltStorageWriteBatch(this, onRootUpdated);
+        // A tree the builder never touched (e.g. a batch driven directly, not via committed writes) takes the normal path.
+        if (_builtByBuilder && _scope.UsePrebuiltStorageTries) return new PrebuiltStorageWriteBatch(this, onRootUpdated);
 
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, _tree, onRootUpdated, _address, commit: true);
         return new StorageTreeBulkWriteBatch(trieBatch, this);

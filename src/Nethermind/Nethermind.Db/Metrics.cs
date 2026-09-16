@@ -142,6 +142,12 @@ namespace Nethermind.Db
         private static CacheLinePaddedLong _storageSkippedWrites;
         internal static void IncrementStorageSkippedWrites(long value) => Interlocked.Add(ref _storageSkippedWrites.Value, value);
 
+        [CounterMetric]
+        [Description("Number of committed storage slot writes the parallel storage root builder applied into storage tries while the block was still executing.")]
+        public static long ParallelStorageRootWrites => _parallelStorageRootWrites.Value;
+        private static CacheLinePaddedLong _parallelStorageRootWrites;
+        public static void IncrementParallelStorageRootWrites() => Interlocked.Increment(ref _parallelStorageRootWrites.Value);
+
         [GaugeMetric]
         [Description("Indicator if StateDb is being pruned.")]
         public static int StateDbPruning { get; set; }
