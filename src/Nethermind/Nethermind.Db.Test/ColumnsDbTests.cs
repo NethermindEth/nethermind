@@ -16,15 +16,15 @@ namespace Nethermind.Db.Test;
 
 public class ColumnsDbTests
 {
-    string DbPath => "testdb/" + TestContext.CurrentContext.Test.Name;
+    string DbPath => "testdb/" + TestContext.CurrentContext.Test.ID;
     private ColumnsDb<ReceiptsColumns> _db = null!;
 
-    private static void TraceStage(string stage) => File.AppendAllText(Path.Combine(Path.GetTempPath(), "db-stages.log"), stage + Environment.NewLine);
+    private static void TraceStage(string stage) => File.AppendAllText(Path.Combine(Environment.GetEnvironmentVariable("RUNNER_TEMP") ?? Path.GetTempPath(), "db-stages.log"), stage + Environment.NewLine);
 
     [SetUp]
     public void Setup()
     {
-        TraceStage("Setup: " + Path.GetFullPath(DbPath));
+        TraceStage("Setup native: " + DbOnTheRocks.GetFullDbPath(DbPath, DbPath));
         if (Directory.Exists(DbPath))
         {
             Directory.Delete(DbPath, true);
