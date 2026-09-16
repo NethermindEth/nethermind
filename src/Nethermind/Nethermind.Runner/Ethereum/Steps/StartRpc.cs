@@ -10,6 +10,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Core.Authentication;
+using Nethermind.Core.Memory;
 using Nethermind.Hive;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
@@ -23,7 +24,7 @@ using Nethermind.Sockets;
 namespace Nethermind.Runner.Ethereum.Steps;
 
 [RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules), typeof(HiveStep))]
-public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceConfigurers, IWebSocketsManager webSocketsManager, IJsonRpcLocalStats jsonRpcLocalStats) : IStep
+public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceConfigurers, IWebSocketsManager webSocketsManager, IJsonRpcLocalStats jsonRpcLocalStats, GCKeeper gcKeeper) : IStep
 {
     public async Task Execute(CancellationToken cancellationToken)
     {
@@ -46,7 +47,7 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
 
         IRpcModuleProvider rpcModuleProvider = api.RpcModuleProvider!;
 
-        JsonRpcService jsonRpcService = new(rpcModuleProvider, api.LogManager, jsonRpcConfig);
+        JsonRpcService jsonRpcService = new(rpcModuleProvider, api.LogManager, jsonRpcConfig, gcKeeper);
         api.DisposeStack.Push(jsonRpcService);
         IRpcAuthentication auth =
             jsonRpcConfig.UnsecureDevNoRpcAuthentication || !jsonRpcUrlCollection.Values.Any(u => u.IsAuthenticated)

@@ -17,6 +17,7 @@ using Autofac;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Test.Threading;
@@ -414,7 +415,8 @@ public class JsonRpcProcessorTests
             .AddLast<RpcModuleInfo>(_ => new RpcModuleInfo(typeof(IEthRpcModule), ethModulePool))
             .Build();
         RpcModuleProvider moduleProvider = serviceContainer.Resolve<RpcModuleProvider>();
-        using JsonRpcService service = new(moduleProvider, LimboLogs.Instance, config, gate);
+        using GCKeeper gcKeeper = new(NoGCStrategy.Instance, LimboLogs.Instance);
+        using JsonRpcService service = new(moduleProvider, LimboLogs.Instance, config, gcKeeper, gate);
         JsonRpcProcessor processor = CreateProcessor(service, config);
         RpcEndpoint endpoint = transport == RequestTransport.WsPipe ? RpcEndpoint.Ws : RpcEndpoint.Http;
         using JsonRpcContext context = isAuthenticated

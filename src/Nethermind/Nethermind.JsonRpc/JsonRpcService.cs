@@ -17,6 +17,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Memory;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -39,18 +40,20 @@ public sealed class JsonRpcService : IJsonRpcService, IDisposable
     private readonly HashSet<string> _methodsLoggingFiltering;
     private readonly int _maxLoggedRequestParametersCharacters;
     private readonly bool _webSocketsQueueingEnabled;
+    private readonly GCKeeper _gcKeeper;
 
     /// <summary>Creates a JSON-RPC service using the supplied module provider, logger, and configuration.</summary>
-    public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig)
-        : this(rpcModuleProvider, logManager, jsonRpcConfig, new EvmAdmissionGate(jsonRpcConfig))
+    public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig, GCKeeper gcKeeper)
+        : this(rpcModuleProvider, logManager, jsonRpcConfig, gcKeeper, new EvmAdmissionGate(jsonRpcConfig))
     {
     }
 
     // Lets tests drive the gate on a manual TimeProvider.
-    internal JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig, EvmAdmissionGate gate)
+    internal JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig, GCKeeper gcKeeper, EvmAdmissionGate gate)
     {
         _logger = logManager.GetClassLogger<JsonRpcService>();
         _rpcModuleProvider = rpcModuleProvider;
+        _gcKeeper = gcKeeper;
         _gate = gate;
         _methodsLoggingFiltering = [.. jsonRpcConfig.MethodsLoggingFiltering ?? []];
         _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
@@ -67,6 +70,9 @@ public sealed class JsonRpcService : IJsonRpcService, IDisposable
     /// <inheritdoc/>
     public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context, CancellationToken cancellationToken)
     {
+        if (context.IsAuthenticated && rpcRequest?.Method?.StartsWith("engine_newPayload", StringComparison.Ordinal) == true)
+            _gcKeeper.CancelPendingGC();
+
         (int? errorCode, string? errorMessage, string methodName, ResolvedMethodInfo? method, bool operatorActionable) = Validate(rpcRequest, context);
         if (errorCode.HasValue)
         {

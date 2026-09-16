@@ -18,6 +18,7 @@ using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -50,11 +51,42 @@ namespace Nethermind.JsonRpc.Test;
 [TestFixture]
 public class JsonRpcServiceTests
 {
+    [TestCase("engine_newPayloadV1", true, true, RpcEndpoint.Http)]
+    [TestCase("engine_newPayloadV5", true, true, RpcEndpoint.Http)]
+    [TestCase("engine_newPayloadV99", true, true, RpcEndpoint.Http)]
+    [TestCase("engine_newPayloadWithWitnessV5", true, true, RpcEndpoint.Http)]
+    [TestCase("engine_newPayloadV5", false, false, RpcEndpoint.Http)]
+    [TestCase("engine_forkchoiceUpdatedV4", true, false, RpcEndpoint.Http)]
+    [TestCase("eth_call", true, false, RpcEndpoint.Http)]
+    [TestCase("Engine_newPayloadV5", true, false, RpcEndpoint.Http)]
+    [TestCase(null, true, false, RpcEndpoint.Http)]
+    [TestCase("engine_newPayloadV5", false, true, RpcEndpoint.IPC)]
+    [TestCase("eth_call", false, false, RpcEndpoint.IPC)]
+    public async Task New_payload_cancels_pending_collection_before_dispatch(string? method, bool authenticated, bool cancels, RpcEndpoint endpoint)
+    {
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.PostBlockDelayMs.Returns(60_000);
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.Yes));
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance);
+        Task pending = keeper.ScheduleGCInternal(throttle: false);
+        IRpcModuleProvider provider = Substitute.For<IRpcModuleProvider>();
+        provider.Check(Arg.Any<string>(), Arg.Any<JsonRpcContext>(), out Arg.Any<string?>(), out Arg.Any<RpcModuleProvider.ResolvedMethodInfo?>())
+            .Returns(ModuleResolution.Unknown);
+        JsonRpcService service = new(provider, NullLogManager.Instance, new JsonRpcConfig(), keeper);
+        using JsonRpcContext context = new(endpoint, url: new JsonRpcUrl("http", "localhost", 8551, RpcEndpoint.Http, authenticated, ["engine"]));
+        using JsonRpcResponse response = await service.SendRequestAsync(new JsonRpcRequest { Method = method! }, context);
+        if (cancels) await pending.WaitAsync(TimeSpan.FromSeconds(5));
+        else Assert.That(pending.IsCompleted, Is.False);
+        keeper.Dispose();
+        await pending.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
     [SetUp]
     public void Initialize()
     {
         _configurationProvider = new ConfigProvider();
         _logManager = LimboLogs.Instance;
+        _gcKeeper = new GCKeeper(NoGCStrategy.Instance, _logManager);
         _context = new JsonRpcContext(RpcEndpoint.Http);
         // StrictHexFormat is pinned for the whole assembly by StrictHexFormatAssemblySetup; no fixture may touch
         // that static, because it is process-global and every concurrent block-parameter parse reads it (#13204).
@@ -68,8 +100,10 @@ public class JsonRpcServiceTests
         _context?.Dispose();
         _gate.Dispose();
         _serviceContainer?.Dispose();
+        _gcKeeper.Dispose();
     }
 
+    private GCKeeper _gcKeeper = null!;
     private IJsonRpcService _jsonRpcService = null!;
     private IConfigProvider _configurationProvider = null!;
     private ILogManager _logManager = null!;
@@ -256,7 +290,7 @@ public class JsonRpcServiceTests
             .AddLast<RpcModuleInfo>(_ => new RpcModuleInfo(typeof(T), pool))
             .Build();
         RpcModuleProvider moduleProvider = _serviceContainer.Resolve<RpcModuleProvider>();
-        return new JsonRpcService(moduleProvider, _logManager, config ?? _configurationProvider.GetConfig<IJsonRpcConfig>(), _gate);
+        return new JsonRpcService(moduleProvider, _logManager, config ?? _configurationProvider.GetConfig<IJsonRpcConfig>(), _gcKeeper, _gate);
     }
 
     private IJsonRpcService CreateService<T>(T module) where T : IRpcModule =>
@@ -793,6 +827,22 @@ public class JsonRpcServiceTests
         AssertJsonRpcError(TestRequestWithPool(pool, "eth_blockNumber"), ErrorCodes.InternalError);
     }
 
+    [Test]
+    public async Task Unhandled_exception_resolving_the_module_returns_InternalError()
+    {
+        IRpcModuleProvider moduleProvider = Substitute.For<IRpcModuleProvider>();
+        moduleProvider.Resolve(Arg.Any<string>()).Throws(new Exception("test"));
+
+        JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>(), _gcKeeper);
+        JsonRpcRequest request = RpcTest.BuildJsonRequest("eth_test");
+        JsonRpcResponse response = await service.SendRequestAsync(request, _context);
+
+        JsonRpcErrorResponse errorResponse = AssertJsonRpcError(response, ErrorCodes.InternalError);
+        // Covers the second error.data producer, JsonRpcService.ReturnErrorResponse, which the module-invocation
+        // path in Error_data_does_not_leak_stack_trace_or_build_paths never reaches.
+        AssertErrorDataWithoutStackTrace(errorResponse);
+    }
+
     // error.data reaches unauthenticated callers, so it must not carry the stack trace: our release builds
     // render frames with the build machine's absolute source paths and expose the internal call graph.
     [TestCase(ErrorCodes.InternalError, TestName = "InternalErrorArm")]
@@ -877,7 +927,7 @@ public class JsonRpcServiceTests
                 return resolution;
             });
 
-        JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
+        JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>(), _gcKeeper);
         JsonRpcRequest request = RpcTest.BuildJsonRequest("debug_traceCall");
         using JsonRpcErrorResponse response = (JsonRpcErrorResponse)await service.SendRequestAsync(request, _context);
 
