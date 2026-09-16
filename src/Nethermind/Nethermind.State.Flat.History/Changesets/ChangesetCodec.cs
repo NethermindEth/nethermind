@@ -154,7 +154,16 @@ internal static class ChangesetCodec
             return _changeset[_position++];
         }
 
-        private ReadOnlySpan<byte> TakeLengthPrefixed() => Take(TakeByte());
+        /// <summary>A written field is never longer than a hash, so a longer one is a corrupt row rather than a
+        /// value this codec produced; refusing it here keeps every corrupt shape a malformed row instead of whatever
+        /// the field's own parser throws.</summary>
+        private ReadOnlySpan<byte> TakeLengthPrefixed()
+        {
+            byte length = TakeByte();
+            if (length > Hash256.Size) ThrowMalformed();
+
+            return Take(length);
+        }
 
         private ReadOnlySpan<byte> Take(int length)
         {
