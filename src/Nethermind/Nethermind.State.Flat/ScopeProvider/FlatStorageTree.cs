@@ -63,6 +63,8 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public Hash256 RootHash => _tree.RootHash;
 
+    internal int BuilderShardKey => _addressHash.GetHashCode();
+
     internal bool IsDisposed => _scope.IsDisposed;
 
     public void Get(in UInt256 index, out UInt256 value)

@@ -49,6 +49,7 @@ public class FlatParallelStorageRootTests
         flatConfig.Enabled = true;
         flatConfig.ParallelStorageRoot = parallel;
         flatConfig.ParallelStorageRootEagerHash = eagerHash;
+        flatConfig.ParallelStorageRootThreads = 3;
         using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule(configProvider)).Build();
         IWorldStateScopeProvider scopeProvider = container.Resolve<IWorldStateManager>().GlobalWorldState;
         if (viaPrewarmerScope)

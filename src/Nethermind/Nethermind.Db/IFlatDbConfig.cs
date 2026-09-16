@@ -118,6 +118,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "With ParallelStorageRoot, hash the dirty storage trie paths whenever the background builder has no pending writes, moving most of the hashing into the execution window. Disable to only pre-apply writes.", DefaultValue = "true")]
     bool ParallelStorageRootEagerHash { get; set; }
 
+    [ConfigItem(Description = "With ParallelStorageRoot, the number of background builder threads. Each storage trie is owned by exactly one thread, chosen by address.", DefaultValue = "1")]
+    int ParallelStorageRootThreads { get; set; }
+
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "true")]
     bool EnableLongFinality { get; set; }
 
