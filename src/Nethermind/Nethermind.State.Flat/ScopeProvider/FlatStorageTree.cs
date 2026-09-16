@@ -23,7 +23,7 @@ public sealed class FlatStorageTree(
     IFlatDbConfig config,
     Hash256 storageRoot,
     Address address,
-    ILogManager logManager) : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
+    ILogManager logManager) : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer, ISpeculativeTrie
 {
     private readonly Address _address = address;
     private readonly IFlatDbConfig _config = config;
@@ -53,11 +53,7 @@ public sealed class FlatStorageTree(
     // and the changed paths hashed by the scope's bounded workers while later transactions execute. The block thread
     // is the only producer, at most one worker drains a tree at a time, and finalization claims the trie through the
     // same state word, so a worker can never reacquire it after the join.
-    private const int SpeculationIdle = 0;
-    private const int SpeculationQueued = 1;
-    private const int SpeculationRunning = 2;
-    private const int SpeculationOwned = 3;
-    private readonly bool _speculate = config.SpeculativeStorageRoots && !scope.Trieless && !config.VerifyWithTrie;
+    private readonly bool _speculate = config.SpeculativeStorageRoots && !scope.Trieless && !scope.IsReadOnly && !config.VerifyWithTrie;
     private ConcurrentQueue<SpeculativeWrite>? _speculativeQueue;
     private Dictionary<UInt256, UInt256>? _speculativelyApplied;
     private Dictionary<UInt256, UInt256>? _drainBatch;
@@ -133,7 +129,7 @@ public sealed class FlatStorageTree(
     /// </remarks>
     public void HintSet(in UInt256 index, in UInt256 value)
     {
-        if (_speculate && Volatile.Read(ref _speculationState) != SpeculationOwned)
+        if (_speculate && Volatile.Read(ref _speculationState) != SpeculationState.Owned)
         {
             Speculate(in index, in value);
             return;
@@ -158,26 +154,26 @@ public sealed class FlatStorageTree(
         }
 
         _speculativeQueue.Enqueue(new SpeculativeWrite(in index, in value));
-        if (Interlocked.CompareExchange(ref _speculationState, SpeculationQueued, SpeculationIdle) == SpeculationIdle)
+        if (Interlocked.CompareExchange(ref _speculationState, SpeculationState.Queued, SpeculationState.Idle) == SpeculationState.Idle)
         {
             _scope.EnqueueSpeculation(this);
         }
     }
 
     /// <summary>Drains the queued writes into the trie once, on one of the scope's speculation workers.</summary>
-    internal void RunSpeculationOnce()
+    public void RunSpeculationOnce()
     {
         // Finalization may have claimed the trie while this tree waited in the scope's work queue.
-        if (Interlocked.CompareExchange(ref _speculationState, SpeculationRunning, SpeculationQueued) != SpeculationQueued) return;
+        if (Interlocked.CompareExchange(ref _speculationState, SpeculationState.Running, SpeculationState.Queued) != SpeculationState.Queued) return;
 
         ConcurrentQueue<SpeculativeWrite> queue = _speculativeQueue!;
         ApplySpeculativeWrites(queue);
-        Interlocked.Exchange(ref _speculationState, SpeculationIdle);
+        Interlocked.Exchange(ref _speculationState, SpeculationState.Idle);
         OnSpeculationReleased?.Invoke();
 
         // Writes enqueued during the drain re-queue the tree behind the other contracts' work. Once finalization
         // has claimed the trie the exchange fails and they are left for the block-end batch.
-        if (!queue.IsEmpty && Interlocked.CompareExchange(ref _speculationState, SpeculationQueued, SpeculationIdle) == SpeculationIdle)
+        if (!queue.IsEmpty && Interlocked.CompareExchange(ref _speculationState, SpeculationState.Queued, SpeculationState.Idle) == SpeculationState.Idle)
         {
             _scope.EnqueueSpeculation(this);
         }
@@ -276,15 +272,15 @@ public sealed class FlatStorageTree(
         while (true)
         {
             int state = Volatile.Read(ref _speculationState);
-            if (state == SpeculationOwned) break;
-            if (state == SpeculationRunning)
+            if (state == SpeculationState.Owned) break;
+            if (state == SpeculationState.Running)
             {
                 spinWait.SpinOnce();
                 continue;
             }
 
             // Idle or still waiting in the scope's work queue: claim it before a worker gets to it.
-            if (Interlocked.CompareExchange(ref _speculationState, SpeculationOwned, state) == state) break;
+            if (Interlocked.CompareExchange(ref _speculationState, SpeculationState.Owned, state) == state) break;
         }
 
         Db.Metrics.IncrementSpeculativeStorageJoinWaitTicks(Stopwatch.GetElapsedTime(waitStart).Ticks);
@@ -492,7 +488,7 @@ public sealed class FlatStorageTree(
     }
 
     /// <summary>Whether finalization has claimed the trie from the runner.</summary>
-    internal bool SpeculationOwnedByFinalization => Volatile.Read(ref _speculationState) == SpeculationOwned;
+    internal bool SpeculationOwnedByFinalization => Volatile.Read(ref _speculationState) == SpeculationState.Owned;
 
     private readonly struct SpeculativeWrite(in UInt256 index, in UInt256 value)
     {

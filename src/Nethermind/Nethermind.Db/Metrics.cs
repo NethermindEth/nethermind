@@ -168,6 +168,24 @@ namespace Nethermind.Db
         internal static void IncrementSpeculativeStorageJoinWaitTicks(long ticks) => Interlocked.Add(ref _speculativeStorageJoinWaitTicks.Value, ticks);
 
         [CounterMetric]
+        [Description("Account writes the speculative root workers applied to the state trie during execution.")]
+        public static long SpeculativeAccountWrites => _speculativeAccountWrites.Value;
+        private static CacheLinePaddedLong _speculativeAccountWrites;
+        internal static void IncrementSpeculativeAccountWrites(long value) => Interlocked.Add(ref _speculativeAccountWrites.Value, value);
+
+        [CounterMetric]
+        [Description("Block-end state trie writes skipped because the speculative workers had already applied the final account.")]
+        public static long SpeculativeAccountSkippedWrites => _speculativeAccountSkippedWrites.Value;
+        private static CacheLinePaddedLong _speculativeAccountSkippedWrites;
+        internal static void IncrementSpeculativeAccountSkippedWrites(long value) => Interlocked.Add(ref _speculativeAccountSkippedWrites.Value, value);
+
+        [CounterMetric]
+        [Description("Speculatively written accounts the block-end batch restored to their pre-block value.")]
+        public static long SpeculativeAccountRestoredWrites => _speculativeAccountRestoredWrites.Value;
+        private static CacheLinePaddedLong _speculativeAccountRestoredWrites;
+        internal static void IncrementSpeculativeAccountRestoredWrites(long value) => Interlocked.Add(ref _speculativeAccountRestoredWrites.Value, value);
+
+        [CounterMetric]
         [Description("Number of storage trie writes skipped in net.")]
         public static long StorageSkippedWrites => _storageSkippedWrites.Value;
         private static CacheLinePaddedLong _storageSkippedWrites;

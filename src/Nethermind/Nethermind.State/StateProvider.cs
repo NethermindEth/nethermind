@@ -944,6 +944,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         }
 
         accountChanges.After = account;
+        Tree.HintAccountSet(address, account);
         _needsStateRootUpdate = true;
     }
 

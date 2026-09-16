@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
@@ -36,10 +37,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
     // Storage trees with speculative root work to join before the trie is committed or the bundle disposed.
     private ConcurrentQueue<FlatStorageTree>? _speculatingStorages;
-    // Trees with queued speculative writes, drained by at most _speculationWorkerCap pool workers.
-    private ConcurrentQueue<FlatStorageTree>? _speculationWork;
+    // Tries with queued speculative writes, drained by at most _speculationWorkerCap pool workers.
+    private ConcurrentQueue<ISpeculativeTrie>? _speculationWork;
     private int _speculationWorkers;
     private readonly int _speculationWorkerCap;
+    private readonly AccountTrieSpeculation? _accountSpeculation;
+
+    // Test seam: runs on the worker right after it releases the state trie and before it looks for more work.
+    internal Action? OnAccountSpeculationReleased;
     private bool _isDisposed = false;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
@@ -108,6 +113,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _earlyApplier = IdleStorageApplier.GetInstance(logManager);
             _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
         }
+
+        // VerifyWithTrie reads the trie on the block thread during execution, which the workers would race.
+        _accountSpeculation = configuration.SpeculativeStorageRoots && !_trieless && !isReadOnly && !configuration.VerifyWithTrie
+            ? new AccountTrieSpeculation(this)
+            : null;
     }
 
     internal bool AppliesStorageWritesEarly => _earlyApplier is not null && !_earlyApplyClosed;
@@ -132,6 +142,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         Interlocked.Add(ref _earlyRestoredSlots, restored);
     }
 
+    internal bool IsReadOnly => _isReadOnly;
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// With <see cref="IFlatDbConfig.SpeculativeStorageRoots"/> the account goes to the state trie on a speculation
+    /// worker; the block-end write batch then skips accounts whose final value it already holds.
+    /// </remarks>
+    public void HintAccountSet(Address address, Account? account) => _accountSpeculation?.Enqueue(address, account);
+
     public void Dispose()
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
@@ -140,6 +159,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         Interlocked.Increment(ref _hintSequenceId);
         CancelHintBal();
         JoinSpeculation();
+        _accountSpeculation?.Join();
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
@@ -467,12 +487,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         while (storages.TryDequeue(out FlatStorageTree? storageTree)) storageTree.JoinSpeculation();
     }
 
-    internal void EnqueueSpeculation(FlatStorageTree storageTree)
+    internal void EnqueueSpeculation(ISpeculativeTrie trie)
     {
-        ConcurrentQueue<FlatStorageTree> work = Volatile.Read(ref _speculationWork)
-            ?? Interlocked.CompareExchange(ref _speculationWork, new ConcurrentQueue<FlatStorageTree>(), null)
+        ConcurrentQueue<ISpeculativeTrie> work = Volatile.Read(ref _speculationWork)
+            ?? Interlocked.CompareExchange(ref _speculationWork, new ConcurrentQueue<ISpeculativeTrie>(), null)
             ?? _speculationWork!;
-        work.Enqueue(storageTree);
+        work.Enqueue(trie);
         StartSpeculationWorker();
     }
 
@@ -492,8 +512,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     private void RunSpeculationWorker()
     {
-        ConcurrentQueue<FlatStorageTree> work = _speculationWork!;
-        while (work.TryDequeue(out FlatStorageTree? storageTree)) storageTree.RunSpeculationOnce();
+        ConcurrentQueue<ISpeculativeTrie> work = _speculationWork!;
+        while (work.TryDequeue(out ISpeculativeTrie? trie)) trie.RunSpeculationOnce();
         Interlocked.Decrement(ref _speculationWorkers);
         // A tree enqueued after the last dequeue saw a full worker set; make sure someone serves it.
         if (!work.IsEmpty) StartSpeculationWorker();
@@ -580,6 +600,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         _pausePrewarmer = true;
         JoinSpeculation();
+        _accountSpeculation?.Join();
 
         // With DeferStorageTrieCommit the write batches only hashed the storage trees, so their nodes are written here,
         // after the block was reported valid; otherwise the batches already committed them. The nodes must be in the
@@ -589,6 +610,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             CommitStorageTrees();
             Volatile.Read(ref _stateTree)?.Commit();
         }
+        _accountSpeculation?.ResetForNextBlock();
 
         _storages.Clear();
         _hintWarmStorages?.Clear();
@@ -656,6 +678,143 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 trees[i].CommitTree();
                 return trees;
             });
+    }
+
+    /// <summary>
+    /// Applies committed accounts to the state trie on the scope's speculation workers while transactions execute.
+    /// </summary>
+    /// <remarks>
+    /// Same ownership protocol as <see cref="FlatStorageTree"/>. The block thread never reads the state trie during
+    /// execution (reads go to the bundle), so the only other user is the block-end write batch, which claims the trie
+    /// first. Accounts carry their pre-block storage roots here; a contract whose storage changed is written again at
+    /// block end with the final root, on a path whose nodes are then already loaded.
+    /// </remarks>
+    private sealed class AccountTrieSpeculation(FlatWorldStateScope scope) : ISpeculativeTrie
+    {
+        private readonly ConcurrentQueue<(AddressAsKey Address, Account? Account)> _queue = new();
+        private readonly Dictionary<AddressAsKey, Account?> _applied = [];
+        private readonly Dictionary<AddressAsKey, Account?> _drain = [];
+        private int _state;
+        private volatile bool _failed;
+
+        public void Enqueue(Address address, Account? account)
+        {
+            if (Volatile.Read(ref _state) == SpeculationState.Owned) return;
+            _queue.Enqueue((address, account));
+            if (Interlocked.CompareExchange(ref _state, SpeculationState.Queued, SpeculationState.Idle) == SpeculationState.Idle)
+            {
+                scope.EnqueueSpeculation(this);
+            }
+        }
+
+        public void RunSpeculationOnce()
+        {
+            if (Interlocked.CompareExchange(ref _state, SpeculationState.Running, SpeculationState.Queued) != SpeculationState.Queued) return;
+
+            Apply();
+            Interlocked.Exchange(ref _state, SpeculationState.Idle);
+            scope.OnAccountSpeculationReleased?.Invoke();
+
+            if (!_queue.IsEmpty && Interlocked.CompareExchange(ref _state, SpeculationState.Queued, SpeculationState.Idle) == SpeculationState.Idle)
+            {
+                scope.EnqueueSpeculation(this);
+            }
+        }
+
+        private void Apply()
+        {
+            if (_failed)
+            {
+                Discard();
+                return;
+            }
+
+            if (!scope._snapshotBundle.TryLeaseReadOnlyBundle())
+            {
+                _failed = true;
+                Discard();
+                return;
+            }
+
+            try
+            {
+                _drain.Clear();
+                while (_queue.TryDequeue(out (AddressAsKey Address, Account? Account) write)) _drain[write.Address] = write.Account;
+                if (_drain.Count == 0) return;
+
+                if (_drain.Count > TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH)
+                {
+                    using StateTree.StateTreeBulkSetter setter = scope.StateTree.BeginSet(_drain.Count);
+                    foreach (KeyValuePair<AddressAsKey, Account?> kv in _drain) setter.Set(kv.Key.Value, kv.Value);
+                }
+                else
+                {
+                    foreach (KeyValuePair<AddressAsKey, Account?> kv in _drain) scope.StateTree.Set(kv.Key.Value, kv.Value);
+                }
+
+                foreach (KeyValuePair<AddressAsKey, Account?> kv in _drain) _applied[kv.Key] = kv.Value;
+                scope.StateTree.UpdateRootHash(canBeParallel: false);
+                Db.Metrics.IncrementSpeculativeAccountWrites(_drain.Count);
+            }
+            catch (Exception e)
+            {
+                _failed = true;
+                Discard();
+                ILogger logger = scope._logManager.GetClassLogger<FlatWorldStateScope>();
+                if (logger.IsDebug) logger.Debug($"Speculative state trie update failed, falling back to the block-end update: {e}");
+            }
+            finally
+            {
+                scope._snapshotBundle.ReleaseReadOnlyBundleLease();
+            }
+        }
+
+        private void Discard()
+        {
+            while (_queue.TryDequeue(out _)) { }
+        }
+
+        /// <summary>Claims the state trie for the block-end batch and returns what the workers applied, or null.</summary>
+        public Dictionary<AddressAsKey, Account?>? Claim()
+        {
+            Join();
+            return _applied.Count > 0 ? _applied : null;
+        }
+
+        public void Join()
+        {
+            SpinWait spinWait = new();
+            long waitStart = Stopwatch.GetTimestamp();
+            while (true)
+            {
+                int state = Volatile.Read(ref _state);
+                if (state == SpeculationState.Owned) break;
+                if (state == SpeculationState.Running)
+                {
+                    spinWait.SpinOnce();
+                    continue;
+                }
+
+                if (Interlocked.CompareExchange(ref _state, SpeculationState.Owned, state) == state) break;
+            }
+
+            Db.Metrics.IncrementSpeculativeStorageJoinWaitTicks(Stopwatch.GetElapsedTime(waitStart).Ticks);
+            Discard();
+
+            if (_failed)
+            {
+                scope.StateTree.RootHash = scope._currentStateId.StateRoot.ToCommitment();
+                _applied.Clear();
+                _failed = false;
+            }
+        }
+
+        /// <summary>Releases ownership once the block's state trie is committed, so the next block can speculate.</summary>
+        public void ResetForNextBlock()
+        {
+            _applied.Clear();
+            Volatile.Write(ref _state, SpeculationState.Idle);
+        }
     }
 
     // Largely same logic as the the one for TrieStoreScopeProvider, but more confusing when deduplicated.
@@ -733,17 +892,40 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 // normal scope additionally bulk-applies the dirty accounts into the state trie.
                 if (!scope._trieless)
                 {
-                    if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
+                    // Accounts the speculation workers already hold at their final value are skipped; the rest of what
+                    // they wrote goes back to its pre-block value, because the state provider skips accounts the block
+                    // wrote back to it.
+                    Dictionary<AddressAsKey, Account?>? speculated = scope._accountSpeculation?.Claim();
+                    if (speculated is null && Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
                     {
                         scope.StateTree.SetAccounts(_dirtyAccounts);
                     }
                     else
                     {
+                        int skipped = 0;
                         using StateTree.StateTreeBulkSetter stateSetter = scope.StateTree.BeginSet(_dirtyAccounts.Count);
                         foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
                         {
+                            if (speculated is not null && speculated.Remove(kv.Key, out Account? applied) && applied == kv.Value)
+                            {
+                                skipped++;
+                                continue;
+                            }
+
                             stateSetter.Set(kv.Key, kv.Value);
                         }
+
+                        if (speculated is { Count: > 0 })
+                        {
+                            foreach (KeyValuePair<AddressAsKey, Account?> kv in speculated)
+                            {
+                                stateSetter.Set(kv.Key.Value, scope._snapshotBundle.GetAccount(kv.Key.Value));
+                            }
+
+                            Db.Metrics.IncrementSpeculativeAccountRestoredWrites(speculated.Count);
+                        }
+
+                        if (skipped > 0) Db.Metrics.IncrementSpeculativeAccountSkippedWrites(skipped);
                     }
                 }
             }
