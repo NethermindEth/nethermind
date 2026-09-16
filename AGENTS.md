@@ -142,8 +142,8 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - Workflow file: [`.github/workflows/run-expb-reproducible-benchmarks.yml`](./.github/workflows/run-expb-reproducible-benchmarks.yml)
 - Execution runner: chosen by the `arch` input — `amd64` (default) runs on `reproducible-benchmarks`
   with snapshots under `/mnt/sda`; `arm64` runs on `reproducible-benchmarks-arm` with snapshots under
-  `/data`. The ARM box carries a single snapshot set — Nethermind in the **flat** layout — so it
-  refuses any other client, layout, or an image it would have to build; the amd64 box takes all of
+  `/data`. For expb the ARM box carries a single snapshot set — Nethermind in the **flat** layout — so
+  it refuses any other client, layout, or an image it would have to build; the amd64 box takes all of
   them. **Never compare timings across the two boxes.**
 
 ### What the workflow does
@@ -246,6 +246,12 @@ dispatch the same config a second time with the arms swapped, because position a
 reach ~10% and have pointed in opposite directions on different workloads.
 
 ### What the runners actually hold
+
+The amd64 box holds the full snapshot set, so it serves every `client`, `reference_client` and
+`state_layout`. The ARM box carries the Nethermind **flat** set plus one directory per additionally
+provisioned client (`/data/<client>/<client>-<block>`), so any provisioned `client` runs there in
+single-node mode with `reference_client=none`, `state_layout=flat`, and a prebuilt image (its small
+root disk dies under a build). Sweep mode is Nethermind-only on both boxes.
 
 Both boxes carry **one** private `eth_call` corpus, `eth-call-corpus-20260805T104605Z-497-safe.jsonl.gz`
 = **497 records** (heavy simulation traffic: every record carries state overrides, median ~331 KiB). The

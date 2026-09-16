@@ -1069,6 +1069,78 @@ esac
                 self.assertEqual(result.returncode, 1, f"{result.stdout}\n{result.stderr}")
                 self.assertIn("::error::", result.stdout)
 
+    def prepare_paths(self, **environment_overrides: str) -> subprocess.CompletedProcess[str]:
+        """Run the benchmark job's path-preparation body with these resolved outputs."""
+        script = self.directory / "prepare-paths.sh"
+        script.write_text(
+            workflow_step_script(
+                RPC_WORKFLOW.read_text(encoding="utf-8"), "benchmark", "Prepare scratch and output dirs"
+            ),
+            encoding="utf-8",
+            newline="\n",
+        )
+        scratch = (self.directory / "scratch").as_posix()
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "BENCHMARK_TOOL": "jsonbench",
+                "DB_SOURCE": "",
+                "REFERENCE_DB_SOURCE": "",
+                "SCRATCH_ROOT": scratch,
+                "SNAPSHOT_ROOT": (self.directory / "snapshots").as_posix(),
+                "TOOL_CONFIG": "{}",
+                "DIAG_DIR": f"{scratch}/diag",
+                "RESULTS_DIR": f"{scratch}/diag/results/1-1",
+                "OUT_DIR": f"{scratch}/diag/results/1-1/out",
+                "STATE_DIR": f"{scratch}/diag/results/1-1/state",
+                "ARCHIVE_DIR": f"{scratch}/diag/results/1-1/archives",
+                **environment_overrides,
+            }
+        )
+        return subprocess.run(
+            [BASH, str(script)], cwd=ROOT, check=False, text=True, capture_output=True, env=environment
+        )
+
+    @unittest.skipUnless(shutil.which("jq"), "jq is required to read the sweep's snapshot block")
+    def test_path_preparation_validates_the_snapshot_each_mode_actually_mounts(self) -> None:
+        # `db_source` is resolved for every dispatch, but only `Start node` mounts it and that step is
+        # skipped in sweep mode - run-rpc-sweep.sh derives `nethermind-flat-<block>` itself. Requiring
+        # `db_source` to exist in sweep mode aborted a bare sweep over a directory it never touches.
+        snapshots = self.directory / "snapshots"
+        (snapshots / "nethermind-flat-25490000").mkdir(parents=True)
+        (snapshots / "nethermind-flat-25000000").mkdir()
+        parked = self.directory / "parked-db"
+        parked.mkdir()
+        absent = (self.directory / "absent").as_posix()
+
+        sweep = self.prepare_paths(BENCHMARK_TOOL="jsonbench-sweep", DB_SOURCE=absent)
+        self.assertEqual(sweep.returncode, 0, sweep.stdout + sweep.stderr)
+        self.assertTrue((self.directory / "scratch" / "diag" / "results" / "1-1" / "out").is_dir())
+
+        pinned = self.prepare_paths(
+            BENCHMARK_TOOL="jsonbench-sweep", DB_SOURCE=absent, TOOL_CONFIG='{"snapshot_block":"25000000"}'
+        )
+        self.assertEqual(pinned.returncode, 0, pinned.stdout + pinned.stderr)
+
+        # A sweep snapshot that is genuinely absent still has to stop the run, named by its own input.
+        missing_sweep = self.prepare_paths(BENCHMARK_TOOL="jsonbench-sweep", TOOL_CONFIG='{"snapshot_block":"1"}')
+        self.assertEqual(missing_sweep.returncode, 1, missing_sweep.stdout + missing_sweep.stderr)
+        self.assertIn("tool_config.snapshot_block", missing_sweep.stdout)
+
+        # Single-node mode keeps the original contract against `db_source`.
+        single = self.prepare_paths(DB_SOURCE=parked.as_posix())
+        self.assertEqual(single.returncode, 0, single.stdout + single.stderr)
+        missing_db = self.prepare_paths(DB_SOURCE=absent)
+        self.assertEqual(missing_db.returncode, 1, missing_db.stdout + missing_db.stderr)
+        self.assertIn("node_config.db_source", missing_db.stdout)
+
+        # The overlap guards stay unconditional: they are what keeps output off a pristine snapshot.
+        overlapping = self.prepare_paths(
+            BENCHMARK_TOOL="jsonbench-sweep", SCRATCH_ROOT=(snapshots / "nethermind-flat-25490000").as_posix()
+        )
+        self.assertEqual(overlapping.returncode, 1, overlapping.stdout + overlapping.stderr)
+        self.assertIn("disjoint", overlapping.stdout)
+
     def test_profilers_start_between_the_warmup_and_the_measured_cell(self) -> None:
         start_node = START_NODE.read_text(encoding="utf-8")
         start_profilers = START_PROFILERS.read_text(encoding="utf-8")
@@ -1261,12 +1333,19 @@ else
 fi
 ''',
         )
-        for command in ("apt-get", "journalctl", "rm", "find", "du"):
+        for command in ("apt-get", "journalctl", "rm", "du"):
             self.write_executable(f"headroom-bin/{command}", "#!/bin/bash\nexit 0\n")
+        self.write_executable(
+            "headroom-bin/find",
+            '#!/bin/bash\nprintf "%s\\n" "$*" >> "$FIND_CALLS"\nexit 0\n',
+        )
 
+        find_calls = self.directory / "find-calls"
         environment = os.environ.copy()
         environment.update(
             RESULTS_DIR=output_dir.as_posix(),
+            SCRATCH_ROOT=(self.directory / "scratch").as_posix(),
+            FIND_CALLS=find_calls.as_posix(),
             FAKE_DOCKER_ROOT=docker_root.as_posix(),
             FAKE_CONTAINERD_ROOT=containerd_root.as_posix(),
             ROOT_FREE=str(2 * 1024**3),
@@ -1291,6 +1370,11 @@ fi
 
         enough = run_reclaim()
         self.assertEqual(enough.returncode, 0, f"{enough.stdout}\n{enough.stderr}")
+        # Results moved off ${runner.temp}, whose wipe used to reclaim them for a run that died with the
+        # box; only a bounded sweep here keeps a killed run from leaking its multi-GB archives for good.
+        swept = find_calls.read_text(encoding="utf-8")
+        self.assertIn("diag/results", swept)
+        self.assertIn("-mtime +1", swept)
 
         environment["OUTPUT_FREE"] = str(6 * 1024**3 - 1)
         low_output = run_reclaim()
@@ -1320,9 +1404,12 @@ fi
         def run_prepare(scratch: Path, db: Path, results: Path, state: Path, archives: Path) -> subprocess.CompletedProcess[str]:
             environment = os.environ.copy()
             environment.update(
+                BENCHMARK_TOOL="jsonbench",
                 DB_SOURCE=db.as_posix(),
                 REFERENCE_DB_SOURCE="",
                 SCRATCH_ROOT=scratch.as_posix(),
+                SNAPSHOT_ROOT=(self.directory / "snapshots").as_posix(),
+                TOOL_CONFIG="{}",
                 DIAG_DIR=(scratch / "diag").as_posix(),
                 RESULTS_DIR=results.as_posix(),
                 OUT_DIR=(results / "out").as_posix(),

@@ -756,9 +756,12 @@ jobs:
       - name: Prepare scratch and output dirs
         shell: bash
         env:
+          BENCHMARK_TOOL: ${{ needs.resolve.outputs.benchmark_tool }}
           DB_SOURCE: ${{ needs.resolve.outputs.db_source }}
           REFERENCE_DB_SOURCE: ${{ needs.resolve.outputs.ref_db_source }}
           SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
+          SNAPSHOT_ROOT: ${{ needs.resolve.outputs.snapshot_root }}
+          TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
         run: |
           set -euo pipefail
           fail_path() { echo "::error::$*"; exit 1; }
@@ -770,10 +773,21 @@ jobs:
             is_under "$path" "$root" || is_under "$root" "$path"
           }
 
-          db_canonical="$(canonical_existing "${DB_SOURCE}")" || fail_path "DB_SOURCE '${DB_SOURCE}' is missing or unresolvable; set node_config.db_source to an existing snapshot path."
+          # `db_source` is resolved for every dispatch but only `Start node` consumes it, and that step does
+          # not run in sweep mode - run-rpc-sweep.sh derives its own `nethermind-flat-<block>` snapshot.
+          # Checking `db_source` there would abort the run over a directory it was never going to mount.
+          if [[ "${BENCHMARK_TOOL}" == "jsonbench-sweep" ]]; then
+            sweep_block="$(printf '%s' "${TOOL_CONFIG:-}" | jq -r '.snapshot_block // empty' 2>/dev/null || true)"
+            db_source="${SNAPSHOT_ROOT}/nethermind-flat-${sweep_block:-25490000}"
+            db_hint="tool_config.snapshot_block"
+          else
+            db_source="${DB_SOURCE}"
+            db_hint="node_config.db_source"
+          fi
+          db_canonical="$(canonical_existing "${db_source}")" || fail_path "DB source '${db_source}' is missing or unresolvable; set ${db_hint} to an existing snapshot path."
           scratch_canonical="$(canonical_planned "${SCRATCH_ROOT}")" || fail_path "cannot canonicalize SCRATCH_ROOT '${SCRATCH_ROOT}'"
-          [[ -d "${db_canonical}" ]] || fail_path "DB_SOURCE '${DB_SOURCE}' is not a directory"
-          path_overlaps "${scratch_canonical}" "${db_canonical}" && fail_path "SCRATCH_ROOT must be disjoint from DB_SOURCE"
+          [[ -d "${db_canonical}" ]] || fail_path "DB source '${db_source}' is not a directory"
+          path_overlaps "${scratch_canonical}" "${db_canonical}" && fail_path "SCRATCH_ROOT must be disjoint from the DB source '${db_source}'"
           if [[ -n "${REFERENCE_DB_SOURCE}" ]]; then
             ref_db_canonical="$(canonical_existing "${REFERENCE_DB_SOURCE}")" || fail_path "Reference DB source '${REFERENCE_DB_SOURCE}' is missing or unresolvable; set node_config.reference_db_source to an existing snapshot path."
           else
@@ -789,7 +803,7 @@ jobs:
           for planned in "${DIAG_DIR}" "${RESULTS_DIR}" "${OUT_DIR}" "${STATE_DIR}" "${ARCHIVE_DIR}"; do
             canonical="$(canonical_planned "${planned}")" || fail_path "cannot canonicalize output path '${planned}'"
             is_under "${canonical}" "${scratch_canonical}" && [[ "${canonical}" != "${scratch_canonical}" ]] || fail_path "output path '${planned}' escapes SCRATCH_ROOT"
-            path_overlaps "${canonical}" "${db_canonical}" && fail_path "output path '${planned}' overlaps DB_SOURCE"
+            path_overlaps "${canonical}" "${db_canonical}" && fail_path "output path '${planned}' overlaps the DB source '${db_source}'"
             if [[ -n "${ref_db_canonical}" ]] && path_overlaps "${canonical}" "${ref_db_canonical}"; then
               fail_path "output path '${planned}' overlaps reference DB source"
             fi
@@ -804,6 +818,7 @@ jobs:
             ${{ needs.resolve.outputs.image_ref }}
             ${{ needs.resolve.outputs.ref_image_ref }}
           KEEP_TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
+          SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
         # Filling the disk docker writes to kills the daemon and takes the runner with it. That disk is not always `/`:
         # the box keeps its image store on the data volume, so the pull headroom follows docker's configured store
         # and `/` is only held to what RUNNER_TEMP needs. The containerd image store ignores `image prune`, so the
@@ -844,6 +859,10 @@ jobs:
           docker volume ls -q | grep -E '^expb-' | xargs -r docker volume rm -f || true
           find /root/actions-runner/_diag -type f -name '*.log' -mtime +1 -delete 2>/dev/null || true
           rm -rf /root/actions-runner/_work/_temp/* 2>/dev/null || true
+          # Results used to live under ${runner.temp}, which the wipe above reclaimed for a run that died
+          # with the box. They now sit on the snapshot disk, where only `Defensive cleanup` removes them -
+          # and that never runs if the job never reaches teardown. Sweep anything a live run cannot own.
+          find "${SCRATCH_ROOT}/diag/results" -mindepth 1 -maxdepth 1 -type d -mtime +1 -exec rm -rf {} + 2>/dev/null || true
           apt-get clean 2>/dev/null || true
           journalctl --vacuum-size=200M 2>/dev/null || true
           # Stale benchmark images are the monotonic consumer: every campaign pushes multi-GB tags and
