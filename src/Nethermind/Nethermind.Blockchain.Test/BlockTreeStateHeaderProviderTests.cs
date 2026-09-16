@@ -104,16 +104,17 @@ public class BlockTreeStateHeaderProviderTests
     }
 
     [Test]
-    public void FindParentHeader_ResolvesByParentHashAndHeight()
+    public void FindParentHeader_ResolvesByParentHashAndHeight_WithoutTotalDifficultyOrLevelCreation()
     {
         BlockHeader parent = Build.A.BlockHeader.WithNumber(9).TestObject;
         BlockHeader target = Build.A.BlockHeader.WithNumber(10).WithParentHash(parent.Hash!).TestObject;
+        const BlockTreeLookupOptions readOnlyLookup = BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
 
-        _blockTree.FindHeader(target.ParentHash!, BlockTreeLookupOptions.None, target.Number - 1).Returns(parent);
+        _blockTree.FindHeader(target.ParentHash!, readOnlyLookup, target.Number - 1).Returns(parent);
 
         BlockHeader? result = _provider.FindParentHeader(target);
 
         Assert.That(result, Is.SameAs(parent));
-        _blockTree.Received(1).FindHeader(target.ParentHash!, BlockTreeLookupOptions.None, target.Number - 1);
+        _blockTree.Received(1).FindHeader(target.ParentHash!, readOnlyLookup, target.Number - 1);
     }
 }

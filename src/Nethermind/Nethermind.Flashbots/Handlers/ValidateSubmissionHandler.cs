@@ -194,7 +194,13 @@ public class ValidateSubmissionHandler(
             return false;
         }
 
-        using Scope<ProcessingEnv> scope = _blockProcessorEnv.BuildAndOverrideAtTarget(block.Header);
+        if (!_blockProcessorEnv.TryBuildAndOverrideAtTarget(block.Header, stateOverride: null, specOverride: null, out Scope<ProcessingEnv>? scope))
+        {
+            error = $"No state available for parent of block {block.Header.ToString(BlockHeader.Format.FullHashAndNumber)}";
+            return false;
+        }
+
+        using IDisposable processingScope = scope;
         IWorldState worldState = scope.Component.WorldState;
         IBlockProcessor blockProcessor = scope.Component.BlockProcessor;
 

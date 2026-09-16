@@ -4,7 +4,8 @@
 namespace Nethermind.State.Flat;
 
 /// <summary>
-/// The requested state does not exist (pruned or concurrently removed) and no retry can recover it — as opposed
-/// to transient gather failures (e.g. timeout under load), which remain plain <see cref="InvalidOperationException"/>.
+/// The requested state cannot serve the request — it does not exist (pruned or concurrently removed) or the backend
+/// refuses it for that usage — and no retry can recover it, as opposed to transient gather failures (e.g. timeout
+/// under load), which remain plain <see cref="InvalidOperationException"/>.
 /// </summary>
 internal sealed class StateUnavailableException(string message) : InvalidOperationException(message);
