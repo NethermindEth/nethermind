@@ -54,12 +54,28 @@ public class StatelessInputGeneratorTests
     }
 
     [Test]
-    public void Malformed_input_returns_failure([Values(0, 1)] int length)
+    public void Direct_execution_rejects_mismatched_transaction_root()
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent).TestObject;
+        block.Header.TxRoot = TestItem.KeccakA;
+        using Witness witness = EmptyWitness([Rlp.Encode(parent).Bytes]);
+
+        Assert.That(StatelessExecutor.Execute(block, witness, new TestSpecProvider(Osaka.Instance)), Is.False);
+    }
+
+    [Test]
+    public void Malformed_input_returns_failure([Values(0, 2)] int length)
     {
         byte[] output = StatelessExecutor.Execute(new byte[length]);
         StatelessValidationResult.Decode(output, out StatelessValidationResult result);
 
-        Assert.That(result.IsSuccess, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsSuccess, Is.False);
+            Assert.That(result.SchemaId, Is.Zero);
+            Assert.That(result.NewPayloadRequestRoot, Is.EqualTo(Hash256.Zero));
+        }
     }
 
     [Test]
