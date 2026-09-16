@@ -5466,7 +5466,7 @@ namespace Nethermind.TxPool.Test
 
             // The gauge, not a second submission: the payer here is the sender, whose balance already covers
             // several such reservations, so nothing it submits later can observe the leak. The baseline absorbs
-            // the residue of the pools that sibling tests hold while this one runs.
+            // residue from the pools that earlier tests left undisposed.
             long payersBefore = Metrics.FrameTxPayersWithReservedExposure;
 
             Assert.That(_txPool.SubmitTx(first, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
@@ -5636,11 +5636,13 @@ namespace Nethermind.TxPool.Test
 
             Transaction frameBlobTx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
 
-            PersistentBlobTxDistinctSortedPool poolBeforeRestart = new(blobTxStorage, txPoolConfig, comparer, LimboLogs.Instance);
-            Assert.That(poolBeforeRestart.TryInsert(frameBlobTx.Hash, frameBlobTx, out _), Is.True);
+            using (PersistentBlobTxDistinctSortedPool poolBeforeRestart = new(blobTxStorage, txPoolConfig, comparer, LimboLogs.Instance))
+            {
+                Assert.That(poolBeforeRestart.TryInsert(frameBlobTx.Hash, frameBlobTx, out _), Is.True);
+            }
 
             // A fresh pool over the same storage stands in for a node restart.
-            PersistentBlobTxDistinctSortedPool poolAfterRestart = new(blobTxStorage, txPoolConfig, comparer, LimboLogs.Instance);
+            using PersistentBlobTxDistinctSortedPool poolAfterRestart = new(blobTxStorage, txPoolConfig, comparer, LimboLogs.Instance);
 
             byte[][] blobs = new byte[1][];
             ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[1];

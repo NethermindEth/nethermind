@@ -2078,6 +2078,8 @@ namespace Nethermind.TxPool.Test
             int maxTryCount = 5;
             for (int i = 0; i < maxTryCount; ++i)
             {
+                // TearDown reaches only the last iteration's pool.
+                if (_txPool is not null) await _txPool.DisposeAsync();
                 _txPool = CreatePool();
                 int transactionsPerPeer = 5;
                 Transaction[] transactions = AddTransactionsToPool(true, false, transactionsPerPeer);
