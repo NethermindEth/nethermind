@@ -302,7 +302,11 @@ public sealed class FlatStorageTree(
         // trie-node access), so it writes only the flat overlay. Pick the strategy once here.
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
         // A tree the builder never touched (e.g. a batch driven directly, not via committed writes) takes the normal path.
-        if (_builtByBuilder && _scope.UsePrebuiltStorageTries) return new PrebuiltStorageWriteBatch(this, onRootUpdated);
+        if (_builtByBuilder && _scope.UsePrebuiltStorageTries)
+        {
+            Db.Metrics.IncrementParallelStorageRootPrebuiltTrees();
+            return new PrebuiltStorageWriteBatch(this, onRootUpdated);
+        }
 
         StorageTree tree = GetTrees().Tree;
         Dictionary<UInt256, UInt256>? earlyApplied = AdoptEarlyTree(tree);

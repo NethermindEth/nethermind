@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -61,8 +62,11 @@ internal sealed class StorageRootBuilder
     public void CompleteAndJoin()
     {
         if (_drained) return;
+        Db.Metrics.ParallelStorageRootDrainBacklog += _pending.Count;
+        long start = Stopwatch.GetTimestamp();
         _pending.CompleteAdding();
         _thread.Join();
+        Db.Metrics.ParallelStorageRootDrainWaitMicros += (long)Stopwatch.GetElapsedTime(start).TotalMicroseconds;
         _drained = true;
         _pending.Dispose();
     }
