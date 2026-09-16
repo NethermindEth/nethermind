@@ -108,6 +108,9 @@ public sealed class FlatStorageTree(
 
     public void HintSet(in UInt256 index, in UInt256 value)
     {
+        StorageRootBuilder? builder = _scope.StorageRootBuilder;
+        if (builder is not null && builder.TryEnqueue(this, in index, in value)) return;
+
         WarmUpSlot(index);
         if (!_scope.AppliesStorageWritesEarly || Volatile.Read(ref _earlyState) == EarlyClaimed) return;
 
@@ -211,6 +214,16 @@ public sealed class FlatStorageTree(
         return applied;
     }
 
+    // Builder thread only, until the scope drains the builder.
+    internal void ApplyCommitted(in UInt256 index, in UInt256 value)
+    {
+        Span<byte> buffer = stackalloc byte[32];
+        value.ToBigEndian(buffer);
+        GetTrees().Tree.Set(in index, value.IsZero ? StorageTree.ZeroBytes : buffer.WithoutLeadingZeros());
+    }
+
+    internal void HashDirtyPaths() => GetTrees().Tree.UpdateRootHash(canBeParallel: false);
+
     private void WarmUpSlot(UInt256 index)
     {
         if (_bundle.ShouldQueuePrewarm(_address, index))
@@ -283,6 +296,7 @@ public sealed class FlatStorageTree(
         // A trie-less (history-backed) scope can't maintain the storage trie (its persistence reader throws on
         // trie-node access), so it writes only the flat overlay. Pick the strategy once here.
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
+        if (_scope.UsePrebuiltStorageTries) return new PrebuiltStorageWriteBatch(this, onRootUpdated);
 
         StorageTree tree = GetTrees().Tree;
         Dictionary<UInt256, UInt256>? earlyApplied = AdoptEarlyTree(tree);
@@ -362,6 +376,34 @@ public sealed class FlatStorageTree(
         }
 
         public void Dispose() => trieBatch.Dispose();
+    }
+
+    // ParallelStorageRoot: the builder already applied every committed write into the trie, so only mirror the values
+    // into the flat overlay and commit. A clear resets the trie, after which the remaining writes must go in again.
+    private sealed class PrebuiltStorageWriteBatch(
+        FlatStorageTree storageTree,
+        Action<Address, Hash256> onRootUpdated) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        private bool _cleared;
+
+        public void Set(in UInt256 index, in UInt256 value)
+        {
+            if (_cleared) storageTree.ApplyCommitted(in index, in value);
+            storageTree.Set(index, value);
+        }
+
+        public void Clear()
+        {
+            storageTree.ClearStorage();
+            _cleared = true;
+        }
+
+        public void Dispose()
+        {
+            StorageTree tree = storageTree.GetTrees().Tree;
+            tree.Commit();
+            onRootUpdated(storageTree._address, tree.RootHash);
+        }
     }
 
     // Trie-less scope: only the flat overlay is written; there is no storage trie to maintain.

@@ -33,6 +33,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly Hash256 _initialStateRoot;
     private StateTree? _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
+    private readonly StorageRootBuilder? _storageRootBuilder;
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
     private bool _isDisposed = false;
 
@@ -101,6 +102,25 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _earlyApplier = IdleStorageApplier.GetInstance(logManager);
             _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
         }
+
+        // VerifyWithTrie reads the tries on the block thread during execution, which the builder must own exclusively.
+        if (configuration.ParallelStorageRoot && !configuration.VerifyWithTrie && !isReadOnly && !_trieless)
+            _storageRootBuilder = new StorageRootBuilder(configuration.ParallelStorageRootEagerHash, logManager);
+    }
+
+    /// <summary>The builder to hand committed storage writes to, or null once it has drained or faulted.</summary>
+    internal StorageRootBuilder? StorageRootBuilder =>
+        _storageRootBuilder is { IsFaulted: false, IsDrained: false } ? _storageRootBuilder : null;
+
+    /// <summary>True when the drained builder left every storage trie already built, so the flush only commits them.</summary>
+    internal bool UsePrebuiltStorageTries => _storageRootBuilder is { IsDrained: true, IsFaulted: false };
+
+    private void DrainStorageRootBuilder()
+    {
+        if (_storageRootBuilder is null) return;
+        _storageRootBuilder.CompleteAndJoin();
+        // A faulted builder may have left a trie half-applied; drop them all so the flush rebuilds from the committed parent.
+        if (_storageRootBuilder.IsFaulted) _storages.Clear();
     }
 
     internal bool AppliesStorageWritesEarly => _earlyApplier is not null && !_earlyApplyClosed;
@@ -132,6 +152,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // Nothing reads the warmed paths after this, so queued jobs skip their walk and the wait covers only walks in flight.
         Interlocked.Increment(ref _hintSequenceId);
         CancelHintBal();
+        _storageRootBuilder?.CompleteAndJoin();
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
@@ -517,6 +538,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         CancelHintBal();
         _earlyApplyClosed = true;
+        DrainStorageRootBuilder();
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
