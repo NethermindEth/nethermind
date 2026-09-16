@@ -127,6 +127,15 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Slot writes per contract per block above which speculative storage root updates stop for that contract, leaving the rest to the parallel block-end bulk update. Only used with SpeculativeStorageRoots.", DefaultValue = "256")]
     int SpeculativeStorageRootContractCap { get; set; }
 
+    /// <summary>Slot writes one speculative drain must carry before it also hashes the tree.</summary>
+    /// <remarks>
+    /// A narrower drain only loads and sets, leaving the hash to a wider drain or to the block-end pass, which hashes
+    /// every contract in parallel anyway; hashing each drain re-hashes a hot contract's paths once per transaction.
+    /// Set above the per-block write count to apply during execution and hash only at the block end.
+    /// </remarks>
+    [ConfigItem(Description = "Slot writes a speculative drain must carry before it also hashes that storage tree. Higher means fewer, wider hash passes during execution. Only used with SpeculativeStorageRoots.", DefaultValue = "4")]
+    int SpeculativeStorageRootMinDrainToHash { get; set; }
+
     /// <summary>Whether committed account writes are also applied to the state trie on the speculation workers.</summary>
     /// <remarks>
     /// Account writes only become known when the block commits, so they share the workers with the last storage drains
