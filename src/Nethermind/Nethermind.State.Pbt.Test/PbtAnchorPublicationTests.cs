@@ -48,7 +48,7 @@ public class PbtAnchorPublicationTests
     {
         using Stream input = typeof(PbtAnchorPublicationTests).Assembly.GetManifestResourceStream("Nethermind.State.Pbt.Test.Fixtures.Eip8347.genesis.json")!;
         ChainSpec chain = new GethGenesisLoader(new EthereumJsonSerializer()).Load(input);
-        PbtConfig config = new() { MigrationEnabled = true, MigrationGenesisBootstrap = true };
+        PbtConfig config = new() { Enabled = true, MigrationGenesisBootstrap = true };
         using TempPath scratch = TempPath.GetTempDirectory();
         if (mode == "export") config.MigrationExportPath = Path.Combine(scratch.Path, "bundle");
         using CancellationTokenSource exitCancellation = new();

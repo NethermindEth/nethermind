@@ -9,35 +9,33 @@ namespace Nethermind.State.Pbt;
 
 internal static class PbtMigrationConfigValidator
 {
+    /// <summary>Whether the chain specification schedules an EIP-8347 migration, i.e. a binaryTrieTime after the MPT genesis.</summary>
+    internal static bool IsScheduledMigration(ChainSpec chainSpec) =>
+        chainSpec.Parameters.Eip8347TransitionTimestamp is { } activation && chainSpec.Genesis is { } genesis && activation > genesis.Timestamp;
+
     internal static void Validate(IPbtConfig config, IFlatDbConfig flatConfig, ChainSpec chainSpec, string targetPath)
     {
-        if (!config.MigrationEnabled)
+        if (!IsScheduledMigration(chainSpec))
         {
-            if (config.MigrationExportPath is not null) Fail("MigrationExportPath requires MigrationEnabled.");
+            if (config.MigrationExportPath is not null) Fail("MigrationExportPath requires a scheduled binaryTrieTime migration.");
             return;
         }
 
-        if (config.Enabled || config.MirrorFlat || config.FakeMatchingStateRoot || config.ImportFromPreimageFlat || config.ScanTree)
-            Fail("MigrationEnabled cannot be combined with standalone PBT, mirror, fake-root, offline import or scan modes.");
+        if (config.MirrorFlat || config.FakeMatchingStateRoot || config.ImportFromPreimageFlat || config.ScanTree)
+            Fail("A scheduled binaryTrieTime migration cannot be combined with mirror, fake-root, offline import or scan modes.");
         if (!flatConfig.Enabled || flatConfig.Layout != FlatLayout.Flat)
-            Fail("MigrationEnabled requires FlatDb.Enabled and FlatLayout.Flat; preimage-flat is an offline source only.");
+            Fail("A scheduled binaryTrieTime migration requires FlatDb.Enabled and FlatLayout.Flat; preimage-flat is an offline source only.");
         if (flatConfig.HistoryEnabled)
             Fail("Migration uses its own retention and cannot enable native FlatDb.HistoryEnabled.");
-        if (chainSpec.Parameters.Eip8347TransitionTimestamp is not { } activation)
-            Fail("MigrationEnabled requires binaryTrieTime in the chain specification.");
-        else
-        {
-            if (chainSpec.Genesis is null || activation <= chainSpec.Genesis.Timestamp)
-                Fail("Migration requires an MPT genesis before binaryTrieTime; use standalone PBT for PBT-at-genesis.");
-            if (chainSpec.Parameters.Eip7928TransitionTimestamp is not { } balActivation || balActivation >= activation)
-                Fail("EIP-7928 must activate before binaryTrieTime for migration replay.");
-            if (chainSpec.Parameters.Eip6780TransitionTimestamp is not { } deletionActivation || deletionActivation >= activation)
-                Fail("EIP-6780 must activate before binaryTrieTime for migration deletion semantics.");
-            if (config.MigrationGenesisBootstrap &&
-                (chainSpec.Parameters.Eip7928TransitionTimestamp > chainSpec.Genesis!.Timestamp ||
-                 chainSpec.Parameters.Eip6780TransitionTimestamp > chainSpec.Genesis.Timestamp))
-                Fail("Genesis migration bootstrap requires EIP-7928 and EIP-6780 at genesis.");
-        }
+        ulong activation = chainSpec.Parameters.Eip8347TransitionTimestamp!.Value;
+        if (chainSpec.Parameters.Eip7928TransitionTimestamp is not { } balActivation || balActivation >= activation)
+            Fail("EIP-7928 must activate before binaryTrieTime for migration replay.");
+        if (chainSpec.Parameters.Eip6780TransitionTimestamp is not { } deletionActivation || deletionActivation >= activation)
+            Fail("EIP-6780 must activate before binaryTrieTime for migration deletion semantics.");
+        if (config.MigrationGenesisBootstrap &&
+            (chainSpec.Parameters.Eip7928TransitionTimestamp > chainSpec.Genesis!.Timestamp ||
+             chainSpec.Parameters.Eip6780TransitionTimestamp > chainSpec.Genesis.Timestamp))
+            Fail("Genesis migration bootstrap requires EIP-7928 and EIP-6780 at genesis.");
 
         bool snapshot = HasPath(config.MigrationSnapshotPath);
         bool preimages = HasPath(config.MigrationPreimagesPath);

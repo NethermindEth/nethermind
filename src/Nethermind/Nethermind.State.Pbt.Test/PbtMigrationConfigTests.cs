@@ -24,7 +24,7 @@ public class PbtMigrationConfigTests
         Parameters = new ChainParameters { Eip8347TransitionTimestamp = 100, Eip7928TransitionTimestamp = 10, Eip6780TransitionTimestamp = 10 }
     };
 
-    private static PbtConfig Config() => new() { MigrationEnabled = true, MigrationGenesisBootstrap = true };
+    private static PbtConfig Config() => new() { Enabled = true, MigrationGenesisBootstrap = true };
     private static FlatDbConfig Flat() => new() { Enabled = true, Layout = FlatLayout.Flat };
 
     [Test]
@@ -47,7 +47,6 @@ public class PbtMigrationConfigTests
         PbtConfig config = new();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(config.MigrationEnabled, Is.False);
             Assert.That(config.MigrationGenesisBootstrap, Is.False);
             Assert.That(config.MigrationManifestPath, Is.Null);
             Assert.That(config.MigrationSnapshotPath, Is.Null);
@@ -81,7 +80,7 @@ public class PbtMigrationConfigTests
 
     [Test]
     public void Rejects_invalid_configuration([Values(
-        "enabled", "mirror", "fake", "import", "scan", "flat-disabled", "layout", "no-fork", "genesis-fork",
+        "mirror", "fake", "import", "scan", "flat-disabled", "layout",
         "no-bal", "late-bal", "genesis-bal", "genesis-deletion", "no-deletion", "late-deletion", "partial", "mixed", "no-manifest", "overlap", "whitespace")] string invalid)
     {
         PbtConfig config = Config();
@@ -89,15 +88,12 @@ public class PbtMigrationConfigTests
         ChainSpec chain = Chain();
         switch (invalid)
         {
-            case "enabled": config.Enabled = true; break;
             case "mirror": config.MirrorFlat = true; break;
             case "fake": config.FakeMatchingStateRoot = true; break;
             case "import": config.ImportFromPreimageFlat = true; break;
             case "scan": config.ScanTree = true; break;
             case "flat-disabled": flat.Enabled = false; break;
             case "layout": flat.Layout = FlatLayout.PreimageFlat; break;
-            case "no-fork": chain.Parameters.Eip8347TransitionTimestamp = null; break;
-            case "genesis-fork": chain.Parameters.Eip8347TransitionTimestamp = 10; break;
             case "no-bal": chain.Parameters.Eip7928TransitionTimestamp = null; break;
             case "late-bal": chain.Parameters.Eip7928TransitionTimestamp = 100; break;
             case "genesis-bal": chain.Parameters.Eip7928TransitionTimestamp = 11; break;
@@ -114,12 +110,15 @@ public class PbtMigrationConfigTests
     }
 
     [Test]
-    public void Scheduled_migration_requires_explicit_runtime_enablement([Values] bool requested)
+    public void Scheduled_binary_trie_requires_explicit_runtime_enablement([Values] bool requested, [Values(10UL, 100UL)] ulong activation)
     {
-        PbtPlugin plugin = new(requested ? Config() : new PbtConfig(), Flat(), Chain(), new InitConfig { BaseDbPath = "target" });
+        ChainSpec chain = Chain();
+        chain.Parameters.Eip8347TransitionTimestamp = activation;
+        PbtPlugin plugin = new(requested ? Config() : new PbtConfig(), Flat(), chain, new InitConfig { BaseDbPath = "target" });
         Assert.That(plugin.Enabled, Is.True);
-        if (requested) Assert.That(plugin.Module, Is.TypeOf<PbtMigrationModule>());
-        else Assert.Throws<InvalidConfigurationException>(() => _ = plugin.Module);
+        if (!requested) Assert.Throws<InvalidConfigurationException>(() => _ = plugin.Module);
+        else if (activation > chain.Genesis!.Timestamp) Assert.That(plugin.Module, Is.TypeOf<PbtMigrationModule>());
+        else Assert.That(plugin.Module, Is.TypeOf<PbtModule>());
     }
 
     [Test]
@@ -128,15 +127,16 @@ public class PbtMigrationConfigTests
         FlatDbConfig flat = Flat();
         flat.HistoryEnabled = true;
         Assert.Throws<InvalidConfigurationException>(() => PbtMigrationConfigValidator.Validate(Config(), flat, Chain(), "target"));
-        Assert.DoesNotThrow(() => PbtMigrationConfigValidator.Validate(new PbtConfig(), flat, Chain(), "target"));
+        Assert.DoesNotThrow(() => PbtMigrationConfigValidator.Validate(Config(), flat, new ChainSpec(), "target"));
     }
 
     [Test]
-    public void Offline_export_requires_isolated_new_output_and_source_mode([Values("valid", "disabled", "portable", "target", "empty")] string mode)
+    public void Offline_export_requires_isolated_new_output_and_source_mode([Values("valid", "unscheduled", "portable", "target", "empty")] string mode)
     {
         PbtConfig config = Config();
+        ChainSpec chain = Chain();
         config.MigrationExportPath = Path.Combine(Path.GetTempPath(), "pbt-export-" + System.Guid.NewGuid().ToString("N"));
-        if (mode == "disabled") config.MigrationEnabled = false;
+        if (mode == "unscheduled") chain.Parameters.Eip8347TransitionTimestamp = null;
         if (mode == "portable")
         {
             config.MigrationGenesisBootstrap = false;
@@ -146,16 +146,16 @@ public class PbtMigrationConfigTests
         }
         if (mode == "target") config.MigrationExportPath = "target/export";
         if (mode == "empty") config.MigrationExportPath = " ";
-        if (mode == "valid") Assert.DoesNotThrow(() => PbtMigrationConfigValidator.Validate(config, Flat(), Chain(), "target"));
-        else Assert.Throws<InvalidConfigurationException>(() => PbtMigrationConfigValidator.Validate(config, Flat(), Chain(), "target"));
+        if (mode == "valid") Assert.DoesNotThrow(() => PbtMigrationConfigValidator.Validate(config, Flat(), chain, "target"));
+        else Assert.Throws<InvalidConfigurationException>(() => PbtMigrationConfigValidator.Validate(config, Flat(), chain, "target"));
     }
 
     [Test]
-    public void Standalone_at_genesis_remains_available([Values(0UL, 10UL)] ulong activation)
+    public void Standalone_from_genesis_runs_alongside_flat([Values(null, 0UL, 10UL)] ulong? activation)
     {
         ChainSpec chain = Chain();
         chain.Parameters.Eip8347TransitionTimestamp = activation;
-        PbtPlugin plugin = new(new PbtConfig { Enabled = true }, new FlatDbConfig { Enabled = false }, chain, new InitConfig());
+        PbtPlugin plugin = new(new PbtConfig { Enabled = true }, Flat(), chain, new InitConfig());
         Assert.That(plugin.Module, Is.TypeOf<PbtModule>());
     }
 }

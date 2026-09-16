@@ -9,7 +9,6 @@ namespace Nethermind.State.Pbt;
 public class PbtConfig : IPbtConfig
 {
     public bool Enabled { get; set; }
-    public bool MigrationEnabled { get; set; }
     public string? MigrationManifestPath { get; set; }
     public string? MigrationSnapshotPath { get; set; }
     public string? MigrationPreimagesPath { get; set; }

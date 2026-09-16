@@ -61,7 +61,7 @@ internal sealed class MigrationLifecycleHarness(IContainer container, Dictionary
         }
 
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(targetPath))!);
-        PbtConfig config = new() { MigrationEnabled = true, MigrationGenesisBootstrap = !portable };
+        PbtConfig config = new() { Enabled = true, MigrationGenesisBootstrap = !portable };
         if (portable)
         {
             config.MigrationSnapshotPath = Path.Combine(fixtures, "canonical", "anchor", "snapshot.pbt");

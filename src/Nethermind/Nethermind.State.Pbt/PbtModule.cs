@@ -11,6 +11,7 @@ using Nethermind.Init.Modules;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Pbt.Persistence;
@@ -80,6 +81,13 @@ public class PbtModule(IPbtConfig config) : Module
                 .AddSingleton<PbtScanner>()
                 .AddStep(typeof(ScanPbtTree));
         }
+
+        builder.OnBuild(ctx =>
+        {
+            if (ctx.Resolve<ChainSpec>().Parameters.Eip8347TransitionTimestamp is not null) return;
+            ILogger logger = ctx.Resolve<ILogManager>().GetClassLogger<PbtModule>();
+            if (logger.IsInfo) logger.Info("No binaryTrieTime in the chain specification; assuming the EIP-8297 binary tree state from genesis.");
+        });
     }
 
     private sealed class PruningDisabledAdminRpcModule : IPruningTrieStateAdminRpcModule

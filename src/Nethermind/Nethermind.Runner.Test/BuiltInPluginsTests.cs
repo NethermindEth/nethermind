@@ -24,10 +24,10 @@ namespace Nethermind.Runner.Test;
 public class BuiltInPluginsTests
 {
     [Test]
-    public async Task Scheduled_pbt_is_not_silently_disabled_by_plugin_loader([Values] bool migrationEnabled)
+    public async Task Scheduled_pbt_is_not_silently_disabled_by_plugin_loader([Values] bool pbtEnabled)
     {
         ConfigProvider configs = new(
-            new PbtConfig { MigrationEnabled = migrationEnabled, MigrationGenesisBootstrap = true },
+            new PbtConfig { Enabled = pbtEnabled, MigrationGenesisBootstrap = true },
             new FlatDbConfig { Enabled = true, Layout = FlatLayout.Flat },
             new BlocksConfig { PreWarming = PreWarmMode.None },
             new InitConfig());
@@ -40,7 +40,7 @@ public class BuiltInPluginsTests
         loader.Load();
         IList<INethermindPlugin> plugins = await loader.LoadPlugins(configs, chainSpec);
         Assert.That(plugins, Has.Count.EqualTo(1));
-        if (migrationEnabled) Assert.That(plugins[0].Module, Is.Not.Null);
+        if (pbtEnabled) Assert.That(plugins[0].Module, Is.Not.Null);
         else Assert.Throws<InvalidConfigurationException>(() => _ = plugins[0].Module);
     }
 
