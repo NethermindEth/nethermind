@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Stats.SyncLimits;
@@ -10,34 +9,14 @@ namespace Nethermind.Synchronization.Blocks
 {
     public static class PeerInfoExtensions
     {
-        public static int MaxBodiesPerRequest(this PeerInfo peer) => peer.PeerClientType switch
-        {
-            NodeClientType.Besu => BeSuSyncLimits.MaxBodyFetch,
-            NodeClientType.Geth => GethSyncLimits.MaxBodyFetch,
-            NodeClientType.Nethermind => NethermindSyncLimits.MaxBodyFetch,
-            NodeClientType.Parity => ParitySyncLimits.MaxBodyFetch,
-            NodeClientType.OpenEthereum => ParitySyncLimits.MaxBodyFetch,
-            NodeClientType.Trinity => GethSyncLimits.MaxBodyFetch,
-            NodeClientType.Erigon => GethSyncLimits.MaxBodyFetch,
-            NodeClientType.Reth => GethSyncLimits.MaxBodyFetch,
-            NodeClientType.Unknown => 32,
-            _ => throw new ArgumentOutOfRangeException(nameof(peer.PeerClientType), peer.PeerClientType, null)
-        };
-
-        public static int MaxReceiptsPerRequest(this PeerInfo peer) => peer.PeerClientType switch
-        {
-            NodeClientType.Besu => BeSuSyncLimits.MaxReceiptFetch,
-            NodeClientType.Geth => GethSyncLimits.MaxReceiptFetch,
-            NodeClientType.Nethermind => NethermindSyncLimits.MaxReceiptFetch,
-            NodeClientType.Parity => ParitySyncLimits.MaxReceiptFetch,
-            NodeClientType.OpenEthereum => ParitySyncLimits.MaxReceiptFetch,
-            NodeClientType.Trinity => GethSyncLimits.MaxReceiptFetch,
-            NodeClientType.Erigon => GethSyncLimits.MaxReceiptFetch,
-            NodeClientType.Reth => GethSyncLimits.MaxReceiptFetch,
-            NodeClientType.Unknown => 128,
-            _ => throw new ArgumentOutOfRangeException(nameof(peer.PeerClientType), peer.PeerClientType, null)
-        };
-
+        /// <summary>
+        /// The number of headers <paramref name="peer"/> is expected to serve in a single request.
+        /// </summary>
+        /// <remarks>
+        /// Client types with no known limit fall back to the Geth one, which every client serves. Throwing
+        /// instead would abort the sync loop whenever a peer runs a client that was added to
+        /// <see cref="NodeClientType"/> but not listed here.
+        /// </remarks>
         public static int MaxHeadersPerRequest(this PeerInfo peer) => peer.PeerClientType switch
         {
             NodeClientType.Besu => BeSuSyncLimits.MaxHeaderFetch,
@@ -48,8 +27,7 @@ namespace Nethermind.Synchronization.Blocks
             NodeClientType.Trinity => GethSyncLimits.MaxHeaderFetch,
             NodeClientType.Erigon => GethSyncLimits.MaxHeaderFetch,
             NodeClientType.Reth => GethSyncLimits.MaxHeaderFetch,
-            NodeClientType.Unknown => 192,
-            _ => throw new ArgumentOutOfRangeException(nameof(peer.PeerClientType), peer.PeerClientType, null)
+            _ => GethSyncLimits.MaxHeaderFetch
         };
     }
 }
