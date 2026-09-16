@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -312,6 +313,36 @@ public class BlockCachePreWarmerTests
         // AddressA should still be warmed via speculative tx execution (not BAL path)
         // since it's a sender in the transactions
         Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _), Is.True, "AddressA should be warmed via speculative execution even without BAL path");
+    }
+
+    /// <summary>
+    /// The system access lists are registered through an <c>as IHasAccessList</c> cast, so a decorator over
+    /// <see cref="IExecutionRequestsProcessor"/> that stops implementing it would drop the hint with no error.
+    /// </summary>
+    [Test]
+    public void SystemAccessLists_ResolvedFromTheProcessingScope_CoverTheRequestQueueContracts()
+    {
+        IHasAccessList[] systemAccessLists = _processingScope.Resolve<IHasAccessList[]>();
+        IWorldState worldState = _processingScope.Resolve<IWorldState>();
+        Block block = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000).TestObject;
+
+        List<Address> hintedAddresses = [];
+        using (worldState.BeginScope(BuildParentHeader()))
+        {
+            foreach (IHasAccessList systemAccessList in systemAccessLists)
+            {
+                AccessList? accessList = systemAccessList.GetAccessList(block, Amsterdam.Instance);
+                if (accessList is null) continue;
+
+                foreach ((Address address, _) in accessList)
+                {
+                    hintedAddresses.Add(address);
+                }
+            }
+        }
+
+        Assert.That(hintedAddresses, Does.Contain(Eip7002Constants.WithdrawalRequestPredeployAddress)
+            .And.Contains(Eip7251Constants.ConsolidationRequestPredeployAddress));
     }
 
     /// <summary>Prewarming warms a transaction's declared EIP-2930 access-list slots for the main thread.</summary>
