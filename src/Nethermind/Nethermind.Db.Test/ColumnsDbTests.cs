@@ -19,9 +19,12 @@ public class ColumnsDbTests
     string DbPath => "testdb/" + TestContext.CurrentContext.Test.Name;
     private ColumnsDb<ReceiptsColumns> _db = null!;
 
+    private static void TraceStage(string stage) => File.AppendAllText(Path.Combine(Path.GetTempPath(), "db-stages.log"), stage + Environment.NewLine);
+
     [SetUp]
     public void Setup()
     {
+        TraceStage("Setup: " + Path.GetFullPath(DbPath));
         if (Directory.Exists(DbPath))
         {
             Directory.Delete(DbPath, true);
@@ -40,6 +43,7 @@ public class ColumnsDbTests
         );
 
         _db = columnsDb;
+        TraceStage("DB opened");
     }
 
     [TearDown]
@@ -217,13 +221,16 @@ public class ColumnsDbTests
     [TestCase(true)]
     public void Snapshot_ReadAhead_ConcurrentColumnsKeepIndependentSnapshotValues(bool flush)
     {
+        TraceStage("Concurrent start");
         ReceiptsColumns[] columns = Enum.GetValues<ReceiptsColumns>();
         for (int c = 0; c < columns.Length; c++)
         {
             IDb column = _db.GetColumnDb(columns[c]);
             for (int i = 0; i < 64; i++) column.Set([(byte)i, 0, 0], [(byte)c, (byte)i]);
         }
+        TraceStage("Seeded");
         if (flush) _db.Flush();
+        TraceStage("Flushed");
         using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot(sequentialReadAhead: true);
         for (int c = 0; c < columns.Length; c++)
         {
@@ -231,6 +238,7 @@ public class ColumnsDbTests
             for (int i = 0; i < 64; i++) column.Set([(byte)i, 0, 0], null);
         }
 
+        TraceStage("Snapshot created and head deleted");
         Parallel.For(0, 16, worker =>
         {
             int c = worker % columns.Length;
@@ -241,6 +249,7 @@ public class ColumnsDbTests
             }
             Assert.That(column.Get([255, 0, 0], ReadFlags.HintReadAhead), Is.Null);
         });
+        TraceStage("Parallel read complete");
     }
 
     [TestCase(false)]

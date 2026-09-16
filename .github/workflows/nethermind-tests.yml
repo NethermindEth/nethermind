@@ -7,6 +7,8 @@ jobs:
   windows-db-diagnostics:
     runs-on: windows-latest
     timeout-minutes: 15
+    env:
+      DOTNET_GCConserveMemory: 9
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -14,13 +16,13 @@ jobs:
         run: dotnet build src/Nethermind/Nethermind.Db.Test/Nethermind.Db.Test.csproj -c Release
       - name: Snapshot sequential reads
         continue-on-error: true
-        run: dotnet test --project src/Nethermind/Nethermind.Db.Test/Nethermind.Db.Test.csproj -c Release --no-build -- --filter FullyQualifiedName~Snapshot_Get_WithHintReadAhead --output Detailed --no-ansi --diagnostic --diagnostic-synchronous-write
+        run: dotnet test --project src/Nethermind/Nethermind.Db.Test/Nethermind.Db.Test.csproj -c Release --no-build -- --filter FullyQualifiedName~Snapshot_Get_WithHintReadAhead --output Detailed --no-ansi --diagnostic --diagnostic-synchronous-write --diagnostic-output-directory "${{ runner.temp }}/db-diag"
       - name: Snapshot concurrent reads
         continue-on-error: true
-        run: dotnet test --project src/Nethermind/Nethermind.Db.Test/Nethermind.Db.Test.csproj -c Release --no-build -- --filter FullyQualifiedName~Snapshot_ReadAhead_ConcurrentColumns --output Detailed --no-ansi --diagnostic --diagnostic-synchronous-write
+        run: dotnet test --project src/Nethermind/Nethermind.Db.Test/Nethermind.Db.Test.csproj -c Release --no-build -- --filter FullyQualifiedName~Snapshot_ReadAhead_ConcurrentColumns --output Detailed --no-ansi --diagnostic --diagnostic-synchronous-write --diagnostic-output-directory "${{ runner.temp }}/db-diag"
       - name: All database tests
         continue-on-error: true
-        run: dotnet test --project src/Nethermind/Nethermind.Db.Test/Nethermind.Db.Test.csproj -c Release --no-build -- --output Detailed --no-ansi --diagnostic --diagnostic-synchronous-write
+        run: dotnet test --project src/Nethermind/Nethermind.Db.Test/Nethermind.Db.Test.csproj -c Release --no-build -- --output Detailed --no-ansi --diagnostic --diagnostic-synchronous-write --diagnostic-output-directory "${{ runner.temp }}/db-diag"
       - name: Windows crash events
         if: always()
         shell: pwsh
@@ -32,6 +34,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: windows-db-diagnostics
-          path: src/Nethermind/artifacts/bin/Nethermind.Db.Test/release/TestResults/
+          path: |
+            ${{ runner.temp }}/db-diag/
+            ${{ runner.temp }}/db-stages.log
           if-no-files-found: ignore
           retention-days: 3
