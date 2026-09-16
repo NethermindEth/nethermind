@@ -148,6 +148,20 @@ namespace Nethermind.Db
         private static CacheLinePaddedLong _parallelStorageRootWrites;
         public static void IncrementParallelStorageRootWrites() => Interlocked.Increment(ref _parallelStorageRootWrites.Value);
 
+        [CounterMetric]
+        [Description("Microseconds the block thread spent waiting for the parallel storage root builder to finish its backlog at commit.")]
+        public static long ParallelStorageRootDrainWaitMicros { get; set; }
+
+        [CounterMetric]
+        [Description("Committed storage writes still queued for the parallel storage root builder when the block commit started.")]
+        public static long ParallelStorageRootDrainBacklog { get; set; }
+
+        [CounterMetric]
+        [Description("Storage tries committed straight from the parallel storage root builder's output instead of being rebuilt at commit.")]
+        public static long ParallelStorageRootPrebuiltTrees => _parallelStorageRootPrebuiltTrees.Value;
+        private static CacheLinePaddedLong _parallelStorageRootPrebuiltTrees;
+        public static void IncrementParallelStorageRootPrebuiltTrees() => Interlocked.Increment(ref _parallelStorageRootPrebuiltTrees.Value);
+
         [GaugeMetric]
         [Description("Indicator if StateDb is being pruned.")]
         public static int StateDbPruning { get; set; }
