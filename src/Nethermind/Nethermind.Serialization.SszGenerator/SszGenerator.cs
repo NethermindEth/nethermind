@@ -156,6 +156,7 @@ public class SszGenerator : IIncrementalGenerator
 
     const string Whitespace = "/**/";
     private const int UnboundedBitlistLimit = 0;
+    private const int ProgressiveContainerStackAllocationLimit = 32;
     static readonly Regex OpeningWhiteSpaceRegex = new("{/(\\n\\s+)+\\n/");
     static readonly Regex ClosingWhiteSpaceRegex = new("/(\\s+\\n)+    }/");
     public static string FixWhitespace(string data) => OpeningWhiteSpaceRegex.Replace(
@@ -1047,7 +1048,7 @@ internal static class SszCodecHelpers
 
         return string.Join("\n",
         [
-            $"Span<UInt256> subRoots = {(decl.Members!.Length <= 32 ? "stackalloc" : "new")} UInt256[{decl.Members.Length}];",
+            $"Span<UInt256> subRoots = {(decl.Members!.Length <= ProgressiveContainerStackAllocationLimit ? "stackalloc" : "new")} UInt256[{decl.Members.Length}];",
             ..memberRoots,
             "Merkle.MerkleizeProgressive(out root, subRoots);",
             $"Merkle.MixInActiveFields(ref root, {activeFields});",

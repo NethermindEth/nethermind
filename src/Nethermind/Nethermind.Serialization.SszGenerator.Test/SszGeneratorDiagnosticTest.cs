@@ -16,6 +16,8 @@ namespace Nethermind.Serialization.SszGenerator.Test;
 
 public class SszGeneratorDiagnosticTest
 {
+    private const int ProgressiveContainerStackAllocationLimit = 32;
+
     [TestCase(0, false)]
     [TestCase(3, false)]
     [TestCase(4, false)]
@@ -73,7 +75,7 @@ public class SszGeneratorDiagnosticTest
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual, Is.EqualTo(expected));
-            Assert.That(allocated, fieldCount <= 32 ? Is.Zero : Is.GreaterThan(0));
+            Assert.That(allocated, fieldCount <= ProgressiveContainerStackAllocationLimit ? Is.Zero : Is.GreaterThan(0));
         }
     }
 
