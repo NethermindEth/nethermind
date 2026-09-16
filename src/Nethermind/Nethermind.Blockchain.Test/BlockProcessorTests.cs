@@ -262,7 +262,8 @@ public class BlockProcessorTests
 
     [TestCase("callTracer")]
     [TestCase("prestateTracer")]
-    public async Task ParallelBlockTracer_TracesACoveredBlockTransactionByTransaction_LikeTheReplayDoes(string tracerName)
+    [TestCase(null, TestName = "ParallelBlockTracer_TracesACoveredBlockTransactionByTransaction_LikeTheReplayDoes(structLogs)")]
+    public async Task ParallelBlockTracer_TracesACoveredBlockTransactionByTransaction_LikeTheReplayDoes(string? tracerName)
     {
         IReleaseSpec spec = Prague.Instance;
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
@@ -272,7 +273,7 @@ public class BlockProcessorTests
         BlockHeader parent = chain.BlockTree.Head!.Header;
         Block block = await AddThreeTransferBlock(chain);
         IndexThroughTheCapture(chain, index, block, parent, spec);
-        GethTraceOptions traceOptions = new() { Tracer = tracerName };
+        GethTraceOptions traceOptions = new() { Tracer = tracerName! };
         using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, degree: 2, LimboLogs.Instance);
 
         string expected = chain.JsonSerializer.Serialize(new GethLikeTxTraceCollection(TraceWholeBlockThroughTraceEnvironment(chain, parent, block,
@@ -429,10 +430,16 @@ public class BlockProcessorTests
         using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, degree: 3, LimboLogs.Instance);
         ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.StateDiff;
 
+        // The later the transaction, the sooner its worker finishes, so completion order is the reverse of block
+        // order and only the emitter's handoff can produce the sequence asserted below.
         List<ParityLikeTxTrace> streamed = [];
         bool traced = parallel.TryStream(block, parent,
-            (_, txHash) => new ParityLikeBlockTracer(txHash, types), afterTransactions: null,
-            batch => streamed.AddRange(batch), CancellationToken.None);
+            (_, txHash) =>
+            {
+                Thread.Sleep(200 * (block.Transactions.Length - Array.FindIndex(block.Transactions, tx => tx.Hash == txHash)));
+                return new ParityLikeBlockTracer(txHash, types);
+            },
+            afterTransactions: null, batch => streamed.AddRange(batch), CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {

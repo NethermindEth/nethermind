@@ -45,6 +45,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     private readonly Workers _workers;
     private readonly int _degree;
     private readonly ILogger _logger;
+    private volatile bool _disposed;
 
     public ParallelBlockTracer(Func<IOverridableEnv<Components>> buildEnvironment, IPrefixStateSeedSource seeds, int degree, ILogManager logManager)
     {
@@ -88,7 +89,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         out IReadOnlyList<TTrace>? traces)
     {
         traces = null;
-        if (_degree < 2 || !_seeds.Enabled || block.Transactions.Length < 2 || !HashesKnown(block.Transactions)) return false;
+        if (_disposed || _degree < 2 || !_seeds.Enabled || block.Transactions.Length < 2 || !HashesKnown(block.Transactions)) return false;
         if (!_seeds.TryOpenBlock(block, out ICoveredBlock? covered)) return false;
 
         using (covered)
@@ -189,8 +190,6 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 
                 scope.Component.Processor.Process(OwnCopy(block), TraceProcessingOptions.ReadOnlyReplay, bounded, token);
                 results[index] = tracer.BuildResult();
-                emitter.Publish();
-                return true;
             }
             catch
             {
@@ -202,6 +201,13 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         {
             _slots.Release();
         }
+
+        // Outside the permit and the environment on purpose: writing the trace out ends in a blocking flush of the
+        // response, which a client that stops reading can hold indefinitely. A worker that waits there must not be
+        // holding one of the node's processing environments while it does, or one unread response stops every trace
+        // on the node rather than its own.
+        emitter.Publish();
+        return true;
     }
 
     private IReadOnlyCollection<TTrace> TraceAfterTransactions<TTrace>(Block block, BlockHeader parent, IPrefixStateSeedSource seeds,
@@ -271,6 +277,9 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 
     public void Dispose()
     {
+        // Set first: a block arriving from here on is refused outright and replayed, rather than failing on an
+        // environment pool that is already closing.
+        _disposed = true;
         _workers.Dispose();
         _environments.Dispose();
     }
@@ -365,9 +374,11 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             {
                 while (_next < results.Length && results[_next] is { } ready)
                 {
-                    emit(ready);
+                    // Taken before it is written: a write that fails leaves a doomed response either way, and losing
+                    // the trace is better than a sibling finding the slot still armed and writing it twice.
                     results[_next] = null;
                     _next++;
+                    emit(ready);
                 }
             }
         }
