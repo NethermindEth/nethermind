@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -673,6 +674,56 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(1);
 
         Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(RawTrieRoot((1, 0xA), (2, 0xB))));
+    }
+
+    [Test]
+    public void SpeculativeStorageRoots_WideDrainMatchesBlockEndRoot()
+    {
+        using TestContext ctx = new(new FlatDbConfig { SpeculativeStorageRoots = true });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+
+        FlatStorageTree tree = (FlatStorageTree)scope.CreateStorageTree(address);
+        using ManualResetEventSlim released = new();
+        using ManualResetEventSlim resume = new();
+        int releases = 0;
+        tree.OnSpeculationReleased = () =>
+        {
+            // Hold the worker after the first drain so the following writes coalesce into one wide drain.
+            if (Interlocked.Increment(ref releases) != 1) return;
+            released.Set();
+            resume.Wait();
+        };
+
+        tree.HintSet(1, 0x1);
+        Assert.That(released.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        (UInt256 Index, UInt256 Value)[] slots = new (UInt256, UInt256)[48];
+        for (int i = 0; i < slots.Length; i++)
+        {
+            slots[i] = ((UInt256)(100 + i), (UInt256)(0x1000 + i));
+            tree.HintSet(slots[i].Index, slots[i].Value);
+        }
+        // Slot 120 ends at zero, slot 130 is rewritten; the wide drain must coalesce both.
+        tree.HintSet(120, UInt256.Zero);
+        tree.HintSet(130, 0x77);
+        resume.Set();
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slots.Length + 1);
+            storageBatch.Set(1, 0x1);
+            foreach ((UInt256 index, UInt256 value) in slots)
+            {
+                if (index == 120) continue;
+                storageBatch.Set(index, index == 130 ? 0x77 : value);
+            }
+        }
+
+        scope.Commit(1);
+
+        (UInt256, UInt256)[] expected = [(1, 0x1), .. slots.Where(s => s.Index != 120).Select(s => (s.Index, s.Index == 130 ? (UInt256)0x77 : s.Value))];
+        Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(RawTrieRoot(expected)));
     }
 
     [Test]

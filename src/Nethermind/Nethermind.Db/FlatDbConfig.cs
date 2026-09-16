@@ -34,6 +34,8 @@ public class FlatDbConfig : IFlatDbConfig
     public bool VerifyWithTrie { get; set; } = false;
     /// <inheritdoc/>
     public bool SpeculativeStorageRoots { get; set; } = false;
+    /// <inheritdoc/>
+    public int SpeculativeStorageRootWorkers { get; set; } = 2;
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
     public ulong CompactSize { get; set; } = 32;
     public int MaxInFlightCompactJob { get; set; } = 32;

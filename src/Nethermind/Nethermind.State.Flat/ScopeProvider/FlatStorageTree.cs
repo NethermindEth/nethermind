@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
@@ -15,6 +16,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -36,15 +38,17 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     private int _selfDestructKnownStateIdx;
 
     // Speculative root hashing (IFlatDbConfig.SpeculativeStorageRoots): committed slot values are applied to the trie
-    // and the changed paths hashed on a pool thread while later transactions execute. The block thread is the only
-    // producer, one runner at a time consumes, and finalization claims the trie through the same state word, so a
-    // runner can never reacquire it after the join.
+    // and the changed paths hashed by the scope's bounded workers while later transactions execute. The block thread
+    // is the only producer, at most one worker drains a tree at a time, and finalization claims the trie through the
+    // same state word, so a worker can never reacquire it after the join.
     private const int SpeculationIdle = 0;
-    private const int SpeculationRunning = 1;
-    private const int SpeculationOwned = 2;
+    private const int SpeculationQueued = 1;
+    private const int SpeculationRunning = 2;
+    private const int SpeculationOwned = 3;
     private readonly bool _speculate;
     private ConcurrentQueue<SpeculativeWrite>? _speculativeQueue;
     private Dictionary<UInt256, UInt256>? _speculativelyApplied;
+    private Dictionary<UInt256, UInt256>? _drainBatch;
     private int _speculationState;
     private volatile bool _speculationFailed;
     private Hash256 _speculationBaseRoot;
@@ -134,24 +138,29 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         }
 
         _speculativeQueue.Enqueue(new SpeculativeWrite(in index, in value));
-        if (Interlocked.CompareExchange(ref _speculationState, SpeculationRunning, SpeculationIdle) == SpeculationIdle)
+        if (Interlocked.CompareExchange(ref _speculationState, SpeculationQueued, SpeculationIdle) == SpeculationIdle)
         {
-            ThreadPool.UnsafeQueueUserWorkItem(static tree => tree.RunSpeculation(), this, preferLocal: false);
+            _scope.EnqueueSpeculation(this);
         }
     }
 
-    private void RunSpeculation()
+    /// <summary>Drains the queued writes into the trie once, on one of the scope's speculation workers.</summary>
+    internal void RunSpeculationOnce()
     {
+        // Finalization may have claimed the trie while this tree waited in the scope's work queue.
+        if (Interlocked.CompareExchange(ref _speculationState, SpeculationRunning, SpeculationQueued) != SpeculationQueued) return;
+
         ConcurrentQueue<SpeculativeWrite> queue = _speculativeQueue!;
-        do
+        ApplySpeculativeWrites(queue);
+        Interlocked.Exchange(ref _speculationState, SpeculationIdle);
+        OnSpeculationReleased?.Invoke();
+
+        // Writes enqueued during the drain re-queue the tree behind the other contracts' work. Once finalization
+        // has claimed the trie the exchange fails and they are left for the block-end batch.
+        if (!queue.IsEmpty && Interlocked.CompareExchange(ref _speculationState, SpeculationQueued, SpeculationIdle) == SpeculationIdle)
         {
-            ApplySpeculativeWrites(queue);
-            Interlocked.Exchange(ref _speculationState, SpeculationIdle);
-            OnSpeculationReleased?.Invoke();
+            _scope.EnqueueSpeculation(this);
         }
-        // A write enqueued after the drain but before the release would otherwise wait for the next one. Once
-        // finalization has claimed the trie the exchange fails and the write is left for the block-end batch.
-        while (!queue.IsEmpty && Interlocked.CompareExchange(ref _speculationState, SpeculationRunning, SpeculationIdle) == SpeculationIdle);
     }
 
     [SkipLocalsInit]
@@ -173,23 +182,43 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
         try
         {
-            Dictionary<UInt256, UInt256> applied = _speculativelyApplied!;
-            Unsafe.SkipInit(out EvmWord buffer);
-            int count = 0;
-            while (queue.TryDequeue(out SpeculativeWrite write))
+            // Coalesce so a slot rewritten by several transactions costs one trie update, and so a wide drain can take
+            // the same prefix-sharing bulk path the block-end batch uses. Parallel work stays off: the scope caps the
+            // number of speculation workers, and this is the only hashing budget they get.
+            Dictionary<UInt256, UInt256> batch = _drainBatch ??= [];
+            batch.Clear();
+            while (queue.TryDequeue(out SpeculativeWrite write)) batch[write.Index] = write.Value;
+            if (batch.Count == 0) return;
+
+            if (batch.Count > TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH)
             {
-                UInt256 value = write.Value;
-                _tree.Set(in write.Index, value.IsZero ? StorageTree.ZeroBytes : value.ToMinimalBigEndian(ref buffer));
-                applied[write.Index] = value;
-                count++;
+                using ArrayPoolList<PatriciaTree.BulkSetEntry> entries = new(batch.Count);
+                ValueHash256 key = default;
+                foreach (KeyValuePair<UInt256, UInt256> kv in batch)
+                {
+                    StorageTree.ComputeKeyWithLookup(kv.Key, ref key);
+                    entries.Add(new PatriciaTree.BulkSetEntry(in key, EncodeSlotValue(kv.Value)));
+                }
+
+                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entriesRef = entries.ToRef();
+                _tree.BulkSet(entriesRef, PatriciaTree.Flags.DoNotParallelize);
+            }
+            else
+            {
+                Unsafe.SkipInit(out EvmWord buffer);
+                foreach (KeyValuePair<UInt256, UInt256> kv in batch)
+                {
+                    UInt256 value = kv.Value;
+                    _tree.Set(kv.Key, value.IsZero ? StorageTree.ZeroBytes : value.ToMinimalBigEndian(ref buffer));
+                }
             }
 
-            if (count > 0)
-            {
-                _tree.UpdateRootHash(canBeParallel: count > 64);
-                Db.Metrics.IncrementSpeculativeStorageWrites(count);
-                Db.Metrics.IncrementSpeculativeStorageHashPasses();
-            }
+            Dictionary<UInt256, UInt256> applied = _speculativelyApplied!;
+            foreach (KeyValuePair<UInt256, UInt256> kv in batch) applied[kv.Key] = kv.Value;
+
+            _tree.UpdateRootHash(canBeParallel: false);
+            Db.Metrics.IncrementSpeculativeStorageWrites(batch.Count);
+            Db.Metrics.IncrementSpeculativeStorageHashPasses();
         }
         catch (Exception e)
         {
@@ -209,12 +238,22 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         }
     }
 
-    /// <summary>Claims the trie from the speculative runner and rewinds it if any of its work failed.</summary>
+    // The storage trie stores the RLP of the minimal big-endian value; an empty value deletes the leaf.
+    private static byte[] EncodeSlotValue(in UInt256 value)
+    {
+        if (value.IsZero) return [];
+        byte[] minimal = value.ToMinimalBigEndian();
+        byte[] encoded = new byte[Rlp.LengthOf(minimal)];
+        Rlp.Encode(minimal, encoded);
+        return encoded;
+    }
+
+    /// <summary>Claims the trie from the speculation workers and rewinds it if any of their work failed.</summary>
     /// <remarks>
-    /// Ownership moves through the state word: the caller waits for the runner to release and takes the idle slot
-    /// itself, so a runner that still sees queued work cannot reacquire. Writes left in the queue are dropped; the
-    /// block-end batch writes every slot the applied set does not already hold. Safe to call more than once and from
-    /// the write batch's worker threads.
+    /// Ownership moves through the state word: the caller waits for a running worker to release and takes the idle or
+    /// queued slot itself, so a worker that still sees queued work cannot reacquire. Writes left in the queue are
+    /// dropped; the block-end batch writes every slot the applied set does not already hold. Safe to call more than
+    /// once and from the write batch's worker threads.
     /// </remarks>
     internal void JoinSpeculation()
     {
@@ -222,7 +261,20 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
         SpinWait spinWait = new();
         long waitStart = Stopwatch.GetTimestamp();
-        while (Interlocked.CompareExchange(ref _speculationState, SpeculationOwned, SpeculationIdle) == SpeculationRunning) spinWait.SpinOnce();
+        while (true)
+        {
+            int state = Volatile.Read(ref _speculationState);
+            if (state == SpeculationOwned) break;
+            if (state == SpeculationRunning)
+            {
+                spinWait.SpinOnce();
+                continue;
+            }
+
+            // Idle or still waiting in the scope's work queue: claim it before a worker gets to it.
+            if (Interlocked.CompareExchange(ref _speculationState, SpeculationOwned, state) == state) break;
+        }
+
         Db.Metrics.IncrementSpeculativeStorageJoinWaitTicks(Stopwatch.GetElapsedTime(waitStart).Ticks);
 
         while (_speculativeQueue.TryDequeue(out _)) { }

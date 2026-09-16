@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -34,8 +35,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
-    // Storage trees with a speculative root runner to join before the trie is committed or the bundle disposed.
+    // Storage trees with speculative root work to join before the trie is committed or the bundle disposed.
     private ConcurrentQueue<FlatStorageTree>? _speculatingStorages;
+    // Trees with queued speculative writes, drained by at most _speculationWorkerCap pool workers.
+    private ConcurrentQueue<FlatStorageTree>? _speculationWork;
+    private int _speculationWorkers;
+    private readonly int _speculationWorkerCap;
     private bool _isDisposed = false;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
@@ -89,6 +94,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         };
 
         _configuration = configuration;
+        _speculationWorkerCap = Math.Max(1, configuration.SpeculativeStorageRootWorkers);
         _warmReadPool = warmReadPool;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
@@ -387,12 +393,44 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         storages.Enqueue(storageTree);
     }
 
-    // A tree whose account was removed gets no write batch, so its runner is joined here instead.
+    // A tree whose account was removed gets no write batch, so its work is joined here instead.
     private void JoinSpeculation()
     {
         ConcurrentQueue<FlatStorageTree>? storages = Volatile.Read(ref _speculatingStorages);
         if (storages is null) return;
         while (storages.TryDequeue(out FlatStorageTree? storageTree)) storageTree.JoinSpeculation();
+    }
+
+    internal void EnqueueSpeculation(FlatStorageTree storageTree)
+    {
+        ConcurrentQueue<FlatStorageTree> work = Volatile.Read(ref _speculationWork)
+            ?? Interlocked.CompareExchange(ref _speculationWork, new ConcurrentQueue<FlatStorageTree>(), null)
+            ?? _speculationWork!;
+        work.Enqueue(storageTree);
+        StartSpeculationWorker();
+    }
+
+    private void StartSpeculationWorker()
+    {
+        while (true)
+        {
+            int workers = Volatile.Read(ref _speculationWorkers);
+            if (workers >= _speculationWorkerCap) return;
+            if (Interlocked.CompareExchange(ref _speculationWorkers, workers + 1, workers) == workers)
+            {
+                ThreadPool.UnsafeQueueUserWorkItem(static scope => scope.RunSpeculationWorker(), this, preferLocal: false);
+                return;
+            }
+        }
+    }
+
+    private void RunSpeculationWorker()
+    {
+        ConcurrentQueue<FlatStorageTree> work = _speculationWork!;
+        while (work.TryDequeue(out FlatStorageTree? storageTree)) storageTree.RunSpeculationOnce();
+        Interlocked.Decrement(ref _speculationWorkers);
+        // A tree enqueued after the last dequeue saw a full worker set; make sure someone serves it.
+        if (!work.IsEmpty) StartSpeculationWorker();
     }
 
     internal void DecrementOutstandingWarmups() => Interlocked.Decrement(ref _outstandingWarmups);
