@@ -101,7 +101,7 @@ public class BalFetcherTests
         BlockHeader from = Block(10, bal: null);
         BlockHeader b11 = Block(11, [0x01, 0x02]);
         _pool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(new SyncPeerAllocation(AllocationContexts.State));
+            .Returns(ci => new SyncPeerAllocation(ci.Arg<AllocationContexts>()));
 
         bool result = await _fetcher.EnsureRange(from, b11, default);
 
