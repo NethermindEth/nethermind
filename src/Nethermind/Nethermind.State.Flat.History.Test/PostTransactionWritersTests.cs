@@ -16,28 +16,40 @@ namespace Nethermind.State.Flat.History.Test;
 
 public class PostTransactionWritersTests
 {
-    /// <summary>Every contract address the spec names, whichever fork is asked. The block's system calls reach them
-    /// around the transactions, so a chain that answered for one would serve mid-block state; a fork that adds one
-    /// fails here until <see cref="PostTransactionWriters"/> handles it.</summary>
-    private static IEnumerable<PropertyInfo> SpecContractAddresses => typeof(IReleaseSpec).GetProperties()
-        .Where(property => property.PropertyType == typeof(Address) && property.Name.EndsWith("ContractAddress"));
+    /// <summary>Every address the spec can name, on the interface and on the ones it derives from. A fork enables
+    /// its own contracts, so each fork is asked separately: a property a later fork introduces reads null on the
+    /// forks before it, and only that fork's own instance shows it.</summary>
+    private static IEnumerable<PropertyInfo> SpecAddresses => typeof(IReleaseSpec).GetInterfaces().Append(typeof(IReleaseSpec))
+        .SelectMany(static contract => contract.GetProperties())
+        .Where(static property => property.PropertyType == typeof(Address) && property.Name.EndsWith("Address"))
+        .DistinctBy(static property => property.Name);
+
+    /// <summary>Every fork in the tree, so a fork added tomorrow is covered without touching this test.</summary>
+    private static IEnumerable<IReleaseSpec> Forks => typeof(Bogota).Assembly.GetTypes()
+        .Where(static type => type is { IsAbstract: false, IsGenericTypeDefinition: false } && typeof(IReleaseSpec).IsAssignableFrom(type))
+        .Select(static type => type.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)?.GetValue(null) as IReleaseSpec)
+        .Where(static spec => spec is not null)!;
 
     [Test]
-    public void EveryContractAddressTheSpecNames_IsRefusedByTheChain()
+    public void EveryContractAddressEveryForkNames_IsRefusedByTheChain()
     {
-        IReleaseSpec spec = Bogota.Instance;
-        HashSet<AddressAsKey> writers = [];
-
-        PostTransactionWriters.AddSystemContracts(spec, writers);
-
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(SpecContractAddresses.Any(), Is.True, "precondition: the spec still names its contracts this way, or this test checks nothing");
-            foreach (PropertyInfo property in SpecContractAddresses)
-            {
-                if (property.GetValue(spec) is not Address address) continue;
+            Assert.That(SpecAddresses.Any(), Is.True, "precondition: the spec still names its contracts this way, or this test checks nothing");
+            Assert.That(Forks.Count(), Is.GreaterThan(1), "precondition: the forks are still found by their Instance property, or this test checks one thing twice");
 
-                Assert.That(writers, Does.Contain(new AddressAsKey(address)), $"{property.Name} is written outside a transaction, so a chain that answered for it would serve mid-block state");
+            foreach (IReleaseSpec spec in Forks)
+            {
+                HashSet<AddressAsKey> writers = [];
+                PostTransactionWriters.AddSystemContracts(spec, writers);
+
+                foreach (PropertyInfo property in SpecAddresses)
+                {
+                    if (property.GetValue(spec) is not Address address) continue;
+
+                    Assert.That(writers, Does.Contain(new AddressAsKey(address)),
+                        $"{spec.Name} names {property.Name}, which block processing writes outside a transaction, so a chain that answered for it would serve mid-block state");
+                }
             }
         }
     }

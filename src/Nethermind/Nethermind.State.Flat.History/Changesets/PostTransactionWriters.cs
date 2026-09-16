@@ -15,7 +15,7 @@ namespace Nethermind.State.Flat.History.Changesets;
 /// EIP-7251 consolidations, EIP-8282 builder deposits and exits), plus the account a chain spec exempts from
 /// EIP-158 pruning, which a system call can leave written.
 /// The contracts the spec names are checked against it by <c>PostTransactionWritersTests</c>, which walks every
-/// contract address on <see cref="IReleaseSpec"/>, so a fork that adds one there fails the test until it is handled.
+/// contract address of every fork, so a fork that adds one fails the test until it is handled.
 /// The addresses that are constants rather than spec properties, the EIP-8282 predeploys, are listed by hand and a
 /// fork that adds another one of those has to be added here by hand too.
 /// Only the seal engines in <see cref="Describes"/> are described at all: a chain whose plugin replaces the
@@ -25,7 +25,11 @@ internal static class PostTransactionWriters
     /// <summary>The seal engines whose block processing is the one described here: the standard processor, crediting
     /// withdrawals to their recipients and calling only the contracts the spec names. An AuRa chain credits
     /// withdrawals through a chainspec contract instead, which writes storage no spec property can name; Optimism
-    /// and Taiko carry their own processors. Their blocks are never chained.</summary>
+    /// and Taiko carry their own processors. Their blocks are never chained.
+    /// The answer is only as good as the provider: <see cref="ISpecProvider.SealEngine"/> is a default interface
+    /// implementation returning <see cref="SealEngineType.Ethash"/>, so a provider that adds a block processing step
+    /// of its own and leaves the property alone would be taken for a standard chain. Every provider in the tree
+    /// overrides it, through its chain spec or explicitly.</summary>
     public static bool Describes(string sealEngine) =>
         sealEngine is SealEngineType.Ethash or SealEngineType.BeaconChain or SealEngineType.Clique or SealEngineType.NethDev;
 

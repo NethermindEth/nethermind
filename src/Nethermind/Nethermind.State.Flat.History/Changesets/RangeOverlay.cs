@@ -17,7 +17,8 @@ namespace Nethermind.State.Flat.History.Changesets;
 /// the whole chain and always read from the parent state, where that block's real value is. The refusal is
 /// cumulative: an address excluded by one block is refused by every chain built on it, because an older node holding
 /// it would otherwise answer with a value that block has since changed.
-/// Only a proof-of-stake block is chained, so no uncle or non-zero reward reaches an address
+/// Only a proof-of-stake block of a chain whose processing <see cref="PostTransactionWriters.Describes"/> accepts is
+/// chained, so no uncle, non-zero reward or plugin of its own reaches an address
 /// <see cref="PostTransactionWriters"/> cannot name.</summary>
 internal sealed class RangeOverlay : IStateReadOverlay
 {
