@@ -72,6 +72,8 @@ public class StatelessInputGeneratorTests
                         payload.Withdrawals = [new SszWithdrawal { Address = TestItem.PrivateKeyA.Address, Amount = 0 }];
                         break;
                 }
+                Block reconstructed = input.NewPayloadRequest.ToBlock(requestsEnabled: true)!;
+                Assert.That(HeaderValidator.ValidateHash(reconstructed.Header), Is.EqualTo(mutation == "valid"));
                 byte[] body = StatelessInput<TPayload>.Encode(input);
                 byte[] modified = new byte[body.Length + sizeof(ushort)];
                 encoded.AsSpan(0, sizeof(ushort)).CopyTo(modified);

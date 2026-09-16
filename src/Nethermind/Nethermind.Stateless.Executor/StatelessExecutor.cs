@@ -55,9 +55,9 @@ public static class StatelessExecutor
             ReadOnlySpan<SszPublicKey> publicKeys = payload.PublicKeys.Span;
             Transaction[] transactions = block.Transactions;
 
-            if (HeaderValidator.ValidateHash(block.Header) &&
-                transactions.Length == publicKeys.Length &&
-                BlobVersionedHashesMatch(transactions, payload.VersionedHashes.Span))
+            if (transactions.Length == publicKeys.Length &&
+                BlobVersionedHashesMatch(transactions, payload.VersionedHashes.Span) &&
+                HeaderValidator.ValidateHash(block.Header))
             {
                 ISpecProvider specProvider = payload.SpecProvider;
                 IReleaseSpec spec = specProvider.GetSpec(block.Header);
