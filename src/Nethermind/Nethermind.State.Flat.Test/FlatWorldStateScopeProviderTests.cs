@@ -727,6 +727,40 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void SpeculativeStorageRoots_AccountHintsMatchBlockEndRoot()
+    {
+        using TestContext ctx = new(new FlatDbConfig { SpeculativeStorageRoots = true });
+        FlatWorldStateScope scope = ctx.Scope;
+        using ManualResetEventSlim released = new();
+        scope.OnAccountSpeculationReleased = released.Set;
+        Account first = TestItem.GenerateRandomAccount();
+        Account rewritten = TestItem.GenerateRandomAccount();
+        Account untouchedLater = TestItem.GenerateRandomAccount();
+        Account lateOnly = TestItem.GenerateRandomAccount();
+
+        // Two transactions commit: A is rewritten, B is written then written back to its pre-block value (absent).
+        scope.HintAccountSet(TestItem.AddressA, first);
+        scope.HintAccountSet(TestItem.AddressB, untouchedLater);
+        Assert.That(released.Wait(TimeSpan.FromSeconds(10)), Is.True, "speculation worker released the state trie");
+        scope.HintAccountSet(TestItem.AddressA, rewritten);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(2))
+        {
+            // The block-end view the state provider writes: B ended where it started and is skipped, C was never hinted.
+            writeBatch.Set(TestItem.AddressA, rewritten);
+            writeBatch.Set(TestItem.AddressC, lateOnly);
+        }
+
+        scope.Commit(1);
+
+        StateTree expected = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        expected.Set(TestItem.AddressA, rewritten);
+        expected.Set(TestItem.AddressC, lateOnly);
+        expected.UpdateRootHash();
+        Assert.That(scope.RootHash, Is.EqualTo(expected.RootHash));
+    }
+
+    [Test]
     public void StorageRootAfterParallelCommitMatchesRawTrie()
     {
         const int slotsPerCommit = 1024;

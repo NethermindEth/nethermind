@@ -112,6 +112,9 @@ namespace Nethermind.Consensus.Processing
         private long _startSpeculativeSkippedWrites;
         private long _startSpeculativeRestoredWrites;
         private long _startSpeculativeJoinWaitTicks;
+        private long _startSpeculativeAccountWrites;
+        private long _startSpeculativeAccountSkippedWrites;
+        private long _startSpeculativeAccountRestoredWrites;
         private double _chunkMGas;
         private long _chunkProcessingMicroseconds;
         private long _chunkTx;
@@ -231,6 +234,9 @@ namespace Nethermind.Consensus.Processing
             _startSpeculativeSkippedWrites = DbMetrics.SpeculativeStorageSkippedWrites;
             _startSpeculativeRestoredWrites = DbMetrics.SpeculativeStorageRestoredWrites;
             _startSpeculativeJoinWaitTicks = DbMetrics.SpeculativeStorageJoinWaitTicks;
+            _startSpeculativeAccountWrites = DbMetrics.SpeculativeAccountWrites;
+            _startSpeculativeAccountSkippedWrites = DbMetrics.SpeculativeAccountSkippedWrites;
+            _startSpeculativeAccountRestoredWrites = DbMetrics.SpeculativeAccountRestoredWrites;
         }
 
         public void UpdateStats(IReadOnlyList<Block> blocks, BlockHeader? baseBlock, long blockProcessingTimeInMicros)
@@ -323,6 +329,9 @@ namespace Nethermind.Consensus.Processing
                 blockData.DeltaSpeculativeSkippedWrites = DbMetrics.SpeculativeStorageSkippedWrites - _startSpeculativeSkippedWrites;
                 blockData.DeltaSpeculativeRestoredWrites = DbMetrics.SpeculativeStorageRestoredWrites - _startSpeculativeRestoredWrites;
                 blockData.DeltaSpeculativeJoinWaitTicks = DbMetrics.SpeculativeStorageJoinWaitTicks - _startSpeculativeJoinWaitTicks;
+                blockData.DeltaSpeculativeAccountWrites = DbMetrics.SpeculativeAccountWrites - _startSpeculativeAccountWrites;
+                blockData.DeltaSpeculativeAccountSkippedWrites = DbMetrics.SpeculativeAccountSkippedWrites - _startSpeculativeAccountSkippedWrites;
+                blockData.DeltaSpeculativeAccountRestoredWrites = DbMetrics.SpeculativeAccountRestoredWrites - _startSpeculativeAccountRestoredWrites;
 
                 // Snapshot per-tx timing (rents a pooled list for ThreadPool use, null when disabled).
                 // The list is disposed (returning its array to the pool) in BlockDataPolicy.Return.
@@ -806,6 +815,9 @@ namespace Nethermind.Consensus.Processing
                     writer.WriteNumber("skipped_writes", data.DeltaSpeculativeSkippedWrites);
                     writer.WriteNumber("restored_writes", data.DeltaSpeculativeRestoredWrites);
                     writer.WriteNumber("join_wait_ms", Math.Round(data.DeltaSpeculativeJoinWaitTicks / (double)TimeSpan.TicksPerMillisecond, 3));
+                    writer.WriteNumber("account_applied_writes", data.DeltaSpeculativeAccountWrites);
+                    writer.WriteNumber("account_skipped_writes", data.DeltaSpeculativeAccountSkippedWrites);
+                    writer.WriteNumber("account_restored_writes", data.DeltaSpeculativeAccountRestoredWrites);
                     writer.WriteEndObject();
 
                     // Per-transaction timing breakdown (when enabled).
@@ -943,6 +955,9 @@ namespace Nethermind.Consensus.Processing
                 data.DeltaSpeculativeSkippedWrites = 0;
                 data.DeltaSpeculativeRestoredWrites = 0;
                 data.DeltaSpeculativeJoinWaitTicks = 0;
+                data.DeltaSpeculativeAccountWrites = 0;
+                data.DeltaSpeculativeAccountSkippedWrites = 0;
+                data.DeltaSpeculativeAccountRestoredWrites = 0;
 
                 return true;
             }
@@ -1015,6 +1030,9 @@ namespace Nethermind.Consensus.Processing
             public long DeltaSpeculativeSkippedWrites;
             public long DeltaSpeculativeRestoredWrites;
             public long DeltaSpeculativeJoinWaitTicks;
+            public long DeltaSpeculativeAccountWrites;
+            public long DeltaSpeculativeAccountSkippedWrites;
+            public long DeltaSpeculativeAccountRestoredWrites;
             public ArrayPoolList<long>? PerTxTicks;
         }
     }

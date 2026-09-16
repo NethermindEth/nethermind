@@ -349,8 +349,12 @@ public class ScopeProviderTests(bool useFlat)
 
         using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics());
         scope.CreateStorageTree(TestItem.AddressA).HintSet(3, 7);
+        Account account = TestItem.GenerateRandomAccount();
+        scope.HintAccountSet(TestItem.AddressB, account);
 
         Assert.That(baseTree.ValueHints, Is.EqualTo(new[] { ((UInt256)3, (UInt256)7) }));
+        // Populator (prewarmer) commits never happen, so only the consumer scope forwards account hints.
+        baseScope.Received(isPrewarmer ? 0 : 1).HintAccountSet(TestItem.AddressB, account);
     }
 
     // The flat backend turns the value hint into a speculative trie write, so a wrapper that dropped it would silently disable that.

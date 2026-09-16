@@ -141,6 +141,12 @@ public class PrewarmerScopeProvider(
             }
         }
 
+        // Populator commits never happen (warm-up executions do not commit), so only the consumer forwards.
+        public void HintAccountSet(Address address, Account? account)
+        {
+            if (!isPrewarmer) baseScope.HintAccountSet(address, account);
+        }
+
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)

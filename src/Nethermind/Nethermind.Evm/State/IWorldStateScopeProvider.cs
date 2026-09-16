@@ -40,6 +40,12 @@ public interface IWorldStateScopeProvider
         void HintWarmSlot(in ValueAddress address, in UInt256 index) { }
 
         /// <summary>
+        /// Hint that a transaction committed <paramref name="account"/> for <paramref name="address"/>. Backends may
+        /// apply it to the state trie ahead of the block-end write batch, which still writes every account's final value.
+        /// </summary>
+        void HintAccountSet(Address address, Account? account) { }
+
+        /// <summary>
         /// Get the account information for the following address.
         /// Note: Do not rely on <see cref="Account.StorageRoot"/> as it may be modified after write. Instead use <see cref="IStorageTree.RootHash"/>.
         /// </summary>
