@@ -132,10 +132,9 @@ public class IndexTableStore : IIndexTableStore
     }
 
     /// <inheritdoc />
-    public void Remove(int level, long firstBlock, Hash256? blockHash)
+    public void Remove(int level, long firstBlock, Hash256? blockHash = null)
     {
         ConcurrentDictionary<(int Level, long FirstBlock, Hash256? BlockHash), IReadOnlyList<IndexEntry>> dict = _entries[level];
-
         if (blockHash is not null)
         {
             dict.TryRemove((level, firstBlock, blockHash), out _);
@@ -172,39 +171,6 @@ public class IndexTableStore : IIndexTableStore
             if (kvp.Key.Level == level && kvp.Key.FirstBlock == firstBlock)
             {
                 dict.TryRemove(kvp.Key, out _);
-            }
-        }
-    }
-
-    /// <inheritdoc />
-    public void Remove(int level, long firstBlock) => Remove(level, firstBlock, null);
-
-    /// <inheritdoc />
-    public void InvalidateAbove(long blockNumber)
-    {
-        for (int level = 0; level < _entries.Length; level++)
-        {
-            // A level-i table covers [firstBlock, firstBlock + TABLE_SIZES[i] - 1], so it is
-            // invalidated as soon as its last covered block is above the retained head.
-            long lastBlockOffset = Eip8304Constants.TableSizes[level] - 1;
-            ConcurrentDictionary<(int Level, long FirstBlock, Hash256? BlockHash), IReadOnlyList<IndexEntry>> dict = _entries[level];
-            foreach (KeyValuePair<(int Level, long FirstBlock, Hash256? BlockHash), IReadOnlyList<IndexEntry>> kvp in dict)
-            {
-                if (kvp.Key.FirstBlock + lastBlockOffset > blockNumber)
-                {
-                    dict.TryRemove(kvp.Key, out _);
-                }
-            }
-
-            ConcurrentDictionary<(int Level, long FirstBlock), Hash256?> latestDict = _latestByBlock[level];
-            ConcurrentDictionary<(int Level, long FirstBlock), ConcurrentQueue<Hash256?>> variantsDict = _variantsByHeight[level];
-            foreach (KeyValuePair<(int Level, long FirstBlock), Hash256?> kvp in latestDict)
-            {
-                if (kvp.Key.FirstBlock + lastBlockOffset > blockNumber)
-                {
-                    latestDict.TryRemove(kvp.Key, out _);
-                    variantsDict.TryRemove(kvp.Key, out _);
-                }
             }
         }
     }

@@ -39,22 +39,5 @@ public interface IIndexTableStore
     /// <summary>
     /// Removes a table entry for a specific block hash, or all branch variants if blockHash is null.
     /// </summary>
-    void Remove(int level, long firstBlock, Hash256? blockHash);
-
-    /// <summary>
-    /// Removes all table entries for the given level and first block across all branch variants.
-    /// </summary>
-    void Remove(int level, long firstBlock) => Remove(level, firstBlock, null);
-
-    /// <summary>
-    /// Removes every table that covers a block above <paramref name="blockNumber"/>.
-    /// Used after a chain reorganization to discard invalidated tables.
-    /// </summary>
-    /// <remarks>
-    /// A level-<c>i</c> table spans <c>[firstBlock, firstBlock + TABLE_SIZES[i] - 1]</c>, so a table
-    /// whose first block is at or below <paramref name="blockNumber"/> may still contain
-    /// reorged-out blocks and must be dropped.
-    /// </remarks>
-    /// <param name="blockNumber">The highest block number that remains valid.</param>
-    void InvalidateAbove(long blockNumber);
+    void Remove(int level, long firstBlock, Hash256? blockHash = null);
 }
