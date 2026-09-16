@@ -236,10 +236,11 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             using IContainer container = CreateContainerBuilder().Build();
             ISnapTrieFactory factory = container.Resolve<ISnapTrieFactory>();
+            using ByteArrayListAdapter proofs = new(proofList);
 
             (AddRangeResult result, _, _, _) = SnapProviderHelper.AddStorageRange(
                 factory, account, slots, Keccak.Zero, null,
-                proofs: new ByteArrayListAdapter(proofList));
+                proofs);
 
             Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProofNode));
         }
