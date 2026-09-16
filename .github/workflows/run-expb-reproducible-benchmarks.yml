@@ -67,9 +67,11 @@ on:
         default: ""
       additional_extra_flags:
         description: >-
-          Optional extra Nethermind flags. Example (single): --Merge.SweepMemory=NoGC.
+          Optional extra flags appended to the selected client's command line.
+          Nethermind example (single): --Merge.SweepMemory=NoGC.
           Example (multiple): --Sync.FastSync=false, --Pruning.CacheMb=12000
-          (or provide one flag per line).
+          (or provide one flag per line). Reference-client example:
+          --engine.slow-block-threshold=0 for reth.
         required: false
         default: ""
       flat_write_buffer_floor:
@@ -410,10 +412,6 @@ jobs:
             fi
             if [[ "${enable_retrospective}" == "true" ]]; then
               echo "client=${client} does not support Nethermind retrospective image discovery; provide docker_images explicitly."
-              exit 1
-            fi
-            if printf '%s' "${additional_extra_flags}" | grep -Eq '[^[:space:],]'; then
-              echo "additional_extra_flags are Nethermind-only and cannot be passed to client=${client}."
               exit 1
             fi
             if printf '%s' "${client_env}" | grep -Eq '[^[:space:],]'; then
