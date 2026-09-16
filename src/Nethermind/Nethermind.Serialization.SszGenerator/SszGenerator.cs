@@ -1204,13 +1204,18 @@ internal static class SszCodecHelpers
                 }
             }
 
-            // The scratch size is logarithmic in the field count, so this stack allocation needs no count-based cap.
-            // Mirrors Merkle.NextPowerOfTwoExponent(n) + 1; BitOperations is unavailable on netstandard2.0.
-            int chunkCount = 1;
-            for (int remaining = decl.Members!.Length - 1; remaining > 0; remaining >>= 1) chunkCount++;
-            string containerMerkleizeBody = decl.Kind == Kind.ProgressiveContainer
-                ? ProgressiveContainerMerkleizeBody(decl)
-                : string.Join("\n",
+            string containerMerkleizeBody;
+            if (decl.Kind == Kind.ProgressiveContainer)
+            {
+                containerMerkleizeBody = ProgressiveContainerMerkleizeBody(decl);
+            }
+            else
+            {
+                // The scratch size is logarithmic in the field count, so this stack allocation needs no count-based cap.
+                // Mirrors Merkle.NextPowerOfTwoExponent(n) + 1; BitOperations is unavailable on netstandard2.0.
+                int chunkCount = 1;
+                for (int remaining = decl.Members!.Length - 1; remaining > 0; remaining >>= 1) chunkCount++;
+                containerMerkleizeBody = string.Join("\n",
                 [
                     $"Span<UInt256> chunks = stackalloc UInt256[{chunkCount}];",
                     ..(decl.Members.Length == 0
@@ -1220,6 +1225,7 @@ internal static class SszCodecHelpers
                     ..decl.Members.Select(m => MerkleizeFeedStatement(m, $"container.{m.Name}")),
                     "merkleizer.CalculateRoot(out root);",
                 ]);
+            }
             bool isByteListItself = decl.IsSszListItself && decl.IsStruct && IsByteList(variables[0]);
             string byteListVariableName = isByteListItself ? VarName(variables[0].Name) : string.Empty;
             string byteListAssignment = isByteListItself ? DecodeAssignmentExpression(variables[0], byteListVariableName, sourceIsArray: true) : string.Empty;
