@@ -14,7 +14,9 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITrieWarmer.IStorageWarmer
 {
-    private readonly StorageTree _tree;
+    private StorageTree _tree;
+    private BackgroundStorageTrie? _background;
+    private readonly ILogManager _logManager;
     private readonly StorageTree _warmupStorageTree;
     private readonly Address _address;
     private readonly IFlatDbConfig _config;
@@ -55,6 +57,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         _warmupStorageTree.RootRef = _tree.RootRef;
 
         _config = config;
+        _logManager = logManager;
     }
 
     public Hash256 RootHash => _tree.RootHash;
@@ -83,6 +86,20 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     // they don't trigger commit-time tree updates. Warm-up is driven from HintSet on the write
     // path instead.
     public void HintSet(in UInt256 index) => WarmUpSlot(index);
+
+    /// <inheritdoc/>
+    public IWorldStateScopeProvider.IStorageWriteBatch? StartBackgroundWriteBatch()
+    {
+        if (!_scope.BackgroundStorageTrieUpdates) return null;
+        if (_background is null || _background.IsStopped)
+        {
+            StorageTree tree = new(_tree.TrieStore, _tree.RootHash, _logManager);
+            _background = new BackgroundStorageTrie(tree, _scope.BackgroundConcurrency);
+        }
+        return _background;
+    }
+
+    internal void StopBackgroundWrites() => _background?.Dispose();
 
     private void WarmUpSlot(UInt256 index)
     {
@@ -135,6 +152,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     internal void ClearStorage()
     {
+        StopBackgroundWrites();
         _bundle.ClearStorage(_address, _addressHash);
         _selfDestructKnownStateIdx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
         _tree.RootHash = Keccak.EmptyTreeHash;
@@ -148,28 +166,49 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         // trie-node access), so it writes only the flat overlay. Pick the strategy once here.
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
 
-        TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, _tree, onRootUpdated, _address, commit: true);
-        return new StorageTreeBulkWriteBatch(trieBatch, this);
+        BackgroundStorageTrie? prepared = _background?.Complete() == true ? _background : null;
+        if (prepared is not null) _tree = prepared.Tree;
+        TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(
+            estimatedEntries, _tree, onRootUpdated, _address, commit: true);
+        return new StorageTreeBulkWriteBatch(trieBatch, this, prepared, onRootUpdated);
     }
 
     // Normal scope: maintain the storage trie (for the root) and mirror values into the flat overlay.
     private sealed class StorageTreeBulkWriteBatch(
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch,
-        FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
+        FlatStorageTree storageTree,
+        BackgroundStorageTrie? prepared,
+        Action<Address, Hash256> onRootUpdated) : IWorldStateScopeProvider.IStorageWriteBatch
     {
+        private bool _needsPreparedCommit = prepared is not null;
+
         public void Set(in UInt256 index, in UInt256 value)
         {
-            trieBatch.Set(in index, value);
+            if (prepared?.Contains(index, value) != true)
+            {
+                trieBatch.Set(in index, value);
+                _needsPreparedCommit = false;
+            }
             storageTree.Set(index, value);
         }
 
         public void Clear()
         {
+            prepared = null;
+            _needsPreparedCommit = false;
             trieBatch.Clear();
             storageTree.ClearStorage();
         }
 
-        public void Dispose() => trieBatch.Dispose();
+        public void Dispose()
+        {
+            trieBatch.Dispose();
+            if (_needsPreparedCommit)
+            {
+                storageTree._tree.Commit();
+                onRootUpdated(storageTree._address, storageTree.RootHash);
+            }
+        }
     }
 
     // Trie-less scope: only the flat overlay is written; there is no storage trie to maintain.

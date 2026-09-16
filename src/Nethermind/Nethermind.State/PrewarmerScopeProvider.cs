@@ -328,6 +328,9 @@ public class PrewarmerScopeProvider(
 
         public void HintSet(in UInt256 index) => baseStorageTree.HintSet(in index);
 
+        public IWorldStateScopeProvider.IStorageWriteBatch? StartBackgroundWriteBatch() =>
+            isPrewarmer ? null : baseStorageTree.StartBackgroundWriteBatch();
+
         private void LoadFromTreeStorage(in StorageCell storageCell, out UInt256 value)
         {
             // PreBlock misses only (consumer scope): StorageTreeReads is already counted once per

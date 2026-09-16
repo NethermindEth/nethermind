@@ -96,6 +96,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
         }
 
         public void HintSet(in UInt256 index) => storageTree.HintSet(in index);
+
+        public IWorldStateScopeProvider.IStorageWriteBatch? StartBackgroundWriteBatch() => storageTree.StartBackgroundWriteBatch();
     }
 
     private class WriteBatchWrapper : IWorldStateScopeProvider.IWorldStateWriteBatch

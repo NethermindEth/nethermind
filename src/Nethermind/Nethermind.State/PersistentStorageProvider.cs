@@ -875,6 +875,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private sealed class PerContractState : IReturnable
     {
         private IWorldStateScopeProvider.IStorageTree? _backend;
+        private IWorldStateScopeProvider.IStorageWriteBatch? _backgroundWriteBatch;
 
         private readonly DefaultableDictionary BlockChange = new();
         private bool _wasWritten = false;
@@ -992,6 +993,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public void Clear()
         {
+            StopBackgroundWrites();
             EnsureStorageTree();
             _wasCleared = true;
             ForgetLastRead();
@@ -1000,6 +1002,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public DefaultableDictionary.ClearSnapshot ClearRevertibly()
         {
+            StopBackgroundWrites();
             EnsureStorageTree();
             // Stays set if the clear is reverted: a cache then drops slots it could have kept, never keeps stale ones.
             _wasCleared = true;
@@ -1015,6 +1018,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public void Return()
         {
+            StopBackgroundWrites();
             _address = null;
             _provider = null;
             _backend = null;
@@ -1057,11 +1061,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
             else
             {
-                valueChanges = new StorageChangeTrace(valueChanges.Before, value);
+                valueChanges = valueChanges.IsInitialValue
+                    ? new StorageChangeTrace(value)
+                    : new StorageChangeTrace(valueChanges.Before, value);
             }
 
             EnsureStorageTree();
             _backend.HintSet(storageCell.Index);
+            _backgroundWriteBatch ??= _backend.StartBackgroundWriteBatch();
+            _backgroundWriteBatch?.Set(storageCell.Index, value);
         }
 
         /// <remarks>
@@ -1125,6 +1133,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             ForgetLastRead();
             EnsureStorageTree();
             using IWorldStateScopeProvider.IStorageWriteBatch _ = storageWriteBatch;
+            using IWorldStateScopeProvider.IStorageWriteBatch? background = _backgroundWriteBatch;
+            _backgroundWriteBatch = null;
 
             int writes = 0;
             int skipped = 0;
@@ -1206,7 +1216,18 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
         }
 
-        public void RemoveStorageTree() => _backend = null;
+        public void RemoveStorageTree()
+        {
+            StopBackgroundWrites();
+            _backend = null;
+        }
+
+        private void StopBackgroundWrites()
+        {
+            IWorldStateScopeProvider.IStorageWriteBatch? background = _backgroundWriteBatch;
+            _backgroundWriteBatch = null;
+            background?.Dispose();
+        }
 
         internal static PerContractState Rent(Address address, PersistentStorageProvider persistentStorageProvider)
             => Pool.Rent(address, persistentStorageProvider);

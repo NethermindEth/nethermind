@@ -8,17 +8,20 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs.Forks;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
@@ -31,6 +34,310 @@ namespace Nethermind.State.Flat.Test;
 
 public class FlatWorldStateScopeProviderTests
 {
+    [Test]
+    public async Task Background_storage_updates_remain_private_until_finalization(
+        [Values(127, 128, 1024)] int slotCount, [Values] bool clear)
+    {
+        using TestContext ctx = new(new FlatDbConfig { BackgroundStorageTrieUpdates = true, VerifyWithTrie = true });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch accounts = scope.StartWriteBatch(1))
+            accounts.Set(address, new Account(1, 1));
+
+        IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(address);
+        using BackgroundStorageTrie background = (BackgroundStorageTrie)storage.StartBackgroundWriteBatch()!;
+        for (int i = 0; i < slotCount; i++) background.Set((UInt256)i, (UInt256)(i + 1));
+        if (slotCount >= BackgroundStorageTrie.MinimumBatchSize)
+        {
+            Assert.That(background.Worker, Is.Not.Null);
+            await background.Worker!.WaitAsync(TimeSpan.FromSeconds(30));
+            Assert.That(background.Tree.RootRef, Is.Not.Null, "updates ran before finalization");
+        }
+
+        storage.Get(0, out UInt256 beforeCommit);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(beforeCommit, Is.EqualTo(UInt256.Zero));
+            Assert.That(storage.RootHash, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(background.Tree.RootHash, Is.EqualTo(Keccak.EmptyTreeHash), "preparation does not hash the root");
+        }
+
+        background.Set(0, UInt256.Zero);
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch accounts = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch writes = accounts.CreateStorageWriteBatch(address, slotCount);
+            if (clear) writes.Clear();
+            for (int i = 0; i < slotCount; i++) writes.Set((UInt256)i, i == 0 ? UInt256.Zero : (UInt256)(i + 1));
+        }
+
+        using TestContext baseline = new();
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch accounts = baseline.Scope.StartWriteBatch(1))
+        {
+            accounts.Set(address, new Account(1, 1));
+            using IWorldStateScopeProvider.IStorageWriteBatch writes = accounts.CreateStorageWriteBatch(address, slotCount);
+            for (int i = 1; i < slotCount; i++) writes.Set((UInt256)i, (UInt256)(i + 1));
+        }
+        Assert.That(storage.RootHash, Is.EqualTo(baseline.Scope.CreateStorageTree(address).RootHash));
+        storage.Get(0, out UInt256 deleted);
+        storage.Get((UInt256)(slotCount - 1), out UInt256 last);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deleted, Is.EqualTo(UInt256.Zero));
+            Assert.That(last, Is.EqualTo((UInt256)slotCount));
+        }
+    }
+
+    public enum BackgroundStorageScenario
+    {
+        Overwrite,
+        Clear,
+        RevertedClear,
+        DestroyAndRecreate,
+        Reset,
+        RevertedWrites,
+        AbandonedBlock
+    }
+
+    [Test]
+    public async Task Background_storage_overwrites_restore_original_values_without_final_writes()
+    {
+        using TestContext ctx = new(new FlatDbConfig { BackgroundStorageTrieUpdates = true, VerifyWithTrie = true });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch accounts = scope.StartWriteBatch(1))
+            accounts.Set(address, new Account(1, 1));
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch accounts = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch writes = accounts.CreateStorageWriteBatch(address, 256);
+            for (int i = 0; i < 256; i++) writes.Set((UInt256)i, (UInt256)(i + 1));
+        }
+
+        IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(address);
+        using BackgroundStorageTrie background = (BackgroundStorageTrie)storage.StartBackgroundWriteBatch()!;
+        for (int i = 0; i < 256; i++) background.Set((UInt256)i, (UInt256)(i + 1000));
+        await background.Worker!.WaitAsync(TimeSpan.FromSeconds(30));
+        for (int i = 0; i < 256; i++) background.Set((UInt256)i, i % 2 == 0 ? (UInt256)(i + 1) : UInt256.Zero);
+        await background.Worker!.WaitAsync(TimeSpan.FromSeconds(30));
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch accounts = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch writes = accounts.CreateStorageWriteBatch(address, 128);
+            for (int i = 1; i < 256; i += 2) writes.Set((UInt256)i, UInt256.Zero);
+        }
+
+        for (int i = 0; i < 256; i++)
+        {
+            storage.Get((UInt256)i, out UInt256 value);
+            Assert.That(value, Is.EqualTo(i % 2 == 0 ? (UInt256)(i + 1) : UInt256.Zero), $"slot {i}");
+        }
+
+        using TestContext baseline = new();
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch accounts = baseline.Scope.StartWriteBatch(1))
+        {
+            accounts.Set(address, new Account(1, 1));
+            using IWorldStateScopeProvider.IStorageWriteBatch writes = accounts.CreateStorageWriteBatch(address, 128);
+            for (int i = 0; i < 256; i += 2) writes.Set((UInt256)i, (UInt256)(i + 1));
+        }
+        Assert.That(storage.RootHash, Is.EqualTo(baseline.Scope.CreateStorageTree(address).RootHash));
+    }
+
+    [Test]
+    public async Task Background_storage_disposal_drains_workers_and_propagates_failure()
+    {
+        using TestContext ctx = new(new FlatDbConfig { BackgroundStorageTrieUpdates = true });
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim resume = new();
+        using ManualResetEventSlim disposing = new();
+        ctx.PersistenceReader.GetAccount(TestItem.AddressA).Returns(new Account(1, 1).WithChangedStorageRoot(TestItem.KeccakA));
+        ctx.PersistenceReader.TryLoadStorageRlp(Arg.Any<Hash256>(), Arg.Any<TreePath>(), Arg.Any<ReadFlags>())
+            .Returns(_ =>
+            {
+                entered.Set();
+                if (!resume.Wait(TimeSpan.FromSeconds(30))) throw new TimeoutException();
+                throw new InvalidOperationException("background read failed");
+            });
+
+        FlatWorldStateScope scope = ctx.Scope;
+        using BackgroundStorageTrie background = (BackgroundStorageTrie)scope.CreateStorageTree(TestItem.AddressA).StartBackgroundWriteBatch()!;
+        Task? disposal = null;
+        try
+        {
+            for (int i = 0; i < BackgroundStorageTrie.MinimumBatchSize; i++) background.Set((UInt256)i, UInt256.One);
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(30)), Is.True);
+            disposal = Task.Run(() =>
+            {
+                disposing.Set();
+                scope.Dispose();
+            });
+            Assert.That(disposing.Wait(TimeSpan.FromSeconds(30)), Is.True);
+            Assert.That(disposal.IsCompleted, Is.False, "the snapshot must outlive its trie worker");
+        }
+        finally
+        {
+            resume.Set();
+            if (disposal is not null)
+            {
+                AggregateException? failure = Assert.ThrowsAsync<AggregateException>(async () =>
+                    await disposal.WaitAsync(TimeSpan.FromSeconds(30)));
+                Assert.That(failure!.InnerException!.Message, Does.Contain("background read failed"));
+            }
+            else if (background.Worker is not null)
+            {
+                await background.Worker.WaitAsync(TimeSpan.FromSeconds(30));
+            }
+        }
+    }
+
+    [Test]
+    public void Background_storage_capacity_falls_back_to_foreground()
+    {
+        using TestContext ctx = new(new FlatDbConfig { BackgroundStorageTrieUpdates = true });
+        FlatWorldStateScope scope = ctx.Scope;
+        int reserved = 0;
+        while (scope.BackgroundConcurrency.TryRequestConcurrencyQuota()) reserved++;
+        try
+        {
+            using BackgroundStorageTrie background = (BackgroundStorageTrie)scope.CreateStorageTree(TestItem.AddressA).StartBackgroundWriteBatch()!;
+            for (int i = 0; i <= BackgroundStorageTrie.MaximumTrackedSlots; i++) background.Set((UInt256)i, UInt256.One);
+            Assert.That(background.Complete(), Is.False);
+            Assert.That(background.Worker, Is.Null);
+        }
+        finally
+        {
+            for (int i = 0; i < reserved; i++) scope.BackgroundConcurrency.ReturnConcurrencyQuota();
+        }
+    }
+
+    [Test]
+    public void Background_storage_updates_match_foreground(
+        [Values] BackgroundStorageScenario scenario, [Values] bool readBeforeWrite)
+    {
+        (Hash256 root, UInt256[] slots) expected = RunStorageScenario(false, scenario, readBeforeWrite);
+        (Hash256 root, UInt256[] slots) actual = RunStorageScenario(true, scenario, readBeforeWrite);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.root, Is.EqualTo(expected.root));
+            Assert.That(actual.slots, Is.EqualTo(expected.slots));
+        }
+        if (scenario == BackgroundStorageScenario.Overwrite)
+        {
+            for (int i = 0; i < 256; i++)
+            {
+                UInt256 expectedValue = i % 2 == 0 ? (UInt256)(i + 1) : UInt256.Zero;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(expected.slots[i], Is.EqualTo(expectedValue), $"foreground slot {i}");
+                    Assert.That(actual.slots[i], Is.EqualTo(expectedValue), $"background slot {i}");
+                }
+            }
+        }
+    }
+
+    private static (Hash256 root, UInt256[] slots) RunStorageScenario(bool background, BackgroundStorageScenario scenario, bool readBeforeWrite)
+    {
+        const int slotCount = 256;
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new FlatDbConfig
+            {
+                Enabled = true,
+                BackgroundStorageTrieUpdates = background,
+                VerifyWithTrie = true,
+                TrieWarmerWorkerCount = 1
+            }))
+            .Build();
+        IWorldState state = container.Resolve<IMainProcessingContext>().WorldState;
+        IWorldStateManager manager = container.Resolve<IWorldStateManager>();
+        Address[] addresses = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC];
+        BlockHeader parent;
+        using (state.BeginScope(IWorldState.PreGenesis))
+        {
+            foreach (Address address in addresses)
+            {
+                state.CreateAccount(address, 1);
+                for (int i = 0; i < slotCount; i++) state.Set(new StorageCell(address, (UInt256)i), (UInt256)(i + 1));
+            }
+            state.Commit(Shanghai.Instance);
+            state.CommitTree(0);
+            parent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(state.StateRoot).TestObject;
+        }
+
+        BlockHeader block;
+        using (state.BeginScope(parent))
+        {
+            foreach (Address address in addresses)
+                for (int i = 0; i < slotCount; i++)
+                {
+                    StorageCell cell = new(address, (UInt256)i);
+                    if (readBeforeWrite) state.Get(cell, out _);
+                    state.Set(cell, (UInt256)(i + 1000));
+                }
+            state.Commit(Shanghai.Instance, commitRoots: false);
+
+            Address target = addresses[0];
+            switch (scenario)
+            {
+                case BackgroundStorageScenario.Overwrite:
+                    foreach (Address address in addresses)
+                        for (int i = 0; i < slotCount; i++)
+                            state.Set(new StorageCell(address, (UInt256)i), i % 2 == 0 ? (UInt256)(i + 1) : UInt256.Zero);
+                    break;
+                case BackgroundStorageScenario.Clear:
+                    state.ClearStorage(target);
+                    state.Set(new StorageCell(target, 0), (UInt256)17);
+                    break;
+                case BackgroundStorageScenario.RevertedClear:
+                case BackgroundStorageScenario.RevertedWrites:
+                    Nethermind.Evm.State.Snapshot snapshot = state.TakeSnapshot(newTransactionStart: true);
+                    if (scenario == BackgroundStorageScenario.RevertedClear) state.ClearStorage(target);
+                    for (int i = 0; i < slotCount; i++) state.Set(new StorageCell(target, (UInt256)i), (UInt256)99);
+                    state.Restore(snapshot);
+                    break;
+                case BackgroundStorageScenario.DestroyAndRecreate:
+                    state.MarkStorageDestroyed(target);
+                    state.DeleteAccount(target);
+                    state.Commit(Shanghai.Instance, commitRoots: false);
+                    state.CreateAccount(target, 1);
+                    state.Set(new StorageCell(target, 0), (UInt256)17);
+                    break;
+                case BackgroundStorageScenario.Reset:
+                    state.Reset();
+                    state.Set(new StorageCell(target, 0), (UInt256)17);
+                    break;
+            }
+
+            if (scenario != BackgroundStorageScenario.AbandonedBlock)
+            {
+                state.Commit(Shanghai.Instance, commitRoots: false);
+                state.Set(new StorageCell(target, slotCount), (UInt256)42);
+                state.Commit(Shanghai.Instance);
+                state.CommitTree(1);
+                parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(state.StateRoot).TestObject;
+            }
+        }
+
+        // A second block also checks that adopted trie nodes survive scope disposal and snapshot publication.
+        using (state.BeginScope(parent))
+        {
+            foreach (Address address in addresses)
+                for (int i = 0; i < slotCount; i++)
+                {
+                    manager.GlobalStateReader.GetStorage(parent, address, (UInt256)i, out UInt256 expected);
+                    state.Get(new StorageCell(address, (UInt256)i), out UInt256 actual);
+                    Assert.That(actual, Is.EqualTo(expected));
+                }
+            state.Set(new StorageCell(addresses[0], slotCount + 1), (UInt256)43);
+            state.Commit(Shanghai.Instance);
+            state.CommitTree(parent.Number + 1);
+            block = Build.A.BlockHeader.WithNumber(parent.Number + 1).WithStateRoot(state.StateRoot).TestObject;
+        }
+
+        container.Resolve<IFlatDbManager>().FlushCache(CancellationToken.None);
+        UInt256[] slots = new UInt256[addresses.Length * (slotCount + 2)];
+        for (int a = 0; a < addresses.Length; a++)
+            for (int i = 0; i < slotCount + 2; i++)
+                manager.GlobalStateReader.GetStorage(block, addresses[a], (UInt256)i, out slots[a * (slotCount + 2) + i]);
+        return (block.StateRoot!, slots);
+    }
 
     private class TestContext : IDisposable
     {

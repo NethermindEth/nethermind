@@ -109,6 +109,10 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Trie warmer worker count (-1 for 3/4 of processor count, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
 
+    /// <summary>Whether to prepare committed storage writes during execution. Enabled by default.</summary>
+    [ConfigItem(Description = "Experimental background storage trie updates during block execution. Hashing remains deferred until finalization.", DefaultValue = "true")]
+    bool BackgroundStorageTrieUpdates { get; set; }
+
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
 

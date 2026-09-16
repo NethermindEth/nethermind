@@ -297,14 +297,20 @@ namespace Nethermind.State
             {
                 if (_currentScope is not null)
                 {
-                    // Reset first: it unwinds code staged since the last commit, and this scope's only
-                    // remaining chance to report that is the flush below.
-                    Reset();
-                    // Fold any counters accumulated outside a Commit (e.g. prewarmer read warming) before the scope closes.
-                    _localMetrics.Flush();
-                    _stateProvider.SetScope(null);
-                    _persistentStorageProvider.SetBackendScope(null);
-                    _currentScope.Dispose();
+                    try
+                    {
+                        // Reset first: it unwinds code staged since the last commit, and this scope's only
+                        // remaining chance to report that is the flush below.
+                        Reset();
+                    }
+                    finally
+                    {
+                        // Fold any counters accumulated outside a Commit (e.g. prewarmer read warming) before the scope closes.
+                        _localMetrics.Flush();
+                        _stateProvider.SetScope(null);
+                        _persistentStorageProvider.SetBackendScope(null);
+                        _currentScope.Dispose();
+                    }
                 }
             }
             finally
