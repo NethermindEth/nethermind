@@ -21,6 +21,7 @@ using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -40,6 +41,7 @@ public class DebugBridge : IDebugBridge
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly IBadBlockStore _badBlockStore;
     private readonly IBlockStore _blockStore;
+    private readonly IWorldStateManager _worldStateManager;
     private readonly Dictionary<string, IDb> _dbMappings;
 
     public DebugBridge(
@@ -53,7 +55,8 @@ public class DebugBridge : IDebugBridge
         ISpecProvider specProvider,
         ISyncModeSelector syncModeSelector,
         IBadBlockStore badBlockStore,
-        IBlockStore blockStore)
+        IBlockStore blockStore,
+        IWorldStateManager worldStateManager)
     {
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
@@ -67,6 +70,7 @@ public class DebugBridge : IDebugBridge
         // Use the shared singleton store, not a private one over the raw DB, so debug reads observe the
         // deferred-body overlay (a private store would miss a block whose body write is still queued).
         _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
+        _worldStateManager = worldStateManager;
         dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
         IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
         IDb headersDb = dbProvider.HeadersDb ?? throw new ArgumentNullException(nameof(dbProvider.HeadersDb));
@@ -98,7 +102,12 @@ public class DebugBridge : IDebugBridge
 
     public int DeleteChainSlice(ulong startNumber, bool force = false) => _blockTree.DeleteChainSlice(startNumber, force: force);
 
-    public void UpdateHeadBlock(Hash256 blockHash) => _blockTree.UpdateHeadBlock(blockHash);
+    public void UpdateHeadBlock(Hash256 blockHash)
+    {
+        _blockTree.UpdateHeadBlock(blockHash);
+        BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
+        if (header is not null) _worldStateManager.ResetHead(header);
+    }
 
     public Task<bool> MigrateReceipts(ulong from, ulong to) => _receiptsMigration.Run(from, to);
 

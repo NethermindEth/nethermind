@@ -52,6 +52,7 @@ public class FlatStateReaderTests
 
         public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) => throw new NotSupportedException();
         public void FlushCache(CancellationToken cancellationToken) { }
+        public void ResetHead(in StateId head) { }
         public bool HasStateForBlock(in StateId stateId) => false;
         public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) { }
     }
@@ -63,6 +64,7 @@ public class FlatStateReaderTests
 
         public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) => throw new NotSupportedException();
         public void FlushCache(CancellationToken cancellationToken) { }
+        public void ResetHead(in StateId head) { }
         public bool HasStateForBlock(in StateId stateId) => true;
         public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) { }
     }

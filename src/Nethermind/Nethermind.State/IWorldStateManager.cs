@@ -45,6 +45,12 @@ public interface IWorldStateManager
     /// Persist and clear cache. Used by some tests.
     /// </summary>
     void FlushCache(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Drop cached state that is not on the ancestry of <paramref name="head"/>. Called when the head is
+    /// force-reset (<c>debug_resetHead</c>) so state kept for abandoned branches is released.
+    /// </summary>
+    void ResetHead(BlockHeader head);
 }
 
 public interface IOverridableWorldScope : IDisposable

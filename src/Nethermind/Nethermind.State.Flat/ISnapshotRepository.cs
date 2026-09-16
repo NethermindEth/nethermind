@@ -158,4 +158,12 @@ public interface ISnapshotRepository
     /// </remarks>
     /// <param name="canonicalStateId">The canonical state being persisted.</param>
     void RemoveSiblingAndDescendents(in StateId canonicalStateId);
+
+    /// <summary>
+    /// Removes every snapshot in both tiers whose <c>To</c> is not on the <c>From</c>-edge ancestry of
+    /// <paramref name="head"/> or of <paramref name="currentPersistedState"/>, and records
+    /// <paramref name="head"/> as the last committed state. No-op when no snapshot holds the head's state.
+    /// </summary>
+    /// <returns>The number of states removed.</returns>
+    int RemoveUnreachableFrom(in StateId head, in StateId currentPersistedState);
 }

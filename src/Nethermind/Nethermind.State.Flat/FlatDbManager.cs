@@ -463,6 +463,14 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         return false;
     }
 
+    public void ResetHead(in StateId head)
+    {
+        _persistenceManager.ResetHead(head);
+        // Cached bundles lease the snapshots they were assembled over; without this the pruned ones stay
+        // alive until the periodic clear.
+        ClearReadOnlyBundleCache();
+    }
+
     /// <inheritdoc/>
     /// <remarks>
     /// Persists the in-memory tier before tearing the workers down, so the flat state on disk matches

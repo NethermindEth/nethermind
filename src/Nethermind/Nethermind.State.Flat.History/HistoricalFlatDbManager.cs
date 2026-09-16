@@ -67,6 +67,8 @@ public sealed class HistoricalFlatDbManager(
 
     public void FlushCache(CancellationToken cancellationToken) => inner.FlushCache(cancellationToken);
 
+    public void ResetHead(in StateId head) => inner.ResetHead(head);
+
     public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) =>
         inner.AddSnapshot(snapshot, transientResource);
 

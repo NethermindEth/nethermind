@@ -498,4 +498,51 @@ public class SnapshotRepositoryTests
     }
 
     #endregion
+
+    [Test]
+    public void RemoveUnreachableFrom_KeepsOnlyHeadAncestry([Values] bool knownHead, [Values] bool sideBranchPersisted)
+    {
+        // Main chain 0->8, side branch (3,0)->(6,1); a compacted on the ancestry and one off it. The head
+        // at (5,0) keeps 1..5 only: descendants on its own chain and the whole side branch go.
+        BuildSnapshotChain(0, 8);
+        BuildSnapshotChain(CreateStateId(3), 6, rootByte: 1);
+        AddSnapshotToRepository(CreateStateId(0), CreateStateId(4), compacted: true);
+        AddSnapshotToRepository(CreateStateId(3), CreateStateId(6, rootByte: 1), compacted: true);
+        if (sideBranchPersisted)
+            _tier.ConvertToPersistedBase(CreateSnapshot(CreateStateId(5, rootByte: 1), CreateStateId(6, rootByte: 1))).Dispose();
+
+        StateId head = CreateStateId(5, rootByte: knownHead ? (byte)0 : (byte)7);
+        int snapshotCountBefore = _repository.SnapshotCount;
+        int persistedCountBefore = _repository.PersistedSnapshotCount;
+
+        int pruned = _repository.RemoveUnreachableFrom(head, StateId.PreGenesis);
+
+        using ArrayPoolList<StateId> remaining = _repository.GetStatesUpToBlock(long.MaxValue);
+        if (!knownHead)
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That(pruned, Is.EqualTo(0));
+                Assert.That(_repository.SnapshotCount, Is.EqualTo(snapshotCountBefore));
+                Assert.That(_repository.PersistedSnapshotCount, Is.EqualTo(persistedCountBefore));
+                Assert.That(_repository.GetLastCommittedStateId(), Is.Null);
+            });
+            return;
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(pruned, Is.EqualTo(sideBranchPersisted ? 7 : 6));
+            for (ulong block = 1; block <= 5; block++)
+                Assert.That(_repository.HasState(CreateStateId(block)), Is.True, $"ancestor {block} should be kept");
+            Assert.That(TryLease(CreateStateId(4), compacted: true, out Snapshot? compactedOnAncestry), Is.True, "compacted on the ancestry should be kept");
+            compactedOnAncestry?.Dispose();
+            foreach (StateId removed in new[] { CreateStateId(6), CreateStateId(7), CreateStateId(8), CreateStateId(4, rootByte: 1), CreateStateId(5, rootByte: 1), CreateStateId(6, rootByte: 1) })
+                Assert.That(_repository.HasState(removed), Is.False, $"{removed} should be removed");
+            Assert.That(TryLease(CreateStateId(6, rootByte: 1), compacted: true, out _), Is.False, "compacted off the ancestry should be removed");
+            Assert.That(_repository.HasBasePersistedSnapshot(CreateStateId(6, rootByte: 1)), Is.False);
+            Assert.That(remaining, Is.EquivalentTo(new[] { CreateStateId(1), CreateStateId(2), CreateStateId(3), CreateStateId(4), CreateStateId(5) }));
+            Assert.That(_repository.GetLastCommittedStateId(), Is.EqualTo(head));
+        });
+    }
 }

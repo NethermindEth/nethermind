@@ -1601,6 +1601,33 @@ public class PersistenceManagerTests
         Assert.That(_snapshotRepository.HasBasePersistedSnapshot(stale), Is.False);
     }
 
+    [Test]
+    public void ResetHead_PrunesSideBranchAndKeepsPersistedState([Values] bool knownHead)
+    {
+        StateId state1 = CreateStateId(1);
+        StateId state2 = CreateStateId(2);
+        StateId state3 = CreateStateId(3);
+        StateId state4 = CreateStateId(4);
+        StateId fork4 = CreateStateId(4, rootByte: 1);
+        CreateSnapshot(Block0, state1);
+        CreateSnapshot(state1, state2);
+        CreateSnapshot(state2, state3);
+        CreateSnapshot(state3, state4);
+        CreateSnapshot(state3, fork4);
+
+        _persistenceManager.ResetHead(knownHead ? state3 : CreateStateId(3, rootByte: 7));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_snapshotRepository.HasState(state1), Is.True);
+            Assert.That(_snapshotRepository.HasState(state2), Is.True);
+            Assert.That(_snapshotRepository.HasState(state3), Is.True);
+            Assert.That(_snapshotRepository.HasState(state4), Is.EqualTo(!knownHead));
+            Assert.That(_snapshotRepository.HasState(fork4), Is.EqualTo(!knownHead));
+            Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(Block0));
+        });
+    }
+
     private PersistenceManager.ConversionCandidate? InvokeTryFindSnapshotToConvert(StateId currentPersistedState)
     {
         // TryFindSnapshotToConvert is private; reach it via reflection so we can unit-test the
