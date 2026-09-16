@@ -403,6 +403,9 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             _hasSelfDestruct = true;
         }
 
+        /// <summary>Commits and reports the root on dispose even when every slot write was skipped as already applied to the tree.</summary>
+        public void MarkSet() => _wasSetCalled = true;
+
         public void Dispose()
         {
             bool hasSet = _wasSetCalled || _hasSelfDestruct;

@@ -34,6 +34,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
+    // Storage trees with a speculative root runner to join before the trie is committed or the bundle disposed.
+    private ConcurrentQueue<FlatStorageTree>? _speculatingStorages;
     private bool _isDisposed = false;
 
     // The sequence id is for stopping trie warmer for doing work while committing. Incrementing this value invalidates
@@ -100,6 +102,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
         CancelHintBal();
+        JoinSpeculation();
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
@@ -376,6 +379,22 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     internal void IncrementOutstandingWarmups() => Interlocked.Increment(ref _outstandingWarmups);
 
+    internal void RegisterSpeculating(FlatStorageTree storageTree)
+    {
+        ConcurrentQueue<FlatStorageTree>? storages = Volatile.Read(ref _speculatingStorages)
+            ?? Interlocked.CompareExchange(ref _speculatingStorages, new ConcurrentQueue<FlatStorageTree>(), null)
+            ?? _speculatingStorages!;
+        storages.Enqueue(storageTree);
+    }
+
+    // A tree whose account was removed gets no write batch, so its runner is joined here instead.
+    private void JoinSpeculation()
+    {
+        ConcurrentQueue<FlatStorageTree>? storages = Volatile.Read(ref _speculatingStorages);
+        if (storages is null) return;
+        while (storages.TryDequeue(out FlatStorageTree? storageTree)) storageTree.JoinSpeculation();
+    }
+
     internal void DecrementOutstandingWarmups() => Interlocked.Decrement(ref _outstandingWarmups);
 
     public void HintWarmAccount(in ValueAddress address)
@@ -458,6 +477,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public void Commit(ulong blockNumber)
     {
         _pausePrewarmer = true;
+        JoinSpeculation();
 
         // Storage tree commits already happened during WriteBatch.Dispose() via
         // StorageTreeBulkWriteBatch(commit: true). Only the state tree needs committing here.

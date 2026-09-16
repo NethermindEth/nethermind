@@ -187,6 +187,12 @@ public interface IWorldStateScopeProvider
         /// trie warm-up for the slot path.
         /// </summary>
         void HintSet(in UInt256 index);
+
+        /// <summary>
+        /// Hint that a transaction committed <paramref name="value"/> to a slot. Backends may apply it to the trie
+        /// ahead of the block-end write batch, which still writes every slot's final value.
+        /// </summary>
+        void HintSet(in UInt256 index, in UInt256 value) => HintSet(in index);
     }
 
     /// <summary>

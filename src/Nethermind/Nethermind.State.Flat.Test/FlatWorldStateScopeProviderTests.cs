@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -510,6 +511,120 @@ public class FlatWorldStateScopeProviderTests
         // Verify
         Account? resultAccount = scope.Get(testAddress);
         Assert.That(resultAccount!.StorageRoot, Is.EqualTo(expectedRoot));
+    }
+
+    private static Hash256 RawTrieRoot(params (UInt256 Index, UInt256 Value)[] slots)
+    {
+        StorageTree expectedTree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        foreach ((UInt256 index, UInt256 value) in slots) expectedTree.Set(index, value.ToMinimalBigEndian());
+        expectedTree.UpdateRootHash();
+        return expectedTree.RootHash;
+    }
+
+    // The runner is a pool thread; waiting for it makes the test cover the applied path, not only the join.
+    private static void WaitForSpeculativeRoot(IWorldStateScopeProvider.IStorageTree tree, Hash256 rootBefore)
+    {
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        while (tree.RootHash == rootBefore && stopwatch.ElapsedMilliseconds < 5000) Thread.Sleep(1);
+        Assert.That(tree.RootHash, Is.Not.EqualTo(rootBefore));
+    }
+
+    [Test]
+    public void SpeculativeStorageRoots_MatchBlockEndRoot([Values] bool speculative)
+    {
+        using TestContext ctx = new(new FlatDbConfig { SpeculativeStorageRoots = speculative });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+
+        IWorldStateScopeProvider.IStorageTree tree = scope.CreateStorageTree(address);
+        Hash256 rootBefore = tree.RootHash;
+        // Two transactions commit: slot 1 is overwritten, slot 2 is written then zeroed, slots 5 and 6 are written once.
+        tree.HintSet(1, 0xA);
+        tree.HintSet(2, 0xB);
+        tree.HintSet(5, 0xE);
+        tree.HintSet(1, 0xC);
+        tree.HintSet(2, UInt256.Zero);
+        tree.HintSet(3, 0xD);
+        tree.HintSet(6, 0x66);
+        if (speculative) WaitForSpeculativeRoot(tree, rootBefore);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            // The block-end view the storage provider writes: slots 2 and 6 ended at their pre-block value and are
+            // skipped, slot 4 was never hinted.
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 4);
+            storageBatch.Set(1, 0xC);
+            storageBatch.Set(3, 0xD);
+            storageBatch.Set(4, 0xF);
+            storageBatch.Set(5, 0xE);
+        }
+
+        scope.Commit(1);
+
+        Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(RawTrieRoot((1, 0xC), (3, 0xD), (4, 0xF), (5, 0xE))));
+    }
+
+    [Test]
+    public void SpeculativeStorageRoots_RestoreSlotWrittenBackToPreBlockValue()
+    {
+        using TestContext ctx = new(new FlatDbConfig { SpeculativeStorageRoots = true });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 2);
+            storageBatch.Set(1, 0xA);
+            storageBatch.Set(2, 0xB);
+        }
+
+        scope.Commit(1);
+
+        IWorldStateScopeProvider.IStorageTree tree = scope.CreateStorageTree(address);
+        Hash256 rootBefore = tree.RootHash;
+        Assert.That(rootBefore, Is.EqualTo(RawTrieRoot((1, 0xA), (2, 0xB))));
+        tree.HintSet(1, 0x11);
+        tree.HintSet(2, 0x22);
+        WaitForSpeculativeRoot(tree, rootBefore);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            // A later transaction wrote slot 1 back to 0xA, so the block-end batch skips it.
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1);
+            storageBatch.Set(2, 0x22);
+        }
+
+        scope.Commit(2);
+
+        Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(RawTrieRoot((1, 0xA), (2, 0x22))));
+    }
+
+    [Test]
+    public void SpeculativeStorageRoots_ClearDropsSpeculativeWrites()
+    {
+        using TestContext ctx = new(new FlatDbConfig { SpeculativeStorageRoots = true });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+
+        IWorldStateScopeProvider.IStorageTree tree = scope.CreateStorageTree(address);
+        Hash256 rootBefore = tree.RootHash;
+        tree.HintSet(1, 0xA);
+        tree.HintSet(2, 0xB);
+        WaitForSpeculativeRoot(tree, rootBefore);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1);
+            storageBatch.Clear();
+            storageBatch.Set(7, 0x77);
+        }
+
+        scope.Commit(1);
+
+        Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(RawTrieRoot((7, 0x77))));
     }
 
     [Test]
