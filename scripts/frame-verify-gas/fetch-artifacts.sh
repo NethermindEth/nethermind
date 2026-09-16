@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Usage: REQUESTED_VERSION=vX.Y.Z GH_TOKEN=... RUNNER_TEMP=... GITHUB_ENV=... fetch-artifacts.sh
+# Usage: REQUESTED_VERSION=vX.Y.Z RUNNER_TEMP=... GITHUB_ENV=... [GH_TOKEN=...] fetch-artifacts.sh
+# GH_TOKEN is optional: the release and its assets are public. Set it only to raise the
+# api.github.com call below off the unauthenticated per-IP rate limit on a busy shared runner.
 set -uo pipefail
 
 readonly REPO=NethermindEth/frame-verify-gas
@@ -16,7 +18,7 @@ if [[ ! "${version}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]];
   echo "::error::groth16_artifacts_version '${version}' is not a vMAJOR.MINOR.PATCH release tag."
   exit 1
 fi
-for tool in gh python3 sha256sum tar; do
+for tool in curl python3 sha256sum tar; do
   if ! command -v "${tool}" >/dev/null; then
     echo "::error::${tool} is not installed on this runner."
     exit 1
@@ -35,8 +37,23 @@ trap 'rm -rf "${work}"' EXIT
 assets="${work}/assets"
 mkdir "${assets}" || exit 1
 
-if ! state=$(gh release view "${version}" --repo "${REPO}" --json isDraft,isPrerelease --jq '"\(.isDraft) \(.isPrerelease)"' 2>"${work}/gh.err"); then
-  echo "::error::Release ${version} could not be read from ${REPO}: $(paste -sd ' ' "${work}/gh.err")"
+# No token required: ${REPO} and its releases are public. GH_TOKEN, when present, is sent anyway
+# to move this call off the 60/req-per-hour-per-IP anonymous bucket onto the authenticated one
+# shared runners can otherwise exhaust (see run-nethtest.yml's "Resolve fixture releases" step).
+auth_header=()
+if [[ -n "${GH_TOKEN:-}" ]]; then
+  auth_header=(-H "Authorization: Bearer ${GH_TOKEN}")
+fi
+if ! release_json=$(curl -fsS "${auth_header[@]}" "https://api.github.com/repos/${REPO}/releases/tags/${version}" 2>"${work}/curl.err"); then
+  echo "::error::Release ${version} could not be read from ${REPO}: $(paste -sd ' ' "${work}/curl.err")"
+  exit 1
+fi
+if ! state=$(python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+print("true" if data["draft"] else "false", "true" if data["prerelease"] else "false")
+' <<< "${release_json}" 2>"${work}/curl.err"); then
+  echo "::error::Release ${version} on ${REPO} returned unparsable JSON: $(paste -sd ' ' "${work}/curl.err")"
   exit 1
 fi
 case "${state}" in
@@ -48,17 +65,22 @@ esac
 
 tarballs=("${LABELS[@]/#/sweep-}")
 tarballs=("${tarballs[@]/%/.tar.gz}")
-patterns=(--pattern SHA256SUMS)
-for tarball in "${tarballs[@]}"; do
-  patterns+=(--pattern "${tarball}")
-done
-if ! gh release download "${version}" --repo "${REPO}" --dir "${assets}" "${patterns[@]}" 2>"${work}/gh.err"; then
-  echo "::error::Downloading release ${version} from ${REPO} failed: $(paste -sd ' ' "${work}/gh.err")"
-  exit 1
-fi
+# Asset download URLs come from the same JSON already fetched above, so listing assets never
+# costs a second api.github.com call.
+asset_urls=$(python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+for a in data.get("assets", []):
+    print(a["name"] + "\t" + a["browser_download_url"])
+' <<< "${release_json}")
 for asset in SHA256SUMS "${tarballs[@]}"; do
-  if [[ ! -f "${assets}/${asset}" ]]; then
+  url=$(awk -F'\t' -v n="${asset}" '$1 == n { print $2; exit }' <<< "${asset_urls}")
+  if [[ -z "${url}" ]]; then
     echo "::error::Release ${version} on ${REPO} has no ${asset} asset."
+    exit 1
+  fi
+  if ! curl -fsSL -o "${assets}/${asset}" "${url}" 2>"${work}/curl.err"; then
+    echo "::error::Downloading ${asset} from release ${version} of ${REPO} failed: $(paste -sd ' ' "${work}/curl.err")"
     exit 1
   fi
 done

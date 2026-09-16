@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs fetch-artifacts.sh against fake releases served by a stub gh. Needs bash, GNU tar, python3, sha256sum.
+# Runs fetch-artifacts.sh against fake releases served by a stub curl. Needs bash, GNU tar, python3, sha256sum.
 set -uo pipefail
 
 SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fetch-artifacts.sh"
@@ -11,42 +11,46 @@ mkdir -p "${root}/bin" "${root}/releases" "${root}/runs"
 pass=0
 fail=0
 
-cat > "${root}/bin/gh" <<'EOF'
+# Stands in for both api.github.com/.../releases/tags/<tag> (last arg matches that shape) and a
+# plain asset download (last arg is anything else: the local asset path fetch-artifacts.sh got
+# from that JSON's browser_download_url, which this stub sets to the real path directly).
+cat > "${root}/bin/curl" <<'EOF'
 #!/usr/bin/env bash
-echo "gh $*" >> "${STUB_LOG}"
-release="${STUB_RELEASES}/$3"
-if [[ ! -d "${release}" ]]; then
-  echo "release not found" >&2
-  exit 1
+echo "curl $*" >> "${STUB_LOG}"
+args=("$@")
+target="${args[-1]}"
+outfile=''
+for ((i = 0; i < ${#args[@]} - 1; i++)); do
+  if [[ "${args[$i]}" == "-o" ]]; then
+    outfile="${args[$((i + 1))]}"
+  fi
+done
+
+if [[ "${target}" == */releases/tags/* ]]; then
+  release="${STUB_RELEASES}/${target##*/releases/tags/}"
+  if [[ ! -d "${release}" ]]; then
+    echo "release not found" >&2
+    exit 22
+  fi
+  read -r draft prerelease < "${release}/state"
+  draft=$([[ "${draft}" == true ]] && echo True || echo False)
+  prerelease=$([[ "${prerelease}" == true ]] && echo True || echo False)
+  python3 -c "
+import json, os
+assets = [{'name': f, 'browser_download_url': '${release}/assets/' + f} for f in sorted(os.listdir('${release}/assets'))]
+print(json.dumps({'draft': ${draft}, 'prerelease': ${prerelease}, 'assets': assets}))
+"
+  exit 0
 fi
-case "$1 $2" in
-  'release view') cat "${release}/state" ;;
-  'release download')
-    shift 3
-    dir=''
-    patterns=()
-    while (($#)); do
-      case "$1" in
-        --dir) dir=$2; shift 2 ;;
-        --pattern) patterns+=("$2"); shift 2 ;;
-        *) shift ;;
-      esac
-    done
-    matched=0
-    for pattern in "${patterns[@]}"; do
-      if [[ -f "${release}/assets/${pattern}" ]]; then
-        cp "${release}/assets/${pattern}" "${dir}/"
-        matched=1
-      fi
-    done
-    if (( ! matched )); then
-      echo "no assets match the file pattern" >&2
-      exit 1
-    fi
-    ;;
-esac
+
+if [[ -f "${target}" && -n "${outfile}" ]]; then
+  cp "${target}" "${outfile}"
+  exit 0
+fi
+echo "asset not found" >&2
+exit 22
 EOF
-chmod +x "${root}/bin/gh"
+chmod +x "${root}/bin/curl"
 
 hex_repeat() {
   local out='' i
@@ -82,9 +86,9 @@ expect() {
   local run="${root}/runs/${name//[^A-Za-z0-9_-]/_}"
   mkdir -p "${run}/temp"
   : > "${run}/github_env"
-  : > "${run}/gh.log"
+  : > "${run}/curl.log"
   env -i HOME="${HOME}" PATH="${root}/bin:${PATH}" RUNNER_TEMP="${run}/temp" GITHUB_ENV="${run}/github_env" \
-    STUB_RELEASES="${root}/releases" STUB_LOG="${run}/gh.log" GH_TOKEN=stub REQUESTED_VERSION="${version}" \
+    STUB_RELEASES="${root}/releases" STUB_LOG="${run}/curl.log" GH_TOKEN=stub REQUESTED_VERSION="${version}" \
     "${SCRIPT}" > "${run}/out" 2>&1
   local rc=$?
   if [[ "${rc}" == "${want_rc}" ]] && grep -qE -- "${want}" "${run}/out"; then
@@ -177,7 +181,7 @@ expect prerelease v1.2.0 1 'is a prerelease'
 expect nonexistent-tag v9.9.9 1 'could not be read from .*release not found'
 for bad in latest v1.2 v1.2.3-rc1 ../x v01.2.3 1.2.3 'v1.2.3;id'; do
   expect "bad-version:${bad}" "${bad}" 1 'is not a vMAJOR.MINOR.PATCH release tag'
-  check "bad-version:${bad}:no-gh-call" "[[ ! -s '${LAST_RUN}/gh.log' ]]"
+  check "bad-version:${bad}:no-curl-call" "[[ ! -s '${LAST_RUN}/curl.log' ]]"
 done
 expect empty-version '' 1 'groth16_artifacts_version is empty'
 expect blank-version '  ' 1 'groth16_artifacts_version is empty'
