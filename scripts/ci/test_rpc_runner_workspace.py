@@ -204,7 +204,9 @@ journalctl() { :; }
         ):
             with self.subTest(root=root_gb, docker=docker_gb, containerd=containerd_gb):
                 body = self.maintenance_body("Reclaim root disk before pulling", root_gb, docker_gb, containerd_gb, output_gb)
-                self.run_body(body, self.workspace, expected=expected)
+                result = self.run_body(body, self.workspace, expected=expected)
+                if expected:
+                    self.assertIn("Insufficient free space at", result.stdout)
 
     def test_output_placement_and_cleanup_are_isolated_per_run(self):
         for label, parent in (("reproducible-benchmarks", self.runner_temp),

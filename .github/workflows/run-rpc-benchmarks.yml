@@ -863,7 +863,13 @@ jobs:
             (( $# > 0 )) || return 1
             for path in "$@"; do
               free="$(df -B1 --output=avail "${path}" | awk 'NR==2 {print int($1/1073741824)}')" || return 1
-              [[ "${free}" =~ ^[0-9]+$ ]] && (( free >= minimum )) || return 1
+              [[ "${free}" =~ ^[0-9]+$ ]] || return 1
+              if (( free < minimum )); then
+                echo "Insufficient free space at ${path}: ${free} GiB available, ${minimum} GiB required."
+                # Report the backing mount too, including if a data directory moves back onto root.
+                df -h "${path}" || true
+                return 1
+              fi
             done
             return 0
           }
