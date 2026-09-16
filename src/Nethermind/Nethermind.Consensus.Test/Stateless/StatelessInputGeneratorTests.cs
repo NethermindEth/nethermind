@@ -54,7 +54,7 @@ public class StatelessInputGeneratorTests
     }
 
     [Test]
-    public void Direct_execution_rejects_mismatched_transaction_root()
+    public void Direct_execution_rejects_an_invalid_suggested_block()
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithParent(parent).TestObject;
