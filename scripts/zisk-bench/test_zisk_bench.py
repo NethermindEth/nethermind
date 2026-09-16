@@ -504,7 +504,7 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
         self.assertEqual(commit, "base-sha")
         self.assertEqual(rows["1.ssz"]["total"], 100)
 
-    def select_measurement_definitions(self, missing_base=False, change=None):
+    def select_measurement_definitions(self, missing_base=False, change=None, base_invalid=False):
         match = re.search(r"      - name: Select measurement definitions\n.*?        run: \|\n(.*?)(?=\n      - name:)",
                           self.WORKFLOW, re.DOTALL)
         script = textwrap.dedent(match.group(1))
@@ -517,7 +517,7 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
             (source / "scripts/zisk-bench").mkdir(parents=True)
             definitions = [{"input": f"{i}.ssz", "hash": "0" * 64, "output": "1" * 64} for i in range(9)]
             manifest = source / guest / "inputs.json"
-            manifest.write_text(json.dumps(definitions))
+            manifest.write_text(json.dumps([42] if base_invalid else definitions))
             instrument = source / "scripts/zisk-bench/report.py"
             instrument.write_text("base instrument")
 
@@ -543,8 +543,7 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
                 candidate = [42]
             elif change == "empty":
                 candidate = []
-            if change is not None:
-                manifest.write_text(json.dumps(candidate))
+            manifest.write_text(json.dumps(candidate))
             git("commit", "-am", "candidate")
             checkout = source
             if missing_base:
@@ -590,6 +589,15 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
             self.assertIn("invalid pinned block set", error.exception.stderr)
 
     @unittest.skipUnless(sys.platform == "linux", "workflow shell runs on Linux")
+    def test_invalid_base_definitions_fall_back_to_head(self):
+        instrument, selected, outputs, _, candidate, stdout = self.select_measurement_definitions(base_invalid=True)
+
+        self.assertEqual(instrument, "changed instrument")
+        self.assertEqual(selected, candidate)
+        self.assertIn("trusted=false", outputs)
+        self.assertIn("::notice::Base pinned definitions are unusable", stdout)
+
+    @unittest.skipUnless(sys.platform == "linux", "workflow shell runs on Linux")
     def test_measurement_definitions_fall_back_to_head_without_a_base(self):
         match = re.search(r"      - name: Select measurement definitions\n.*?        run: \|\n(.*?)(?=\n      - name:)",
                           self.WORKFLOW, re.DOTALL)
@@ -626,7 +634,7 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
         self.assertIn("filter: blob:none", self.WORKFLOW)
         self.assertIn('git fetch --depth=1 --filter=blob:none origin "$BASE_SHA"', self.WORKFLOW)
 
-    @unittest.skipUnless(sys.platform == "linux", "workflow shell runs on Linux")
+    @unittest.skipUnless(sys.platform == "linux" and shutil.which("jq"), "workflow shell and jq required")
     def test_sdk_is_resolved_before_roll_forward_is_disabled(self):
         match = re.search(r"      - name: Pin resolved SDK\n.*?        run: \|\n(.*?)(?=\n      - name:)",
                           self.WORKFLOW, re.DOTALL)

@@ -75,7 +75,7 @@ jobs:
               then true else error("invalid pinned block set") end
             ' "$1"
           }
-          validate_inputs "$GUEST_DIR/inputs.json"
+          validate_inputs "$GUEST_DIR/inputs.json" > /dev/null
           definitions="$RUNNER_TEMP/zisk-bench-definitions"
           mkdir -p "$definitions"
           if [[ -n "$BASE_SHA" ]] && ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
@@ -85,23 +85,29 @@ jobs:
             git cat-file -e "$BASE_SHA:scripts/zisk-bench/report.py" 2>/dev/null && \
             git cat-file -e "$BASE_SHA:$GUEST_DIR/inputs.json" 2>/dev/null; then
             git show "$BASE_SHA:$GUEST_DIR/inputs.json" > "$RUNNER_TEMP/base-inputs.json"
-            validate_inputs "$RUNNER_TEMP/base-inputs.json"
-            definitions_match=$(jq -n --slurpfile base "$RUNNER_TEMP/base-inputs.json" --slurpfile head "$GUEST_DIR/inputs.json" '
+            if validate_inputs "$RUNNER_TEMP/base-inputs.json" > /dev/null; then
+              definitions_match=$(jq -n --slurpfile base "$RUNNER_TEMP/base-inputs.json" --slurpfile head "$GUEST_DIR/inputs.json" '
               ($base[0] | INDEX(.input)) as $baseInputs |
               ($head[0] | INDEX(.input)) as $headInputs |
               ([
                 $baseInputs | to_entries[] as $entry |
                 select(($headInputs | has($entry.key)) and $headInputs[$entry.key] != $entry.value)
               ] | length == 0)
-            ')
-            if [[ "$definitions_match" == true ]]; then
-              git archive "$BASE_SHA" scripts/zisk-bench "$GUEST_DIR/inputs.json" | tar -x -C "$definitions"
-              echo "trusted=true" >> "$GITHUB_OUTPUT"
+              ')
+              if [[ "$definitions_match" == true ]]; then
+                git archive "$BASE_SHA" scripts/zisk-bench "$GUEST_DIR/inputs.json" | tar -x -C "$definitions"
+                echo "trusted=true" >> "$GITHUB_OUTPUT"
+              else
+                # Re-pinned inputs or outputs cannot be compared with the cached measurements.
+                git archive HEAD scripts/zisk-bench "$GUEST_DIR/inputs.json" | tar -x -C "$definitions"
+                echo "trusted=false" >> "$GITHUB_OUTPUT"
+                echo "::notice::Head changed pinned definitions; recording absolute values only."
+              fi
             else
-              # Re-pinned inputs or outputs cannot be compared with the cached measurements.
+              # A malformed base manifest cannot be used as a measurement baseline.
               git archive HEAD scripts/zisk-bench "$GUEST_DIR/inputs.json" | tar -x -C "$definitions"
               echo "trusted=false" >> "$GITHUB_OUTPUT"
-              echo "::notice::Head changed pinned definitions; recording absolute values only."
+              echo "::notice::Base pinned definitions are unusable; recording absolute values only."
             fi
           else
             # Initial introduction has no base-owned instrument and cannot claim a comparison.
@@ -110,7 +116,7 @@ jobs:
             [[ -z "$BASE_SHA" ]] || echo "::notice::No base-owned measurement definitions; recording absolute values only."
           fi
           echo "BENCH_DEFINITIONS=$definitions" >> "$GITHUB_ENV"
-          validate_inputs "$definitions/$GUEST_DIR/inputs.json"
+          validate_inputs "$definitions/$GUEST_DIR/inputs.json" > /dev/null
 
       - name: Build guest
         working-directory: ${{ env.GUEST_DIR }}
