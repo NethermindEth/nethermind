@@ -46,6 +46,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     private readonly int _degree;
     private readonly ILogger _logger;
     private volatile bool _disposed;
+    private int _inFlight;
 
     public ParallelBlockTracer(Func<IOverridableEnv<Components>> buildEnvironment, IPrefixStateSeedSource seeds, int degree, ILogManager logManager)
     {
@@ -89,63 +90,74 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         out IReadOnlyList<TTrace>? traces)
     {
         traces = null;
-        if (_disposed || _degree < 2 || !_seeds.Enabled || block.Transactions.Length < 2 || !HashesKnown(block.Transactions)) return false;
-        if (!_seeds.TryOpenBlock(block, out ICoveredBlock? covered)) return false;
-
-        using (covered)
+        // Counted before the flag is read, so a tracer being disposed either sees this run and waits for it or
+        // refuses it outright; the caller traces a share of the block itself, and nothing it holds may be disposed
+        // under it.
+        Interlocked.Increment(ref _inFlight);
+        try
         {
-            Transaction[] transactions = block.Transactions;
-            IReadOnlyCollection<TTrace>?[] results = new IReadOnlyCollection<TTrace>?[transactions.Length + 1];
-            Emitter<TTrace> emitter = new(results, emit);
-            using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
-            Cursor cursor = new();
+            if (_disposed || _degree < 2 || !_seeds.Enabled || block.Transactions.Length < 2 || !HashesKnown(block.Transactions)) return false;
+            if (!_seeds.TryOpenBlock(block, out ICoveredBlock? covered)) return false;
 
-            IPrefixStateSeedSource callerSeeds = covered.CreateWorkerSeeds();
-            if (!TraceOne(block, parent, transactions, cursor.Next(), callerSeeds, forTransaction, results, emitter, stop.Token)) return false;
-
-            int helpers = Math.Min(_degree, transactions.Length - 1) - 1;
-            Task[] tasks = new Task[Math.Max(0, helpers)];
-            int queued = 0;
-            try
+            using (covered)
             {
-                for (; queued < tasks.Length; queued++)
+                Transaction[] transactions = block.Transactions;
+                IReadOnlyCollection<TTrace>?[] results = new IReadOnlyCollection<TTrace>?[transactions.Length + 1];
+                Emitter<TTrace> emitter = new(results, emit);
+                using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+                Cursor cursor = new();
+
+                IPrefixStateSeedSource callerSeeds = covered.CreateWorkerSeeds();
+                if (!TraceOne(block, parent, transactions, cursor.Next(), callerSeeds, forTransaction, results, emitter, stop.Token)) return false;
+
+                int helpers = Math.Min(_degree, transactions.Length - 1) - 1;
+                Task[] tasks = new Task[Math.Max(0, helpers)];
+                int queued = 0;
+                try
                 {
-                    IPrefixStateSeedSource seeds = covered.CreateWorkerSeeds();
-                    tasks[queued] = _workers.Run(() => TraceMany(block, parent, transactions, cursor, seeds, forTransaction, results, emitter, stop));
+                    for (; queued < tasks.Length; queued++)
+                    {
+                        IPrefixStateSeedSource seeds = covered.CreateWorkerSeeds();
+                        tasks[queued] = _workers.Run(() => TraceMany(block, parent, transactions, cursor, seeds, forTransaction, results, emitter, stop));
+                    }
+
+                    TraceMany(block, parent, transactions, cursor, callerSeeds, forTransaction, results, emitter, stop);
+                }
+                finally
+                {
+                    Await(tasks.AsSpan(0, queued));
                 }
 
-                TraceMany(block, parent, transactions, cursor, callerSeeds, forTransaction, results, emitter, stop);
-            }
-            finally
-            {
-                Await(tasks.AsSpan(0, queued));
-            }
-
-            if (afterTransactions is not null)
-            {
-                results[transactions.Length] = TraceAfterTransactions(block, parent, covered.CreateWorkerSeeds(), afterTransactions, token);
-                emitter.Publish();
-            }
-
-            covered.Complete();
-
-            if (emit is null)
-            {
-                List<TTrace> all = new(transactions.Length + 1);
-                foreach (IReadOnlyCollection<TTrace>? result in results)
+                if (afterTransactions is not null)
                 {
-                    if (result is not null) all.AddRange(result);
+                    results[transactions.Length] = TraceAfterTransactions(block, parent, covered.CreateWorkerSeeds(), afterTransactions, token);
+                    emitter.Publish();
                 }
 
-                traces = all;
-            }
-            else
-            {
-                traces = [];
-            }
+                covered.Complete();
 
-            if (_logger.IsTrace) _logger.Trace($"Traced block {block.Number} in parallel: {transactions.Length} transactions on {tasks.Length + 1} workers.");
-            return true;
+                if (emit is null)
+                {
+                    List<TTrace> all = new(transactions.Length + 1);
+                    foreach (IReadOnlyCollection<TTrace>? result in results)
+                    {
+                        if (result is not null) all.AddRange(result);
+                    }
+
+                    traces = all;
+                }
+                else
+                {
+                    traces = [];
+                }
+
+                if (_logger.IsTrace) _logger.Trace($"Traced block {block.Number} in parallel: {transactions.Length} transactions on {tasks.Length + 1} workers.");
+                return true;
+            }
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _inFlight);
         }
     }
 
@@ -281,6 +293,12 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         // environment pool that is already closing.
         _disposed = true;
         _workers.Dispose();
+
+        // The pool threads are joined by then, but the request that called in traces a share of the block on its own
+        // thread, which nothing else waits for; its environment must not be disposed while it is still processing.
+        SpinWait spin = new();
+        while (Volatile.Read(ref _inFlight) > 0) spin.SpinOnce();
+
         _environments.Dispose();
     }
 
