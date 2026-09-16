@@ -162,6 +162,30 @@ namespace Nethermind.Db
         private static CacheLinePaddedLong _parallelStorageRootPrebuiltTrees;
         public static void IncrementParallelStorageRootPrebuiltTrees() => Interlocked.Increment(ref _parallelStorageRootPrebuiltTrees.Value);
 
+        [CounterMetric]
+        [Description("Microseconds the parallel storage root builder spent applying writes into storage tries.")]
+        public static long ParallelStorageRootApplyMicros => _parallelStorageRootApplyMicros.Value;
+        private static CacheLinePaddedLong _parallelStorageRootApplyMicros;
+        public static void AddParallelStorageRootApplyMicros(long value) => Interlocked.Add(ref _parallelStorageRootApplyMicros.Value, value);
+
+        [CounterMetric]
+        [Description("Microseconds the parallel storage root builder spent hashing dirty storage trie paths while idle.")]
+        public static long ParallelStorageRootHashMicros => _parallelStorageRootHashMicros.Value;
+        private static CacheLinePaddedLong _parallelStorageRootHashMicros;
+        public static void AddParallelStorageRootHashMicros(long value) => Interlocked.Add(ref _parallelStorageRootHashMicros.Value, value);
+
+        [CounterMetric]
+        [Description("Microseconds the parallel storage root builder spent applying writes after the block thread had requested the join.")]
+        public static long ParallelStorageRootTailApplyMicros => _parallelStorageRootTailApplyMicros.Value;
+        private static CacheLinePaddedLong _parallelStorageRootTailApplyMicros;
+        public static void AddParallelStorageRootTailApplyMicros(long value) => Interlocked.Add(ref _parallelStorageRootTailApplyMicros.Value, value);
+
+        [CounterMetric]
+        [Description("Microseconds the parallel storage root builder spent in a hashing pass that overlapped the block thread's join request.")]
+        public static long ParallelStorageRootTailHashMicros => _parallelStorageRootTailHashMicros.Value;
+        private static CacheLinePaddedLong _parallelStorageRootTailHashMicros;
+        public static void AddParallelStorageRootTailHashMicros(long value) => Interlocked.Add(ref _parallelStorageRootTailHashMicros.Value, value);
+
         [GaugeMetric]
         [Description("Indicator if StateDb is being pruned.")]
         public static int StateDbPruning { get; set; }
