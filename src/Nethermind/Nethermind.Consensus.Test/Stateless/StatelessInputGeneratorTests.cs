@@ -102,6 +102,15 @@ public class StatelessInputGeneratorTests
     }
 
     [Test]
+    public void Malformed_input_returns_failure([Values(0, 1, 2, 3)] int length)
+    {
+        byte[] output = StatelessExecutor.Execute(new byte[length]);
+        StatelessValidationResult.Decode(output, out StatelessValidationResult result);
+
+        Assert.That(result.IsSuccess, Is.False);
+    }
+
+    [Test]
     public async Task Raw_block_input_recovers_requests_and_public_keys([Values] bool amsterdam)
     {
         (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam);
