@@ -1203,6 +1203,7 @@ internal static class SszCodecHelpers
                 }
             }
 
+            // Mirrors Merkle.NextPowerOfTwoExponent(n) + 1; BitOperations is unavailable on netstandard2.0.
             int chunkCount = 1;
             for (int remaining = decl.Members!.Length - 1; remaining > 0; remaining >>= 1) chunkCount++;
             string containerMerkleizeBody = decl.Kind == Kind.ProgressiveContainer

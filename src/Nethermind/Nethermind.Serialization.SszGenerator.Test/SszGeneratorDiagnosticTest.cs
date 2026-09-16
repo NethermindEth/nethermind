@@ -18,6 +18,8 @@ public class SszGeneratorDiagnosticTest
 {
     [TestCase(0, false)]
     [TestCase(3, false)]
+    [TestCase(4, false)]
+    [TestCase(5, false)]
     [TestCase(32, true)]
     [TestCase(33, true)]
     public void Generated_scratch_boundaries_preserve_roots(int fieldCount, bool progressive)
