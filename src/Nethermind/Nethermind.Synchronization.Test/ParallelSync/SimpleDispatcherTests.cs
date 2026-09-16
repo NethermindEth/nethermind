@@ -189,7 +189,8 @@ public class SimpleDispatcherTests
         Assert.That(feed.HandledCount, Is.Zero, "cancelled dispatches must not reach HandleResponse");
     }
 
-    [Test, CancelAfter(30_000)]
+    // Blocked response workers must not compete with other fixtures for thread-pool capacity.
+    [Test, NonParallelizable, CancelAfter(30_000)]
     public async Task Failed_allocation_is_handled_with_null_peer_without_a_processing_slot_and_not_freed(CancellationToken cancellationToken)
     {
         TestFeed feed = new(totalRequests: 4);
