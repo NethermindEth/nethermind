@@ -122,6 +122,24 @@ class CorpusResultsTests(unittest.TestCase):
         blob = "\n".join(p.read_text(encoding="utf-8") for p in stage_root.rglob("*") if p.is_file())
         self.assertNotIn(SENTINEL, blob)
 
+    def test_stage_publishes_a_memory_series_and_rejects_a_doctored_one(self):
+        """The series is the only leak evidence a paced replay produces, and it is pure numbers."""
+        out_root = self.dir / "out"
+        cell = out_root / "corpus" / "a" / "nm"
+        cell.mkdir(parents=True)
+        (cell / "resources.csv").write_text(
+            "elapsed_seconds,memory_bytes,memory_anon_bytes\n0.250,1000,100\n0.500,,200\n",
+            encoding="utf-8")
+        stage_root = self.dir / "stage"
+        corpus_results.stage(str(out_root), str(stage_root))
+        self.assertTrue((stage_root / "corpus" / "a" / "nm" / "resources.csv").is_file())
+
+        (cell / "resources.csv").write_text(
+            f"elapsed_seconds,memory_bytes,memory_anon_bytes\n0.250,1000,{SENTINEL}\n",
+            encoding="utf-8")
+        with self.assertRaises(corpus_results.CorpusResultsError):
+            corpus_results.stage(str(out_root), str(self.dir / "stage2"))
+
     def test_stage_excludes_warmup_cells(self):
         """A staged warmup/summary.json would displace the measured cell in the PR comment:
         comment() keys cells by directory position, and 'warmup' sorts after '100'."""

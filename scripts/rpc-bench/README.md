@@ -517,12 +517,32 @@ files that are themselves validated, a malformed manifest drops only itself with
 rather than failing the artifact): `summary.json`, `parity.json`, `timings.csv`
 (indexes, milliseconds and outcome names), `timings.meta.json` (block identity and
 run parameters, including `warmup_seconds`), `resources.json` (cgroup counters),
-`parity-diffs.json`, and the generated markdown/manifest. `parity-diffs.json` is
+`resources.csv` (an elapsed clock and two byte counts per tick), `parity-diffs.json`, and the
+generated markdown/manifest. `parity-diffs.json` is
 the one artifact derived from response bytes: **opt-in** (`parity_diffs`, default
 off) and reduced to word positions plus a higher/lower direction — no operands, no
 magnitudes, enforced by its validator. Failures print category + counts (e.g.
 `rpc_error=3`), never request or response bytes — raw detail stays on the
 runner in `<scratch>/jsonbench/` for SSH diagnosis until the next run wipes it.
+
+### Memory
+
+Every load window carries a cgroup sample: the k6 cells get theirs from `run-jsonbench.sh`, the
+paced replay from the sweep, which is the only sample a corpus too large for a k6 fixture
+produces. `resources.json` reports memory twice, and the difference is the point:
+
+| field | what it is |
+| --- | --- |
+| `memory_avg_bytes` / `memory_peak_bytes` | `memory.current` — **includes reclaimable page cache**, so it climbs toward the container limit whatever the client does |
+| `memory_anon_*_bytes` | `memory.stat`'s `anon` — managed heap plus native allocations, which is what an OOM kill accounts for |
+| `memory_anon_first_bytes` / `memory_anon_last_bytes` | the window's endpoints, so a slope survives without the series |
+
+`resources.csv` records `elapsed_seconds,memory_bytes,memory_anon_bytes` per tick beside it.
+Read the anonymous column when the question is whether a node retains memory under sustained
+load: a working set that has settled plateaus, and only something that keeps hold of memory keeps
+climbing. One caveat — a .NET node's anonymous memory is a floor, not an occupancy: the GC
+returns segments to the OS lazily, so a flat line after a spike means "not growing", not "nothing
+retained".
 
 Example — 4-way private comparison of Nethermind builds, 3 rates, both corpora,
 one dispatch:

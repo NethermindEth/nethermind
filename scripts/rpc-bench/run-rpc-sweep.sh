@@ -526,6 +526,16 @@ for entry in $CLIENTS; do
       if [[ -n "$CORPUS_TIMINGS_PASSES" ]]; then
         tdir="$OUT_DIR/corpus/${clabel}/${label}"; mkdir -p "$tdir"
         echo "-- TIMINGS ${clabel}: ${label} (${CORPUS_TIMINGS_PASSES} passes @ ${CORPUS_TIMINGS_RPS} rps) --"
+        # The replay is the longest uninterrupted load a corpus run applies, and it starts after
+        # the warm-up — so its memory series is the one window where a node that retains memory
+        # separates from one whose working set has simply settled. The k6 cells get their sample
+        # inside run-jsonbench.sh; this path had none.
+        timings_sampler=""
+        if [[ "$CORPUS_RESOURCE_SAMPLING" == "true" ]]; then
+          python3 "$here/sample-resources.py" sample --container "$cname" \
+            --out "$tdir/resources.json" --series "$tdir/resources.csv" &
+          timings_sampler=$!
+        fi
         if ! python3 "$here/corpus_parity.py" timings \
             --corpus "$corpus" --rpc-url "http://localhost:8545" \
             --out "$tdir/timings.csv" --passes "$CORPUS_TIMINGS_PASSES" \
@@ -533,6 +543,16 @@ for entry in $CLIENTS; do
             --warmup-seconds "$WARMED_SECONDS" --warmup-rps "$WARMED_RPS"; then
           echo "::warning::timings replay failed for ${label} on corpus ${clabel}"
           cell_fail=$((cell_fail + 1))
+        fi
+        if [[ -n "$timings_sampler" ]]; then
+          kill -TERM "$timings_sampler" 2>/dev/null
+          wait "$timings_sampler" 2>/dev/null
+          # Per-request costs need the count the replay delivered, which its own meta records.
+          delivered="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['requests'])" \
+            "$tdir/timings.meta.json" 2>/dev/null || echo 0)"
+          [[ "$delivered" =~ ^[0-9]+$ && "$delivered" -gt 0 ]] && \
+            python3 "$here/sample-resources.py" normalize --out "$tdir/resources.json" \
+              --requests "$delivered" || true
         fi
       fi
     done

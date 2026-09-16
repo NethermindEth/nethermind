@@ -32,6 +32,8 @@ class FakeCgroup:
         self.cpu_usec = 0
         self.throttled_usec = 0
         self.memory_current = 0
+        self.memory_anon = 0
+        self.has_memory_stat = True
         self.read_bytes = 0
         self.write_bytes = 0
         self.write()
@@ -40,6 +42,10 @@ class FakeCgroup:
         (self.root / "cpu.stat").write_text(
             f"usage_usec {self.cpu_usec}\nthrottled_usec {self.throttled_usec}\n", encoding="utf-8")
         (self.root / "memory.current").write_text(f"{self.memory_current}\n", encoding="utf-8")
+        if self.has_memory_stat:
+            (self.root / "memory.stat").write_text(
+                f"anon {self.memory_anon}\nfile {self.memory_current - self.memory_anon}\n",
+                encoding="utf-8")
         (self.root / "memory.peak").write_text("999999999999\n", encoding="utf-8")
         (self.root / "io.stat").write_text(
             f"8:0 rbytes={self.read_bytes} wbytes={self.write_bytes}\n", encoding="utf-8")
@@ -57,7 +63,7 @@ class SamplerArithmeticTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def _run(self, ticks):
+    def _run(self, ticks, series_path=None):
         """Drive the loop for len(ticks) iterations, applying each tick's mutations."""
         state = {"i": 0}
 
@@ -76,7 +82,8 @@ class SamplerArithmeticTests(unittest.TestCase):
         sample_resources._container_id = lambda _name: "cid"
         try:
             with contextlib.redirect_stdout(io.StringIO()):
-                sample_resources.sample("node", str(self.out), 0.0, should_stop)
+                sample_resources.sample("node", str(self.out), 0.0, should_stop,
+                                        series_path=series_path)
         finally:
             sample_resources._cgroup_dir = original
             sample_resources._container_id = original_id
@@ -98,6 +105,47 @@ class SamplerArithmeticTests(unittest.TestCase):
         ])
         self.assertEqual(summary["memory_peak_bytes"], 700)
         self.assertEqual(summary["memory_avg_bytes"], (100 + 700 + 300) // 3)
+
+    def test_anonymous_memory_is_reported_apart_from_reclaimable_page_cache(self):
+        """memory.current climbs with page cache whatever the client does; anon is what OOMs."""
+        summary = self._run([
+            lambda c: (setattr(c, "memory_current", 1000), setattr(c, "memory_anon", 100)),
+            lambda c: (setattr(c, "memory_current", 5000), setattr(c, "memory_anon", 300)),
+        ])
+        self.assertEqual(summary["memory_peak_bytes"], 5000)
+        self.assertEqual(summary["memory_anon_peak_bytes"], 300)
+        self.assertEqual(summary["memory_anon_avg_bytes"], 200)
+
+    def test_first_and_last_anonymous_samples_state_the_windows_slope(self):
+        summary = self._run([
+            lambda c: setattr(c, "memory_anon", 100),
+            lambda c: setattr(c, "memory_anon", 900),
+            lambda c: setattr(c, "memory_anon", 400),
+        ])
+        self.assertEqual(summary["memory_anon_first_bytes"], 100)
+        self.assertEqual(summary["memory_anon_last_bytes"], 400)
+
+    def test_a_cgroup_without_memory_stat_reports_zero_rather_than_failing(self):
+        """geth/reth images and older kernels are not required to expose anon accounting."""
+        self.cgroup.has_memory_stat = False
+        (self.dir / "memory.stat").unlink()
+        summary = self._run([lambda c: setattr(c, "memory_current", 10)])
+        self.assertEqual(summary["memory_anon_peak_bytes"], 0)
+        self.assertEqual(summary["memory_peak_bytes"], 10)
+
+    def test_the_series_records_every_tick_so_a_slope_can_be_read(self):
+        series = self.dir / "resources.csv"
+        self._run([
+            lambda c: (setattr(c, "memory_current", 10), setattr(c, "memory_anon", 1)),
+            lambda c: (setattr(c, "memory_current", 20), setattr(c, "memory_anon", 2)),
+        ], series_path=str(series))
+        rows = [line.split(",") for line in series.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(rows[0], list(sample_resources.SERIES_HEADER))
+        self.assertEqual([(r[1], r[2]) for r in rows[1:]], [("10", "1"), ("20", "2")])
+
+    def test_no_series_file_is_written_when_none_was_asked_for(self):
+        self._run([lambda c: setattr(c, "memory_current", 10)])
+        self.assertEqual(list(self.dir.glob("*.csv")), [])
 
     def test_sampler_leaves_per_request_costs_to_normalize(self):
         summary = self._run([lambda c: setattr(c, "cpu_usec", 1000)])

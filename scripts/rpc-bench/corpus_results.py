@@ -37,7 +37,7 @@ STATUS_PATTERN = re.compile(r"(ok|transport_failure|invalid_response|rpc_error)(
 
 STAGED_FILENAMES = ("summary.json", "parity.json", "jsonbench-summary.md", "summaries.manifest",
                     "timings.csv", "parity-diffs.json", "timings.meta.json",
-                    "resources.json")
+                    "resources.json", "resources.csv")
 
 
 class CorpusResultsError(Exception):
@@ -249,7 +249,11 @@ RESOURCE_FIELDS = {
     "cpu_throttled_usec", "memory_avg_bytes", "memory_peak_bytes", "io_read_bytes",
     "io_write_bytes", "stall_cpu_usec", "stall_io_usec", "stall_memory_usec", "requests",
     "cpu_ms_per_request", "io_read_bytes_per_request",
+    "memory_anon_avg_bytes", "memory_anon_peak_bytes",
+    "memory_anon_first_bytes", "memory_anon_last_bytes",
 }
+
+RESOURCE_SERIES_HEADER = ["elapsed_seconds", "memory_bytes", "memory_anon_bytes"]
 
 
 def _validate_resources(path: Path) -> None:
@@ -263,6 +267,28 @@ def _validate_resources(path: Path) -> None:
             continue  # PSI is absent on kernels without pressure accounting
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise CorpusResultsError(f"{path.name}: {key} is not numeric")
+
+
+def _validate_resource_series(path: Path) -> None:
+    """A memory series is an elapsed clock and two byte counts — nothing request-derived."""
+    with path.open("r", encoding="utf-8", newline="") as source:
+        rows = csv.reader(source)
+        try:
+            header = next(rows)
+        except StopIteration:
+            raise CorpusResultsError(f"{path.name} is empty") from None
+        if header != RESOURCE_SERIES_HEADER:
+            raise CorpusResultsError(f"{path.name} does not match the resource series schema")
+        for row in rows:
+            if len(row) != len(RESOURCE_SERIES_HEADER):
+                raise CorpusResultsError(f"{path.name}: row does not match the header")
+            for value in row:
+                if value == "":
+                    continue  # a cgroup file can be unreadable for a tick
+                try:
+                    float(value)
+                except ValueError:
+                    raise CorpusResultsError(f"{path.name}: non-numeric cell") from None
 
 
 # Arity matches the one consumer exactly: percat-matrix.py unpacks 4 fields for iso| and
@@ -336,6 +362,8 @@ def stage(output_root: str, stage_root: str) -> None:
                 _validate_timings_meta(path)
             elif path.name == "resources.json":
                 _validate_resources(path)
+            elif path.name == "resources.csv":
+                _validate_resource_series(path)
             elif path.name == "summaries.manifest":
                 target = destination_root / path.relative_to(source_root)
                 target.parent.mkdir(parents=True, exist_ok=True)
