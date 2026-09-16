@@ -1017,8 +1017,16 @@ esac
             "  if [[ \"${PROBE_FAILURE_RESPONSE:-}\" == all-error ]]; then printf '%s\\n' 'corpus method probe found no successful results over 2 records (rpc_error:-32000)' >&2; fi\n"
             "  exit 7\n"
             "fi\n"
+            # The converter writes one fixture per selector class, plus the manifest that both
+            # the benchmark config and the reuse check read.
             "if [[ \"${1:-}\" == *prepare-eth-call-corpus.py ]]; then\n"
-            "  mkdir -p \"$(dirname \"$3\")\"; printf '[]' > \"$3\"\n"
+            "  mkdir -p \"$3\"; printf '[]' > \"$3/class_1.json\"\n"
+            "  printf '%s' '{\"class_1\":1}' > \"$3/classes.json\"\n"
+            "fi\n"
+            # The renderer is invoked as `python3 - <benchmark.yaml>`; the summary reads back the
+            # duration/rps/vus it wrote.
+            "if [[ \"${1:-}\" == - ]]; then\n"
+            "  mkdir -p \"$(dirname \"$2\")\"; printf '%s\\n' 'duration: \"60s\"' 'rps: 100' 'vus: 10' > \"$2\"\n"
             "fi\n"
             "if [[ \"${1:-}\" == *corpus_results.py && \"${2:-}\" == sanitize ]]; then\n"
             "  mkdir -p \"$(dirname \"$4\")\"; printf '%s\\n' '{\"metrics\":{\"http_req_duration\":{\"values\":{\"avg\":1,\"med\":1,\"p(90)\":1,\"p(95)\":1,\"p(99)\":1,\"max\":1}},\"http_reqs\":{\"values\":{\"count\":1,\"rate\":1}},\"http_req_failed\":{\"values\":{\"rate\":0}},\"checks\":{\"values\":{\"passes\":1,\"fails\":0}},\"dropped_iterations\":{\"values\":{\"count\":0}}}}' > \"$4\"\n"

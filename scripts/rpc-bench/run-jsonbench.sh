@@ -87,6 +87,16 @@ if [[ "$JB_ETH_CALL_CORPUS" == "true" ]]; then
   [[ "$JB_MODE" == "benchmark" ]] || die "eth_call corpus is supported only in benchmark mode"
   [[ -f "$JB_ETH_CALL_CORPUS_FILE" ]] || die "eth_call corpus file not found: $JB_ETH_CALL_CORPUS_FILE"
   python3 "$HERE/corpus_parity.py" validate --corpus "$JB_ETH_CALL_CORPUS_FILE" || die "eth_call corpus failed validation"
+  if [[ "$CORPUS_METHOD" != "eth_call" ]]; then
+    # A node that does not serve the rewritten method answers every record with an RPC error, which
+    # reads as a fast cell rather than as a failure. Check support outside the measured window on
+    # every invocation, prepared-fixture reuse included.
+    probe_corpus_node() {
+      python3 "$HERE/corpus_parity.py" probe --corpus "$JB_ETH_CALL_CORPUS_FILE" --rpc-url "$1"         || die "corpus method capability probe failed for $1"
+    }
+    probe_corpus_node "$RPC_URL"
+    [[ -z "$REFERENCE_RPC_URL" ]] || probe_corpus_node "$REFERENCE_RPC_URL"
+  fi
   JB_DEEP_CHECK="false"
   JB_HTML_REPORT="false"
 fi
