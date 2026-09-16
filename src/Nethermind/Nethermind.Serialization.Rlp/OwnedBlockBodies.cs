@@ -15,13 +15,13 @@ namespace Nethermind.Core;
 /// BlockBody may contain `Memory<byte>` that is explicitly managed. Reusing `BlockBody` from this object after Dispose
 /// is likely to cause corrupted `BlockBody`.
 /// </summary>
-public class OwnedBlockBodies(BlockBody?[]? bodies, IMemoryOwner<byte>? memoryOwner = null) : IDisposable, IReadOnlyList<BlockBody?>
+public class OwnedBlockBodies(BlockBody?[] bodies, IMemoryOwner<byte>? memoryOwner = null) : IDisposable, IReadOnlyList<BlockBody?>
 {
-    private readonly BlockBody?[]? _rawBodies = bodies;
+    private readonly BlockBody?[] _rawBodies = bodies;
 
     private IMemoryOwner<byte>? _memoryOwner = memoryOwner;
 
-    public BlockBody?[]? Bodies => _rawBodies;
+    public BlockBody?[] Bodies => _rawBodies;
 
     /// <summary>
     /// Disown the `BlockBody`, copying any `Memory<byte>` so that it does not depend on the `_memoryOwner.`
@@ -64,7 +64,7 @@ public class OwnedBlockBodies(BlockBody?[]? bodies, IMemoryOwner<byte>? memoryOw
 
     public IEnumerator<BlockBody?> GetEnumerator()
     {
-        foreach (BlockBody blockBody in _rawBodies)
+        foreach (BlockBody? blockBody in _rawBodies)
         {
             yield return blockBody;
         }

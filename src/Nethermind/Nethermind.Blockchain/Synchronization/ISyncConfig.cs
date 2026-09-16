@@ -114,6 +114,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "The number of account range partitions to create. Increases the Snap sync request concurrency. Allowed values are between 1 and 256.", DefaultValue = "8")]
     int SnapSyncAccountRangePartitionCount { get; set; }
 
+    [ConfigItem(Description = "_Technical._ Whether to heal the state left by Snap sync using block access lists instead of trie nodes. Only applies to the flat state layout.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool BalHealing { get; set; }
+
     [ConfigItem(Description = $"Whether to enable receipts validation that checks for receipts that might be missing because of a bug. If needed, receipts are downloaded from the network. The range to verify is `{nameof(FixReceiptsStartingBlock)}`..`{nameof(FixReceiptsLastBlock)}`.", DefaultValue = "false")]
     public bool FixReceipts { get; set; }
 
@@ -190,7 +193,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Max distance of state sync from best suggested header.", DefaultValue = "128", HiddenFromDocs = true)]
     ulong StateMaxDistanceFromHead { get; set; }
 
-    [ConfigItem(Description = "_Technical._ Min distance of state sync from best suggested header.", DefaultValue = "32", HiddenFromDocs = true)]
+    [ConfigItem(Description = "_Technical._ Min distance of state sync from best suggested header. Also the minimum head advance before a snap failure-streak pivot update is honoured, so lowering it re-enables the forced-pivot chase on fast chains.", DefaultValue = "32", HiddenFromDocs = true)]
     ulong StateMinDistanceFromHead { get; set; }
 
     [ConfigItem(Description = "_Technical._ Run explicit GC after state sync finished.", DefaultValue = "true", HiddenFromDocs = true)]

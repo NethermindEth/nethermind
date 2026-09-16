@@ -250,7 +250,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Get_headers_when_blocks_are_missing_in_the_middle()
+        public void Get_headers_stops_at_first_missing_block([Values] bool missingTail)
         {
             BlockHeader[] headers = new BlockHeader[5];
             headers[0] = Build.A.BlockHeader.TestObject;
@@ -258,6 +258,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             headers[2] = null;
             headers[3] = Build.A.BlockHeader.TestObject;
             headers[4] = Build.A.BlockHeader.TestObject;
+            if (missingTail)
+            {
+                headers[3] = null;
+                headers[4] = null;
+            }
 
             _syncManager.FindHash(100).Returns(TestItem.KeccakA);
             _syncManager.FindHeaders(TestItem.KeccakA, 5, 1, true)
@@ -275,7 +280,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockHeaders);
 
-            _session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(static bhm => bhm.BlockHeaders.Count == 5));
+            _session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(static bhm => bhm.BlockHeaders.Count == 2));
             _syncManager.Received().FindHash(100);
         }
 
@@ -400,9 +405,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.That(bodies[1], Is.SameAs(thirdBlock.Body));
         }
 
-        [TestCase(5)]
-        [TestCase(50)]
-        public void Should_truncate_array_when_too_many_body(int availableBody)
+        [Test]
+        public void Should_truncate_array_when_too_many_body([Values(5, 50)] int availableBody)
         {
             List<Block> blocks = [];
             Transaction[] transactions = Build.A.Transaction.TestObjectNTimes(1000);
@@ -499,8 +503,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         private class AlwaysTimeoutBackgroundTaskScheduler : IBackgroundTaskScheduler
         {
             internal int ScheduledTasks = 0;
-            public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc,
-                TimeSpan? timeout = null, string? source = null)
+            public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
+                where TReq : notnull, IBackgroundTaskRequest<TReq>
             {
                 CancellationTokenSource cts = new();
                 cts.Cancel();
@@ -515,7 +519,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             public List<Type> RequestTypes { get; } = [];
 
             public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc,
-                TimeSpan? timeout = null, string? source = null)
+                TimeSpan? timeout = null) where TReq : notnull, IBackgroundTaskRequest<TReq>
             {
                 RequestTypes.Add(typeof(TReq));
                 fulfillFunc(request, CancellationToken.None).GetAwaiter().GetResult();
@@ -645,7 +649,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         private sealed class CallbackBackgroundTaskScheduler(Func<bool> onSchedule) : IBackgroundTaskScheduler
         {
             public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc,
-                TimeSpan? timeout = null, string? source = null) => onSchedule();
+                TimeSpan? timeout = null) where TReq : notnull, IBackgroundTaskRequest<TReq> => onSchedule();
         }
 
         [Test]
@@ -804,13 +808,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             }
         }
 
-        [TestCase(257)]
-        [TestCase(300)]
-        [TestCase(1055)]
-        [TestCase(1056)]
-        [TestCase(1500)]
-        [TestCase(10000)]
-        public void should_send_txs_with_size_exceeding_MaxPacketSize_in_more_than_one_TransactionsMessage(int txCount)
+        [Test]
+        public void should_send_txs_with_size_exceeding_MaxPacketSize_in_more_than_one_TransactionsMessage([Values(257, 300, 1055, 1056, 1500, 10000)] int txCount)
         {
             Transaction[] txs = BuildTransactionsWithEqualSerializedLength(txCount, dataSize: 0);
 
@@ -824,13 +823,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _session.Received(messagesCount).DeliverMessage(Arg.Is<TransactionsMessage>(m => m.Transactions.Count == maxNumberOfTxsInOneMsg || m.Transactions.Count == nonFullMsgTxsCount));
         }
 
-        [TestCase(0)]
-        [TestCase(128)]
-        [TestCase(4096)]
-        [TestCase(100000)]
-        [TestCase(102400)]
-        [TestCase(222222)]
-        public void should_send_single_transaction_even_if_exceed_MaxPacketSize(int dataSize)
+        [Test]
+        public void should_send_single_transaction_even_if_exceed_MaxPacketSize([Values(0, 128, 4096, 100000, 102400, 222222)] int dataSize)
         {
             const int txCount = 512;
 
@@ -844,6 +838,46 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _handler.SendNewTransactions(txs);
 
             _session.Received(messagesCount).DeliverMessage(Arg.Is<TransactionsMessage>(m => m.Transactions.Count == numberOfTxsInOneMsg || m.Transactions.Count == nonFullMsgTxsCount));
+        }
+
+        public enum HeadHeaderAnswer { RequestedBlock, DifferentBlock, Nothing }
+
+        /// <summary>
+        /// Saying "I don't have it" with an empty list must not cost the peer its connection, but substituting
+        /// another block is a protocol breach.
+        /// </summary>
+        [TestCase(HeadHeaderAnswer.RequestedBlock, false)]
+        [TestCase(HeadHeaderAnswer.DifferentBlock, true)]
+        [TestCase(HeadHeaderAnswer.Nothing, false)]
+        public async Task Head_block_header_is_only_returned_for_the_requested_block(HeadHeaderAnswer answer, bool shouldDisconnect)
+        {
+            BlockHeader requested = Build.A.BlockHeader.WithNumber(10).TestObject;
+            BlockHeader[] answered = answer switch
+            {
+                HeadHeaderAnswer.RequestedBlock => [requested],
+                HeadHeaderAnswer.DifferentBlock => [Build.A.BlockHeader.WithNumber(20).TestObject],
+                _ => [],
+            };
+
+            HandleIncomingStatusMessage();
+
+            Task<BlockHeader?> request = ((ISyncPeer)_handler).GetHeadBlockHeader(requested.Hash, CancellationToken.None);
+            using BlockHeadersMessage response = new(answered.ToPooledList());
+            HandleZeroMessage(response, Eth62MessageCode.BlockHeaders);
+
+            BlockHeader? result = await request;
+
+            if (answer == HeadHeaderAnswer.RequestedBlock)
+            {
+                Assert.That(result?.Hash, Is.EqualTo(requested.Hash));
+            }
+            else
+            {
+                Assert.That(result, Is.Null);
+            }
+
+            _session.Received(shouldDisconnect ? 1 : 0)
+                .InitiateDisconnect(DisconnectReason.UnexpectedHeaderHash, Arg.Any<string>());
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase

@@ -58,6 +58,7 @@ internal class SpecialTransactionsTests
             .WithTo(destination.Address)
             .WithValue(amount)
             .WithType(TxType.Legacy)
+            .WithGasPrice(XdcConstants.DefaultMinGasPrice * XdcConstants.Gas50xMultiplier)
             .WithNonce(nonce)
             .TestObject;
 
@@ -80,9 +81,8 @@ internal class SpecialTransactionsTests
     }
 
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task SignTx_Is_Dispatched_On_MergeSignRange_Block(bool enableEip1559)
+    [Test]
+    public async Task SignTx_Is_Dispatched_On_MergeSignRange_Block([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(1, true);
 
@@ -123,9 +123,8 @@ internal class SpecialTransactionsTests
         Assert.That(blockTarget, Is.EqualTo(mergeSignBlockRange));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task SignTx_Is_Not_Dispatched_Outside_MergeSignRange_Block(bool enableEip1559)
+    [Test]
+    public async Task SignTx_Is_Not_Dispatched_Outside_MergeSignRange_Block([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(1, true);
 
@@ -154,9 +153,8 @@ internal class SpecialTransactionsTests
                        || r.To == spec.RandomizeSMCBinary), Is.False);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Special_Tx_Is_Executed_Before_Normal_Txs(bool enableEip1559)
+    [Test]
+    public async Task Special_Tx_Is_Executed_Before_Normal_Txs([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(1, true);
 
@@ -214,15 +212,10 @@ internal class SpecialTransactionsTests
                 onlyEncounteredSpecialTx = false;
             }
         }
-
-        Assert.Pass();
     }
 
-    [TestCase(false, false)]
-    [TestCase(false, true)]
-    [TestCase(true, false)]
-    [TestCase(true, true)]
-    public async Task Tx_With_With_BlackListed_Sender_Fails_Validation(bool blackListingActivated, bool enableEip1559)
+    [Test]
+    public async Task Tx_With_With_BlackListed_Sender_Fails_Validation([Values] bool blackListingActivated, [Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -271,11 +264,8 @@ internal class SpecialTransactionsTests
     }
 
 
-    [TestCase(false, false)]
-    [TestCase(false, true)]
-    [TestCase(true, false)]
-    [TestCase(true, true)]
-    public async Task Tx_With_With_BlackListed_Receiver_Fails_Validation(bool blackListingActivated, bool enableEip1559)
+    [Test]
+    public async Task Tx_With_With_BlackListed_Receiver_Fails_Validation([Values] bool blackListingActivated, [Values] bool enableEip1559)
     {
 
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(5, false);
@@ -334,9 +324,8 @@ internal class SpecialTransactionsTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Malformed_WrongLength_SpecialTx_Fails_Validation(bool enableEip1559)
+    [Test]
+    public async Task Malformed_WrongLength_SpecialTx_Fails_Validation([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -367,9 +356,8 @@ internal class SpecialTransactionsTests
         Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Malformed_SenderNonceLesserThanTxNonce_SignTx_Fails_Validation(bool enableEip1559)
+    [Test]
+    public async Task Malformed_SenderNonceLesserThanTxNonce_SignTx_Fails_Validation([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -424,9 +412,8 @@ internal class SpecialTransactionsTests
         Assert.That(result.Value.Error, Is.EqualTo(XdcTransactionResult.NonceTooLowError));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Malformed_SenderNonceBiggerLesserThanTxNonce_SignTx_Fails_Validation(bool enableEip1559)
+    [Test]
+    public async Task Malformed_SenderNonceBiggerLesserThanTxNonce_SignTx_Fails_Validation([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -482,9 +469,8 @@ internal class SpecialTransactionsTests
     }
 
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Malformed_SenderNonceEqualLesserThanTxNonce_SignTx_Fails_Validation(bool enableEip1559)
+    [Test]
+    public async Task Malformed_SenderNonceEqualLesserThanTxNonce_SignTx_Fails_Validation([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -542,9 +528,8 @@ internal class SpecialTransactionsTests
         }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Malformed_WrongBlockNumber_BlockTooHigh_SignTx_Fails_Validation(bool enableEip1559)
+    [Test]
+    public async Task Malformed_WrongBlockNumber_BlockTooHigh_SignTx_Fails_Validation([Values] bool enableEip1559)
     {
         ulong epochLength = 10;
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
@@ -575,9 +560,8 @@ internal class SpecialTransactionsTests
         Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Malformed_WrongBlockNumber_BlockTooLow_SignTx_Fails_Validation(bool enableEip1559)
+    [Test]
+    public async Task Malformed_WrongBlockNumber_BlockTooLow_SignTx_Fails_Validation([Values] bool enableEip1559)
     {
         ulong epochLength = 10;
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
@@ -609,9 +593,8 @@ internal class SpecialTransactionsTests
         Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Malformed_WrongBlockNumber_BlockWithinRange_SignTx_Fails_Validation(bool enableEip1559)
+    [Test]
+    public async Task Malformed_WrongBlockNumber_BlockWithinRange_SignTx_Fails_Validation([Values] bool enableEip1559)
     {
         ulong epochLength = 10;
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
@@ -649,9 +632,8 @@ internal class SpecialTransactionsTests
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task SignTx_From_NonEpochCandidate_Fails_Validation(bool enableEip1559)
+    [Test]
+    public async Task SignTx_From_NonEpochCandidate_Fails_Validation([Values] bool enableEip1559)
     {
         ulong epochLength = 10;
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(epochLength * 3, false);
@@ -690,9 +672,8 @@ internal class SpecialTransactionsTests
         Assert.That(result.ToString(), Does.Contain("Special transaction sender is not an epoch candidate"));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task SignTx_Increments_Nonce_And_Emits_Log_And_Consume_NoGas(bool enableEip1559)
+    [Test]
+    public async Task SignTx_Increments_Nonce_And_Emits_Log_And_Consume_NoGas([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -758,9 +739,8 @@ internal class SpecialTransactionsTests
         }
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Valid_SpecialTx_NotSign_Call_EmptyTx_Handler(bool enableEip1559)
+    [Test]
+    public async Task Valid_SpecialTx_NotSign_Call_EmptyTx_Handler([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -846,9 +826,8 @@ internal class SpecialTransactionsTests
         Assert.That(receiptsTracer.TxReceipts.Length, Is.EqualTo(addresses.Length));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task SignTx_With_ZeroBalance_CanBeIncludedInBlock_And_ReceiptIsEmitted(bool enableEip1559)
+    [Test]
+    public async Task SignTx_With_ZeroBalance_CanBeIncludedInBlock_And_ReceiptIsEmitted([Values] bool enableEip1559)
     {
         XdcTestBlockchain chain = await XdcTestBlockchain.Create();
 
@@ -892,9 +871,8 @@ internal class SpecialTransactionsTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task RandomizeTx_IncrementNonce_And_Is_Treated_As_Free(bool enableEip1559)
+    [Test]
+    public async Task RandomizeTx_IncrementNonce_And_Is_Treated_As_Free([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>
@@ -961,9 +939,8 @@ internal class SpecialTransactionsTests
     }
 
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task RandomizeTx_From_ZeroBalance_Account(bool enableEip1559)
+    [Test]
+    public async Task RandomizeTx_From_ZeroBalance_Account([Values] bool enableEip1559)
     {
         XdcTestBlockchain blockChain = await XdcTestBlockchain.Create(5, false);
         blockChain.ChangeReleaseSpec((spec) =>

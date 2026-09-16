@@ -9,9 +9,9 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Serialization.Json;
 
-public class Base64Converter : JsonConverter<byte[]>
+public class Base64Converter : JsonConverter<byte[]?>
 {
-    public override byte[] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    public override byte[]? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         JsonTokenType tokenType = reader.TokenType;
 
@@ -31,7 +31,7 @@ public class Base64Converter : JsonConverter<byte[]>
     [DoesNotReturn, StackTraceHidden]
     internal static void ThrowJsonException() => throw new JsonException();
 
-    public override void Write(Utf8JsonWriter writer, byte[] value, JsonSerializerOptions options)
+    public override void Write(Utf8JsonWriter writer, byte[]? value, JsonSerializerOptions options)
     {
         if (value is null)
         {
@@ -42,4 +42,3 @@ public class Base64Converter : JsonConverter<byte[]>
         writer.WriteBase64StringValue(value);
     }
 }
-

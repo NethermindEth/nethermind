@@ -120,11 +120,8 @@ public class NLogConfiguratorTests
         Assert.That(value, Does.Match(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}Z$"));
     }
 
-    [TestCase("ecs")]
-    [TestCase("gcp")]
-    [TestCase("logstash")]
-    [TestCase("gelf")]
-    public void Ansi_escape_sequences_are_stripped_from_message(string format)
+    [Test]
+    public void Ansi_escape_sequences_are_stripped_from_message([Values("ecs", "gcp", "logstash", "gelf")] string format)
     {
         MemoryTarget memory = SetUpAndConfigure(format);
 

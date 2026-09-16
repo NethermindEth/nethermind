@@ -115,7 +115,7 @@ public class BlockAccessListSequentialValidationTests
         RunSequential(stateProvider, balManager, block, blockAccessList: null);
 
         byte[] encoded = BlockAccessListDecoder.EncodeToBytes(balManager.GeneratedBlockAccessList);
-        return Rlp.Decode<ReadOnlyBlockAccessList>(encoded);
+        return Rlp.Decode<ReadOnlyBlockAccessList>(encoded)!;
     }
 
     private static BlockAccessListManager RunSequentialValidation(
@@ -167,12 +167,10 @@ public class BlockAccessListSequentialValidationTests
         TestSingleReleaseSpecProvider specProvider = new(Amsterdam.Instance);
         BlockAccessListManager balManager = new(
             stateProvider,
-            specProvider,
-            Substitute.For<IBlockhashProvider>(),
             LimboLogs.Instance,
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
-            static worldState => new EthereumCodeInfoRepository(worldState));
+            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), specProvider, LimboLogs.Instance));
         return (stateProvider, balManager);
     }
 

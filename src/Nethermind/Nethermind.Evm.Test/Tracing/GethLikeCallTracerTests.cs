@@ -7,6 +7,8 @@ using System.Text;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
@@ -15,6 +17,8 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -23,6 +27,7 @@ namespace Nethermind.Evm.Test.Tracing;
 public class GethLikeCallTracerTests : VirtualMachineTestsBase
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(EthereumJsonSerializer.JsonOptionsIndented) { NewLine = "\n" };
+    private static readonly IReleaseSpec CancunSpec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.CancunActivation);
     internal const string? WithLog = """{"withLog":true}""";
     internal const string? OnlyTopCall = """{"onlyTopCall":true}""";
     internal const string? WithLogAndOnlyTopCall = """{"withLog":true,"onlyTopCall":true}""";
@@ -30,7 +35,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     private string ExecuteCallTrace(byte[] code, string? tracerConfig = null)
     {
         (_, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
-        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(tracerConfig));
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(tracerConfig));
         using GethLikeTxTrace callTrace = Execute(tracer, code, MainnetSpecProvider.CancunActivation).BuildResult();
         return JsonSerializer.Serialize(callTrace.CustomTracerResult?.Value, SerializerOptions);
     }
@@ -40,6 +45,93 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Tracer = NativeCallTracer.CallTracer,
         TracerConfig = config is not null ? JsonSerializer.Deserialize<JsonElement>(config) : null
     };
+
+    [Test]
+    public void Call_tracer_does_not_request_opcode_capture([Values] bool enableCapture)
+    {
+        Transaction tx = Build.A.Transaction.TestObject;
+        GethTraceOptions options = GetGethTraceOptions(WithLog) with
+        {
+            DisableStack = !enableCapture,
+            DisableStorage = !enableCapture,
+            EnableMemory = enableCapture,
+            EnableReturnData = enableCapture
+        };
+        using NativeCallTracer tracer = new(tx, CancunSpec, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.IsTracingInstructions, Is.False);
+            Assert.That(tracer.IsTracingStack, Is.False);
+            Assert.That(tracer.IsTracingOpLevelStorage, Is.False);
+            Assert.That(tracer.IsTracingMemory, Is.False);
+            Assert.That(tracer.IsTracingReturnData, Is.False);
+            Assert.That(tracer.IsTracingActions, Is.True);
+            Assert.That(tracer.IsTracingLogs, Is.True);
+        }
+    }
+
+    public enum GasCheckpointCase { InvalidOpcode, StackUnderflow, OutOfGas, Revert, InvalidDeposit, DepositOutOfGas, PrecompileFailure }
+
+    [Test]
+    public void Action_gas_matches_instruction_gas([Values] GasCheckpointCase scenario)
+    {
+        byte[] childCode = scenario switch
+        {
+            GasCheckpointCase.InvalidOpcode => Prepare.EvmCode.Op(Instruction.INVALID).Done,
+            GasCheckpointCase.StackUnderflow => Prepare.EvmCode.Op(Instruction.POP).Done,
+            GasCheckpointCase.OutOfGas => Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Done,
+            GasCheckpointCase.Revert => Prepare.EvmCode.Revert(0, 0).Done,
+            GasCheckpointCase.InvalidDeposit => Prepare.EvmCode.ForInitOf([0xEF]).Done,
+            GasCheckpointCase.DepositOutOfGas => Prepare.EvmCode.ForInitOf(new byte[1024]).Done,
+            _ => []
+        };
+        TestState.CreateAccount(TestItem.AddressC, 0);
+        TestState.InsertCode(TestItem.AddressC, childCode, Spec);
+        byte[] code = scenario switch
+        {
+            GasCheckpointCase.InvalidDeposit or GasCheckpointCase.DepositOutOfGas => Prepare.EvmCode.Create(childCode, 0).STOP().Done,
+            GasCheckpointCase.PrecompileFailure => Prepare.EvmCode.Call(new Address("0x0000000000000000000000000000000000000009"), 50000).STOP().Done,
+            _ => Prepare.EvmCode.Call(TestItem.AddressC, 10000).STOP().Done
+        };
+        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
+        using NativeCallTracer native = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
+        using CancellationTxTracer optimized = new(native);
+        _processor.CallAndRestore(tx, block.Header, optimized);
+        using GethLikeTxTrace actual = native.BuildResult();
+
+        using NativeCallTracer tracedNative = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
+        GasCheckpointTracer checkpoints = new();
+        using CompositeTxTracer traced = new(tracedNative, checkpoints);
+        _processor.CallAndRestore(tx, block.Header, traced);
+        using GethLikeTxTrace expected = tracedNative.BuildResult();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JsonSerializer.Serialize(actual.CustomTracerResult?.Value, SerializerOptions),
+                Is.EqualTo(JsonSerializer.Serialize(expected.CustomTracerResult?.Value, SerializerOptions)));
+            Assert.That(checkpoints.GasMatches, Is.True);
+            Assert.That(checkpoints.Errors, Is.EqualTo(scenario == GasCheckpointCase.Revert ? 0 : 1));
+        }
+    }
+
+    private sealed class GasCheckpointTracer : TxTracer
+    {
+        private ulong _instructionGas;
+        private ulong _actionGas;
+        public override bool IsTracingInstructions => true;
+        public override bool IsTracingActions => true;
+        public bool GasMatches { get; private set; } = true;
+        public int Errors { get; private set; }
+        public override void ReportOperationRemainingGas(ulong gas) => _instructionGas = gas;
+        public override void ReportActionRemainingGas(ulong gas) => _actionGas = gas;
+
+        public override void ReportActionError(EvmExceptionType evmExceptionType)
+        {
+            GasMatches &= _instructionGas == _actionGas;
+            Errors++;
+        }
+    }
 
     [Test]
     public void Test_CallTrace_SingleCall()
@@ -363,15 +455,6 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
       "gasUsed": "0x8406",
       "input": "0xa01234",
       "error": "execution reverted",
-      "logs": [
-        {
-          "address": "0x76e68a8696537e4141926f3e528733af9e237d69",
-          "data": "0x",
-          "topics": ["0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
-          ],
-          "position": "0x1"
-        }
-      ],
       "calls": [
         {
           "type": "CREATE",
@@ -394,15 +477,6 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
       "gasUsed": "0x8406",
       "input": "0x",
       "error": "execution reverted",
-      "logs": [
-        {
-          "address": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
-          "data": "0x",
-          "topics": ["0x1f675bff07515f5df96737194ea945c36c41e7b4fcef307b7cd4d0e602a69111","0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
-          ],
-          "position": "0x1"
-        }
-      ],
       "calls": [
         {
           "type": "CREATE",
@@ -420,6 +494,47 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
 }
 """;
         Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
+    }
+
+    [Test(Description = "A nested frame that catches a child's revert and keeps running must stay successful and keep the log it emits")]
+    public void Test_CallTrace_NestedCall_CatchesChildRevert_KeepsPostCatchLog()
+    {
+        Address revertAddress = TestItem.AddressC;
+        byte[] revertCode = Prepare.EvmCode.Revert(0, 0).Done;
+        TestState.CreateAccount(revertAddress, 0);
+        TestState.InsertCode(revertAddress, revertCode, Spec);
+
+        Address catchAddress = TestItem.AddressD;
+        byte[] catchAndLogCode = Prepare.EvmCode.Call(TestItem.AddressC, 30000).Log(0, 0).STOP().Done;
+        TestState.CreateAccount(catchAddress, 0);
+        TestState.InsertCode(catchAddress, catchAndLogCode, Spec);
+
+        byte[] txCode = Prepare.EvmCode.Call(catchAddress, 60000).STOP().Done;
+        (_, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, txCode);
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
+        using GethLikeTxTrace trace = Execute(tracer, txCode, MainnetSpecProvider.CancunActivation).BuildResult();
+
+        NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+        NativeCallTracerCallFrame catchFrame = topFrame.Calls.AssertSingle();
+        NativeCallTracerCallFrame revertFrame = catchFrame.Calls.AssertSingle();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(topFrame.Error, Is.Null);
+            Assert.That(topFrame.Logs, Is.Null);
+
+            Assert.That(catchFrame.To, Is.EqualTo(catchAddress));
+            Assert.That(catchFrame.Error, Is.Null, "a frame that swallows a child revert and returns must stay successful");
+            Assert.That(catchFrame.Logs, Is.Not.Null, "the post-catch log belongs to the catcher frame");
+
+            NativeCallTracerLogEntry catcherLog = catchFrame.Logs.AssertSingle();
+            Assert.That(catcherLog.Address, Is.EqualTo(catchAddress));
+            Assert.That(catcherLog.Position, Is.EqualTo(1UL));
+
+            Assert.That(revertFrame.To, Is.EqualTo(revertAddress));
+            Assert.That(revertFrame.Error, Is.EqualTo("execution reverted"));
+            Assert.That(revertFrame.Logs, Is.Null);
+        }
     }
 
     [Test]
@@ -545,13 +660,16 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
     }
 
-    [TestCase(false, false, TestName = "TopLevelCreate_Success")]
-    [TestCase(true, false, TestName = "TopLevelCreate_Revert")]
-    [TestCase(false, true, TestName = "TopLevelCreate_AddressCollision")]
-    public void Test_CallTrace_TopLevelCreate(bool revert, bool addressCollision)
+    public enum CreateOutcome { Success, Revert, InvalidOpcode, AddressCollision }
+
+    [TestCase(CreateOutcome.Success, TestName = "TopLevelCreate_Success")]
+    [TestCase(CreateOutcome.Revert, TestName = "TopLevelCreate_Revert")]
+    [TestCase(CreateOutcome.InvalidOpcode, TestName = "TopLevelCreate_InvalidOpcode")]
+    [TestCase(CreateOutcome.AddressCollision, TestName = "TopLevelCreate_AddressCollision")]
+    public void Test_CallTrace_TopLevelCreate(CreateOutcome outcome)
     {
         byte[] initCode;
-        if (addressCollision)
+        if (outcome == CreateOutcome.AddressCollision)
         {
             initCode = Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.RETURN).Done;
             Address deploymentAddress = ContractAddress.From(Sender, TestState.GetNonce(Sender));
@@ -561,17 +679,20 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
         else
         {
-            initCode = revert
-                ? Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done
-                : Prepare.EvmCode.ForInitOf(new byte[3]).Done;
+            initCode = outcome switch
+            {
+                CreateOutcome.Revert => Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done,
+                CreateOutcome.InvalidOpcode => Prepare.EvmCode.Op(Instruction.INVALID).Done,
+                _ => Prepare.EvmCode.ForInitOf(new byte[3]).Done
+            };
         }
 
         (Block block, Transaction tx) = PrepareInitTx(MainnetSpecProvider.CancunActivation, 100000, initCode);
-        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(null));
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec((block.Header.Number, block.Header.Timestamp))), tracer);
         using GethLikeTxTrace trace = tracer.BuildResult();
 
-        if (addressCollision)
+        if (outcome == CreateOutcome.AddressCollision)
         {
             Assert.That(trace.CustomTracerResult, Is.Null,
                 "address-collision path never enters the EVM; no call frame should be produced");
@@ -581,12 +702,15 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         NativeCallTracerCallFrame? frame = trace.CustomTracerResult?.Value as NativeCallTracerCallFrame;
         Assert.That(frame, Is.Not.Null, "expected a top-level CREATE call frame");
         Assert.That(frame!.Type, Is.EqualTo(Instruction.CREATE));
-        if (revert)
-            Assert.That(frame.Error, Is.Not.Null, "expected error description on reverted CREATE");
-        else
+        if (outcome == CreateOutcome.Success)
         {
             Assert.That(frame.Error, Is.Null, "expected no error on successful CREATE");
             Assert.That(frame.To, Is.Not.Null, "expected deployed contract address");
+        }
+        else
+        {
+            Assert.That(frame.Error, Is.Not.Null, "expected error description on a halted CREATE");
+            Assert.That(frame.To, Is.Null, "a failed CREATE deploys no contract, so `to` must be omitted");
         }
     }
 
@@ -594,7 +718,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     public void Test_CallTrace_MarkAsFailed_WithoutEvmError_NoCrash()
     {
         Transaction tx = Build.A.Transaction.WithGasLimit(100000).WithData([0x00]).TestObject;
-        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(null));
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(null));
 
         tracer.ReportAction(100000, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CREATE);
         tracer.ReportActionEnd(40000, TestItem.AddressB, new byte[] { 0xEF });
@@ -626,7 +750,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             .Done;
 
         (Block block, Transaction tx) = PrepareInitTx(MainnetSpecProvider.CancunActivation, 100000, initCode);
-        using NativeCallTracer tracer = new(tx, GetGethTraceOptions(WithLog));
+        using NativeCallTracer tracer = new(tx, CancunSpec, GetGethTraceOptions(WithLog));
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec((block.Header.Number, block.Header.Timestamp))), tracer);
         using GethLikeTxTrace trace = tracer.BuildResult();
 
@@ -635,6 +759,56 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         Assert.That(frame!.Logs, Is.Null, "logs must be cleared on a failed CREATE frame even when _error is null");
     }
 
+    private static GethLikeTxTrace TraceAmsterdamTopCall(bool withSubFrame)
+    {
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8037Enabled.Returns(true);
+        Transaction tx = Build.A.Transaction.WithGasLimit(100000).TestObject;
+        using NativeCallTracer tracer = new(tx, spec, GetGethTraceOptions(null));
+
+        tracer.ReportAction(100000, 1, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+        if (withSubFrame)
+        {
+            tracer.ReportAction(50000, 0, TestItem.AddressB, TestItem.AddressC, ReadOnlyMemory<byte>.Empty, ExecutionType.CALL);
+            tracer.ReportActionEnd(30000, ReadOnlyMemory<byte>.Empty);
+        }
+        tracer.ReportActionEnd(withSubFrame ? 10000ul : 40000ul, ReadOnlyMemory<byte>.Empty);
+        tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21000, 21000, 25000, 5000, 30000, 9000), [], []);
+
+        return tracer.BuildResult();
+    }
+
+    [Test]
+    public void Test_CallTrace_Amsterdam_TopFrame_IncludesTwoDimensionalGas()
+    {
+        using GethLikeTxTrace trace = TraceAmsterdamTopCall(withSubFrame: false);
+        NativeCallTracerCallFrame frame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value;
+        string json = JsonSerializer.Serialize(trace.CustomTracerResult.Value, SerializerOptions);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.Eip8037Gas, Is.EqualTo(new TwoDimensionalGas(25000, 5000, 9000)));
+            Assert.That(json, Does.Contain("""
+              "regularGasUsed": "0x61a8",
+              "stateGasUsed": "0x1388",
+              "gasRefund": "0x2328",
+            """.ReplaceLineEndings("\n")));
+        }
+    }
+
+    [Test]
+    public void Test_CallTrace_Amsterdam_SubFrames_OmitTwoDimensionalGas()
+    {
+        using GethLikeTxTrace trace = TraceAmsterdamTopCall(withSubFrame: true);
+        NativeCallTracerCallFrame frame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.Eip8037Gas, Is.Not.Null, "top frame carries the two-dimensional gas");
+            Assert.That(frame.Calls, Has.Count.EqualTo(1));
+            Assert.That(frame.Calls[0].Eip8037Gas, Is.Null, "sub-frames must omit the two-dimensional gas");
+        }
+    }
 
     [Test]
     public void Test_CallTrace_DeepNesting_DoesNotThrow()

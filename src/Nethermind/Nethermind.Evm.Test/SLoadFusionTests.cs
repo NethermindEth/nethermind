@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs;
@@ -105,9 +106,9 @@ public class SLoadFusionTests : SLoadFusionTestsBase
     public void Chained_reads_price_each_new_cell_cold_then_warm(bool traced)
     {
         TestState.CreateAccount(Recipient, 0);
-        TestState.Set(new StorageCell(Recipient, 0), [1]);
-        TestState.Set(new StorageCell(Recipient, 1), [2]);
-        TestState.Set(new StorageCell(Recipient, 2), [3]);
+        TestState.Set(new StorageCell(Recipient, 0), (UInt256)1);
+        TestState.Set(new StorageCell(Recipient, 1), (UInt256)2);
+        TestState.Set(new StorageCell(Recipient, 2), (UInt256)3);
         TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
 
         // Chain: slot0(cold)->1, slot1(cold)->2, slot2(cold)->3, slot3(cold)->0, slot0(warm)->1, slot1(warm)->2.
@@ -125,8 +126,8 @@ public class SLoadFusionTests : SLoadFusionTestsBase
     public void Self_referential_value_switches_to_same_cell_tier(bool traced)
     {
         TestState.CreateAccount(Recipient, 0);
-        TestState.Set(new StorageCell(Recipient, 0), [5]);
-        TestState.Set(new StorageCell(Recipient, 5), [5]);
+        TestState.Set(new StorageCell(Recipient, 0), (UInt256)5);
+        TestState.Set(new StorageCell(Recipient, 5), (UInt256)5);
         TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
 
         // slot0(cold)->5, slot5(cold)->5, then same-cell warm repeats; return the loaded word.
@@ -247,9 +248,9 @@ public class SLoadFusionPreBerlinTests : SLoadFusionTestsBase
     public void Chained_reads_price_flat_per_new_cell(bool traced, ulong gasLimit, ulong expectedGasSpent, byte expectedStatus)
     {
         TestState.CreateAccount(Recipient, 0);
-        TestState.Set(new StorageCell(Recipient, 0), [1]);
-        TestState.Set(new StorageCell(Recipient, 1), [2]);
-        TestState.Set(new StorageCell(Recipient, 2), [3]);
+        TestState.Set(new StorageCell(Recipient, 0), (UInt256)1);
+        TestState.Set(new StorageCell(Recipient, 1), (UInt256)2);
+        TestState.Set(new StorageCell(Recipient, 2), (UInt256)3);
         TestState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
 
         // Chain: slot0->1, slot1->2, slot2->3, slot3->0, slot0->1, slot1->2 (each a distinct cell).

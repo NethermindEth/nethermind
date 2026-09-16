@@ -256,10 +256,8 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.That(err, Is.Null);
         }
 
-        [TestCase(ulong.MaxValue)]
-        [TestCase(10000UL)]
-        [TestCase(10001UL)]
-        public void Estimate_UseErrorMarginOutsideBounds_ThrowArgumentOutOfRangeException(ulong errorMargin)
+        [Test]
+        public void Estimate_UseErrorMarginOutsideBounds_ThrowArgumentOutOfRangeException([Values(ulong.MaxValue, 10000UL, 10001UL)] ulong errorMargin)
         {
             Transaction tx = Build.A.Transaction.TestObject;
             Block block = Build.A.Block.WithTransactions(tx).TestObject;
@@ -355,7 +353,7 @@ namespace Nethermind.Evm.Test.Tracing
             const uint totalGas = Transaction.BaseTxGasCost;
             tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
-            stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
+            stateProvider.GetBalance(Arg.Any<Address>()).Returns(UInt256.MaxValue);
             GasEstimator sut = new(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,
@@ -380,7 +378,7 @@ namespace Nethermind.Evm.Test.Tracing
             const uint totalGas = Transaction.BaseTxGasCost;
             tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
-            stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
+            stateProvider.GetBalance(Arg.Any<Address>()).Returns(UInt256.MaxValue);
             GasEstimator sut = new(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,
@@ -1392,6 +1390,34 @@ namespace Nethermind.Evm.Test.Tracing
             }
 
             public void Dispose() => _closer.Dispose();
+        }
+
+        [Test]
+        public void Estimates_self_recursive_call_until_exhaustion_without_throwing()
+        {
+            // PUSH0 x5, ADDRESS, GAS, CALL: recurse into self with all remaining gas until 63/64 or depth stops it.
+            using TestEnvironment testEnvironment = new();
+            Address recursive = TestItem.AddressB;
+            testEnvironment.InsertContract(recursive, Bytes.FromHexString("0x5f5f5f5f5f305af1"));
+
+            ulong gasLimit = 30_000_000ul;
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(gasLimit)
+                .WithTo(recursive)
+                .WithSenderAddress(TestItem.AddressA)
+                .TestObject;
+            Block block = Build.A.Block
+                .WithNumber(20_000_000)
+                .WithTimestamp(MainnetSpecProvider.CancunBlockTimestamp)
+                .WithGasLimit(gasLimit)
+                .WithTransactions(tx)
+                .TestObject;
+
+            ulong result = 0;
+            string? err = null;
+            Assert.DoesNotThrow(() => result = testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer, out err));
+            Assert.That(err, Is.Null, err);
+            Assert.That(result, Is.GreaterThan(GasCostOf.Transaction));
         }
     }
 }

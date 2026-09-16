@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -57,9 +58,8 @@ public class FlatWorldStateScopeHistoricalRootTests
         Assert.That(scope.RootHash, Is.EqualTo(Keccak.EmptyTreeHash));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void IsHistorical_FlowsFromReadOnlyBundleToBundle(bool isHistorical)
+    [Test]
+    public void IsHistorical_FlowsFromReadOnlyBundleToBundle([Values] bool isHistorical)
     {
         using SnapshotBundle bundle = BuildBundle(isHistorical);
 
@@ -87,11 +87,12 @@ public class FlatWorldStateScopeHistoricalRootTests
             using IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1);
             batch.Set(address, written);
             using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, 1);
-            storageBatch.Set(in slot, slotValue);
+            storageBatch.Set(in slot, new UInt256(slotValue, isBigEndian: true));
         }, Throws.Nothing);
 
         Account? readBack = scope.Get(address);
-        byte[] slotReadBack = scope.CreateStorageTree(address).Get(in slot);
+        scope.CreateStorageTree(address).Get(in slot, out UInt256 slotRead93);
+        byte[] slotReadBack = slotRead93.ToMinimalBigEndian();
 
         using (Assert.EnterMultipleScope())
         {
@@ -99,6 +100,31 @@ public class FlatWorldStateScopeHistoricalRootTests
             Assert.That(slotReadBack, Is.EqualTo(slotValue));
             Assert.That(() => scope.UpdateRootHash(), Throws.Nothing);
             Assert.That(scope.RootHash, Is.EqualTo(knownRoot));
+        }
+    }
+
+    [Test]
+    public void WriteBatch_HistoricalScope_AccountDeletionClearsFlatStorage()
+    {
+        Address address = TestItem.AddressA;
+        UInt256 slot = (UInt256)7;
+        Account account = new(nonce: 1, balance: 5, storageRoot: Keccak.EmptyTreeHash, codeHash: Keccak.OfAnEmptyString);
+
+        using FlatWorldStateScope scope = BuildScope(new(100, TestItem.KeccakA), isHistorical: true);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+        {
+            batch.Set(address, account);
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, 1);
+            storageBatch.Set(in slot, new UInt256([0x12, 0x34], isBigEndian: true));
+            batch.Set(address, null);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.Get(address), Is.Null);
+            scope.CreateStorageTree(address).Get(in slot, out UInt256 slotRead124);
+            Assert.That(slotRead124, Is.EqualTo(UInt256.Zero));
         }
     }
 
@@ -119,7 +145,7 @@ public class FlatWorldStateScopeHistoricalRootTests
         {
             batch.Set(address, written);
             using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, 1);
-            storageBatch.Set(in slot, slotValue);
+            storageBatch.Set(in slot, new UInt256(slotValue, isBigEndian: true));
         }
 
         scope.UpdateRootHash();
@@ -127,7 +153,8 @@ public class FlatWorldStateScopeHistoricalRootTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.Get(address), Is.Not.Null);
-            Assert.That(scope.CreateStorageTree(address).Get(in slot), Is.EqualTo(slotValue));
+            scope.CreateStorageTree(address).Get(in slot, out UInt256 slotRead153);
+            Assert.That(slotRead153, Is.EqualTo(new UInt256(slotValue, isBigEndian: true)));
             Assert.That(scope.RootHash, Is.Not.EqualTo(Keccak.EmptyTreeHash));
         }
     }
@@ -143,7 +170,7 @@ public class FlatWorldStateScopeHistoricalRootTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(() => scope.Get(TestItem.AddressA), Throws.Nothing);
-            Assert.That(() => scope.CreateStorageTree(TestItem.AddressA).Get((UInt256)7), Throws.Nothing);
+            Assert.That(() => scope.CreateStorageTree(TestItem.AddressA).Get((UInt256)7, out _), Throws.Nothing);
         }
     }
 
