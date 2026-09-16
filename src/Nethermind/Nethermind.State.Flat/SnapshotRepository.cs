@@ -15,7 +15,6 @@ using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.Persistence.BloomFilter;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat;
 

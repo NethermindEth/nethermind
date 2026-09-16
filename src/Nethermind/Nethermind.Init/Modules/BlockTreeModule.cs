@@ -19,7 +19,6 @@ using Nethermind.Facade.Find;
 using Nethermind.History;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 

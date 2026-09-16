@@ -3,7 +3,6 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;

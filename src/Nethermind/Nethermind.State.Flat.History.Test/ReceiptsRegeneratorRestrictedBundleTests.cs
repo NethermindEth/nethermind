@@ -4,8 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Receipts;

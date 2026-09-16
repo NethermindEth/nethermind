@@ -11,11 +11,9 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Cpu;
-using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 

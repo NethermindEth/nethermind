@@ -8,7 +8,6 @@ using System.Threading;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Autofac;
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
