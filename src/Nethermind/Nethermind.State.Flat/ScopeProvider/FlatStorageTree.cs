@@ -227,6 +227,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             {
                 _tree.UpdateRootHash(canBeParallel: false);
                 Db.Metrics.IncrementSpeculativeStorageHashPasses();
+                _scope.OnSpeculativeStorageRoot(_address, _tree.RootHash);
             }
         }
         catch (Exception e)

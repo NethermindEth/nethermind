@@ -696,6 +696,53 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void SpeculativeStorageRoots_StreamedStorageRootReachesTheAccountLeaf()
+    {
+        using TestContext ctx = new(new FlatDbConfig { SpeculativeStorageRoots = true });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        Account account = TestItem.GenerateRandomAccount();
+        ctx.PersistenceReader.GetAccount(address).Returns(account);
+
+        FlatStorageTree tree = (FlatStorageTree)scope.CreateStorageTree(address);
+        using ManualResetEventSlim storageReleased = new();
+        using ManualResetEventSlim resume = new();
+        using ManualResetEventSlim accountReleased = new();
+        int releases = 0;
+        tree.OnSpeculationReleased = () =>
+        {
+            // Hold the storage worker after its first drain so the next five writes form one hashed drain.
+            if (Interlocked.Increment(ref releases) != 1) return;
+            storageReleased.Set();
+            resume.Wait();
+        };
+        scope.OnAccountSpeculationReleased = accountReleased.Set;
+
+        tree.HintSet(1, 0x1);
+        Assert.That(storageReleased.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        for (int i = 2; i <= 6; i++) tree.HintSet((UInt256)i, (UInt256)(0x10 + i));
+        resume.Set();
+        // The hashed drain streams the contract's root into the account unit, which applies it to the leaf.
+        Assert.That(accountReleased.Wait(TimeSpan.FromSeconds(10)), Is.True, "account unit applied the streamed root");
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 6);
+            storageBatch.Set(1, 0x1);
+            for (int i = 2; i <= 6; i++) storageBatch.Set((UInt256)i, (UInt256)(0x10 + i));
+        }
+
+        scope.Commit(1);
+
+        Hash256 storageRoot = RawTrieRoot([(1, 0x1), .. Enumerable.Range(2, 5).Select(i => ((UInt256)i, (UInt256)(0x10 + i)))]);
+        StateTree expected = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        expected.Set(address, account.WithChangedStorageRoot(storageRoot));
+        expected.UpdateRootHash();
+        Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(storageRoot));
+        Assert.That(scope.RootHash, Is.EqualTo(expected.RootHash));
+    }
+
+    [Test]
     public void SpeculativeStorageRoots_WideDrainMatchesBlockEndRoot()
     {
         using TestContext ctx = new(new FlatDbConfig { SpeculativeStorageRoots = true });

@@ -527,8 +527,16 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
         CancelHintBal();
+        // Warm-up still queued now would only compete with the commit for the pool: the commit loads what it needs
+        // itself. The sequence bump drops queued jobs, the pause refuses new hints until the scope commits.
+        _pausePrewarmer = true;
+        Interlocked.Increment(ref _hintSequenceId);
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
+
+    // A hashed speculative storage root goes into the account unit, so the contract's leaf can be final before the
+    // block ends when nothing touches its storage afterwards.
+    internal void OnSpeculativeStorageRoot(Address address, Hash256 storageRoot) => _accountSpeculation?.EnqueueStorageRoot(address, storageRoot);
 
     public void Commit(ulong blockNumber)
     {
@@ -577,20 +585,35 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private sealed class AccountTrieSpeculation(FlatWorldStateScope scope) : ISpeculativeTrie
     {
         private const int MinDrainToHash = 4;
-        private readonly ConcurrentQueue<(AddressAsKey Address, Account? Account)> _queue = new();
+        private readonly ConcurrentQueue<AccountWrite> _queue = new();
         private readonly Dictionary<AddressAsKey, Account?> _applied = [];
         private readonly Dictionary<AddressAsKey, Account?> _drain = [];
+        // Latest hashed speculative storage root per contract; every later account write for it carries this root.
+        private readonly Dictionary<AddressAsKey, Hash256> _storageRoots = [];
         private int _state;
         private volatile bool _failed;
 
-        public void Enqueue(Address address, Account? account)
+        public void Enqueue(Address address, Account? account) => Enqueue(new AccountWrite(address, account, null));
+
+        public void EnqueueStorageRoot(Address address, Hash256 storageRoot) => Enqueue(new AccountWrite(address, null, storageRoot));
+
+        private void Enqueue(in AccountWrite write)
         {
             if (Volatile.Read(ref _state) == SpeculationState.Owned) return;
-            _queue.Enqueue((address, account));
+            _queue.Enqueue(write);
             if (Interlocked.CompareExchange(ref _state, SpeculationState.Queued, SpeculationState.Idle) == SpeculationState.Idle)
             {
                 scope.EnqueueSpeculation(this);
             }
+        }
+
+        // The account committed so far, as the workers know it: this drain, then earlier drains, then the pre-block state.
+        private Account? CurrentAccount(AddressAsKey address, out bool known)
+        {
+            known = true;
+            if (_drain.TryGetValue(address, out Account? account) || _applied.TryGetValue(address, out account)) return account;
+            known = false;
+            return scope._snapshotBundle.GetAccount(address.Value);
         }
 
         public void RunSpeculationOnce()
@@ -625,7 +648,22 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             try
             {
                 _drain.Clear();
-                while (_queue.TryDequeue(out (AddressAsKey Address, Account? Account) write)) _drain[write.Address] = write.Account;
+                while (_queue.TryDequeue(out AccountWrite write))
+                {
+                    if (write.StorageRoot is not null)
+                    {
+                        _storageRoots[write.Address] = write.StorageRoot;
+                        Account? current = CurrentAccount(write.Address, out _);
+                        // A contract removed or not yet created in this block gets its leaf from the block-end batch.
+                        if (current is not null) _drain[write.Address] = current.WithChangedStorageRoot(write.StorageRoot);
+                        continue;
+                    }
+
+                    Account? account = write.Account;
+                    if (account is not null && _storageRoots.TryGetValue(write.Address, out Hash256? root)) account = account.WithChangedStorageRoot(root);
+                    _drain[write.Address] = account;
+                }
+
                 if (_drain.Count == 0) return;
 
                 if (_drain.Count > TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH)
@@ -704,7 +742,15 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         public void ResetForNextBlock()
         {
             _applied.Clear();
+            _storageRoots.Clear();
             Volatile.Write(ref _state, SpeculationState.Idle);
+        }
+
+        private readonly struct AccountWrite(Address address, Account? account, Hash256? storageRoot)
+        {
+            public readonly AddressAsKey Address = address;
+            public readonly Account? Account = account;
+            public readonly Hash256? StorageRoot = storageRoot;
         }
     }
 
