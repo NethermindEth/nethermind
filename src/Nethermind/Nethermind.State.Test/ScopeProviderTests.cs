@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -335,6 +336,36 @@ public class ScopeProviderTests(bool useFlat)
     private static readonly StorageCell SlotE1 = new(TestItem.AddressE, 1);
 
     private static PreBlockCaches NewCaches() => new(TestPreBlockCachesConfig.Small);
+
+    [Test]
+    public void ScopeWrapper_ForwardsCommittedSlotValueHint([Values] bool isPrewarmer)
+    {
+        RecordingStorageTree baseTree = new();
+        IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        baseScope.CreateStorageTree(TestItem.AddressA).Returns(baseTree);
+        IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
+        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(baseScope);
+        PrewarmerScopeProvider provider = new(baseProvider, new PrewarmerState(NewCaches(), isPrewarmer), LimboLogs.Instance);
+
+        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics());
+        scope.CreateStorageTree(TestItem.AddressA).HintSet(3, 7);
+
+        Assert.That(baseTree.ValueHints, Is.EqualTo(new[] { ((UInt256)3, (UInt256)7) }));
+    }
+
+    // The flat backend turns the value hint into a speculative trie write, so a wrapper that dropped it would silently disable that.
+    private sealed class RecordingStorageTree : IWorldStateScopeProvider.IStorageTree
+    {
+        public List<(UInt256 Index, UInt256 Value)> ValueHints { get; } = [];
+
+        public Hash256 RootHash => Keccak.EmptyTreeHash;
+
+        public void Get(in UInt256 index, out UInt256 value) => value = default;
+
+        public void HintSet(in UInt256 index) { }
+
+        public void HintSet(in UInt256 index, in UInt256 value) => ValueHints.Add((index, value));
+    }
 
     private static BlockHeader HeaderAt(Hash256 stateRoot, ulong number) =>
         Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(number).TestObject;
