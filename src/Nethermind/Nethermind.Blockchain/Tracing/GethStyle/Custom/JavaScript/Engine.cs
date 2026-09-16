@@ -314,10 +314,7 @@ public class Engine : IDisposable
             }
             else
             {
-                if (!Path.HasExtension(tracer) || Path.GetExtension(tracer) != Extension)
-                {
-                    tracer = Path.ChangeExtension(tracer, Extension);
-                }
+                tracer = ToTracerFileName(tracer);
 
                 return _builtInScripts.TryGetValue(tracer, out V8Script script)
                     ? script
@@ -335,10 +332,7 @@ public class Engine : IDisposable
             }
             else
             {
-                if (!Path.HasExtension(tracer) || Path.GetExtension(tracer) != Extension)
-                {
-                    tracer = Path.ChangeExtension(tracer, Extension);
-                }
+                tracer = ToTracerFileName(tracer);
 
                 return LoadTracerCodeFromFile(tracer);
             }
@@ -356,6 +350,31 @@ public class Engine : IDisposable
             return V8Engine.Evaluate(LoadJavaScriptCode(tracer));
         }
     }
+
+    /// <summary>
+    /// Reports whether <paramref name="tracer"/> is inline tracer code or names a tracer shipped under
+    /// <c>Data/JSTracers</c>, so a request naming anything else can be refused before a script engine is created.
+    /// </summary>
+    public static bool IsKnownTracer(string tracer)
+    {
+        tracer = tracer.Trim();
+        if (tracer.StartsWith('_'))
+        {
+            return false;
+        }
+
+        if (tracer.StartsWith('{') && tracer.EndsWith('}'))
+        {
+            return true;
+        }
+
+        string fileName = ToTracerFileName(tracer);
+        return Path.GetFileName(fileName) == fileName
+            && (_builtInScripts.ContainsKey(fileName) || File.Exists(Path.Combine(TracersPath, fileName).GetApplicationResourcePath()));
+    }
+
+    private static string ToTracerFileName(string tracer) =>
+        !Path.HasExtension(tracer) || Path.GetExtension(tracer) != Extension ? Path.ChangeExtension(tracer, Extension) : tracer;
 
     private static string LoadJavaScriptCodeFromFile(string tracerFileName) =>
         File.ReadAllText(Path.Combine(TracersPath, tracerFileName).GetApplicationResourcePath());

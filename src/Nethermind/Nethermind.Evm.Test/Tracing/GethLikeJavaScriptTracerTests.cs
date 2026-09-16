@@ -95,6 +95,15 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         AssertResult(traces, expectedStrings);
     }
 
+    [TestCase("flatCallTracer", ExpectedResult = false)]
+    [TestCase("noSuchTracer.js", ExpectedResult = false)]
+    [TestCase("_bigInteger", ExpectedResult = false)]
+    [TestCase("../JSTracers/callTracer_legacy", ExpectedResult = false)]
+    [TestCase("callTracer_legacy", ExpectedResult = true)]
+    [TestCase(" opcountTracer.js ", ExpectedResult = true)]
+    [TestCase("{ result: function(ctx, db) { return null } }", ExpectedResult = true)]
+    public bool Tracer_name_is_resolved_without_an_engine(string tracer) => Engine.IsKnownTracer(tracer);
+
     private GethLikeBlockJavaScriptTracer GetTracer(string userTracer) => new(TestState, Shanghai.Instance, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
 
 
