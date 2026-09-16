@@ -668,21 +668,25 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     public override void ClearStorage(Address address)
     {
         IWorldStateScopeProvider.IScope currentScope = CurrentScope;
-        if (!HasStorageToClear(address))
+        if (!HasStorageToClear(address, out bool hasCachedStorage))
         {
             return;
         }
 
         List<KeyValuePair<StorageCell, UInt256>>? originalValues = null;
-        foreach (KeyValuePair<StorageCell, UInt256> readCell in _originalValues)
+        // Every storage read/write registers the contract before adding originals or journal entries.
+        if (hasCachedStorage)
         {
-            if (readCell.Key.Address == address)
+            foreach (KeyValuePair<StorageCell, UInt256> readCell in _originalValues)
             {
-                (originalValues ??= []).Add(readCell);
+                if (readCell.Key.Address == address)
+                {
+                    (originalValues ??= []).Add(readCell);
+                }
             }
-        }
 
-        base.ClearStorage(address);
+            base.ClearStorage(address);
+        }
 
         if (originalValues is not null)
         {
@@ -715,9 +719,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// no storage root, reads can still resolve through the scope's pre-block account until account
     /// changes are flushed, so that backend account must also be checked.
     /// </remarks>
-    private bool HasStorageToClear(Address address)
+    private bool HasStorageToClear(Address address, out bool hasCachedStorage)
     {
-        if (_storages.ContainsKey(address))
+        hasCachedStorage = _storages.ContainsKey(address);
+        if (hasCachedStorage)
         {
             return true;
         }
