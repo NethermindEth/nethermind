@@ -2,7 +2,12 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 
-"""Convert JSON Lines RPC captures into an ``eth_call`` JSON array corpus."""
+"""Convert JSON Lines RPC captures into an ``eth_call`` JSON array corpus.
+
+RPC_BENCH_CORPUS_METHOD rewrites each record to ``debug_traceCall`` or ``trace_call`` as it is
+converted. The fixture k6 replays therefore already carries the rewritten bodies — the conversion
+is one pass over the corpus before the node is loaded, so it costs the measured cell nothing.
+"""
 
 import argparse
 import gzip
@@ -12,6 +17,15 @@ from pathlib import Path
 import sys
 import tempfile
 from typing import Sequence, TextIO
+
+sys.path.insert(0, str(Path(__file__).parent))
+# corpus_parity owns what a legal corpus is and how a record is rewritten; importing keeps the
+# k6 fixture and the parity/timings replay from drifting into two different transforms.
+from corpus_parity import (  # noqa: E402
+    CorpusParityError,
+    corpus_rewrite,
+    rewrite_record,
+)
 
 
 class CorpusError(ValueError):
@@ -31,7 +45,7 @@ def _open_source(source: Path) -> TextIO:
     raise CorpusError(source, 0, "source must have a .jsonl or .jsonl.gz extension")
 
 
-def _parse_record(source: Path, line_number: int, line: str) -> dict:
+def _parse_record(source: Path, line_number: int, line: str, method: str, options: dict) -> dict:
     try:
         record = json.loads(line, parse_constant=_reject_non_json_constant)
     except json.JSONDecodeError as error:
@@ -48,7 +62,12 @@ def _parse_record(source: Path, line_number: int, line: str) -> dict:
     if not isinstance(record.get("params"), list):
         raise CorpusError(source, line_number, "params must be a JSON array")
 
-    return {"method": record["method"], "params": record["params"]}
+    if method == "eth_call":
+        return {"method": record["method"], "params": record["params"]}
+    try:
+        return {"method": method, "params": rewrite_record(record["params"], method, options)}
+    except CorpusParityError as error:
+        raise CorpusError(source, line_number, str(error)) from None
 
 
 def convert(source: str | os.PathLike[str], destination: str | os.PathLike[str]) -> None:
@@ -58,6 +77,7 @@ def convert(source: str | os.PathLike[str], destination: str | os.PathLike[str])
     destination_path = Path(destination)
     if source_path.resolve() == destination_path.resolve():
         raise CorpusError(source_path, 0, "source and destination must be different files")
+    method, options = corpus_rewrite()
 
     temporary_path: Path | None = None
     line_number = 0
@@ -82,7 +102,7 @@ def convert(source: str | os.PathLike[str], destination: str | os.PathLike[str])
                         if not line.strip():
                             continue
 
-                        record = _parse_record(source_path, line_number, line)
+                        record = _parse_record(source_path, line_number, line, method, options)
                         if has_records:
                             output.write(",")
                         json.dump(record, output, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
@@ -116,7 +136,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         convert(arguments.source, arguments.destination)
-    except (CorpusError, OSError) as error:
+    except (CorpusError, CorpusParityError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
 
