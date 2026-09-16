@@ -59,7 +59,8 @@ public class MigrationRestartE2ETests
             {
                 Assert.That(final.Tree.Head!.Hash, Is.EqualTo(final.Blocks["a5"].Hash));
                 Assert.That(final.Reader.HasStateForBlock(final.Blocks["a5"].Header), Is.True);
-                Assert.That(final.Telemetry.GetShadowRoot(final.Blocks["a5"].Hash!), Is.Null);
+                Assert.That(() => final.Telemetry.GetShadowRoot(final.Blocks["a5"].Hash!), Is.EqualTo(MigrationLifecycleE2ETests.ExpectedShadowRoot(final, "a5")).After(10_000, 50),
+                    "the Merkle shadow is rebuilt from the persisted flat state");
                 Assert.That(flat.CurrentState, Is.EqualTo(new Flat.StateId(final.Blocks["a3"].Header)), "flat persists up to the activation parent and no further");
                 AssertAllocation(final, "a5");
             }

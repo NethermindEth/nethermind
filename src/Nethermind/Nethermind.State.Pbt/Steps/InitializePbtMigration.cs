@@ -8,9 +8,9 @@ using Nethermind.State.Pbt.Migration;
 
 namespace Nethermind.State.Pbt.Steps;
 
-/// <summary>Seeds the native PBT anchor and starts the BAL follower before networking, RPC or production.</summary>
+/// <summary>Seeds the native PBT anchor and starts the BAL followers before networking, RPC or production.</summary>
 [RunnerStepDependencies(dependencies: [typeof(LoadGenesisBlock)], dependents: [typeof(InitializeNetwork)])]
-internal sealed class InitializePbtMigration(PbtMigrationBootstrap bootstrap, PbtBalFollowerScheduler follower, IProcessExitSource exitSource) : IStep
+internal sealed class InitializePbtMigration(PbtMigrationBootstrap bootstrap, PbtBalFollowerScheduler follower, MerkleShadowFollower merkleShadow, IProcessExitSource exitSource) : IStep
 {
     public async Task Execute(CancellationToken cancellationToken)
     {
@@ -20,5 +20,6 @@ internal sealed class InitializePbtMigration(PbtMigrationBootstrap bootstrap, Pb
             throw new TaskCanceledException("Offline PBT export completed.");
         }
         follower.Start();
+        merkleShadow.Start();
     }
 }

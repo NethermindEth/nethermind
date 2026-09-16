@@ -133,12 +133,14 @@ public class MigrationLifecycleE2ETests
         AssertRoot("a5");
         Select("a5", Hash256.Zero);
         Assert.That(telemetry.GetProgress().Phase, Is.EqualTo("running"));
+        AssertTransition("a3", "a4", "a5");
         Select("a1", Hash256.Zero);
         Assert.That(processing.BlockchainProcessor.Process(blocks["b6"], options, NullBlockTracer.Instance)?.Hash, Is.EqualTo(blocks["b6"].Hash));
         Assert.That(branchSizes, Is.EqualTo(new[] { 5, 5 }));
         foreach (string name in new[] { "b2", "b3", "b4", "b5", "b6" }) AssertRoot(name);
         Select("b6", blocks["a1"].Hash!);
         Assert.That(telemetry.GetProgress().Phase, Is.EqualTo("running"));
+        AssertTransition("b3", "b4", "b5", "b6");
         Select("b6", blocks["b4"].Hash!);
         Assert.That(telemetry.GetProgress(), Is.EqualTo(new MigrationProgressForRpc("done", null, null)));
         TestContext.Out.WriteLine($"Executed 10 independent geth blocks in {elapsed.Elapsed.TotalSeconds:F3}s; source={(portable ? "portable" : "preimage genesis")}; geth=e31a37fb88c2b75c0897c033bd3f4279dee42268");
@@ -156,9 +158,25 @@ public class MigrationLifecycleE2ETests
             tree.ForkChoiceUpdated(finalized, Hash256.Zero);
         }
 
+        // The Merkle shadow is replayed asynchronously once the branch is canonical, so it is asserted after the selection.
+        void AssertTransition(string activationParent, params string[] window)
+        {
+            foreach (string name in window)
+                Assert.That(() => telemetry.GetShadowRoot(blocks[name].Hash!), Is.EqualTo(ExpectedShadowRoot(harness, name)).After(10_000, 50), name);
+            MigrationProgressForRpc progress = telemetry.GetProgress();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(progress.Binary, Is.EqualTo(new MigrationDirectionForRpc("parked", blocks[activationParent].Number, blocks[activationParent].Hash!,
+                    new Hash256(expected[activationParent].GetProperty("pbtRoot").GetString()!), "")));
+                Assert.That(progress.Merkle, Is.EqualTo(new MigrationDirectionForRpc("synced", blocks[window[^1]].Number, blocks[window[^1]].Hash!,
+                    ExpectedShadowRoot(harness, window[^1]), "")));
+            }
+        }
+
         void AssertRoot(string name)
         {
-            Assert.That(telemetry.GetShadowRoot(blocks[name].Hash!), Is.EqualTo(ExpectedShadowRoot(harness, name)), name);
+            if (!expected[name].GetProperty("binary").GetBoolean())
+                Assert.That(telemetry.GetShadowRoot(blocks[name].Hash!), Is.EqualTo(ExpectedShadowRoot(harness, name)), name);
             Assert.That(harness.Reader.HasStateForBlock(blocks[name].Header), Is.True, name);
             using JsonDocument allocation = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(harness.FixtureDirectory, "states", name + ".alloc.json")));
             IStateReader reader = manager.GlobalStateReader;
@@ -256,8 +274,9 @@ public class MigrationLifecycleE2ETests
         }
     }
 
-    private static Hash256? ExpectedShadowRoot(MigrationLifecycleHarness harness, string name) =>
-        harness.Expected[name].GetProperty("binary").GetBoolean() ? null : new Hash256(harness.Expected[name].GetProperty("pbtRoot").GetString()!);
+    /// <summary>The geth-recorded root of the tree the header does not commit to: PBT before activation, MPT after.</summary>
+    internal static Hash256 ExpectedShadowRoot(MigrationLifecycleHarness harness, string name) =>
+        new(harness.Expected[name].GetProperty(harness.Expected[name].GetProperty("binary").GetBoolean() ? "mptRoot" : "pbtRoot").GetString()!);
 
     private static void AssertPbtState(MigrationLifecycleHarness harness, string name)
     {

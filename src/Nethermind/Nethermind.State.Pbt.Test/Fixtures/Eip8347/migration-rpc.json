@@ -26,6 +26,23 @@
     },
     "merkle": null
   },
+  "transition": {
+    "phase": "running",
+    "binary": {
+      "phase": "parked",
+      "cursor": 3,
+      "cursorHash": "0x0fbcf09dbbb680373dc98cf370b0c05f417a1ad582449e3809b87e0b6ce5aaf8",
+      "shadowRoot": "0x22c9e3dd8ae32d6b7dc7811eab09036809cceabaf6a5d46606b1dc85e297664e",
+      "error": ""
+    },
+    "merkle": {
+      "phase": "synced",
+      "cursor": 4,
+      "cursorHash": "0xdc37258811adfbf0149b00eaf248624e6bdf3ddde94ef11ff520d8a9bd324be6",
+      "shadowRoot": "0xcb7dbc9613c89e19d8711bc2fb8956398c76781f9571b8cca18adc94dd802d4e",
+      "error": ""
+    }
+  },
   "done": {
     "phase": "done",
     "binary": null,

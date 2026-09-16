@@ -88,7 +88,7 @@ public class PbtAnchorPublicationTests
         Assert.That(telemetry.GetShadowRoot(genesis.Hash!), Is.EqualTo(expectedShadowRoot), "genesis is mirrored into PBT by main processing");
         if (mode == "export")
         {
-            InitializePbtMigration step = new(bootstrap, container.Resolve<PbtBalFollowerScheduler>(), exit!);
+            InitializePbtMigration step = new(bootstrap, container.Resolve<PbtBalFollowerScheduler>(), container.Resolve<MerkleShadowFollower>(), exit!);
             Assert.ThrowsAsync<TaskCanceledException>(() => step.Execute(exit!.Token));
             using (Assert.EnterMultipleScope())
             {

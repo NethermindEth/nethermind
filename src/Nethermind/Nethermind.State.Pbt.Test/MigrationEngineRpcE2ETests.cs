@@ -163,7 +163,8 @@ public class MigrationEngineRpcE2ETests
             Assert.That(balance.Data, Is.EqualTo(balanceValue));
             Assert.That(proof.ErrorCode, Is.EqualTo(-32002));
             Assert.That(proof.Result.Error, Is.EqualTo("MPT proofs are not available for the PBT state backend"));
-            Assert.That(debug.debug_shadowStateRoot(head.Hash!).Data, Is.Null, "flat is frozen after activation, so there is no shadow");
+            Assert.That(() => debug.debug_shadowStateRoot(head.Hash!).Data, Is.EqualTo(MigrationLifecycleE2ETests.ExpectedShadowRoot(harness, "a4")).After(10_000, 50),
+                "the Merkle shadow follows the head through the transition window");
             Assert.That(forkchoice.Data.PayloadStatus.Status, Is.EqualTo("VALID"));
             Assert.That(forkchoice.Data.PayloadStatus.LatestValidHash, Is.EqualTo(head.Hash));
             Assert.That(forkchoice.Data.PayloadStatus.ValidationError, Is.Null);
