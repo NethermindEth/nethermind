@@ -161,8 +161,8 @@ public interface ISnapshotRepository
 
     /// <summary>
     /// Removes every snapshot in both tiers whose <c>To</c> is not on the <c>From</c>-edge ancestry of
-    /// <paramref name="head"/> or of <paramref name="currentPersistedState"/>, and records
-    /// <paramref name="head"/> as the last committed state. No-op when no snapshot holds the head's state.
+    /// <paramref name="head"/>, and records <paramref name="head"/> as the last committed state. No-op
+    /// when the head is neither <paramref name="currentPersistedState"/> nor a state some snapshot holds.
     /// </summary>
     /// <returns>The number of states removed.</returns>
     int RemoveUnreachableFrom(in StateId head, in StateId currentPersistedState);

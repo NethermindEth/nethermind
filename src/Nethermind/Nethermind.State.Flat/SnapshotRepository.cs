@@ -464,7 +464,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         foreach (KeyValuePair<StateId, Snapshot> entry in _compactedSnapshots) inMemoryCandidates.Add(entry.Key);
         using ArrayPoolList<StateId> persistedCandidates = GetPersistedStatesInRange(0, long.MaxValue);
 
-        using PooledSet<StateId> reachable = CollectAncestry(head, currentPersistedState);
+        using PooledSet<StateId> reachable = CollectAncestry(head);
 
         int totalPruned = 0;
         foreach (StateId stateId in inMemoryCandidates)
@@ -496,20 +496,18 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     }
 
     /// <summary>
-    /// Every <c>To</c> on the <c>From</c>-edge ancestry of <paramref name="head"/> and
-    /// <paramref name="currentPersistedState"/>, following every tier at every node. Caller disposes the set.
+    /// Every <c>To</c> on the <c>From</c>-edge ancestry of <paramref name="head"/>, following every tier
+    /// at every node. Caller disposes the set.
     /// </summary>
     /// <remarks>
-    /// The persisted state is a seed of its own so the base at the persisted block survives even when the
-    /// head is stranded on a fork that does not descend from it. Lookup-only, so the sentinels need no
-    /// <see cref="Height"/> ordering: no tier holds a snapshot keyed at them, so they are leaves.
+    /// Lookup-only, so the sentinels need no <see cref="Height"/> ordering: no tier holds a snapshot keyed
+    /// at them, so they are leaves.
     /// </remarks>
-    private PooledSet<StateId> CollectAncestry(in StateId head, in StateId currentPersistedState)
+    private PooledSet<StateId> CollectAncestry(in StateId head)
     {
         PooledSet<StateId> seen = [head];
         using PooledStack<StateId> stack = new();
         stack.Push(head);
-        if (seen.Add(currentPersistedState)) stack.Push(currentPersistedState);
 
         ReadOnlySpan<SnapshotTier> tiers =
             [SnapshotTier.InMemoryBase, SnapshotTier.InMemoryCompacted, SnapshotTier.PersistedBase, SnapshotTier.PersistedSmallCompacted, SnapshotTier.PersistedLargeCompacted, SnapshotTier.PersistedCompactSized];
