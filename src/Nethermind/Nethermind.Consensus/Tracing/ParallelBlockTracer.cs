@@ -247,7 +247,9 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 
     /// <summary>Threads started when the first block asks and kept for the next one. A job is one worker's share of
     /// one block; with more threads than the degree, the jobs of two blocks run side by side and the semaphore
-    /// interleaves their transactions. Disposal drains: no thread is joined before its job is done.</summary>
+    /// interleaves their transactions. Disposal drains, so a node shutting down waits for the jobs in flight; they
+    /// stop on their request's timeout, and a block whose jobs arrive after that waits for nothing: the caller
+    /// traces it alone.</summary>
     private sealed class Workers : IDisposable
     {
         private readonly BlockingCollection<Action> _jobs = [];
@@ -265,22 +267,35 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             return threads;
         });
 
+        /// <summary>A completed task once the workers are shutting down: the caller then traces the whole block
+        /// itself rather than failing a request that would otherwise have fallen back to the replay.</summary>
         public Task Run(Action job)
         {
+            if (_jobs.IsAddingCompleted) return Task.CompletedTask;
+
             _ = _threads.Value;
             TaskCompletionSource done = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            _jobs.Add(() =>
+            try
             {
-                try
+                _jobs.Add(() =>
                 {
-                    job();
-                    done.SetResult();
-                }
-                catch (Exception e)
-                {
-                    done.SetException(e);
-                }
-            });
+                    try
+                    {
+                        job();
+                        done.SetResult();
+                    }
+                    catch (Exception e)
+                    {
+                        done.SetException(e);
+                    }
+                });
+            }
+            catch (InvalidOperationException)
+            {
+                // Adding completed between the test and the add; the caller traces the block itself.
+                return Task.CompletedTask;
+            }
+
             return done.Task;
         }
 

@@ -84,8 +84,8 @@ public sealed class TransactionChangesetIndex
     }
 
     /// <summary>The whole block for a trace of every transaction: rows in memory, and the chain of the consecutive
-    /// blocks traced before it when the block continues one. A block joins the chain only when the chain can leave
-    /// out every address the block wrote after its transactions, which needs the block's fork and a post-merge block.</summary>
+    /// blocks traced before it when the block continues one. A block joins the chain only when the chain can refuse
+    /// every address the block wrote after its transactions, which needs the block's fork and proof of stake.</summary>
     internal bool TryOpenBlock(Block block, [NotNullWhen(true)] out ICoveredBlock? covered)
     {
         covered = null;
@@ -94,29 +94,10 @@ public sealed class TransactionChangesetIndex
         if (!BlockChangesets.TryRead(_store, number, block.Hash, block.Transactions.Length, out BlockChangesets? rows)) return false;
 
         HashSet<AddressAsKey> excluded = [];
-        bool chainable = block.IsPostMerge && _specProvider is not null && TryCollectPostTransactionWriters(block, excluded);
+        // IsPostMerge is set while a block is processed and is not decoded from a stored header, so a block read back
+        // for a trace would never chain; the difficulty the header does carry is what says proof of stake.
+        bool chainable = block.Header.IsPoS() && _specProvider is not null && PostTransactionWriters.TryCollect(block, _specProvider.GetSpec(block.Header), excluded);
         covered = new CoveredBlock(rows, number == 0 ? null : _consecutive.EndingAt(number - 1, block.ParentHash), chainable ? _consecutive : null, excluded);
-        return true;
-    }
-
-    /// <summary>Every address the block can write after its last transaction: withdrawal recipients, the beneficiary,
-    /// and the fork's system contracts, which the block's system calls write before and after the transactions.</summary>
-    private bool TryCollectPostTransactionWriters(Block block, HashSet<AddressAsKey> excluded)
-    {
-        IReleaseSpec spec = _specProvider!.GetSpec(block.Header);
-        if (block.Beneficiary is null) return false;
-
-        excluded.Add(block.Beneficiary);
-        foreach (Address? system in (ReadOnlySpan<Address?>)[spec.Eip4788ContractAddress, spec.Eip2935ContractAddress, spec.Eip7002ContractAddress, spec.Eip7251ContractAddress])
-        {
-            if (system is not null) excluded.Add(system);
-        }
-
-        if (block.Withdrawals is { } withdrawals)
-        {
-            foreach (Withdrawal withdrawal in withdrawals) excluded.Add(withdrawal.Address);
-        }
-
         return true;
     }
 

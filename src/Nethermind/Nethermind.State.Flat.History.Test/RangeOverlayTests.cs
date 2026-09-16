@@ -105,6 +105,33 @@ public class RangeOverlayTests
     }
 
     [Test]
+    public void AnAddressOneBlockRefuses_IsRefusedByTheWholeChain()
+    {
+        RangeOverlay wrote = Chain(null, 7, c =>
+        {
+            c.Balance(TestItem.AddressA, 10);
+            c.Storage(SlotOne, [0x11]);
+        });
+        RangeOverlay refused = Chain(wrote, 8, c =>
+        {
+            c.Balance(TestItem.AddressA, 20);
+            c.Storage(SlotOne, [0x22]);
+        }, [TestItem.AddressA]);
+        RangeOverlay later = Chain(refused, 9, c => c.Balance(TestItem.AddressB, 1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refused.TryGetAccount(TestItem.AddressA, Parent, out _), Is.False, "the withdrawal or system call that refused it is not in the rows, so only the parent state knows the account");
+            Assert.That(refused.TryGetStorage(TestItem.AddressA, 1, out _), Is.False, "the older block still holds the slot, and answering it would serve a value the refusing block has since changed");
+            Assert.That(refused.HasStorage(TestItem.AddressA), Is.False);
+            Assert.That(later.TryGetAccount(TestItem.AddressA, Parent, out _), Is.False, "a chain built on the refusal carries it");
+            Assert.That(later.TryGetStorage(TestItem.AddressA, 1, out _), Is.False);
+            Assert.That(later.TryGetAccount(TestItem.AddressB, Parent, out Account? b), Is.True, "everything else is still answered");
+            Assert.That(b!.Balance, Is.EqualTo(UInt256.One));
+        }
+    }
+
+    [Test]
     public void AChainThatHoldsTooManyEntries_IsNotExtended()
     {
         ConsecutiveBlockOverlays overlays = new(maxEntries: 1);
@@ -146,7 +173,7 @@ public class RangeOverlayTests
         }
     }
 
-    private static RangeOverlay Chain(RangeOverlay? older, ulong block, Action<ChangesetCollector> writes)
+    private static RangeOverlay Chain(RangeOverlay? older, ulong block, Action<ChangesetCollector> writes, HashSet<AddressAsKey>? excluded = null)
     {
         MidBlockOverlay overlay = new();
         overlay.Reset(block);
@@ -154,7 +181,7 @@ public class RangeOverlayTests
         writes(collector);
         overlay.Fold(0, collector.Pack());
         collector.Release();
-        return RangeOverlay.Extend(older, overlay, Keccak.Compute(block.ToString()), new HashSet<AddressAsKey>());
+        return RangeOverlay.Extend(older, overlay, Keccak.Compute(block.ToString()), excluded ?? None);
     }
 
     private static BlockChangesets Rows(ulong number, Hash256 hash)

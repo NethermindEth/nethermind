@@ -165,12 +165,12 @@ public class BlockProcessorTests
             configure?.Invoke(builder);
         });
 
-    private static async Task<Block> AddThreeTransferBlock(BasicTestBlockchain chain, Address? to = null)
+    private static async Task<Block> AddThreeTransferBlock(BasicTestBlockchain chain, Address? to = null, int firstNonce = 0)
     {
         Transaction[] transactions = new Transaction[3];
         for (int i = 0; i < transactions.Length; i++)
         {
-            transactions[i] = Build.A.Transaction.WithTo(to ?? TestItem.AddressC).WithNonce((ulong)i)
+            transactions[i] = Build.A.Transaction.WithTo(to ?? TestItem.AddressC).WithNonce((ulong)(firstNonce + i))
                 .WithValue((UInt256)(i + 1)).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         }
         Block block = await chain.AddBlock(transactions);
@@ -319,6 +319,100 @@ public class BlockProcessorTests
                 "state diffs of each transaction and the reward traced on the seeded end state equal the replay");
             Assert.That(traces![^1].Action!.RewardType, Is.EqualTo("block"), "the reward comes last, as in the replay");
         }
+    }
+
+    [Test]
+    public async Task ParallelBlockTracer_ChainsConsecutiveBlocks_AndStillTracesWhatTheReplayTraces()
+    {
+        IReleaseSpec spec = Prague.Instance;
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true }, new TestSpecProvider(spec));
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds);
+        GethTraceOptions traceOptions = new() { Tracer = "prestateTracer" };
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, degree: 2, LimboLogs.Instance);
+
+        // The beneficiary takes the reward after the transactions, so the rows never describe it; it is also what
+        // every block's transactions pay here, which is the shape the chain has to refuse: the first block holds a
+        // balance the second has since changed.
+        BlockHeader first = chain.BlockTree.Head!.Header;
+        Block one = await AddThreeTransferBlock(chain, TestItem.AddressC);
+        BlockHeader second = chain.BlockTree.Head!.Header;
+        // The withdrawal credits an address the first block's transactions wrote, and only the second block refuses
+        // it: the first block's node holds the balance the withdrawal has since changed.
+        Block two = await AddBlockWithWithdrawal(chain, new Withdrawal { Address = TestItem.AddressC, Index = 1, ValidatorIndex = 1, AmountInGwei = 7 }, 3);
+        BlockHeader third = chain.BlockTree.Head!.Header;
+        Block three = await AddThreeTransferBlock(chain, TestItem.AddressC, 6);
+        // The test chain seals with a difficulty of one; mark the blocks the way the merge recovery step marks a
+        // block it processes, which is what makes them proof of stake in memory. A block read back from the store
+        // carries zero difficulty instead, which CoveredBlockTests covers.
+        foreach (Block produced in (ReadOnlySpan<Block>)[one, two, three]) produced.Header.IsPostMerge = true;
+        IndexThroughTheCapture(chain, index, one, first, spec);
+        IndexThroughTheCapture(chain, index, two, second, spec);
+        IndexThroughTheCapture(chain, index, three, third, spec);
+
+        TraceInParallel(parallel, chain, first, one, traceOptions);
+        TraceInParallel(parallel, chain, second, two, traceOptions);
+
+        // At the first transaction the block's own prefix is empty, so whatever answers here came from the blocks
+        // before it: an address they only wrote in a transaction must be answered, and the one a withdrawal credited
+        // after the transactions must not, even though an earlier block of the chain does hold it.
+        Assert.That(seeds.TryOpenBlock(three, out ICoveredBlock? covered), Is.True);
+        StateReadOverlaySlot slot = new();
+        Assert.That(covered!.CreateWorkerSeeds().TrySeed(three, 0, slot), Is.True);
+        bool chained = slot.Current!.TryGetAccount(TestItem.AddressB, null, out _);
+        bool withdrawalRecipientRefused = !slot.Current.TryGetAccount(TestItem.AddressC, null, out _);
+        covered.Dispose();
+
+        string expected = chain.JsonSerializer.Serialize(new GethLikeTxTraceCollection(TraceWholeBlockThroughTraceEnvironment(chain, third, three,
+            state => GethStyleTracer.CreateOptionsTracer(three.Header, traceOptions, state, chain.SpecProvider))));
+        string actual = chain.JsonSerializer.Serialize(new GethLikeTxTraceCollection(TraceInParallel(parallel, chain, third, three, traceOptions)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chained, Is.True, "precondition: the sender, whose nonce every earlier block wrote, is read through the chain, or the test proves nothing");
+            Assert.That(withdrawalRecipientRefused, Is.True, "an address one block wrote after its transactions is refused by the whole chain, including by the older node that still holds it");
+            Assert.That(actual, Is.EqualTo(expected), "the prestate of a block read through a chain of earlier blocks is the prestate the replay reports");
+        }
+    }
+
+    /// <summary>A block the way the engine API asks for one: the transactions from the pool, and the withdrawals the
+    /// consensus client supplies, which are credited after them.</summary>
+    private static async Task<Block> AddBlockWithWithdrawal(BasicTestBlockchain chain, Withdrawal withdrawal, int firstNonce)
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            Transaction transaction = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce((ulong)(firstNonce + i))
+                .WithValue((UInt256)(i + 1)).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        chain.Timestamper.Add(TimeSpan.FromSeconds(1));
+        Block? block = await chain.BlockProducer.BuildBlock(parent, payloadAttributes: new PayloadAttributes
+        {
+            Timestamp = chain.Timestamper.UnixTime.Seconds,
+            PrevRandao = Keccak.Zero,
+            SuggestedFeeRecipient = parent.Beneficiary ?? TestItem.AddressD,
+            Withdrawals = [withdrawal],
+        });
+
+        Assert.That(block, Is.Not.Null);
+        Assert.That(block!.Withdrawals, Has.Length.EqualTo(1), "precondition: the block carries the withdrawal");
+        Assert.That(block.Transactions, Has.Length.EqualTo(3), "precondition: the block carries the pool's transactions");
+        // Armed before the suggest: the processor can finish before the wait starts, and the event is not replayed.
+        Task onHead = chain.WaitForNewHeadWhere(added => added.Hash == block.Hash);
+        Assert.That(chain.BlockTree.SuggestBlock(block), Is.EqualTo(AddBlockResult.Added));
+        await onHead;
+        return block;
+    }
+
+    private static IReadOnlyList<GethLikeTxTrace> TraceInParallel(ParallelBlockTracer parallel, BasicTestBlockchain chain, BlockHeader parent, Block block, GethTraceOptions options)
+    {
+        Assert.That(parallel.TryTrace(block, parent,
+            (state, txHash) => GethStyleTracer.CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, chain.SpecProvider),
+            afterTransactions: null, CancellationToken.None, out IReadOnlyList<GethLikeTxTrace>? traces), Is.True, $"block {block.Number} must be traced in parallel");
+        return traces!;
     }
 
     [Test]

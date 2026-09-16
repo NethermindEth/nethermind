@@ -13,23 +13,28 @@ namespace Nethermind.State.Flat.History.Changesets;
 /// node holds one block flattened to its final values and points at the node before it; a node never changes once
 /// built, so any number of traces may read a chain while a newer node is added ahead of it.
 /// The rows hold what the transactions wrote; what the block wrote after them (withdrawals, the end-of-block system
-/// calls, a reward) is not in them, so an address any of those can touch is left out of the node and always read
-/// from the parent state: the withdrawal recipients, the beneficiary, and the system contracts of the block's fork.
-/// Only a post-merge block is chained, so no uncle or reward reaches an address the exclusion cannot name.</summary>
+/// calls, a reward) is not in them, so an address any block of the chain can have written afterwards is refused by
+/// the whole chain and always read from the parent state, where that block's real value is. The refusal is
+/// cumulative: an address excluded by one block is refused by every chain built on it, because an older node holding
+/// it would otherwise answer with a value that block has since changed.
+/// Only a proof-of-stake block is chained, so no uncle or non-zero reward reaches an address
+/// <see cref="PostTransactionWriters"/> cannot name.</summary>
 internal sealed class RangeOverlay : IStateReadOverlay
 {
     private readonly RangeOverlay? _older;
     private readonly Dictionary<AddressAsKey, AccountEnd> _accounts = [];
     private readonly Dictionary<StorageCell, UInt256> _slots = [];
     private readonly HashSet<AddressAsKey> _storageAccounts = [];
+    private readonly HashSet<AddressAsKey> _refused;
 
-    private RangeOverlay(RangeOverlay? older, ulong lastBlock, Hash256 lastHash)
+    private RangeOverlay(RangeOverlay? older, ulong lastBlock, Hash256 lastHash, IReadOnlySet<AddressAsKey> excluded)
     {
         _older = older;
+        _refused = older is null ? [.. excluded] : [.. older._refused, .. excluded];
         LastBlock = lastBlock;
         LastHash = lastHash;
         Length = (older?.Length ?? 0) + 1;
-        Entries = older?.Entries ?? 0;
+        Entries = (older?.Entries ?? 0) + _refused.Count - (older?._refused.Count ?? 0);
     }
 
     public ulong LastBlock { get; }
@@ -44,13 +49,15 @@ internal sealed class RangeOverlay : IStateReadOverlay
 
     /// <summary>A new chain head: <paramref name="block"/>, folded through its last transaction, in front of
     /// <paramref name="older"/>.</summary>
+    /// <param name="excluded">Addresses this block may have written after its transactions. They are refused by the
+    /// whole chain from here on, this block's own transaction writes to them included.</param>
     public static RangeOverlay Extend(RangeOverlay? older, MidBlockOverlay block, Hash256 blockHash, IReadOnlySet<AddressAsKey> excluded)
     {
-        RangeOverlay node = new(older, block.Block, blockHash);
+        RangeOverlay node = new(older, block.Block, blockHash, excluded);
         Dictionary<AddressAsKey, MidBlockOverlay.AccountOverlay>.Enumerator accounts = block.Accounts;
         while (accounts.MoveNext())
         {
-            if (excluded.Contains(accounts.Current.Key)) continue;
+            if (node._refused.Contains(accounts.Current.Key)) continue;
 
             MidBlockOverlay.AccountOverlay account = accounts.Current.Value;
             node._accounts[accounts.Current.Key] = new AccountEnd(
@@ -64,7 +71,7 @@ internal sealed class RangeOverlay : IStateReadOverlay
         while (writes.MoveNext())
         {
             StorageCell cell = writes.Current.Key;
-            if (excluded.Contains(cell.Address) || !block.TryGetStorage(cell, out UInt256 value)) continue;
+            if (node._refused.Contains(cell.Address) || !block.TryGetStorage(cell, out UInt256 value)) continue;
 
             node._slots[cell] = value;
             node._storageAccounts.Add(cell.Address);
@@ -81,6 +88,12 @@ internal sealed class RangeOverlay : IStateReadOverlay
     /// root into a non-empty one, never the reverse; nothing on the trace path reads the root for anything else.</remarks>
     public bool TryGetAccount(Address address, Account? underlying, out Account? overlaid)
     {
+        if (_refused.Contains(address))
+        {
+            overlaid = null;
+            return false;
+        }
+
         UInt256? nonce = null;
         UInt256? balance = null;
         ValueHash256? codeHash = null;
@@ -126,6 +139,12 @@ internal sealed class RangeOverlay : IStateReadOverlay
 
     public bool TryGetStorage(Address address, in UInt256 index, out UInt256 value)
     {
+        if (_refused.Contains(address))
+        {
+            value = UInt256.Zero;
+            return false;
+        }
+
         StorageCell cell = new(address, index);
         for (RangeOverlay? node = this; node is not null; node = node._older)
         {
@@ -143,6 +162,8 @@ internal sealed class RangeOverlay : IStateReadOverlay
 
     public bool HasStorage(Address address)
     {
+        if (_refused.Contains(address)) return false;
+
         for (RangeOverlay? node = this; node is not null; node = node._older)
         {
             if (node._storageAccounts.Contains(address)) return true;

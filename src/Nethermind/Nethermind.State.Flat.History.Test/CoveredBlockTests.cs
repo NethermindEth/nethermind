@@ -31,8 +31,10 @@ public class CoveredBlockTests
     {
         _columns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
         _index = new TransactionChangesetIndex(_columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true }, new TestSpecProvider(Prague.Instance));
-        _seven = Build.A.Block.WithNumber(7).WithPostMergeFlag(true).WithBeneficiary(TestItem.AddressD).WithTransactions(Tx(0), Tx(1), Tx(2)).TestObject;
-        _eight = Build.A.Block.WithNumber(8).WithPostMergeFlag(true).WithBeneficiary(TestItem.AddressD).WithParentHash(_seven.Hash!).WithTransactions(Tx(3), Tx(4)).TestObject;
+        // Difficulty zero, and the processing flag left where a decoded header leaves it: this is the block a trace
+        // reads back from the store.
+        _seven = Build.A.Block.WithNumber(7).WithDifficulty(0).WithBeneficiary(TestItem.AddressD).WithTransactions(Tx(0), Tx(1), Tx(2)).TestObject;
+        _eight = Build.A.Block.WithNumber(8).WithDifficulty(0).WithBeneficiary(TestItem.AddressD).WithParentHash(_seven.Hash!).WithTransactions(Tx(3), Tx(4)).TestObject;
 
         Capture(_seven,
             t => t.ReportBalanceChange(TestItem.AddressA, 100, 10),
@@ -137,7 +139,7 @@ public class CoveredBlockTests
     [Test]
     public void AnAddressTheBlockCanWriteAfterItsTransactions_IsNeverAnsweredFromTheChain()
     {
-        Block seven = Build.A.Block.WithNumber(7).WithPostMergeFlag(true).WithBeneficiary(TestItem.AddressB).WithTransactions(Tx(0), Tx(1), Tx(2))
+        Block seven = Build.A.Block.WithNumber(7).WithDifficulty(0).WithBeneficiary(TestItem.AddressB).WithTransactions(Tx(0), Tx(1), Tx(2))
             .WithWithdrawals([new Withdrawal { Address = TestItem.AddressA, AmountInGwei = 1 }]).TestObject;
         seven.Header.Hash = _seven.Hash;
         Assert.That(_index.TryOpenBlock(seven, out ICoveredBlock? covered), Is.True);
@@ -159,7 +161,7 @@ public class CoveredBlockTests
     [Test]
     public void ABlockBeforeTheMerge_IsNotChained()
     {
-        Block seven = Build.A.Block.WithNumber(7).WithPostMergeFlag(false).WithBeneficiary(TestItem.AddressD).WithTransactions(Tx(0), Tx(1), Tx(2)).TestObject;
+        Block seven = Build.A.Block.WithNumber(7).WithDifficulty(17).WithBeneficiary(TestItem.AddressD).WithTransactions(Tx(0), Tx(1), Tx(2)).TestObject;
         seven.Header.Hash = _seven.Hash;
         Assert.That(_index.TryOpenBlock(seven, out ICoveredBlock? covered), Is.True);
         covered!.Complete();
@@ -171,6 +173,24 @@ public class CoveredBlockTests
         Assert.That(block.CreateWorkerSeeds().TrySeed(_eight, 1, slot), Is.True);
 
         Assert.That(slot.Current!.TryGetAccount(TestItem.AddressB, Parent, out _), Is.False, "an uncle or a real reward could have reached anyone, so nothing of that block is chained");
+    }
+
+    [Test]
+    public void ABlockReadBackFromTheStore_StillChains()
+    {
+        Assert.That(_seven.Header.IsPostMerge, Is.False, "precondition: the flag a decoded header does not carry");
+
+        Assert.That(_index.TryOpenBlock(_seven, out ICoveredBlock? covered), Is.True);
+        covered!.Complete();
+        covered.Dispose();
+
+        Assert.That(_index.TryOpenBlock(_eight, out ICoveredBlock? eight), Is.True);
+        using ICoveredBlock block = eight!;
+        StateReadOverlaySlot slot = new();
+        Assert.That(block.CreateWorkerSeeds().TrySeed(_eight, 1, slot), Is.True);
+
+        Assert.That(slot.Current!.TryGetAccount(TestItem.AddressB, Parent, out Account? b), Is.True, "zero difficulty is what says proof of stake for a block read back from the store");
+        Assert.That(b!.Nonce, Is.EqualTo(6UL));
     }
 
     [Test]
