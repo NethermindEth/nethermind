@@ -16,14 +16,12 @@ ROOT = Path(__file__).resolve().parents[2]
 PERF_FOLD = ROOT / "scripts" / "perf-fold.awk"
 PERF_REPORT = ROOT / "scripts" / "perf-report.sh"
 FOLDED_PROFILE_VALIDATOR = ROOT / "scripts" / "validate-folded-profile.sh"
-EXPB_WORKFLOW = ROOT / ".github" / "workflows" / "run-expb-reproducible-benchmarks.yml"
 RPC_WORKFLOW = ROOT / ".github" / "workflows" / "run-rpc-benchmarks.yml"
 RPC_LIB = ROOT / "scripts" / "rpc-bench" / "lib.sh"
 START_NODE = ROOT / "scripts" / "rpc-bench" / "start-node.sh"
 STOP_NODE = ROOT / "scripts" / "rpc-bench" / "stop-node.sh"
 START_PROFILERS = ROOT / "scripts" / "rpc-bench" / "start-profilers.sh"
 RUN_JSONBENCH = ROOT / "scripts" / "rpc-bench" / "run-jsonbench.sh"
-PROFILE_ARTIFACT_GATE = "always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')"
 
 WORKFLOW_JOB_PATTERN = re.compile(
     r"(?ms)^  (?P<name>[A-Za-z0-9_-]+):[^\r\n]*\r?\n"
@@ -1178,29 +1176,10 @@ esac
         self.assertIn("rpcbench.nettrace", workflow_named_step_body(rpc_workflow, "benchmark", "Publish step summary"))
 
     def test_workflow_profile_contracts_cover_both_collectors(self) -> None:
-        expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
         rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
         start_node = START_NODE.read_text(encoding="utf-8")
         stop_node = STOP_NODE.read_text(encoding="utf-8")
 
-        self.assertEqual(expb_workflow.count('bash scripts/validate-folded-profile.sh "${folded_profile}"'), 2)
-        self.assertEqual(expb_workflow.count("-x '*/perf.data'"), 2)
-        self.assertEqual(expb_workflow.count('artifact_prefix="dottrace"'), 2)
-        self.assertEqual(expb_workflow.count('artifact_prefix="profiling"'), 2)
-        self.assertIn("pattern: ${{ needs.resolve.outputs.perf == 'true' && 'profiling-*' || 'dottrace-*' }}", expb_workflow)
-        self.assertEqual(
-            expb_workflow.count(
-                "# Remove this temporary pin once default main advertises --perf in execute-scenarios --help (execution-payloads-benchmarks#27); the help probe below is the runtime guard."
-            ),
-            2,
-        )
-        for job_name in ("benchmark", "benchmark-multi"):
-            job_body = workflow_job_body(expb_workflow, job_name)
-            self.assertIn(
-                'if [[ "${PERF}" == "true" && "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then',
-                job_body,
-            )
-            self.assertIn('expb_help="$("${expb_bin}" execute-scenarios --help 2>&1)"', job_body)
         self.assertIn("bash scripts/validate-folded-profile.sh", rpc_workflow)
         self.assertIn("zip -9r \"${ARCHIVE}\" perf -x '*/perf.data'", rpc_workflow)
         self.assertIn("require_perf_access", rpc_workflow)
@@ -1224,10 +1203,6 @@ esac
         self.assertIn('signal_perf_recorder_if_matches INT', stop_node)
         self.assertIn('signal_perf_recorder_if_matches KILL', stop_node)
 
-        for job_name in ("benchmark", "benchmark-multi"):
-            for step_name in ("Collect and upload profiling artifacts", "Upload profiling artifact"):
-                self.assertEqual(workflow_named_step_if(expb_workflow, job_name, step_name), PROFILE_ARTIFACT_GATE)
-
         perf_preflight = workflow_named_step_body(
             rpc_workflow,
             "benchmark",
@@ -1246,14 +1221,6 @@ esac
                     "Verify perf profiling prerequisites",
                 ),
             )
-
-        dottrace_only = "always() && needs.resolve.outputs.dottrace == 'true'"
-        mutated_workflow = expb_workflow.replace(PROFILE_ARTIFACT_GATE, dottrace_only, 1)
-        self.assertNotEqual(mutated_workflow, expb_workflow)
-        with self.assertRaises(AssertionError):
-            for job_name in ("benchmark", "benchmark-multi"):
-                for step_name in ("Collect and upload profiling artifacts", "Upload profiling artifact"):
-                    self.assertEqual(workflow_named_step_if(mutated_workflow, job_name, step_name), PROFILE_ARTIFACT_GATE)
 
     def test_perf_and_dotnet_trace_preconditions_are_resolved_before_the_runner_is_paid_for(self) -> None:
         rpc_workflow = RPC_WORKFLOW.read_text(encoding="utf-8")
@@ -1278,26 +1245,10 @@ esac
             RPC_LIB.read_text(encoding="utf-8"),
         )
 
-        # Pinned collector: the rig pins expb and json-bench for the same reason.
+        # Pinned collector: the rig pins json-bench to keep profiling reproducible.
         start_node = START_NODE.read_text(encoding="utf-8")
         self.assertRegex(start_node, r'DOTNET_TRACE_VERSION="\$\{DOTNET_TRACE_VERSION:-[0-9]+\.[0-9]+\.[0-9]+\}"')
         self.assertEqual(start_node.count('dotnet tool install --version "$DOTNET_TRACE_VERSION"'), 2)
-
-    def test_expb_profile_archive_precedes_deferred_perf_failure(self) -> None:
-        expb_workflow = EXPB_WORKFLOW.read_text(encoding="utf-8")
-        archive = 'zip -9r "${archive}" "${profiling_dirs[@]}" -x \'*/perf.data\''
-        deferred_failure = 'if [[ "${perf_validation_failed}" == "true" ]]; then'
-
-        for job_name in ("benchmark", "benchmark-multi"):
-            collector = workflow_named_step_body(expb_workflow, job_name, "Collect and upload profiling artifacts")
-            self.assertIn("perf_validation_failed=false", collector)
-            self.assertIn("perf_validation_failed=true", collector)
-            self.assertLess(
-                collector.index(archive),
-                collector.index(deferred_failure),
-                f"{job_name} must archive dotTrace/EventPipe data before failing invalid perf output",
-            )
-            self.assertIn("exit 1", collector[collector.index(deferred_failure) :])
 
 
 if __name__ == "__main__":
