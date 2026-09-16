@@ -441,11 +441,15 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
     }
 
-    public void FlushCache(CancellationToken cancellationToken)
+    public void FlushCache(CancellationToken cancellationToken) => FlushCache(cancellationToken, forShutdown: false);
+
+    private void FlushCache(CancellationToken cancellationToken, bool forShutdown)
     {
         if (_logger.IsInfo) _logger.Info("FlatDbManager FlushCache started.");
 
-        StateId persistedState = _persistenceManager.FlushToPersistence(cancellationToken);
+        StateId persistedState = forShutdown
+            ? _persistenceManager.PersistForShutdown(cancellationToken)
+            : _persistenceManager.FlushToPersistence(cancellationToken);
 
         if (cancellationToken.IsCancellationRequested) return;
         if (persistedState == StateId.PreGenesis) return;
@@ -453,7 +457,12 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         ClearReadOnlyBundleCache();
         _trieNodeCache.Clear();
 
-        if (_logger.IsInfo) _logger.Info($"FlatDbManager FlushCache completed. Persisted to {persistedState}.");
+        // The shutdown path leaves the persisted state where it was, so "persisted to" would name a block
+        // far below the head; PersistForShutdown reports what it converted.
+        if (_logger.IsInfo)
+            _logger.Info(forShutdown
+                ? $"FlatDbManager FlushCache completed. Persisted state {persistedState}."
+                : $"FlatDbManager FlushCache completed. Persisted to {persistedState}.");
     }
 
     public bool HasStateForBlock(in StateId stateId)
@@ -465,10 +474,10 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Persists the in-memory tier before tearing the workers down, so the flat state on disk matches
-    /// the block tree. Without it the process exits with the state up to <c>MinReorgDepth</c> blocks
-    /// behind the last committed block, and the next start has to re-run that branch from the persisted
-    /// base — a path that only survives as far as the next compaction boundary.
+    /// Makes the in-memory tier durable before tearing the workers down, so the next start does not have
+    /// to re-run the branch the process exits with — up to <c>MinReorgDepth</c> blocks of it — from the
+    /// persisted base. It converts rather than flushes: collapsing the tier into the base would leave the
+    /// next start with only the head state, and nothing below the base can be assembled again.
     ///
     /// The queues are completed in feed order — the compactor writes into the persistence queue, so it
     /// has to drain first — and both are drained before the flush, so nothing still in flight is lost.
@@ -488,7 +497,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             _persistenceJobs.Writer.TryComplete();
             await _persistenceTask;
 
-            FlushCache(CancellationToken.None);
+            FlushCache(CancellationToken.None, forShutdown: true);
         }
         finally
         {

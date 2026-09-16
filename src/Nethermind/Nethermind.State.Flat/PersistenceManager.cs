@@ -458,6 +458,80 @@ public class PersistenceManager(
         return currentPersistedState;
     }
 
+    /// <summary>
+    /// Shutdown counterpart to <see cref="FlushToPersistence"/>: makes the in-memory tier durable by
+    /// converting it into the persisted-snapshot tier, leaving the persisted base where it is.
+    /// </summary>
+    /// <remarks>
+    /// The persisted base is the floor of what the flat database can assemble — nothing below it can be
+    /// read back. Collapsing the in-memory tier into the base, as the flush does, therefore leaves the
+    /// next start with a single usable state, and a block whose parent is anywhere below the head (a
+    /// fork, or a consensus proposing on top of something other than its own head) has neither a parent
+    /// state to stand on nor a way to rebuild one. Converted snapshots are reloaded from the catalog on
+    /// the next start, so the whole window stays assemblable.
+    /// Without the persisted-snapshot tier (<c>EnableLongFinality</c> off) there is nowhere to keep the
+    /// window, so this falls back to the flush.
+    /// The converted bases are not queued for compaction the way the runtime conversion queues them: the
+    /// compactor has already drained by this point. They stay as one narrow snapshot each until the
+    /// persisted base advances past them on a later run.
+    /// </remarks>
+    public StateId PersistForShutdown(CancellationToken cancellationToken)
+    {
+        using SemaphoreSlimExtensions.Scope _ = _persistenceLock.EnterScope();
+        if (!_enableLongFinality) return FlushToPersistenceLocked(cancellationToken);
+
+        StateId persistedState = GetCurrentPersistedStateId();
+
+        // Same barrier the persist path takes, for the same reason (see IStatePersistenceBarrier): these
+        // states survive the restart, so the blocks behind them are never re-executed and their deferred
+        // block data would have nothing left to write it. A throw aborts the conversion — losing the
+        // window is recoverable, an unbacked durable state is not.
+        try
+        {
+            persistenceBarrier.FlushDeferred();
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Block-data flush failed on shutdown; keeping the in-memory tier unconverted.", e);
+            return persistedState;
+        }
+
+        // long.MaxValue, not ulong.MaxValue: the latter is the PreGenesis sentinel GetStatesUpToBlock
+        // reads as "before any state". Ascending order keeps the converted chain contiguous.
+        using ArrayPoolList<StateId> ordered = snapshotRepository.GetStatesUpToBlock(long.MaxValue);
+        int converted = 0;
+        foreach (StateId state in ordered)
+        {
+            if (cancellationToken.IsCancellationRequested) break;
+            // A runtime conversion cancelled mid-way (ConvertCompactedRange's Parallel.ForEach runs on
+            // _cts) leaves converted states in the in-memory tier, and converting one again would write a
+            // second catalog row for the same To.
+            if (snapshotRepository.HasBasePersistedSnapshot(state)) continue;
+            if (!snapshotRepository.TryLeaseInMemoryState(state, SnapshotTier.InMemoryBase, out Snapshot? baseSnapshot)) continue;
+
+            using Snapshot leased = baseSnapshot;
+
+            // The runtime conversion's gate: a base whose From is not on disk cannot be assembled from the
+            // persisted state, so converting it would only leave a dangling base in the tier — which is
+            // what a deep reorg stranding an in-memory base below the persisted one produces.
+            if (!IsOnDisk(leased.From, persistedState)) continue;
+
+            long sw = Stopwatch.GetTimestamp();
+            loader.ConvertAndRegister(leased);
+            Metrics.PersistedSnapshotConvertTime.Observe(Stopwatch.GetTimestamp() - sw);
+
+            // A To can live in both in-memory tiers, and the converted base covers the compacted one's range.
+            snapshotRepository.RemoveAndReleaseInMemoryKnownState(state, SnapshotTier.InMemoryCompacted);
+            snapshotRepository.RemoveAndReleaseInMemoryKnownState(state, SnapshotTier.InMemoryBase);
+            converted++;
+        }
+
+        if (converted > 0 && _logger.IsInfo)
+            _logger.Info($"Converted {converted} in-memory snapshot(s) into the persisted tier on shutdown; persisted state stays at {persistedState}.");
+
+        return persistedState;
+    }
+
     public void ResetPersistedStateId()
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
