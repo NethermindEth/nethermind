@@ -247,6 +247,7 @@ public sealed class FlatStorageTree(
             {
                 tree.UpdateRootHash(canBeParallel: false);
                 Db.Metrics.IncrementSpeculativeStorageHashPasses();
+                _scope.OnSpeculativeStorageRoot(_address, tree.RootHash);
             }
         }
         catch (Exception e)
