@@ -123,6 +123,10 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Maximum number of thread-pool workers that apply speculative storage writes and hash storage tries while transactions execute. Only used with SpeculativeStorageRoots.", DefaultValue = "2")]
     int SpeculativeStorageRootWorkers { get; set; }
 
+    /// <summary>Slot writes per contract per block above which speculation stops and the block-end bulk update takes over.</summary>
+    [ConfigItem(Description = "Slot writes per contract per block above which speculative storage root updates stop for that contract, leaving the rest to the parallel block-end bulk update. Only used with SpeculativeStorageRoots.", DefaultValue = "256")]
+    int SpeculativeStorageRootContractCap { get; set; }
+
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "true")]
     bool EnableLongFinality { get; set; }
 

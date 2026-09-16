@@ -41,7 +41,12 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     // and the changed paths hashed by the scope's bounded workers while later transactions execute. The block thread
     // is the only producer, at most one worker drains a tree at a time, and finalization claims the trie through the
     // same state word, so a worker can never reacquire it after the join.
+    // A drain smaller than this only loads and sets; hashing waits for a wider drain or the block end, which hashes all
+    // contracts in parallel anyway. Hashing every single write re-hashed hot contracts' paths once per transaction.
+    private const int MinDrainToHash = 4;
     private readonly bool _speculate;
+    private readonly int _speculationCap;
+    private int _speculativeWriteCount;
     private ConcurrentQueue<SpeculativeWrite>? _speculativeQueue;
     private Dictionary<UInt256, UInt256>? _speculativelyApplied;
     private Dictionary<UInt256, UInt256>? _drainBatch;
@@ -84,6 +89,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         // VerifyWithTrie reads the trie on the block thread during execution, which the runner would race.
         _speculate = config.SpeculativeStorageRoots && !scope.Trieless && !scope.IsReadOnly && !config.VerifyWithTrie;
         _speculationBaseRoot = storageRoot;
+        _speculationCap = config.SpeculativeStorageRootContractCap;
     }
 
     public Hash256 RootHash => _tree.RootHash;
@@ -120,11 +126,15 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     /// </remarks>
     public void HintSet(in UInt256 index, in UInt256 value)
     {
-        if (!_speculate || Volatile.Read(ref _speculationState) == SpeculationState.Owned)
+        // Past the cap the contract is wide enough for the parallel block-end bulk update to beat a single worker,
+        // which would otherwise still be draining it when the block ends.
+        if (!_speculate || _speculativeWriteCount >= _speculationCap || Volatile.Read(ref _speculationState) == SpeculationState.Owned)
         {
             WarmUpSlot(index);
             return;
         }
+
+        _speculativeWriteCount++;
 
         if (_speculativeQueue is null)
         {
@@ -212,9 +222,12 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
             Dictionary<UInt256, UInt256> applied = _speculativelyApplied!;
             foreach (KeyValuePair<UInt256, UInt256> kv in batch) applied[kv.Key] = kv.Value;
 
-            _tree.UpdateRootHash(canBeParallel: false);
             Db.Metrics.IncrementSpeculativeStorageWrites(batch.Count);
-            Db.Metrics.IncrementSpeculativeStorageHashPasses();
+            if (batch.Count >= MinDrainToHash)
+            {
+                _tree.UpdateRootHash(canBeParallel: false);
+                Db.Metrics.IncrementSpeculativeStorageHashPasses();
+            }
         }
         catch (Exception e)
         {

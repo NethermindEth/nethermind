@@ -530,11 +530,8 @@ public class FlatWorldStateScopeProviderTests
         return released;
     }
 
-    private static void WaitForSpeculativeRoot(ManualResetEventSlim released, IWorldStateScopeProvider.IStorageTree tree, Hash256 rootBefore)
-    {
-        Assert.That(released.Wait(TimeSpan.FromSeconds(10)), Is.True, "speculative runner released the trie");
-        Assert.That(tree.RootHash, Is.Not.EqualTo(rootBefore));
-    }
+    private static void WaitForSpeculativeRelease(ManualResetEventSlim released)
+        => Assert.That(released.Wait(TimeSpan.FromSeconds(10)), Is.True, "speculation worker released the trie");
 
     [Test]
     public void SpeculativeStorageRoots_MatchBlockEndRoot([Values] bool speculative)
@@ -545,7 +542,6 @@ public class FlatWorldStateScopeProviderTests
         ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
 
         IWorldStateScopeProvider.IStorageTree tree = scope.CreateStorageTree(address);
-        Hash256 rootBefore = tree.RootHash;
         using ManualResetEventSlim released = ObserveSpeculationRelease(tree);
         // Two transactions commit: slot 1 is overwritten, slot 2 is written then zeroed, slots 5 and 6 are written once.
         tree.HintSet(1, 0xA);
@@ -555,7 +551,7 @@ public class FlatWorldStateScopeProviderTests
         tree.HintSet(2, UInt256.Zero);
         tree.HintSet(3, 0xD);
         tree.HintSet(6, 0x66);
-        if (speculative) WaitForSpeculativeRoot(released, tree, rootBefore);
+        if (speculative) WaitForSpeculativeRelease(released);
 
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
@@ -596,7 +592,7 @@ public class FlatWorldStateScopeProviderTests
         using ManualResetEventSlim released = ObserveSpeculationRelease(tree);
         tree.HintSet(1, 0x11);
         tree.HintSet(2, 0x22);
-        WaitForSpeculativeRoot(released, tree, rootBefore);
+        WaitForSpeculativeRelease(released);
 
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
@@ -619,11 +615,10 @@ public class FlatWorldStateScopeProviderTests
         ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
 
         IWorldStateScopeProvider.IStorageTree tree = scope.CreateStorageTree(address);
-        Hash256 rootBefore = tree.RootHash;
         using ManualResetEventSlim released = ObserveSpeculationRelease(tree);
         tree.HintSet(1, 0xA);
         tree.HintSet(2, 0xB);
-        WaitForSpeculativeRoot(released, tree, rootBefore);
+        WaitForSpeculativeRelease(released);
 
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
@@ -674,6 +669,30 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(1);
 
         Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(RawTrieRoot((1, 0xA), (2, 0xB))));
+    }
+
+    [Test]
+    public void SpeculativeStorageRoots_ContractCapHandsTheRestToBlockEnd()
+    {
+        using TestContext ctx = new(new FlatDbConfig { SpeculativeStorageRoots = true, SpeculativeStorageRootContractCap = 2 });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+
+        IWorldStateScopeProvider.IStorageTree tree = scope.CreateStorageTree(address);
+        using ManualResetEventSlim released = ObserveSpeculationRelease(tree);
+        for (int i = 1; i <= 6; i++) tree.HintSet((UInt256)i, (UInt256)(0x10 + i));
+        Assert.That(released.Wait(TimeSpan.FromSeconds(10)), Is.True);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 6);
+            for (int i = 1; i <= 6; i++) storageBatch.Set((UInt256)i, (UInt256)(0x10 + i));
+        }
+
+        scope.Commit(1);
+
+        Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(RawTrieRoot([.. Enumerable.Range(1, 6).Select(i => ((UInt256)i, (UInt256)(0x10 + i)))])));
     }
 
     [Test]
