@@ -28,6 +28,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Test.Modules;
@@ -151,21 +152,22 @@ public class BlockProcessorTests
         artifacts.AssertUntouched(block);
     }
 
-    private static Task<BasicTestBlockchain> CreatePrefixReplayChain(IReleaseSpec spec, IPrefixStateSeedSource? seeds = null) =>
+    private static Task<BasicTestBlockchain> CreatePrefixReplayChain(IReleaseSpec spec, IPrefixStateSeedSource? seeds = null, Action<ContainerBuilder>? configure = null) =>
         BasicTestBlockchain.Create(builder =>
         {
             builder
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false })
                 .AddSingleton<IBlockValidationModule, PrefixReplayValidationModule>();
             if (seeds is not null) builder.AddSingleton<IPrefixStateSeedSource>(seeds);
+            configure?.Invoke(builder);
         });
 
-    private static async Task<Block> AddThreeTransferBlock(BasicTestBlockchain chain)
+    private static async Task<Block> AddThreeTransferBlock(BasicTestBlockchain chain, Address? to = null)
     {
         Transaction[] transactions = new Transaction[3];
         for (int i = 0; i < transactions.Length; i++)
         {
-            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce((ulong)i)
+            transactions[i] = Build.A.Transaction.WithTo(to ?? TestItem.AddressC).WithNonce((ulong)i)
                 .WithValue((UInt256)(i + 1)).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         }
         Block block = await chain.AddBlock(transactions);
@@ -221,6 +223,39 @@ public class BlockProcessorTests
         }
     }
 
+    [TestCase("callTracer")]
+    [TestCase("prestateTracer")]
+    public async Task TransactionTraceBoundary_WhenThePrefixWroteStorage_TheTargetReadsItThroughTheOverlay(string tracerName)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        // PUSH1 1, SLOAD, POP, CALLVALUE, PUSH1 1, SSTORE: every call reads the slot the call before it wrote, and the
+        // account holds no storage at the parent, which is the shape the overlaid storage root exists for.
+        byte[] code = [0x60, 0x01, 0x54, 0x50, 0x34, 0x60, 0x01, 0x55];
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds, builder => builder.WithGenesisPostProcessor((_, state) =>
+        {
+            state.CreateAccount(TestItem.AddressE, 0);
+            state.InsertCode(TestItem.AddressE, code, spec);
+        }));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain, TestItem.AddressE);
+        Hash256 target = block.Transactions[2].Hash!;
+        GethTraceOptions traceOptions = new() { TxHash = target, Tracer = tracerName };
+        IndexThroughTheCapture(chain, index, block, parent, spec);
+
+        string expected = ReplayThroughTraceEnvironment(chain, parent, block, target, traceOptions, seeds: null, out int replayed);
+        string actual = ReplayThroughTraceEnvironment(chain, parent, block, target, traceOptions, seeds, out int seeded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(replayed, Is.EqualTo(3), "the unbounded replay is the oracle");
+            Assert.That(seeded, Is.EqualTo(1), "with the prefix seeded, only the target executes");
+            Assert.That(actual, Is.EqualTo(expected), "the slot the transactions before it wrote is read through the overlay, storage root and all");
+        }
+    }
+
     [Test]
     public async Task TransactionTraceBoundary_WhenTheSeedIsRefused_ReplaysThePrefix()
     {
@@ -253,6 +288,14 @@ public class BlockProcessorTests
         ReplayThroughTraceEnvironment(chain, parent, block, block.Transactions[0].Hash!, traceOptions, seeds, out _);
 
         Assert.That(seeds.AskedFor, Is.EqualTo(-1), "there is nothing before the first transaction to seed");
+    }
+
+    private static void IndexThroughTheCapture(BasicTestBlockchain chain, TransactionChangesetIndex index, Block block, BlockHeader parent, IReleaseSpec spec)
+    {
+        using TransactionChangesetIndex.BlockCapture capture = index.StartBlock((ulong)block.Number);
+        using IDisposable scope = chain.MainWorldState.BeginScope(parent);
+        chain.BlockProcessor.ProcessOne(block, TraceProcessingOptions.ReadOnlyReplay | ProcessingOptions.ForceSequentialBlockAccessList, capture.Tracer, spec, CancellationToken.None);
+        Assert.That(capture.Commit() && index.TryClaim((ulong)block.Number, (ulong)block.Number), Is.True, "precondition: the block must be indexed");
     }
 
     /// <summary>Runs the block the way the debug RPC does: its own read-only processing environment, where the prefix

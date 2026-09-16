@@ -44,7 +44,11 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
             overlay.Extending = overlay.Folded < beforeTransaction;
         }
 
-        if (overlay.Extending) Extend(overlay, beforeTransaction);
+        if (overlay.Extending && !TryExtend(overlay, beforeTransaction))
+        {
+            lease = default;
+            return false;
+        }
 
         lock (_lock)
         {
@@ -57,6 +61,27 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
 
             overlay.Pins--;
             lease = default;
+            return false;
+        }
+    }
+
+    /// <summary>A row the codec cannot read is a refusal, not a failure: the trace then replays the prefix and
+    /// answers, which is what every other refusal here does. The pin goes back with it.</summary>
+    private bool TryExtend(MidBlockOverlay overlay, ushort beforeTransaction)
+    {
+        try
+        {
+            Extend(overlay, beforeTransaction);
+            return true;
+        }
+        catch (InvalidDataException)
+        {
+            lock (_lock)
+            {
+                overlay.Extending = false;
+                overlay.Pins--;
+            }
+
             return false;
         }
     }
