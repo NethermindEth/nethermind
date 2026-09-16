@@ -32,9 +32,9 @@ public static class IndexTableRootCalculator
     /// <c>List[Hash32, entry_count]</c> with length mix-in per SSZ list semantics.
     /// The input list is sorted in-place.
     /// </remarks>
-    /// <param name="entries">The entries to include in the table. Will be sorted in-place.</param>
+    /// <param name="entries">The entries to include in the table.</param>
     /// <returns>The 32-byte SSZ table root.</returns>
-    public static UInt256 ComputeRoot(List<IndexEntry> entries)
+    public static UInt256 ComputeRoot(IReadOnlyList<IndexEntry> entries)
     {
         if (entries.Count == 0)
         {
@@ -43,8 +43,6 @@ public static class IndexTableRootCalculator
             Merkle.MixIn(ref emptyRoot, 0);
             return emptyRoot;
         }
-
-        entries.Sort();
 
         UInt256[] leafHashes = new UInt256[entries.Count];
         Span<byte> entryBuffer = stackalloc byte[IndexEntry.MaxEncodedLength];

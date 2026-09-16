@@ -56,15 +56,17 @@ public readonly struct IndexEntry : IComparable<IndexEntry>
     private const int LogTopicEncodedLength = TypeIdLength + HashLength + BlockNumberLength + UInt32Length + UInt32Length; // 50
 
     private readonly IndexEntryType _type;
-    private readonly byte[] _content; // 32 bytes (hash/topic) or 20 bytes (address)
+    private readonly Hash256? _hashContent;
+    private readonly Address? _addressContent;
     private readonly ulong _blockNumber;
     private readonly uint _field1; // tx index (for tx/log entries) or 0
     private readonly uint _field2; // cumulative log count (tx) or log index (log entries) or 0
 
-    private IndexEntry(IndexEntryType type, byte[] content, ulong blockNumber, uint field1, uint field2)
+    private IndexEntry(IndexEntryType type, Hash256? hashContent, Address? addressContent, ulong blockNumber, uint field1, uint field2)
     {
         _type = type;
-        _content = content;
+        _hashContent = hashContent;
+        _addressContent = addressContent;
         _blockNumber = blockNumber;
         _field1 = field1;
         _field2 = field2;
@@ -72,6 +74,11 @@ public readonly struct IndexEntry : IComparable<IndexEntry>
 
     /// <summary>The entry type.</summary>
     public IndexEntryType Type => _type;
+
+    /// <summary>The raw content bytes (32-byte hash or 20-byte address).</summary>
+    public ReadOnlySpan<byte> ContentBytes => _type == IndexEntryType.LogAddress
+        ? _addressContent!.Bytes
+        : _hashContent!.Bytes;
 
     /// <summary>The block number recorded in the position info.</summary>
     public ulong BlockNumber => _blockNumber;
@@ -97,7 +104,7 @@ public readonly struct IndexEntry : IComparable<IndexEntry>
     /// <param name="blockHash">The hash of the block being indexed.</param>
     /// <param name="blockNumber">The block number whose hash is recorded.</param>
     public static IndexEntry CreateBlock(Hash256 blockHash, ulong blockNumber) =>
-        new(IndexEntryType.Block, blockHash.BytesToArray(), blockNumber, 0, 0);
+        new(IndexEntryType.Block, blockHash, null, blockNumber, 0, 0);
 
     /// <summary>
     /// Creates a transaction index entry.
@@ -107,7 +114,7 @@ public readonly struct IndexEntry : IComparable<IndexEntry>
     /// <param name="txIndex">The transaction's index within the block.</param>
     /// <param name="cumulativeLogCount">Total number of logs in the block before this transaction.</param>
     public static IndexEntry CreateTransaction(Hash256 txHash, ulong blockNumber, uint txIndex, uint cumulativeLogCount) =>
-        new(IndexEntryType.Transaction, txHash.BytesToArray(), blockNumber, txIndex, cumulativeLogCount);
+        new(IndexEntryType.Transaction, txHash, null, blockNumber, txIndex, cumulativeLogCount);
 
     /// <summary>
     /// Creates a log address index entry.
@@ -117,7 +124,7 @@ public readonly struct IndexEntry : IComparable<IndexEntry>
     /// <param name="txIndex">The transaction index within the block.</param>
     /// <param name="logIndex">The log index relative to the transaction beginning.</param>
     public static IndexEntry CreateLogAddress(Address address, ulong blockNumber, uint txIndex, uint logIndex) =>
-        new(IndexEntryType.LogAddress, address.Bytes.ToArray(), blockNumber, txIndex, logIndex);
+        new(IndexEntryType.LogAddress, null, address, blockNumber, txIndex, logIndex);
 
     /// <summary>
     /// Creates a log topic index entry.
@@ -134,7 +141,7 @@ public readonly struct IndexEntry : IComparable<IndexEntry>
             throw new ArgumentOutOfRangeException(nameof(topicIndex), topicIndex, "Topic index must be 0–3.");
 
         IndexEntryType type = (IndexEntryType)(3 + topicIndex);
-        return new IndexEntry(type, topic.BytesToArray(), blockNumber, txIndex, logIndex);
+        return new IndexEntry(type, topic, null, blockNumber, txIndex, logIndex);
     }
 
     /// <summary>
@@ -153,8 +160,9 @@ public readonly struct IndexEntry : IComparable<IndexEntry>
         offset += TypeIdLength;
 
         // Content (hash or address bytes)
-        _content.AsSpan().CopyTo(destination[offset..]);
-        offset += _content.Length;
+        ReadOnlySpan<byte> content = ContentBytes;
+        content.CopyTo(destination[offset..]);
+        offset += content.Length;
 
         // Block number (8 bytes, big-endian)
         BinaryPrimitives.WriteUInt64BigEndian(destination[offset..], _blockNumber);
@@ -186,7 +194,7 @@ public readonly struct IndexEntry : IComparable<IndexEntry>
         int cmp = ((ushort)_type).CompareTo((ushort)other._type);
         if (cmp != 0) return cmp;
 
-        cmp = _content.AsSpan().SequenceCompareTo(other._content.AsSpan());
+        cmp = ContentBytes.SequenceCompareTo(other.ContentBytes);
         if (cmp != 0) return cmp;
 
         cmp = _blockNumber.CompareTo(other._blockNumber);

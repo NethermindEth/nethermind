@@ -26,6 +26,18 @@ public class IndexTableStore : IIndexTableStore
     /// </summary>
     public const int MaxVariantsPerHeight = 16;
 
+    /// <summary>
+    /// Maximum number of distinct heights retained at level 0.
+    /// Covers the blocks needed for one full level-4 table build plus its publication delay.
+    /// </summary>
+    public const int MaxLevel0Heights = 320;
+
+    /// <summary>
+    /// Maximum number of distinct heights retained at levels 1–4.
+    /// Enough for the next merge (4 sub-tables) plus the most recent table for RPC proofs.
+    /// </summary>
+    public const int MaxHigherLevelHeights = 5;
+
     private readonly ConcurrentDictionary<(int Level, long FirstBlock, Hash256? BlockHash), IReadOnlyList<IndexEntry>>[] _entries;
     private readonly ConcurrentDictionary<(int Level, long FirstBlock), Hash256?>[] _latestByBlock;
     private readonly ConcurrentDictionary<(int Level, long FirstBlock), ConcurrentQueue<Hash256?>>[] _variantsByHeight;
@@ -73,8 +85,8 @@ public class IndexTableStore : IIndexTableStore
             }
         }
 
-        // Evict oldest if ring buffer full
-        if (latestDict.Count > Eip8304Constants.TablesPerLevel)
+        int capacity = level == 0 ? MaxLevel0Heights : MaxHigherLevelHeights;
+        if (latestDict.Count > capacity)
         {
             long minBlock = long.MaxValue;
             foreach (KeyValuePair<(int Level, long FirstBlock), Hash256?> kvp in latestDict)
@@ -129,7 +141,26 @@ public class IndexTableStore : IIndexTableStore
             dict.TryRemove((level, firstBlock, blockHash), out _);
             if (_latestByBlock[level].TryGetValue((level, firstBlock), out Hash256? latest) && latest == blockHash)
             {
-                _latestByBlock[level].TryRemove((level, firstBlock), out _);
+                // Find another remaining variant to promote as latest
+                Hash256? replacement = null;
+                foreach (KeyValuePair<(int Level, long FirstBlock, Hash256? BlockHash), IReadOnlyList<IndexEntry>> kvp in dict)
+                {
+                    if (kvp.Key.Level == level && kvp.Key.FirstBlock == firstBlock)
+                    {
+                        replacement = kvp.Key.BlockHash;
+                        break;
+                    }
+                }
+
+                if (replacement is not null)
+                {
+                    _latestByBlock[level][(level, firstBlock)] = replacement;
+                }
+                else
+                {
+                    _latestByBlock[level].TryRemove((level, firstBlock), out _);
+                    _variantsByHeight[level].TryRemove((level, firstBlock), out _);
+                }
             }
             return;
         }

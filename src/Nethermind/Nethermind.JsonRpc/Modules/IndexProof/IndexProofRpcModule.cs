@@ -48,19 +48,21 @@ public class IndexProofRpcModule(IIndexTableStore store, IBlockTree? blockTree =
         if (entries is null)
             return ResultWrapper<IndexProofResult[]?>.Fail("Table not found for block", ErrorCodes.ResourceNotFound);
 
+        int typeStart = FindTypeStart(entries, IndexEntryType.LogAddress);
         List<int> leafIndices = [];
-        for (int i = 0; i < entries.Count; i++)
+        for (int i = typeStart; i < entries.Count && entries[i].Type == IndexEntryType.LogAddress; i++)
         {
-            if (entries[i].Type == IndexEntryType.LogAddress && ContentEquals(entries[i], address.Bytes))
+            if (ContentEquals(entries[i], address.Bytes))
             {
                 leafIndices.Add(i);
+                if (leafIndices.Count > MaxLogProofs)
+                {
+                    return ResultWrapper<IndexProofResult[]?>.Fail(
+                        $"Query matched {leafIndices.Count} logs, exceeding the limit of {MaxLogProofs} proofs per request.",
+                        ErrorCodes.InvalidRequest);
+                }
             }
         }
-
-        if (leafIndices.Count > MaxLogProofs)
-            return ResultWrapper<IndexProofResult[]?>.Fail(
-                $"Query matched {leafIndices.Count} logs, exceeding the limit of {MaxLogProofs} proofs per request.",
-                ErrorCodes.InvalidRequest);
 
         // One tree build for the whole result set; per-proof generation is quadratic in table size.
         IndexEntryProof[] proofs = IndexProofEngine.GenerateProofs(entries, leafIndices);
@@ -159,23 +161,38 @@ public class IndexProofRpcModule(IIndexTableStore store, IBlockTree? blockTree =
 
     private static int FindEntry(IReadOnlyList<IndexEntry> entries, IndexEntryType type, ReadOnlySpan<byte> content)
     {
-        for (int i = 0; i < entries.Count; i++)
+        int typeStart = FindTypeStart(entries, type);
+        for (int i = typeStart; i < entries.Count && entries[i].Type == type; i++)
         {
-            if (entries[i].Type == type && ContentEquals(entries[i], content))
+            if (ContentEquals(entries[i], content))
                 return i;
         }
 
         return -1;
     }
 
-    /// <summary>
-    /// Tests an entry's content field — the block hash, tx hash, address, or topic that follows
-    /// the two-byte type ID — against <paramref name="content"/>.
-    /// </summary>
-    private static bool ContentEquals(in IndexEntry entry, ReadOnlySpan<byte> content)
+    private static int FindTypeStart(IReadOnlyList<IndexEntry> entries, IndexEntryType type)
     {
-        Span<byte> encoded = stackalloc byte[IndexEntry.MaxEncodedLength];
-        int length = entry.Encode(encoded);
-        return encoded[2..length].StartsWith(content);
+        int lo = 0, hi = entries.Count - 1;
+        int typeStart = entries.Count;
+        while (lo <= hi)
+        {
+            int mid = lo + ((hi - lo) >> 1);
+            if (entries[mid].Type < type)
+                lo = mid + 1;
+            else
+            {
+                typeStart = mid;
+                hi = mid - 1;
+            }
+        }
+
+        return typeStart;
     }
+
+    /// <summary>
+    /// Tests an entry's content field against <paramref name="content"/>.
+    /// </summary>
+    private static bool ContentEquals(in IndexEntry entry, ReadOnlySpan<byte> content) =>
+        entry.ContentBytes.SequenceEqual(content);
 }

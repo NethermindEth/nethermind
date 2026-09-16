@@ -57,8 +57,7 @@ public partial class BlockProcessor(
         new(
             beaconBlockRootHandler,
             blockHashStore,
-            balManager,
-            indexTableHandler ?? NullIndexTableHandler.Instance
+            balManager
         ));
     private readonly Lazy<SystemContractHandler> _standardSystemContractHandler = new(() =>
         new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor, indexTableHandler ?? NullIndexTableHandler.Instance));

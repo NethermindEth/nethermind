@@ -210,8 +210,8 @@ public class IndexTableStoreTests
         store.Store(0, 0, branchA, TestItem.KeccakA);
         store.Store(0, 0, branchB, TestItem.KeccakB);
 
-        // Store 1024 additional heights (from 1 to 1024), pushing total heights to 1025 > Capacity (1024)
-        for (long height = 1; height <= 1024; height++)
+        // Store MaxLevel0Heights additional heights, pushing total above capacity
+        for (long height = 1; height <= IndexTableStore.MaxLevel0Heights; height++)
         {
             store.Store(0, height, [IndexEntry.CreateBlock(TestItem.KeccakC, (ulong)height)], TestItem.KeccakC);
         }
@@ -260,6 +260,51 @@ public class IndexTableStoreTests
             Assert.That(store.Get(0, height, storedHashes[0]), Is.Null);
             // The latest hash should be present
             Assert.That(store.Get(0, height, storedHashes[^1]), Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void Higher_level_eviction_uses_tighter_bound()
+    {
+        IndexTableStore store = new();
+
+        // Store MaxHigherLevelHeights + 1 heights at level 1 to trigger eviction
+        for (long i = 0; i <= IndexTableStore.MaxHigherLevelHeights; i++)
+        {
+            long firstBlock = i * 4;
+            store.Store(1, firstBlock, [IndexEntry.CreateBlock(TestItem.KeccakA, (ulong)firstBlock)]);
+        }
+
+        // The oldest height (firstBlock=0) should be evicted
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Get(1, 0), Is.Null);
+            Assert.That(store.Get(1, IndexTableStore.MaxHigherLevelHeights * 4), Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void Remove_specific_variant_promotes_another_as_latest()
+    {
+        IndexTableStore store = new();
+        List<IndexEntry> branchA = [IndexEntry.CreateBlock(TestItem.KeccakA, 50)];
+        List<IndexEntry> branchB = [IndexEntry.CreateBlock(TestItem.KeccakB, 50)];
+
+        store.Store(0, 50, branchA, TestItem.KeccakC);
+        store.Store(0, 50, branchB, TestItem.KeccakD);
+
+        // branchB / KeccakD is the latest. Remove it.
+        store.Remove(0, 50, TestItem.KeccakD);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // KeccakD variant is gone
+            Assert.That(store.Get(0, 50, TestItem.KeccakD), Is.Null);
+            // KeccakC variant is still there
+            Assert.That(store.Get(0, 50, TestItem.KeccakC), Is.Not.Null);
+            // The no-hash Get should still resolve to branchA (the promoted variant)
+            Assert.That(store.Get(0, 50), Is.Not.Null);
+            Assert.That(store.Get(0, 50)![0].CompareTo(branchA[0]), Is.EqualTo(0));
         }
     }
 }

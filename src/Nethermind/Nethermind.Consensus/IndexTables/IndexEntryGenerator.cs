@@ -80,7 +80,6 @@ public static class IndexEntryGenerator
             tx.Hash ??= txHash;
             entries.Add(IndexEntry.CreateTransaction(txHash, header.Number, (uint)txIdx, cumulativeLogCount));
 
-            // Process logs from the receipt
             TxReceipt receipt = receipts[txIdx];
             LogEntry[]? logs = receipt.Logs;
 
@@ -89,8 +88,6 @@ public static class IndexEntryGenerator
                 for (int logIdx = 0; logIdx < logs.Length; logIdx++)
                 {
                     LogEntry log = logs[logIdx];
-
-                    // Log address entry
                     entries.Add(IndexEntry.CreateLogAddress(log.Address, header.Number, (uint)txIdx, (uint)logIdx));
 
                     // Log topic entries (up to 4 topics per log, type IDs 3–6). The EVM cannot emit

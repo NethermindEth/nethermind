@@ -9,11 +9,13 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.Consensus.IndexTables;
 
@@ -27,19 +29,25 @@ namespace Nethermind.Consensus.IndexTables;
 /// committed immediately. Higher-level tables (levels 1–4) are committed with a
 /// publication delay of <c>TABLE_SIZES[i] / 4</c> blocks, built by merging 4
 /// lower-level tables.
+/// <para>
+/// Nodes must retain at least <see cref="Eip8304Constants.SyncRecoveryBlocks"/> blocks of
+/// historical blocks and receipts to compute higher-level tables across sync boundaries.
+/// </para>
 /// <para>See <see href="https://eips.ethereum.org/EIPS/eip-8304">EIP-8304</see>.</para>
 /// </remarks>
 public class IndexTableHandler(
     ITransactionProcessor processor,
     IIndexTableStore store,
-    ISpecProvider? specProvider = null,
+    ISpecProvider specProvider,
     IBlockTree? blockTree = null,
-    IReceiptStorage? receiptStorage = null) : IIndexTableHandler
+    IReceiptStorage? receiptStorage = null,
+    ILogManager? logManager = null) : IIndexTableHandler
 {
     private Hash256? _lastCommittedBlockHash;
     private long _lastCommittedBlockNumber;
     private List<IndexEntry>? _lastCommittedEntries;
     private readonly List<(int Level, long FirstBlock, List<IndexEntry> Merged)> _lastCommittedHigherTables = [];
+    private readonly ILogger _logger = logManager?.GetClassLogger<IndexTableHandler>() ?? NullLogger.Instance;
 
     /// <inheritdoc />
     public void CommitIndexTableRoots(Block block, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer)
@@ -47,11 +55,15 @@ public class IndexTableHandler(
         if (!spec.IsEip8304Enabled)
             return;
 
+        if (spec.Eip8304ContractAddress is null)
+            throw new InvalidOperationException(
+                "EIP-8304 is enabled but no contract address is configured. " +
+                "Set the eip8304ContractAddress in the chain spec.");
+
         _lastCommittedBlockHash = block.Hash;
         _lastCommittedBlockNumber = (long)block.Number;
         _lastCommittedHigherTables.Clear();
 
-        // Phase 1: Generate and store level-0 entries, publish immediately
         List<IndexEntry> entries = [];
         IndexEntryGenerator.GenerateEntries(
             block.Header,
@@ -67,16 +79,14 @@ public class IndexTableHandler(
         UInt256 tableRoot = IndexTableRootCalculator.ComputeRoot(entries);
         ExecuteSystemCall(block, spec, tracer, (long)block.Number, tableSize: 1, tableRoot);
 
-        // Phase 4: Check and publish higher-level tables
         Dictionary<long, BlockHeader> ancestorCache = [];
         IndexTableMergeScheduler.GetTablesForBlock((long)block.Number, (level, firstBlock, tableSize) =>
         {
-            // The system call mutates contract storage, so skipping it would silently produce a
-            // state root that diverges from nodes holding the table. Fail loudly instead.
             List<IndexEntry> merged = BuildTable(level, firstBlock, block.Header, ancestorCache)
-                ?? throw new InvalidOperationException(
-                    $"Cannot build the EIP-8304 level-{level} index table for blocks {firstBlock}-{firstBlock + tableSize - 1}: " +
-                    $"index entries are missing. At least {Eip8304Constants.SyncRecoveryBlocks} blocks of index history must be retained.");
+                ?? throw new InvalidBlockException(
+                    block,
+                    $"Cannot build the EIP-8304 level-{level} index table for blocks {firstBlock}–{firstBlock + tableSize - 1}: " +
+                    $"historical entries are unavailable. At least {Eip8304Constants.SyncRecoveryBlocks} blocks of index history must be retained.");
 
             _lastCommittedHigherTables.Add((level, firstBlock, merged));
             store.Store(level, firstBlock, merged, block.Hash);
@@ -140,15 +150,11 @@ public class IndexTableHandler(
         if (firstBlock < 0)
             return false;
 
-        if (specProvider is null)
-            return true;
-
         BlockHeader? header = FindAncestorHeader(currentHeader, firstBlock, ancestorCache);
-        IReleaseSpec targetSpec = header is not null
-            ? specProvider.GetSpec(header)
-            : specProvider.GetSpec((ulong)firstBlock, null);
+        if (header is not null)
+            return specProvider.GetSpec(header).IsEip8304Enabled;
 
-        return targetSpec.IsEip8304Enabled;
+        return specProvider.GetSpec((ulong)firstBlock, null).IsEip8304Enabled;
     }
 
     /// <summary>
@@ -175,8 +181,8 @@ public class IndexTableHandler(
         for (int i = 0; i < Eip8304Constants.SubTablesPerTable; i++)
         {
             long subFirst = firstBlock + ((long)i * subTableSize);
-            long subLast = subFirst + subTableSize - 1;
-            Hash256? branchBlockHash = FindAncestorHash(currentHeader, subLast, ancestorCache);
+            long subPubBlock = IndexTableMergeScheduler.PublicationBlock(subLevel, subFirst);
+            Hash256? branchBlockHash = FindAncestorHash(currentHeader, subPubBlock, ancestorCache);
 
             IReadOnlyList<IndexEntry>? subEntries = store.Get(subLevel, subFirst, branchBlockHash);
             if (subEntries is null)
@@ -299,17 +305,14 @@ public class IndexTableHandler(
         byte[] calldata = new byte[Eip8304Constants.CalldataLength];
         Span<byte> calldataSpan = calldata;
 
-        calldataSpan[..32].Clear();
         BinaryPrimitives.WriteInt64BigEndian(calldataSpan[24..], firstBlock);
-
-        calldataSpan.Slice(32, 32).Clear();
         BinaryPrimitives.WriteInt32BigEndian(calldataSpan[60..], tableSize);
 
         // The table root is an SSZ chunk: its canonical 32 bytes are the little-endian limb
         // layout, not the big-endian numeric rendering of the same value.
         tableRoot.ToLittleEndian(calldataSpan[64..]);
 
-        Transaction transaction = new()
+        SystemCall transaction = new()
         {
             Value = 0,
             Data = calldata,
