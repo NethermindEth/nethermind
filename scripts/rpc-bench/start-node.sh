@@ -102,8 +102,11 @@ mkdir -p "$STATE_DIR"
 [[ -d "$DB_SOURCE" ]] || {
   log "DB_SOURCE '$DB_SOURCE' is not a directory. Snapshot candidates on this runner:"
   ls -1d /mnt/*/[Nn]ethermind*snapshot* /mnt/*/*/[Nn]ethermind*snapshot* \
-         /mnt/*/nethermind-* /mnt/*/geth-* /mnt/*/reth-* 2>/dev/null \
-    | sort -u | sed 's/^/  /' || echo "  <none found under /mnt>"
+         /mnt/*/nethermind-* /mnt/*/geth-* /mnt/*/reth-* \
+         /data/*/[Nn]ethermind*snapshot* /data/*/*/[Nn]ethermind*snapshot* \
+         /data/*/nethermind-* /data/*/geth-* /data/*/reth-* \
+         /data/*/*-* 2>/dev/null \
+    | sort -u | sed 's/^/  /' || echo "  <none found under /mnt or /data>"
   die "set node_config.db_source to a valid snapshot path"
 }
 
