@@ -53,11 +53,9 @@ public sealed class FlatStorageTree(
     // and the changed paths hashed by the scope's bounded workers while later transactions execute. The block thread
     // is the only producer, at most one worker drains a tree at a time, and finalization claims the trie through the
     // same state word, so a worker can never reacquire it after the join.
-    // A drain smaller than this only loads and sets; hashing waits for a wider drain or the block end, which hashes all
-    // contracts in parallel anyway. Hashing every single write re-hashed hot contracts' paths once per transaction.
-    private const int MinDrainToHash = 4;
     private readonly bool _speculate = config.SpeculativeStorageRoots && !scope.Trieless && !scope.IsReadOnly && !config.VerifyWithTrie;
     private readonly int _speculationCap = config.SpeculativeStorageRootContractCap;
+    private readonly int _minDrainToHash = config.SpeculativeStorageRootMinDrainToHash;
     private int _speculativeWriteCount;
     private ConcurrentQueue<SpeculativeWrite>? _speculativeQueue;
     private Dictionary<UInt256, UInt256>? _speculativelyApplied;
@@ -243,7 +241,7 @@ public sealed class FlatStorageTree(
             foreach (KeyValuePair<UInt256, UInt256> kv in batch) applied[kv.Key] = kv.Value;
 
             Db.Metrics.IncrementSpeculativeStorageWrites(batch.Count);
-            if (batch.Count >= MinDrainToHash)
+            if (batch.Count >= _minDrainToHash)
             {
                 tree.UpdateRootHash(canBeParallel: false);
                 Db.Metrics.IncrementSpeculativeStorageHashPasses();
