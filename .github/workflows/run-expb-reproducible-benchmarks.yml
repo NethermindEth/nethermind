@@ -2177,7 +2177,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       images: ${{ steps.resolve.outputs.images }}
-      ordered_tags: ${{ steps.resolve.outputs.ordered_tags }}
     steps:
       - name: Resolve Docker images
         id: resolve
@@ -2268,10 +2267,7 @@ jobs:
             echo "${image_id}: ${image} (${date})"
           done
 
-          {
-            echo "images=${images_json}"
-            echo "ordered_tags=${images_json}"
-          } >> "${GITHUB_OUTPUT}"
+          echo "images=${images_json}" >> "${GITHUB_OUTPUT}"
   generate-dottrace-reports:
     needs: [resolve, benchmark, benchmark-multi]
     # Timeline snapshots cannot be converted by Reporter.exe - they ship as the raw .dtp artifact only.
@@ -2569,6 +2565,10 @@ jobs:
         shell: bash
         env:
           EXPB_IMAGES_JSON: ${{ needs.resolve-images.outputs.images }}
+          # An explicit `docker_images` dispatch is an A/B: one bad arm invalidates the comparison, so
+          # the campaign stops. A retrospective sweep bisects across many master builds and its other
+          # images stay useful, so there only the failed image is abandoned.
+          CAMPAIGN_FAIL_FAST: ${{ needs.resolve.outputs.docker_images != '' }}
           EXPB_CONFIG_TEMPLATE: ${{ needs.resolve.outputs.expb_data_dir }}/${{ needs.resolve.outputs.config_file }}
           EXPB_CAMPAIGN_DIR: ${{ needs.resolve.outputs.expb_data_dir }}/campaigns/${{ github.run_id }}/${{ github.run_attempt }}
           FLAT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.flat_snapshot_dir }}
@@ -2597,7 +2597,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: expb-campaign-${{ github.run_id }}
+          name: expb-campaign-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ needs.resolve.outputs.expb_data_dir }}/campaigns/${{ github.run_id }}/${{ github.run_attempt }}
           retention-days: 30
           if-no-files-found: warn
@@ -2724,7 +2724,7 @@ jobs:
           fi
 
   multi-campaign-summary:
-    needs: [resolve, resolve-images, benchmark-multi]
+    needs: [resolve, benchmark-multi]
     if: always() && needs.resolve.outputs.mode == 'multi'
     runs-on: ubuntu-latest
     steps:

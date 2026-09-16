@@ -336,13 +336,19 @@ def main() -> int:
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
     samples = []
+    # A failed sample always abandons the rest of its own image - its remaining runs cannot complete the
+    # set the stats need. Whether it abandons the campaign depends on what the campaign is for: see
+    # CAMPAIGN_FAIL_FAST in run-expb-reproducible-benchmarks.yml.
+    fail_fast = get("CAMPAIGN_FAIL_FAST", "true") != "false"
     for image in images:
         for run in range(1, run_count + 1):
             if cancelled: break
             item = run_sample(base, image, run, root)
             samples.append(item)
             save_campaign(root, started, images, run_count, samples)
-            if item["status"] != "success": cancelled = True
+            if item["status"] != "success":
+                if fail_fast: cancelled = True
+                break
         if cancelled: break
     write_summary(root, images, run_count, samples)
     save_campaign(root, started, images, run_count, samples)
