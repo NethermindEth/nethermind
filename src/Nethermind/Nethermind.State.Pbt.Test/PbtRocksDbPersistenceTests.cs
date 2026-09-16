@@ -192,7 +192,6 @@ public class PbtRocksDbPersistenceTests
             Assert.That(reader.EnumerateAccounts().Drain().Count, Is.EqualTo(commit ? 0 : 1));
             Assert.That(reader.EnumerateStorage().Drain().Count, Is.EqualTo(commit ? 0 : 1));
             Assert.That(reader.GetCode(codeHash), Is.EqualTo(code));
-            Assert.That(reader.GetCode(codeHash)!.CodeHash, Is.EqualTo(codeHash));
             Assert.That(reader.GetCode(TestItem.KeccakC.ValueHash256), Is.Null);
             Assert.That(db.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
         }

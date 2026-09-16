@@ -214,7 +214,7 @@ public class PbtRocksDbPersistence(
             ReadOnlySpan<byte> value = _codes.GetSpan(codeHash.Bytes);
             try
             {
-                return value.IsNull() ? null : new CodeInfo(value.ToArray()) { CodeHash = codeHash };
+                return value.IsNull() ? null : new CodeInfo(value.ToArray());
             }
             finally
             {

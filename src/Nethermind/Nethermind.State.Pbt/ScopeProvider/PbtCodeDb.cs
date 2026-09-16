@@ -22,7 +22,7 @@ public sealed class PbtCodeDb(IWorldStateScopeProvider.ICodeDb inner, PbtSnapsho
     {
         public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code)
         {
-            bundle.SetCode(codeHash, new CodeInfo(code.ToArray()) { CodeHash = codeHash });
+            bundle.SetCode(codeHash, new CodeInfo(code.ToArray()));
             inner.Set(codeHash, code);
         }
 

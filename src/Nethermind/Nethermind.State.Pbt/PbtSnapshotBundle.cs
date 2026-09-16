@@ -344,7 +344,7 @@ public sealed class PbtSnapshotBundle(
         if (code is not null) _codeMemo[codeHash] = code;
         else if (ReadCode?.Invoke(codeHash) is { } bytes)
         {
-            code = new CodeInfo(bytes) { CodeHash = codeHash };
+            code = new CodeInfo(bytes);
             WriteBuffer.Codes[codeHash] = code;
         }
         return code;
