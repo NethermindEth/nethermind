@@ -53,7 +53,7 @@ on:
         description: >-
           Snapshot set tag: picks <snapshot root>/<client>-<tag> on the selected runner (nethermind resolves to
           nethermind-flat-<tag>). Empty = the expb snapshot for
-          nethermind on amd64, and 25490000 on arm64, for geth/reth or whenever reference_client is set
+          nethermind on amd64; 25490000 on arm64, for geth/reth, or whenever reference_client is set
           (a comparison needs both nodes at the same head).
         required: false
         default: ""
@@ -104,6 +104,33 @@ on:
         required: false
         type: boolean
         default: false
+      debug_trace_call_corpus:
+        description: >-
+          Replay the private eth_call corpus as debug_traceCall — the geth-style Debug-module
+          method, NOT Parity's trace_call (see trace_call_corpus for that). Requires
+          tool_config.eth_call_corpus=true, and is mutually exclusive with trace_call_corpus.
+          eth_call's positional overrides move into debug_traceCall's options object
+          ([tx, block, {tracer, stateOverrides, blockOverrides}]); both methods build the
+          transaction identically (same validation, same gas cap), so every record the corpus
+          replays as eth_call is accepted unchanged. Defaults to callTracer;
+          tool_config.trace_call_tracer selects another (prestateTracer, 4byteTracer, or "" for
+          the struct logger, whose responses are orders of magnitude larger).
+        required: false
+        type: boolean
+        default: false
+      trace_call_corpus:
+        description: >-
+          Replay the private eth_call corpus as trace_call — the Parity-style Trace-module method,
+          NOT geth's debug_traceCall (see debug_trace_call_corpus for that). Requires
+          tool_config.eth_call_corpus=true, and is mutually exclusive with debug_trace_call_corpus.
+          trace_call orders its parameters [tx, traceTypes, block, stateOverride], so the trace-type
+          array comes second. It has no block-override parameter: a record carrying blockOverrides
+          is REFUSED at validation rather than replayed against a different block context.
+          Defaults to the "trace" type; tool_config.trace_call_types selects others
+          (vmTrace, stateDiff, rewards, all — each multiplies the response size).
+        required: false
+        type: boolean
+        default: false
       state_layout:
         description: State layout — picks the Nethermind DB snapshot and layout flags (expb convention); ignored for geth/reth
         required: true
@@ -126,8 +153,8 @@ on:
           (3) single-node jsonbench: {"benchmark_config":"ethcall-contracts-head","rps":"50","duration":"60s"} (add "eth_call_corpus":true to use the default private corpus instead of the config's calls);
           (4) flood: {"tests":"eth_call eth_getBalance","rates":"10 100 500","duration":30};
           (5) ethcallchaos: {"rate":50,"parallel":8,"duration":300}.
-          All jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/corpus_file (corpus for this path; the sweep equivalent is corpus_glob)/corpus_warmup_duration (discarded warm-up before the measured cell, profilers start after it; default 0)/corpus_warmup_rps (default 400)/extra_args.
-          All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file)/corpus_requests (absolute requests per corpus cell, replaces duration)/corpus_passes (requests as a multiple of the corpus record count)/max_corpus_records (raise the 10k parity guard rail)/timings_passes+timings_rps+timings_concurrency (per-record latency matrix; empty rps_list skips the k6 cells)/parity_diffs (characterise each divergence word by word — response-derived, opt in)/max_divergence_indexes (raise the 200 cap on recorded divergence indexes)/db_isolation_all (force one isolation mode for every client — copy|overlay, so storage counters are comparable; direct is refused unless db_isolation_allow_snapshot_mutation=true because it rewrites the shared snapshot)/db_isolation_allow_snapshot_mutation (consent flag for direct on a private snapshot)/node_env_vars (extra docker -e KEY=VALUE assignments applied to every swept node, space-separated — for opt-in experiment gates like NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1)/corpus_warmup_duration (discarded warm-up per corpus per client, default 60s; 0 measures cold — cold p99 runs ~60% high)/corpus_warmup_rps (rate floor for that warm-up, default 400 — decoupled from rps_list so the window stays short while the delivered request count holds; a run measuring a higher rate warms at that rate instead)/resource_sampling (cgroup counters per cell, default true).
+          All jsonbench keys: ref/mode/benchmark_config/compare_config/rps/duration/vus/concurrency/timeout/validate_schema/html_report/fail_on_diff/max_fail_rate_pct/deep_check/eth_call_corpus/corpus_file (corpus for this path; the sweep equivalent is corpus_glob)/max_response_bytes (positive response-size cap for corpus replay, default 16 MiB)/corpus_warmup_duration (discarded warm-up before the measured cell, profilers start after it; default 0)/corpus_warmup_rps (default 400)/trace_call_tracer (geth tracer for debug_trace_call_corpus: callTracer (default), prestateTracer, 4byteTracer, stateGasTracer, or "" for struct logs)/extra_args.
+          All sweep keys: clients/rps_list/duration/snapshot_block/state_layout/benchmark_config/ref/iso_configs/iso_duration/eth_call_corpus/corpus_dir/corpus_glob (filename filter, e.g. a single corpus file)/corpus_requests (absolute requests per corpus cell, replaces duration)/corpus_passes (requests as a multiple of the corpus record count)/max_corpus_records (raise the 10k parity guard rail)/max_response_bytes (positive response-size cap for corpus replay, default 16 MiB)/timings_passes+timings_rps+timings_concurrency (per-record latency matrix; empty rps_list skips the k6 cells)/parity_diffs (characterise each divergence word by word — response-derived, opt in)/max_divergence_indexes (raise the 200 cap on recorded divergence indexes)/db_isolation_all (force one isolation mode for every client — copy|overlay, so storage counters are comparable; direct is refused unless db_isolation_allow_snapshot_mutation=true because it rewrites the shared snapshot)/db_isolation_allow_snapshot_mutation (consent flag for direct on a private snapshot)/node_env_vars (extra docker -e KEY=VALUE assignments applied to every swept node, space-separated — for opt-in experiment gates like NETHERMIND_EXPERIMENTAL_SVE2_KECCAK=1)/corpus_warmup_duration (discarded warm-up per corpus per client, default 60s; 0 measures cold — cold p99 runs ~60% high)/corpus_warmup_rps (rate floor for that warm-up, default 400 — decoupled from rps_list so the window stays short while the delivered request count holds; a run measuring a higher rate warms at that rate instead)/resource_sampling (cgroup counters per cell, default true)/trace_call_tracer (geth tracer for debug_trace_call_corpus: callTracer (default), prestateTracer, 4byteTracer, stateGasTracer, or "" for struct logs)/trace_call_types (Parity types for trace_call_corpus: trace (default), vmTrace, stateDiff, rewards, all) — parity_diffs is refused in either trace mode.
           In sweep mode the single-client inputs above (client, reference_client, snapshot_block, state_layout, docker_image) are superseded by tool_config.
         required: false
         default: ""
@@ -187,6 +214,9 @@ jobs:
       node_cpuset: ${{ steps.resolve.outputs.node_cpuset }}
       node_memory: ${{ steps.resolve.outputs.node_memory }}
       eth_call_corpus: ${{ steps.resolve.outputs.eth_call_corpus }}
+      corpus_method: ${{ steps.resolve.outputs.corpus_method }}
+      trace_call_tracer: ${{ steps.resolve.outputs.trace_call_tracer }}
+      trace_call_types: ${{ steps.resolve.outputs.trace_call_types }}
       warmup_seconds: ${{ steps.resolve.outputs.warmup_seconds }}
       warmup_rps: ${{ steps.resolve.outputs.warmup_rps }}
       tool_config: ${{ steps.resolve.outputs.tool_config }}
@@ -206,6 +236,8 @@ jobs:
           IN_DOTTRACE: ${{ inputs.dottrace }}
           IN_PERF: ${{ inputs.perf }}
           IN_DOTNET_TRACE: ${{ inputs.dotnet_trace }}
+          IN_TRACE_CALL_CORPUS: ${{ inputs.trace_call_corpus }}
+          IN_DEBUG_TRACE_CALL_CORPUS: ${{ inputs.debug_trace_call_corpus }}
           IN_STATE_LAYOUT: ${{ inputs.state_layout }}
           IN_ARCH: ${{ inputs.arch }}
           IN_FLAGS: ${{ inputs.additional_nethermind_flags }}
@@ -224,6 +256,8 @@ jobs:
             dottrace="${IN_DOTTRACE:-false}"
             perf="${IN_PERF:-false}"
             dotnet_trace="${IN_DOTNET_TRACE:-false}"
+            trace_call_corpus="${IN_TRACE_CALL_CORPUS:-false}"
+            debug_trace_call_corpus="${IN_DEBUG_TRACE_CALL_CORPUS:-false}"
             state_layout="${IN_STATE_LAYOUT:-flat}"
             additional_flags="${IN_FLAGS:-}"
             tool_config="${IN_TOOL_CONFIG:-}"
@@ -239,6 +273,8 @@ jobs:
             dottrace="false"
             perf="false"
             dotnet_trace="false"
+            trace_call_corpus="false"
+            debug_trace_call_corpus="false"
             state_layout="flat"
             additional_flags=""
             tool_config='{"tests":"eth_call eth_getBalance eth_getCode eth_getStorageAt eth_getTransactionCount eth_getBlockByNumber","rates":"10 100 500","duration":30}'
@@ -341,6 +377,12 @@ jobs:
             echo "tool_config must be a JSON object."
             exit 1
           fi
+          max_response_bytes_type="$(echo "${tool_config}" | jq -r 'if has("max_response_bytes") then .max_response_bytes|type else "absent" end')"
+          max_response_bytes="$(echo "${tool_config}" | jq -r '.max_response_bytes // empty')"
+          if [[ "${max_response_bytes_type}" != "absent" ]] && ! [[ "${max_response_bytes_type}" == "number" && "${max_response_bytes}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::max_response_bytes must be a positive JSON integer, got '${max_response_bytes}'."
+            exit 1
+          fi
           # Private eth_call corpus mode (jsonbench/jsonbench-sweep benchmark only): call contents
           # stay on the runner; the artifact carries aggregate summaries and parity counts only.
           # Single source of truth for corpus mode. A present-but-non-Boolean value (e.g. the string
@@ -363,6 +405,37 @@ jobs:
               exit 1
             fi
           fi
+          # Which method the captured calls are replayed as. One corpus drives one method per run,
+          # and the corpus is the only source of calls either checkbox can rewrite.
+          if [[ "${trace_call_corpus}" == "true" && "${debug_trace_call_corpus}" == "true" ]]; then
+            echo "trace_call_corpus and debug_trace_call_corpus are mutually exclusive — a run replays the corpus as one method. Dispatch twice to compare them."
+            exit 1
+          fi
+          corpus_method="eth_call"
+          [[ "${trace_call_corpus}" == "true" ]] && corpus_method="trace_call"
+          [[ "${debug_trace_call_corpus}" == "true" ]] && corpus_method="debug_traceCall"
+          if [[ "${corpus_method}" != "eth_call" && "${eth_call_corpus}" != "true" ]]; then
+            echo "${corpus_method} replay requires tool_config.eth_call_corpus=true — there are no captured calls to rewrite."
+            exit 1
+          fi
+          # Empty selects the struct logger; anything else must be a tracer the client implements,
+          # or every record of a run that takes hours fails identically.
+          trace_call_tracer="callTracer"
+          if echo "${tool_config}" | jq -e 'has("trace_call_tracer")' >/dev/null 2>&1; then
+            trace_call_tracer="$(echo "${tool_config}" | jq -r '.trace_call_tracer')"
+            case "${trace_call_tracer}" in
+              callTracer|prestateTracer|4byteTracer|stateGasTracer|"") ;;
+              *) echo "trace_call_tracer must be callTracer, prestateTracer, 4byteTracer, stateGasTracer, or \"\" (struct logs), got '${trace_call_tracer}'."; exit 1;;
+            esac
+          fi
+          # Parity trace types, space- or comma-separated; the client parses them case-insensitively.
+          trace_call_types="$(echo "${tool_config}" | jq -r '.trace_call_types // "trace"')"
+          for trace_type in ${trace_call_types//,/ }; do
+            case "$(echo "${trace_type}" | tr '[:upper:]' '[:lower:]')" in
+              vmtrace|statediff|trace|rewards|all) ;;
+              *) echo "trace_call_types must be any of vmTrace, stateDiff, trace, rewards, all; got '${trace_type}'."; exit 1;;
+            esac
+          done
           # Single-node jsonbench warm-up (discarded load before the measured cell, after which the
           # profilers start). The sweep reads the same key itself (default 240s there); here the
           # default stays 0 so an unconfigured run measures what it always did.
@@ -486,8 +559,6 @@ jobs:
           network="$(nc '.network')";               [[ -z "${network}" ]] && network="mainnet"
           jsonrpc_modules="$(nc '.jsonrpc_modules')"
           [[ -z "${jsonrpc_modules}" ]] && jsonrpc_modules="Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc,Debug"
-          # Corpus runs only ever issue eth_call — serve the minimal module set.
-          [[ "${eth_call_corpus}" == "true" ]] && jsonrpc_modules="Eth"
           health_min="$(nc '.health_timeout_minutes')"; [[ -z "${health_min}" ]] && health_min="30"
           node_cpuset="$(nc '.cpuset')"
           node_memory="$(nc '.memory')"
@@ -629,6 +700,9 @@ jobs:
             echo "node_cpuset=${node_cpuset}"
             echo "node_memory=${node_memory}"
             echo "eth_call_corpus=${eth_call_corpus}"
+            echo "corpus_method=${corpus_method}"
+            echo "trace_call_tracer=${trace_call_tracer}"
+            echo "trace_call_types=${trace_call_types}"
             echo "warmup_seconds=${warmup_seconds}"
             echo "warmup_rps=${warmup_rps}"
             echo "tool_config<<TOOLCFG"
@@ -636,7 +710,7 @@ jobs:
             echo "TOOLCFG"
           } >> "${GITHUB_OUTPUT}"
 
-          echo "Resolved: tool=${benchmark_tool} client=${client} reference=${reference_client} branch=${branch} layout=${state_layout} snapshot_block=${snapshot_block:-<expb default>} image_mode=${image_mode} image=${image_ref} dottrace=${dottrace} dottrace_mode=${dottrace_mode:-none} perf=${perf} dotnet_trace=${dotnet_trace} warmup=${warmup_seconds}s@${warmup_rps}rps"
+          echo "Resolved: tool=${benchmark_tool} client=${client} reference=${reference_client} branch=${branch} layout=${state_layout} snapshot_block=${snapshot_block:-<expb default>} image_mode=${image_mode} image=${image_ref} dottrace=${dottrace} dottrace_mode=${dottrace_mode:-none} perf=${perf} dotnet_trace=${dotnet_trace} corpus=${eth_call_corpus} corpus_method=${corpus_method} warmup=${warmup_seconds}s@${warmup_rps}rps"
 
   # Run the benchmark on the self-hosted runner that holds the DB snapshot.
   benchmark:
@@ -649,8 +723,7 @@ jobs:
         # Other workflows leave sparse-checkout state in the shared workspace's .git.
         working-directory: rpc-bench-workspace
     env:
-      # NB: the `runner` context is not available in job-level env, so OUT_DIR /
-      # STATE_DIR are exported from $RUNNER_TEMP in the "Set up run paths" step.
+      # Run output paths are initialized before checkout so early failures can still report a summary.
       DIAG_DIR: ${{ needs.resolve.outputs.scratch_root }}/diag
       CONTAINER_NAME: rpcbench-primary-${{ github.run_id }}
       REF_CONTAINER_NAME: rpcbench-reference-${{ github.run_id }}
@@ -660,20 +733,65 @@ jobs:
       REF_RPC_PORT: "8546"
     steps:
       - name: Set up run paths
+        id: paths
         working-directory: .
+        env:
+          RUNNER_LABEL: ${{ needs.resolve.outputs.runner_label }}
+          BENCH_SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
         run: |
           mkdir -p rpc-bench-workspace
-          echo "OUT_DIR=$RUNNER_TEMP/rpcbench-out" >> "$GITHUB_ENV"
-          echo "STATE_DIR=$RUNNER_TEMP/rpcbench-state" >> "$GITHUB_ENV"
+          output_parent="${RUNNER_TEMP}"
+          # ARM's small root disk cannot hold corpus copies or profiling archives.
+          if [[ "${RUNNER_LABEL}" == 'reproducible-benchmarks-arm' ]]; then
+            output_parent="${BENCH_SCRATCH_ROOT}"
+          fi
+          mkdir -p "${output_parent}"
+          bench_temp="$(mktemp -d "${output_parent}/rpcbench.XXXXXX")"
+          echo "BENCH_TEMP=${bench_temp}" >> "$GITHUB_ENV"
+          echo "OUT_DIR=${bench_temp}/out" >> "$GITHUB_ENV"
+          echo "STATE_DIR=${bench_temp}/state" >> "$GITHUB_ENV"
+
+      # Repair stale state only inside the dedicated RPC checkout.
+      - name: Clear inherited sparse-checkout state
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -d .git ]] || exit 0
+          if ! git sparse-checkout disable; then
+            echo "::warning::git sparse-checkout disable failed; removing the workspace instead."
+          fi
+          # `grep -c`, not `grep -q`: -q exits on the first match, and with thousands of flagged entries
+          # git is still writing when the pipe closes, so it dies on SIGPIPE and pipefail turns the whole
+          # condition false - skipping the fallback in exactly the case that needs it.
+          skipped="$(git ls-files -v 2>/dev/null | grep -c '^S' || true)"
+          if [[ "${skipped:-0}" -gt 0 ]]; then
+            echo "::warning::${skipped} skip-worktree entries survived the reset; removing the workspace so checkout re-clones."
+            find . -mindepth 1 -maxdepth 1 -exec rm -rf {} + ||
+              echo "::warning::the workspace could not be fully removed; checkout will report what remains."
+          fi
 
       - name: Check out repository
         uses: actions/checkout@v6
         with:
           path: rpc-bench-workspace
+          persist-credentials: false
 
       - name: Make scripts executable
         id: scripts
-        run: chmod +x scripts/rpc-bench/*.sh
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Without this guard a partial tree reaches the benchmark as `chmod: No such file or directory`,
+          # which reads like the scripts are missing from the branch rather than from the workspace.
+          # Globbed rather than testing the directory: a half-restored tree can leave the directory behind
+          # with none of its scripts in it.
+          shopt -s nullglob
+          scripts=(scripts/rpc-bench/*.sh)
+          if [[ "${#scripts[@]}" -eq 0 ]]; then
+            echo "::error::scripts/rpc-bench/*.sh is missing after checkout - the shared workspace was left in a partial state. Re-run the job to re-clone it."
+            exit 1
+          fi
+          chmod +x "${scripts[@]}"
 
       - name: Verify perf profiling prerequisites
         if: needs.resolve.outputs.perf == 'true'
@@ -740,12 +858,14 @@ jobs:
           have_space() {
             local minimum="$1" path free
             shift
+            (( $# > 0 )) || return 1
             for path in "$@"; do
               free="$(df -B1 --output=avail "${path}" | awk 'NR==2 {print int($1/1073741824)}')" || return 1
               [[ "${free}" =~ ^[0-9]+$ ]] && (( free >= minimum )) || return 1
             done
+            return 0
           }
-          report() { df -h / "${image_roots[@]}"; du -xsh /var/lib/containerd "${docker_root}" 2>/dev/null || true; }
+          report() { df -h / "${image_roots[@]}" "${BENCH_TEMP}"; }
 
           echo "== before =="; report
 
@@ -786,8 +906,8 @@ jobs:
           fi
 
           echo "== after =="; report
-          if ! have_space 1 / || ! have_space "${MIN_FREE_GB}" "${image_roots[@]}"; then
-            echo "::error::Insufficient disk space after reclaim: need 1 GiB on / and ${MIN_FREE_GB} GiB on each Docker/containerd filesystem."
+          if ! have_space 1 / || ! have_space "${MIN_FREE_GB}" "${image_roots[@]}" "${BENCH_TEMP}"; then
+            echo "::error::Insufficient disk space after reclaim: need 1 GiB on / and ${MIN_FREE_GB} GiB on each Docker/containerd and benchmark-output filesystem."
             echo "Everything reclaimable is already gone; the remaining usage needs a look over SSH."
             du -xh --max-depth=2 /var /usr /root 2>/dev/null | sort -rh | head -15 || true
             exit 1
@@ -917,6 +1037,9 @@ jobs:
           SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
           RESOLVED_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
+          CORPUS_METHOD: ${{ needs.resolve.outputs.corpus_method }}
+          CORPUS_TRACER: ${{ needs.resolve.outputs.trace_call_tracer }}
+          CORPUS_TRACE_TYPES: ${{ needs.resolve.outputs.trace_call_types }}
           RESOLVED_CORPUS_DIR: ${{ needs.resolve.outputs.corpus_dir }}
           CLIENT_TYPE: ${{ needs.resolve.outputs.client }}
           WARMUP_SECONDS: ${{ needs.resolve.outputs.warmup_seconds }}
@@ -942,6 +1065,7 @@ jobs:
           [[ -z "${jb_corpus}" && -n "${RESOLVED_CORPUS_DIR:-}" ]] && jb_corpus="${RESOLVED_CORPUS_DIR}/eth-call-corpus.jsonl.gz"
           [[ -n "${jb_corpus}" ]] && export JB_ETH_CALL_CORPUS_FILE="${jb_corpus}"
           max_records="$(get '.max_corpus_records')"; [[ -n "${max_records}" ]] && export RPC_BENCH_MAX_CORPUS_RECORDS="${max_records}"
+          max_response_bytes="$(get '.max_response_bytes')"; [[ -n "${max_response_bytes}" ]] && export RPC_BENCH_MAX_RESPONSE_BYTES="${max_response_bytes}"
           export JB_EXTRA_ARGS="$(get '.extra_args')"
           # Discarded output stays OUT of OUT_DIR so it is never staged or published; the
           # fail-rate gate is lifted because absorbing the cold failures is the point of this cell.
@@ -978,6 +1102,9 @@ jobs:
           SCRATCH_ROOT: ${{ needs.resolve.outputs.scratch_root }}
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
           RESOLVED_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
+          CORPUS_METHOD: ${{ needs.resolve.outputs.corpus_method }}
+          CORPUS_TRACER: ${{ needs.resolve.outputs.trace_call_tracer }}
+          CORPUS_TRACE_TYPES: ${{ needs.resolve.outputs.trace_call_types }}
           RESOLVED_CORPUS_DIR: ${{ needs.resolve.outputs.corpus_dir }}
           CLIENT_TYPE: ${{ needs.resolve.outputs.client }}
           COMPARISON: ${{ needs.resolve.outputs.comparison }}
@@ -1021,6 +1148,7 @@ jobs:
           # The record cap is a property of the corpus, not of the dispatch mode: without this the
           # sweep accepts a raised cap while this path still rejects the same corpus at 10k.
           max_records="$(get '.max_corpus_records')"; [[ -n "${max_records}" ]] && export RPC_BENCH_MAX_CORPUS_RECORDS="${max_records}"
+          max_response_bytes="$(get '.max_response_bytes')"; [[ -n "${max_response_bytes}" ]] && export RPC_BENCH_MAX_RESPONSE_BYTES="${max_response_bytes}"
           if [[ "${COMPARISON}" == "true" ]]; then
             export REFERENCE_RPC_URL="http://localhost:${REF_RPC_PORT}"
             export REFERENCE_CLIENT_TYPE="${REFERENCE_CLIENT}"
@@ -1072,6 +1200,9 @@ jobs:
           NETWORK: ${{ needs.resolve.outputs.network }}
           TOOL_CONFIG: ${{ needs.resolve.outputs.tool_config }}
           RESOLVED_ETH_CALL_CORPUS: ${{ needs.resolve.outputs.eth_call_corpus }}
+          CORPUS_METHOD: ${{ needs.resolve.outputs.corpus_method }}
+          CORPUS_TRACER: ${{ needs.resolve.outputs.trace_call_tracer }}
+          CORPUS_TRACE_TYPES: ${{ needs.resolve.outputs.trace_call_types }}
           RESOLVED_CORPUS_DIR: ${{ needs.resolve.outputs.corpus_dir }}
           SNAPSHOT_ROOT: ${{ needs.resolve.outputs.snapshot_root }}
         shell: bash
@@ -1117,6 +1248,7 @@ jobs:
           corpus_warmup_rps="$(get '.corpus_warmup_rps')"; [[ -n "${corpus_warmup_rps}" ]] && export CORPUS_WARMUP_RPS="${corpus_warmup_rps}"
           # Parity holds every record in memory; raising this is a deliberate act, not a default.
           max_records="$(get '.max_corpus_records')"; [[ -n "${max_records}" ]] && export RPC_BENCH_MAX_CORPUS_RECORDS="${max_records}"
+          max_response_bytes="$(get '.max_response_bytes')"; [[ -n "${max_response_bytes}" ]] && export RPC_BENCH_MAX_RESPONSE_BYTES="${max_response_bytes}"
           # Per-record latency matrix; bypasses k6, so it is how a large corpus runs at a high rate.
           t_passes="$(get '.timings_passes')";  [[ -n "${t_passes}" ]] && export CORPUS_TIMINGS_PASSES="${t_passes}"
           t_rps="$(get '.timings_rps')";        [[ -n "${t_rps}" ]] && export CORPUS_TIMINGS_RPS="${t_rps}"
@@ -1136,10 +1268,10 @@ jobs:
         run: ./scripts/rpc-bench/stop-node.sh
 
       - name: Collect dotTrace snapshots
-        if: always() && needs.resolve.outputs.dottrace == 'true'
+        if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.dottrace == 'true'
         shell: bash
         env:
-          ARCHIVE: ${{ runner.temp }}/dottrace-rpcbench.zip
+          ARCHIVE: ${{ env.BENCH_TEMP }}/dottrace-rpcbench.zip
         run: |
           set -euo pipefail
           if [[ -d "${DIAG_DIR}/dottrace" ]] && [[ -n "$(find "${DIAG_DIR}/dottrace" -type f 2>/dev/null)" ]]; then
@@ -1153,7 +1285,7 @@ jobs:
         if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.perf == 'true'
         shell: bash
         env:
-          ARCHIVE: ${{ runner.temp }}/perf-rpcbench.zip
+          ARCHIVE: ${{ env.BENCH_TEMP }}/perf-rpcbench.zip
         run: |
           set -euo pipefail
           # Archive first and defer the failure, so a capture that produced no usable profile still ships the
@@ -1180,10 +1312,10 @@ jobs:
           fi
 
       - name: Collect dotnet-trace
-        if: always() && needs.resolve.outputs.dotnet_trace == 'true'
+        if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.dotnet_trace == 'true'
         shell: bash
         env:
-          ARCHIVE: ${{ runner.temp }}/dotnet-trace-rpcbench.zip
+          ARCHIVE: ${{ env.BENCH_TEMP }}/dotnet-trace-rpcbench.zip
         run: |
           set -euo pipefail
           if [[ -s "${DIAG_DIR}/dotnet-trace/rpcbench.nettrace" ]]; then
@@ -1214,7 +1346,7 @@ jobs:
             echo "clean_shutdown=true" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
-          clean="${RUNNER_TEMP}/node.clean.log"
+          clean="${BENCH_TEMP}/node.clean.log"
           sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "${node_log}" > "${clean}"
 
           # "Incorrect JSON RPC parameters" errors come from the CALLER's malformed input, not node health. Key on that
@@ -1222,7 +1354,7 @@ jobs:
           benign_rpc_exc='Incorrect JSON RPC parameters'
           # Detect via a match file — piping through 'head' under pipefail can SIGPIPE the first grep on a match storm and
           # silently flip the gate to false. Truncate only when printing.
-          exc_matches="${RUNNER_TEMP}/node.exceptions.log"
+          exc_matches="${BENCH_TEMP}/node.exceptions.log"
           grep -in "Exception" "${clean}" | grep -vF "${benign_rpc_exc}" > "${exc_matches}" || true
           exception_found="false"
           if [[ -s "${exc_matches}" ]]; then
@@ -1261,7 +1393,7 @@ jobs:
           # noisy upstream image cannot fail a Nethermind benchmark run.
           ref_log="${STATE_DIR}/node-reference.log"
           if [[ -f "${ref_log}" ]]; then
-            ref_clean="${RUNNER_TEMP}/node-reference.clean.log"
+            ref_clean="${BENCH_TEMP}/node-reference.clean.log"
             sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "${ref_log}" > "${ref_clean}"
             for pattern in "Exception" "Unhandled" "Fatal" "ERROR"; do
               if grep -qi "${pattern}" "${ref_clean}"; then
@@ -1309,14 +1441,14 @@ jobs:
         with:
           name: rpcbench-results-${{ needs.resolve.outputs.benchmark_tool }}
           path: |
-            ${{ runner.temp }}/rpcbench-out/
-            ${{ runner.temp }}/rpcbench-state/node.log
-            ${{ runner.temp }}/rpcbench-state/node-reference.log
-            ${{ runner.temp }}/rpcbench-state/db-baseline.txt
-            ${{ runner.temp }}/rpcbench-state/db-final.txt
-            ${{ runner.temp }}/rpcbench-state/db-baseline-reference.txt
-            ${{ runner.temp }}/rpcbench-state/db-final-reference.txt
-            ${{ runner.temp }}/rpcbench-state/sweep/
+            ${{ env.OUT_DIR }}/
+            ${{ env.STATE_DIR }}/node.log
+            ${{ env.STATE_DIR }}/node-reference.log
+            ${{ env.STATE_DIR }}/db-baseline.txt
+            ${{ env.STATE_DIR }}/db-final.txt
+            ${{ env.STATE_DIR }}/db-baseline-reference.txt
+            ${{ env.STATE_DIR }}/db-final-reference.txt
+            ${{ env.STATE_DIR }}/sweep/
           retention-days: 30
           if-no-files-found: warn
 
@@ -1327,43 +1459,47 @@ jobs:
         id: stage-corpus-results
         if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.eth_call_corpus == 'true'
         shell: bash
-        run: python3 scripts/rpc-bench/corpus_results.py stage "${OUT_DIR}" "${RUNNER_TEMP}/rpcbench-corpus-results"
+        run: python3 scripts/rpc-bench/corpus_results.py stage "${OUT_DIR}" "${BENCH_TEMP}/rpcbench-corpus-results"
 
       - name: Upload private corpus results
         if: always() && needs.resolve.outputs.eth_call_corpus == 'true' && steps.stage-corpus-results.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
           name: rpcbench-results-${{ needs.resolve.outputs.benchmark_tool }}
-          path: ${{ runner.temp }}/rpcbench-corpus-results/
+          path: ${{ env.BENCH_TEMP }}/rpcbench-corpus-results/
           retention-days: 30
           if-no-files-found: error
 
       - name: Upload dotTrace snapshot
-        if: always() && needs.resolve.outputs.dottrace == 'true'
+        if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.dottrace == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: dottrace-rpcbench
-          path: ${{ runner.temp }}/dottrace-rpcbench.zip
+          path: ${{ env.BENCH_TEMP }}/dottrace-rpcbench.zip
           retention-days: 30
           if-no-files-found: ignore
 
       - name: Upload perf profile
-        if: always() && needs.resolve.outputs.perf == 'true'
+        if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.perf == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: perf-rpcbench
-          path: ${{ runner.temp }}/perf-rpcbench.zip
+          path: ${{ env.BENCH_TEMP }}/perf-rpcbench.zip
           retention-days: 30
           if-no-files-found: error
 
       - name: Upload dotnet-trace
-        if: always() && needs.resolve.outputs.dotnet_trace == 'true'
+        if: always() && steps.scripts.outcome == 'success' && needs.resolve.outputs.dotnet_trace == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: dotnet-trace-rpcbench
-          path: ${{ runner.temp }}/dotnet-trace-rpcbench.zip
+          path: ${{ env.BENCH_TEMP }}/dotnet-trace-rpcbench.zip
           retention-days: 30
           if-no-files-found: error
+
+      - name: Remove run output
+        if: always() && steps.paths.outcome == 'success'
+        run: rm -rf -- "${BENCH_TEMP:?}"
 
       - name: Defensive cleanup
         if: always() && steps.scripts.outcome == 'success'

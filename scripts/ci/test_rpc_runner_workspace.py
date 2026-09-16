@@ -48,6 +48,8 @@ class RpcRunnerWorkspaceTests(unittest.TestCase):
             GITHUB_ENV=to_bash(self.root / "github-env"),
             GITHUB_STEP_SUMMARY=to_bash(self.root / "summary.md"),
             DOTNET_TRACE="false",
+            RUNNER_LABEL="reproducible-benchmarks",
+            BENCH_SCRATCH_ROOT=to_bash(self.root / "data disk"),
         )
         self.git(self.workspace, "init", "-q")
         for path in ("scripts/expb/driver.sh", "scripts/rpc-bench/start-node.sh", "Dockerfile"):
@@ -92,7 +94,7 @@ class RpcRunnerWorkspaceTests(unittest.TestCase):
             self.git(target, "remote", "add", "origin", self.workspace.as_uri())
         self.git(target, "fetch", "--depth=1", "origin", "HEAD")
         self.git(target, "checkout", "--force", "--detach", "FETCH_HEAD")
-        chmod = re.search(r"(?m)^        run: (.+)$", self.step("Make scripts executable"))[1]
+        chmod, = extract_step_bodies(WORKFLOW, "Make scripts executable")
         self.run_body(chmod, target)
 
     def test_checkout_ignores_parent_sparse_state(self):
@@ -125,22 +127,27 @@ class RpcRunnerWorkspaceTests(unittest.TestCase):
 
     def test_script_teardown_requires_successful_setup(self):
         for name in ("Stop reference node and verify DB integrity", "Stop node and verify DB integrity",
-                     "Collect perf profile", "Stage private corpus results", "Defensive cleanup"):
+                     "Collect perf profile", "Collect dotTrace snapshots", "Collect dotnet-trace",
+                     "Upload perf profile", "Upload dotTrace snapshot", "Upload dotnet-trace",
+                     "Stage private corpus results", "Defensive cleanup"):
             with self.subTest(step=name):
-                self.assertIn("if: always() && steps.scripts.outcome == 'success'", self.step(name))
+                self.assertIn("always()", self.step(name))
+                self.assertIn("steps.scripts.outcome == 'success'", self.step(name))
         self.assertIn("id: scripts", self.step("Make scripts executable"))
         for name, start in (("Stop node and verify DB integrity", "start-node"),
                             ("Stop reference node and verify DB integrity", "start-reference")):
             with self.subTest(step=name):
                 self.assertIn(f"steps.{start}.outcome != 'skipped'", self.step(name))
 
-    def maintenance_body(self, name, root_gb=100, docker_gb=100, containerd_gb=100):
+    def maintenance_body(self, name, root_gb=100, docker_gb=100, containerd_gb=100, output_gb=100):
         runner = self.root / "actions-runner"
         docker_root = self.root / "docker"
         containerd_root = self.root / "containerd"
         docker_root.mkdir(exist_ok=True)
         containerd_root.mkdir(exist_ok=True)
         self.env.update(
+            BENCH_TEMP=to_bash(self.root / "output"),
+            TEST_OUTPUT_BYTES=str(int(output_gb * 1024**3)),
             TEST_DOCKER_ROOT=to_bash(docker_root),
             TEST_ROOT_BYTES=str(int(root_gb * 1024**3)),
             TEST_DOCKER_BYTES=str(int(docker_gb * 1024**3)),
@@ -157,6 +164,7 @@ docker() {
 df() {
   case "${!#}" in
     /) printf 'Avail\\n%s\\n' "$TEST_ROOT_BYTES" ;;
+    "$BENCH_TEMP") printf 'Avail\\n%s\\n' "$TEST_OUTPUT_BYTES" ;;
     "$TEST_DOCKER_ROOT") printf 'Avail\\n%s\\n' "$TEST_DOCKER_BYTES" ;;
     *) printf 'Avail\\n%s\\n' "$TEST_CONTAINERD_BYTES" ;;
   esac
@@ -184,16 +192,58 @@ journalctl() { :; }
                     self.assertTrue(path.is_file(), f"{name} deleted {path.name}")
 
     def test_disk_gate_checks_each_storage_filesystem(self):
-        for root_gb, docker_gb, containerd_gb, expected in (
-            (1.5, 968, 968, 0),
-            (0.9, 968, 968, 1),
-            (8, 5.9, 100, 1),
-            (8, 100, 5.9, 1),
-            (7, 7, 7, 0),
+        for root_gb, docker_gb, containerd_gb, output_gb, expected in (
+            (1.5, 968, 968, 968, 0),
+            (1, 6, 6, 6, 0),
+            (0.9, 968, 968, 968, 1),
+            (8, 5.9, 100, 100, 1),
+            (8, 100, 5.9, 100, 1),
+            (8, 100, 100, 5.9, 1),
+            (7, 7, 7, 7, 0),
         ):
             with self.subTest(root=root_gb, docker=docker_gb, containerd=containerd_gb):
-                body = self.maintenance_body("Reclaim root disk before pulling", root_gb, docker_gb, containerd_gb)
+                body = self.maintenance_body("Reclaim root disk before pulling", root_gb, docker_gb, containerd_gb, output_gb)
                 self.run_body(body, self.workspace, expected=expected)
+
+    def test_output_placement_and_cleanup_are_isolated_per_run(self):
+        for label, parent in (("reproducible-benchmarks", self.runner_temp),
+                              ("reproducible-benchmarks-arm", self.root / "data disk")):
+            with self.subTest(runner=label):
+                self.env["RUNNER_LABEL"] = label
+                self.prepare()
+                first = Path(self.env["BENCH_TEMP"])
+                self.prepare()
+                second = Path(self.env["BENCH_TEMP"])
+                self.assertEqual(parent, first.parent)
+                self.assertEqual(parent, second.parent)
+                self.assertNotEqual(first, second)
+                for path in (first / "other-run.log", second / "profile.zip"):
+                    path.write_text("fixture")
+                self.assertTrue(Path(self.env["OUT_DIR"]).is_relative_to(second))
+                self.assertTrue(Path(self.env["STATE_DIR"]).is_relative_to(second))
+                cleanup = re.search(r"(?m)^        run: (.+)$", self.step("Remove run output"))[1]
+                self.run_body(cleanup, self.workspace)
+                self.assertFalse(second.exists())
+                self.assertTrue((first / "other-run.log").exists())
+
+    def test_large_artifacts_and_log_copies_use_the_selected_output_disk(self):
+        for name in ("Collect dotTrace snapshots", "Collect perf profile", "Collect dotnet-trace",
+                     "Upload dotTrace snapshot", "Upload perf profile", "Upload dotnet-trace",
+                     "Upload benchmark results", "Stage private corpus results", "Upload private corpus results",
+                     "Scan node logs for errors"):
+            with self.subTest(step=name):
+                step = self.step(name)
+                self.assertNotIn("runner.temp", step)
+                self.assertNotIn("RUNNER_TEMP", step)
+        self.assertIn("persist-credentials: false", self.step("Check out repository"))
+
+    def test_disk_gate_rejects_failed_and_malformed_df(self):
+        for override in ('df() { return 1; }', 'df() { printf "Avail\\ninvalid\\n"; }'):
+            with self.subTest(df=override):
+                body = self.maintenance_body("Reclaim root disk before pulling")
+                # Keep diagnostic df output successful, but fail the capacity lookup.
+                body = body.replace('MIN_FREE_GB=6', 'MIN_FREE_GB=6\n' + override)
+                self.run_body(body, self.workspace, expected=1)
 
     @unittest.skipUnless(shutil.which("jq"), "jq is required to resolve workflow inputs")
     def test_snapshot_defaults_and_explicit_override(self):
