@@ -599,6 +599,37 @@ public class ScopeProviderTests(bool useFlat)
 
     private static PreBlockCaches NewCaches() => new(TestPreBlockCachesConfig.Small);
 
+    [Test]
+    public void ScopeWrapper_ForwardsCommittedSlotValueHint([Values] bool isPrewarmer)
+    {
+        RecordingStorageTree baseTree = new();
+        IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        baseScope.CreateStorageTree(TestItem.AddressA).Returns(baseTree);
+        IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
+        baseProvider.TryBeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>(), out Arg.Any<IWorldStateScopeProvider.IScope>()).Returns(call => call.Succeed(2, baseScope));
+        PrewarmerScopeProvider provider = new(baseProvider, new PrewarmerState(NewCaches(), isPrewarmer), LimboLogs.Instance);
+
+        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics());
+        scope.CreateStorageTree(TestItem.AddressA).HintSet(3, 7);
+
+        // Populator commits never happen, so only the consumer forwards the committed value.
+        Assert.That(baseTree.ValueHints, isPrewarmer ? Is.Empty : Is.EqualTo(new[] { ((UInt256)3, (UInt256)7) }));
+    }
+
+    // The flat backend turns the value hint into a speculative trie write, so a wrapper that dropped it would silently disable that.
+    private sealed class RecordingStorageTree : IWorldStateScopeProvider.IStorageTree
+    {
+        public List<(UInt256 Index, UInt256 Value)> ValueHints { get; } = [];
+
+        public Hash256 RootHash => Keccak.EmptyTreeHash;
+
+        public void Get(in UInt256 index, out UInt256 value) => value = default;
+
+        public void HintSet(in UInt256 index) { }
+
+        public void HintSet(in UInt256 index, in UInt256 value) => ValueHints.Add((index, value));
+    }
+
     private static BlockHeader HeaderAt(Hash256 stateRoot, ulong number) =>
         Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(number).TestObject;
 
