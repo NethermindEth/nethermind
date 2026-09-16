@@ -1305,7 +1305,9 @@ public class BlockProcessorTests
     }
 
     [Test]
-    public void Registered_parallel_and_fallback_validation_publish_identical_canonical_receipt_events([Values] bool retry)
+    public void Registered_parallel_and_fallback_validation_publish_only_accepted_canonical_receipt_events(
+        [Values] bool retry,
+        [Values] bool validationSucceeds)
     {
         GasConsumed[] gasConsumed =
         [
@@ -1338,7 +1340,7 @@ public class BlockProcessorTests
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         BlockProcessor processor = new(
             specProvider,
-            TestBlockValidator.AlwaysValid,
+            new TestBlockValidator(validationSucceeds),
             NoBlockRewards.Instance,
             executor,
             stateProvider,
@@ -1357,7 +1359,15 @@ public class BlockProcessorTests
             new InclusionListSatisfactionChecker(specProvider, Substitute.For<ITxValidator>()),
             LimboLogs.Instance);
 
-        branchProcessor.Process(null, [block], ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+        if (validationSucceeds)
+        {
+            branchProcessor.Process(null, [block], ProcessingOptions.None, NullBlockTracer.Instance);
+        }
+        else
+        {
+            Assert.Throws<InvalidBlockException>(() =>
+                branchProcessor.Process(null, [block], ProcessingOptions.None, NullBlockTracer.Instance));
+        }
 
         TransactionProcessedSnapshot[] expected =
         [
@@ -1367,7 +1377,10 @@ public class BlockProcessorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(balManager.ProcessingAttempts, Is.EqualTo(retry ? 2 : 1));
-            Assert.That(handler.Events, Is.EqualTo(expected), "only the successful processing attempt may publish callbacks");
+            Assert.That(
+                handler.Events,
+                validationSucceeds ? Is.EqualTo(expected) : Is.Empty,
+                "only an accepted processing attempt may publish callbacks");
         }
     }
 
@@ -2128,21 +2141,23 @@ public class BlockProcessorTests
 
             ulong cumulativeExecutionGas = 0;
             ulong cumulativeStateGas = 0;
-            ulong cumulativeReceiptGas = 0;
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 GasValidationResult gasResult = gasResults[i].GetResult();
                 cumulativeExecutionGas += gasResult.BlockGasUsed;
                 cumulativeStateGas += gasResult.BlockStateGasUsed;
-                block.Header.GasUsed = Math.Max(cumulativeExecutionGas, cumulativeStateGas);
                 if (transactionProcessedEventHandler is not null)
                 {
                     TxReceipt receipt = receiptsTracers[i].TxReceipts[0];
-                    receipt.Index = i;
-                    cumulativeReceiptGas += receipt.GasUsed;
-                    receipt.GasUsedTotal = cumulativeReceiptGas;
                     transactionProcessedEventHandler.OnTransactionProcessed(
-                        new TxProcessedEventArgs(i, block.Transactions[i], block.Header, receipt));
+                        new TxProcessedEventArgs(
+                            i,
+                            block.Transactions[i],
+                            block.Header,
+                            receipt)
+                        {
+                            HeaderGasUsed = Math.Max(cumulativeExecutionGas, cumulativeStateGas),
+                        });
                 }
             }
         }
@@ -2232,7 +2247,7 @@ public class BlockProcessorTests
             args.TxReceipt.Index,
             args.TxReceipt.GasUsed,
             args.TxReceipt.GasUsedTotal,
-            args.BlockHeader.GasUsed,
+            args.HeaderGasUsed,
             args.Transaction.Nonce));
     }
 

@@ -34,7 +34,7 @@ public partial class BlockProcessor
           BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler
     {
         private readonly ILogger _logger = logManager.GetClassLogger<ParallelBlockValidationTransactionsExecutor>();
-        private readonly List<PendingTransactionProcessedEvent>? _pendingTransactionProcessedEvents =
+        private readonly List<TxProcessedEventArgs>? _pendingTransactionProcessedEvents =
             transactionProcessedEventHandler is null ? null : [];
         private IncrementalValidationWorkItem? _incrementalValidationWorkItem;
         private BlockReceiptsTracer[] _receiptsTracerPool = [];
@@ -151,19 +151,20 @@ public partial class BlockProcessor
             _pooledSlotsInUse = len;
 
             IncrementalValidationWorkItem incrementalValidation = _incrementalValidationWorkItem ??= new();
-            incrementalValidation.Schedule(
-                balManager,
-                block,
-                gasResults,
-                receiptsTracers,
-                transactionProcessedEventHandler is null ? null : this,
-                token);
             BuildTxExecutionOrder(block.Transactions, _txExecutionOrder, _txExecutionSortKeys, GetCanonicalExecutionLead(len));
 
             try
             {
                 try
                 {
+                    incrementalValidation.Schedule(
+                        balManager,
+                        block,
+                        gasResults,
+                        receiptsTracers,
+                        transactionProcessedEventHandler is null ? null : this,
+                        token);
+
                     // Iterations: 0 = ApplyStateChanges, 1..len = tx (scheduled order =
                     // _txExecutionOrder[i-1]; balIndex = scheduledTxIndex+1). Pre-execution
                     // (StoreBeaconRoot + ApplyBlockhashStateChanges) ran sequentially in
@@ -283,7 +284,7 @@ public partial class BlockProcessor
         }
 
         private void StageTransactionProcessedEvent(TxProcessedEventArgs args) =>
-            _pendingTransactionProcessedEvents?.Add(new(args, args.BlockHeader.GasUsed));
+            _pendingTransactionProcessedEvents?.Add(args);
 
         void BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler.OnTransactionProcessed(TxProcessedEventArgs args) =>
             StageTransactionProcessedEvent(args);
@@ -291,31 +292,25 @@ public partial class BlockProcessor
         /// <inheritdoc/>
         public void PublishTransactionProcessedEvents()
         {
+            inner.PublishTransactionProcessedEvents();
+
             if (transactionProcessedEventHandler is null || _pendingTransactionProcessedEvents is null)
             {
                 return;
             }
 
-            foreach (PendingTransactionProcessedEvent pending in _pendingTransactionProcessedEvents)
+            foreach (TxProcessedEventArgs pending in _pendingTransactionProcessedEvents)
             {
-                BlockHeader header = pending.Args.BlockHeader;
-                ulong finalGasUsed = header.GasUsed;
-                try
-                {
-                    header.GasUsed = pending.HeaderGasUsed;
-                    transactionProcessedEventHandler.OnTransactionProcessed(pending.Args);
-                }
-                finally
-                {
-                    header.GasUsed = finalGasUsed;
-                }
+                transactionProcessedEventHandler.OnTransactionProcessed(pending);
             }
         }
 
         /// <inheritdoc/>
-        public void ClearTransactionProcessedEvents() => _pendingTransactionProcessedEvents?.Clear();
-
-        private readonly record struct PendingTransactionProcessedEvent(TxProcessedEventArgs Args, ulong HeaderGasUsed);
+        public void ClearTransactionProcessedEvents()
+        {
+            _pendingTransactionProcessedEvents?.Clear();
+            inner.ClearTransactionProcessedEvents();
+        }
 
         private void EnsureParallelBuffers(int length)
         {
