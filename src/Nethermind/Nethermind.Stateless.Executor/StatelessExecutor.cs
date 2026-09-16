@@ -31,7 +31,7 @@ public static class StatelessExecutor
         }
         catch (Exception ex)
         {
-            Debug.Fail(ex.Message);
+            Debug.WriteLine(ex.Message);
             return output;
         }
 
@@ -76,7 +76,7 @@ public static class StatelessExecutor
         }
         catch (Exception ex)
         {
-            Debug.Fail(ex.Message);
+            Debug.WriteLine(ex.Message);
         }
 
         if (success)
@@ -104,7 +104,7 @@ public static class StatelessExecutor
         }
         else
         {
-            Debug.Fail("Witness is missing the parent header");
+            Debug.WriteLine("Witness is missing the parent header");
             return false;
         }
 
@@ -125,7 +125,7 @@ public static class StatelessExecutor
 
         if (!blockValidator.ValidateSuggestedBlock(suggestedBlock, parentHeader, out string? error, validateHashes))
         {
-            Debug.Fail(error);
+            Debug.WriteLine(error);
             return false;
         }
 
@@ -144,7 +144,7 @@ public static class StatelessExecutor
 
         if (!blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error))
         {
-            Debug.Fail(error);
+            Debug.WriteLine(error);
             return false;
         }
 

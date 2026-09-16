@@ -102,6 +102,24 @@ public class StatelessInputGeneratorTests
     }
 
     [Test]
+    public void Direct_execution_rejects_missing_or_unrelated_parent([Values] bool unrelatedParent)
+    {
+        Block block = Build.A.Block.WithParentBeaconBlockRoot(TestItem.KeccakA).TestObject;
+        using Witness witness = EmptyWitness(unrelatedParent ? [Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes] : []);
+
+        Assert.That(StatelessExecutor.Execute(block, witness, new TestSpecProvider(Osaka.Instance)), Is.False);
+    }
+
+    [Test]
+    public void Malformed_input_returns_failure([Values(0, 1)] int length)
+    {
+        byte[] output = StatelessExecutor.Execute(new byte[length]);
+        StatelessValidationResult.Decode(output, out StatelessValidationResult result);
+
+        Assert.That(result.IsSuccess, Is.False);
+    }
+
+    [Test]
     public async Task Raw_block_input_recovers_requests_and_public_keys([Values] bool amsterdam)
     {
         (Block block, Witness witness, ISpecProvider specProvider) = CreateBlock(amsterdam);
