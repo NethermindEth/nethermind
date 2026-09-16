@@ -366,8 +366,7 @@ public sealed class FrameTxContext(
         new UInt256((ulong)nonceKeys.Length).ToBigEndian(input[..32]);
         for (int i = 0; i < nonceKeys.Length; i++)
         {
-            int offset = (i + 1) * 32;
-            nonceKeys[i].ToBigEndian(input[offset..(offset + 32)]);
+            nonceKeys[i].ToBigEndian(input.Slice((i + 1) * 32, 32));
         }
 
         return ValueKeccak.Compute(input[..((nonceKeys.Length + 1) * 32)]);

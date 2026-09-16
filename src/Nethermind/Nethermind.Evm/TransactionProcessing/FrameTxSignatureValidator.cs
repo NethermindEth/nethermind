@@ -122,7 +122,7 @@ public static class FrameTxSignatureValidator
             return Fail(NonCanonicalP256Signature, out error);
         }
 
-        ReadOnlySpan<byte> publicKey = raw[64..]; // qx || qy
+        ReadOnlySpan<byte> publicKey = raw[64..128]; // qx || qy
         Address derived = new(ValueKeccak.Compute(publicKey).Bytes[12..]);
         if (derived != resolvedSigner) return Fail(InvalidP256Signer, out error);
 

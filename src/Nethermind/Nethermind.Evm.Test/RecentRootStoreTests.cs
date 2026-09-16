@@ -54,9 +54,12 @@ public class RecentRootStoreTests
 
         ValueHash256 sourceId = RecentRootStore.SourceId(source, salt);
 
-        Assert.That(sourceId, Is.EqualTo(new ValueHash256("0x1d66905c1b538690493aef5321db9b8f2fa27356d2b61fddcc3d6d4545a464fc")));
-        Assert.That(RecentRootStore.EntryHash(sourceId, 1234, root), Is.EqualTo(new ValueHash256("0xd3fe50127a6be718dec03d5d2654afe64877d2652e4c79fadd5fab013ac444c5")));
-        Assert.That(RecentRootStore.StorageKey(sourceId, 1111), Is.EqualTo(new ValueHash256("0x22a1ba46a5a904217f21d93150fcad98454d19c8d1e13aea70c3cb27e46716a4")));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sourceId, Is.EqualTo(new ValueHash256("0x1d66905c1b538690493aef5321db9b8f2fa27356d2b61fddcc3d6d4545a464fc")));
+            Assert.That(RecentRootStore.EntryHash(sourceId, 1234, root), Is.EqualTo(new ValueHash256("0xd3fe50127a6be718dec03d5d2654afe64877d2652e4c79fadd5fab013ac444c5")));
+            Assert.That(RecentRootStore.StorageKey(sourceId, 1111), Is.EqualTo(new ValueHash256("0x22a1ba46a5a904217f21d93150fcad98454d19c8d1e13aea70c3cb27e46716a4")));
+        }
     }
 
     [Test]
