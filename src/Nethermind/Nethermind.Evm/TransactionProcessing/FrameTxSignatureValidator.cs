@@ -92,8 +92,8 @@ public static class FrameTxSignatureValidator
         ulong v = raw[0];
         if (v > 1) return Fail(NonCanonicalSignature, out error);
 
-        UInt256 r = new(raw.Slice(1, 32), isBigEndian: true);
-        UInt256 s = new(raw.Slice(33, 32), isBigEndian: true);
+        UInt256 r = new(raw[1..33], isBigEndian: true);
+        UInt256 s = new(raw[33..65], isBigEndian: true);
         if (r.IsZero || r >= SecP256k1Curve.N || s.IsZero || s > SecP256k1Curve.HalfN)
         {
             return Fail(NonCanonicalSignature, out error);
@@ -102,7 +102,7 @@ public static class FrameTxSignatureValidator
         // Split as the P256 arm is: recovery failing outright is the signature not verifying, and only a
         // recovered address that differs from the signer is a signer mismatch. The canonicality gate above
         // bounds r but cannot make it a curve x-coordinate, so a null recovery is reachable.
-        Signature ecdsaSignature = new(raw.Slice(1, 32), raw.Slice(33, 32), v + Signature.VOffset);
+        Signature ecdsaSignature = new(raw[1..33], raw[33..65], v + Signature.VOffset);
         Address? recovered = ecdsa.RecoverAddress(ecdsaSignature, in message);
         if (recovered is null) return Fail(InvalidSignature, out error);
         return recovered == resolvedSigner || Fail(InvalidSecp256k1Signer, out error);
@@ -115,14 +115,14 @@ public static class FrameTxSignatureValidator
         if (raw.Length != TxFrameSignature.P256SignatureLength) return Fail(InvalidSignatureLength, out error);
 
         // P256VERIFY accepts high-s, so the EIP-8141 low-s gate has to run here instead.
-        UInt256 r = new(raw.Slice(0, 32), isBigEndian: true);
-        UInt256 s = new(raw.Slice(32, 32), isBigEndian: true);
+        UInt256 r = new(raw[..32], isBigEndian: true);
+        UInt256 s = new(raw[32..64], isBigEndian: true);
         if (r.IsZero || r >= SecP256r1Curve.N || s.IsZero || s > SecP256r1Curve.HalfN)
         {
             return Fail(NonCanonicalP256Signature, out error);
         }
 
-        ReadOnlySpan<byte> publicKey = raw.Slice(64, 64); // qx || qy
+        ReadOnlySpan<byte> publicKey = raw[64..]; // qx || qy
         Address derived = new(ValueKeccak.Compute(publicKey).Bytes[12..]);
         if (derived != resolvedSigner) return Fail(InvalidP256Signer, out error);
 
