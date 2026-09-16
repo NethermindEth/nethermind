@@ -14,6 +14,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
@@ -220,6 +221,69 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             Assert.That(result, Is.EqualTo(AddRangeResult.EmptyRange));
             Assert.That(helper.TrieNodeWritesCount, Is.EqualTo(0)); // No writes should happen
+        }
+
+        [Test]
+        public void AddStorageRange_ZeroNibbleExtension_Rejected([Values] bool underBranch)
+        {
+            (Hash256 storageRoot, ArrayPoolList<byte[]> proofList) = BuildZeroNibbleExtensionProof(underBranch);
+
+            PathWithAccount account = new(
+                TestItem.KeccakA,
+                new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot));
+
+            PathWithStorageSlot[] slots = [new(ValueKeccak.Zero, [0x01])];
+
+            using IContainer container = CreateContainerBuilder().Build();
+            ISnapTrieFactory factory = container.Resolve<ISnapTrieFactory>();
+
+            (AddRangeResult result, _, _, _) = SnapProviderHelper.AddStorageRange(
+                factory, account, slots, Keccak.Zero, null,
+                proofs: new ByteArrayListAdapter(proofList));
+
+            Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProofNode));
+        }
+
+        /// <summary>
+        /// Builds a proof set containing a zero-nibble extension node, reached either as the proof root or,
+        /// when <paramref name="underBranch"/> is set, as the left-boundary child of a branch root.
+        /// </summary>
+        private static (Hash256 rootHash, ArrayPoolList<byte[]> proofList) BuildZeroNibbleExtensionProof(bool underBranch)
+        {
+            byte[] extension = new byte[35];
+            extension[0] = (byte)(Rlp.EmptyListByte + extension.Length - 1);
+            extension[1] = 0x00; // hex-prefix: zero-nibble extension
+            extension[2] = 0xa0; // bytes32 header
+            extension[^1] = 0x01; // child hash, absent from the proof set and never resolved
+
+            ArrayPoolList<byte[]> proofList = new(2) { extension };
+            byte[] rootHash = Keccak.Compute(extension).BytesToArray();
+
+            if (underBranch)
+            {
+                byte[] branch = BuildBranchWithFirstChild(rootHash);
+                proofList.Add(branch);
+                rootHash = Keccak.Compute(branch).BytesToArray();
+            }
+
+            return (new Hash256(rootHash), proofList);
+        }
+
+        /// <summary>
+        /// A 17-item branch whose only child sits at nibble 0, placing it on the left boundary of a range starting at <see cref="Keccak.Zero"/>.
+        /// </summary>
+        private static byte[] BuildBranchWithFirstChild(byte[] childHash)
+        {
+            const int emptyItemCount = 16; // 15 empty children plus the empty value slot
+            const int childOffset = 2;
+
+            byte[] branch = new byte[childOffset + Hash256.Size + emptyItemCount];
+            branch[0] = (byte)(Rlp.EmptyListByte + branch.Length - 1);
+            branch[1] = 0xa0; // bytes32 header
+            childHash.CopyTo(branch.AsSpan(childOffset));
+            branch.AsSpan(childOffset + Hash256.Size).Fill(Rlp.EmptyByteArrayByte);
+
+            return branch;
         }
 
         private static StorageRange PrepareStorageRequest(ValueHash256 accountPath, Hash256 storageRoot, ValueHash256 startingHash) =>
