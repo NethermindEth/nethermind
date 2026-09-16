@@ -521,11 +521,17 @@ public class FlatWorldStateScopeProviderTests
         return expectedTree.RootHash;
     }
 
-    // The runner is a pool thread; waiting for it makes the test cover the applied path, not only the join.
-    private static void WaitForSpeculativeRoot(IWorldStateScopeProvider.IStorageTree tree, Hash256 rootBefore)
+    // The runner is a pool thread; waiting for its release makes the test cover the applied path, not only the join.
+    private static ManualResetEventSlim ObserveSpeculationRelease(IWorldStateScopeProvider.IStorageTree tree)
     {
-        Stopwatch stopwatch = Stopwatch.StartNew();
-        while (tree.RootHash == rootBefore && stopwatch.ElapsedMilliseconds < 5000) Thread.Sleep(1);
+        ManualResetEventSlim released = new();
+        ((FlatStorageTree)tree).OnSpeculationReleased = released.Set;
+        return released;
+    }
+
+    private static void WaitForSpeculativeRoot(ManualResetEventSlim released, IWorldStateScopeProvider.IStorageTree tree, Hash256 rootBefore)
+    {
+        Assert.That(released.Wait(TimeSpan.FromSeconds(10)), Is.True, "speculative runner released the trie");
         Assert.That(tree.RootHash, Is.Not.EqualTo(rootBefore));
     }
 
@@ -539,6 +545,7 @@ public class FlatWorldStateScopeProviderTests
 
         IWorldStateScopeProvider.IStorageTree tree = scope.CreateStorageTree(address);
         Hash256 rootBefore = tree.RootHash;
+        using ManualResetEventSlim released = ObserveSpeculationRelease(tree);
         // Two transactions commit: slot 1 is overwritten, slot 2 is written then zeroed, slots 5 and 6 are written once.
         tree.HintSet(1, 0xA);
         tree.HintSet(2, 0xB);
@@ -547,7 +554,7 @@ public class FlatWorldStateScopeProviderTests
         tree.HintSet(2, UInt256.Zero);
         tree.HintSet(3, 0xD);
         tree.HintSet(6, 0x66);
-        if (speculative) WaitForSpeculativeRoot(tree, rootBefore);
+        if (speculative) WaitForSpeculativeRoot(released, tree, rootBefore);
 
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
@@ -585,9 +592,10 @@ public class FlatWorldStateScopeProviderTests
         IWorldStateScopeProvider.IStorageTree tree = scope.CreateStorageTree(address);
         Hash256 rootBefore = tree.RootHash;
         Assert.That(rootBefore, Is.EqualTo(RawTrieRoot((1, 0xA), (2, 0xB))));
+        using ManualResetEventSlim released = ObserveSpeculationRelease(tree);
         tree.HintSet(1, 0x11);
         tree.HintSet(2, 0x22);
-        WaitForSpeculativeRoot(tree, rootBefore);
+        WaitForSpeculativeRoot(released, tree, rootBefore);
 
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
@@ -611,9 +619,10 @@ public class FlatWorldStateScopeProviderTests
 
         IWorldStateScopeProvider.IStorageTree tree = scope.CreateStorageTree(address);
         Hash256 rootBefore = tree.RootHash;
+        using ManualResetEventSlim released = ObserveSpeculationRelease(tree);
         tree.HintSet(1, 0xA);
         tree.HintSet(2, 0xB);
-        WaitForSpeculativeRoot(tree, rootBefore);
+        WaitForSpeculativeRoot(released, tree, rootBefore);
 
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
@@ -625,6 +634,45 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(1);
 
         Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(RawTrieRoot((7, 0x77))));
+    }
+
+    [Test]
+    public void SpeculativeStorageRoots_WriteQueuedAcrossRunnerRelease_IsOwnedByFinalization()
+    {
+        using TestContext ctx = new(new FlatDbConfig { SpeculativeStorageRoots = true });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+
+        FlatStorageTree tree = (FlatStorageTree)scope.CreateStorageTree(address);
+        using ManualResetEventSlim released = new();
+        using ManualResetEventSlim resume = new();
+        tree.OnSpeculationReleased = () =>
+        {
+            // Hold the runner in the window between releasing the trie and looking for more work.
+            if (released.IsSet) return;
+            released.Set();
+            resume.Wait();
+        };
+
+        tree.HintSet(1, 0xA);
+        Assert.That(released.Wait(TimeSpan.FromSeconds(10)), Is.True, "runner released after the first write");
+        // The write the runner may or may not pick up before finalization claims the trie.
+        tree.HintSet(2, 0xB);
+        resume.Set();
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 2);
+            storageBatch.Set(1, 0xA);
+            storageBatch.Set(2, 0xB);
+            Assert.That(tree.SpeculationOwnedByFinalization, Is.True);
+        }
+
+        Assert.That(tree.SpeculationOwnedByFinalization, Is.True);
+        scope.Commit(1);
+
+        Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(RawTrieRoot((1, 0xA), (2, 0xB))));
     }
 
     [Test]

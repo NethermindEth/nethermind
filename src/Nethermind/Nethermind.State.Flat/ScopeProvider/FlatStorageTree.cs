@@ -36,14 +36,20 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     // Speculative root hashing (IFlatDbConfig.SpeculativeStorageRoots): committed slot values are applied to the trie
     // and the changed paths hashed on a pool thread while later transactions execute. The block thread is the only
-    // producer, one runner at a time consumes, and the block-end write batch joins before it touches the trie.
+    // producer, one runner at a time consumes, and finalization claims the trie through the same state word, so a
+    // runner can never reacquire it after the join.
+    private const int SpeculationIdle = 0;
+    private const int SpeculationRunning = 1;
+    private const int SpeculationOwned = 2;
     private readonly bool _speculate;
     private ConcurrentQueue<SpeculativeWrite>? _speculativeQueue;
     private Dictionary<UInt256, UInt256>? _speculativelyApplied;
-    private int _speculationRunning;
-    private bool _speculationClosed;
+    private int _speculationState;
     private volatile bool _speculationFailed;
     private Hash256 _speculationBaseRoot;
+
+    // Test seam: runs on the runner right after it releases the trie and before it looks for more work.
+    internal Action? OnSpeculationReleased;
 
     public FlatStorageTree(
         FlatWorldStateScope scope,
@@ -113,7 +119,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     /// </remarks>
     public void HintSet(in UInt256 index, in UInt256 value)
     {
-        if (!_speculate || _speculationClosed)
+        if (!_speculate || Volatile.Read(ref _speculationState) == SpeculationOwned)
         {
             WarmUpSlot(index);
             return;
@@ -127,7 +133,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         }
 
         _speculativeQueue.Enqueue(new SpeculativeWrite(in index, in value));
-        if (Interlocked.CompareExchange(ref _speculationRunning, 1, 0) == 0)
+        if (Interlocked.CompareExchange(ref _speculationState, SpeculationRunning, SpeculationIdle) == SpeculationIdle)
         {
             ThreadPool.UnsafeQueueUserWorkItem(static tree => tree.RunSpeculation(), this, preferLocal: false);
         }
@@ -139,10 +145,12 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         do
         {
             ApplySpeculativeWrites(queue);
-            Volatile.Write(ref _speculationRunning, 0);
+            Interlocked.Exchange(ref _speculationState, SpeculationIdle);
+            OnSpeculationReleased?.Invoke();
         }
-        // A write enqueued after the drain but before the flag dropped would otherwise wait for the next one.
-        while (!queue.IsEmpty && Interlocked.CompareExchange(ref _speculationRunning, 1, 0) == 0);
+        // A write enqueued after the drain but before the release would otherwise wait for the next one. Once
+        // finalization has claimed the trie the exchange fails and the write is left for the block-end batch.
+        while (!queue.IsEmpty && Interlocked.CompareExchange(ref _speculationState, SpeculationRunning, SpeculationIdle) == SpeculationIdle);
     }
 
     [SkipLocalsInit]
@@ -195,18 +203,21 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         }
     }
 
-    /// <summary>Waits for the speculative runner and rewinds the trie if any of its work failed.</summary>
+    /// <summary>Claims the trie from the speculative runner and rewinds it if any of its work failed.</summary>
     /// <remarks>
-    /// Nothing is enqueued after the block's last commit, so an idle runner means the queue stays empty. Safe to call
-    /// more than once and from the write batch's worker threads; after it, the trie belongs to the caller.
+    /// Ownership moves through the state word: the caller waits for the runner to release and takes the idle slot
+    /// itself, so a runner that still sees queued work cannot reacquire. Writes left in the queue are dropped; the
+    /// block-end batch writes every slot the applied set does not already hold. Safe to call more than once and from
+    /// the write batch's worker threads.
     /// </remarks>
     internal void JoinSpeculation()
     {
         if (_speculativeQueue is null) return;
-        _speculationClosed = true;
 
         SpinWait spinWait = new();
-        while (Volatile.Read(ref _speculationRunning) != 0) spinWait.SpinOnce();
+        while (Interlocked.CompareExchange(ref _speculationState, SpeculationOwned, SpeculationIdle) == SpeculationRunning) spinWait.SpinOnce();
+
+        while (_speculativeQueue.TryDequeue(out _)) { }
 
         if (_speculationFailed)
         {
@@ -292,10 +303,14 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         // trie-node access), so it writes only the flat overlay. Pick the strategy once here.
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
 
-        JoinSpeculation();
+        // The batches are created serially before the parallel commit loop, so the join waits inside the batch's
+        // first use on a worker instead of stalling every contract behind the slowest runner here.
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, _tree, onRootUpdated, _address, commit: true);
-        return new StorageTreeBulkWriteBatch(trieBatch, this, _speculativelyApplied is { Count: > 0 } ? _speculativelyApplied : null);
+        return new StorageTreeBulkWriteBatch(trieBatch, this);
     }
+
+    /// <summary>Whether finalization has claimed the trie from the runner.</summary>
+    internal bool SpeculationOwnedByFinalization => Volatile.Read(ref _speculationState) == SpeculationOwned;
 
     private readonly struct SpeculativeWrite(in UInt256 index, in UInt256 value)
     {
@@ -306,16 +321,29 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
     // Normal scope: maintain the storage trie (for the root) and mirror values into the flat overlay.
     private sealed class StorageTreeBulkWriteBatch(
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch,
-        FlatStorageTree storageTree,
-        Dictionary<UInt256, UInt256>? speculativelyApplied) : IWorldStateScopeProvider.IStorageWriteBatch
+        FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        private Dictionary<UInt256, UInt256>? _speculativelyApplied = speculativelyApplied;
+        private bool _joined;
+        private Dictionary<UInt256, UInt256>? _speculativelyApplied;
         // Slots the runner wrote that the batch has not confirmed: the provider skips a slot the block wrote back to
         // its pre-block value, so whatever is left here at dispose has to be put back to that value.
-        private HashSet<UInt256>? _unconfirmed = speculativelyApplied is null ? null : [.. speculativelyApplied.Keys];
+        private HashSet<UInt256>? _unconfirmed;
+
+        private void EnsureOwned()
+        {
+            if (_joined) return;
+            _joined = true;
+            storageTree.JoinSpeculation();
+            if (storageTree._speculativelyApplied is { Count: > 0 } applied)
+            {
+                _speculativelyApplied = applied;
+                _unconfirmed = [.. applied.Keys];
+            }
+        }
 
         public void Set(in UInt256 index, in UInt256 value)
         {
+            EnsureOwned();
             if (_speculativelyApplied is not null && _speculativelyApplied.TryGetValue(index, out UInt256 applied))
             {
                 _unconfirmed!.Remove(index);
@@ -332,6 +360,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
         public void Clear()
         {
+            EnsureOwned();
             trieBatch.Clear();
             storageTree.ClearStorage();
             _speculativelyApplied = null;
@@ -340,6 +369,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
         public void Dispose()
         {
+            EnsureOwned();
             if (_unconfirmed is { Count: > 0 })
             {
                 foreach (UInt256 index in _unconfirmed)

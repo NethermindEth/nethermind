@@ -112,6 +112,10 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
 
+    /// <summary>
+    /// Whether committed storage writes are applied to the storage tries and hashed while later transactions execute,
+    /// leaving the block-end storage root phase only what changed since.
+    /// </summary>
     [ConfigItem(Description = "Apply each transaction's committed storage writes to the storage tries and hash the changed paths on background threads while the following transactions execute, so the block-end storage root phase only covers what changed since. Ignored when VerifyWithTrie is on.", DefaultValue = "false")]
     bool SpeculativeStorageRoots { get; set; }
 

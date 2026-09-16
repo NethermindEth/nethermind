@@ -32,6 +32,7 @@ public class FlatDbConfig : IFlatDbConfig
     public bool InlineCompaction { get; set; } = false;
     public bool RegenerateCompactionOffset { get; set; } = false;
     public bool VerifyWithTrie { get; set; } = false;
+    /// <inheritdoc/>
     public bool SpeculativeStorageRoots { get; set; } = false;
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
     public ulong CompactSize { get; set; } = 32;
