@@ -18,6 +18,7 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
     private readonly Context _ctx = new();
     private readonly Db _db = new(worldState);
     private int _index;
+    private TracerRuntime? _runtime;
     private GethLikeJavaScriptTxTracer? _currentTxTracer;
     private Hash256? _blockHash;
     private UInt256 _baseFee;
@@ -31,13 +32,15 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
     }
 
     /// <summary>
-    /// Starts a transaction trace in its own engine. The engine is released as soon as the transaction's result
-    /// is built, so script globals never outlive a transaction and one engine per block trace is alive at a time.
+    /// Starts a transaction trace in its own engine inside the block's runtime, so script globals never outlive a
+    /// transaction while the runtime, and the scripts compiled in it, serve every transaction of the block. The
+    /// engine is released as soon as the transaction's result is built, the runtime when the block trace ends.
     /// </summary>
     protected override GethLikeJavaScriptTxTracer OnStart(Transaction? tx)
     {
         SetTransactionCtx(tx);
-        Engine engine = new(spec);
+        _runtime ??= new TracerRuntime();
+        Engine engine = new(spec, _runtime);
         try
         {
             return _currentTxTracer = new GethLikeJavaScriptTxTracer(engine, _db, _ctx, options);
@@ -75,9 +78,17 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
         return trace;
     }
 
+    public override void EndBlockTrace()
+    {
+        base.EndBlockTrace();
+        Dispose();
+    }
+
     public void Dispose()
     {
         _currentTxTracer?.Dispose();
         _currentTxTracer = null;
+        _runtime?.Dispose();
+        _runtime = null;
     }
 }
