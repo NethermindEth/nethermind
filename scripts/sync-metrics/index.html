@@ -63,7 +63,8 @@ let records = [];
 let chart;
 
 function isExperimental(r) {
-  return !!r && (r.event === "workflow_dispatch" || (r.image && r.image !== "nethermindeth/nethermind:master"));
+  return !!r && (r.event === "workflow_dispatch" ||
+    (!!r.image && !/^nethermindeth\/nethermind:master(?:-[0-9a-f]{7,40})?$/i.test(r.image)));
 }
 
 function buildDatasets() {

@@ -8,11 +8,11 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Kademlia;
 
-public sealed class PublicKeyKeyOperator : IKeyOperator<PublicKey, Node, Hash256>
+public sealed class PublicKeyKeyOperator : IKeyOperator<PublicKey, Node, ValueHash256>
 {
     public PublicKey GetKey(Node node) => node.Id;
 
-    public Hash256 GetKeyHash(PublicKey key) => key.Hash;
+    public ValueHash256 GetKeyHash(PublicKey key) => key.Hash.ValueHash256;
 
     /// <summary>
     /// Creates a random discv4 lookup target.
@@ -23,7 +23,7 @@ public sealed class PublicKeyKeyOperator : IKeyOperator<PublicKey, Node, Hash256
     /// 64-byte target and treats discv4 bucket refresh as best-effort sampling.
     /// </remarks>
     [SkipLocalsInit]
-    public PublicKey CreateRandomKeyAtDistance(Hash256 nodePrefix, int depth)
+    public PublicKey CreateRandomKeyAtDistance(ValueHash256 nodePrefix, int depth)
     {
         Span<byte> randomBytes = stackalloc byte[PublicKey.LengthInBytes];
         Random.Shared.NextBytes(randomBytes);

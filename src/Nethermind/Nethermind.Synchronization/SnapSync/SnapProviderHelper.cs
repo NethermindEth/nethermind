@@ -238,6 +238,11 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (node.IsExtension)
                 {
+                    if (node.Key is not { Length: > 0 })
+                    {
+                        return (AddRangeResult.InvalidProofNode, null, true);
+                    }
+
                     if (node.GetChildHashAsValueKeccak(ExtensionRlpChildIndex, out ValueHash256 childKeccak))
                     {
                         TreePath childPath = path.Append(node.Key);

@@ -69,7 +69,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain =
             await CreateBlockchain(Prague.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
         Hash256 prevRandao = Keccak.Zero;
         Address feeRecipient = TestItem.AddressC;
         ulong timestamp = Timestamper.UnixTime.Seconds;
@@ -268,9 +268,8 @@ public partial class EngineModuleTests
         Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task NewPayloadV4_returns_invalid_params_for_block_access_list(bool blockAccessListsEnabled)
+    [Test]
+    public async Task NewPayloadV4_returns_invalid_params_for_block_access_list([Values] bool blockAccessListsEnabled)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(
             blockAccessListsEnabled ? Amsterdam.Instance : Prague.Instance);
@@ -429,7 +428,7 @@ public partial class EngineModuleTests
             Assert.That(payloadStatusResponse.Status, Is.EqualTo(PayloadStatus.Valid));
             if (setHead)
             {
-                Hash256 newHead = getPayloadResult!.BlockHash;
+                Hash256 newHead = getPayloadResult!.BlockHash!;
                 ForkchoiceStateV1 forkchoiceStateV1 = new(newHead, newHead, newHead);
                 ResultWrapper<ForkchoiceUpdatedV1Result> setHeadResponse = await rpc.engine_forkchoiceUpdatedV3(forkchoiceStateV1);
                 Assert.That(setHeadResponse.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
@@ -473,7 +472,7 @@ public partial class EngineModuleTests
         bool waitForBlockImprovement,
         Withdrawal[]? withdrawals)
     {
-        Hash256 head = chain.BlockTree.HeadHash;
+        Hash256 head = chain.BlockTree.HeadHash!;
         ulong timestamp = Timestamper.UnixTime.Seconds;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;

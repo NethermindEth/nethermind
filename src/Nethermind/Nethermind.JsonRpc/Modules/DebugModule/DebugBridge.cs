@@ -149,6 +149,7 @@ public class DebugBridge : IDebugBridge
         return block?.Transactions[txReceipt.Index];
     }
 
+    [Obsolete("Use the Hash256 overload: a block number resolves only the canonical block at that height.")]
     public GethLikeTxTrace? GetTransactionTrace(ulong blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
         _tracer.Trace(blockNumber, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
 
@@ -199,7 +200,7 @@ public class DebugBridge : IDebugBridge
 
     public SyncReportSummary GetCurrentSyncStage() => new()
     {
-        CurrentStage = _syncModeSelector.Current.ToString()
+        CurrentStage = _syncModeSelector.Current.ToFlagsString()
     };
 
     public bool HaveNotSyncedHeadersYet() => _syncModeSelector.Current.HaveNotSyncedHeadersYet();

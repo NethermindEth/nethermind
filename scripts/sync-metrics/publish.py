@@ -11,7 +11,7 @@ import json
 import os
 import sys
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime
 
 
 def api(path):
@@ -32,14 +32,26 @@ def main():
     run_id = int(os.environ["GITHUB_RUN_ID"])
 
     run = api(f"repos/{repo}/actions/runs/{run_id}")
-    # Not paginated: this run has well under 100 jobs (4 sync jobs + fixed overhead)
-    jobs = api(f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=100")["jobs"]
+    attempt = int(os.environ.get("GITHUB_RUN_ATTEMPT", run["run_attempt"]))
     job_min = {}
-    for job in jobs:
-        if job["name"].startswith("Sync ") and job["conclusion"] == "success" and job["completed_at"]:
-            started = datetime.fromisoformat(job["started_at"].replace("Z", "+00:00"))
-            completed = datetime.fromisoformat(job["completed_at"].replace("Z", "+00:00"))
-            job_min[job["name"]] = round((completed - started).total_seconds() / 60, 1)
+    page = 1
+    while True:
+        jobs = api(f"repos/{repo}/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100&page={page}")["jobs"]
+        for job in jobs:
+            name = job["name"]
+            if name.endswith(" / sync"):
+                name = name.removesuffix(" / sync")
+            elif " / " in name:
+                continue
+            if name.startswith("Sync ") and job["conclusion"] == "success" and job["completed_at"]:
+                started = datetime.fromisoformat(job["started_at"].replace("Z", "+00:00"))
+                completed = datetime.fromisoformat(job["completed_at"].replace("Z", "+00:00"))
+                elapsed = (completed - started).total_seconds()
+                if elapsed >= 0:
+                    job_min[name] = round(elapsed / 60, 1)
+        if len(jobs) < 100:
+            break
+        page += 1
 
     records = []
     for name in sorted(os.listdir(metrics_dir)):
@@ -49,6 +61,7 @@ def main():
             record = json.load(f)
         record = {
             "run_id": run_id,
+            "run_attempt": attempt,
             "date": run["created_at"],
             "event": run["event"],
             "commit": run["head_sha"][:10],

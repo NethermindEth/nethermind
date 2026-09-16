@@ -13,11 +13,19 @@ namespace Nethermind.Serialization.Json;
 /// back into a pool-rented <see cref="ArrayPoolList{T}"/>. <see cref="Read"/> transfers ownership to the
 /// caller, which MUST dispose the result; the JSON-RPC pipeline does not dispose deserialized parameters.
 /// </summary>
-public sealed class ArrayPoolListByteHexConverter : JsonConverter<ArrayPoolList<byte>>
+public sealed class ArrayPoolListByteHexConverter : JsonConverter<ArrayPoolList<byte>?>
 {
-    public override ArrayPoolList<byte> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+    public override ArrayPoolList<byte>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         ByteArrayConverter.ConvertToArrayPoolList(ref reader);
 
-    public override void Write(Utf8JsonWriter writer, ArrayPoolList<byte> value, JsonSerializerOptions options) =>
+    public override void Write(Utf8JsonWriter writer, ArrayPoolList<byte>? value, JsonSerializerOptions options)
+    {
+        if (value is null)
+        {
+            writer.WriteNullValue();
+            return;
+        }
+
         ByteArrayConverter.Convert(writer, value.AsSpan(), skipLeadingZeros: false);
+    }
 }

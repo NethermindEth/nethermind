@@ -42,6 +42,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             // Validators
             .AddSingleton<TxValidator, ISpecProvider>((spec) => new TxValidator(spec.ChainId))
             .Bind<ITxValidator, TxValidator>()
+            .AddKeyedSingleton<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey,
+                static ctx => new SpecChangeTxValidator(ctx.Resolve<ISpecProvider>().ChainId))
             .AddSingleton<IBlockValidator, BlockValidator>()
             .AddSingleton<IHeaderValidator, HeaderValidator>()
             .AddSingleton<IUnclesValidator, UnclesValidator>()
@@ -67,13 +69,18 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
             .AddScoped<IBlockhashStore, BlockhashStore>()
             .AddScoped<IBranchProcessor, BranchProcessor>()
-            .AddScoped<IBlockProcessor, BlockProcessor>()
+            .AddScoped<IInclusionListSatisfactionChecker, InclusionListSatisfactionChecker>()
+            .AddScoped<IBlockProcessor, StandardBlockProcessor>()
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
             .AddSingleton<IWithdrawalProcessorFactory, WithdrawalProcessorFactory>()
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
 
             .AddScoped<CodeInfoRepositoryFactory, IPrecompileProvider, ICodeCache>((precompileProvider, codeCache) =>
                 worldState => new CacheCodeInfoRepository(worldState, precompileProvider, codeCache))
+            .AddScoped<TransactionProcessorAdapterFactory>(CreateExecuteAdapter)
+            .AddScoped<ITransactionProcessorAdapter, ITransactionProcessor, TransactionProcessorAdapterFactory>(
+                static (transactionProcessor, adapterFactory) => adapterFactory(transactionProcessor))
+            .AddScoped<BalTxProcessorFactory>()
             .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
 
             .AddScoped<IProcessingStats, ProcessingStats>()
@@ -146,11 +153,15 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
         }
     }
 
+    private static ITransactionProcessorAdapter CreateExecuteAdapter(ITransactionProcessor transactionProcessor)
+        => new ExecuteTransactionProcessorAdapter(transactionProcessor);
+
     private class StandardBlockValidationModule : Module, IBlockValidationModule
     {
+        public bool SupportsTransactionTracePrefix => true;
+
         protected override void Load(ContainerBuilder builder) => builder
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
-            .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.ParallelBlockValidationTransactionsExecutor>()
-            .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>();
+            .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.ParallelBlockValidationTransactionsExecutor>();
     }
 }

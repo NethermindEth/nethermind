@@ -15,6 +15,7 @@ using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Wallet.Test;
@@ -100,6 +101,16 @@ public class WalletTests
     }
 
     public static IEnumerable<WalletType> WalletTypes => FastEnum.GetValues<WalletType>();
+
+    [Test]
+    public void Key_store_wallet_reports_address_enumeration_failure()
+    {
+        IKeyStore keyStore = Substitute.For<IKeyStore>();
+        keyStore.GetKeyAddresses().Returns((Array.Empty<Address>(), Result.Fail("unavailable")));
+        DevKeyStoreWallet wallet = new(keyStore, LimboLogs.Instance, createTestAccounts: false);
+
+        Assert.That(wallet.GetAccounts, Throws.TypeOf<InvalidOperationException>().With.Message.EqualTo("unavailable"));
+    }
 
     [Test]
     public void Has_10_dev_accounts([ValueSource(nameof(WalletTypes))] WalletType walletType)

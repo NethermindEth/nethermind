@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Discv5.Messages;
@@ -9,7 +10,11 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv5.Kademlia.Handlers;
 
-internal sealed class NodesResponseHandler(Node receiver, Distances requestedDistances, IKademliaDistance<Hash256> distanceCalculator, IDiscv5RecordFilter recordFilter)
+internal sealed class NodesResponseHandler(
+    Node receiver,
+    Distances requestedDistances,
+    IKademliaDistance<ValueHash256> distanceCalculator,
+    IPAddress localIp)
     : ResponseHandler<NodesMsg>(MessageType.Nodes), IDisposable
 {
     private const int MaxNodesResponseMessages = 16;
@@ -111,15 +116,14 @@ internal sealed class NodesResponseHandler(Node receiver, Distances requestedDis
         for (int i = 0; i < nodes.Records.Count && _nodeCount < MaxNodesResponseRecords; i++)
         {
             NodeRecord record = nodes.Records[i];
-            if (recordFilter.Excludes(record) ||
-                !Node.TryFromDiscoveryEnr(record, out Node? node) ||
-                !DiscoveryV5App.IsDiscoveryAddressAcceptable(node.DiscoveryAddress.Address, _allowNonRoutableRelays) ||
+            if (!KademliaAdapter.TryGetAcceptableNode(record, _allowNonRoutableRelays, localIp, out Node? node) ||
                 !TryMarkSeen(node.Id.Hash) ||
                 !MatchesRequestedDistance(node, requestedDistances))
             {
                 continue;
             }
 
+            node.SetVerifiedEnr(record);
             _nodes[_nodeCount++] = node;
         }
     }
@@ -172,7 +176,7 @@ internal sealed class NodesResponseHandler(Node receiver, Distances requestedDis
 
     private bool MatchesRequestedDistance(Node node, Distances requestedDistances)
     {
-        int distance = distanceCalculator.CalculateLogDistance(receiver.Id.Hash, node.Id.Hash);
+        int distance = distanceCalculator.CalculateLogDistance(receiver.Id.Hash.ValueHash256, node.Id.Hash.ValueHash256);
         for (int i = 0; i < requestedDistances.Count; i++)
         {
             if (requestedDistances[i] == distance)

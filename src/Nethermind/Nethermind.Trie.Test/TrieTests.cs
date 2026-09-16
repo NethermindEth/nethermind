@@ -30,6 +30,16 @@ namespace Nethermind.Trie.Test
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class TrieTests
     {
+        [Test]
+        public void Oversized_storage_leaf_is_rejected()
+        {
+            StorageTree tree = new(NullTrieStore.Instance, LimboLogs.Instance);
+            byte[] oversized = new byte[33];
+            Array.Fill(oversized, (byte)1);
+            tree.Set(UInt256.One, oversized);
+            Assert.Throws<TrieException>(() => tree.Get(UInt256.One, out _));
+        }
+
         private ILogger _logger;
         private ILogManager _logManager;
         private Random _random = new();
@@ -244,6 +254,7 @@ namespace Nethermind.Trie.Test
             Assert.That(checkTree.GetNodeByKey(Nibbles.CompactToHexEncode(emptyByteCompactEncoded), patriciaTree.RootHash), Is.EqualTo(rootNodeHash));
 
             Assert.That(checkTree.GetNodeByKey(branchNodeKey1, patriciaTree.RootHash), Is.EqualTo(branchNodeValue1));
+            Assert.That(checkTree.GetNodeByKey([0xff], patriciaTree.RootHash), Is.Empty);
             Assert.That(checkTree.Get(branchNodeKey1).ToArray(), Is.Empty);
         }
 
@@ -1159,7 +1170,7 @@ namespace Nethermind.Trie.Test
 
                             byte[] storage = new byte[1];
                             _random.NextBytes(storage);
-                            stateProvider.Set(new StorageCell(address, 1), storage);
+                            stateProvider.Set(new StorageCell(address, 1), new UInt256(storage, isBigEndian: true));
                         }
                         else if (!account.IsTotallyEmpty)
                         {
@@ -1167,7 +1178,7 @@ namespace Nethermind.Trie.Test
 
                             byte[] storage = new byte[1];
                             _random.NextBytes(storage);
-                            stateProvider.Set(new StorageCell(address, 1), storage);
+                            stateProvider.Set(new StorageCell(address, 1), new UInt256(storage, isBigEndian: true));
                         }
                     }
                 }
@@ -1197,14 +1208,14 @@ namespace Nethermind.Trie.Test
             {
                 try
                 {
-                    using IDisposable _ = stateProvider.BeginScope(baseBlock);
+                    using IDisposable scope = stateProvider.BeginScope(baseBlock);
                     for (int i = 0; i < addresses.Length; i++)
                     {
                         if (stateProvider.AccountExists(addresses[i]))
                         {
                             for (int j = 0; j < 256; j++)
                             {
-                                stateProvider.Get(new StorageCell(addresses[i], (UInt256)j));
+                                stateProvider.Get(new StorageCell(addresses[i], (UInt256)j), out _);
                             }
                         }
                     }
@@ -1320,6 +1331,16 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
+        public void WarmUpPath_DoesNotThrow_WhenPersistenceServesAnotherVersionOfTheNode()
+        {
+            StaleWarmerTrieStore trieStore = new();
+            PatriciaTree patriciaTree = new(trieStore, _logManager) { RootHash = StaleWarmerTrieStore.RootHashToWarm };
+
+            Assert.That(() => patriciaTree.WarmUpPath(_keyA), Throws.Nothing);
+            Assert.That(patriciaTree.RootRef!.NodeType, Is.EqualTo(NodeType.Unknown));
+        }
+
+        [Test]
         public void Commit_DoesNotDeadlock_WhenRunOnBoundedScheduler()
         {
             // Commit should not deadlock on a bounded scheduler (e.g. NewBlock P2P message on BackgroundTaskScheduler).
@@ -1346,6 +1367,43 @@ namespace Nethermind.Trie.Test
             }, CancellationToken.None, TaskCreationOptions.None, schedulerPair.ConcurrentScheduler);
 
             Assert.That(task.Wait(TimeSpan.FromSeconds(10)), Is.True, "Commit deadlocked on bounded scheduler");
+        }
+
+        /// <summary>
+        /// A path-keyed store that answers a warmer read with the RLP of another version of the node at that path,
+        /// which is what the flat DB does when the warmer runs ahead of, or behind, the live reads.
+        /// </summary>
+        private class StaleWarmerTrieStore : IScopedTrieStore
+        {
+            public static readonly Hash256 RootHashToWarm = Keccak.Compute("root to warm");
+
+            private readonly byte[] _rlpOfAnotherNode;
+
+            public StaleWarmerTrieStore()
+            {
+                TrieNode leaf = TrieNodeFactory.CreateLeaf([0x1, 0x2], new byte[32]);
+                TreePath path = TreePath.Empty;
+                leaf.ResolveKey(NullTrieNodeResolver.Instance, ref path);
+                _rlpOfAnotherNode = leaf.FullRlp.ToArray()!;
+            }
+
+            public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
+            {
+                TrieNode node = new(NodeType.Unknown, hash);
+                node.MarkWarmerOwned();
+                return node;
+            }
+
+            public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => _rlpOfAnotherNode;
+
+            public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => _rlpOfAnotherNode;
+
+            public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => this;
+
+            public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
+
+            public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
+                throw new NotSupportedException();
         }
     }
 }

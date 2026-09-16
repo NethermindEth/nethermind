@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -40,6 +41,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly ILogger _logger;
         private readonly TimeSpan _minimumPruningDelay;
         private DateTime _lastPruning = DateTime.MinValue;
+        private long _pruningStartTimestamp;
 
         public FullPruner(
             IFullPruningDb fullPruningDb,
@@ -74,11 +76,20 @@ namespace Nethermind.Blockchain.FullPruning
             _pruningTrigger.Prune += OnPrune;
             _logger = _logManager.GetClassLogger<FullPruner>();
             _minimumPruningDelay = TimeSpan.FromHours(_pruningConfig.FullPruningMinimumDelayHours);
+            _fullPruningDb.PruningFinished += RecordPruningMetrics;
 
             if (_pruningConfig.FullPruningCompletionBehavior != FullPruningCompletionBehavior.None)
             {
                 _fullPruningDb.PruningFinished += HandlePruningFinished;
             }
+        }
+
+        private void RecordPruningMetrics(object? sender, PruningEventArgs e)
+        {
+            if (!e.Success) return;
+
+            Db.Metrics.FullPruningLastDurationSeconds = (long)Stopwatch.GetElapsedTime(_pruningStartTimestamp).TotalSeconds;
+            Db.Metrics.IncrementFullPruningCount();
         }
 
         /// <summary>
@@ -96,8 +107,7 @@ namespace Nethermind.Blockchain.FullPruning
             // If we are already pruning, we don't need to do anything
             else if (CanStartNewPruning())
             {
-                // Check if we have enough disk space to run pruning
-                if (!HaveEnoughDiskSpaceToRun() && _pruningConfig.AvailableSpaceCheckEnabled)
+                if (_pruningConfig.AvailableSpaceCheckEnabled && !HaveEnoughDiskSpaceToRun())
                 {
                     e.Status = PruningStatus.NotEnoughDiskSpace;
                 }
@@ -231,6 +241,7 @@ namespace Nethermind.Blockchain.FullPruning
 
             try
             {
+                _pruningStartTimestamp = Stopwatch.GetTimestamp();
                 pruning.MarkStart();
 
                 WriteFlags writeFlags = WriteFlags.DisableWAL;
@@ -320,6 +331,7 @@ namespace Nethermind.Blockchain.FullPruning
         {
             _pruningTrigger.Prune -= OnPrune;
             _fullPruningDb.PruningFinished -= HandlePruningFinished;
+            _fullPruningDb.PruningFinished -= RecordPruningMetrics;
         }
     }
 }

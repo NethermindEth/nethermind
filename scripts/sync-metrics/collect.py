@@ -26,7 +26,7 @@ MARKERS = {
 }
 
 # RFC3339 line prefix as emitted by `docker logs -t` (or a GitHub Actions log line)
-TS_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.\d+)?Z\s")
+TS_RE = re.compile(r"(?:^|\t)(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.\d+)?Z\s")
 COUNTERS_RE = re.compile(r"Accounts=(\d+), Slots=(\d+)")
 
 
@@ -34,7 +34,7 @@ def parse_log(lines):
     found = {}
     counters = {}
     for line in lines:
-        m = TS_RE.match(line)
+        m = TS_RE.search(line)
         if m is None:
             continue
         for key, marker in MARKERS.items():
@@ -51,7 +51,8 @@ def parse_log(lines):
 def minutes_between(found, start_key, end_key):
     if start_key not in found or end_key not in found:
         return None
-    return round((found[end_key] - found[start_key]).total_seconds() / 60, 1)
+    elapsed = (found[end_key] - found[start_key]).total_seconds()
+    return round(elapsed / 60, 1) if elapsed >= 0 else None
 
 
 def main():

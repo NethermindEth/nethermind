@@ -4,8 +4,11 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
+using System.Reflection;
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -39,17 +42,18 @@ public class StateProviderTests(bool useFlat)
         public IWorldState WorldState { get; }
         private readonly IContainer? _container;
 
-        public Context(bool useFlat)
+        public Context(bool useFlat, ILogManager? logManager = null)
         {
+            logManager ??= Logger;
             if (useFlat)
             {
                 (IWorldStateScopeProvider scopeProvider, IContainer container) = TestWorldStateFactory.CreateFlatScopeProvider();
                 _container = container;
-                WorldState = new WorldState(scopeProvider, Logger);
+                WorldState = new WorldState(scopeProvider, logManager);
             }
             else
             {
-                WorldState = TestWorldStateFactory.CreateForTest();
+                WorldState = TestWorldStateFactory.CreateForTest(logManager: logManager);
             }
         }
 
@@ -80,6 +84,35 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Cold_account_read_tracks_writes_and_rollback([Values] bool exists)
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            if (exists) provider.CreateAccount(_address1, 1);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using IDisposable scope = provider.BeginScope(baseBlock);
+        Assert.That(provider.AccountExists(_address1), Is.EqualTo(exists));
+        Snapshot snapshot = provider.TakeSnapshot();
+        if (exists) provider.AddToBalance(_address1, 2, Frontier.Instance);
+        else provider.CreateAccount(_address1, 3);
+        Assert.That(provider.GetBalance(_address1), Is.EqualTo((UInt256)3));
+
+        provider.Restore(snapshot);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.AccountExists(_address1), Is.EqualTo(exists));
+            Assert.That(provider.GetBalance(_address1), Is.EqualTo(exists ? UInt256.One : UInt256.Zero));
+        }
+    }
+
+    [Test]
     public void Eip_158_touch_zero_value_system_account_is_not_deleted()
     {
         using Context ctx = new(useFlat);
@@ -95,6 +128,21 @@ public class StateProviderTests(bool useFlat)
         provider.Commit(releaseSpec);
 
         Assert.That(provider.AccountExists(systemUser), Is.True);
+    }
+
+    [Test]
+    public void Updating_code_hash_is_not_logged_at_debug()
+    {
+        TestLogger logger = new() { IsTrace = false };
+        using Context ctx = new(useFlat, new OneLoggerLogManager(new ILogger(logger)));
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+        provider.CreateAccount(_address1, 0);
+        logger.LogList.Clear();
+
+        provider.InsertCode(_address1, new byte[] { 1 }, Frontier.Instance);
+
+        Assert.That(logger.LogList, Has.None.Contains($"Update {_address1} C"));
     }
 
     [Test]
@@ -259,6 +307,256 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void InsertCode_after_scope_disposal_throws()
+    {
+        using Context ctx = new(useFlat);
+        WorldState worldState = (WorldState)ctx.WorldState;
+        IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
+        scope.Dispose();
+        byte[] code = [0x00];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+
+        Assert.That(
+            () => worldState._stateProvider.InsertCode(_address1, codeHash, code, Frontier.Instance),
+            Throws.TypeOf<InvalidOperationException>());
+    }
+
+    [TestCase(false, Description = "code of a reverted deployment is dropped")]
+    [TestCase(true, Description = "code redeployed after the revert is still persisted")]
+    public void Code_of_restored_deployment_is_persisted_only_when_redeployed(bool redeployAfterRestore)
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+
+        IReleaseSpec spec = Prague.Instance;
+        byte[] code = [0x60, 0x00, 0x60, 0x00, 0xf3];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+
+        provider.CreateAccount(_address1, 1);
+        provider.Commit(spec);
+
+        Snapshot snapshot = provider.TakeSnapshot();
+
+        // A successful child CREATE with a code deposit...
+        provider.CreateAccount(TestItem.AddressB, 0);
+        provider.InsertCode(TestItem.AddressB, code, spec);
+
+        // ...undone by an ancestor REVERT.
+        provider.Restore(snapshot);
+
+        if (redeployAfterRestore)
+        {
+            provider.CreateAccount(TestItem.AddressC, 0);
+            provider.InsertCode(TestItem.AddressC, code, spec);
+        }
+
+        provider.Commit(spec);
+
+        Assert.That(provider.AccountExists(TestItem.AddressB), Is.False);
+        if (redeployAfterRestore)
+        {
+            Assert.That(provider.GetCode(codeHash), Is.EqualTo(code));
+        }
+        else
+        {
+            Assert.That(() => provider.GetCode(codeHash), Throws.InstanceOf<InvalidOperationException>());
+        }
+    }
+
+    [Test]
+    public void Code_staged_before_a_snapshot_survives_a_restore_dropping_later_code()
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+
+        IReleaseSpec spec = Prague.Instance;
+        byte[] keptCode = [0x60, 0x00, 0x60, 0x00, 0xf3];
+        byte[] revertedCode = [0x60, 0x01, 0x60, 0x00, 0xf3];
+        ValueHash256 keptCodeHash = ValueKeccak.Compute(keptCode);
+        ValueHash256 revertedCodeHash = ValueKeccak.Compute(revertedCode);
+
+        provider.CreateAccount(TestItem.AddressB, 0);
+        provider.InsertCode(TestItem.AddressB, keptCode, spec);
+
+        Snapshot snapshot = provider.TakeSnapshot();
+
+        provider.CreateAccount(TestItem.AddressC, 0);
+        provider.InsertCode(TestItem.AddressC, revertedCode, spec);
+
+        provider.Restore(snapshot);
+        provider.Commit(spec);
+
+        Assert.That(provider.GetCode(keptCodeHash), Is.EqualTo(keptCode));
+        Assert.That(() => provider.GetCode(revertedCodeHash), Throws.InstanceOf<InvalidOperationException>());
+    }
+
+    [Test]
+    public void Code_committed_before_a_restore_is_still_persisted()
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+
+        IReleaseSpec spec = Prague.Instance;
+        byte[] code = [0x60, 0x00, 0x60, 0x00, 0xf3];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+
+        provider.CreateAccount(TestItem.AddressB, 0);
+        provider.InsertCode(TestItem.AddressB, code, spec);
+        provider.Commit(spec, commitRoots: false);
+
+        // A later transaction deploying the same code and reverting must not drop the
+        // committed deployment's code.
+        Snapshot snapshot = provider.TakeSnapshot();
+        provider.CreateAccount(TestItem.AddressC, 0);
+        provider.InsertCode(TestItem.AddressC, code, spec);
+        provider.Restore(snapshot);
+
+        provider.Commit(spec);
+
+        Assert.That(provider.AccountExists(TestItem.AddressB), Is.True);
+        Assert.That(provider.GetCode(codeHash), Is.EqualTo(code));
+    }
+
+    [Test]
+    public void Code_committed_before_a_restore_is_still_persisted_when_the_insert_filter_evicted_it()
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+
+        IReleaseSpec spec = Prague.Instance;
+        byte[] code = [0x60, 0x00, 0x60, 0x00, 0xf3];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+
+        provider.CreateAccount(TestItem.AddressB, 0);
+        provider.InsertCode(TestItem.AddressB, code, spec);
+        provider.Commit(spec, commitRoots: false);
+
+        // Drop the committed entry from the insert filter, which is the only way the code batch
+        // probe becomes reachable. Overflowing the filter instead would leave the coverage to its
+        // 3-random eviction sampling, which can silently keep the entry.
+        EvictFromCodeInsertFilter((WorldState)provider, codeHash);
+
+        Snapshot snapshot = provider.TakeSnapshot();
+        provider.CreateAccount(TestItem.AddressC, 0);
+        bool reachedCodeBatch = provider.InsertCode(TestItem.AddressC, codeHash, code, spec);
+        Assert.That(reachedCodeBatch, Is.True, "the insert filter short-circuited the re-insert");
+        provider.Restore(snapshot);
+
+        provider.Commit(spec);
+
+        Assert.That(provider.AccountExists(TestItem.AddressB), Is.True);
+        Assert.That(provider.GetCode(codeHash), Is.EqualTo(code));
+    }
+
+    [Test]
+    public void Re_inserting_code_the_batch_already_holds_is_counted_once()
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+
+        IReleaseSpec spec = Prague.Instance;
+        byte[] code = [0x60, 0x00, 0x60, 0x00, 0xf3];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+
+        provider.CreateAccount(TestItem.AddressB, 0);
+        provider.InsertCode(TestItem.AddressB, code, spec);
+
+        (long stagedWrites, long stagedBytes) = ReadCodeWriteCounters((WorldState)provider);
+        Assert.That(stagedWrites, Is.EqualTo(1));
+        Assert.That(stagedBytes, Is.EqualTo(code.Length));
+
+        // Folds the counters into the globals and resets them, leaving the batch entry in place.
+        provider.Commit(spec, commitRoots: false);
+        EvictFromCodeInsertFilter((WorldState)provider, codeHash);
+
+        provider.CreateAccount(TestItem.AddressC, 0);
+        bool reachedCodeBatch = provider.InsertCode(TestItem.AddressC, codeHash, code, spec);
+        Assert.That(reachedCodeBatch, Is.True, "the insert filter short-circuited the re-insert");
+
+        // The batch already holds the only entry that reaches CodeDb, and no journal entry backs a
+        // second count, so counting the re-insert would drift permanently.
+        (long codeWrites, long codeBytesWritten) = ReadCodeWriteCounters((WorldState)provider);
+        Assert.That(codeWrites, Is.Zero);
+        Assert.That(codeBytesWritten, Is.Zero);
+    }
+
+    [Test]
+    public void Code_re_staged_for_an_account_already_carrying_the_hash_is_rolled_back([Values] bool warmAccountBeforeSnapshot)
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+
+        IReleaseSpec spec = Prague.Instance;
+        byte[] code = [0x60, 0x00, 0x60, 0x00, 0xf3];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+
+        provider.CreateAccount(TestItem.AddressB, 0);
+        provider.InsertCode(TestItem.AddressB, code, spec);
+        // Flushes the batch to CodeDb, leaving the account carrying the hash with nothing staged.
+        provider.Commit(spec);
+
+        EvictFromCodeInsertFilter((WorldState)provider, codeHash);
+        EvictFromPersistedCodeHint((WorldState)provider, codeHash);
+
+        // Warming the account first leaves the snapshot at the head of the change log, so the restore
+        // below unwinds no account change at all and only the re-stage is left to drop.
+        if (warmAccountBeforeSnapshot) provider.GetNonce(TestItem.AddressB);
+
+        // Re-delegating an EIP-7702 authority to the target it already points at, with ContainsCode
+        // only a hint: nothing suppresses the re-stage, and it pushes no code-hash change to anchor to.
+        Snapshot snapshot = provider.TakeSnapshot();
+        bool reachedCodeBatch = provider.InsertCode(TestItem.AddressB, codeHash, code, spec);
+        Assert.That(reachedCodeBatch, Is.True, "the re-insert never reached the code batch");
+
+        provider.Restore(snapshot);
+
+        Assert.That(CodeBatchContains((WorldState)provider, codeHash), Is.False,
+            "the re-stage outlived the changes it was made under");
+
+        // Dropping the re-stage is only safe because the code is already durable, which is what lets
+        // the account keep carrying its hash.
+        Assert.That(provider.GetCode(codeHash), Is.EqualTo(code));
+
+        (long codeWrites, long codeBytesWritten) = ReadCodeWriteCounters((WorldState)provider);
+        Assert.That(codeWrites, Is.Zero);
+        Assert.That(codeBytesWritten, Is.Zero);
+    }
+
+    [Test]
+    public void Code_staged_by_discarded_changes_is_not_persisted()
+    {
+        using Context ctx = new(useFlat);
+        IWorldState provider = ctx.WorldState;
+        using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
+
+        IReleaseSpec spec = Prague.Instance;
+        byte[] code = [0x60, 0x00, 0x60, 0x00, 0xf3];
+        ValueHash256 codeHash = ValueKeccak.Compute(code);
+
+        provider.CreateAccount(TestItem.AddressB, 0);
+        provider.InsertCode(TestItem.AddressB, code, spec);
+
+        // Drops the uncommitted changes while keeping block-level state, as CallAndRestore does.
+        provider.Reset(resetBlockChanges: false);
+
+        // The reset is the second RestoreCodeInserts caller, so it rolls the counters back too.
+        (long codeWrites, long codeBytesWritten) = ReadCodeWriteCounters((WorldState)provider);
+        Assert.That(codeWrites, Is.Zero);
+        Assert.That(codeBytesWritten, Is.Zero);
+
+        provider.Commit(spec);
+
+        Assert.That(provider.AccountExists(TestItem.AddressB), Is.False);
+        Assert.That(() => provider.GetCode(codeHash), Throws.InstanceOf<InvalidOperationException>());
+    }
+
+    [Test]
     public void Same_code_can_be_redeployed_across_overlay_resets()
     {
         IContainer? containerToDispose = null;
@@ -315,6 +613,48 @@ public class StateProviderTests(bool useFlat)
         {
             containerToDispose?.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Drops the code db's "already persisted" hint for a code hash, as a node restart would.
+    /// No-op for code dbs that keep no hint, which already report <c>ContainsCode</c> false.
+    /// </summary>
+    private static void EvictFromPersistedCodeHint(WorldState worldState, in ValueHash256 codeHash)
+    {
+        object? codeDb = typeof(StateProvider)
+            .GetField("_codeDb", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(worldState._stateProvider);
+        AssociativeKeyCache<ValueHash256>? hint = codeDb?.GetType()
+            .GetField("_persistedHint", BindingFlags.Instance | BindingFlags.NonPublic)?
+            .GetValue(codeDb) as AssociativeKeyCache<ValueHash256>;
+        hint?.Delete(codeHash);
+    }
+
+    /// <summary>Reports whether code staged for CodeDb is still pending in the batch.</summary>
+    private static bool CodeBatchContains(WorldState worldState, in ValueHash256 codeHash)
+    {
+        Dictionary<Hash256AsKey, byte[]>? batch = (Dictionary<Hash256AsKey, byte[]>?)typeof(StateProvider)
+            .GetField("_codeBatch", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(worldState._stateProvider);
+        return batch?.ContainsKey(new Hash256(codeHash)) ?? false;
+    }
+
+    /// <summary>Reads the scope's un-flushed code-write counters.</summary>
+    private static (long CodeWrites, long CodeBytesWritten) ReadCodeWriteCounters(WorldState worldState)
+    {
+        LocalMetrics metrics = (LocalMetrics)typeof(WorldState)
+            .GetField("_localMetrics", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(worldState)!;
+        return (metrics.CodeWrites, metrics.CodeBytesWritten);
+    }
+
+    /// <summary>Removes a code hash from <c>StateProvider</c>'s insert filter, as a capacity eviction would.</summary>
+    private static void EvictFromCodeInsertFilter(WorldState worldState, in ValueHash256 codeHash)
+    {
+        AssociativeKeyCache<ValueHash256> filter = (AssociativeKeyCache<ValueHash256>)typeof(StateProvider)
+            .GetField("_blockCodeInsertFilter", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(worldState._stateProvider)!;
+        Assert.That(filter.Delete(codeHash), Is.True, "the code hash was not in the insert filter");
     }
 }
 

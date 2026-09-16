@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#nullable enable annotations
+
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,6 +11,7 @@ using System.Runtime.CompilerServices;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using CryptSharp.Utility;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -81,11 +84,11 @@ namespace Nethermind.KeyStore
         public int Version => 3;
         public int CryptoVersion => 1;
 
-        public (KeyStoreItem KeyData, Result Result) Verify(string keyJson)
+        public (KeyStoreItem? KeyData, Result Result) Verify(string keyJson)
         {
             try
             {
-                KeyStoreItem keyData = _jsonSerializer.Deserialize<KeyStoreItem>(keyJson);
+                KeyStoreItem keyData = DeserializeKeyStoreItem(keyJson);
                 return (keyData, Result.Success);
             }
             catch (Exception)
@@ -94,19 +97,19 @@ namespace Nethermind.KeyStore
             }
         }
 
-        public (byte[] Key, Result Result) GetKeyBytes(Address address, SecureString password)
+        public (byte[]? Key, Result Result) GetKeyBytes(Address address, SecureString password)
         {
             if (!password.IsReadOnly())
             {
                 throw new InvalidOperationException("Cannot work with password that is not readonly");
             }
 
-            string serializedKey = ReadKey(address);
+            string? serializedKey = ReadKey(address);
             if (serializedKey is null)
             {
                 return (null, Result.Fail("Cannot find key"));
             }
-            KeyStoreItem keyStoreItem = _jsonSerializer.Deserialize<KeyStoreItem>(serializedKey);
+            KeyStoreItem? keyStoreItem = _jsonSerializer.Deserialize<KeyStoreItem>(serializedKey);
             if (keyStoreItem?.Crypto is null)
             {
                 return (null, Result.Fail("Cannot deserialize key"));
@@ -173,30 +176,46 @@ namespace Nethermind.KeyStore
             return (key, Result.Success);
         }
 
-        public (PrivateKey PrivateKey, Result Result) GetKey(Address address, SecureString password)
+        public (PrivateKey? PrivateKey, Result Result) GetKey(Address address, SecureString password)
         {
-            (byte[] Key, Result Result) geyKeyResult = GetKeyBytes(address, password);
-            if (geyKeyResult.Result.ResultType == ResultType.Failure)
+            (byte[]? keyBytes, Result result) = GetKeyBytes(address, password);
+            if (result.ResultType == ResultType.Failure)
             {
-                return (null, geyKeyResult.Result);
+                return (null, result);
             }
-            return (new PrivateKey(geyKeyResult.Key), geyKeyResult.Result);
+
+            return (new PrivateKey(keyBytes ?? throw new InvalidOperationException("Successful key decryption returned no key bytes.")), result);
         }
 
-        public (ProtectedPrivateKey PrivateKey, Result Result) GetProtectedKey(Address address, SecureString password)
+        public (ProtectedPrivateKey? PrivateKey, Result Result) GetProtectedKey(Address address, SecureString password)
         {
-            (PrivateKey privateKey, Result result) = GetKey(address, password);
-            using PrivateKey key = privateKey;
-            return (result == Result.Success ? new ProtectedPrivateKey(key, _config.KeyStoreDirectory, _cryptoRandom) : null, result);
+            (PrivateKey? privateKey, Result result) = GetKey(address, password);
+            if (result.ResultType != ResultType.Success)
+            {
+                return (null, result);
+            }
+
+            using PrivateKey key = privateKey
+                ?? throw new InvalidOperationException("Successful key retrieval returned no private key.");
+            return (new ProtectedPrivateKey(key, _config.KeyStoreDirectory, _cryptoRandom), result);
         }
 
-        public (KeyStoreItem KeyData, Result Result) GetKeyData(Address address)
+        public (KeyStoreItem? KeyData, Result Result) GetKeyData(Address address)
         {
-            string keyDataJson = ReadKey(address);
-            return (_jsonSerializer.Deserialize<KeyStoreItem>(keyDataJson), Result.Success);
+            string? keyDataJson = ReadKey(address);
+            if (keyDataJson is null)
+            {
+                return (null, Result.Fail("Cannot find key"));
+            }
+
+            return (DeserializeKeyStoreItem(keyDataJson), Result.Success);
         }
 
-        public (PrivateKey PrivateKey, Result Result) GenerateKey(SecureString password)
+        private KeyStoreItem DeserializeKeyStoreItem(string json) =>
+            _jsonSerializer.Deserialize<KeyStoreItem>(json)
+            ?? throw new JsonException("Key data decoded as null.");
+
+        public (PrivateKey? PrivateKey, Result Result) GenerateKey(SecureString password)
         {
             if (!password.IsReadOnly())
             {
@@ -208,11 +227,17 @@ namespace Nethermind.KeyStore
             return result.ResultType == ResultType.Success ? (privateKey, result) : (null, result);
         }
 
-        public (ProtectedPrivateKey PrivateKey, Result Result) GenerateProtectedKey(SecureString password)
+        public (ProtectedPrivateKey? PrivateKey, Result Result) GenerateProtectedKey(SecureString password)
         {
-            (PrivateKey privateKey, Result result) = GenerateKey(password);
-            using PrivateKey key = privateKey;
-            return (result == Result.Success ? new ProtectedPrivateKey(key, _config.KeyStoreDirectory, _cryptoRandom) : null, result);
+            (PrivateKey? privateKey, Result result) = GenerateKey(password);
+            if (result.ResultType != ResultType.Success)
+            {
+                return (null, result);
+            }
+
+            using PrivateKey key = privateKey
+                ?? throw new InvalidOperationException("Successful key generation returned no private key.");
+            return (new ProtectedPrivateKey(key, _config.KeyStoreDirectory, _cryptoRandom), result);
         }
 
         public Result StoreKey(Address address, KeyStoreItem keyStoreItem) => PersistKey(address, keyStoreItem);
@@ -296,7 +321,7 @@ namespace Nethermind.KeyStore
             {
                 string msg = "Error during getting addresses";
                 if (_logger.IsError) _logger.Error(msg, e);
-                return (null, Result.Fail(msg));
+                return ([], Result.Fail(msg));
             }
         }
 
@@ -361,7 +386,7 @@ namespace Nethermind.KeyStore
             }
         }
 
-        private string ReadKey(Address address)
+        private string? ReadKey(Address address)
         {
             if (address == Address.Zero)
             {

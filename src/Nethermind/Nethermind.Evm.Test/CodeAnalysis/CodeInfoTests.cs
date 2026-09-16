@@ -2,9 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Runtime.Intrinsics;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
 
@@ -13,6 +17,105 @@ namespace Nethermind.Evm.Test.CodeAnalysis
     [TestFixture]
     public class CodeInfoTests
     {
+        [Test]
+        [Repeat(10)]
+        public async Task Concurrent_analysis_publishes_complete_bitmap(
+            [Values(64, 66, 32768)] int length, [Values] bool analysisCompletesFirst)
+        {
+            const int Workers = 4;
+            const int GroupSize = 4;
+            const int JumpDestOffset = 2;
+            TimeSpan timeout = TimeSpan.FromSeconds(30);
+            byte[] code = new byte[length];
+            for (int i = 0; i <= length - GroupSize; i += GroupSize)
+            {
+                code[i] = (byte)Instruction.PUSH1;
+                code[i + 1] = (byte)Instruction.JUMPDEST;
+                code[i + JumpDestOffset] = (byte)Instruction.JUMPDEST;
+            }
+            TaskCompletionSource analysisStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource continueAnalysis = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource startReaders = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            using GatedCodeMemory memory = new(code, () =>
+            {
+                // Execute claims analysis before requesting the code span.
+                analysisStarted.TrySetResult();
+                continueAnalysis.Task.GetAwaiter().GetResult();
+            });
+            CodeInfo codeInfo = new(memory.Memory);
+            Task[] workers = new Task[Workers];
+            Array.Fill(workers, Task.CompletedTask);
+            ExceptionDispatchInfo? failure = null;
+            try
+            {
+                workers[0] = Task.Factory.StartNew(((IThreadPoolWorkItem)codeInfo).Execute,
+                    CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                await analysisStarted.Task.WaitAsync(timeout);
+                for (int worker = 1; worker < workers.Length; worker++)
+                {
+                    workers[worker] = Task.Run(async () =>
+                    {
+                        await startReaders.Task;
+                        int mismatch = -1;
+                        for (int offset = 0; offset < length && mismatch < 0; offset++)
+                        {
+                            bool expected = offset < length - length % GroupSize && offset % GroupSize == JumpDestOffset;
+                            if (codeInfo.ValidateJump(offset) != expected) mismatch = offset;
+                        }
+                        Assert.That(mismatch, Is.EqualTo(-1), "first offset with an unexpected jump-destination bit");
+                    });
+                }
+                continueAnalysis.TrySetResult();
+                // Cover completed fast-path reads separately from scheduling-dependent publication races.
+                if (analysisCompletesFirst) await workers[0].WaitAsync(timeout);
+            }
+            catch (Exception exception)
+            {
+                failure = ExceptionDispatchInfo.Capture(exception);
+            }
+            finally
+            {
+                continueAnalysis.TrySetResult();
+                startReaders.TrySetResult();
+            }
+
+            try
+            {
+                await Task.WhenAll(workers).WaitAsync(timeout);
+            }
+            catch (Exception exception)
+            {
+                failure ??= ExceptionDispatchInfo.Capture(exception);
+            }
+            failure?.Throw();
+        }
+
+        [Test]
+        public async Task Analysis_failure_is_reported_to_later_readers([Values] bool background)
+        {
+            InvalidOperationException expected = new("analysis failed");
+            using GatedCodeMemory memory = new([(byte)Instruction.JUMPDEST], () => throw expected);
+            CodeInfo codeInfo = new(memory.Memory);
+            if (background) ((IThreadPoolWorkItem)codeInfo).Execute();
+
+            for (int reader = 0; reader < 2; reader++)
+            {
+                Exception? actual = await Task.Run(() =>
+                {
+                    try
+                    {
+                        codeInfo.ValidateJump(0);
+                        return null;
+                    }
+                    catch (Exception exception)
+                    {
+                        return exception;
+                    }
+                }).WaitAsync(TimeSpan.FromSeconds(30));
+                Assert.That(actual, Is.SameAs(expected));
+            }
+        }
+
         [TestCase(-1, false)]
         [TestCase(0, true)]
         [TestCase(1, false)]
@@ -133,39 +236,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             Assert.That(codeInfo.ValidateJump(11), Is.False); // 0x5b but not JUMPDEST but data
         }
 
-        [TestCase(1)]
-        [TestCase(2)]
-        [TestCase(3)]
-        [TestCase(4)]
-        [TestCase(5)]
-        [TestCase(6)]
-        [TestCase(7)]
-        [TestCase(8)]
-        [TestCase(9)]
-        [TestCase(10)]
-        [TestCase(11)]
-        [TestCase(12)]
-        [TestCase(13)]
-        [TestCase(14)]
-        [TestCase(15)]
-        [TestCase(16)]
-        [TestCase(17)]
-        [TestCase(18)]
-        [TestCase(19)]
-        [TestCase(20)]
-        [TestCase(21)]
-        [TestCase(22)]
-        [TestCase(23)]
-        [TestCase(24)]
-        [TestCase(25)]
-        [TestCase(26)]
-        [TestCase(27)]
-        [TestCase(28)]
-        [TestCase(29)]
-        [TestCase(30)]
-        [TestCase(31)]
-        [TestCase(32)]
-        public void PushNJumpdest_Over10k(int n)
+        [Test]
+        public void PushNJumpdest_Over10k([Range(1, 32)] int n)
         {
             byte[] code = new byte[10_001];
 
@@ -211,7 +283,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [TestCaseSource(nameof(Codes))]
         public void JumpDestinationAnalyzer_are_equivalent(byte[] codeInput)
         {
-            for (int i = 1; i < codeInput.Length; i++)
+            for (int i = 1; i <= codeInput.Length; i++)
             {
                 ReadOnlySpan<byte> code = codeInput.AsSpan(0, i);
 
@@ -233,6 +305,27 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 test.TestName = "Code_All_0x00";
                 yield return test;
 
+                // Runs of plain one-byte instructions bracketing each width a scan steps over in one go: the
+                // 8-byte scalar word, the 16-byte Vector128 block, the 32-byte PUSH32 payload and the 64-byte
+                // Vector512 chunk. The per-prefix loop also cuts every run off at the end of the code.
+                int[] runLengths = [1, 6, 7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65];
+                byte[] markers = [(byte)Instruction.JUMPDEST, (byte)Instruction.PUSH1, (byte)Instruction.PUSH32];
+                foreach (int run in runLengths)
+                {
+                    foreach (byte marker in markers)
+                    {
+                        code = new byte[1024];
+                        for (int i = run; i < code.Length; i += run + 1)
+                        {
+                            code[i] = marker;
+                        }
+
+                        test = new TestCaseData(code);
+                        test.TestName = $"Code_Run{run}_{(Instruction)marker}";
+                        yield return test;
+                    }
+                }
+
                 code = new byte[1024];
                 code.AsSpan().Fill((byte)0x5b);
                 test = new TestCaseData(code);
@@ -240,11 +333,22 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 yield return test;
 
                 code = new byte[1024];
+                for (int i = 8; i < code.Length - 3; i += 4)
+                {
+                    code[i] = (byte)Instruction.JUMPDEST;
+                    code[i + 1] = (byte)Instruction.PUSH1;
+                    code[i + 2] = (byte)Instruction.JUMPDEST;
+                    code[i + 3] = (byte)Instruction.JUMPDEST;
+                }
+                test = new TestCaseData(code);
+                test.TestName = "Code_Unaligned_PUSH1_JUMPDEST";
+                yield return test;
 
                 for (int start = 0; start <= 1; start++)
                 {
                     for (int push = 0x60; push <= 0x7f; push++)
                     {
+                        code = new byte[1024];
                         for (int i = 0; i < code.Length; i++)
                         {
                             code[i] = (i + start) % 2 == 0 ? (byte)push : (byte)0x5b;
@@ -257,6 +361,21 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     }
                 }
             }
+        }
+
+        // Span callbacks control analysis without adding a production test hook; disposal owns no resources.
+        private sealed class GatedCodeMemory(byte[] code, Action beforeRead) : MemoryManager<byte>
+        {
+            public override Memory<byte> Memory => CreateMemory(code.Length);
+            public override Span<byte> GetSpan()
+            {
+                beforeRead();
+                return code;
+            }
+            public override MemoryHandle Pin(int elementIndex = 0) =>
+                throw new NotSupportedException("The analyzer test supports span access only.");
+            public override void Unpin() { }
+            protected override void Dispose(bool disposing) { }
         }
     }
 }

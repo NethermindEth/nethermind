@@ -86,7 +86,7 @@ public class Snapshot : RefCountingDisposable
     public StateId To => _to;
     public IEnumerable<KeyValuePair<HashedKey<Address>, Account?>> Accounts => _isSorted ? _sorted!.Accounts : _mutable!.Accounts;
     public IEnumerable<KeyValuePair<HashedKey<Address>, bool>> SelfDestructedStorageAddresses => _isSorted ? _sorted!.SelfDestructedStorageAddresses : _mutable!.SelfDestructedStorageAddresses;
-    public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?>> Storages => _isSorted ? _sorted!.Storages : _mutable!.Storages;
+    public IEnumerable<KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?>> Storages => _isSorted ? _sorted!.Storages : _mutable!.Storages;
     public IEnumerable<KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode>> StorageNodes => _isSorted ? _sorted!.StorageNodes : _mutable!.StorageNodes;
     public IEnumerable<KeyValuePair<HashedKey<TreePath>, TrieNode>> StateNodes => _isSorted ? _sorted!.StateNodes : _mutable!.StateNodes;
     public int AccountsCount => _isSorted ? _sorted!.AccountsCount : Counts.Accounts;
@@ -105,7 +105,7 @@ public class Snapshot : RefCountingDisposable
     public bool HasSelfDestruct(HashedKey<Address> key)
         => _isSorted ? _sorted!.HasSelfDestruct(key) : _mutable!.SelfDestructedStorageAddresses.TryGetValue(key, out bool _);
 
-    public bool TryGetStorage(HashedKey<(Address, UInt256)> key, out SlotValue? value)
+    public bool TryGetStorage(HashedKey<(Address, UInt256)> key, out UInt256? value)
         => _isSorted ? _sorted!.TryGetStorage(key, out value) : _mutable!.Storages.TryGetValue(key, out value);
 
     public bool TryGetStateNode(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
@@ -127,7 +127,7 @@ public sealed class SnapshotContent : IDisposable, IResettable
 {
     // ConcurrentDictionary: lock-free reads, best read latency for accounts/slots
     public readonly ConcurrentDictionary<HashedKey<Address>, Account?> Accounts = new();
-    public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, SlotValue?> Storages = new();
+    public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, UInt256?> Storages = new();
     public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();
 
     public readonly Dictionary<HashedKey<TreePath>, TrieNode> StateNodes = [];
@@ -186,7 +186,7 @@ internal readonly record struct SnapshotContentCounts(
     public long EstimateMemory() =>
         // Cast Count to long before multiplying to avoid int overflow for large snapshots
         (long)Accounts * 172 +                         // Key (12B: ref 8B + hash 4B) + Value ref (8B) + CD overhead (48) + Account object (~104B)
-            (long)Storages * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B SlotValue?) + CD overhead (48) + Value ref (4B)
+            (long)Storages * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B UInt256?) + CD overhead (48) + Value ref (4B)
             (long)SelfDestructedStorageAddresses * 64 +    // Key (12B: ref 8B + hash 4B) + Value (4B) + CD overhead (48)
             (long)StateNodes * (NodeSizeEstimate + 76) +   // Key (40B: TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28) + TrieNode
             (long)StorageNodes * (NodeSizeEstimate + 84);  // Key (48B: Hash256 ref 8B + TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28) + TrieNode
@@ -200,7 +200,7 @@ internal readonly record struct SnapshotContentCounts(
         // ConcurrentDictionary entry overhead ~48 bytes
         // Reference type values (Account, TrieNode) not counted - already accounted by non-compacted snapshot
         (long)Accounts * 68 +                          // Key (12B: ref 8B + hash 4B) + Value ref (8B) + CD overhead (48)
-            (long)Storages * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B SlotValue?) + CD overhead (48) + Value ref (4B)
+            (long)Storages * 136 +                         // Key (44B: addr ref 8B + UInt256 32B + hash 4B) + Value (40B UInt256?) + CD overhead (48) + Value ref (4B)
             (long)SelfDestructedStorageAddresses * 64 +    // Key (12B: ref 8B + hash 4B) + Value (4B) + CD overhead (48)
             (long)StateNodes * 76 +                        // Key (40B: TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28)
             (long)StorageNodes * 84;                       // Key (48B: Hash256 ref 8B + TreePath 36B + hash 4B) + Value ref (8B) + dictionary overhead (28)

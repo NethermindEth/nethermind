@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
@@ -120,9 +119,13 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
         }
 
+        GethTraceOptions effective = (options ?? GethTraceOptions.Default) with
+        {
+            NoBaseFee = !call.ShouldSetBaseFee()
+        };
+
         if (CanStreamStructLogs(options))
         {
-            GethTraceOptions effective = options ?? GethTraceOptions.Default;
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
                     debugBridge.GetTransactionTrace(tx, blockParameter, token, effective, writer, pipeWriter)));
@@ -134,7 +137,7 @@ public class DebugRpcModule(
         GethLikeTxTrace? transactionTrace;
         try
         {
-            transactionTrace = debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, options);
+            transactionTrace = debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, effective);
         }
         catch (InsufficientBalanceException ex)
         {
@@ -189,64 +192,34 @@ public class DebugRpcModule(
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockhash, int index, GethTraceOptions options = null)
     {
         TryGetHeaderAndCheckState(blockhash, out ResultWrapper<GethLikeTxTrace>? headerError);
-        if (headerError is not null)
-        {
-            return headerError;
-        }
-
-        if (CanStreamStructLogs(options))
-        {
-            GethTraceOptions effective = options ?? GethTraceOptions.Default;
-            return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
-                (writer, pipeWriter, token) =>
-                    debugBridge.GetTransactionTrace(blockhash, index, token, effective, writer, pipeWriter)));
-        }
-
-        using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-        CancellationToken cancellationToken = timeout.Token;
-        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(blockhash, index, cancellationToken, options);
-        if (transactionTrace is null)
-        {
-            return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockhash}", ErrorCodes.ResourceNotFound);
-        }
-
-        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransactionByBlockhashAndIndex)} request {blockhash}, result: trace");
-        return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
+        return headerError ?? TraceTransactionAtIndex(blockhash, index, options, nameof(debug_traceTransactionByBlockhashAndIndex));
     }
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index, GethTraceOptions options = null)
     {
-        TryGetHeaderAndCheckState(blockParameter, out ResultWrapper<GethLikeTxTrace>? headerError);
-        if (headerError is not null)
-        {
-            return headerError;
-        }
+        BlockHeader? header = TryGetHeaderAndCheckState(blockParameter, out ResultWrapper<GethLikeTxTrace>? headerError);
+        // Trace the block that was resolved, not the canonical one at its height: a block hash parameter need not be canonical
+        return headerError ?? TraceTransactionAtIndex(header!.Hash!, index, options, nameof(debug_traceTransactionByBlockAndIndex));
+    }
 
-        ulong? blockNo = blockParameter.BlockNumber;
-        if (!blockNo.HasValue)
-        {
-            throw new InvalidDataException("Block number value incorrect");
-        }
-
+    private ResultWrapper<GethLikeTxTrace> TraceTransactionAtIndex(Hash256 blockHash, int index, GethTraceOptions? options, string method)
+    {
         if (CanStreamStructLogs(options))
         {
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
-            ulong resolvedBlockNo = blockNo.Value;
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
-                    debugBridge.GetTransactionTrace(resolvedBlockNo, index, token, effective, writer, pipeWriter)));
+                    debugBridge.GetTransactionTrace(blockHash, index, token, effective, writer, pipeWriter)));
         }
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-        CancellationToken cancellationToken = timeout.Token;
-
-        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(blockNo.Value, index, cancellationToken, options);
+        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(blockHash, index, timeout.Token, options);
         if (transactionTrace is null)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockNo}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockHash}", ErrorCodes.ResourceNotFound);
         }
 
-        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransactionByBlockAndIndex)} request {blockNo}, result: trace");
+        if (_logger.IsTrace) _logger.Trace($"{method} request {blockHash}, result: trace");
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
@@ -302,13 +275,36 @@ public class DebugRpcModule(
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
         IReadOnlyCollection<GethLikeTxTrace>? blockTrace = debugBridge.GetBlockTrace(block, cancellationToken, options);
-        GethLikeTxTrace? transactionTrace = blockTrace?.ElementAtOrDefault(txIndex);
+
+        // Not disposing blockTrace: GethLikeTxTraceCollection.Dispose() disposes every item,
+        // including the one we return. The collection holds no pooled or unmanaged resource of
+        // its own, so abandoning it leaks nothing.
+        GethLikeTxTrace? transactionTrace = blockTrace is null ? null : SelectTraceDisposingTheRest(blockTrace, txIndex);
+
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transaction index {txIndex}", ErrorCodes.ResourceNotFound);
         }
 
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
+    }
+
+    private static GethLikeTxTrace? SelectTraceDisposingTheRest(IReadOnlyCollection<GethLikeTxTrace> blockTrace, int txIndex)
+    {
+        GethLikeTxTrace? selected = null;
+        int index = 0;
+        foreach (GethLikeTxTrace trace in blockTrace)
+        {
+            if (index++ == txIndex)
+            {
+                selected = trace;
+                continue;
+            }
+
+            trace.Dispose();
+        }
+
+        return selected;
     }
 
     public async Task<ResultWrapper<bool>> debug_migrateReceipts(ulong from, ulong to) =>
@@ -543,7 +539,7 @@ public class DebugRpcModule(
         RlpBehaviors behavior =
             (specProvider.GetReceiptSpec(receipts[0].BlockNumber).IsEip658Enabled ?
                 RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
-        IRlpDecoder<TxReceipt> receiptDecoder = Rlp.GetDecoder<TxReceipt>()!;
+        IRlpDecoder<TxReceipt> receiptDecoder = Rlp.GetDecoderOrThrow<TxReceipt>();
 
         ArrayPoolList<ArrayPoolList<byte>> encoded = new(receipts.Length);
         try
@@ -602,7 +598,7 @@ public class DebugRpcModule(
         Block? block = debugBridge.GetBlock(blockParameter);
         return block is null
             ? ResultWrapper<ArrayPoolList<byte>>.Fail($"Block {blockParameter} was not found", ErrorCodes.ResourceNotFound)
-            : ResultWrapper<ArrayPoolList<byte>>.Success(Rlp.GetDecoder<BlockHeader>()!.EncodeToArrayPoolList(block.Header));
+            : ResultWrapper<ArrayPoolList<byte>>.Success(Rlp.GetDecoderOrThrow<BlockHeader>().EncodeToArrayPoolList(block.Header));
     }
 
     public Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage() => ResultWrapper<SyncReportSummary>.Success(debugBridge.GetCurrentSyncStage());

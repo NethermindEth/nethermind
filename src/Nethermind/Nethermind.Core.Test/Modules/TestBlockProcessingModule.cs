@@ -27,7 +27,7 @@ public class TestBlockProcessingModule : Module
 
             .AddSingleton<IBlockProductionPolicy, BlockProductionPolicy>()
             .AddSingleton<IBlockProducerFactory, AutoBlockProducerFactory<TestBlockProducer>>()
-            .AddSingleton<IBlockProducer, IBlockProducerFactory>((factory) => factory.InitBlockProducer())
+            .AddSingleton<IBlockProducer, IBlockProducerFactory>((factory) => factory.InitBlockProducer()!)
 
             // Something else entirely. Just some wrapper over things.
             .AddSingleton<IManualBlockProductionTrigger, BuildBlocksWhenRequested>()

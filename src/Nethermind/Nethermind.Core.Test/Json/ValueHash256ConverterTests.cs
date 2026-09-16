@@ -28,7 +28,11 @@ public class ValueHash256ConverterTests
         string json = JsonSerializer.Serialize(hash, _options);
         ValueHash256 deserialized = JsonSerializer.Deserialize<ValueHash256>(json, _options);
 
-        Assert.That(deserialized, Is.EqualTo(hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json, Is.EqualTo("\"" + ValidHex + "\""));
+            Assert.That(deserialized, Is.EqualTo(hash));
+        }
     }
 
     [TestCase("\"0x01\"", false, TestName = "Rejects_one_byte_hex_at_root")]
