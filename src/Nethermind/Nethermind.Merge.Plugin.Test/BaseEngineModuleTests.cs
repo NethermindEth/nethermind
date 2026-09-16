@@ -224,7 +224,6 @@ public abstract partial class BaseEngineModuleTests
 
         public MergeTestBlockchain(IMergeConfig? mergeConfig = null)
         {
-            // 30s is too tight under CI load; keep this above the block-processing timeout so tests observe SYNCING.
             TestTimeout = 90_000;
             MergeConfig = mergeConfig ?? new MergeConfig();
             MergeConfig.TerminalTotalDifficulty ??= "0";
