@@ -10,7 +10,7 @@ using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
-using RocksDbSharp;
+using Nethermind.RocksDbBindings;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
@@ -24,12 +24,12 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
     private volatile T[]? _cachedColumnKeys;
     private volatile int _cachedMaxOrdinal = -1;
 
-    public ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory rocksDbConfigFactory, ILogManager logManager, IReadOnlyList<T> keys, IntPtr? sharedCache = null)
+    public ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory rocksDbConfigFactory, ILogManager logManager, IReadOnlyList<T> keys, nint? sharedCache = null)
         : this(basePath, settings, dbConfig, rocksDbConfigFactory, logManager, ResolveKeys(keys), sharedCache)
     {
     }
 
-    private ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory rocksDbConfigFactory, ILogManager logManager, (IReadOnlyList<T> Keys, IList<string> ColumnNames) keyInfo, IntPtr? sharedCache)
+    private ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory rocksDbConfigFactory, ILogManager logManager, (IReadOnlyList<T> Keys, IList<string> ColumnNames) keyInfo, nint? sharedCache)
         : base(basePath, settings, dbConfig, rocksDbConfigFactory, logManager, keyInfo.ColumnNames, sharedCache: sharedCache)
     {
         foreach (T key in keyInfo.Keys)
@@ -38,16 +38,22 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         }
     }
 
+    protected override void ReleaseUnmanagedResources()
+    {
+        foreach (KeyValuePair<T, ColumnDb> column in _columnDbs)
+        {
+            column.Value.Dispose();
+        }
+
+        base.ReleaseUnmanagedResources();
+    }
+
     protected override long FetchTotalPropertyValue(string propertyName)
     {
         long total = 0;
         foreach (KeyValuePair<T, ColumnDb> kv in _columnDbs)
         {
-            long value = long.TryParse(_db.GetProperty(propertyName, kv.Value._columnFamily), out long parsedValue)
-                ? parsedValue
-                : 0;
-
-            total += value;
+            total += _db.TryGetIntProperty(propertyName, kv.Value._columnFamily, out ulong value) ? (long)value : 0;
         }
 
         return total;
@@ -98,7 +104,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         return (resolvedKeys, columnNames);
     }
 
-    protected override void BuildOptions<TOptions>(IRocksDbConfig dbConfig, Options<TOptions> options, IntPtr? sharedCache, IMergeOperator? mergeOperator)
+    protected override void BuildOptions<TOptions>(IRocksDbConfig dbConfig, Options<TOptions> options, nint? sharedCache, IMergeOperator? mergeOperator)
     {
         base.BuildOptions(dbConfig, options, sharedCache, mergeOperator);
         options.SetCreateMissingColumnFamilies();
@@ -114,11 +120,9 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
     protected override void ApplyOptions(IDictionary<string, string> options)
     {
-        string[] keys = options.Select<KeyValuePair<string, string>, string>(static e => e.Key).ToArray();
-        string[] values = options.Select<KeyValuePair<string, string>, string>(static e => e.Value).ToArray();
         foreach (KeyValuePair<T, ColumnDb> cols in _columnDbs)
         {
-            _rocksDbNative.rocksdb_set_options_cf(_db.Handle, cols.Value._columnFamily.Handle, keys.Length, keys, values);
+            _db.SetOptions(cols.Value._columnFamily, options);
         }
         base.ApplyOptions(options);
     }
@@ -144,6 +148,8 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         public void Clear() => _writeBatch.WriteBatch.Clear();
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => _writeBatch.WriteBatch.Set(key, value, _column._columnFamily, flags);
+
+        public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => _writeBatch.WriteBatch.Set(key, value, _column._columnFamily, flags);
 
         public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => _writeBatch.WriteBatch.Merge(key, value, _column._columnFamily, flags);
     }
@@ -172,16 +178,15 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             _columnsDb = columnsDb;
             _snapshot = snapshot;
 
-            // Create two shared ReadOptions for all column readers instead of 2 per reader.
-            // ReadOptions in RocksDbSharp has a finalizer but no IDisposable — creating many
-            // short-lived instances causes Gen1/Gen2 GC pressure from finalizer queue buildup.
+            // Create two shared ReadOptions for all column readers instead of 2 per reader —
+            // creating many short-lived instances costs a native handle each and, when one is left
+            // to its finalizer, Gen1/Gen2 GC pressure from finalizer queue buildup.
             _sharedReadOptions = CreateReadOptions(columnsDb, snapshot);
             _sharedCacheMissReadOptions = CreateReadOptions(columnsDb, snapshot);
             _sharedCacheMissReadOptions.SetFillCache(false);
 
             // Single shared delegate for GetViewBetween — avoids per-reader closure allocation.
-            // Note: each GetViewBetween call still creates a new ReadOptions with a finalizer;
-            // that is pre-existing behavior not addressed by this PR.
+            // Each call still creates its own ReadOptions, disposed by the returned view.
             Func<ReadOptions> readOptionsFactory = () => CreateReadOptions(columnsDb, snapshot);
             // Shared by all column iterator managers; the ReadOptions it returns is created lazily
             // on the first HintReadAhead read, so snapshots that never iterate allocate nothing extra.
@@ -232,11 +237,11 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
                 {
                     T k = keys[i];
                     int ordinal = EnumToInt(k);
-                    ColumnFamilyHandle columnFamily = columnsDb._columnDbs[k]._columnFamily;
+                    IColumnFamilyHandle columnFamily = columnsDb._columnDbs[k]._columnFamily;
                     // Internally lazy — until a HintReadAhead read arrives this is just an object allocation.
-                    IteratorManager? iteratorManager = readAheadOptionsFactory is null
+                    DisposableLazy<IteratorManager>? iteratorManager = readAheadOptionsFactory is null
                         ? null
-                        : new IteratorManager(columnsDb._db, columnFamily, readAheadOptionsFactory, sequentialKeys: true);
+                        : new(() => new IteratorManager(columnsDb._db, columnFamily, readAheadOptionsFactory()) { SequentialKeys = true });
                     readers[ordinal] = new RocksDbReader(
                         columnsDb,
                         _sharedReadOptions,
@@ -262,7 +267,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         /// Lazily creates the snapshot-bound <see cref="ReadOptions"/> shared by all column iterator managers.
         /// </summary>
         /// <remarks>
-        /// Unlike <see cref="DbOnTheRocks._readAheadReadOptions"/> this must not be tailing: tailing iterators
+        /// These iterators must not be tailing: tailing iterators
         /// ignore the snapshot and would observe writes made after it.
         /// </remarks>
         private ReadOptions GetOrCreateReadAheadReadOptions()
@@ -271,15 +276,15 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             if (options is not null) return options;
 
             ReadOptions created = CreateReadOptions(_columnsDb, _snapshot);
-            if (_columnsDb._readAheadSize > 0)
+            if (_columnsDb.ReadAheadSize > 0)
             {
-                created.SetReadaheadSize(_columnsDb._readAheadSize);
+                created.SetReadaheadSize(_columnsDb.ReadAheadSize);
             }
 
             options = Interlocked.CompareExchange(ref _readAheadReadOptions, created, null);
             if (options is not null)
             {
-                RocksDbReader.DestroyReadOptions(created);
+                created.Dispose();
                 return options;
             }
 
@@ -310,13 +315,9 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             }
 
             // Explicitly destroy native ReadOptions handles to prevent finalizer queue buildup.
-            // GC.SuppressFinalize prevents the finalizer from running on already-destroyed handles.
-            RocksDbReader.DestroyReadOptions(_sharedReadOptions);
-            RocksDbReader.DestroyReadOptions(_sharedCacheMissReadOptions);
-            if (Interlocked.Exchange(ref _readAheadReadOptions, null) is { } readAheadOptions)
-            {
-                RocksDbReader.DestroyReadOptions(readAheadOptions);
-            }
+            _sharedReadOptions.Dispose();
+            _sharedCacheMissReadOptions.Dispose();
+            Interlocked.Exchange(ref _readAheadReadOptions, null)?.Dispose();
 
             _snapshot.Dispose();
         }

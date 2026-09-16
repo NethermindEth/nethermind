@@ -44,7 +44,7 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig) : INethermindP
                         inner,
                         ctx.ResolveKeyed<IDb>(DbName),
                         ctx.Resolve<IBlockFinder>(),
-                        ctx.Resolve<IReceiptFinder>(),
+                        ctx.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey),
                         ctx.Resolve<ITraceSerializer<ParityLikeTxTrace>>(),
                         ctx.Resolve<IJsonRpcConfig>(),
                         ctx.Resolve<ILogManager>(),

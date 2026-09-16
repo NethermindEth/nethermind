@@ -1,9 +1,8 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2025-2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -48,10 +47,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         StorageTrieStoreAdapter storageTrieAdapter = new(bundle, concurrencyQuota, _addressHash);
         StorageTrieStoreWarmerAdapter warmerStorageTrieAdapter = new(bundle, _addressHash);
 
-        _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager)
-        {
-            RootHash = storageRoot
-        };
+        _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager);
 
         // Set the rootref manually. Cut the call to find nodes by about 1/4th.
         _warmupStorageTree = new StorageTree(warmerStorageTrieAdapter, logManager);
@@ -65,31 +61,28 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     internal bool IsDisposed => _scope.IsDisposed;
 
-    public byte[] Get(in UInt256 index)
+    public void Get(in UInt256 index, out UInt256 value)
     {
-        byte[]? value = _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx);
-        if (value is null || value.Length == 0)
-        {
-            value = StorageTree.ZeroBytes;
-        }
+        _bundle.GetSlot(_address, index, _selfDestructKnownStateIdx, out UInt256? slotValue);
+        value = slotValue.GetValueOrDefault();
 
-        if (_config.VerifyWithTrie)
+        // A trie-less (history-backed) scope has no storage trie to verify against — the reader throws on trie-node
+        // access, and a historical value verified against the current trie would be wrong anyway.
+        if (_config.VerifyWithTrie && !_scope.Trieless)
         {
-            byte[] treeValue = _tree.Get(index);
-            if (!Bytes.AreEqual(treeValue, value))
+            _tree.Get(in index, out UInt256 treeValue);
+            if (treeValue != value)
             {
-                throw new TrieException($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {treeValue?.ToHexString()} vs Flat: {value?.ToHexString()}. Self destruct it {_selfDestructKnownStateIdx}");
+                throw new TrieException($"Get slot got wrong value. Address {_address}, {_tree.RootHash}, {index}. Tree: {treeValue} vs Flat: {value}. Self destruct it {_selfDestructKnownStateIdx}");
             }
         }
-
-        return value!;
     }
 
     // Reads do not warm the trie: most reads come through the prewarmer, and read-only slots
     // (~30-40% of accesses per @weiihann's analysis) never need their trie path warmed because
     // they don't trigger commit-time tree updates. Warm-up is driven from HintSet on the write
     // path instead.
-    public void HintSet(in UInt256 index, byte[]? value) => WarmUpSlot(index);
+    public void HintSet(in UInt256 index) => WarmUpSlot(index);
 
     private void WarmUpSlot(UInt256 index)
     {
@@ -138,11 +131,11 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         }
     }
 
-    private void Set(UInt256 slot, byte[] value) => _bundle.SetChangedSlot(_address, slot, value);
+    private void Set(in UInt256 slot, in UInt256 value) => _bundle.SetChangedSlot(_address, slot, value);
 
-    public void SelfDestruct()
+    internal void ClearStorage()
     {
-        _bundle.Clear(_address, _addressHash);
+        _bundle.ClearStorage(_address, _addressHash);
         _selfDestructKnownStateIdx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
         _tree.RootHash = Keccak.EmptyTreeHash;
     }
@@ -151,35 +144,41 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
     public IWorldStateScopeProvider.IStorageWriteBatch CreateWriteBatch(int estimatedEntries, Action<Address, Hash256> onRootUpdated)
     {
-        TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch = new(
-                estimatedEntries,
-                _tree,
-                onRootUpdated,
-                _address,
-                commit: true);
+        // A trie-less (history-backed) scope can't maintain the storage trie (its persistence reader throws on
+        // trie-node access), so it writes only the flat overlay. Pick the strategy once here.
+        if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
 
-        return new StorageTreeBulkWriteBatch(
-            storageTreeBulkWriteBatch,
-            this
-        );
+        TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, _tree, onRootUpdated, _address, commit: true);
+        return new StorageTreeBulkWriteBatch(trieBatch, this);
     }
 
-    private class StorageTreeBulkWriteBatch(
-        TrieStoreScopeProvider.StorageTreeBulkWriteBatch storageTreeBulkWriteBatch,
+    // Normal scope: maintain the storage trie (for the root) and mirror values into the flat overlay.
+    private sealed class StorageTreeBulkWriteBatch(
+        TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch,
         FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
     {
-        public void Set(in UInt256 index, byte[] value)
+        public void Set(in UInt256 index, in UInt256 value)
         {
-            storageTreeBulkWriteBatch.Set(in index, value);
+            trieBatch.Set(in index, value);
             storageTree.Set(index, value);
         }
 
         public void Clear()
         {
-            storageTreeBulkWriteBatch.Clear();
-            storageTree.SelfDestruct();
+            trieBatch.Clear();
+            storageTree.ClearStorage();
         }
 
-        public void Dispose() => storageTreeBulkWriteBatch.Dispose();
+        public void Dispose() => trieBatch.Dispose();
+    }
+
+    // Trie-less scope: only the flat overlay is written; there is no storage trie to maintain.
+    private sealed class FlatOverlayStorageWriteBatch(FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        public void Set(in UInt256 index, in UInt256 value) => storageTree.Set(index, value);
+
+        public void Clear() => storageTree.ClearStorage();
+
+        public void Dispose() { }
     }
 }

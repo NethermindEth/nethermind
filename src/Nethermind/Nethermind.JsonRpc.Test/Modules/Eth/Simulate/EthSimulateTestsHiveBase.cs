@@ -79,11 +79,12 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
     public async Task TestsimulateHive(string name, bool shouldSucceed, string data)
     {
         EthereumJsonSerializer serializer = new();
-        SimulatePayload<TransactionForRpc>? payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data);
+        SimulatePayload<TransactionForRpc> payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data)
+            ?? throw new InvalidOperationException("Hive simulate payload deserialized as null.");
         using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain(Osaka.Instance);
         Console.WriteLine($"current test: {name}");
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
+            chain.EthRpcModule.eth_simulateV1(payload, BlockParameter.Latest);
 
         Console.WriteLine();
         if (shouldSucceed)
@@ -128,7 +129,8 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
                               }
                             """;
         EthereumJsonSerializer serializer = new();
-        SimulatePayload<TransactionForRpc>? payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data);
+        SimulatePayload<TransactionForRpc> payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data)
+            ?? throw new InvalidOperationException("Simulate payload deserialized as null.");
 
         using TestRpcBlockchain chain = await TestRpcBlockchain
             .ForTest(new TestRpcBlockchain())
@@ -146,8 +148,11 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
         await chain.AddBlock(BuildSimpleTransaction.WithNonce(3).TestObject);
         await chain.AddBlock(BuildSimpleTransaction.WithNonce(4).TestObject, BuildSimpleTransaction.WithNonce(5).TestObject);
 
-        BlockForRpc parent = chain.EthRpcModule.eth_getBlockByNumber(new BlockParameter(blockNumber)).Data;
-        SimulateBlockResult<SimulateCallResult> simulated = chain.EthRpcModule.eth_simulateV1(payload, new BlockParameter(blockNumber)).Data[0];
+        BlockForRpc parent = chain.EthRpcModule.eth_getBlockByNumber(new BlockParameter(blockNumber)).Data
+            ?? throw new InvalidOperationException("Parent block lookup returned null.");
+        IReadOnlyList<SimulateBlockResult<SimulateCallResult>> results = chain.EthRpcModule.eth_simulateV1(payload, new BlockParameter(blockNumber)).Data
+            ?? throw new InvalidOperationException("Simulation returned null.");
+        SimulateBlockResult<SimulateCallResult> simulated = results[0];
 
         Assert.That(simulated.ParentHash, Is.EqualTo(parent.Hash!));
         Assert.That((simulated.Number - parent.Number), Is.EqualTo(1));

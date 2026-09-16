@@ -22,7 +22,18 @@ public unsafe ref struct NativeMemoryListRef<T> where T : unmanaged
     private int _capacity;
     private int _count;
 
-    public NativeMemoryListRef(int capacity, IEnumerable<T> items) : this(capacity) => AddRange(items);
+    public NativeMemoryListRef(int capacity, IEnumerable<T> items) : this(capacity)
+    {
+        try
+        {
+            AddRange(items);
+        }
+        catch
+        {
+            Dispose();
+            throw;
+        }
+    }
     public NativeMemoryListRef(int capacity, params ReadOnlySpan<T> items) : this(capacity) => AddRange(items);
     public NativeMemoryListRef(ReadOnlySpan<T> span) : this(span.Length) => AddRange(span);
 

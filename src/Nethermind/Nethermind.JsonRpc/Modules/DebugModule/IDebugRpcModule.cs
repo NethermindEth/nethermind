@@ -36,10 +36,10 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "This method lets you run an eth_call within the context of the given block execution using the final state of parent block as the base. The block can be specified either by hash or by number. It takes the same input object as a eth_call. It returns the same output as debug_traceTransaction.", IsImplemented = true, IsSharable = false)]
     ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
 
-    [JsonRpcMethod(Description = "", IsSharable = false)]
+    [JsonRpcMethod(Description = "Returns the full stack trace of the transaction at the given index of the block specified by number, tag or hash. The block that the parameter resolves to is the one traced, so a hash that is not on the canonical chain traces that block rather than the canonical one at the same height.", IsImplemented = true, IsSharable = false)]
     ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int txIndex, GethTraceOptions options = null);
 
-    [JsonRpcMethod(Description = "", IsSharable = false)]
+    [JsonRpcMethod(Description = "Returns the full stack trace of the transaction at the given index of the block with the specified hash. The block need not be on the canonical chain.", IsImplemented = true, IsSharable = false)]
     ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockHash, int txIndex, GethTraceOptions options = null);
 
     [JsonRpcMethod(Description = "Returns the full stack trace of all invoked opcodes of all transactions that were included in the block specified. The parent of the block must be present or it will fail.", IsImplemented = true, IsSharable = false)]
@@ -75,7 +75,7 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]
     ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key);
 
-    [JsonRpcMethod(Description = "Retrieves the Nethermind configuration value, e.g. JsonRpc.Enabled", IsImplemented = true, IsSharable = true)]
+    [JsonRpcMethod(Description = "Retrieves the Nethermind configuration value, e.g. JsonRpc.Enabled", IsImplemented = true, IsSharable = true, ResultCanBeNull = true)]
     ResultWrapper<object> debug_getConfigValue(string category, string name);
 
     [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false)]
@@ -102,7 +102,7 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Get Raw Header format.")]
     ResultWrapper<ArrayPoolList<byte>> debug_getRawHeader(BlockParameter blockParameter);
 
-    [JsonRpcMethod(Description = "Get Raw Transaction format.")]
+    [JsonRpcMethod(Description = "Get Raw Transaction format.", ResultCanBeNull = true)]
     ResultWrapper<ArrayPoolList<byte>> debug_getRawTransaction(Hash256 transactionHash);
 
     [JsonRpcMethod(Description = "Retrieves Nethermind Sync Stage, With extra Metadata")]

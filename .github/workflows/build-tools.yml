@@ -25,6 +25,7 @@ jobs:
         config: [release]
         project:
           - DocGen/DocGen.slnx
+          - Bootnode/Bootnode.slnx
           - Evm/Evm.slnx
           - HiveCompare/HiveCompare.slnx
           - HiveConsensusWorkflowGenerator/HiveConsensusWorkflowGenerator.slnx
@@ -46,3 +47,8 @@ jobs:
       - name: Build ${{ matrix.project }}
         working-directory: tools
         run: dotnet build ./${{ matrix.project }} -c ${{ matrix.config }}
+
+      - name: Test Bootnode
+        if: matrix.project == 'Bootnode/Bootnode.slnx'
+        working-directory: tools
+        run: dotnet test ./Bootnode/Nethermind.Bootnode.Test/Nethermind.Bootnode.Test.csproj -c ${{ matrix.config }} --no-build

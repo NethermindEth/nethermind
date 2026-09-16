@@ -22,11 +22,17 @@ public class DebugModuleFactory(
             // Standard configuration
             // Note: Not overriding `IReceiptStorage` to null.
             .AddModule(validationBlockProcessingModules)
+            .AddModule(new TransactionTraceModule(validationBlockProcessingModules))
             .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
             .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
 
             // So the debug rpc change the adapter sometime.
-            .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>();
+            .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()
+
+            // The EIP-7928 BAL pool builds its per-worker adapters from this factory; route them through the
+            // same ChangeableTransactionProcessorAdapter so they honour the tracer's runtime Execute↔Trace swap.
+            .AddScoped<TransactionProcessorAdapterFactory, ChangeableTransactionProcessorAdapter>(
+                static changeable => changeable.ForProcessor);
 
     public IDebugRpcModule Create()
     {

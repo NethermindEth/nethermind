@@ -9,6 +9,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.PersistedSnapshots;
@@ -23,8 +24,7 @@ public static class PersistedSnapshotScanner
     /// caller owns the session lifetime — it must outlive the returned scanner and any enumerator
     /// derived from it.
     /// </summary>
-    public static PersistedSnapshotScanner<WholeReadSession, WholeReadSessionReader, NoOpPin> ForWholeRead(
-        WholeReadSession session, PersistedSnapshot snapshot) =>
+    public static WholeReadScanner ForWholeRead(WholeReadSession session, PersistedSnapshot snapshot) =>
         new(session, snapshot);
 }
 
@@ -203,14 +203,14 @@ public sealed class PersistedSnapshotScanner<TSource, TReader, TPin>(TSource sou
 
         public UInt256 Slot => new(_slot, isBigEndian: true);
 
-        public SlotValue? Value
+        public UInt256? Value
         {
             get
             {
                 if (_value.Length == 0) return null;
                 using TPin pin = _reader.PinBuffer(_value);
                 ReadOnlySpan<byte> value = new RlpReader(pin.Buffer).DecodeByteArraySpan();
-                return SlotValue.FromSpanWithoutLeadingZero(value);
+                return BaseFlatPersistence.DecodeSlotValue(value);
             }
         }
     }

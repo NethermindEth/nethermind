@@ -87,7 +87,14 @@ public abstract class ClockCacheBase<TKey>
 
         ref long accessedBitmapWord = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(HasBeenAccessedBitmap), offset);
 
-        Interlocked.Or(ref accessedBitmapWord, flags);
+        // Test first: hot entries are re-marked far more often than the clock hand clears them,
+        // and an unconditional lock-prefixed Or on a word shared by 64 entries serializes
+        // concurrent readers. A racing clear between the read and the Or loses at most one
+        // access mark — the same tolerance the eviction algorithm already has.
+        if ((Volatile.Read(ref accessedBitmapWord) & flags) != flags)
+        {
+            Interlocked.Or(ref accessedBitmapWord, flags);
+        }
     }
 
     protected void MarkAccessedNonConcurrent(int position)

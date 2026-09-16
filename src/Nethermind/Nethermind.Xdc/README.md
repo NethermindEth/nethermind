@@ -1,1233 +1,630 @@
-# XDC Module Architecture Overview
+# Nethermind.Xdc
 
-## Table of Contents
+Nethermind's implementation of the [XDC Network](https://xdc.org) — the XDPoS 2.0 consensus engine plus the
+execution, networking, storage and RPC behaviour that XDC layers on top of a standard Ethereum client.
 
-1. [Introduction](#introduction)
-2. [High-Level Architecture](#high-level-architecture)
-3. [Core Components](#core-components)
-4. [Consensus Flow](#consensus-flow)
-5. [Component Interactions](#component-interactions)
-6. [Data Structures](#data-structures)
-7. [Key Algorithms](#key-algorithms)
+Everything ships as two Autofac-based consensus plugins, selected by `sealEngineType` in the chainspec:
 
----
+| Plugin                                            | `sealEngineType` | Module                                       | Chains                                                        |
+| ------------------------------------------------- | ---------------- | -------------------------------------------- | ------------------------------------------------------------- |
+| [`XdcPlugin`](XdcPlugin.cs)                        | `XDPoS`          | [`XdcModule`](XdcModule.cs)                   | XDC mainnet (`xdc.json`), Apothem testnet (`xdc-testnet.json`) |
+| [`XdcSubnetPlugin`](XdcSubnetPlugin.cs)            | `XDPoSSubnet`    | [`XdcSubnetModule`](XdcSubnetModule.cs)       | XDC subnets                                                    |
 
-## Introduction
+`XdcSubnetModule` derives from `XdcModule` and only overrides what differs, so the two share nearly the whole
+stack (see [Subnets](#subnets)).
 
-The Nethermind XDC module implements a Byzantine Fault Tolerant (BFT) consensus mechanism based on the HotStuff protocol. It extends Ethereum's blockchain architecture with additional consensus features including:
+## Table of contents
 
-- **HotStuff-based consensus** with 3-chain finalization
-- **Quorum Certificates (QC)** for block validation
-- **Timeout Certificates (TC)** for liveness
-- **Epoch-based validator rotation**
-- **Round-robin leader selection**
-
----
-
-## High-Level Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         XDC CONSENSUS LAYER                         │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  ┌───────────────┐         ┌──────────────────┐                     │
-│  │  XdcHotStuff  │────────▶│ XdcBlockProducer │                     │
-│  │ (Orchestrator)│         └──────────────────┘                     │
-│  └───────┬───────┘                   │                              │
-│          │                           │                              │
-│          │                           ▼                              │
-│          │                  ┌──────────────────┐                    │
-│          │                  │   XdcSealer      │                    │
-│          │                  └──────────────────┘                    │
-│          │                                                          │
-│          ▼                                                          │
-│  ┌───────────────────────────────────────────┐                      │
-│  │     XdcConsensusContext (State)           │                      │
-│  ├───────────────────────────────────────────┤                      │
-│  │ - CurrentRound                            │                      │
-│  │ - HighestQC / LockQC                      │                      │
-│  │ - HighestTC                               │                      │
-│  │ - HighestCommitBlock                      │                      │
-│  └───────────────┬───────────────────────────┘                      │
-│                  │                                                  │
-│                  ▼                                                  │
-│  ┌──────────────────────────────────────────┐                       │
-│  │        Consensus Managers                │                       │
-│  ├──────────────────────────────────────────┤                       │
-│  │ • QuorumCertificateManager               │                       │
-│  │ • VotesManager                           │                       │
-│  │ • TimeoutCertificateManager              │                       │
-│  │ • EpochSwitchManager                     │                       │
-│  │ • SnapshotManager                        │                       │
-│  └──────────────────────────────────────────┘                       │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                      BLOCKCHAIN LAYER                               │
-├─────────────────────────────────────────────────────────────────────┤
-│  XdcBlockTree  │  XdcHeaderStore  │  XdcBlockStore                  │
-└─────────────────────────────────────────────────────────────────────┘
-```
+1. [Module layout](#module-layout)
+2. [Consensus — XDPoS 2.0](#consensus--xdpos-20)
+3. [Epochs, snapshots and masternodes](#epochs-snapshots-and-masternodes)
+4. [Penalties and rewards](#penalties-and-rewards)
+5. [Block and header format](#block-and-header-format)
+6. [Networking](#networking)
+7. [Synchronisation](#synchronisation)
+8. [Execution differences](#execution-differences)
+9. [Storage](#storage)
+10. [JSON-RPC](#json-rpc)
+11. [Configuration](#configuration)
+12. [Subnets](#subnets)
+13. [Testing](#testing)
+14. [References](#references)
 
 ---
 
-## Core Components
-
-### 1. XdcHotStuff (Consensus Orchestrator)
-
-**Purpose**: Main consensus loop coordinator
-
-**Key Responsibilities**:
-
-- Round management
-- Leader election
-- Block proposal triggering
-- Vote coordination
-- Timeout handling
-
-**Key Methods**:
-
-```csharp
-Task RunRoundChecks(CancellationToken ct)
-Task BuildAndProposeBlock(...)
-Task CommitCertificateAndVote(...)
-Address GetLeaderAddress(...)
-```
-
-**State Machine**:
+## Module layout
 
 ```
-     ┌──────────────────────┐
-     │   Initialize Round   │
-     └──────────┬───────────┘
-                │
-                ▼
-     ┌──────────────────────┐
-     │  Am I the leader?    │
-     └──────┬────────┬──────┘
-            │        │
-         Yes│        │No
-            │        │
-            ▼        ▼
-     ┌──────────┐  ┌──────────────┐
-     │  Propose │  │  Wait & Vote │
-     │  Block   │  │   on Block   │
-     └──────────┘  └──────────────┘
-            │              │
-            └──────┬───────┘
-                   ▼
-     ┌──────────────────────┐
-     │  QC Threshold Met?   │
-     └──────┬───────────────┘
-            │
-            ▼
-     ┌──────────────────────┐
-     │   Advance Round      │
-     └──────────────────────┘
+Nethermind.Xdc/
+├── Contracts/     System contract wrappers (masternode voting, minted record)
+├── Discovery/     Discv4 overrides — XDC has no ENR request/response
+├── Errors/        Consensus-specific exception types
+├── P2P/           xdpos2 (eth/100) subprotocol: vote, timeout, syncInfo
+├── RLP/           Header, certificate, vote, timeout and snapshot encoders
+├── RPC/           XDPoS_* module and eth_* extensions
+├── Spec/          Chainspec engine parameters, release spec, spec provider
+├── TxPool/        Special-transaction filters, gossip policy, comparer
+├── Types/         Consensus value types (QC, TC, Vote, Snapshot, …)
+└── *.cs           Consensus orchestration, managers, validators, producers
+```
+
+The consensus core is roughly:
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                        XDPoS 2.0 CONSENSUS                           │
+│                                                                      │
+│  XdcHotStuff  ── round driver: leader check, propose, vote, timeout   │
+│      │                                                               │
+│      ├── XdcBlockProducer ── XdcSealer ── XdcBlockSuggester           │
+│      │                                                               │
+│      ▼                                                               │
+│  XdcConsensusContext ── CurrentRound, HighestQC, LockQC,              │
+│      │                  HighestTC, HighestCommitBlock                 │
+│      │                                                               │
+│      ├── VotesManager                ── collect votes → build QC      │
+│      ├── QuorumCertificateManager    ── verify/commit QC, 3-chain     │
+│      ├── TimeoutCertificateManager   ── timeouts → TC, liveness       │
+│      ├── SyncInfoManager             ── QC/TC catch-up between peers  │
+│      ├── EpochSwitchManager          ── epoch boundaries, committees  │
+│      ├── SnapshotManager             ── candidate sets at gap blocks  │
+│      ├── MasternodesCalculator       ── candidates − penalties        │
+│      └── PenaltyHandler              ── liveness/penalty accounting   │
+│                                                                      │
+├──────────────────────────────────────────────────────────────────────┤
+│  XdcBlockTree │ XdcHeaderStore │ XdcBlockStore │ XdcSnapshots DB      │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-### 2. XdcConsensusContext (State Manager)
+## Consensus — XDPoS 2.0
 
-**Purpose**: Central state container for consensus
+XDPoS 2.0 is a HotStuff-derived BFT protocol. Blocks carry a round number and a quorum certificate for their
+parent; a block is finalised once three consecutive rounds are chained on top of it.
 
-**State Variables**:
+### Round lifecycle
 
-```csharp
-ulong CurrentRound              // Current consensus round
-QuorumCertificate HighestQC     // Highest known QC
-QuorumCertificate LockQC        // Locked QC (safety)
-TimeoutCertificate HighestTC    // Highest timeout certificate
-BlockRoundInfo HighestCommitBlock // Finalized block
-int TimeoutCounter              // Consecutive timeouts
-DateTime RoundStarted           // Round start time
-```
-
-**Events**:
-
-- `NewRoundSetEvent` - Triggered when advancing to new round
-
----
-
-### 3. QuorumCertificateManager
-
-**Purpose**: QC verification and commitment
-
-**Key Operations**:
+[`XdcHotStuff`](XdcHotStuff.cs) implements `IBlockProducerRunner` and drives one task per round. A round is
+(re)started by a new head block, by a round change, or at startup, and only while the node is synced or
+bootstrapping a fresh chain.
 
 ```
-┌─────────────────────────────────────────┐
-│     QuorumCertificate Lifecycle         │
-├─────────────────────────────────────────┤
-│                                         │
-│  1. Receive QC from block header        │
-│           │                             │
-│           ▼                             │
-│  2. VerifyCertificate()                 │
-│     ├─ Check signature threshold        │
-│     ├─ Verify each signature            │
-│     ├─ Validate gap number              │
-│     └─ Match block info                 │
-│           │                             │
-│           ▼                             │
-│  3. CommitCertificate()                 │
-│     ├─ Update HighestQC                 │
-│     ├─ Update LockQC                    │
-│     ├─ Check 3-chain rule               │
-│     └─ Finalize grandparent             │
-│           │                             │
-│           ▼                             │
-│  4. Advance Round                       │
-│                                         │
-└─────────────────────────────────────────┘
+SetNewRound(N)
+   │
+   ├─ Vote on current head (if it is a V2 block and we are a masternode)
+   │     └─ VotesManager.VerifyVotingRules → CastVote → broadcast
+   │
+   └─ TryPropose
+         ├─ Parent = block referenced by HighestQC (not necessarily head)
+         ├─ Leader for round N == our signer address?
+         ├─ State for that parent available (process the fork block if not)?
+         ├─ Wait until parent.Timestamp + MinePeriod
+         └─ BuildAndProposeBlock → XdcBlockProducer → XdcSealer → block tree
 ```
 
-**3-Chain Finalization Rule**:
+The node proposes at most once and votes at most once per round.
+
+### Leader selection
+
+Round-robin over the epoch's masternode set ([`XdcHotStuff.GetLeaderAddress`](XdcHotStuff.cs)):
 
 ```
-Block N-2 (Finalized)  ←─  Block N-1  ←─  Block N (Current)
-    QC(N-2)                 QC(N-1)         QC(N)
-
-Finalization requires:
-- 3 consecutive blocks
-- 3 consecutive rounds (no gaps)
-- Valid QC chain
+leaderIndex = (round % EpochLength) % masternodes.Length
 ```
 
----
+On an epoch-switch round the *next* epoch's masternodes are computed first. The same formula is re-checked in
+[`XdcSealValidator.ValidateParams`](XdcSealValidator.cs), which rejects a block whose recovered author is not
+the expected leader.
 
-### 4. VotesManager
+### Voting rules
 
-**Purpose**: Vote collection and QC assembly
+[`VotesManager.VerifyVotingRules`](VotesManager.cs) admits a vote only when all hold:
 
-**Vote Processing Flow**:
+1. no vote has been cast at a round ≥ `CurrentRound` (no double voting);
+2. the block's round equals `CurrentRound`;
+3. `LockQC` is unset, **or** the block's parent QC round is above `LockQC`'s round, **or** the block descends
+   from the locked block (ancestry walk).
 
-```
-┌────────────────────────────────────────────────────┐
-│              Vote Processing Pipeline              │
-├────────────────────────────────────────────────────┤
-│                                                    │
-│  OnReceiveVote(vote)                               │
-│      │                                             │
-│      ├─▶ FilterVote()                              │
-│      │    ├─ Check round                           │
-│      │    ├─ Verify signature                      │
-│      │    └─ Check if signer in committee          │
-│      │                                             │
-│      ├─▶ Add to XdcPool<Vote>                      │
-│      │                                             │
-│      ├─▶ Check threshold                           │
-│      │    (votes >= masternodes * CertificateThreshold)   │
-│      │                                             │
-│      └─▶ OnVotePoolThresholdReached()              │
-│           │                                        │
-│           ├─▶ Get valid signatures                 │
-│           ├─▶ Create QuorumCertificate             │
-│           └─▶ CommitCertificate()                  │
-│                                                    │
-└────────────────────────────────────────────────────┘
-```
+Votes received from peers are additionally dropped when they are too far from the head block or the current
+round.
 
-**Voting Rules** (from `VerifyVotingRules`):
+### Quorum certificates
 
 ```
-Can vote if ALL of:
-1. CurrentRound > HighestVotedRound (no double voting)
-2. Block.Round == CurrentRound (right round)
-3. LockQC is null OR
-   - Block.ParentQC.Round > LockQC.Round OR
-   - Block extends from LockQC ancestor
+Vote (BlockRoundInfo + GapNumber, signed)
+   │  signature recovered against the gap snapshot's candidate set
+   ▼
+Vote pool, keyed by (round, block hash)
+   │  count ≥ masternodes × CertificateThreshold
+   │  signatures re-checked against the epoch's masternodes, deduplicated by signer
+   ▼
+QuorumCertificate { ProposedBlockInfo, Signature[], GapNumber }
+   │
+   ▼
+QuorumCertificateManager.CommitCertificate
 ```
 
----
+Votes may arrive before the block they refer to; they are buffered and drained once the block shows up. Vote
+pools are pruned to a short window of recent rounds.
 
-### 5. EpochSwitchManager
+`CommitCertificate` ([`QuorumCertificateManager`](QuorumCertificateManager.cs)) then:
 
-**Purpose**: Manage validator set transitions at epoch boundaries
+1. raises `HighestQC` if the QC's round is higher;
+2. raises `LockQC` to the proposed block's *parent* QC;
+3. applies the 3-chain rule and, on success, updates `HighestCommitBlock` and calls
+   `IBlockTree.ForkChoiceUpdated`;
+4. advances the round to `qc.Round + 1`.
 
-**Epoch Structure**:
+It is also invoked for every processed header as the main chain advances, which is how a syncing node rebuilds
+consensus state from the chain alone.
 
-```
-Epoch N                    Epoch N+1
-├────────────────────┤     ├────────────────────┤
-│                    │     │                    │
-│  Regular Blocks    │     │  Regular Blocks    │
-│  (EpochLength-Gap) │     │                    │
-│                    │     │                    │
-├────────────────────┤     │                    │
-│                    │     │                    │
-│  Gap (Snapshot)    │────▶│  New Validators    │
-│  Block N*EpochLen  │     │  Applied Here      │
-│  -Gap              │     │                    │
-│                    │     │                    │
-└────────────────────┘     └────────────────────┘
-```
+Certificate verification requires `ceil(masternodes × CertificateThreshold)` distinct valid signatures over the
+vote hash, and that the QC's `GapNumber` matches the gap block implied by the epoch switch.
 
-**Epoch Switch Detection**:
-
-```csharp
-IsEpochSwitchAtBlock(header):
-  - Is it the switch block? → TRUE
-  - parentRound < epochStartRound? → TRUE
-  - Otherwise → FALSE
-
-epochStartRound = round - (round % EpochLength)
-```
-
----
-
-### 6. SnapshotManager
-
-**Purpose**: Store and retrieve validator snapshots
-
-**Snapshot Data**:
-
-```csharp
-class Snapshot {
-    long BlockNumber           // Snapshot block
-    Hash256 HeaderHash         // Block hash
-    Address[] NextEpochCandidates // Validator candidates
-}
-```
-
-**Snapshot Storage**:
-
-```
-Block Number           Snapshot                    Usage
-─────────────────────────────────────────────────────────
-0 (Genesis)    →  GenesisMasterNodes      →  Epoch 0-899
-900-Gap=850    →  Candidates from block   →  Epoch 900-1799
-1800-Gap=1750  →  Candidates from block   →  Epoch 1800-2699
-...
-```
-
----
-
-### 7. TimeoutCertificateManager
-
-**Purpose**: Handle timeouts and ensure liveness
-
-**Timeout Flow**:
-
-```
-Node N                      Pool                   Threshold Met
-   │                         │                          │
-   │  OnCountdownTimer()     │                          │
-   ├────────────────────────▶│                          │
-   │  SendTimeout(round)     │                          │
-   │                         │                          │
-   │                         │  Collect timeouts        │
-   │                         │  for same round          │
-   │                         │                          │
-   │                         │  Count >= threshold?     │
-   │                         ├─────────────────────────▶│
-   │                         │                          │
-   │                         │              Create TimeoutCertificate
-   │                         │                          │
-   │◀────────────────────────┴──────────────────────────┤
-   │        Broadcast TC & SyncInfo                     │
-   │                                                    │
-   │  ProcessTimeoutCertificate()                       │
-   ├─ Update HighestTC                                  │
-   ├─ Advance to TC.Round + 1                           │
-   └─ Reset timeout counter                             │
-```
-
----
-
-## Consensus Flow
-
-### Complete Round Lifecycle
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│                    ROUND N LIFECYCLE                         │
-└──────────────────────────────────────────────────────────────┘
-
-Phase 1: INITIALIZATION
-────────────────────────
-┌─────────────────┐
-│ SetNewRound(N)  │
-│ - Reset timeout │
-│ - Clear state   │
-└────────┬────────┘
-         │
-         ▼
-
-Phase 2: LEADER SELECTION
-──────────────────────────
-┌──────────────────────────────┐
-│ leaderIndex =                │
-│   (round % epoch) % nodeCount│
-└──────────┬───────────────────┘
-           │
-           ▼
-    ┌──────────────┐
-    │  Am I leader?│
-    └──┬────────┬──┘
-       │        │
-    YES│        │NO
-       │        │
-       ▼        ▼
-
-Phase 3a: BLOCK PROPOSAL (Leader)
-──────────────────────────────────
-┌────────────────────┐       Phase 3b: VOTING (Non-leader)
-│ BuildBlock()       │       ────────────────────────────
-│ - With HighestQC   │       ┌──────────────────────┐
-│ - Seal & Sign      │       │ Receive Block        │
-└─────────┬──────────┘       │ Verify:              │
-          │                  │  - QC valid          │
-          ▼                  │  - Round correct     │
-┌────────────────────┐       │  - Voting rules OK   │
-│ Broadcast Block    │       └──────────┬───────────┘
-└─────────┬──────────┘                  │
-          │                             ▼
-          │                  ┌──────────────────────┐
-          │                  │ CastVote()           │
-          │                  │ - Sign vote          │
-          │                  │ - Broadcast          │
-          │                  └──────────┬───────────┘
-          │                             │
-          └─────────────┬───────────────┘
-                        │
-                        ▼
-
-Phase 4: QC AGGREGATION
-────────────────────────
-┌────────────────────────────────┐
-│ Collect Votes in Pool          │
-│ Wait for threshold:            │
-│  votes >= nodes * CertificateThreshold│
-└──────────────┬─────────────────┘
-               │
-               ▼
-┌────────────────────────────────┐
-│ Create QuorumCertificate       │
-│ - Aggregate signatures         │
-│ - Verify all valid             │
-└──────────────┬─────────────────┘
-               │
-               ▼
-
-Phase 5: QC COMMITMENT
-───────────────────────
-┌────────────────────────────────┐
-│ CommitCertificate()            │
-│ 1. Update HighestQC            │
-│ 2. Check 3-chain rule          │
-│ 3. Finalize grandparent?       │
-│ 4. Update LockQC               │
-└──────────────┬─────────────────┘
-               │
-               ▼
-┌────────────────────────────────┐
-│ SetNewRound(N+1)               │
-└────────────────────────────────┘
-
-Alternative: TIMEOUT PATH
-─────────────────────────
-If no QC formed:
-  ┌─────────────────┐
-  │ Timer expires   │
-  └────────┬────────┘
-           │
-           ▼
-  ┌─────────────────┐
-  │ SendTimeout()   │
-  └────────┬────────┘
-           │
-           ▼
-  ┌─────────────────┐
-  │ Collect TCs     │
-  │ Form TC         │
-  └────────┬────────┘
-           │
-           ▼
-  ┌─────────────────┐
-  │ SetNewRound(N+1)│
-  └─────────────────┘
-```
-
----
-
-## Component Interactions
-
-### Block Proposal & Validation Pipeline
-
-```
-┌──────────────┐
-│  XdcHotStuff │  Orchestrator triggers
-└──────┬───────┘
-       │
-       │ 1. BuildAndProposeBlock()
-       ▼
-┌──────────────────┐
-│ XdcBlockProducer │  Creates block structure
-└──────┬───────────┘
-       │
-       │ 2. PrepareBlockHeader()
-       │    ├─ Add QuorumCert
-       │    ├─ Set round number
-       │    └─ Set validators (if epoch switch)
-       ▼
-┌──────────────────┐
-│   XdcSealer      │  Signs block
-└──────┬───────────┘
-       │
-       │ 3. SealBlock()
-       │    └─ Create ECDSA signature
-       ▼
-┌──────────────────┐
-│  XdcBlockTree    │  Adds to chain
-└──────┬───────────┘
-       │
-       │ 4. SuggestBlock()
-       │    └─ Validate against finalized block
-       ▼
-┌──────────────────┐
-│XdcHeaderValidator│ Validates header
-└──────┬───────────┘
-       │
-       │ 5. Validate()
-       │    ├─ Check QC
-       │    ├─ Verify seal
-       │    └─ Check consensus rules
-       ▼
-┌──────────────────┐
-│ XdcSealValidator │  Validates seal & params
-└──────┬───────────┘
-       │
-       │ 6. ValidateParams()
-       │    ├─ Verify leader
-       │    ├─ Check round sequence
-       │    └─ Validate epoch data
-       ▼
-┌──────────────────┐
-│ XdcBlockProcessor│  Executes transactions
-└──────┬───────────┘
-       │
-       │ 7. Process()
-       │    └─ Apply state changes
-       ▼
-┌──────────────────┐
-│  Block Committed │
-└──────────────────┘
-```
-
----
-
-### Vote Collection & QC Formation
-
-```
-Validator Nodes           VotesManager              QCManager
-────────────────         ─────────────             ──────────
-Node 1  Node 2  Node 3
-  │       │       │
-  │  Receives Block
-  │       │       │
-  ├───────┴───────┤
-  │ CastVote()    │
-  ├──────────────▶│
-  │               │ Add to XdcPool<Vote>
-  │               ├─────────────────┐
-  │               │                 │
-  │               │ votes[round,hash].Add(vote)
-  │               │                 │
-  │               │◀────────────────┘
-  │               │
-  │               │ Check threshold
-  │               ├─────────────────┐
-  │               │                 │
-  │               │ if count >= threshold
-  │               │     │
-  │               │     ▼
-  │               │ OnVotePoolThresholdReached()
-  │               │     │
-  │               │     ├─ GetValidSignatures()
-  │               │     ├─ Create QC
-  │               │     │
-  │               │     ▼
-  │               ├────────────────▶│
-  │               │  CommitCertificate(qc)
-  │               │                 │
-  │               │                 ├─ Verify QC
-  │               │                 ├─ Update HighestQC
-  │               │                 ├─ Check 3-chain
-  │               │                 ├─ Finalize blocks
-  │               │                 └─ Advance round
-  │               │                 │
-  │               │◀────────────────┤
-  │               │  Round advanced
-  │◀──────────────┤
-  │ NewRoundEvent │
-```
-
----
-
-## Data Structures
-
-### 1. XdcBlockHeader
-
-Extended Ethereum header with consensus fields:
-
-```csharp
-XdcBlockHeader {
-    // Standard Ethereum fields
-    Hash256 ParentHash
-    Address Beneficiary
-    Hash256 StateRoot
-    long Number
-    ulong Timestamp
-    ...
-
-    // XDC-specific fields
-    byte[] Validators      // Validator addresses (epoch switch blocks)
-    byte[] Validator       // Block signer signature
-    byte[] Penalties       // Penalized validators
-
-    // Consensus data (in ExtraData)
-    ExtraFieldsV2 {
-        ulong BlockRound          // Consensus round
-        QuorumCertificate QuorumCert  // Parent block's QC
-    }
-}
-```
-
----
-
-### 2. QuorumCertificate
-
-Proof of 2f+1 votes for a block:
-
-```csharp
-QuorumCertificate {
-    BlockRoundInfo ProposedBlockInfo {
-        Hash256 Hash           // Block hash
-        ulong Round           // Block round
-        long BlockNumber      // Block height
-    }
-    Signature[] Signatures    // Aggregated signatures
-    ulong GapNumber          // Snapshot gap block number
-}
-```
-
-**QC Formation**:
-
-```
-Votes (2f+1)  ──────▶  Aggregate Signatures  ──────▶  QC
-   Vote₁                                               │
-   Vote₂              Sign(Hash(BlockInfo))            │
-   Vote₃                    ↓                          │
-   ...                  [Sig₁, Sig₂, ...]              │
-   Voteₙ                                               │
-                                                       │
-                            QC included in ────────────┘
-                            next block's header
-```
-
----
-
-### 3. Vote
-
-Individual validator vote:
-
-```csharp
-Vote {
-    BlockRoundInfo ProposedBlockInfo  // Block being voted on
-    ulong GapNumber                   // Snapshot reference
-    Signature Signature               // Validator's signature
-    Address Signer                    // Validator address (recovered)
-}
-```
-
-**Vote Hash Calculation**:
-
-```
-VoteHash = Keccak256(
-    RLP([
-        BlockInfo{hash, round, number},
-        GapNumber
-    ])
-)
-```
-
----
-
-### 4. TimeoutCertificate
-
-Proof of 2f+1 timeout votes:
-
-```csharp
-TimeoutCertificate {
-    ulong Round               // Timed-out round
-    Signature[] Signatures    // Timeout signatures
-    ulong GapNumber          // Snapshot reference
-}
-```
-
----
-
-### 5. EpochSwitchInfo
-
-Validator set for an epoch:
-
-```csharp
-EpochSwitchInfo {
-    Address[] Masternodes              // Active validators
-    Address[] StandbyNodes             // Standby validators
-    Address[] Penalties                // Penalized validators
-    BlockRoundInfo EpochSwitchBlockInfo     // Epoch start block
-    BlockRoundInfo EpochSwitchParentBlockInfo  // Previous epoch
-}
-```
-
----
-
-## Key Algorithms
-
-### 1. Leader Selection
-
-Round-robin rotation within epoch:
-
-```
-GetLeaderAddress(round, header):
-  1. Get current masternodes for round
-  2. If epoch switch at round:
-       Calculate new masternodes
-  3. leaderIndex = (round % EpochLength) % masternodes.Length
-  4. Return masternodes[leaderIndex]
-```
-
-**Example** (EpochLength=900, 5 validators):
-
-```
-Round   Leader Index    Leader
-────────────────────────────────
-0       0 % 5 = 0       Node 0
-1       1 % 5 = 1       Node 1
-2       2 % 5 = 2       Node 2
-...
-5       5 % 5 = 0       Node 0
-900     0 % 5 = 0       Node 0 (new epoch)
-```
-
----
-
-### 2. 3-Chain Finalization Rule
-
-Commit grandparent when three consecutive rounds exist:
-
-```
-CommitBlock(proposedBlock, proposedRound, proposedQC):
-  1. parent = proposedBlock.parent
-  2. grandparent = parent.parent
-
-  3. Check conditions:
-     ✓ proposedRound - 1 == parent.round
-     ✓ proposedRound - 2 == grandparent.round
-     ✓ proposedRound > grandparent.round + 1
-
-  4. If all pass:
-     HighestCommitBlock = grandparent
-     Finalize(grandparent)
-```
-
-**Visual**:
+### 3-chain finalisation
 
 ```
 Round N-2          Round N-1          Round N
-   │                  │                  │
-   ▼                  ▼                  ▼
 ┌────────┐        ┌────────┐        ┌────────┐
 │Block B │◀───────│Block C │◀───────│Block D │
-│QC(A)   │        │QC(B)   │        │QC(C)   │
+│ QC(A)  │        │ QC(B)  │        │ QC(C)  │
 └────────┘        └────────┘        └────────┘
-    ▲
-    │
-    └─── FINALIZED when Block D commits
+     ▲
+     └── committed when QC(D) is processed
 ```
+
+The rounds must be strictly consecutive — a gap anywhere in the three-block chain blocks the commit — and the
+committed head never moves backwards.
+
+### Timeouts and liveness
+
+[`TimeoutTimer`](TimeoutTimer.cs) fires after `TimeoutPeriod` seconds without progress.
+[`TimeoutCertificateManager`](TimeoutCertificateManager.cs) then:
+
+```
+OnCountdownTimer
+   ├─ masternode? sign Timeout(round, gapNumber) and broadcast
+   ├─ TimeoutCounter++
+   ├─ every TimeoutSyncThreshold timeouts → broadcast SyncInfo(HighestQC, HighestTC)
+   └─ reset timer
+
+HandleTimeoutVote (own or received)
+   ├─ same round only, signer must be in the gap snapshot's candidate set
+   ├─ pool by round; count ≥ masternodes × CertificateThreshold
+   └─ TimeoutCertificate { Round, Signature[], GapNumber }
+         └─ ProcessTimeoutCertificate → HighestTC, SetNewRound(round + 1)
+```
+
+Timeouts referring to an epoch far from the head are discarded.
+
+### SyncInfo
+
+[`SyncInfoManager`](SyncInfoManager.cs) exchanges `(HighestQC, HighestTC)` so a lagging node can jump to the
+current round without waiting for blocks. Incoming `SyncInfo` is rejected when both certificates are at or
+below what the node already knows, or when either certificate fails verification; otherwise the TC is processed
+and the QC committed.
+
+### Fork choice
+
+[`XdcBlockTree`](XdcBlockTree.cs) replaces total-difficulty fork choice, since every XDC block adds difficulty 1
+([`XdcDifficultyCalculator`](XdcDifficultyCalculator.cs)):
+
+- A suggested block is accepted only if it descends from `HighestCommitBlock`; anything on a dead fork, or at or
+  below the committed height, is rejected.
+- Equal-TD ties are broken by consensus round, then by whether the node produced the block itself.
+
+### Forensics
+
+[`IForensicsProcessor`](IForensicsProcessor.cs) receives committed QC chains and vote-equivocation candidates.
+`NullForensicsProcessor` is registered by default; equivocation detection and proof gossip are not yet wired up.
 
 ---
 
-### 3. Voting Safety Rule
+## Epochs, snapshots and masternodes
 
-Prevent conflicting votes:
-
-```
-VerifyVotingRules(block, round, parentQC):
-  1. CurrentRound > HighestVotedRound?  ✓ No double voting
-  2. block.round == CurrentRound?       ✓ Right round
-  3. LockQC safety:
-     IF LockQC exists:
-        - parentQC.round > LockQC.round  OR
-        - block extends LockQC ancestor
-     ELSE:
-        - Always safe
-```
-
-**Lock-based Safety**:
+An epoch is `EpochLength` blocks. The candidate set for an epoch is snapshotted `Gap` blocks *before* the epoch
+starts, so validators can be agreed on ahead of the switch.
 
 ```
-Scenario: Node locked on Block A (round 10)
-
-Can vote for Block B (round 15)?
-  ├─ B's parent QC.round > 10  ──▶ YES ✓
-  └─ B extends from A          ──▶ YES ✓
-
-Can vote for Block C (round 12, different fork)?
-  ├─ C's parent QC.round > 10  ──▶ YES
-  └─ C extends from A?         ──▶ NO  ✗ REJECT
+Block number                    Action
+──────────────────────────────────────────────────────────────────────
+epochBase                       Epoch switch: header carries Validators + Penalties
+…                               Normal blocks
+epochBase + (EpochLength − Gap) Gap block: snapshot candidates from the voting contract
+…                               Normal blocks
+epochBase + EpochLength         Next epoch switch, using the snapshot above
 ```
+
+With `EpochLength = 900` and `Gap = 450` the gap block sits halfway through the epoch, 450 blocks before the
+epoch it configures. A snapshot is `{ BlockNumber, HeaderHash, NextEpochCandidates }`, RLP-encoded into the
+`XdcSnapshots` database and cached in memory. [`SnapshotManager`](SnapshotManager.cs) reads candidates from the
+masternode voting contract ordered by stake, or from `GenesisMasterNodes` at genesis, and can recompute a
+missing snapshot on demand as long as the gap block's state is still available.
+
+Epoch-switch detection ([`EpochSwitchManager`](EpochSwitchManager.cs)) differs either side of `SwitchBlock`:
+below it, a switch is every `EpochLength`th block; above it, a block starts a new epoch when its parent QC's
+round falls in the previous epoch. [`BaseEpochSwitchManager`](BaseEpochSwitchManager.cs) resolves and caches the
+`EpochSwitchInfo` (masternodes, standby nodes, penalties) for any header by walking back to its epoch-switch
+block.
+
+[`MasternodesCalculator`](MasternodesCalculator.cs) derives the next committee:
+
+```
+candidates = snapshot(gap).NextEpochCandidates
+penalties  = PenaltyHandler.HandlePenalties(...)
+masternodes = (candidates − penalties).Take(MaxMasternodes)
+```
+
+The first V2 epoch is the exception: it uses the raw candidate list, since there is no V2 history to penalise
+against yet.
+
+Under `TIPUpgradeReward`, candidates beyond the masternode cap are further split into **protector** and
+**observer** tiers (`MaxProtectorNodes`, `MaxObserverNodes`) for reward purposes.
 
 ---
 
-### 4. Epoch Transition
+## Penalties and rewards
 
-Calculate next validator set:
+### Penalties
 
-```
-CalculateNextEpochMasternodes(blockNumber, parentHash):
-  1. Load previous snapshot (gap block)
-  2. Get candidates from snapshot
-  3. Calculate penalties (forensics)
-  4. masternodes = candidates - penalties
-  5. Enforce maximum: Take(MaxMasternodes)
-  6. Return (masternodes, penalties)
-```
+[`PenaltyHandler`](PenaltyHandler.cs) counts blocks produced per miner since the previous epoch switch and
+penalises any masternode that produced too few (or none at all). The threshold is a hard-coded single block
+until `TIPUpgradePenalty` activates, after which the configured `MinimumMinerBlockPerEpoch` applies. Two
+comeback paths exist, selected by the same flag:
 
-**Timeline**:
+| | Pre-`TIPUpgradePenalty` | Post-`TIPUpgradePenalty` |
+| --- | --- | --- |
+| Penalty window | `XdcConstants.LimitPenaltyEpochV2` epochs | `LimitPenaltyEpoch` epochs |
+| Comeback scan | last `RangeReturnSigner` blocks | last `EpochLength` blocks |
+| Comeback condition | one signing tx for a block at a `MergeSignRange` multiple | `MinimumSigningTx` such signing txs |
 
-```
-Block Number        Action
-─────────────────────────────────────────
-0-849              Normal blocks
-850 (Gap)          Store snapshot with candidates
-851-899            Normal blocks
-900 (Epoch switch) Apply new validators from snapshot
-901-1749           Use new validator set
-```
+Penalised addresses are written into the epoch-switch header's `Penalties` field and re-derived independently
+by every validator during seal validation.
 
----
+### Rewards
 
-## Security Mechanisms
+[`XdcRewardCalculator`](XdcRewardCalculator.cs) pays out **only at epoch-switch blocks**, based on signing
+transactions observed two epochs back (blocks at heights that are multiples of `MergeSignRange`):
 
-### 1. Byzantine Fault Tolerance
+- **Pre-`TIPUpgradeReward`** — `Reward` XDC for the epoch, split proportionally to each masternode's signing
+  count.
+- **Post-`TIPUpgradeReward`** — fixed `MasternodeReward` / `ProtectorReward` / `ObserverReward` (XDC) per
+  qualifying signer, with minted and burned totals reported to the minted-record contract
+  ([`IMintedRecordContract`](Contracts/IMintedRecordContract.cs)).
 
-```
-Threshold Requirements:
-─────────────────────────
-Total Validators: N
-Byzantine Tolerance: f
-Honest Majority: N ≥ 3f + 1
+Each signer's reward is split 90% to the candidate owner (resolved through the masternode voting contract) and
+10% to `FoundationWalletAddr`.
 
-Quorum Certificate: ⌈N * CertificateThreshold⌉ signatures
-Default: CertificateThreshold = 2/3
-Minimum: 2f + 1 = ⌈2N/3⌉
-```
+The per-epoch breakdown is persisted by [`RewardsStore`](RewardsStore.cs) in the `XdcRewards` database, which
+backs `eth_getRewardByHash` and `XDPoS_getRewardByAccount`.
 
-### 2. Fork Prevention
+### Signing transactions
 
-```
-XdcBlockTree.Suggest():
-  1. Check if new block builds on finalized chain
-  2. Search up to MaxSearchDepth (1024 blocks)
-  3. Must find finalized block in ancestry
-  4. Reject blocks on dead forks
-```
-
-**Fork Resistance**:
-
-```
-         Finalized Block
-              │
-              ├─────────────┐
-              │             │ (rejected)
-        Main Chain      Dead Fork
-              │
-          (accepted)
-```
-
-### 3. Forensics & Slashing
-
-Equivocation detection:
-
-```
-DetectEquivocation(vote, votePool):
-  1. For each existing vote in pool:
-     IF same round AND same signer:
-        IF different blocks:
-           ─▶ Equivocation detected!
-           ─▶ SendVoteEquivocationProof()
-```
+[`SignTransactionManager`](SignTransactionManager.cs) is what makes the above possible. On every processed head
+block whose number is a multiple of `MergeSignRange`, a masternode submits a zero-gas-price transaction to
+`BlockSignerContract` carrying `sign(uint256 blockNumber, bytes32 blockHash)`. Only recent blocks are signed, so
+a node catching up does not flood the pool replaying old ones.
 
 ---
 
-## Performance Characteristics
+## Block and header format
 
-### Consensus Latency
+[`XdcBlockHeader`](XdcBlockHeader.cs) extends `BlockHeader` with:
 
-```
-Block Production Time:
-─────────────────────────────────
-MinePeriod (default: 2s)           Time between blocks
-+ Network Propagation              ~100-500ms
-+ Vote Collection                  ~100-500ms
-+ QC Formation                     ~10-50ms
-────────────────────────────────
-Total: ~2.2 - 3.0 seconds/block
-```
+| Field | Meaning |
+| --- | --- |
+| `Validators` | Concatenated masternode addresses; set only on epoch-switch blocks |
+| `Penalties` | Concatenated penalised addresses; set only on epoch-switch blocks |
+| `Validator` | 65-byte ECDSA seal over the header |
+| `ExtraConsensusData` | Decoded from `ExtraData` |
+| `IsSelfMined` | Local flag used as the last fork-choice tie-break |
 
-### Finality
+`ExtraData` for a V2 block is a consensus-version byte followed by RLP-encoded
+[`ExtraFieldsV2`](Types/ExtraFieldsV2.cs) — `{ BlockRound, QuorumCert }`. Headers below `SwitchBlock` keep the
+V1 clique-style layout: 32-byte vanity, packed signer list, 65-byte seal.
 
-```
-Finalization Depth: 3 blocks (3-chain rule)
+Other header invariants: uncles must be empty ([`MustBeEmptyUnclesValidator`](MustBeEmptyUnclesValidator.cs)),
+difficulty is always 1, `MixHash` is zero, and on epoch-switch blocks the vote nonce must be zero.
 
-Time to Finality:
-─────────────────
-3 blocks × 2s = ~6 seconds
-  (with optimal conditions)
-
-Plus: Network delays, vote collection
-Practical: 8-12 seconds
-```
-
-### Throughput
-
-```
-Transactions per Block: ~2000-5000 (based on gas limit)
-Gas Limit: 84,000,000
-Block Time: 2 seconds
-────────────────────────────────────
-TPS (theoretical): 1000 - 2500 tx/s
-TPS (practical):    500 - 1000 tx/s
-```
-
----
-
-## Configuration Parameters
-
-### XdcReleaseSpec
+Consensus value types live in [`Types/`](Types):
 
 ```csharp
-EpochLength: 900              // Blocks per epoch
-Gap: 450                      // Snapshot before epoch end
-SwitchBlock: <configured>     // V2 activation block
-MaxMasternodes: 108          // Maximum validators
-CertificateThreshold: 0.67          // 2/3 quorum
-TimeoutPeriod: 4000ms        // Round timeout
-MinePeriod: 2000ms           // Minimum block time
-TimeoutSyncThreshold: 3      // SyncInfo after N timeouts
+BlockRoundInfo      { Hash, Round, BlockNumber }
+Vote                { ProposedBlockInfo, GapNumber, Signature, Signer }
+QuorumCertificate   { ProposedBlockInfo, Signature[], GapNumber }
+Timeout             { Round, Signature, GapNumber, Signer }
+TimeoutCertificate  { Round, Signature[], GapNumber }
+SyncInfo            { HighestQuorumCert, HighestTimeoutCert }
+Snapshot            { BlockNumber, HeaderHash, NextEpochCandidates }
+EpochSwitchInfo     { Masternodes, StandbyNodes, Penalties, EpochSwitchBlockInfo, EpochSwitchParentBlockInfo }
 ```
 
-### V2 Dynamic Configuration
+Votes and timeouts are signed over the Keccak hash of their RLP encoding, and all signatures must be low-S.
 
-Allows runtime parameter adjustments:
+---
 
-```csharp
-V2ConfigParams[] {
-    {
-        SwitchRound: 0,
-        MaxMasternodes: 108,
-        CertificateThreshold: 0.67,
-        TimeoutPeriod: 4000,
-        MinePeriod: 2000
-    },
-    {
-        SwitchRound: 1000000,  // Future upgrade
-        MaxMasternodes: 150,
-        CertificateThreshold: 0.70,
-        ...
-    }
+## Networking
+
+### xdpos2 subprotocol
+
+[`XdcProtocolHandler`](P2P/XdcProtocolHandler.cs) extends `Eth63ProtocolHandler` and advertises itself as
+`xdpos2`, protocol version **100**, adding three message codes:
+
+| Code | Message | Handler |
+| --- | --- | --- |
+| `0xe0` | `VoteMsg` | `VotesManager.OnReceiveVote` |
+| `0xe1` | `TimeoutMsg` | `TimeoutCertificateManager.OnReceiveTimeout` |
+| `0xe2` | `SyncInfoMsg` | `SyncInfoManager.VerifySyncInfo` → `ProcessSyncInfo` |
+
+Votes and timeouts are ignored entirely while the node is syncing (unless it is bootstrapping from genesis), and
+re-broadcast is deduplicated so a message is forwarded to a peer at most once.
+
+[`XdcP2PCapabilityResolver`](XdcP2PCapabilityResolver.cs) replaces the default resolver so the node advertises
+exactly `eth/100`, `eth/164` and `eth/165` — one per registered handler. A peer that shares no capability at all
+(an old `tomo` node offering nothing above `eth/63`, for example) is disconnected with `NoCapabilityMatched`.
+
+### Discovery
+
+[`XdcDiscoveryApp`](Discovery/XdcDiscoveryApp.cs) overrides the default Discv4 app: XDC does not implement the
+ENR request/response messages, so [`XdcKademliaAdapter`](Discovery/XdcKademliaAdapter.cs) disables remote ENR
+refresh and [`XdcNettyDiscoveryHandler`](Discovery/XdcNettyDiscoveryHandler.cs) plus
+[`XdcPingMsgSerializer`](Discovery/XdcPingMsgSerializer.cs) adjust wire compatibility.
+
+---
+
+## Synchronisation
+
+Header validation needs the gap-block snapshot for the epoch being validated, but fast sync never processes
+those blocks. XDC therefore rebuilds them as part of state sync:
+
+- [`XdcStateSyncSnapshotManager`](XdcStateSyncSnapshotManager.cs) computes every gap block between the first
+  reachable epoch switch and the pivot.
+- [`XdcStateSyncPivot`](XdcStateSyncPivot.cs) walks those gap blocks as intermediate sync targets, storing each
+  snapshot as its state becomes available, before finalising on the real pivot.
+- [`XdcStateSyncDownloader`](P2P/XdcStateSyncDownloader.cs) and
+  [`XdcStateSyncAllocationStrategyFactory`](XdcStateSyncAllocationStrategyFactory.cs) adapt peer allocation to
+  that multi-target flow.
+- [`XdcBeaconSyncStrategy`](XdcBeaconSyncStrategy.cs) neutralises the merge/beacon code paths and reports the
+  configured pivot as the sync target.
+
+---
+
+## Execution differences
+
+### Special transactions
+
+[`XdcExtensions.Transactions`](XdcExtensions.Transactions.cs) recognises two **overlapping but distinct** sets of
+transactions by recipient, and [`XdcTransactionProcessor`](XdcTransactionProcessor.cs) dispatches on them
+separately:
+
+| Set | Recipients | Effect |
+| --- | --- | --- |
+| Fee-exempt | `BlockSignerContract`, `RandomizeSMCBinary` | Sender buys no gas and pays no fee |
+| Execution-skipping | `BlockSignerContract`, plus the DEX/lending contracts (`XDCXAddressBinary`, `XDCXLendingAddressBinary`, `XDCXLendingFinalizedTradeAddressBinary`, `TradingStateAddressBinary`) | No intrinsic gas, no gas validation, EVM skipped, empty successful receipt |
+
+The overlap is only partial, and the difference is what determines gas accounting:
+
+- **Sign** transactions are in both sets — free *and* skipped — but the nonce is still checked and incremented.
+- **Randomize** transactions are fee-exempt only. They charge intrinsic gas, take the normal nonce path and
+  **execute in the EVM**, consuming block gas; only the sender's payment is waived.
+- **Trading / lending** transactions are execution-skipping only, with nonce checks bypassed.
+
+The DEX/lending contracts qualify only inside the `TipXDCX` → `TIPXDCXReceiverDisable` window, which is already
+closed on mainnet.
+
+### Fees and blacklist
+
+- Post-`TipTrc21Fee`, gas fees are paid to the **candidate owner** of the block beneficiary rather than the
+  beneficiary itself.
+- Post-`BlackListHFNumber`, transactions with a blacklisted sender or recipient are rejected during execution,
+  and on pool admission, so they are never gossiped.
+
+### Block execution context
+
+[`XdcBlockProcessor`](XdcBlockProcessor.cs) derives `PrevRandao` from the block number rather than a beacon
+value, and forces blob base fee to zero, since XDC enables the `BLOBBASEFEE` opcode without blob transactions.
+
+### Gas limit and base fee
+
+- [`XdcGasLimitCalculator`](XdcGasLimitCalculator.cs) uses a fixed target (`TargetBlockGasLimit`, default
+  420,000,000) until `DynamicGasLimitBlock`, after which the standard target-adjusted calculator applies.
+- [`XdcBaseFeeCalculator`](XdcBaseFeeCalculator.cs) returns a constant **12.5 gwei** base fee when EIP-1559 is
+  enabled, mirroring the reference client.
+
+### Transaction pool
+
+- [`SignTransactionFilter`](TxPool/SignTransactionFilter.cs) accepts fee-exempt transactions only from current
+  epoch candidates, and only when the signed block is recent.
+- [`BlackListedAddressFilter`](TxPool/BlackListedAddressFilter.cs) rejects transactions with a blacklisted
+  sender or recipient once `BlackListHFNumber` activates, so they never reach a block or a peer. The rejection
+  code is deliberately not `AcceptTxResult.Invalid`, which would disconnect the relaying peer.
+- [`XdcTxGossipPolicy`](TxPool/XdcTxGossipPolicy.cs) withholds the DEX/lending family; sign and randomize
+  transactions are gossiped normally.
+- [`XdcTxFilterPipeline`](TxPool/XdcTxFilterPipeline.cs) lets the fee-exempt transactions bypass the
+  block-producer filters, since they legitimately carry a zero gas price. The DEX/lending family still goes
+  through them.
+- [`XdcTransactionComparerProvider`](TxPool/XdcTransactionComparerProvider.cs) orders the pool with XDC's
+  fee semantics.
+
+---
+
+## Storage
+
+Both are registered by [`XdcModule`](XdcModule.cs):
+
+| Database | Contents | Written by |
+| --- | --- | --- |
+| `XdcSnapshots` | RLP-encoded candidate snapshots, keyed by gap block hash | [`SnapshotManager`](SnapshotManager.cs) |
+| `XdcRewards` | JSON epoch-reward breakdowns, keyed by epoch block hash | [`RewardsStore`](RewardsStore.cs) |
+
+Neither has dedicated RocksDB tuning options, which is why
+[`XdcRocksDbConfigFactory`](XdcRocksDbConfigFactory.cs) exists.
+
+[`XdcHeaderStore`](XdcHeaderStore.cs), [`XdcBlockStore`](XdcBlockStore.cs) and
+[`XdcBlockhashStore`](XdcBlockhashStore.cs) exist so that headers round-trip through the XDC RLP decoders
+registered by [`XdcHeaderModule`](XdcHeaderModule.cs).
+
+---
+
+## JSON-RPC
+
+### `Xdc` module — [`IXdcRpcModule`](RPC/IXdcRpcModule.cs)
+
+The methods are named `XDPoS_*`, but the module is registered as `Xdc` — that is the name to put in
+`JsonRpc.EnabledModules`.
+
+| Method | Purpose |
+| --- | --- |
+| `XDPoS_getSnapshot(block)` | Candidate snapshot at a block number |
+| `XDPoS_getSnapshotAtHash(hash)` | Candidate snapshot at a block hash |
+| `XDPoS_getSigners(block)` | Authorised signers at a block number |
+| `XDPoS_getSignersAtHash(hash)` | Authorised signers at a block hash |
+| `XDPoS_getMasternodesByNumber(block)` | Masternodes, standby nodes and penalties at a block |
+| `XDPoS_getLatestPoolStatus()` | Current vote pool and timeout pool, keyed by pool key |
+| `XDPoS_getV2BlockByNumber(block)` | V2 block info: round, QC, committed status |
+| `XDPoS_getV2BlockByHash(hash)` | Same, by hash |
+| `XDPoS_networkInformation()` | Network id, system contract addresses and the effective XDPoS config |
+| `XDPoS_getMissedRoundsInEpochByBlockNum(block)` | Rounds in the epoch with no block (V2 only) |
+| `XDPoS_getRewardByAccount(account, begin, end)` | Rewards paid to an account across a block range |
+| `XDPoS_getEpochNumbersBetween(begin, end)` | Epoch numbers spanned by a block range |
+| `XDPoS_getBlockInfoByV2EpochNum(epoch)` | Epoch-switch block for a V2 epoch |
+| `XDPoS_calculateBlockInfoByV1EpochNum(epoch)` | Epoch-switch block for a V1 epoch |
+| `XDPoS_getBlockInfoByEpochNum(epoch)` | Epoch-switch block, V1 or V2 |
+
+### `eth` extensions — [`IXdcExtendedEthRpcModule`](RPC/IXdcExtendedEthRpcModule.cs)
+
+| Method | Purpose |
+| --- | --- |
+| `eth_getOwnerByCoinbase(coinbase, block)` | Masternode owner for a coinbase address |
+| `eth_getRewardByHash(blockHash)` | Epoch reward breakdown for an epoch-switch block |
+| `eth_getTransactionAndReceiptProof(txHash)` | Merkle proofs for a transaction and its receipt |
+
+---
+
+## Configuration
+
+All XDC parameters live under `engine.XDPoS.params` in the chainspec and are bound to
+[`XdcChainSpecEngineParameters`](Spec/XdcChainSpecEngineParameters.cs), then projected onto
+[`XdcReleaseSpec`](Spec/XdcReleaseSpec.cs) by
+[`XdcChainSpecBasedSpecProvider`](Spec/XdcChainSpecBasedSpecProvider.cs).
+
+Note that XDC has **two** dimensions of configuration: standard block-number forks (`TipTrc21Fee`,
+`TIPUpgradeReward`, …) and *round*-based V2 configs. Both are resolved together, so the effective spec depends
+on the block number *and* the consensus round.
+
+### Chain-level parameters
+
+| Parameter | Unit | Description |
+| --- | --- | --- |
+| `epoch` | blocks | Epoch length; also the modulus for leader rotation. `900` on mainnet and Apothem |
+| `gap` | blocks | Distance before an epoch start at which the candidate snapshot is taken. `450` |
+| `period` | seconds | Nominal block period |
+| `switchBlock` | block | First V2 block; below it, V1 (clique-style) rules apply |
+| `switchEpoch` | epoch | Epoch number corresponding to `switchBlock`, used to number V2 epochs |
+| `reward` | XDC | Per-epoch reward pool used before `TIPUpgradeReward` |
+| `foundationWalletAddr` | address | Receives 10% of every signer reward |
+| `masternodeVotingContract` | address | Candidate list, stake and owner lookups |
+| `blockSignerContract` | address | Target of signing transactions |
+| `randomizeSMCBinary` | address | Randomize contract; fee-exempt |
+| `XDCXAddressBinary`, `XDCXLendingAddressBinary`, `XDCXLendingFinalizedTradeAddressBinary`, `tradingStateAddressBinary` | address | DEX/lending contracts with special transaction handling |
+| `MergeSignRange` | blocks | Only blocks at multiples of this height are signed and counted for rewards. `15` |
+| `RangeReturnSigner` | blocks | Comeback scan window before `TIPUpgradePenalty`. `150` |
+| `genesisMasternodes` | address[] | Initial committee; parsed from genesis `extraData` when `switchBlock == 0` |
+| `blackListedAddresses` | address[] | Blocked senders/recipients once `BlackListHFNumber` activates |
+
+### Fork activation blocks
+
+| Parameter | Effect once activated |
+| --- | --- |
+| `tip2019Block` | TIP-2019 rules |
+| `TipTrc21Fee` | Gas fees paid to the masternode owner instead of the beneficiary |
+| `TipXDCX` | DEX/lending transactions get special handling |
+| `TIPXDCXMinerDisable` / `TIPXDCXReceiverDisable` | End of the miner-side / receiver-side XDCX handling |
+| `BlackListHFNumber` | Blacklist enforcement |
+| `TIPUpgradeReward` | Fixed-rate masternode/protector/observer rewards and minted-record accounting |
+| `TIPUpgradePenalty` | New penalty comeback rules (`LimitPenaltyEpoch`, `MinimumSigningTx`) |
+| `DynamicGasLimitBlock` | Target-adjusted gas limit instead of the fixed target |
+
+### `v2Configs` — round-scoped parameters
+
+`v2Configs` is a list ordered by `SwitchRound`; the entry with the greatest `SwitchRound ≤ round` applies. The
+list **must** contain an entry with `SwitchRound: 0` and must not repeat a round — a chainspec that violates
+either fails to load.
+
+| Field | Unit | Description |
+| --- | --- | --- |
+| `SwitchRound` | round | Round from which this entry applies |
+| `MaxMasternodes` | count | Committee cap. `108` on mainnet |
+| `MaxProtectorNodes` / `MaxObserverNodes` | count | Reward-tier caps (post-`TIPUpgradeReward`) |
+| `CertificateThreshold` | fraction | Share of masternodes required for a QC or TC. `0.667` on mainnet |
+| `TimeoutPeriod` | **seconds** | Round timeout before a timeout vote is broadcast |
+| `TimeoutSyncThreshold` | count | Broadcast `SyncInfo` after this many consecutive timeouts |
+| `MinePeriod` | **seconds** | Minimum spacing between a parent block and its child. `2` |
+| `MasternodeReward` / `ProtectorReward` / `ObserverReward` | XDC | Fixed per-signer epoch rewards (post-`TIPUpgradeReward`). Stated in XDC, as in the reference client, and scaled to wei on load. `63.42` on Apothem |
+| `MinimumMinerBlockPerEpoch` | blocks | Below this, a masternode is penalised. Only honoured once `TIPUpgradePenalty` is active; before that a hard-coded `1` applies |
+| `LimitPenaltyEpoch` | epochs | Penalty duration used post-`TIPUpgradePenalty`. `5` on Apothem; a chainspec that omits it falls back to `1` |
+| `MinimumSigningTx` | count | Signing transactions needed to leave penalty |
+
+Example — mainnet's current entry:
+
+```json
+{
+  "SwitchRound": 3200000,
+  "MaxMasternodes": 108,
+  "CertificateThreshold": 0.667,
+  "TimeoutSyncThreshold": 3,
+  "TimeoutPeriod": 10,
+  "MinePeriod": 2
 }
 ```
 
 ---
 
-## Module Integration
+## Subnets
 
-### Autofac Dependency Injection
+[`XdcSubnetModule`](XdcSubnetModule.cs) reuses the whole mainnet stack and overrides only:
 
-```csharp
-XdcModule registrations:
-─────────────────────────────────────
-ISpecProvider          → XdcChainSpecBasedSpecProvider
-IBlockTree             → XdcBlockTree
-IHeaderStore           → XdcHeaderStore
-IBlockStore            → XdcBlockStore
-ISealer                → XdcSealer
-IHeaderValidator       → XdcHeaderValidator
-ISealValidator         → XdcSealValidator
-IVotesManager          → VotesManager
-IQuorumCertificateManager → QuorumCertificateManager
-IEpochSwitchManager    → EpochSwitchManager
-ISnapshotManager       → SnapshotManager
-IXdcConsensusContext   → XdcConsensusContext
-...
-```
+| Component | Subnet replacement | Why |
+| --- | --- | --- |
+| Engine parameters | [`XdcSubnetChainSpecEngineParameters`](Spec/XdcSubnetChainSpecEngineParameters.cs) | `sealEngineType` is `XDPoSSubnet` |
+| Header decoding | [`XdcSubnetHeaderDecoder`](RLP/XdcSubnetHeaderDecoder.cs) via [`XdcSubnetBlockHeader`](XdcSubnetBlockHeader.cs) | Different header layout |
+| Block production | [`XdcSubnetBlockProducer`](XdcSubnetBlockProducer.cs) | Subnet header fields |
+| Epoch switching | [`SubnetEpochSwitchManager`](SubnetEpochSwitchManager.cs) | Epoch numbering without the V1 era |
+| Snapshots | [`SubnetSnapshotManager`](SubnetSnapshotManager.cs) / [`SubnetSnapshot`](Types/SubnetSnapshot.cs) | Snapshots also carry `NextEpochPenalties` |
+| Masternodes | [`SubnetMasternodesCalculator`](SubnetMasternodesCalculator.cs) | Penalties come from the snapshot, not recomputed |
+| Penalties | [`SubnetPenaltyHandler`](SubnetPenaltyHandler.cs) | Penalties are supplied by the snapshot |
+| Seal validation | [`XdcSubnetSealValidator`](XdcSubnetSealValidator.cs) | Subnet header/seal shape |
+| Rewards | [`XdcSubnetRewardCalculator`](XdcSubnetRewardCalculator.cs) | Subnet reward model |
+| Chainspec loading | [`XdcSubnetChainSpecLoader`](XdcSubnetChainSpecLoader.cs) | Builds a subnet genesis header |
 
 ---
 
-## Critical Paths
+## Testing
 
-### 1. Happy Path (Normal Block Production)
+Tests live in `Nethermind.Xdc.Test`. Run the whole suite or a single test with:
 
-```
-Time    Component              Action
-──────────────────────────────────────────────────
-T+0s    XdcHotStuff           Timer triggers
-        └─▶ IsMyTurn?         Check if leader
-T+0.1s  XdcBlockProducer      Build block
-        ├─▶ PrepareHeader     Add QC, set round
-        └─▶ ExecuteTxs        Process transactions
-T+0.5s  XdcSealer             Sign block
-T+0.6s  XdcBlockTree          Suggest block
-T+0.7s  Validator Nodes       Receive block
-        └─▶ Validate          Check QC, seal
-T+0.9s  VotesManager          Cast votes
-T+1.5s  VotesManager          Threshold reached
-        └─▶ Create QC         Aggregate signatures
-T+1.6s  QCManager             Commit QC
-        ├─▶ Update HighestQC
-        ├─▶ Check 3-chain
-        └─▶ Finalize grandparent
-T+1.7s  XdcConsensusContext   SetNewRound(N+1)
+```bash
+dotnet test --project src/Nethermind/Nethermind.Xdc.Test/Nethermind.Xdc.Test.csproj -c release
 ```
 
-### 2. Timeout Path (No Block Received)
+Areas worth covering when changing this module:
 
-```
-Time    Component              Action
-──────────────────────────────────────────────────
-T+0s    Round N starts
-T+4s    TimeoutTimer          Expires
-        └─▶ OnCountdownTimer
-T+4.1s  TCManager             SendTimeout
-        └─▶ Sign timeout
-T+4.5s  TCManager             Collect TCs
-T+5s    TCManager             Threshold reached
-        └─▶ Create TC
-T+5.1s  TCManager             ProcessTC
-        └─▶ Update HighestTC
-T+5.2s  XdcConsensusContext   SetNewRound(N+1)
-```
-
----
-
-## Testing Considerations
-
-### Unit Test Coverage Areas
-
-1. **Consensus Logic**:
-   - Leader selection algorithm
-   - Voting rule verification
-   - QC verification
-   - 3-chain finalization
-
-2. **State Transitions**:
-   - Round advancement
-   - Lock updates
-   - Finalization triggers
-
-3. **Edge Cases**:
-   - Epoch boundaries
-   - Network partitions
-   - Byzantine behavior
-
-### Integration Test Scenarios
-
-```
-Test: 3-Chain Finalization
-──────────────────────────
-Setup: 5 validators, normal operation
-Steps:
-  1. Produce 3 consecutive blocks
-  2. Each block gets 2f+1 votes
-  3. Form QC for each
-  4. Verify block N-2 finalized
-
-Test: Epoch Transition
-──────────────────────
-Setup: 5 validators, epoch length = 10
-Steps:
-  1. Produce blocks 0-9
-  2. At block 10-Gap(5), store snapshot
-  3. At block 10, switch validators
-  4. Verify new committee active
-
-Test: Timeout & Recovery
-────────────────────────
-Setup: 5 validators, leader crashes
-Steps:
-  1. Leader fails to propose
-  2. Nodes timeout after 4s
-  3. Form TC with 2f+1 timeouts
-  4. Advance round
-  5. New leader proposes
-```
-
----
-
-## Common Issues & Solutions
-
-### Issue 1: Fork Detection Failures
-
-**Problem**: Blocks built on non-finalized forks accepted
-
-**Solution**: `XdcBlockTree.Suggest()` checks ancestry up to finalized block
-
-```csharp
-protected override AddBlockResult Suggest(Block block, ...) {
-    if (finalizedBlock.BlockNumber >= header.Number)
-        return InvalidBlock;
-
-    // Search ancestry up to MaxSearchDepth
-    for (long i = header.Number; i >= finalized; i--) {
-        if (finalizedHash == current.ParentHash)
-            return base.Suggest(...);  // Valid
-    }
-    return InvalidBlock;  // On dead fork
-}
-```
-
----
-
-### Issue 2: Double Voting
-
-**Problem**: Node votes twice in same round
-
-**Solution**: `VerifyVotingRules` tracks `_highestVotedRound`
-
-```csharp
-public bool VerifyVotingRules(...) {
-    if ((long)_ctx.CurrentRound <= _highestVotedRound)
-        return false;  // Already voted
-
-    // ... other checks
-
-    _highestVotedRound = votingRound;  // Update after voting
-}
-```
-
----
-
-### Issue 3: Epoch Snapshot Mismatch
-
-**Problem**: Validators don't match expected set
-
-**Solution**: Snapshot stored at Gap block before epoch end
-
-```
-Block 850 (Gap):    Store snapshot with candidates
-Block 900 (Switch): Load snapshot, calculate masternodes
-                    masternodes = snapshot.candidates - penalties
-```
-
----
-
-## Monitoring & Observability
-
-### Key Metrics
-
-```
-Consensus Health:
-─────────────────
-- Current Round Number
-- Time Since Last Block
-- Finalized Block Height
-- QC Aggregation Time
-- Vote Pool Size
-- Timeout Counter
-- Active Validator Count
-
-Performance:
-────────────
-- Block Production Rate
-- Average Block Time
-- Finalization Lag
-- Vote Collection Latency
-- Network Message Rate
-```
+- **Consensus logic** — leader selection at epoch boundaries, voting-rule rejection cases, QC/TC threshold
+  arithmetic, 3-chain commit and its round-continuity guards.
+- **Fork choice** — dead-fork rejection against the committed block, equal-TD tie-breaks.
+- **Epoch machinery** — snapshot gap arithmetic, epoch lookups across the V1/V2 boundary, snapshot recovery
+  during state sync.
+- **Penalties and rewards** — both sides of `TIPUpgradePenalty` / `TIPUpgradeReward`, signing-transaction
+  counting across `MergeSignRange`.
+- **Execution** — special-transaction gas and nonce handling, TRC21 fee redirection, blacklist enforcement.
+- **Serialization** — header, certificate, vote, timeout and snapshot RLP round-trips against reference
+  vectors.
 
 ---
 
 ## References
 
-### Academic Papers
-
-1. **HotStuff: BFT Consensus with Linearity and Responsiveness**
-   - Yin et al., 2019
-   - PODC '19
-
-2. **Practical Byzantine Fault Tolerance**
-   - Castro & Liskov, 1999
-   - OSDI '99
-
-### XDC Documentation
-
-- XDPoS 2.0 White Paper
-- XDC Network GitHub
-- Nethermind Documentation
-
----
-
-## Appendix: Component Checklist
-
-### Essential Components ✓
-
-- [x] XdcHotStuff - Consensus orchestrator
-- [x] XdcConsensusContext - State management
-- [x] QuorumCertificateManager - QC handling
-- [x] VotesManager - Vote aggregation
-- [x] TimeoutCertificateManager - Timeout handling
-- [x] EpochSwitchManager - Validator rotation
-- [x] SnapshotManager - Validator snapshots
-- [x] XdcBlockProducer - Block creation
-- [x] XdcSealer - Block signing
-- [x] XdcBlockTree - Chain management
-- [x] XdcHeaderValidator - Header validation
-- [x] XdcSealValidator - Seal validation
-
----
-
-## Quick Reference
-
-### Key Interfaces
-
-```csharp
-IBlockProducerRunner  // Main consensus loop
-IQuorumCertificateManager  // QC operations
-IVotesManager  // Vote handling
-IEpochSwitchManager  // Epoch logic
-ISnapshotManager  // Validator snapshots
-ITimeoutCertificateManager  // Timeout handling
-IXdcConsensusContext  // Consensus state
-```
-
-### Key Classes
-
-```csharp
-XdcHotStuff  // Main orchestrator
-XdcConsensusContext  // State container
-QuorumCertificateManager  // QC logic
-VotesManager  // Vote aggregation
-EpochSwitchManager  // Epoch management
-SnapshotManager  // Snapshot storage
-```
-
-### Key Types
-
-```csharp
-XdcBlockHeader  // Extended header
-QuorumCertificate  // Aggregated votes
-Vote  // Individual vote
-TimeoutCertificate  // Timeout proof
-EpochSwitchInfo  // Validator set
-Snapshot  // Validator candidates
-```
-
----
+- XDPoS 2.0 — [XDPoSChain reference client](https://github.com/XinFinOrg/XDPoSChain)
+- HotStuff: BFT Consensus with Linearity and Responsiveness — Yin et al., PODC '19
+- Practical Byzantine Fault Tolerance — Castro & Liskov, OSDI '99

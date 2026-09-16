@@ -257,7 +257,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private bool TryScheduleTransactions(TransactionsMessage msg, Func<TransactionsRequest, CancellationToken, ValueTask> handler)
         {
             IOwnedReadOnlyList<Transaction> iList = msg.Transactions;
-            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(iList, 0), handler, "Transactions"))
+            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(iList, 0), handler))
             {
                 foreach (Transaction tx in iList)
                 {
@@ -297,7 +297,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                             return ValueTask.CompletedTask;
                         }
 
-                        if (BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(transactions, currentIdx), _handleSlow, "Transactions"))
+                        if (BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(transactions, currentIdx), _handleSlow))
                         {
                             isTransferred = true;
                         }
@@ -325,7 +325,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return ValueTask.CompletedTask;
         }
 
-        private void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
+        protected void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
         {
             tx.Timestamp = _timestamper.UnixTime.Seconds;
             if (tx.Hash is not null)
@@ -339,6 +339,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             void Log(Transaction tx, in AcceptTxResult accepted) => Logger.Trace($"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
         }
+
+        protected void ReportReceivedTransaction(in AcceptTxResult accepted) => _floodController.Report(accepted);
 
         private void Handle(NewBlockHashesMessage newBlockHashes)
         {

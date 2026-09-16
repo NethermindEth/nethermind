@@ -101,6 +101,30 @@ public class ReceiptsIteratorTests
         Assert.That(receipt.Sender.Bytes.ToArray(), Is.EqualTo(TestItem.AddressC.Bytes.ToArray()));
     }
 
+    [Test]
+    public void Legacy_missing_log_entries_are_skipped()
+    {
+        LogEntry first = Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject;
+        LogEntry second = Build.A.LogEntry.WithAddress(TestItem.AddressB).TestObject;
+        Rlp encoded = Rlp.Encode(Rlp.Encode(first), Rlp.OfEmptyList, Rlp.Encode(second));
+        LogEntriesIterator iterator = new(encoded.Bytes, new ReceiptStorageDecoder());
+
+        Assert.That(iterator.TryGetNext(out LogEntryStructRef log), Is.True);
+        Assert.That(log.Address == TestItem.AddressA, Is.True);
+        Assert.That(iterator.Index, Is.Zero);
+        Assert.That(iterator.TryGetNext(out log), Is.True);
+        Assert.That(log.Address == TestItem.AddressB, Is.True);
+        Assert.That(iterator.Index, Is.EqualTo(1));
+        Assert.That(iterator.TryGetNext(out _), Is.False);
+
+        iterator.Reset();
+        Assert.That(iterator.TrySkipNext(), Is.True);
+        Assert.That(iterator.Index, Is.Zero);
+        Assert.That(iterator.TrySkipNext(), Is.True);
+        Assert.That(iterator.Index, Is.EqualTo(1));
+        Assert.That(iterator.TrySkipNext(), Is.False);
+    }
+
     private ReceiptsIterator CreateIterator(TxReceipt[] receipts, Block block)
     {
         using ArrayPoolSpan<byte> stream = _decoder.EncodeToArrayPoolSpan(receipts, RlpBehaviors.Storage);

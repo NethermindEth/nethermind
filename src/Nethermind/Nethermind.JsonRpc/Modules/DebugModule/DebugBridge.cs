@@ -24,6 +24,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Autofac.Features.AttributeFilters;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -33,6 +34,7 @@ public class DebugBridge : IDebugBridge
     private readonly IGethStyleTracer _tracer;
     private readonly IBlockTree _blockTree;
     private readonly IReceiptStorage _receiptStorage;
+    private readonly IReceiptFinder _receiptFinder;
     private readonly IReceiptsMigration _receiptsMigration;
     private readonly ISpecProvider _specProvider;
     private readonly ISyncModeSelector _syncModeSelector;
@@ -46,6 +48,7 @@ public class DebugBridge : IDebugBridge
         IGethStyleTracer tracer,
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
+        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
         IReceiptsMigration receiptsMigration,
         ISpecProvider specProvider,
         ISyncModeSelector syncModeSelector,
@@ -56,6 +59,7 @@ public class DebugBridge : IDebugBridge
         _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+        _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
         _receiptsMigration = receiptsMigration ?? throw new ArgumentNullException(nameof(receiptsMigration));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
@@ -127,7 +131,7 @@ public class DebugBridge : IDebugBridge
         }
 
         Block block = searchResult.Object;
-        return _receiptStorage.Get(block);
+        return _receiptFinder.Get(block);
     }
 
     public Transaction? GetTransactionFromHash(Hash256 txHash)
@@ -141,10 +145,11 @@ public class DebugBridge : IDebugBridge
             throw new InvalidDataException(searchResult.Error);
         }
         Block block = searchResult.Object;
-        TxReceipt txReceipt = _receiptStorage.Get(block).ForTransaction(txHash);
+        TxReceipt txReceipt = _receiptFinder.Get(block).ForTransaction(txHash);
         return block?.Transactions[txReceipt.Index];
     }
 
+    [Obsolete("Use the Hash256 overload: a block number resolves only the canonical block at that height.")]
     public GethLikeTxTrace? GetTransactionTrace(ulong blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null) =>
         _tracer.Trace(blockNumber, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken, writer, pipeWriter);
 
@@ -195,7 +200,7 @@ public class DebugBridge : IDebugBridge
 
     public SyncReportSummary GetCurrentSyncStage() => new()
     {
-        CurrentStage = _syncModeSelector.Current.ToString()
+        CurrentStage = _syncModeSelector.Current.ToFlagsString()
     };
 
     public bool HaveNotSyncedHeadersYet() => _syncModeSelector.Current.HaveNotSyncedHeadersYet();

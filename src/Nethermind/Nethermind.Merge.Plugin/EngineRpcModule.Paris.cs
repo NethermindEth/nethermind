@@ -9,10 +9,10 @@ using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using ValidationResult = Nethermind.Merge.Plugin.Data.ValidationResult;
 
@@ -71,14 +71,16 @@ public partial class EngineRpcModule : IEngineRpcModule
         _engineRequestsTracker.OnNewPayloadCalled();
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
         executionPayload.ExecutionRequests = executionPayloadParams.ExecutionRequests;
+        executionPayload.InclusionListTransactions = executionPayloadParams.InclusionListTransactions;
 
-        if (!executionPayload.ValidateFork(_specProvider))
+        if (!executionPayload.ValidateForkOnNewPayload(_specProvider, version))
         {
             if (_logger.IsWarn) _logger.Warn($"The payload is not supported by the current fork");
             return ResultWrapper<PayloadStatusV1>.Fail(MergeErrorMessages.UnsupportedFork, version < EngineApiVersions.NewPayload.V2 ? ErrorCodes.InvalidParams : MergeErrorCodes.UnsupportedFork);
         }
 
         IReleaseSpec releaseSpec = _specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp);
+
         ValidationResult validationResult = executionPayloadParams.ValidateParams(releaseSpec, version, out string? error);
         if (validationResult != ValidationResult.Success)
         {
@@ -93,8 +95,9 @@ public partial class EngineRpcModule : IEngineRpcModule
             long startTime = Stopwatch.GetTimestamp();
             try
             {
-                // Hide the tx-root computation (consumed by TryGetBlock) under the no-GC-region
-                // start; inside the lock so competing requests cannot run trie work concurrently.
+                // Start tx-root computation before asynchronous GC-region admission so it can
+                // overlap that work; keep it inside the lock so competing requests cannot run
+                // trie work concurrently.
                 _ = executionPayload.StartTxRootComputation();
                 using IDisposable region = _gcKeeper.TryStartNoGCRegion();
                 return await _newPayloadV1Handler.HandleAsync(executionPayload);

@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -42,7 +45,6 @@ public class FlatWorldStateScopeProviderTests
         public SnapshotPooledList ReadOnlySnapshots = new(0);
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
-        public TransientResource? LastCreatedCachedResource { get; set; }
 
         public TestContext(FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null)
         {
@@ -51,9 +53,8 @@ public class FlatWorldStateScopeProviderTests
             _containerBuilder = new ContainerBuilder()
                     .AddModule(new FlatWorldStateModule(config))
                     .AddSingleton<IPersistence.IPersistenceReader>(_ => Substitute.For<IPersistence.IPersistenceReader>())
-                    .AddSingleton<IFlatDbManager>((ctx) =>
+                    .AddSingleton<IFlatDbManager>(_ =>
                     {
-                        ResourcePool resourcePool = ctx.Resolve<ResourcePool>();
                         IFlatDbManager flatDiff = Substitute.For<IFlatDbManager>();
                         flatDiff.When(it => it.AddSnapshot(Arg.Any<Snapshot>(), Arg.Any<TransientResource>()))
                             .Do(c =>
@@ -67,11 +68,10 @@ public class FlatWorldStateScopeProviderTests
                                 }
                                 LastCommittedSnapshot = snapshot;
 
-                                if (LastCreatedCachedResource is not null)
-                                {
-                                    resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
-                                }
-                                LastCreatedCachedResource = transientResource;
+                                // Mirror FlatDbManager.AddSnapshot: returning to the pool directly would recycle
+                                // the resource while a warmer lease is still outstanding, and the resource would
+                                // then be returned a second time when that lease is released.
+                                transientResource.ReleaseLease();
                             });
 
                         return flatDiff;
@@ -118,7 +118,6 @@ public class FlatWorldStateScopeProviderTests
             _cancellationTokenSource.Cancel();
 
             LastCommittedSnapshot?.Dispose();
-            if (LastCreatedCachedResource is not null) ResourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, LastCreatedCachedResource);
 
             _container?.Dispose();
             _cancellationTokenSource.Dispose();
@@ -166,14 +165,14 @@ public class FlatWorldStateScopeProviderTests
         ctx.AddSnapshot(content =>
         {
             content.Accounts[testAddress] = olderAccount;
-            content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(olderSlotValue);
+            content.Storages[(testAddress, slotIndex)] = BaseFlatPersistence.DecodeSlotValue(olderSlotValue);
         });
 
         // Layer 2: Newer snapshot (shadowing Layer 1)
         ctx.AddSnapshot(content =>
         {
             content.Accounts[testAddress] = newerAccount;
-            content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(newerSlotValue);
+            content.Storages[(testAddress, slotIndex)] = BaseFlatPersistence.DecodeSlotValue(newerSlotValue);
         });
 
         // Layer 3: Another newer snapshot, but only for account
@@ -185,23 +184,25 @@ public class FlatWorldStateScopeProviderTests
 
         // Verify slot shadowed by Layer 2 snapshot (newerSlotValue)
         IWorldStateScopeProvider.IStorageTree storageTree = ctx.Scope.CreateStorageTree(testAddress);
-        Assert.That(storageTree.Get(slotIndex), Is.EqualTo(newerSlotValue));
+        storageTree.Get(slotIndex, out UInt256 slotRead186);
+        Assert.That(slotRead186, Is.EqualTo(new UInt256(newerSlotValue, isBigEndian: true)));
     }
 
     [Test]
-    public void TestAccountAndSlotFromPersistence()
+    public void TestAccountAndSlotFromPersistence([Values] bool hasStorage)
     {
         using TestContext ctx = new();
 
         Address testAddress = TestItem.AddressA;
         UInt256 slotIndex = 1;
-        Account persistedAccount = TestItem.GenerateRandomAccount();
+        Hash256 expectedRoot = hasStorage ? TestItem.KeccakA : Keccak.EmptyTreeHash;
+        Account persistedAccount = new(1, 2, expectedRoot, Keccak.OfAnEmptyString);
         byte[] persistedSlotValue = { 0xDE, 0xAD, 0xBE, 0xEF };
 
         // Setup Persistence Reader
         ctx.PersistenceReader.GetAccount(testAddress).Returns(persistedAccount);
-        SlotValue outValue = SlotValue.FromSpanWithoutLeadingZero(persistedSlotValue);
-        ctx.PersistenceReader.TryGetSlot(testAddress, slotIndex, ref Arg.Any<SlotValue>())
+        UInt256 outValue = BaseFlatPersistence.DecodeSlotValue(persistedSlotValue);
+        ctx.PersistenceReader.TryGetSlot(testAddress, slotIndex, ref Arg.Any<UInt256>())
             .Returns(x =>
             {
                 x[2] = outValue;
@@ -212,7 +213,9 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(ctx.Scope.Get(testAddress), Is.EqualTo(persistedAccount));
 
         IWorldStateScopeProvider.IStorageTree storageTree = ctx.Scope.CreateStorageTree(testAddress);
-        Assert.That(storageTree.Get(slotIndex), Is.EqualTo(persistedSlotValue));
+        Assert.That(storageTree.RootHash, Is.EqualTo(expectedRoot));
+        storageTree.Get(slotIndex, out UInt256 slotRead213);
+        Assert.That(slotRead213, Is.EqualTo(new UInt256(persistedSlotValue, isBigEndian: true)));
     }
 
     [Test]
@@ -237,7 +240,7 @@ public class FlatWorldStateScopeProviderTests
         {
             writeBatch.Set(testAddress, testAccount);
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slotIndex, writtenSlotValue);
+            storageBatch.Set(slotIndex, new UInt256(writtenSlotValue, isBigEndian: true));
             storageBatch.Dispose();
         }
 
@@ -247,12 +250,12 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(resultAccount!.Nonce, Is.EqualTo(testAccount.Nonce));
 
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
-        Assert.That(storageTree.Get(slotIndex), Is.EqualTo(writtenSlotValue));
+        storageTree.Get(slotIndex, out UInt256 slotRead248);
+        Assert.That(slotRead248, Is.EqualTo(new UInt256(writtenSlotValue, isBigEndian: true)));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void GetAccount_ReportsWhetherAccountIsInCurrentSnapshot(bool isNull)
+    [Test]
+    public void GetAccount_ReportsWhetherAccountIsInCurrentSnapshot([Values] bool isNull)
     {
         using TestContext ctx = new();
         Address address = TestItem.AddressA;
@@ -339,7 +342,7 @@ public class FlatWorldStateScopeProviderTests
         {
             writeBatch.Set(testAddress, testAccount);
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slotIndex, slotValue);
+            storageBatch.Set(slotIndex, new UInt256(slotValue, isBigEndian: true));
             storageBatch.Dispose();
         }
 
@@ -352,8 +355,8 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(committedAccount!.Balance, Is.EqualTo(testAccount.Balance));
         Assert.That(committedAccount!.Nonce, Is.EqualTo(testAccount.Nonce));
 
-        ctx.LastCommittedSnapshot!.TryGetStorage((testAddress, slotIndex), out SlotValue? committedSlot);
-        Assert.That(committedSlot!.Value.ToEvmBytes(), Is.EqualTo(slotValue));
+        ctx.LastCommittedSnapshot!.TryGetStorage((testAddress, slotIndex), out UInt256? committedSlot);
+        Assert.That(committedSlot!.Value.ToMinimalBigEndian(), Is.EqualTo(slotValue));
     }
 
     #endregion
@@ -375,7 +378,7 @@ public class FlatWorldStateScopeProviderTests
         ctx.AddSnapshot(content =>
         {
             content.Accounts[testAddress] = oldAccount;
-            content.Storages[(testAddress, slotIndex)] = SlotValue.FromSpanWithoutLeadingZero(oldSlotValue);
+            content.Storages[(testAddress, slotIndex)] = BaseFlatPersistence.DecodeSlotValue(oldSlotValue);
         });
 
         // Layer 2: SELFDESTRUCT
@@ -387,7 +390,8 @@ public class FlatWorldStateScopeProviderTests
 
         // Slot should be blocked by selfdestruct
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
-        Assert.That(storageTree.Get(slotIndex), Is.EqualTo(StorageTree.ZeroBytes));
+        storageTree.Get(slotIndex, out UInt256 slotRead387);
+        Assert.That(slotRead387, Is.EqualTo(UInt256.Zero));
     }
 
     [Test]
@@ -403,21 +407,23 @@ public class FlatWorldStateScopeProviderTests
         byte[] slot2AfterValue = { 0x02 };
 
         // Snapshot 0: slot1 exists
-        ctx.AddSnapshot(content => content.Storages[(testAddress, slot1)] = SlotValue.FromSpanWithoutLeadingZero(slot1BeforeValue));
+        ctx.AddSnapshot(content => content.Storages[(testAddress, slot1)] = BaseFlatPersistence.DecodeSlotValue(slot1BeforeValue));
 
         // Snapshot 1: selfdestruct happens at this index
         ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[testAddress] = false);
 
         // Snapshot 2: slot2 is set after selfdestruct
-        ctx.AddSnapshot(content => content.Storages[(testAddress, slot2)] = SlotValue.FromSpanWithoutLeadingZero(slot2AfterValue));
+        ctx.AddSnapshot(content => content.Storages[(testAddress, slot2)] = BaseFlatPersistence.DecodeSlotValue(slot2AfterValue));
 
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(testAddress);
 
         // slot1 should return zero (blocked by selfdestruct)
-        Assert.That(storageTree.Get(slot1), Is.EqualTo(StorageTree.ZeroBytes));
+        storageTree.Get(slot1, out UInt256 slotRead414);
+        Assert.That(slotRead414, Is.EqualTo(UInt256.Zero));
 
         // slot2 should return the value (written after selfdestruct)
-        Assert.That(storageTree.Get(slot2), Is.EqualTo(slot2AfterValue));
+        storageTree.Get(slot2, out UInt256 slotRead417);
+        Assert.That(slotRead417, Is.EqualTo(new UInt256(slot2AfterValue, isBigEndian: true)));
     }
 
     #endregion
@@ -441,7 +447,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slotIndex, slotValue);
+            storageBatch.Set(slotIndex, new UInt256(slotValue, isBigEndian: true));
             storageBatch.Dispose();
         }
 
@@ -483,9 +489,9 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 3);
-            storageBatch.Set(slot1, value1);
-            storageBatch.Set(slot2, value2);
-            storageBatch.Set(slot3, value3);
+            storageBatch.Set(slot1, new UInt256(value1, isBigEndian: true));
+            storageBatch.Set(slot2, new UInt256(value2, isBigEndian: true));
+            storageBatch.Set(slot3, new UInt256(value3, isBigEndian: true));
             storageBatch.Dispose();
         }
 
@@ -524,7 +530,7 @@ public class FlatWorldStateScopeProviderTests
                 using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slotsPerCommit);
                 int firstSlot = commit * slotsPerCommit + 1;
                 int lastSlot = firstSlot + slotsPerCommit;
-                for (int i = firstSlot; i < lastSlot; i++) storageBatch.Set((UInt256)i, [(byte)i, (byte)(i >> 8)]);
+                for (int i = firstSlot; i < lastSlot; i++) storageBatch.Set((UInt256)i, new UInt256([(byte)i, (byte)(i >> 8)], isBigEndian: true));
             }
 
             scope.Commit((ulong)(commit + 1));
@@ -533,7 +539,7 @@ public class FlatWorldStateScopeProviderTests
         TestMemDb testDb = new();
         RawScopedTrieStore trieStore = new(testDb);
         StorageTree expectedTree = new(trieStore, LimboLogs.Instance);
-        for (int i = 1; i <= slotsPerCommit * commitCount; i++) expectedTree.Set((UInt256)i, [(byte)i, (byte)(i >> 8)]);
+        for (int i = 1; i <= slotsPerCommit * commitCount; i++) expectedTree.Set((UInt256)i, new UInt256([(byte)i, (byte)(i >> 8)], isBigEndian: true).ToMinimalBigEndian());
         expectedTree.UpdateRootHash();
 
         Account? account = scope.Get(address);
@@ -560,7 +566,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slot1, value1);
+            storageBatch.Set(slot1, new UInt256(value1, isBigEndian: true));
             storageBatch.Dispose();
         }
         scope.Commit(1);
@@ -569,7 +575,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slot2, value2);
+            storageBatch.Set(slot2, new UInt256(value2, isBigEndian: true));
             storageBatch.Dispose();
         }
         scope.Commit(2);
@@ -607,7 +613,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slot1, value1);
+            storageBatch.Set(slot1, new UInt256(value1, isBigEndian: true));
             storageBatch.Dispose();
         }
         scope.Commit(1);
@@ -625,7 +631,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(testAddress, 1);
-            storageBatch.Set(slot2, value2);
+            storageBatch.Set(slot2, new UInt256(value2, isBigEndian: true));
             storageBatch.Dispose();
         }
         scope.Commit(3);
@@ -685,7 +691,7 @@ public class FlatWorldStateScopeProviderTests
             writeBatch.Set(addr1, acc1);
             writeBatch.Set(addr2, acc2);
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr1, 1);
-            storageBatch.Set(slot1, val1);
+            storageBatch.Set(slot1, new UInt256(val1, isBigEndian: true));
             storageBatch.Dispose();
         }
 
@@ -699,8 +705,8 @@ public class FlatWorldStateScopeProviderTests
         ctx.LastCommittedSnapshot!.TryGetAccount(addr2, out Account? committedAcc2);
         Assert.That(committedAcc2!.Balance, Is.EqualTo(acc2.Balance));
 
-        ctx.LastCommittedSnapshot!.TryGetStorage((addr1, slot1), out SlotValue? committedSlot);
-        Assert.That(committedSlot!.Value.ToEvmBytes(), Is.EqualTo(val1));
+        ctx.LastCommittedSnapshot!.TryGetStorage((addr1, slot1), out UInt256? committedSlot);
+        Assert.That(committedSlot!.Value.ToMinimalBigEndian(), Is.EqualTo(val1));
     }
 
     [Test]
@@ -750,18 +756,19 @@ public class FlatWorldStateScopeProviderTests
 
         // Persistence setup
         ctx.PersistenceReader.GetAccount(addr).Returns(TestItem.GenerateRandomAccount());
-        SlotValue outVal = SlotValue.FromSpanWithoutLeadingZero(persistedVal);
-        ctx.PersistenceReader.TryGetSlot(addr, slot, ref Arg.Any<SlotValue>())
+        UInt256 outVal = BaseFlatPersistence.DecodeSlotValue(persistedVal);
+        ctx.PersistenceReader.TryGetSlot(addr, slot, ref Arg.Any<UInt256>())
             .Returns(x => { x[2] = outVal; return true; });
 
         // Snapshot Setup
-        ctx.AddSnapshot(content => content.Storages[(addr, slot)] = SlotValue.FromSpanWithoutLeadingZero(snapshotVal));
+        ctx.AddSnapshot(content => content.Storages[(addr, slot)] = BaseFlatPersistence.DecodeSlotValue(snapshotVal));
         ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[addr] = true);
         ctx.AddSnapshot(content => { });
 
         // Verify both are blocked
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addr);
-        Assert.That(storageTree.Get(slot), Is.EqualTo(StorageTree.ZeroBytes));
+        storageTree.Get(slot, out UInt256 slotRead761);
+        Assert.That(slotRead761, Is.EqualTo(UInt256.Zero));
     }
 
     [Test]
@@ -787,7 +794,7 @@ public class FlatWorldStateScopeProviderTests
         // Add storage slot AND trie node for addr1 to ReadOnlySnapshots
         ctx.AddSnapshot(content =>
         {
-            content.Storages[(addr1, slot1)] = SlotValue.FromSpanWithoutLeadingZero(value1);
+            content.Storages[(addr1, slot1)] = BaseFlatPersistence.DecodeSlotValue(value1);
 
             // Also add a storage trie node for addr1 at root path
             TrieNode storageNode = new(NodeType.Leaf, Keccak.Zero);
@@ -806,7 +813,8 @@ public class FlatWorldStateScopeProviderTests
         // Before the fix: would fail because DoTryFindStorageNodeExternal exited early
         // After the fix: properly falls through and finds storage in ReadOnlySnapshots
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addr1);
-        Assert.That(storageTree.Get(slot1), Is.EqualTo(value1));
+        storageTree.Get(slot1, out UInt256 slotRead806);
+        Assert.That(slotRead806, Is.EqualTo(new UInt256(value1, isBigEndian: true)));
     }
 
     [Test]
@@ -836,7 +844,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr, 1);
-            storageBatch.Set(slotBefore, valueBefore);
+            storageBatch.Set(slotBefore, new UInt256(valueBefore, isBigEndian: true));
             storageBatch.Dispose();
         }
         scope.Commit(1);
@@ -846,7 +854,7 @@ public class FlatWorldStateScopeProviderTests
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr, 1);
             storageBatch.Clear();
-            storageBatch.Set(slotAtSelfDestruct, valueAtSelfDestruct);
+            storageBatch.Set(slotAtSelfDestruct, new UInt256(valueAtSelfDestruct, isBigEndian: true));
             storageBatch.Dispose();
         }
         scope.Commit(2);
@@ -855,7 +863,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr, 1);
-            storageBatch.Set(slotAfter, valueAfter);
+            storageBatch.Set(slotAfter, new UInt256(valueAfter, isBigEndian: true));
             storageBatch.Dispose();
         }
         scope.Commit(3);
@@ -865,9 +873,12 @@ public class FlatWorldStateScopeProviderTests
         // - slotAtSelfDestruct should be found (set in same commit as self-destruct)
         // - slotAfter should be found (added after self-destruct)
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addr);
-        Assert.That(storageTree.Get(slotBefore), Is.EqualTo(StorageTree.ZeroBytes), "Slot before self-destruct should be zero");
-        Assert.That(storageTree.Get(slotAtSelfDestruct), Is.EqualTo(valueAtSelfDestruct), "Slot at self-destruct should be found");
-        Assert.That(storageTree.Get(slotAfter), Is.EqualTo(valueAfter), "Slot after self-destruct should be found");
+        storageTree.Get(slotBefore, out UInt256 slotRead865);
+        Assert.That(slotRead865, Is.EqualTo(UInt256.Zero), "Slot before self-destruct should be zero");
+        storageTree.Get(slotAtSelfDestruct, out UInt256 slotRead866);
+        Assert.That(slotRead866, Is.EqualTo(new UInt256(valueAtSelfDestruct, isBigEndian: true)), "Slot at self-destruct should be found");
+        storageTree.Get(slotAfter, out UInt256 slotRead867);
+        Assert.That(slotRead867, Is.EqualTo(new UInt256(valueAfter, isBigEndian: true)), "Slot after self-destruct should be found");
     }
 
     [Test]
@@ -894,7 +905,7 @@ public class FlatWorldStateScopeProviderTests
 
         // Read-only snapshot 0: slot exists before self-destruct
         ctx.AddSnapshot(content =>
-            content.Storages[(addr, slotBefore)] = SlotValue.FromSpanWithoutLeadingZero(valueBeforeSelfDestruct));
+            content.Storages[(addr, slotBefore)] = BaseFlatPersistence.DecodeSlotValue(valueBeforeSelfDestruct));
 
         // Read-only snapshot 1: self-destruct marker (in ReadOnlySnapshotBundle)
         ctx.AddSnapshot(content => content.SelfDestructedStorageAddresses[addr] = false);
@@ -903,7 +914,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr, 1);
-            storageBatch.Set(slotAfter1, valueAfter1);
+            storageBatch.Set(slotAfter1, new UInt256(valueAfter1, isBigEndian: true));
             storageBatch.Dispose();
         }
         scope.Commit(1);
@@ -912,7 +923,7 @@ public class FlatWorldStateScopeProviderTests
         using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
             IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(addr, 1);
-            storageBatch.Set(slotAfter2, valueAfter2);
+            storageBatch.Set(slotAfter2, new UInt256(valueAfter2, isBigEndian: true));
             storageBatch.Dispose();
         }
         scope.Commit(2);
@@ -920,11 +931,14 @@ public class FlatWorldStateScopeProviderTests
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(addr);
 
         // Slots written after self-destruct in local snapshots should be visible
-        Assert.That(storageTree.Get(slotAfter1), Is.EqualTo(valueAfter1), "Slot in local snapshot after read-only self-destruct should be visible");
-        Assert.That(storageTree.Get(slotAfter2), Is.EqualTo(valueAfter2), "Slot in local snapshot after read-only self-destruct should be visible");
+        storageTree.Get(slotAfter1, out UInt256 slotRead920);
+        Assert.That(slotRead920, Is.EqualTo(new UInt256(valueAfter1, isBigEndian: true)), "Slot in local snapshot after read-only self-destruct should be visible");
+        storageTree.Get(slotAfter2, out UInt256 slotRead921);
+        Assert.That(slotRead921, Is.EqualTo(new UInt256(valueAfter2, isBigEndian: true)), "Slot in local snapshot after read-only self-destruct should be visible");
 
         // Slot from before self-destruct (in read-only snapshot) should be blocked
-        Assert.That(storageTree.Get(slotBefore), Is.EqualTo(StorageTree.ZeroBytes), "Slot before self-destruct should be zero");
+        storageTree.Get(slotBefore, out UInt256 slotRead924);
+        Assert.That(slotRead924, Is.EqualTo(UInt256.Zero), "Slot before self-destruct should be zero");
     }
 
     #endregion
@@ -993,7 +1007,7 @@ public class FlatWorldStateScopeProviderTests
 
         // Queues a state-trie warmup job whose traversal blocks inside the persistence reader,
         // simulating the slow cold read that is in flight when a restart-replay scope is disposed.
-        scope.HintGet(TestItem.AddressA, null);
+        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
         Assert.That(reader.ReadEntered.Wait(30_000), Is.True, "Warmup job should reach the persistence reader");
 
         Task disposeTask = Task.Run(() => scope.Dispose());
@@ -1017,13 +1031,13 @@ public class FlatWorldStateScopeProviderTests
         FlatWorldStateScope scope = ctx.Scope;
         IWorldStateScopeProvider.IStorageTree storageTree = scope.CreateStorageTree(TestItem.AddressA);
 
-        storageTree.HintSet((UInt256)1, [1]);
+        storageTree.HintSet((UInt256)1);
 
         Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
         Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
 
         // The dedupe bloom is already marked, so a repeated hint for the same slot must not push again.
-        storageTree.HintSet((UInt256)1, [1]);
+        storageTree.HintSet((UInt256)1);
         Assert.That(warmer.SlotJobPushes, Is.EqualTo(1));
         Assert.That(warmer.MpmcSlotJobPushes, Is.EqualTo(slotRingAccepts ? 0 : 1));
 
@@ -1036,10 +1050,190 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(enteredWaitLoop, Is.False);
     }
 
+    private static ReadOnlyBlockAccessList CreateBal(params ReadOnlyAccountChanges[] accounts)
+    {
+        Array.Sort(accounts, static (a, b) => a.Address.Bytes.SequenceCompareTo(b.Address.Bytes));
+        return new ReadOnlyBlockAccessList(accounts, accounts.Length);
+    }
+
+    private static ReadOnlyAccountChanges ReadOnlyAccount(Address address) =>
+        new(address, storageChanges: [], storageReads: [(UInt256)1], balanceChanges: [], nonceChanges: [], codeChanges: []);
+
+    public enum BalWriteKind
+    {
+        Balance,
+        Nonce,
+        Code,
+        Storage,
+    }
+
+    private static ReadOnlyAccountChanges WrittenAccount(Address address, BalWriteKind kind = BalWriteKind.Balance) => kind switch
+    {
+        BalWriteKind.Balance => new(address, storageChanges: [], storageReads: [], balanceChanges: [new BalanceChange(0, UInt256.One)], nonceChanges: [], codeChanges: []),
+        BalWriteKind.Nonce => new(address, storageChanges: [], storageReads: [], balanceChanges: [], nonceChanges: [new NonceChange(0, 1)], codeChanges: []),
+        BalWriteKind.Code => new(address, storageChanges: [], storageReads: [], balanceChanges: [], nonceChanges: [], codeChanges: [new CodeChange(0, [0x00])]),
+        BalWriteKind.Storage => new(address, storageChanges: [new ReadOnlySlotChanges((UInt256)1, [new StorageChange(0, default)])], storageReads: [], balanceChanges: [], nonceChanges: [], codeChanges: []),
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
+
+    private static TestContext CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer)
+    {
+        warmer = new RecordingTrieWarmer(acceptSlotJob: true, acceptMpmcSlotJob: true);
+        return new TestContext(trieWarmer: warmer);
+    }
+
+    [Test]
+    public async Task HintBal_SkipsAddressWarmup_ForReadOnlyBalAccounts()
+    {
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), WrittenAccount(TestItem.AddressB)));
+
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressB }));
+    }
+
+    // Storage-only changes must still warm: the storage-root change rewrites the account leaf.
+    [Test]
+    public async Task HintBal_WarmsAddress_ForEachWriteKind([Values(BalWriteKind.Balance, BalWriteKind.Nonce, BalWriteKind.Code, BalWriteKind.Storage)] BalWriteKind kind)
+    {
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        await scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressA, kind)));
+
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
+    }
+
+    [Test]
+    public async Task HintBal_WithSink_StillReadsReadOnlyAccounts()
+    {
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+        RecordingBalReaderSink sink = new();
+
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), WrittenAccount(TestItem.AddressB)), sink);
+
+        Assert.That(sink.AccountReads, Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressB }));
+    }
+
+    [Test]
+    public async Task HintBal_EmptyBal_ResetsPreviousWriteSet()
+    {
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
+        await scope.HintBal(CreateBal());
+
+        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
+    }
+
+    [Test]
+    public async Task HintWarmAccount_AfterHintBal_SkipsReadOnlyAndUnlistedAccounts()
+    {
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA), WrittenAccount(TestItem.AddressB)));
+
+        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes)); // read-only in BAL
+        scope.HintWarmAccount(new ValueAddress(TestItem.AddressC.Bytes)); // not in BAL
+        scope.HintWarmAccount(new ValueAddress(TestItem.AddressB.Bytes)); // written, but already pushed by HintBal (bloom dedupe)
+
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressB }));
+    }
+
+    [Test]
+    public async Task StartWriteBatch_KeepsBalWarmupFilter()
+    {
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressA)));
+        scope.StartWriteBatch(0).Dispose();
+
+        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+
+        Assert.That(warmer.AddressJobPushes, Is.Empty);
+    }
+
+    [Test]
+    public async Task HintBal_SecondBal_ReplacesPreviousWriteSet()
+    {
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        // paused so the first BAL's warmup doesn't bloom-mark AddressA and mask the assert
+        scope._pausePrewarmer = true;
+        await scope.HintBal(CreateBal(WrittenAccount(TestItem.AddressA)));
+        scope._pausePrewarmer = false;
+
+        await scope.HintBal(CreateBal(ReadOnlyAccount(TestItem.AddressB)));
+
+        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+
+        Assert.That(warmer.AddressJobPushes, Is.Empty);
+    }
+
+    [Test]
+    public void HintWarmAccount_WarmsEverything_WithoutBalHint()
+    {
+        using TestContext ctx = CreateContextWithRecordingWarmer(out RecordingTrieWarmer warmer);
+        FlatWorldStateScope scope = ctx.Scope;
+
+        scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+
+        Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
+    }
+
+    private sealed class RecordingBalReaderSink : IWorldStateScopeProvider.IAsyncBalReaderSink
+    {
+        private readonly Lock _lock = new();
+        private readonly List<Address> _accountReads = [];
+
+        public Address[] AccountReads
+        {
+            get
+            {
+                lock (_lock) return _accountReads.ToArray();
+            }
+        }
+
+        public void OnAccountRead(Address address, Account? account)
+        {
+            lock (_lock) _accountReads.Add(address);
+        }
+
+        public void OnStorageRead(in StorageCell storageCell, in UInt256 value) { }
+
+        public bool StillNeeded(Address address, out Account? account)
+        {
+            account = null;
+            return true;
+        }
+
+        public bool StillNeeded(in StorageCell storageCell) => true;
+    }
+
     private sealed class RecordingTrieWarmer(bool acceptSlotJob, bool acceptMpmcSlotJob) : ITrieWarmer
     {
+        private readonly Lock _lock = new();
+        private readonly List<Address> _addressJobPushes = [];
+
         public int SlotJobPushes { get; private set; }
         public int MpmcSlotJobPushes { get; private set; }
+
+        public Address[] AddressJobPushes
+        {
+            get
+            {
+                lock (_lock) return _addressJobPushes.ToArray();
+            }
+        }
 
         public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId)
         {
@@ -1053,7 +1247,14 @@ public class FlatWorldStateScopeProviderTests
             return acceptMpmcSlotJob;
         }
 
-        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId) => false;
+        public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
+        {
+            lock (_lock)
+            {
+                if (path is not null) _addressJobPushes.Add(path);
+            }
+            return false;
+        }
 
         public void OnEnterScope() { }
 
@@ -1095,11 +1296,11 @@ public class FlatWorldStateScopeProviderTests
         }
 
         public Account? GetAccount(Address address) => null;
-        public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) => false;
+        public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => false;
         public StateId CurrentState => new(0, Keccak.EmptyTreeHash);
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
-        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => false;
+        public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
         public bool IsPreimageMode => false;

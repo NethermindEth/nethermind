@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence;
@@ -23,7 +22,8 @@ public sealed class ReadOnlySnapshotBundle(
     SnapshotPooledList snapshots,
     IPersistence.IPersistenceReader persistenceReader,
     bool recordDetailedMetrics,
-    PersistedSnapshotStack persistedSnapshots)
+    PersistedSnapshotStack persistedSnapshots,
+    bool isHistorical = false)
     : RefCountingDisposable
 {
     // Cached once — the persisted-snapshot stack is immutable for the bundle's lifetime. Every read
@@ -31,6 +31,12 @@ public sealed class ReadOnlySnapshotBundle(
     // long finality disabled, or none persisted yet) skips the persisted lookups entirely.
     private readonly int _persistedSnapshotCount = persistedSnapshots.Count;
     public int SnapshotCount => _persistedSnapshotCount + snapshots.Count;
+
+    /// <summary>
+    /// True when this bundle is backed by the finalized history index (trie-less): it serves account/storage values
+    /// only and has no trie nodes, so post-block state-root recomputation must not traverse it.
+    /// </summary>
+    public bool IsHistorical { get; } = isHistorical;
     private bool _isDisposed;
 
     private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");
@@ -89,10 +95,10 @@ public sealed class ReadOnlySnapshotBundle(
         return _persistedSnapshotCount > 0 && persistedSnapshots.TryGetSelfDestruct(address, out int snapshotIdx) ? snapshotIdx : -1;
     }
 
-    public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx) =>
-        GetSlot(selfDestructStateIdx, (address, index));
+    public void GetSlot(Address address, in UInt256 index, int selfDestructStateIdx, out UInt256? value) =>
+        GetSlot(selfDestructStateIdx, (address, index), out value);
 
-    public byte[]? GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key)
+    public void GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key, out UInt256? value)
     {
         GuardDispose();
 
@@ -100,31 +106,31 @@ public sealed class ReadOnlySnapshotBundle(
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].TryGetStorage(key, out SlotValue? slotValue))
+            if (snapshots[i].TryGetStorage(key, out UInt256? slotValue))
             {
-                byte[]? res = slotValue?.ToEvmBytes();
+                value = slotValue;
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabel);
-                return res;
+                return;
             }
 
             if (_persistedSnapshotCount + i <= selfDestructStateIdx)
             {
-                return null;
+                value = null;
+                return;
             }
         }
 
-        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetSlot(address, in index, selfDestructStateIdx, sw, out byte[]? persistedSlot))
-            return persistedSlot;
+        if (_persistedSnapshotCount > 0 && persistedSnapshots.TryGetSlot(address, in index, selfDestructStateIdx, sw, out value))
+            return;
 
-        SlotValue outSlotValue = new();
+        UInt256 outSlotValue = default;
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue);
-        byte[]? slotResult = outSlotValue.ToEvmBytes();
+        value = persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue) ? outSlotValue : null;
 
         if (recordDetailedMetrics)
         {
-            if (slotResult is null || slotResult.IsZero())
+            if (outSlotValue.IsZero)
             {
                 Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceNullLabel);
             }
@@ -133,8 +139,6 @@ public sealed class ReadOnlySnapshotBundle(
                 Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStoragePersistenceLabel);
             }
         }
-
-        return slotResult;
     }
 
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>

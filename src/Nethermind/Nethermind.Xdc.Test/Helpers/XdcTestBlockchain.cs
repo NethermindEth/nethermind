@@ -7,6 +7,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -14,6 +15,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -114,6 +116,7 @@ public class XdcTestBlockchain : TestBlockchain
         JsonSerializer = new EthereumJsonSerializer();
 
         IConfigProvider configProvider = new ConfigProvider([.. CreateConfigs()]);
+        configProvider.GetConfig<IFlatDbConfig>().Enabled = UseFlatDb;
 
         ContainerBuilder builder = ConfigureContainer(new ContainerBuilder(), configProvider);
         configurer?.Invoke(builder);
@@ -182,12 +185,15 @@ public class XdcTestBlockchain : TestBlockchain
                     ctx.Resolve<IChainHeadInfoProvider>(),
                     ctx.Resolve<ITxPoolConfig>(),
                     ctx.Resolve<ITxValidator>(),
+                    new SpecChangeTxValidator(ctx.Resolve<ISpecProvider>().ChainId),
                     ctx.Resolve<ILogManager>(),
                     new XdcTransactionComparerProvider(ctx.Resolve<ISpecProvider>(), ctx.Resolve<IBlockTree>()).GetDefaultComparer(),
                     ctx.Resolve<ITxGossipPolicy>(),
-                    new SignTransactionFilter(ctx.Resolve<ISnapshotManager>(), ctx.Resolve<IBlockTree>(), ctx.Resolve<ISpecProvider>()),
-                    ctx.Resolve<ITxValidator>()
-                );
+                    [
+                        new SignTransactionFilter(ctx.Resolve<ISnapshotManager>(), ctx.Resolve<IBlockTree>(), ctx.Resolve<ISpecProvider>()),
+                        new BlackListedAddressFilter(ctx.Resolve<IChainHeadInfoProvider>(), ctx.Resolve<ISpecProvider>(), ctx.Resolve<ILogManager>()),
+                        new MinGasPriceFilter(ctx.Resolve<IChainHeadInfoProvider>(), ctx.Resolve<ISpecProvider>(), ctx.Resolve<ILogManager>())
+                    ]);
 
                 return txPool;
             })
@@ -224,11 +230,11 @@ public class XdcTestBlockchain : TestBlockchain
         xdcSpec.MasternodeReward = (UInt256)2 * Unit.Ether; // 2 Ether in Wei per masternode
         xdcSpec.ProtectorReward = Unit.Ether;               // 1 Ether in Wei per protector
         xdcSpec.ObserverReward = Unit.Ether / 2;            // 0.5 Ether in Wei per observer
+        xdcSpec.MinimumGasPrice = XdcConstants.DefaultMinGasPrice * XdcConstants.Gas50xMultiplier;
         xdcSpec.MinimumMinerBlockPerEpoch = 1;
         xdcSpec.MinimumSigningTx = 1;
         xdcSpec.GasLimitBoundDivisor = 1024UL;
         xdcSpec.LimitPenaltyEpoch = 4;
-        xdcSpec.LimitPenaltyEpochV2 = 0;
 
         xdcSpec.BlackListedAddresses =
             [
@@ -602,7 +608,8 @@ public class XdcTestBlockchain : TestBlockchain
 
     public TransactionBuilder<Transaction> CreateTransactionBuilder()
     {
-        TransactionBuilder<Transaction> txBuilder = BuildSimpleTransaction;
+        // The harness sets a real floor, so anything cheaper is rejected on pool admission as it would be on a live node.
+        TransactionBuilder<Transaction> txBuilder = BuildSimpleTransaction.WithGasPrice(XdcConstants.DefaultMinGasPrice * XdcConstants.Gas50xMultiplier);
 
         Block? head = BlockFinder.Head;
         if (head is not null)

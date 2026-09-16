@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.IO;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -109,6 +110,30 @@ public class ColumnsDbTests
     }
 
     [Test]
+    public void WriteBatch_PutSpan_DoesNotCopyValueToManagedArray()
+    {
+        const int valueLength = 128 * 1024;
+        byte[] value = GC.AllocateUninitializedArray<byte>(valueLength);
+        long allocated;
+        using (IColumnsWriteBatch<ReceiptsColumns> batch = _db.StartWriteBatch())
+        {
+            IWriteBatch column = batch.GetColumnBatch(ReceiptsColumns.Blocks);
+            column.PutSpan(TestItem.KeccakA.Bytes, [1]);
+
+            long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+            column.PutSpan(TestItem.KeccakB.Bytes, value);
+            allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocated, Is.LessThan(valueLength));
+            Assert.That(_db.GetColumnDb(ReceiptsColumns.Blocks).Get(TestItem.KeccakB), Is.EqualTo(value));
+            Assert.That(_db.GetColumnDb(ReceiptsColumns.Transactions).Get(TestItem.KeccakB), Is.Null);
+        }
+    }
+
+    [Test]
     public void SmokeTest_Snapshot()
     {
         IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
@@ -125,20 +150,22 @@ public class ColumnsDbTests
             .Get(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakA.BytesToArray()));
     }
 
-    [Test]
-    public void Snapshot_Get_WithHintReadAhead_ReadsFromSnapshot()
+    [TestCase(3)]
+    [TestCase(8)]
+    [TestCase(28)]
+    public void Snapshot_Get_WithHintReadAhead_ReadsFromSnapshot(int shortKeyLength)
     {
         IDb colA = _db.GetColumnDb(ReceiptsColumns.Blocks);
 
-        // Realistic flat-layout key shapes: a run of short (8-byte) keys followed by a run of long
+        // Realistic flat-layout key shapes: a run of short keys followed by a run of long
         // (34-byte) keys, ascending overall. Short keys pin the sequential-keys bypass of the
         // "probably hash db" length guard on the iterator fast path.
         byte[][] keys = new byte[64][];
         for (int i = 0; i < keys.Length; i++)
         {
-            keys[i] = new byte[i < 32 ? 8 : 34];
+            keys[i] = new byte[i < 32 ? shortKeyLength : 34];
             keys[i][0] = i < 32 ? (byte)0x10 : (byte)0x22;
-            BinaryPrimitives.WriteInt32BigEndian(keys[i].AsSpan(keys[i].Length - 4), i);
+            keys[i][^1] = (byte)i;
             colA.Set(keys[i], [(byte)i, 1]);
         }
 
@@ -166,6 +193,11 @@ public class ColumnsDbTests
             byte[] missingKey = new byte[34];
             missingKey[0] = 0x23;
             Assert.That(snapshotColumn.Get(missingKey, ReadFlags.HintReadAhead), Is.Null);
+            for (int i = keys.Length - 1; i >= 0; i--)
+            {
+                Assert.That(snapshotColumn.Get(keys[i], ReadFlags.HintReadAhead), Is.EqualTo(new byte[] { (byte)i, 1 }), $"reverse key {i}");
+            }
+            Assert.That(snapshotColumn.Get(keys[0], ReadFlags.HintReadAhead), Is.EqualTo(new byte[] { 0, 1 }));
         }
 
         // Disposing the snapshot tears down its iterators; the head db must stay fully usable.
@@ -182,22 +214,54 @@ public class ColumnsDbTests
             "snapshots without the sequential-read-ahead opt-in must keep point-Get behavior for HintReadAhead");
     }
 
-    [Test]
-    public void Snapshot_DoubleDispose_DoesNotThrow()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Snapshot_ReadAhead_ConcurrentColumnsKeepIndependentSnapshotValues(bool flush)
+    {
+        ReceiptsColumns[] columns = Enum.GetValues<ReceiptsColumns>();
+        for (int c = 0; c < columns.Length; c++)
+        {
+            IDb column = _db.GetColumnDb(columns[c]);
+            for (int i = 0; i < 64; i++) column.Set([(byte)i, 0, 0], [(byte)c, (byte)i]);
+        }
+        if (flush) _db.Flush();
+        using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot(sequentialReadAhead: true);
+        for (int c = 0; c < columns.Length; c++)
+        {
+            IDb column = _db.GetColumnDb(columns[c]);
+            for (int i = 0; i < 64; i++) column.Set([(byte)i, 0, 0], null);
+        }
+
+        Parallel.For(0, 16, worker =>
+        {
+            int c = worker % columns.Length;
+            IReadOnlyKeyValueStore column = snapshot.GetColumn(columns[c]);
+            for (int i = 0; i < 64; i++)
+            {
+                Assert.That(column.Get([(byte)i, 0, 0], ReadFlags.HintReadAhead), Is.EqualTo(new byte[] { (byte)c, (byte)i }));
+            }
+            Assert.That(column.Get([255, 0, 0], ReadFlags.HintReadAhead), Is.Null);
+        });
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Snapshot_DoubleDispose_DoesNotThrow(bool sequentialReadAhead)
     {
         IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
-        IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot();
+        IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot(sequentialReadAhead);
 
         snapshot.Dispose();
 
         Assert.That(() => snapshot.Dispose(), Throws.Nothing);
     }
 
-    [Test]
-    public void Snapshot_GetColumn_AfterDispose_ThrowsObjectDisposedException()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Snapshot_GetColumn_AfterDispose_ThrowsObjectDisposedException(bool sequentialReadAhead)
     {
         IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
-        IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot();
+        IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot(sequentialReadAhead);
 
         snapshot.Dispose();
 

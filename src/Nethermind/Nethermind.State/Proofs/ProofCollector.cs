@@ -50,8 +50,15 @@ namespace Nethermind.State.Proofs
         public void VisitBranch(in EmptyContext _, TrieNode node)
         {
             AddProofBits(node);
-            _visitingFilter.Remove(node.Keccak);
-            _visitingFilter.Add(node.GetChildHash((byte)Prefix[_pathIndex]));
+            if (node.Keccak is { } nodeHash)
+            {
+                _visitingFilter.Remove(nodeHash);
+            }
+
+            if (node.GetChildHash((byte)Prefix[_pathIndex]) is { } childHash)
+            {
+                _visitingFilter.Add(childHash);
+            }
 
             _pathIndex++;
         }
@@ -59,20 +66,29 @@ namespace Nethermind.State.Proofs
         public void VisitExtension(in EmptyContext _, TrieNode node)
         {
             AddProofBits(node);
-            _visitingFilter.Remove(node.Keccak);
+            if (node.Keccak is { } nodeHash)
+            {
+                _visitingFilter.Remove(nodeHash);
+            }
 
-            Hash256 childHash = node.GetChildHash(0);
-            _visitingFilter.Add(childHash); // always accept so can optimize
+            if (node.GetChildHash(0) is { } childHash)
+            {
+                _visitingFilter.Add(childHash); // always accept so can optimize
+            }
 
-            _pathIndex += node.Key.Length;
+            _pathIndex += (node.Key ?? throw new TrieException("A resolved extension node must have a key.")).Length;
         }
 
-        protected virtual void AddProofBits(TrieNode node) => _proofBits.Add(node.FullRlp.ToArray());
+        protected virtual void AddProofBits(TrieNode node) =>
+            _proofBits.Add(node.FullRlp.ToArray() ?? throw new TrieException("A visited proof node must have encoded RLP."));
 
         public void VisitLeaf(in EmptyContext _, TrieNode node)
         {
             AddProofBits(node);
-            _visitingFilter.Remove(node.Keccak);
+            if (node.Keccak is { } nodeHash)
+            {
+                _visitingFilter.Remove(nodeHash);
+            }
             _pathIndex = 0;
         }
 

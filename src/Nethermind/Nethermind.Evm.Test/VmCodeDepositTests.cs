@@ -1,12 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Test
 {
@@ -56,11 +59,13 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput receipt = Execute(code);
-            byte[] result = TestState.Get(storageCell).ToArray();
+            TestState.Get(storageCell, out UInt256 storageValue1);
+            byte[] result = storageValue1.ToMinimalBigEndian();
             Assert.That(result, Is.EqualTo(new byte[] { 0 }), "storage reverted");
             Assert.That(receipt.GasSpent, Is.EqualTo(98777), "no refund");
 
-            byte[] returnData = TestState.Get(new StorageCell(TestItem.AddressC, 0)).ToArray();
+            TestState.Get(new StorageCell(TestItem.AddressC, 0), out UInt256 storageValue2);
+            byte[] returnData = storageValue2.ToMinimalBigEndian();
             Assert.That(returnData, Is.EqualTo(new byte[1]), "address returned");
         }
 
@@ -96,12 +101,38 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput receipt = Execute(code);
-            byte[] result = TestState.Get(storageCell).ToArray();
+            TestState.Get(storageCell, out UInt256 storageValue3);
+            byte[] result = storageValue3.ToMinimalBigEndian();
             Assert.That(result, Is.EqualTo(new byte[] { 0 }), "storage reverted");
             Assert.That(receipt.GasSpent, Is.EqualTo(83199), "with refund");
 
-            byte[] returnData = TestState.Get(new StorageCell(TestItem.AddressC, 0)).ToArray();
+            TestState.Get(new StorageCell(TestItem.AddressC, 0), out UInt256 storageValue4);
+            byte[] returnData = storageValue4.ToMinimalBigEndian();
             Assert.That(returnData, Is.EqualTo(deployed.Bytes.ToArray()), "address returned");
+        }
+
+        [Test(Description = "Runtime code of a CREATE undone by an ancestor REVERT must not reach the code database")]
+        public void Code_deposited_by_ancestor_reverted_create_is_not_persisted()
+        {
+            byte[] deployedCode = [1, 2, 3];
+            ValueHash256 deployedCodeHash = ValueKeccak.Compute(deployedCode);
+
+            byte[] createAndRevertCode = Prepare.EvmCode
+                .Create(Prepare.EvmCode.ForInitOf(deployedCode).Done, 0)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.REVERT)
+                .Done;
+
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+            TestState.InsertCode(TestItem.AddressC, createAndRevertCode, Spec);
+
+            // The reverting frame is a child call, so the transaction itself succeeds and commits.
+            Execute(Activation, 1_000_000UL, Prepare.EvmCode.Call(TestItem.AddressC, 500_000).Done);
+            TestState.Commit(Spec);
+
+            Assert.That(TestState.AccountExists(ContractAddress.From(TestItem.AddressC, 0)), Is.False);
+            Assert.That(() => TestState.GetCode(deployedCodeHash), Throws.InstanceOf<InvalidOperationException>());
         }
     }
 }

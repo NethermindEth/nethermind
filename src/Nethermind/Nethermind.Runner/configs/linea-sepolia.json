@@ -17,8 +17,8 @@
   },
   "Sync": {
     "SnapSync": true,
-    "PivotNumber": 30940000,
-    "PivotHash": "0xc71938f934043b194afc4d1e02abc3cb42e3b5010eb61d82a9afb220d313be4b",
+    "PivotNumber": 32190000,
+    "PivotHash": "0x7a2720303cfa5b71db4915789ae24950dab9720c87f7bf944544512788613aa8",
     "PivotTotalDifficulty": "0",
     "HeaderStateDistance": 6
   },

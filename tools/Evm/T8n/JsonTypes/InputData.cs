@@ -24,7 +24,7 @@ public class InputData
         if (TxRlp is not null)
         {
             RlpReader ctx = new(Bytes.FromHexString(TxRlp));
-            return decoder.DecodeArray(ref ctx);
+            return decoder.DecodeNonNullArray(ref ctx);
         }
 
         List<Transaction> transactions = [];

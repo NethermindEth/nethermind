@@ -112,9 +112,8 @@ public class XdcGasLimitCalculatorTests
         Assert.That(result, Is.LessThanOrEqualTo(targetGasLimit));
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void GetGasLimit_AtDynamicGasLimitBlockBoundary_TransitionsToTargetAdjusted(bool dynamicBlockActive)
+    [Test]
+    public void GetGasLimit_AtDynamicGasLimitBlockBoundary_TransitionsToTargetAdjusted([Values] bool dynamicBlockActive)
     {
         // Arrange
         const ulong targetGasLimit = 100_000_000UL;

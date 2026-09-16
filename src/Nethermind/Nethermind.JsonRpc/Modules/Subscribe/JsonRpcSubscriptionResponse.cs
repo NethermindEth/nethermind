@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
@@ -92,7 +93,15 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             writer.WritePropertyName("result"u8);
             if (!JsonRpcResponseWriter.TryWriteSimpleValue(writer, result))
             {
-                JsonSerializer.Serialize(writer, result, RpcPayloadTypeInfo<T>.Get(options));
+                JsonTypeInfo? runtimeTypeInfo = JsonRpcResponseWriter.GetRuntimePayloadTypeInfo(options, result);
+                if (runtimeTypeInfo is not null)
+                {
+                    JsonSerializer.Serialize(writer, (object)result, runtimeTypeInfo);
+                }
+                else
+                {
+                    JsonSerializer.Serialize(writer, result, RpcPayloadTypeInfo<T>.Get(options));
+                }
             }
 
             writer.WriteEndObject();
