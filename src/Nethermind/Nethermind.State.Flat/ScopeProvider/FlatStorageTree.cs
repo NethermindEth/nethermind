@@ -111,14 +111,12 @@ public sealed class FlatStorageTree(
     // path instead.
     public void HintSet(in UInt256 index) => WarmUpSlot(index);
 
-    // The warmer still resolves the slot's path nodes in parallel; the builder's Set then finds them in the node cache
-    // instead of loading them from the database on its own thread.
     public void HintSet(in UInt256 index, in UInt256 value)
     {
-        WarmUpSlot(index);
         StorageRootBuilder? builder = _scope.StorageRootBuilder;
         if (builder is not null && builder.TryEnqueue(this, in index, in value)) return;
 
+        WarmUpSlot(index);
         if (!_scope.AppliesStorageWritesEarly || Volatile.Read(ref _earlyState) == EarlyClaimed) return;
 
         ConcurrentQueue<(UInt256 Slot, UInt256 Value)> writes = Volatile.Read(ref _earlyWrites) ?? CreateEarlyWrites();
@@ -219,6 +217,22 @@ public sealed class FlatStorageTree(
 
         tree.RootRef = earlyTree.RootRef;
         return applied;
+    }
+
+    // Builder warm threads only: resolve the slot's path nodes into the node cache so the shard thread's Set finds them.
+    internal void WarmPathForBuilder(in UInt256 index)
+    {
+        if (!_bundle.TryLeaseReadOnlyBundle()) return;
+        try
+        {
+            ValueHash256 key = ValueKeccak.Zero;
+            StorageTree.ComputeKeyWithLookup(index, ref key);
+            GetTrees().Warmup.WarmUpPath(key.BytesAsSpan);
+        }
+        finally
+        {
+            _bundle.ReleaseReadOnlyBundleLease();
+        }
     }
 
     // Builder thread only, until the scope drains the builder.
