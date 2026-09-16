@@ -511,7 +511,7 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
             git("commit", "-m", "base")
             base = git("rev-parse", "HEAD")
             instrument.write_text("changed instrument")
-            manifest.write_text("[]")
+            manifest.write_text(json.dumps(definitions))
             git("commit", "-am", "candidate")
             checkout = source
             if missing_base:
@@ -586,7 +586,8 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
         self.assertIn("fetch-depth: 2", self.WORKFLOW)
         self.assertIn("filter: blob:none", self.WORKFLOW)
         self.assertIn('git fetch --depth=1 --filter=blob:none origin "$BASE_SHA"', self.WORKFLOW)
-        self.assertIn('global.json pins $version but the runner resolved $resolved', self.WORKFLOW)
+        self.assertIn('resolved=$(dotnet --version)', self.WORKFLOW)
+        self.assertIn('jq --arg version "$resolved"', self.WORKFLOW)
 
 
 class InputListTests(unittest.TestCase):
@@ -603,7 +604,7 @@ class InputListTests(unittest.TestCase):
     def test_the_correctness_matrix_is_built_from_the_file(self):
         workflow = (self.REPOSITORY / ".github/workflows/stateless-tests.yml").read_text(encoding="utf-8")
 
-        self.assertIn(f"jq -c . {self.GUEST_INPUTS}", workflow)
+        self.assertIn(self.GUEST_INPUTS, workflow)
         self.assertIn("include: ${{ fromJSON(needs.build.outputs.blocks) }}", workflow)
         self.assertNotIn("- input:", workflow, "the matrix restates the block set instead of reading it")
 

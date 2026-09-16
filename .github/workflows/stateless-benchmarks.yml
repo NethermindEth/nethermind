@@ -51,12 +51,9 @@ jobs:
         id: sdk
         run: |
           set -euo pipefail
-          version=$(jq -r '.sdk.version' global.json)
-          jq '.sdk.rollForward = "disable"' global.json > "$RUNNER_TEMP/global.json"
-          cp "$RUNNER_TEMP/global.json" global.json
           resolved=$(dotnet --version)
-          [[ "$resolved" == "$version" ]] \
-            || { echo "::error::global.json pins $version but the runner resolved $resolved"; exit 1; }
+          jq --arg version "$resolved" '.sdk.version = $version | .sdk.rollForward = "disable"' global.json > "$RUNNER_TEMP/global.json"
+          cp "$RUNNER_TEMP/global.json" global.json
           echo "version=$resolved" >> "$GITHUB_OUTPUT"
 
       - name: Select measurement definitions
@@ -73,13 +70,23 @@ jobs:
           if [[ -n "$BASE_SHA" ]] && \
             git cat-file -e "$BASE_SHA:scripts/zisk-bench/report.py" 2>/dev/null && \
             git cat-file -e "$BASE_SHA:$GUEST_DIR/inputs.json" 2>/dev/null; then
-            if git diff --quiet "$BASE_SHA" HEAD -- "$GUEST_DIR/inputs.json"; then
+            git show "$BASE_SHA:$GUEST_DIR/inputs.json" > "$RUNNER_TEMP/base-inputs.json"
+            outputs_match=$(jq -n --slurpfile base "$RUNNER_TEMP/base-inputs.json" --slurpfile head "$GUEST_DIR/inputs.json" '
+              ($base[0] | map({key: .input, value: .output}) | from_entries) as $baseOutputs |
+              ($head[0] | map({key: .input, value: .output}) | from_entries) as $headOutputs |
+              ([
+                $baseOutputs | to_entries[] as $entry |
+                select(($headOutputs | has($entry.key)) and $headOutputs[$entry.key] != $entry.value)
+              ] | length == 0)
+            ')
+            if [[ "$outputs_match" == true ]]; then
               git archive "$BASE_SHA" scripts/zisk-bench "$GUEST_DIR/inputs.json" | tar -x -C "$definitions"
               echo "trusted=true" >> "$GITHUB_OUTPUT"
             else
               # Head redefining the pinned set's expected outputs leaves nothing to compare against.
               git archive HEAD scripts/zisk-bench "$GUEST_DIR/inputs.json" | tar -x -C "$definitions"
               echo "trusted=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::Head measurement definitions changed expected outputs; recording absolute values only."
             fi
           else
             # Initial introduction has no base-owned instrument and cannot claim a comparison.

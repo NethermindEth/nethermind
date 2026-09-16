@@ -32,7 +32,16 @@ jobs:
         id: blocks
         run: |
           set -euo pipefail
-          json=$(jq -ce 'if type == "array" and length > 0 and all(.[]; (.input | test("^[0-9]+\\.ssz$")) and (.hash | test("^[0-9a-f]{64}$")) and (.output | test("^[0-9a-f]{64}$"))) then . else error("invalid pinned block set") end' src/Nethermind/Nethermind.Stateless.ZiskGuest/inputs.json)
+          json=$(jq -ce '
+            if type == "array" and length > 0 and
+              all(.[];
+                (.input | test("^[0-9]+\\.ssz$")) and
+                (.hash | test("^[0-9a-f]{64}$")) and
+                (.output | test("^[0-9a-f]{64}$")))
+            then .
+            else error("invalid pinned block set")
+            end
+          ' src/Nethermind/Nethermind.Stateless.ZiskGuest/inputs.json)
           echo "json=$json" >> "$GITHUB_OUTPUT"
 
       - name: Set up .NET
