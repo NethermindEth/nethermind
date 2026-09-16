@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
@@ -14,6 +16,7 @@ using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -426,6 +429,113 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
             Assert.That(push1[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push1Hex));
             Assert.That(push2[0].WithoutLeadingZeros().ToArray().ToHexString(true), Is.EqualTo(push2Hex));
         }
+    }
+
+    // Run with DOTNET_EnableAVX=0 and DOTNET_EnableHWIntrinsic=0 to exercise the Vector128 and scalar handlers.
+    private static IEnumerable<TestCaseData> SuccessfulWordOperationCases()
+    {
+        const string zero = "0x0000000000000000000000000000000000000000000000000000000000000000";
+        const string one = "0x0000000000000000000000000000000000000000000000000000000000000001";
+        const string allA = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        const string allF = "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+
+        yield return WordOperationCase(Instruction.ISZERO, ["0x00"], one);
+        yield return WordOperationCase(Instruction.ISZERO, ["0x01"], zero);
+        yield return WordOperationCase(Instruction.NOT, ["0x00"], allF);
+        yield return WordOperationCase(Instruction.EQ, ["0x012345", "0x012345"], one);
+        yield return WordOperationCase(Instruction.EQ, ["0x012345", "0x012346"], zero);
+        yield return WordOperationCase(Instruction.AND, [allA, "0x0f"], $"{zero[..^2]}0a");
+        yield return WordOperationCase(Instruction.OR, [allA, "0x0f"], $"{allA[..^2]}af");
+        yield return WordOperationCase(Instruction.XOR, [allA, "0x0f"], $"{allA[..^2]}a5");
+        yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x80", "0x00"],
+            "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff80");
+        yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x800000000000000000", "0x08"],
+            "0xffffffffffffffffffffffffffffffffffffffffffffff800000000000000000");
+        yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x8000000000000000000000000000000000", "0x10"],
+            "0xffffffffffffffffffffffffffffff8000000000000000000000000000000000");
+        yield return WordOperationCase(Instruction.SIGNEXTEND, ["0x80", "0x20"],
+            "0x0000000000000000000000000000000000000000000000000000000000000080");
+        yield return WordOperationCase(Instruction.CLZ, ["0x00"],
+            "0x0000000000000000000000000000000000000000000000000000000000000100");
+        yield return WordOperationCase(Instruction.CLZ, [one],
+            "0x00000000000000000000000000000000000000000000000000000000000000ff");
+    }
+
+    private static TestCaseData WordOperationCase(Instruction opcode, string[] operands, string expected) =>
+        new TestCaseData(opcode, operands, expected).SetName($"Vm_trace_reports_{opcode}_{expected}");
+
+    [TestCaseSource(nameof(SuccessfulWordOperationCases))]
+    public void Vm_trace_reports_successful_word_operation_push(Instruction opcode, string[] operands, string expected)
+    {
+        byte[] code = BuildWordOperationCode(opcode, operands);
+
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(MainnetSpecProvider.OsakaActivation, code);
+        using JsonDocument document = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(trace));
+        JsonElement pushes = document.RootElement.GetProperty("vmTrace").GetProperty("ops")[operands.Length]
+            .GetProperty("ex").GetProperty("push");
+
+        Assert.That(pushes.GetArrayLength(), Is.EqualTo(1), opcode.ToString());
+        Assert.That(pushes[0].GetString(), Is.EqualTo(expected), opcode.ToString());
+    }
+
+    private static IEnumerable<TestCaseData> FailedWordOperationCases()
+    {
+        (Instruction Opcode, int Inputs, ulong GasCost)[] operations =
+        [
+            (Instruction.ISZERO, 1, GasCostOf.VeryLow),
+            (Instruction.NOT, 1, GasCostOf.VeryLow),
+            (Instruction.EQ, 2, GasCostOf.VeryLow),
+            (Instruction.AND, 2, GasCostOf.VeryLow),
+            (Instruction.OR, 2, GasCostOf.VeryLow),
+            (Instruction.XOR, 2, GasCostOf.VeryLow),
+            (Instruction.SIGNEXTEND, 2, GasCostOf.Low),
+            (Instruction.CLZ, 1, GasCostOf.Low),
+        ];
+
+        foreach ((Instruction opcode, int inputs, ulong gasCost) in operations)
+        {
+            yield return new TestCaseData(opcode, 0, 100_000UL, "Stack underflow")
+                .SetName($"Vm_trace_does_not_push_for_{opcode}_empty_underflow");
+            if (inputs > 1)
+            {
+                yield return new TestCaseData(opcode, inputs - 1, 100_000UL, "Stack underflow")
+                    .SetName($"Vm_trace_does_not_push_for_{opcode}_partial_underflow");
+            }
+
+            ulong oneShortGas = GasCostOf.Transaction + (ulong)inputs * GasCostOf.VeryLow + gasCost - 1;
+            yield return new TestCaseData(opcode, inputs, oneShortGas, "Out of gas")
+                .SetName($"Vm_trace_does_not_push_for_{opcode}_one_short_out_of_gas");
+        }
+    }
+
+    [TestCaseSource(nameof(FailedWordOperationCases))]
+    public void Vm_trace_does_not_report_push_for_failed_word_operation(
+        Instruction opcode, int suppliedOperands, ulong gasLimit, string expectedError)
+    {
+        string[] operands = new string[suppliedOperands];
+        Array.Fill(operands, "0x01");
+        byte[] code = BuildWordOperationCode(opcode, operands);
+
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(MainnetSpecProvider.OsakaActivation, gasLimit, code);
+        int reportedPushes = 0;
+        foreach (ParityVmOperationTrace operation in trace.VmTrace.Operations)
+            reportedPushes += operation.Push?.Length ?? 0;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action.Result, Is.Null, opcode.ToString());
+            Assert.That(trace.Action.Error, Is.EqualTo(expectedError), opcode.ToString());
+            Assert.That(trace.VmTrace.Operations, Has.Count.EqualTo(suppliedOperands), opcode.ToString());
+            Assert.That(reportedPushes, Is.EqualTo(suppliedOperands), opcode.ToString());
+        }
+    }
+
+    private static byte[] BuildWordOperationCode(Instruction opcode, string[] operands)
+    {
+        Prepare code = Prepare.EvmCode;
+        foreach (string operand in operands)
+            code.PushData(operand);
+        return code.Op(opcode).Done;
     }
 
     [TestCase(Instruction.SHL, "0x01", 0)]
@@ -895,9 +1005,12 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         return (tracer.BuildResult(), block, transaction);
     }
 
-    private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(ForkActivation activation, params byte[] code)
+    private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(ForkActivation activation, params byte[] code) =>
+        ExecuteAndTraceParityCall(activation, 100000, code);
+
+    private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(ForkActivation activation, ulong gasLimit, params byte[] code)
     {
-        (Block block, Transaction transaction) = PrepareTx(activation, 100000, code);
+        (Block block, Transaction transaction) = PrepareTx(activation, gasLimit, code);
         ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.VmTrace);
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         return (tracer.BuildResult(), block, transaction);

@@ -304,6 +304,30 @@ public class EthSimulateTestsBlocksAndTransactions
         Assert.That(simulated.Number, Is.EqualTo(parent.Number + 1));
     }
 
+    [Test]
+    public async Task Test_eth_simulateV1_reuses_environment_after_real_head_advances()
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        SimulatePayload<TransactionForRpc> firstPayload = new() { BlockStateCalls = [new()] };
+
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> first =
+            chain.EthRpcModule.eth_simulateV1(firstPayload, BlockParameter.Latest);
+        Assert.That(first.Result.ResultType, Is.EqualTo(Core.ResultType.Success), first.Result.Error);
+
+        Block previousHead = chain.BlockTree.Head!;
+        Block realHead = await chain.AddBlock();
+        Assert.That(realHead.Number, Is.EqualTo(previousHead.Number + 1));
+        Assert.That(first.Data![0].Number, Is.EqualTo(realHead.Number));
+        Assert.That(first.Data![0].Hash, Is.Not.EqualTo(realHead.Hash));
+
+        SimulatePayload<TransactionForRpc> secondPayload = new() { BlockStateCalls = [new()] };
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> second =
+            chain.EthRpcModule.eth_simulateV1(secondPayload, BlockParameter.Latest);
+        Assert.That(second.Result.ResultType, Is.EqualTo(Core.ResultType.Success), second.Result.Error);
+        Assert.That(second.Data![0].ParentHash, Is.EqualTo(realHead.Hash));
+        Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(realHead.Hash));
+    }
+
     private sealed class PausedDeferredBlockDataWriter : IDeferredBlockDataWriter
     {
         private readonly List<Action> _queued = [];
