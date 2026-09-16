@@ -28,6 +28,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Test.Modules;
@@ -223,6 +224,39 @@ public class BlockProcessorTests
             Assert.That(replayed, Is.EqualTo(3), "the unbounded replay is the oracle");
             Assert.That(seeded, Is.EqualTo(1), "with the prefix seeded, only the target executes");
             Assert.That(actual, Is.EqualTo(expected), "a trace read through the prefix overlay must match a trace over a replayed prefix, prestate included");
+        }
+    }
+
+    [TestCase("callTracer")]
+    [TestCase("prestateTracer")]
+    public async Task TransactionTraceBoundary_WhenThePrefixWroteStorage_TheTargetReadsItThroughTheOverlay(string tracerName)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        // PUSH1 1, SLOAD, POP, CALLVALUE, PUSH1 1, SSTORE: every call reads the slot the call before it wrote, and the
+        // account holds no storage at the parent, which is the shape the overlaid storage root exists for.
+        byte[] code = [0x60, 0x01, 0x54, 0x50, 0x34, 0x60, 0x01, 0x55];
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds, builder => builder.WithGenesisPostProcessor((_, state) =>
+        {
+            state.CreateAccount(TestItem.AddressE, 0);
+            state.InsertCode(TestItem.AddressE, code, spec);
+        }));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain, TestItem.AddressE);
+        Hash256 target = block.Transactions[2].Hash!;
+        GethTraceOptions traceOptions = new() { TxHash = target, Tracer = tracerName };
+        IndexThroughTheCapture(chain, index, block, parent, spec);
+
+        string expected = ReplayThroughTraceEnvironment(chain, parent, block, target, traceOptions, seeds: null, out int replayed);
+        string actual = ReplayThroughTraceEnvironment(chain, parent, block, target, traceOptions, seeds, out int seeded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(replayed, Is.EqualTo(3), "the unbounded replay is the oracle");
+            Assert.That(seeded, Is.EqualTo(1), "with the prefix seeded, only the target executes");
+            Assert.That(actual, Is.EqualTo(expected), "the slot the transactions before it wrote is read through the overlay, storage root and all");
         }
     }
 
