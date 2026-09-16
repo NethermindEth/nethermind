@@ -183,10 +183,10 @@ public class IPResolver : IIPResolver
         bool automaticResolutionEnabled = _networkConfig.EnableExternalIpResolution;
         bool resolveExternalIpV4 = automaticResolutionEnabled &&
             configured.ExternalIpV4 is null &&
-            SupportsAutomaticResolution(configured.LocalIp, AddressFamily.InterNetwork);
+            _hasLocalAddressFamily(AddressFamily.InterNetwork);
         bool resolveExternalIpV6 = automaticResolutionEnabled &&
             configured.ExternalIpV6 is null &&
-            SupportsAutomaticResolution(configured.LocalIp, AddressFamily.InterNetworkV6);
+            _hasLocalAddressFamily(AddressFamily.InterNetworkV6);
 
         // Start both missing-family lookups before awaiting either.
         Task<IPAddress?> externalIpV4Task = resolveExternalIpV4
@@ -220,12 +220,6 @@ public class IPResolver : IIPResolver
         return (
             new IIPResolver.NethermindIp(configured.LocalIp, externalIp, externalIpV4, externalIpV6),
             automaticResolutionEnabled && (configured.ExternalIpV4 is null || configured.ExternalIpV6 is null));
-    }
-
-    private bool SupportsAutomaticResolution(IPAddress localIp, AddressFamily family)
-    {
-        IPAddress listenerAddress = NetworkHelper.GetInboundBindAddress(localIp, _networkConfig.LocalIp);
-        return DiscoveryAddressSupport.SupportsFamily(listenerAddress, family) && _hasLocalAddressFamily(family);
     }
 
     private async Task<ConfiguredAddresses> ReadConfiguredAddresses()

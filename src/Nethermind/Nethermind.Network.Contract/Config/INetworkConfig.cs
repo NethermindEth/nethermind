@@ -41,9 +41,10 @@ public interface INetworkConfig : IConfig
     string? ExternalIpV6 { get; set; }
 
     /// <summary>
-    /// Gets or sets whether missing external IPv4 and IPv6 addresses are resolved through public HTTPS services.
+    /// Gets or sets whether missing external IPv4 and IPv6 addresses available on active local interfaces are
+    /// resolved through public HTTPS services.
     /// </summary>
-    [ConfigItem(Description = "Whether to resolve missing external IPv4 and IPv6 addresses through public HTTPS services. Disable this for restricted networks; explicit external IP overrides are still used.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether to resolve missing external IPv4 and IPv6 addresses available on active local interfaces through public HTTPS services. Disable this for restricted networks; explicit external IP overrides are still used.", DefaultValue = "true")]
     bool EnableExternalIpResolution { get; set; }
 
     /// <remarks>

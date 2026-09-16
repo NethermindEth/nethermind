@@ -180,12 +180,11 @@ public class IPResolverTests
     }
 
     [Test]
-    public async Task Unsupported_or_unbound_family_is_not_automatically_resolved(
-        [Values(null, "0.0.0.0")] string? localIp)
+    public async Task Unsupported_family_is_not_automatically_resolved()
     {
         List<AddressFamily> requestedFamilies = [];
         IPResolver ipResolver = CreateResolver(
-            new NetworkConfig { LocalIp = localIp },
+            new NetworkConfig(),
             family =>
             {
                 requestedFamilies.Add(family);
