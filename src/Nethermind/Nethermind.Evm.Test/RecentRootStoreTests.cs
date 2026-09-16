@@ -43,6 +43,22 @@ public class RecentRootStoreTests
         Assert.That(RecentRootStore.SourceId(Source, Salt), Is.EqualTo(ValueKeccak.Compute(preimage)));
     }
 
+    // Independently computed vectors, so a change to how any of the three preimage buffers is filled cannot
+    // silently move a consensus-visible source id, entry commitment or ring-buffer storage key.
+    [Test]
+    public void Derivations_match_known_vectors()
+    {
+        Address source = new("0x0f1e2d3c4b5a69788796a5b4c3d2e1f001122334");
+        ValueHash256 salt = new("0x00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff");
+        ValueHash256 root = new("0xaabbccddeeff00112233445566778899aabbccddeeff00112233445566778899");
+
+        ValueHash256 sourceId = RecentRootStore.SourceId(source, salt);
+
+        Assert.That(sourceId, Is.EqualTo(new ValueHash256("0x1d66905c1b538690493aef5321db9b8f2fa27356d2b61fddcc3d6d4545a464fc")));
+        Assert.That(RecentRootStore.EntryHash(sourceId, 1234, root), Is.EqualTo(new ValueHash256("0xd3fe50127a6be718dec03d5d2654afe64877d2652e4c79fadd5fab013ac444c5")));
+        Assert.That(RecentRootStore.StorageKey(sourceId, 1111), Is.EqualTo(new ValueHash256("0x22a1ba46a5a904217f21d93150fcad98454d19c8d1e13aea70c3cb27e46716a4")));
+    }
+
     [Test]
     public void EntryHash_is_deterministic_and_distinct_per_input()
     {

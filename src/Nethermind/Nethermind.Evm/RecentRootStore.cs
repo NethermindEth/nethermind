@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -21,6 +22,7 @@ public static class RecentRootStore
 
     /// <summary>The <c>source_id</c> keying a root source's ring buffer: <c>keccak256(source_address || salt)</c>.</summary>
     /// <remarks>EIP-8272 hashes the address unpadded (20 bytes); a left-padded preimage would fork from the predeploy.</remarks>
+    [SkipLocalsInit]
     public static ValueHash256 SourceId(Address sourceAddress, in ValueHash256 salt)
     {
         Span<byte> input = stackalloc byte[AddressLength + HashLength];
@@ -29,6 +31,7 @@ public static class RecentRootStore
         return ValueKeccak.Compute(input);
     }
 
+    [SkipLocalsInit]
     public static ValueHash256 EntryHash(in ValueHash256 sourceId, ulong slot, in ValueHash256 root)
     {
         Span<byte> input = stackalloc byte[HashLength + HashLength + SlotLength + HashLength];
@@ -39,6 +42,7 @@ public static class RecentRootStore
         return ValueKeccak.Compute(input);
     }
 
+    [SkipLocalsInit]
     public static ValueHash256 StorageKey(in ValueHash256 sourceId, ulong ringIndex)
     {
         Span<byte> input = stackalloc byte[HashLength + HashLength + SlotLength];

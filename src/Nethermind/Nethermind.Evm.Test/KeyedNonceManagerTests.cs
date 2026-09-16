@@ -49,6 +49,20 @@ public class KeyedNonceManagerTests
         Assert.That(slotB1.Index, Is.Not.EqualTo(slotA1.Index), "distinct senders must yield distinct slots");
     }
 
+    // Pins the slot preimage (12 zero bytes || sender || big-endian key) byte for byte, so a change to how
+    // the zero padding is produced cannot silently move a consensus-visible storage slot.
+    [Test]
+    public void StorageSlot_matches_the_known_preimage_hash()
+    {
+        Address sender = new("0x0f1e2d3c4b5a69788796a5b4c3d2e1f001122334");
+        UInt256 nonceKey = new(Bytes.FromHexString("0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"), isBigEndian: true);
+
+        StorageCell slot = KeyedNonceManager.StorageSlot(sender, nonceKey);
+
+        UInt256 expected = new(Bytes.FromHexString("0xf1c0fc4a1f82063830799cc3a618c97eddb89121fa2c5f0d8cc821a2ff34f8be"), isBigEndian: true);
+        Assert.That(slot.Index, Is.EqualTo(expected));
+    }
+
     [Test]
     public void Batched_storage_indices_match_individual_slots([Values(8, 9, 12, 15, Eip8250Constants.MaxNonceKeys)] int count)
     {
