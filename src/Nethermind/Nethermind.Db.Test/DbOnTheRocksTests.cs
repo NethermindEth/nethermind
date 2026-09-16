@@ -894,6 +894,58 @@ namespace Nethermind.Db.Test
             }
         }
 
+        [Test]
+        public void MultiGet_full_batch_overwrites_empty_and_missing_outputs()
+        {
+            const int keyLength = 3;
+            const int count = 256;
+            byte[] keys = new byte[count * keyLength];
+            byte[]?[] values = new byte[]?[count];
+
+            for (int i = 0; i < count; i++)
+            {
+                Span<byte> key = keys.AsSpan(i * keyLength, keyLength);
+                key[0] = 1;
+                key[1] = (byte)(i >> 8);
+                key[2] = (byte)i;
+                values[i] = [0xA5];
+
+                if (i % 3 == 0)
+                    _db.Set(key, []);
+                else if (i % 3 == 1)
+                    _db.Set(key, [(byte)i]);
+            }
+
+            ((IReadOnlyKeyValueStore)_db).MultiGet(keys, keyLength, values);
+
+            for (int i = 0; i < count; i++)
+            {
+                byte[]? expected = (i % 3) switch
+                {
+                    0 => [],
+                    1 => [(byte)i],
+                    _ => null
+                };
+                Assert.That(values[i], Is.EqualTo(expected), $"key {i}");
+            }
+        }
+
+        [TestCase(1 << 30, 4, false)]
+        [TestCase(1 << 30, 4, true)]
+        public void MultiGet_rejects_key_length_product_overflow(int keyLength, int valueCount, bool snapshot)
+        {
+            using IKeyValueStoreSnapshot? snapshotStore = snapshot ? ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot() : null;
+            IReadOnlyKeyValueStore store = snapshotStore is null ? _db : snapshotStore;
+            byte[] sentinel = [0xA5];
+            byte[]?[] values = new byte[]?[valueCount];
+            Array.Fill(values, sentinel);
+
+            Assert.That(
+                () => store.MultiGet([], keyLength, values, snapshot ? ReadFlags.HintReadAhead : ReadFlags.None),
+                Throws.ArgumentException);
+            Assert.That(values, Is.All.SameAs(sentinel));
+        }
+
         [Test(Description = "Different kind of ceiling seeks using pooled iterators on a mutable db")]
         public void TryGetCeiling_sees_writes_made_after_the_pooled_iterator_was_created([Values] bool midFlush, [Values] bool postFlush)
         {
@@ -1012,6 +1064,42 @@ namespace Nethermind.Db.Test
             AssertCanGetViaAllMethod(snapshot, key, new byte[] { 4, 5, 6 });
 
             Assert.That(_db.KeyExists(new byte[] { 99, 99, 99 }), Is.False);
+        }
+
+        [Test]
+        public void Snapshot_multiget_uses_point_in_time_view()
+        {
+            IKeyValueStoreWithSnapshot withSnapshot = (IKeyValueStoreWithSnapshot)_db;
+            byte[] keys = [1, 2, 3];
+            _db[[1]] = [10];
+            _db[[2]] = [20];
+
+            using IKeyValueStoreSnapshot snapshot = withSnapshot.CreateSnapshot();
+            _db[[1]] = [11];
+            _db[[2]] = null;
+            _db[[3]] = [30];
+            byte[]?[] values = new byte[]?[keys.Length];
+
+            snapshot.MultiGet(keys, 1, values);
+
+            Assert.That(values, Is.EqualTo(new byte[]?[] { [10], [20], null }));
+        }
+
+        [Test]
+        public void MultiGet_through_the_read_only_interface_reads_and_counts_every_key()
+        {
+            _db[[1]] = [10];
+            _db[[3]] = [30];
+            long before = _db.GatherMetric().TotalReads;
+            byte[]?[] values = new byte[]?[3];
+
+            ((IReadOnlyKeyValueStore)_db).MultiGet([1, 2, 3], 1, values);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(values, Is.EqualTo(new byte[]?[] { [10], null, [30] }));
+                Assert.That(_db.GatherMetric().TotalReads - before, Is.EqualTo(3));
+            }
         }
 
         [Test]

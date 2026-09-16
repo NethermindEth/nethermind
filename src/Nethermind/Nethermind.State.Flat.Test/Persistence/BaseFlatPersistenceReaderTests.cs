@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -14,6 +16,107 @@ namespace Nethermind.State.Flat.Test.Persistence;
 [TestFixture]
 public class BaseFlatPersistenceReaderTests
 {
+    [Test]
+    public void GetAccounts_UsesSingleMultiGetWithEncodedKeys()
+    {
+        ValueHash256 first = new(Enumerable.Range(0, ValueHash256.MemorySize).Select(static i => (byte)i).ToArray());
+        ValueHash256 second = new(Enumerable.Range(0, ValueHash256.MemorySize).Select(static i => (byte)(255 - i)).ToArray());
+        TrackingMultiGetStore store = new();
+        BaseFlatPersistence.Reader reader = new(store, store);
+        byte[]?[] accounts = new byte[]?[2];
+
+        reader.GetAccounts([first, second], accounts);
+
+        Assert.That(store.MultiGetCalls, Is.EqualTo(1));
+        Assert.That(store.LastFlags, Is.EqualTo(ReadFlags.HintCacheMiss));
+        Assert.That(store.Keys, Has.Length.EqualTo(2));
+        Assert.That(store.Keys![0], Is.EqualTo(first.Bytes[..20].ToArray()));
+        Assert.That(store.Keys[1], Is.EqualTo(second.Bytes[..20].ToArray()));
+        Assert.That(accounts, Is.EqualTo(new byte[]?[] { [1], [2] }));
+    }
+
+    [Test]
+    public void HashedReader_DefaultGetAccounts_FallsBackToSingleAccountReads()
+    {
+        BasePersistence.IHashedFlatReader reader = new FallbackHashedReader();
+        byte[]?[] accounts = new byte[]?[2];
+
+        reader.GetAccounts([default, new ValueHash256(Enumerable.Repeat((byte)1, ValueHash256.MemorySize).ToArray())], accounts);
+
+        Assert.That(accounts, Is.EqualTo(new byte[]?[] { null, [0x42] }));
+    }
+
+    [Test]
+    public void HashedReader_DefaultGetStorages_ClearsMissingValue()
+    {
+        BasePersistence.IHashedFlatReader reader = new FallbackHashedReader();
+        UInt256[] values = [BaseFlatPersistence.DecodeSlotValue([0xff])];
+        bool[] found = [true];
+
+        reader.GetStorages([default], [default], values, found);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found[0], Is.False);
+            Assert.That(values[0], Is.EqualTo(default(UInt256)));
+        }
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void GetStorages_UsesSingleMultiGetWithEncodedKeys(bool fullAddressStorageKey)
+    {
+        ValueHash256 firstAddress = new(Enumerable.Range(0, ValueHash256.MemorySize).Select(static i => (byte)i).ToArray());
+        ValueHash256 secondAddress = new(Enumerable.Range(0, ValueHash256.MemorySize).Select(static i => (byte)(255 - i)).ToArray());
+        ValueHash256 firstSlot = new(Enumerable.Repeat((byte)0x11, ValueHash256.MemorySize).ToArray());
+        ValueHash256 secondSlot = new(Enumerable.Repeat((byte)0x22, ValueHash256.MemorySize).ToArray());
+        TrackingMultiGetStore store = new();
+        BaseFlatPersistence.Reader reader = new(store, store, fullAddressStorageKey: fullAddressStorageKey);
+        UInt256[] values = new UInt256[2];
+        bool[] found = new bool[2];
+
+        reader.GetStorages([firstAddress, secondAddress], [firstSlot, secondSlot], values, found);
+
+        byte[] firstExpectedKey = new byte[52];
+        if (fullAddressStorageKey)
+        {
+            firstAddress.Bytes[..20].CopyTo(firstExpectedKey);
+            firstSlot.Bytes.CopyTo(firstExpectedKey.AsSpan(20));
+        }
+        else
+        {
+            firstAddress.Bytes[..4].CopyTo(firstExpectedKey);
+            firstSlot.Bytes.CopyTo(firstExpectedKey.AsSpan(4));
+            firstAddress.Bytes[4..20].CopyTo(firstExpectedKey.AsSpan(36));
+        }
+        byte[] secondExpectedKey = new byte[52];
+        if (fullAddressStorageKey)
+        {
+            secondAddress.Bytes[..20].CopyTo(secondExpectedKey);
+            secondSlot.Bytes.CopyTo(secondExpectedKey.AsSpan(20));
+        }
+        else
+        {
+            secondAddress.Bytes[..4].CopyTo(secondExpectedKey);
+            secondSlot.Bytes.CopyTo(secondExpectedKey.AsSpan(4));
+            secondAddress.Bytes[4..20].CopyTo(secondExpectedKey.AsSpan(36));
+        }
+
+        Assert.That(store.Keys, Is.Not.Null);
+        byte[][] keys = store.Keys!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.MultiGetCalls, Is.EqualTo(1));
+            Assert.That(store.LastFlags, Is.EqualTo(ReadFlags.HintCacheMiss));
+            Assert.That(keys, Has.Length.EqualTo(2));
+            Assert.That(keys[0], Is.EqualTo(firstExpectedKey));
+            Assert.That(keys[1], Is.EqualTo(secondExpectedKey));
+            Assert.That(found, Is.All.True);
+            Assert.That(values[0].ToBigEndian()[^1], Is.EqualTo(1));
+            Assert.That(values[1].ToBigEndian()[^1], Is.EqualTo(2));
+        }
+    }
+
     // Regression: a slot value longer than BaseFlatPersistence.StorageValueSize must fail loudly instead of underflowing
     // the unchecked Unsafe.InitBlockUnaligned in TryGetStorage (which produced a wild memset / SIGSEGV).
     // Shorter values are right-aligned into the 32-byte slot with leading zeros.
@@ -75,6 +178,52 @@ public class BaseFlatPersistenceReaderTests
     private sealed class FixedValueStore(byte[] value) : ISortedKeyValueStore
     {
         public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => value;
+        public byte[]? FirstKey => null;
+        public byte[]? LastKey => null;
+        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None) =>
+            throw new NotSupportedException();
+    }
+
+    private readonly struct FallbackHashedReader : BasePersistence.IHashedFlatReader
+    {
+        public int GetAccount(in ValueHash256 address, Span<byte> outBuffer)
+        {
+            if (address.Equals(default(ValueHash256))) return 0;
+
+            outBuffer[0] = 0x42;
+            return 1;
+        }
+
+        public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref UInt256 outValue) => false;
+
+        public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
+
+        public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
+
+        public bool IsPreimageMode => false;
+    }
+
+    private sealed class TrackingMultiGetStore : ISortedKeyValueStore
+    {
+        public int MultiGetCalls { get; private set; }
+        public ReadFlags LastFlags { get; private set; }
+        public byte[][]? Keys { get; private set; }
+
+        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
+            throw new AssertionException("Point reads are not expected.");
+
+        public void MultiGet(ReadOnlySpan<byte> keys, int keyLength, Span<byte[]?> values, ReadFlags flags = ReadFlags.None)
+        {
+            MultiGetCalls++;
+            LastFlags = flags;
+            Keys = new byte[values.Length][];
+            for (int i = 0; i < values.Length; i++)
+            {
+                Keys[i] = keys.Slice(i * keyLength, keyLength).ToArray();
+                values[i] = [(byte)(i + 1)];
+            }
+        }
+
         public byte[]? FirstKey => null;
         public byte[]? LastKey => null;
         public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None) =>

@@ -79,6 +79,19 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         return _mainDb.GetCStyleWithColumnFamily(key, output, _columnFamily, readOptions);
     }
 
+    /// <inheritdoc/>
+    public void MultiGet(ReadOnlySpan<byte> keys, int keyLength, Span<byte[]?> values, ReadFlags flags = ReadFlags.None)
+    {
+        if (keyLength <= 0)
+            throw new ArgumentOutOfRangeException(nameof(keyLength));
+        if ((long)keys.Length != (long)values.Length * keyLength)
+            throw new ArgumentException("The key buffer length must match the value count and fixed key length.", nameof(keys));
+
+        // Only HintCacheMiss maps onto a batched read; HintReadAhead selects a sequential iterator, per the interface.
+        ReadOptions readOptions = (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options;
+        _mainDb.MultiGet(keys, keyLength, values, _columnFamily, readOptions);
+    }
+
     public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
         ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);
