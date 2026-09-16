@@ -19,8 +19,8 @@ namespace Nethermind.Xdc.Test;
 [TestFixture, Parallelizable(ParallelScope.All)]
 internal class XdcBlockTreeTests
 {
-    [TestCase(true)]
-    [TestCase(false)]
+    [TestCase(true, TestName = "Suggest_BlockBelowFinalizedHeight_WhenBodyAlreadyStored_ReturnsAlreadyKnownAndKeepsTheBody")]
+    [TestCase(false, TestName = "Suggest_BlockBelowFinalizedHeight_WhenOnlyHeaderKnown_ReturnsAlreadyKnownAndKeepsTheBody")]
     public void Suggest_BlockBelowFinalizedHeight_WhenKnown_ReturnsAlreadyKnownAndKeepsTheBody(bool bodyAlreadyStored)
     {
         (XdcBlockTree blockTree, IXdcConsensusContext consensus) = BuildBlockTree();

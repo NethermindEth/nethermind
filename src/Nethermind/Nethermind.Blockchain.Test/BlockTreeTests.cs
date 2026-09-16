@@ -65,9 +65,9 @@ public class BlockTreeTests
         _headersDb?.Dispose();
     }
 
-    private BlockTree BuildBlockTree() => BuildBlockTree(out _, out _);
+    private BlockTree BuildBlockTree() => BuildBlockTreeBuilder().TestObject;
 
-    private BlockTree BuildBlockTree(out IBlockAccessListStore blockAccessListStore, out IBlockStore blockStore)
+    private BlockTreeBuilder BuildBlockTreeBuilder()
     {
         _blocksDb = new TestMemDb();
         _headersDb = new TestMemDb();
@@ -77,9 +77,7 @@ public class BlockTreeTests
             .WithHeadersDb(_headersDb)
             .WithBlockInfoDb(_blocksInfosDb)
             .WithoutSettingHead;
-        blockAccessListStore = builder.BlockAccessListStore;
-        blockStore = builder.BlockStore;
-        return builder.TestObject;
+        return builder;
     }
 
     private static void AddToMain(BlockTree blockTree, Block block0)
@@ -484,7 +482,10 @@ public class BlockTreeTests
     [MaxTime(Timeout.MaxTestTime)]
     public void Suggesting_a_block_whose_header_is_already_known_stores_missing_payloads(bool bodyAlreadyStored)
     {
-        BlockTree blockTree = BuildBlockTree(out IBlockAccessListStore blockAccessListStore, out IBlockStore blockStore);
+        BlockTreeBuilder builder = BuildBlockTreeBuilder();
+        BlockTree blockTree = builder.TestObject;
+        IBlockAccessListStore blockAccessListStore = builder.BlockAccessListStore;
+        IBlockStore blockStore = builder.BlockStore;
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
         blockTree.SuggestBlock(block0);
 
@@ -514,7 +515,9 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Suggesting_a_block_whose_body_is_already_stored_still_stores_its_access_list()
     {
-        BlockTree blockTree = BuildBlockTree(out IBlockAccessListStore blockAccessListStore, out _);
+        BlockTreeBuilder builder = BuildBlockTreeBuilder();
+        BlockTree blockTree = builder.TestObject;
+        IBlockAccessListStore blockAccessListStore = builder.BlockAccessListStore;
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
         blockTree.SuggestBlock(block0);
 
