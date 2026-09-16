@@ -15,14 +15,14 @@ jobs:
       - name: Build database tests
         run: dotnet build src/Nethermind/Nethermind.Db.Test/Nethermind.Db.Test.csproj -c Release
       - name: Snapshot sequential reads
-        continue-on-error: true
-        run: dotnet test --project src/Nethermind/Nethermind.Db.Test/Nethermind.Db.Test.csproj -c Release --no-build -- --filter FullyQualifiedName~Snapshot_Get_WithHintReadAhead --output Detailed --no-ansi --diagnostic --diagnostic-synchronous-write --diagnostic-output-directory "${{ runner.temp }}/db-diag"
+        if: always()
+        run: dotnet src/Nethermind/artifacts/bin/Nethermind.Db.Test/release/Nethermind.Db.Test.dll --filter FullyQualifiedName~Snapshot_Get_WithHintReadAhead --output Detailed --no-ansi --diagnostic --diagnostic-synchronous-write --diagnostic-output-directory "${{ runner.temp }}/db-diag"
       - name: Snapshot concurrent reads
-        continue-on-error: true
-        run: dotnet test --project src/Nethermind/Nethermind.Db.Test/Nethermind.Db.Test.csproj -c Release --no-build -- --filter FullyQualifiedName~Snapshot_ReadAhead_ConcurrentColumns --output Detailed --no-ansi --diagnostic --diagnostic-synchronous-write --diagnostic-output-directory "${{ runner.temp }}/db-diag"
+        if: always()
+        run: dotnet src/Nethermind/artifacts/bin/Nethermind.Db.Test/release/Nethermind.Db.Test.dll --filter FullyQualifiedName~Snapshot_ReadAhead_ConcurrentColumns --output Detailed --no-ansi --diagnostic --diagnostic-synchronous-write --diagnostic-output-directory "${{ runner.temp }}/db-diag"
       - name: All database tests
-        continue-on-error: true
-        run: dotnet test --project src/Nethermind/Nethermind.Db.Test/Nethermind.Db.Test.csproj -c Release --no-build -- --output Detailed --no-ansi --diagnostic --diagnostic-synchronous-write --diagnostic-output-directory "${{ runner.temp }}/db-diag"
+        if: always()
+        run: dotnet src/Nethermind/artifacts/bin/Nethermind.Db.Test/release/Nethermind.Db.Test.dll --output Detailed --no-ansi --diagnostic --diagnostic-synchronous-write --diagnostic-output-directory "${{ runner.temp }}/db-diag"
       - name: Windows crash events
         if: always()
         shell: pwsh
