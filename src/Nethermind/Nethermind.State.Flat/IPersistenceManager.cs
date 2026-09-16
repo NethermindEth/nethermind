@@ -15,5 +15,5 @@ public interface IPersistenceManager
 
     /// <summary>Drops every snapshot not on the ancestry of <paramref name="head"/>, serialized against
     /// persistence. Used when the head is force-reset so state kept for abandoned branches is released.</summary>
-    void ResetHead(in StateId head);
+    void DropStateNotReachableFrom(in StateId head);
 }

@@ -69,5 +69,5 @@ public class WorldStateManager : IWorldStateManager
     public void FlushCache(CancellationToken cancellationToken) => _trieStore.PersistCache(cancellationToken);
 
     // The trie store keeps no per-branch bookkeeping to prune; its dirty cache is bounded by memory.
-    public void ResetHead(BlockHeader head) { }
+    public void DropStateNotReachableFrom(BlockHeader head) { }
 }

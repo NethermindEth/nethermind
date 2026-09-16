@@ -105,8 +105,10 @@ public class DebugBridge : IDebugBridge
     public void UpdateHeadBlock(Hash256 blockHash)
     {
         _blockTree.UpdateHeadBlock(blockHash);
+        // benchmarkoor compatibility: it rewinds to the same head after every test, so state kept for the
+        // branches those tests built must go, or it accumulates for the whole run.
         BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
-        if (header is not null) _worldStateManager.ResetHead(header);
+        if (header is not null) _worldStateManager.DropStateNotReachableFrom(header);
     }
 
     public Task<bool> MigrateReceipts(ulong from, ulong to) => _receiptsMigration.Run(from, to);

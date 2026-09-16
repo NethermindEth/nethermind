@@ -12,7 +12,7 @@ public interface IFlatDbManager : IFlatCommitTarget
 
     /// <summary>Drops every snapshot not on the ancestry of <paramref name="head"/> and releases the
     /// bundles cached over them.</summary>
-    void ResetHead(in StateId head);
+    void DropStateNotReachableFrom(in StateId head);
 }
 
 // Used by overridable world state env that has its own snapshot repositories.

@@ -463,9 +463,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         return false;
     }
 
-    public void ResetHead(in StateId head)
+    public void DropStateNotReachableFrom(in StateId head)
     {
-        _persistenceManager.ResetHead(head);
+        _persistenceManager.DropStateNotReachableFrom(head);
         // Cached bundles lease the snapshots they were assembled over; without this the pruned ones stay
         // alive until the periodic clear.
         ClearReadOnlyBundleCache();

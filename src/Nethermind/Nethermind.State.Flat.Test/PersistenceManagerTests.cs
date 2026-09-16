@@ -1602,7 +1602,7 @@ public class PersistenceManagerTests
     }
 
     [Test]
-    public void ResetHead_PrunesSideBranchAndKeepsPersistedState([Values] bool knownHead)
+    public void DropStateNotReachableFrom_PrunesSideBranchAndKeepsPersistedState([Values] bool knownHead)
     {
         StateId state1 = CreateStateId(1);
         StateId state2 = CreateStateId(2);
@@ -1615,7 +1615,7 @@ public class PersistenceManagerTests
         CreateSnapshot(state3, state4);
         CreateSnapshot(state3, fork4);
 
-        _persistenceManager.ResetHead(knownHead ? state3 : CreateStateId(3, rootByte: 7));
+        _persistenceManager.DropStateNotReachableFrom(knownHead ? state3 : CreateStateId(3, rootByte: 7));
 
         Assert.Multiple(() =>
         {
