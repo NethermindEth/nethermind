@@ -248,7 +248,9 @@ namespace Nethermind.State
         {
             GuardInScope();
             _stateProvider.UpdateStateRootIfNeeded();
+            long commitStart = Stopwatch.GetTimestamp();
             _currentScope.Commit(blockNumber);
+            Evm.Metrics.IncrementCommitTreeTime(Stopwatch.GetElapsedTime(commitStart).Ticks);
             // The scope may cache the state it reads; it takes the block's final values before the providers drop them.
             _currentScope.WriteBackCommittedState(_takeBlockChangeSnapshot);
             _stateProvider.ClearRemovedAccounts();
@@ -385,10 +387,22 @@ namespace Nethermind.State
 
             if (commitRoots)
             {
-                using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
-                writeBatch.OnAccountUpdated += _onAccountUpdated;
-                _persistentStorageProvider.FlushToTree(writeBatch);
-                _stateProvider.FlushToTree(writeBatch);
+                IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
+                try
+                {
+                    writeBatch.OnAccountUpdated += _onAccountUpdated;
+                    long storageStart = Stopwatch.GetTimestamp();
+                    _persistentStorageProvider.FlushToTree(writeBatch);
+                    Evm.Metrics.IncrementStorageTriesTime(Stopwatch.GetElapsedTime(storageStart).Ticks);
+                    _stateProvider.FlushToTree(writeBatch);
+                }
+                finally
+                {
+                    // Disposing applies the block's accounts, now carrying their final storage roots, into the state trie.
+                    long accountStart = Stopwatch.GetTimestamp();
+                    writeBatch.Dispose();
+                    Evm.Metrics.IncrementAccountTrieSetTime(Stopwatch.GetElapsedTime(accountStart).Ticks);
+                }
             }
 
             // Fold this scope's accumulated counters into the global metrics. Runs per-tx commit and
