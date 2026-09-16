@@ -418,31 +418,50 @@ class WorkflowTests(unittest.TestCase):
     def test_only_the_workflow_bot_report_is_updated(self):
         script = textwrap.dedent(self.WORKFLOW.split("          script: |\n", 1)[1])
         runner = """
-const { script, comments } = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+const { script, comments, result, report } = JSON.parse(require('fs').readFileSync(0, 'utf8'));
 const calls = [];
 const github = { paginate: async () => comments, rest: { issues: {
-  listComments: {}, updateComment: async x => calls.push(['update', x.comment_id]),
-  createComment: async x => calls.push(['create']) } } };
+  listComments: {}, updateComment: async x => calls.push(['update', x.comment_id, x.body]),
+  createComment: async x => calls.push(['create', x.body]) } } };
 const context = { repo: {owner: 'o', repo: 'r'}, payload: {pull_request: {number: 1}} };
 const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
-new AsyncFunction('github', 'context', 'process', script)(github, context, {env: {COMMENT_BODY: 'report'}})
+new AsyncFunction('github', 'context', 'process', script)(github, context, {env: {
+  COMMENT_BODY: report, MEASURE_RESULT: result, MEASURE_COMMIT: 'measured-sha', RUN_URL: 'https://example.com/run' }})
   .then(() => console.log(JSON.stringify(calls))).catch(e => {console.error(e); process.exit(1);});
 """
         human = {"id": 101, "user": {"type": "User", "login": "reviewer"}, "body": REPORT.MARKER}
         bot = {"id": 202, "user": {"type": "Bot", "login": "github-actions[bot]"}, "body": REPORT.MARKER}
-        for comments, expected in (([human, bot], [["update", 202]]), ([human], [["create"]])):
-            result = subprocess.run(["node", "-e", runner], input=json.dumps({"script": script, "comments": comments}),
-                                    capture_output=True, text=True, check=True)
-            self.assertEqual(json.loads(result.stdout), expected)
+        for comments, expected in (([human, bot], ["update", 202]), ([human], ["create"])):
+            for status, report in (("success", "report"), ("failure", ""), ("failure", "partial report"), ("success", "")):
+                with self.subTest(status=status, report=report, expected=expected):
+                    result = subprocess.run(["node", "-e", runner],
+                                            input=json.dumps({"script": script, "comments": comments,
+                                                              "result": status, "report": report}),
+                                            capture_output=True, text=True, check=True)
+                    calls = json.loads(result.stdout)
+                    self.assertEqual(len(calls), 1)
+                    self.assertEqual(calls[0][:-1], expected)
+                    body = calls[0][-1]
+                    if status == "success" and report:
+                        self.assertEqual(body, report)
+                    else:
+                        self.assertTrue(body.startswith(REPORT.MARKER))
+                        self.assertIn("previous measurements are stale", body)
+                        self.assertIn("measured-sha", body)
+                        self.assertIn("https://example.com/run", body)
+
+        comment_job = self.WORKFLOW.split("\n  comment:\n", 1)[1]
+        self.assertIn("!cancelled()", comment_job)
 
     @unittest.skipUnless(sys.platform == "linux", "workflow shell runs on Linux")
     def test_measured_log_must_match_output_and_have_no_failure_markers(self):
-        start = self.WORKFLOW.index('            grep -q "^${output}${suffix}"')
+        start = self.WORKFLOW.index('            grep -Fxq "${output}${suffix}"')
         end = self.WORKFLOW.index('            python3 "$BENCH_DEFINITIONS', start)
         gate = textwrap.dedent(self.WORKFLOW[start:end])
         expected = "a" * 64
         suffix = "0101000000000000000100"
         for log, passes in ((expected + suffix, True), ("wrong", False),
+                            (expected + suffix + "00", False),
                             (expected + suffix + "\nException", False),
                             (expected + suffix + "\nInvalid Blocks", False)):
             with self.subTest(log=log), tempfile.TemporaryDirectory() as directory:
@@ -485,7 +504,7 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
         self.assertEqual(commit, "base-sha")
         self.assertEqual(rows["1.ssz"]["total"], 100)
 
-    def select_measurement_definitions(self, missing_base):
+    def select_measurement_definitions(self, missing_base=False, change=None):
         match = re.search(r"      - name: Select measurement definitions\n.*?        run: \|\n(.*?)(?=\n      - name:)",
                           self.WORKFLOW, re.DOTALL)
         script = textwrap.dedent(match.group(1))
@@ -511,7 +530,21 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
             git("commit", "-m", "base")
             base = git("rev-parse", "HEAD")
             instrument.write_text("changed instrument")
-            manifest.write_text(json.dumps(definitions))
+            candidate = json.loads(json.dumps(definitions))
+            if change in ("hash", "output"):
+                candidate[0][change] = "2" * 64
+            elif change == "add":
+                candidate.append({"input": "9.ssz", "hash": "0" * 64, "output": "1" * 64})
+            elif change == "remove":
+                candidate.pop()
+            elif change == "duplicate":
+                candidate.append(candidate[0])
+            elif change == "malformed":
+                candidate = [42]
+            elif change == "empty":
+                candidate = []
+            if change is not None:
+                manifest.write_text(json.dumps(candidate))
             git("commit", "-am", "candidate")
             checkout = source
             if missing_base:
@@ -525,30 +558,36 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
                 self.assertNotEqual(probe.returncode, 0)
             env = dict(os.environ, BASE_SHA=base, GUEST_DIR=guest, RUNNER_TEMP=str(work),
                        GITHUB_ENV=str(work / "env"), GITHUB_OUTPUT=str(work / "outputs"))
-            subprocess.run(["bash", "-c", script], cwd=checkout, env=env, capture_output=True, check=True)
+            result = subprocess.run(["bash", "-c", script], cwd=checkout, env=env, capture_output=True, text=True, check=True)
             selected = work / "zisk-bench-definitions"
             return (
                 (selected / "scripts/zisk-bench/report.py").read_text(),
                 json.loads((selected / guest / "inputs.json").read_text()),
                 (work / "outputs").read_text(),
                 definitions,
+                candidate,
+                result.stdout,
             )
 
     @unittest.skipUnless(sys.platform == "linux", "workflow shell runs on Linux")
     def test_measurement_definitions_come_from_base(self):
-        instrument, selected, outputs, definitions = self.select_measurement_definitions(missing_base=False)
-
-        self.assertEqual(instrument, "base instrument")
-        self.assertEqual(selected, definitions)
-        self.assertIn("trusted=true", outputs)
+        for missing_base in (False, True):
+            for change in (None, "add", "remove", "hash", "output"):
+                with self.subTest(missing_base=missing_base, change=change):
+                    instrument, selected, outputs, definitions, candidate, stdout = self.select_measurement_definitions(
+                        missing_base=missing_base, change=change)
+                    redefined = change in ("hash", "output")
+                    self.assertEqual(instrument, "changed instrument" if redefined else "base instrument")
+                    self.assertEqual(selected, candidate if redefined else definitions)
+                    self.assertIn(f"trusted={str(not redefined).lower()}", outputs)
+                    self.assertEqual("::notice::Head changed pinned definitions" in stdout, redefined)
 
     @unittest.skipUnless(sys.platform == "linux", "workflow shell runs on Linux")
-    def test_measurement_definitions_fetch_a_missing_base(self):
-        instrument, selected, outputs, definitions = self.select_measurement_definitions(missing_base=True)
-
-        self.assertEqual(instrument, "base instrument")
-        self.assertEqual(selected, definitions)
-        self.assertIn("trusted=true", outputs)
+    def test_invalid_head_definitions_fail_before_selection(self):
+        for change in ("duplicate", "malformed", "empty"):
+            with self.subTest(change=change), self.assertRaises(subprocess.CalledProcessError) as error:
+                self.select_measurement_definitions(change=change)
+            self.assertIn("invalid pinned block set", error.exception.stderr)
 
     @unittest.skipUnless(sys.platform == "linux", "workflow shell runs on Linux")
     def test_measurement_definitions_fall_back_to_head_without_a_base(self):
@@ -586,8 +625,31 @@ new AsyncFunction('github', 'context', 'process', script)(github, context, {env:
         self.assertIn("fetch-depth: 2", self.WORKFLOW)
         self.assertIn("filter: blob:none", self.WORKFLOW)
         self.assertIn('git fetch --depth=1 --filter=blob:none origin "$BASE_SHA"', self.WORKFLOW)
-        self.assertIn('resolved=$(dotnet --version)', self.WORKFLOW)
-        self.assertIn('jq --arg version "$resolved"', self.WORKFLOW)
+
+    @unittest.skipUnless(sys.platform == "linux", "workflow shell runs on Linux")
+    def test_sdk_is_resolved_before_roll_forward_is_disabled(self):
+        match = re.search(r"      - name: Pin resolved SDK\n.*?        run: \|\n(.*?)(?=\n      - name:)",
+                          self.WORKFLOW, re.DOTALL)
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            original = {"sdk": {"version": "10.0.300", "rollForward": "latestFeature"}, "other": "preserved"}
+            (work / "global.json").write_text(json.dumps(original))
+            tools = work / "tools"
+            tools.mkdir()
+            dotnet = tools / "dotnet"
+            dotnet.write_text('#!/bin/bash\nset -euo pipefail\n[[ "$1" == --version ]]\n'
+                              'jq -e \'.sdk.version == "10.0.300" and .sdk.rollForward == "latestFeature"\' global.json >/dev/null\n'
+                              'echo 10.0.301\n')
+            dotnet.chmod(0o755)
+            temporary = work / "temp"
+            temporary.mkdir()
+            env = dict(os.environ, PATH=f"{tools}:{os.environ['PATH']}", RUNNER_TEMP=str(temporary),
+                       GITHUB_OUTPUT=str(work / "outputs"))
+            subprocess.run(["bash", "-c", textwrap.dedent(match.group(1))], cwd=work, env=env,
+                           capture_output=True, text=True, check=True)
+            original["sdk"] = {"version": "10.0.301", "rollForward": "disable"}
+            self.assertEqual(json.loads((work / "global.json").read_text()), original)
+            self.assertEqual((work / "outputs").read_text(), "version=10.0.301\n")
 
 
 class InputListTests(unittest.TestCase):

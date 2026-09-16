@@ -49,6 +49,8 @@ jobs:
 
       - name: Pin resolved SDK
         id: sdk
+        # Resolve with global.json's roll-forward policy before freezing the SDK for this build.
+        # SDK-specific cache keys suppress comparisons after runner upgrades until master is measured again.
         run: |
           set -euo pipefail
           resolved=$(dotnet --version)
@@ -62,6 +64,18 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
+          validate_inputs() {
+            jq -e '
+              if (try (type == "array" and length > 0 and
+                all(.[]; type == "object" and
+                  (.input | test("^[0-9]+\\.ssz$")) and
+                  (.hash | test("^[0-9a-f]{64}$")) and
+                  (.output | test("^[0-9a-f]{64}$"))) and
+                (map(.input) | unique | length) == length) catch false)
+              then true else error("invalid pinned block set") end
+            ' "$1"
+          }
+          validate_inputs "$GUEST_DIR/inputs.json"
           definitions="$RUNNER_TEMP/zisk-bench-definitions"
           mkdir -p "$definitions"
           if [[ -n "$BASE_SHA" ]] && ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
@@ -71,22 +85,23 @@ jobs:
             git cat-file -e "$BASE_SHA:scripts/zisk-bench/report.py" 2>/dev/null && \
             git cat-file -e "$BASE_SHA:$GUEST_DIR/inputs.json" 2>/dev/null; then
             git show "$BASE_SHA:$GUEST_DIR/inputs.json" > "$RUNNER_TEMP/base-inputs.json"
-            outputs_match=$(jq -n --slurpfile base "$RUNNER_TEMP/base-inputs.json" --slurpfile head "$GUEST_DIR/inputs.json" '
-              ($base[0] | map({key: .input, value: .output}) | from_entries) as $baseOutputs |
-              ($head[0] | map({key: .input, value: .output}) | from_entries) as $headOutputs |
+            validate_inputs "$RUNNER_TEMP/base-inputs.json"
+            definitions_match=$(jq -n --slurpfile base "$RUNNER_TEMP/base-inputs.json" --slurpfile head "$GUEST_DIR/inputs.json" '
+              ($base[0] | INDEX(.input)) as $baseInputs |
+              ($head[0] | INDEX(.input)) as $headInputs |
               ([
-                $baseOutputs | to_entries[] as $entry |
-                select(($headOutputs | has($entry.key)) and $headOutputs[$entry.key] != $entry.value)
+                $baseInputs | to_entries[] as $entry |
+                select(($headInputs | has($entry.key)) and $headInputs[$entry.key] != $entry.value)
               ] | length == 0)
             ')
-            if [[ "$outputs_match" == true ]]; then
+            if [[ "$definitions_match" == true ]]; then
               git archive "$BASE_SHA" scripts/zisk-bench "$GUEST_DIR/inputs.json" | tar -x -C "$definitions"
               echo "trusted=true" >> "$GITHUB_OUTPUT"
             else
-              # Head redefining the pinned set's expected outputs leaves nothing to compare against.
+              # Re-pinned inputs or outputs cannot be compared with the cached measurements.
               git archive HEAD scripts/zisk-bench "$GUEST_DIR/inputs.json" | tar -x -C "$definitions"
               echo "trusted=false" >> "$GITHUB_OUTPUT"
-              echo "::notice::Head measurement definitions changed expected outputs; recording absolute values only."
+              echo "::notice::Head changed pinned definitions; recording absolute values only."
             fi
           else
             # Initial introduction has no base-owned instrument and cannot claim a comparison.
@@ -95,7 +110,7 @@ jobs:
             [[ -z "$BASE_SHA" ]] || echo "::notice::No base-owned measurement definitions; recording absolute values only."
           fi
           echo "BENCH_DEFINITIONS=$definitions" >> "$GITHUB_ENV"
-          jq -e 'length > 0 and all(.[]; (.input | test("^[0-9]+\\.ssz$")) and (.hash | test("^[0-9a-f]{64}$")) and (.output | test("^[0-9a-f]{64}$")))' "$definitions/$GUEST_DIR/inputs.json"
+          validate_inputs "$definitions/$GUEST_DIR/inputs.json"
 
       - name: Build guest
         working-directory: ${{ env.GUEST_DIR }}
@@ -130,7 +145,7 @@ jobs:
             make stats INPUT="${input}" 2>&1 | tee "$RUNNER_TEMP/stats.log"
             echo "::endgroup::"
 
-            grep -q "^${output}${suffix}" "$RUNNER_TEMP/stats.log" \
+            grep -Fxq "${output}${suffix}" "$RUNNER_TEMP/stats.log" \
               || { echo "::error::${input}: output mismatch — cost figures would describe a broken run"; exit 1; }
 
             # A guest that threw or rejected the block can still exit zero and print the right hash;
@@ -202,7 +217,7 @@ jobs:
   comment:
     name: Publish comparison
     needs: measure
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -212,10 +227,16 @@ jobs:
         uses: actions/github-script@v8
         env:
           COMMENT_BODY: ${{ needs.measure.outputs.report }}
+          MEASURE_RESULT: ${{ needs.measure.result }}
+          MEASURE_COMMIT: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
             const marker = '<!-- zisk-guest-benchmark-report -->';
-            const body = process.env.COMMENT_BODY;
+            const body = process.env.MEASURE_RESULT === 'success' && process.env.COMMENT_BODY
+              ? process.env.COMMENT_BODY
+              : `${marker}\n## Stateless guest cost\n\nMeasurement ${process.env.MEASURE_RESULT} for \`${process.env.MEASURE_COMMIT}\`. ` +
+                `No current comparison is available; previous measurements are stale. [View run](${process.env.RUN_URL}).\n`;
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
 
