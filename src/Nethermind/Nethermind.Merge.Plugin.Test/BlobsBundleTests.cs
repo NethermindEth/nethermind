@@ -73,7 +73,7 @@ public class BlobsBundleTests
             MaxFeePerBlobGas = 1,
             Frames =
             [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default),
             ],
             FrameSignatures = [],
             BlobVersionedHashes = proofsManager.ComputeHashes(wrapper),

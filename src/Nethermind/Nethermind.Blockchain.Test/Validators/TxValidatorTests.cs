@@ -707,7 +707,7 @@ public class TxValidatorTests
             // reservation that does bound a frame transaction stays well under it.
             Frames =
             [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null,
                     executionGasLimit: PrefixFrameGas, stateGasLimit: Eip7825Constants.DefaultTxGasLimitCap, UInt256.Zero, Array.Empty<byte>())
             ],
             FrameSignatures = [],
@@ -903,7 +903,7 @@ public class TxValidatorTests
             ChainId = TestBlockchainIds.ChainId,
             Nonce = 0,
             SenderAddress = TestItem.AddressA,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
+            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
             FrameSignatures = [],
             GasPrice = 1,
             DecodedMaxFeePerGas = 100,
@@ -1362,7 +1362,7 @@ public class TxValidatorTests
             SenderAddress = TestItem.AddressA,
             Frames =
             [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null,
                     Eip7825Constants.DefaultTxGasLimitCap - 100_000, Eip7825Constants.DefaultTxGasLimitCap, UInt256.Zero, default),
             ],
             FrameSignatures = [],
@@ -1373,7 +1373,7 @@ public class TxValidatorTests
 
         tx.Frames =
         [
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null,
                 Eip7825Constants.DefaultTxGasLimitCap, stateGasLimit: 0, UInt256.Zero, default),
         ];
 
@@ -1391,7 +1391,7 @@ public class TxValidatorTests
             SenderAddress = TestItem.AddressA,
             Frames =
             [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null,
                     Eip7825Constants.DefaultTxGasLimitCap, stateGasLimit: 0, UInt256.Zero, default),
             ],
             FrameSignatures = [],

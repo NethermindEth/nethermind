@@ -37,7 +37,7 @@ public class FrameTxPrefixSimulatorCodeCacheTests
         // Marked so that a failure can only be this deployment's deposit, not another fixture's.
         byte[] deployedCode = Prepare.EvmCode
             .PushData(0x8141).Op(Instruction.POP)
-            .PushData(TxFrame.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
+            .PushData((byte)FrameFlags.ApproveExecutionAndPayment).PushData(0).PushData(0).Op(Instruction.APPROVE).Done;
         byte[] initCode = Prepare.EvmCode.ForInitOf(deployedCode).Done;
         Address deployed = ContractAddress.From(Factory, Salt, initCode);
         ValueHash256 depositedHash = Keccak.Compute(deployedCode).ValueHash256;
@@ -80,8 +80,8 @@ public class FrameTxPrefixSimulatorCodeCacheTests
         SenderAddress = deployed,
         Frames =
         [
-            new TxFrame(TxFrame.ModeDefault, TxFrame.ApproveScopeNone, Factory, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default),
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Default, FrameFlags.None, Factory, executionGasLimit: 200_000, stateGasLimit: 200_000, UInt256.Zero, default),
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default),
         ],
         FrameSignatures = [],
         GasPrice = 1.GWei,

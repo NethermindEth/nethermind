@@ -47,10 +47,10 @@ internal class FrameTxVerifyGasFilterTest
     }
 
     private static TxFrame SelfVerifyWithState(ulong executionGasLimit, ulong stateGasLimit) =>
-        new(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, executionGasLimit, stateGasLimit, UInt256.Zero, default);
+        new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, executionGasLimit, stateGasLimit, UInt256.Zero, default);
 
     private static TxFrame ExecutionWithState(ulong executionGasLimit, ulong stateGasLimit) =>
-        new(TxFrame.ModeSender, TxFrame.ApproveScopeNone, TestItem.AddressB, executionGasLimit, stateGasLimit, UInt256.Zero, default);
+        new(FrameMode.Sender, FrameFlags.None, TestItem.AddressB, executionGasLimit, stateGasLimit, UInt256.Zero, default);
 
     private static IEnumerable<TestCaseData> StatePrefixCases()
     {

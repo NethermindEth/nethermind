@@ -230,7 +230,7 @@ public class FrameTxVerifyDosMeasurement
             ChainId = TestBlockchainIds.ChainId,
             Nonce = 0,
             SenderAddress = Sender,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: (ulong)verifyGas, UInt256.Zero, default)],
+            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: (ulong)verifyGas, UInt256.Zero, default)],
             FrameSignatures = [],
             GasPrice = 1,
             DecodedMaxFeePerGas = 1,

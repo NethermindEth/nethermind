@@ -51,7 +51,7 @@ public class FrameTxBlockProductionPickerTests
         SenderAddress = TestItem.AddressA,
         Frames =
         [
-            new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null,
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null,
                 executionGasLimit, stateGasLimit, UInt256.Zero, default),
         ],
         FrameSignatures = [],
@@ -85,7 +85,7 @@ public class FrameTxBlockProductionPickerTests
         {
             // A frame transaction the picker cannot price is skipped on its gas budget before it ever
             // reaches the sender-account checks under test.
-            tx.Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)];
+            tx.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)];
             tx.FrameSignatures = [];
         }
 

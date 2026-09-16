@@ -11,14 +11,16 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 /// where <c>limits = [execution, state]</c>.</summary>
 public class FrameForRpc
 {
-    /// <summary>The frame's kind, one of the <see cref="TxFrame"/> <c>Mode*</c> values: <c>0</c> default,
+    /// <summary>The frame's kind, one of the <see cref="FrameMode"/> values: <c>0</c> default,
     /// <c>1</c> verify, <c>2</c> sender, <c>3</c> post-tx.</summary>
-    /// <remarks>It fixes both the caller the frame runs as and where the frame may appear in the transaction.</remarks>
+    /// <remarks>It fixes both the caller the frame runs as and where the frame may appear in the transaction.
+    /// Kept as the raw byte the JSON carries, so the wire form stays a plain number.</remarks>
     public byte Mode { get; set; }
 
     /// <summary>The frame's flag byte: bits 0-1 carry the approval scope
-    /// (<see cref="TxFrame.ApprovePayment"/> | <see cref="TxFrame.ApproveExecution"/>), bit 2 is
-    /// <see cref="TxFrame.AtomicBatchFlag"/>.</summary>
+    /// (<see cref="FrameFlags.ApprovePayment"/> | <see cref="FrameFlags.ApproveExecution"/>), bit 2 is
+    /// <see cref="FrameFlags.AtomicBatch"/>.</summary>
+    /// <remarks>Raw for the same reason as <see cref="Mode"/>.</remarks>
     public byte Flags { get; set; }
 
     /// <summary>The frame's target address; omitted from the response, and accepted as absent in a request,
@@ -43,8 +45,8 @@ public class FrameForRpc
 
     public FrameForRpc(TxFrame frame)
     {
-        Mode = frame.Mode;
-        Flags = frame.Flags;
+        Mode = (byte)frame.Mode;
+        Flags = (byte)frame.Flags;
         Target = frame.Target;
         ExecutionGasLimit = frame.ExecutionGasLimit;
         StateGasLimit = frame.StateGasLimit;
@@ -52,7 +54,10 @@ public class FrameForRpc
         Data = frame.Data.ToArray();
     }
 
-    public TxFrame ToFrame() => new(Mode, Flags, Target, ExecutionGasLimit, StateGasLimit, Value, Data);
+    /// <summary>Widens the request's raw <c>mode</c>/<c>flags</c> into the domain type.</summary>
+    /// <remarks>Unchecked, as the RLP decoder is: a value outside the defined set is rejected by
+    /// <see cref="FrameTxValidation.IsWellFormed"/> rather than here.</remarks>
+    public TxFrame ToFrame() => new((FrameMode)Mode, (FrameFlags)Flags, Target, ExecutionGasLimit, StateGasLimit, Value, Data);
 
     public static FrameForRpc[]? FromFrames(TxFrame[]? frames)
     {

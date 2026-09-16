@@ -50,7 +50,7 @@ public class BlockGasReservationsFitnessTests
             SenderAddress = TestItem.AddressA,
             Frames =
             [
-                new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, executionGasLimit, stateGasLimit, UInt256.Zero, default),
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, executionGasLimit, stateGasLimit, UInt256.Zero, default),
             ],
             FrameSignatures = [],
             GasPrice = 1,

@@ -681,7 +681,7 @@ public class FrameTxMempoolDosMeasurement
             ChainId = _specProvider.ChainId,
             Nonce = 0,
             SenderAddress = Sender,
-            Frames = [new TxFrame(TxFrame.ModeVerify, TxFrame.ApproveExecutionAndPayment, target: null, gasLimit: _frameExecutionGasLimit, UInt256.Zero, data)],
+            Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: _frameExecutionGasLimit, UInt256.Zero, data)],
             FrameSignatures = _frameSignatures,
             GasLimit = 1_000_000,
             GasPrice = 1.GWei,

@@ -30,7 +30,7 @@ public static unsafe partial class EvmInstructions
 
         // EIP-7906 forbids the call, not the permission bits: a POST_TX frame may carry an approval
         // scope it never exercises, so the ban belongs here rather than in envelope validation.
-        if (frame.Mode == TxFrame.ModePostTx) return EvmExceptionType.BadInstruction;
+        if (frame.Mode == FrameMode.PostTx) return EvmExceptionType.BadInstruction;
 
         Address resolvedTarget = ctx.ResolvedTarget(ctx.CurrentFrameIndex);
 
@@ -38,9 +38,9 @@ public static unsafe partial class EvmInstructions
         if (!vm.VmState.Env.ExecutingAccount.Equals(resolvedTarget))
             goto Reject;
 
-        if (scope > TxFrame.ApproveScopeMask) goto Reject;
+        if (scope > (byte)TxFrame.ApproveScopeMask) goto Reject;
 
-        FrameApprovalOutcome outcome = ctx.PlanApproval((byte)scope.u0, resolvedTarget, vm.WorldState, out FrameApprovalPlan plan);
+        FrameApprovalOutcome outcome = ctx.PlanApproval((FrameFlags)scope.u0, resolvedTarget, vm.WorldState, out FrameApprovalPlan plan);
         if (outcome != FrameApprovalOutcome.Approved)
         {
             if (outcome == FrameApprovalOutcome.Rejected) goto Reject;
@@ -210,11 +210,11 @@ public static unsafe partial class EvmInstructions
         {
             0x00 => stack.PushAddress<TTracingInst>(ctx.ResolvedTarget(index)),
             0x01 => stack.PushUInt256<TTracingInst>((UInt256)frame.ExecutionGasLimit),
-            0x02 => stack.PushUInt32<TTracingInst, OnFlag>(frame.Mode),
-            0x03 => stack.PushUInt32<TTracingInst, OnFlag>(frame.Flags),
+            0x02 => stack.PushUInt32<TTracingInst, OnFlag>((byte)frame.Mode),
+            0x03 => stack.PushUInt32<TTracingInst, OnFlag>((byte)frame.Flags),
             0x04 => stack.PushUInt256<TTracingInst>((UInt256)frame.Data.Length),
             0x05 => FrameStatus<TTracingInst>(ctx, index, ref stack),
-            0x06 => stack.PushUInt32<TTracingInst, OnFlag>(frame.AllowedApproveScope),
+            0x06 => stack.PushUInt32<TTracingInst, OnFlag>((byte)frame.AllowedApproveScope),
             0x07 => stack.PushUInt32<TTracingInst, OnFlag>((uint)(frame.IsAtomicBatch ? 1 : 0)),
             0x08 => stack.PushUInt256<TTracingInst>(frame.Value),
             0x09 => stack.PushUInt256<TTracingInst>((UInt256)frame.StateGasLimit),
