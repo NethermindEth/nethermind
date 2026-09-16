@@ -18,6 +18,7 @@ namespace Nethermind.Network;
 
 public class IPResolver : IIPResolver
 {
+    private const int UnresolvedFastAttemptLimit = 5;
     private static readonly TimeSpan ResolutionCacheDuration = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan UnresolvedRetryDelay = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan AutoAddressMaxStaleAge = TimeSpan.FromHours(1);
@@ -35,6 +36,7 @@ public class IPResolver : IIPResolver
     private long _resolvedAtTimestamp;
     private int _usesAutomaticResolution;
     private int _retryUnresolvedResolution;
+    private int _consecutiveUnresolvedResolutionAttempts;
     private ConfiguredAddresses? _configured;
     private AutoResolvedIp? _lastExternalIpV4;
     private AutoResolvedIp? _lastExternalIpV6;
@@ -134,15 +136,17 @@ public class IPResolver : IIPResolver
             Volatile.Write(ref _resolvedAtTimestamp, _timeProvider.GetTimestamp());
             if (_logger.IsError) _logger.Error("External IP refresh failed.", e);
         }
-
-        lock (_lock)
+        finally
         {
-            if (result is { } refreshed)
+            lock (_lock)
             {
-                _resolveTask = Task.FromResult(refreshed);
-            }
+                if (result is { } refreshed)
+                {
+                    _resolveTask = Task.FromResult(refreshed);
+                }
 
-            _refreshInProgress = false;
+                _refreshInProgress = false;
+            }
         }
 
         if (result is { } changed && changed != previous)
@@ -156,7 +160,17 @@ public class IPResolver : IIPResolver
         (IIPResolver.NethermindIp result, bool usedAutomaticResolution) = await ResolveCore();
         bool unresolvedAutomaticResolution = usedAutomaticResolution &&
             result.ExternalIpV4 is null && result.ExternalIpV6 is null;
-        Volatile.Write(ref _retryUnresolvedResolution, unresolvedAutomaticResolution ? 1 : 0);
+        int unresolvedAttempts = unresolvedAutomaticResolution
+            ? Interlocked.Increment(ref _consecutiveUnresolvedResolutionAttempts)
+            : 0;
+        if (!unresolvedAutomaticResolution)
+        {
+            Volatile.Write(ref _consecutiveUnresolvedResolutionAttempts, 0);
+        }
+
+        Volatile.Write(
+            ref _retryUnresolvedResolution,
+            unresolvedAttempts is > 0 and < UnresolvedFastAttemptLimit ? 1 : 0);
         Volatile.Write(ref _resolvedAtTimestamp, _timeProvider.GetTimestamp());
         Volatile.Write(ref _usesAutomaticResolution, usedAutomaticResolution ? 1 : 0);
         return result;

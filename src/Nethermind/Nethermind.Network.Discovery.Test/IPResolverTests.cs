@@ -299,6 +299,38 @@ public class IPResolverTests
     }
 
     [Test]
+    public async Task Repeated_unresolved_startup_attempts_return_to_normal_refresh_interval()
+    {
+        ManualTimeProvider timeProvider = new();
+        int sourceCalls = 0;
+        IIPSource source = new StubIpSource(() =>
+        {
+            sourceCalls++;
+            return Task.FromResult((false, IPAddress.None));
+        });
+        IPResolver ipResolver = CreateResolver(
+            new NetworkConfig(),
+            family => family == AddressFamily.InterNetwork ? [source] : [],
+            timeProvider: timeProvider,
+            hasLocalAddressFamily: family => family == AddressFamily.InterNetwork);
+
+        await ipResolver.Resolve();
+        for (int attempt = 1; attempt < 5; attempt++)
+        {
+            timeProvider.Advance(TimeSpan.FromSeconds(10));
+            await ResolveAfterRefresh(ipResolver);
+        }
+
+        timeProvider.Advance(TimeSpan.FromSeconds(10));
+        await ipResolver.Resolve();
+        Assert.That(sourceCalls, Is.EqualTo(5));
+
+        timeProvider.Advance(TimeSpan.FromMinutes(4) + TimeSpan.FromSeconds(50));
+        await ResolveAfterRefresh(ipResolver);
+        Assert.That(sourceCalls, Is.EqualTo(6));
+    }
+
+    [Test]
     public async Task Resolution_is_cached_then_refreshed_after_five_minutes()
     {
         ManualTimeProvider timeProvider = new();
