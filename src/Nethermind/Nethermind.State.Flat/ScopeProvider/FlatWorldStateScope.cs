@@ -115,7 +115,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
 
         // VerifyWithTrie reads the trie on the block thread during execution, which the workers would race.
-        _accountSpeculation = configuration.SpeculativeStorageRoots && !_trieless && !isReadOnly && !configuration.VerifyWithTrie
+        _accountSpeculation = configuration.SpeculativeStorageRoots && configuration.SpeculativeAccountTrie && !_trieless && !isReadOnly && !configuration.VerifyWithTrie
             ? new AccountTrieSpeculation(this)
             : null;
     }
@@ -146,7 +146,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     /// <inheritdoc/>
     /// <remarks>
-    /// With <see cref="IFlatDbConfig.SpeculativeStorageRoots"/> the account goes to the state trie on a speculation
+    /// With <see cref="IFlatDbConfig.SpeculativeAccountTrie"/> the account goes to the state trie on a speculation
     /// worker; the block-end write batch then skips accounts whose final value it already holds.
     /// </remarks>
     public void HintAccountSet(Address address, Account? account) => _accountSpeculation?.Enqueue(address, account);
