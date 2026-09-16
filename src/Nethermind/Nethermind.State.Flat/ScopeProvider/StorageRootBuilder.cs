@@ -98,7 +98,11 @@ internal sealed class StorageRootBuilder
                     if (!shard.Pending.TryTake(out delta, Timeout.Infinite)) return;
                 }
 
+                long start = Stopwatch.GetTimestamp();
                 delta.Tree.ApplyCommitted(delta.Index, delta.Value);
+                long micros = (long)Stopwatch.GetElapsedTime(start).TotalMicroseconds;
+                Db.Metrics.AddParallelStorageRootApplyMicros(micros);
+                if (shard.Pending.IsAddingCompleted) Db.Metrics.AddParallelStorageRootTailApplyMicros(micros);
                 if (_eagerHash) shard.Touched.Add(delta.Tree);
             }
         }
@@ -115,7 +119,11 @@ internal sealed class StorageRootBuilder
         {
             // Once the block thread is waiting for the join, the parallel flush hashes what is left faster than this thread.
             if (shard.Pending.IsAddingCompleted) break;
+            long start = Stopwatch.GetTimestamp();
             tree.HashDirtyPaths();
+            long micros = (long)Stopwatch.GetElapsedTime(start).TotalMicroseconds;
+            Db.Metrics.AddParallelStorageRootHashMicros(micros);
+            if (shard.Pending.IsAddingCompleted) Db.Metrics.AddParallelStorageRootTailHashMicros(micros);
         }
         shard.Touched.Clear();
     }
