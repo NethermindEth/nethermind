@@ -24,9 +24,10 @@ class RpcRunnerWorkspaceTests(unittest.TestCase):
         cls.bash = find_bash()
         if not cls.bash or not shutil.which("git"):
             raise unittest.SkipTest("bash and git are required")
-        cls.job = WORKFLOW.read_text().split("\n  benchmark:\n", 1)[1].split(
-            "\n  generate-dottrace-reports:\n", 1
-        )[0]
+        job = re.search(r"(?ms)^  benchmark:\n(.*?)(?=^  \S|\Z)", WORKFLOW.read_text())
+        if job is None:
+            raise AssertionError("RPC workflow must contain the benchmark job")
+        cls.job = job[1]
         cls.setup_body, = extract_step_bodies(WORKFLOW, "Set up run paths")
         cls.summary_body, = extract_step_bodies(WORKFLOW, "Publish step summary")
 

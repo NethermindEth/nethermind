@@ -747,9 +747,11 @@ jobs:
           fi
           mkdir -p "${output_parent}"
           bench_temp="$(mktemp -d "${output_parent}/rpcbench.XXXXXX")"
-          echo "BENCH_TEMP=${bench_temp}" >> "$GITHUB_ENV"
-          echo "OUT_DIR=${bench_temp}/out" >> "$GITHUB_ENV"
-          echo "STATE_DIR=${bench_temp}/state" >> "$GITHUB_ENV"
+          {
+            echo "BENCH_TEMP=${bench_temp}"
+            echo "OUT_DIR=${bench_temp}/out"
+            echo "STATE_DIR=${bench_temp}/state"
+          } >> "$GITHUB_ENV"
 
       # Repair stale state only inside the dedicated RPC checkout.
       - name: Clear inherited sparse-checkout state
