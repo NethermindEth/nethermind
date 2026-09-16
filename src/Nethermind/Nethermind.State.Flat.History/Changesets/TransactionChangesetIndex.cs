@@ -4,6 +4,7 @@
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 
@@ -19,11 +20,14 @@ public sealed class TransactionChangesetIndex
     private readonly MidBlockOverlayCache _overlays;
     private readonly ConsecutiveBlockOverlays _consecutive = new();
 
-    public TransactionChangesetIndex(IColumnsDb<FlatHistoryColumns> columns, IFlatDbConfig config)
+    private readonly ISpecProvider? _specProvider;
+
+    public TransactionChangesetIndex(IColumnsDb<FlatHistoryColumns> columns, IFlatDbConfig config, ISpecProvider? specProvider = null)
     {
         ArgumentNullException.ThrowIfNull(columns);
         ArgumentNullException.ThrowIfNull(config);
 
+        _specProvider = specProvider;
         _columns = columns;
         _store = new TransactionChangesetStore(columns.GetColumnDb(FlatHistoryColumns.TransactionChangesets));
         _overlays = new MidBlockOverlayCache(_store);
@@ -80,7 +84,8 @@ public sealed class TransactionChangesetIndex
     }
 
     /// <summary>The whole block for a trace of every transaction: rows in memory, and the chain of the consecutive
-    /// blocks traced before it when the block continues one.</summary>
+    /// blocks traced before it when the block continues one. A block joins the chain only when the chain can leave
+    /// out every address the block wrote after its transactions, which needs the block's fork and a post-merge block.</summary>
     internal bool TryOpenBlock(Block block, [NotNullWhen(true)] out ICoveredBlock? covered)
     {
         covered = null;
@@ -88,7 +93,30 @@ public sealed class TransactionChangesetIndex
         if (!Covers(number) || block.Hash is null || block.ParentHash is null) return false;
         if (!BlockChangesets.TryRead(_store, number, block.Hash, block.Transactions.Length, out BlockChangesets? rows)) return false;
 
-        covered = new CoveredBlock(rows, number == 0 ? null : _consecutive.EndingAt(number - 1, block.ParentHash), _consecutive);
+        HashSet<AddressAsKey> excluded = [];
+        bool chainable = block.IsPostMerge && _specProvider is not null && TryCollectPostTransactionWriters(block, excluded);
+        covered = new CoveredBlock(rows, number == 0 ? null : _consecutive.EndingAt(number - 1, block.ParentHash), chainable ? _consecutive : null, excluded);
+        return true;
+    }
+
+    /// <summary>Every address the block can write after its last transaction: withdrawal recipients, the beneficiary,
+    /// and the fork's system contracts, which the block's system calls write before and after the transactions.</summary>
+    private bool TryCollectPostTransactionWriters(Block block, HashSet<AddressAsKey> excluded)
+    {
+        IReleaseSpec spec = _specProvider!.GetSpec(block.Header);
+        if (block.Beneficiary is null) return false;
+
+        excluded.Add(block.Beneficiary);
+        foreach (Address? system in (ReadOnlySpan<Address?>)[spec.Eip4788ContractAddress, spec.Eip2935ContractAddress, spec.Eip7002ContractAddress, spec.Eip7251ContractAddress])
+        {
+            if (system is not null) excluded.Add(system);
+        }
+
+        if (block.Withdrawals is { } withdrawals)
+        {
+            foreach (Withdrawal withdrawal in withdrawals) excluded.Add(withdrawal.Address);
+        }
+
         return true;
     }
 

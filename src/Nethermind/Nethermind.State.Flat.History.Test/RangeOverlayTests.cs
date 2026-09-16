@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -18,6 +19,7 @@ public class RangeOverlayTests
     private static readonly Account Parent = new(5, 100, TestItem.KeccakA, TestItem.KeccakB);
     private static readonly StorageCell SlotOne = new(TestItem.AddressA, 1);
     private static readonly StorageCell SlotTwo = new(TestItem.AddressA, 2);
+    private static readonly HashSet<AddressAsKey> None = [];
 
     [Test]
     public void TheNewestBlockAnswersFirst_AndAnOlderBlockFillsWhatItLeftAlone()
@@ -109,9 +111,9 @@ public class RangeOverlayTests
         BlockChangesets seven = Rows(7, TestItem.KeccakA);
         BlockChangesets eight = Rows(8, TestItem.KeccakB);
 
-        overlays.Publish(seven, null);
+        overlays.Publish(seven, null, None);
         RangeOverlay afterSeven = overlays.EndingAt(7, TestItem.KeccakA)!;
-        overlays.Publish(eight, afterSeven);
+        overlays.Publish(eight, afterSeven, None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -128,11 +130,11 @@ public class RangeOverlayTests
         BlockChangesets eight = Rows(8, TestItem.KeccakB);
         BlockChangesets nine = Rows(9, TestItem.KeccakC);
 
-        overlays.Publish(seven, null);
+        overlays.Publish(seven, null, None);
         RangeOverlay? afterSeven = overlays.EndingAt(7, TestItem.KeccakA);
-        overlays.Publish(eight, afterSeven);
+        overlays.Publish(eight, afterSeven, None);
         RangeOverlay? afterEight = overlays.EndingAt(8, TestItem.KeccakB);
-        overlays.Publish(nine, afterEight);
+        overlays.Publish(nine, afterEight, None);
         RangeOverlay? afterNine = overlays.EndingAt(9, TestItem.KeccakC);
 
         using (Assert.EnterMultipleScope())
@@ -152,7 +154,7 @@ public class RangeOverlayTests
         writes(collector);
         overlay.Fold(0, collector.Pack());
         collector.Release();
-        return RangeOverlay.Extend(older, overlay, Keccak.Compute(block.ToString()));
+        return RangeOverlay.Extend(older, overlay, Keccak.Compute(block.ToString()), new HashSet<AddressAsKey>());
     }
 
     private static BlockChangesets Rows(ulong number, Hash256 hash)

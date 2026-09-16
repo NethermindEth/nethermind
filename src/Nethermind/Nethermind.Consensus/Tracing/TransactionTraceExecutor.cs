@@ -49,7 +49,9 @@ public sealed class TransactionTraceExecutor(
         }
         finally
         {
-            readOverlay?.Disarm();
+            // What follows the transactions, the rewards and withdrawals, must see the seeded end state too when the
+            // seed stood for the whole block; the environment disarms the slot when its scope closes.
+            if (!boundary.SkipsTransactions) readOverlay?.Disarm();
         }
     }
 

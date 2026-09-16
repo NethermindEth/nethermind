@@ -30,9 +30,11 @@ namespace Nethermind.Consensus.Tracing;
 /// every changeset once. The first transaction runs on the calling thread before the workers start, which recovers
 /// the block's senders once and proves the tracer can be bounded to one transaction; a tracer that cannot be sends
 /// the caller back to the replay before any worker exists. The caller always waits for its workers, so nothing they
-/// hold is released under them, even when the request is cancelled. The workers are threads of their own, as many
-/// as the degree, started on the first block and kept: they spend their time blocked in state reads, and a thread
-/// pool hands out threads for blocked work too slowly for a block to ever see the whole degree.</summary>
+/// hold is released under them, even when the request is cancelled. The workers are threads of their own, started on
+/// the first block and kept: they spend their time blocked in state reads, and a thread pool hands out threads for
+/// blocked work too slowly for a block to ever see the whole degree. There are twice as many threads as the degree
+/// and the degree is enforced per transaction by a semaphore, so two blocks traced at once interleave transaction by
+/// transaction instead of the second waiting for the whole of the first. The calling thread is one of the workers.</summary>
 public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 {
     public const int MaxDefaultDegree = 16;
@@ -49,7 +51,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         _degree = Math.Max(1, degree);
         _environments = new ShareableOverridableEnvSource<Components>(buildEnvironment, _degree);
         _slots = new SemaphoreSlim(_degree, _degree);
-        _workers = new Workers(_degree);
+        _workers = new Workers(2 * _degree);
         _seeds = seeds;
         _logger = logManager.GetClassLogger<ParallelBlockTracer>();
     }
@@ -77,17 +79,26 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
             Cursor cursor = new();
 
-            if (!TraceOne(block, parent, transactions, cursor.Next(), covered.CreateWorkerSeeds(), forTransaction, results, stop.Token)) return false;
+            IPrefixStateSeedSource callerSeeds = covered.CreateWorkerSeeds();
+            if (!TraceOne(block, parent, transactions, cursor.Next(), callerSeeds, forTransaction, results, stop.Token)) return false;
 
-            int workers = Math.Min(_degree, transactions.Length - 1);
-            Task[] tasks = new Task[workers];
-            for (int w = 0; w < workers; w++)
+            int helpers = Math.Min(_degree, transactions.Length - 1) - 1;
+            Task[] tasks = new Task[Math.Max(0, helpers)];
+            int queued = 0;
+            try
             {
-                IPrefixStateSeedSource seeds = covered.CreateWorkerSeeds();
-                tasks[w] = _workers.Run(() => TraceMany(block, parent, transactions, cursor, seeds, forTransaction, results, stop));
-            }
+                for (; queued < tasks.Length; queued++)
+                {
+                    IPrefixStateSeedSource seeds = covered.CreateWorkerSeeds();
+                    tasks[queued] = _workers.Run(() => TraceMany(block, parent, transactions, cursor, seeds, forTransaction, results, stop));
+                }
 
-            Await(tasks);
+                TraceMany(block, parent, transactions, cursor, callerSeeds, forTransaction, results, stop);
+            }
+            finally
+            {
+                Await(tasks.AsSpan(0, queued));
+            }
 
             if (afterTransactions is not null)
             {
@@ -103,7 +114,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             }
 
             traces = all;
-            if (_logger.IsTrace) _logger.Trace($"Traced block {block.Number} in parallel: {transactions.Length} transactions on {workers + 1} workers.");
+            if (_logger.IsTrace) _logger.Trace($"Traced block {block.Number} in parallel: {transactions.Length} transactions on {tasks.Length + 1} workers.");
             return true;
         }
     }
@@ -204,8 +215,10 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 
     /// <summary>Waits for every worker whatever happens: they stop on their own once the request is cancelled, and
     /// what they hold is released only after they are gone.</summary>
-    private static void Await(Task[] tasks)
+    private static void Await(ReadOnlySpan<Task> tasks)
     {
+        if (tasks.IsEmpty) return;
+
         try
         {
             Task.WaitAll(tasks);
@@ -232,17 +245,29 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         _environments.Dispose();
     }
 
-    /// <summary>The degree's worth of threads, started when the first block asks and kept for the next one. A job
-    /// is one worker's share of one block; concurrent blocks queue their jobs behind each other.</summary>
-    private sealed class Workers(int count) : IDisposable
+    /// <summary>Threads started when the first block asks and kept for the next one. A job is one worker's share of
+    /// one block; with more threads than the degree, the jobs of two blocks run side by side and the semaphore
+    /// interleaves their transactions. Disposal drains: no thread is joined before its job is done.</summary>
+    private sealed class Workers : IDisposable
     {
         private readonly BlockingCollection<Action> _jobs = [];
-        private readonly Lock _lock = new();
-        private Thread[]? _threads;
+        private readonly Lazy<Thread[]> _threads;
+
+        public Workers(int count) => _threads = new Lazy<Thread[]>(() =>
+        {
+            Thread[] threads = new Thread[count];
+            for (int i = 0; i < threads.Length; i++)
+            {
+                threads[i] = new Thread(Work) { IsBackground = true, Name = $"{nameof(ParallelBlockTracer)} {i}" };
+                threads[i].Start();
+            }
+
+            return threads;
+        });
 
         public Task Run(Action job)
         {
-            EnsureStarted();
+            _ = _threads.Value;
             TaskCompletionSource done = new(TaskCreationOptions.RunContinuationsAsynchronously);
             _jobs.Add(() =>
             {
@@ -259,25 +284,6 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             return done.Task;
         }
 
-        private void EnsureStarted()
-        {
-            if (_threads is not null) return;
-
-            lock (_lock)
-            {
-                if (_threads is not null) return;
-
-                Thread[] threads = new Thread[count];
-                for (int i = 0; i < threads.Length; i++)
-                {
-                    threads[i] = new Thread(Work) { IsBackground = true, Name = $"{nameof(ParallelBlockTracer)} {i}" };
-                    threads[i].Start();
-                }
-
-                _threads = threads;
-            }
-        }
-
         private void Work()
         {
             foreach (Action job in _jobs.GetConsumingEnumerable())
@@ -286,7 +292,16 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             }
         }
 
-        public void Dispose() => _jobs.CompleteAdding();
+        public void Dispose()
+        {
+            _jobs.CompleteAdding();
+            if (_threads.IsValueCreated)
+            {
+                foreach (Thread thread in _threads.Value) thread.Join();
+            }
+
+            _jobs.Dispose();
+        }
     }
 
     private sealed class Cursor

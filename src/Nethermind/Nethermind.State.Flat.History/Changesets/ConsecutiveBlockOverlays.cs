@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 
@@ -22,9 +23,10 @@ internal sealed class ConsecutiveBlockOverlays(int maxBlocks = ConsecutiveBlockO
     public RangeOverlay? EndingAt(ulong block, Hash256 hash) =>
         _byLastBlock.TryGet(block, out RangeOverlay? chain) && chain.LastHash == hash ? chain : null;
 
-    public void Publish(BlockChangesets block, RangeOverlay? earlierBlocks)
+    /// <param name="excluded">Addresses the block may have written after its transactions; they never enter the chain.</param>
+    public void Publish(BlockChangesets block, RangeOverlay? earlierBlocks, IReadOnlySet<AddressAsKey> excluded)
     {
         bool continues = earlierBlocks is not null && earlierBlocks.Length < maxBlocks && earlierBlocks.Entries < maxEntries;
-        _byLastBlock.Set(block.Number, RangeOverlay.Extend(continues ? earlierBlocks : null, block.FoldAll(), block.Hash));
+        _byLastBlock.Set(block.Number, RangeOverlay.Extend(continues ? earlierBlocks : null, block.FoldAll(), block.Hash, excluded));
     }
 }

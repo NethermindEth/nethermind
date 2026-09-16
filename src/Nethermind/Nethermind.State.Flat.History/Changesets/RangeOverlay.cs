@@ -11,7 +11,11 @@ namespace Nethermind.State.Flat.History.Changesets;
 /// <summary>What a run of consecutive covered blocks wrote, newest block first, so that a trace of the block after
 /// them reads a key those blocks touched from memory and only a key they never touched from the parent state. Each
 /// node holds one block flattened to its final values and points at the node before it; a node never changes once
-/// built, so any number of traces may read a chain while a newer node is added ahead of it.</summary>
+/// built, so any number of traces may read a chain while a newer node is added ahead of it.
+/// The rows hold what the transactions wrote; what the block wrote after them (withdrawals, the end-of-block system
+/// calls, a reward) is not in them, so an address any of those can touch is left out of the node and always read
+/// from the parent state: the withdrawal recipients, the beneficiary, and the system contracts of the block's fork.
+/// Only a post-merge block is chained, so no uncle or reward reaches an address the exclusion cannot name.</summary>
 internal sealed class RangeOverlay : IStateReadOverlay
 {
     private readonly RangeOverlay? _older;
@@ -40,12 +44,14 @@ internal sealed class RangeOverlay : IStateReadOverlay
 
     /// <summary>A new chain head: <paramref name="block"/>, folded through its last transaction, in front of
     /// <paramref name="older"/>.</summary>
-    public static RangeOverlay Extend(RangeOverlay? older, MidBlockOverlay block, Hash256 blockHash)
+    public static RangeOverlay Extend(RangeOverlay? older, MidBlockOverlay block, Hash256 blockHash, IReadOnlySet<AddressAsKey> excluded)
     {
         RangeOverlay node = new(older, block.Block, blockHash);
         Dictionary<AddressAsKey, MidBlockOverlay.AccountOverlay>.Enumerator accounts = block.Accounts;
         while (accounts.MoveNext())
         {
+            if (excluded.Contains(accounts.Current.Key)) continue;
+
             MidBlockOverlay.AccountOverlay account = accounts.Current.Value;
             node._accounts[accounts.Current.Key] = new AccountEnd(
                 account.Nonce, account.Balance, account.CodeHash,
@@ -58,7 +64,7 @@ internal sealed class RangeOverlay : IStateReadOverlay
         while (writes.MoveNext())
         {
             StorageCell cell = writes.Current.Key;
-            if (!block.TryGetStorage(cell, out UInt256 value)) continue;
+            if (excluded.Contains(cell.Address) || !block.TryGetStorage(cell, out UInt256 value)) continue;
 
             node._slots[cell] = value;
             node._storageAccounts.Add(cell.Address);

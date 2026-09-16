@@ -30,7 +30,7 @@ internal sealed class BlockChangesets
     public static bool TryRead(TransactionChangesetStore store, ulong number, Hash256 hash, int transactionCount, [NotNullWhen(true)] out BlockChangesets? changesets)
     {
         changesets = null;
-        if (transactionCount <= 0 || transactionCount > ChangesetKeyLayout.MaxTransactionIndex + 1) return false;
+        if (transactionCount <= 0 || transactionCount > ChangesetKeyLayout.MaxTransactionIndex) return false;
         if (!store.TryGetBlockHash(number, out ValueHash256 indexed) || indexed != hash) return false;
 
         byte[][] rows = new byte[transactionCount][];

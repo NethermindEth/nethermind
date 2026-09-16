@@ -165,12 +165,12 @@ public class BlockProcessorTests
             configure?.Invoke(builder);
         });
 
-    private static async Task<Block> AddThreeTransferBlock(BasicTestBlockchain chain)
+    private static async Task<Block> AddThreeTransferBlock(BasicTestBlockchain chain, Address? to = null)
     {
         Transaction[] transactions = new Transaction[3];
         for (int i = 0; i < transactions.Length; i++)
         {
-            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce((ulong)i)
+            transactions[i] = Build.A.Transaction.WithTo(to ?? TestItem.AddressC).WithNonce((ulong)i)
                 .WithValue((UInt256)(i + 1)).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         }
         Block block = await chain.AddBlock(transactions);
@@ -298,7 +298,9 @@ public class BlockProcessorTests
         ChangesetPrefixStateSeedSource seeds = new(index);
         using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds, builder => builder.AddSingleton<IRewardCalculatorSource>(new ZeroRewardToTheBeneficiary()));
         BlockHeader parent = chain.BlockTree.Head!.Header;
-        Block block = await AddThreeTransferBlock(chain);
+        // The transfers create the beneficiary inside the block: a reward applied on the parent state would create
+        // the account a second time, and the state diff of the reward trace would say so.
+        Block block = await AddThreeTransferBlock(chain, parent.Beneficiary);
         IndexThroughTheCapture(chain, index, block, parent, spec);
         ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.Rewards;
         using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, degree: 3, LimboLogs.Instance);

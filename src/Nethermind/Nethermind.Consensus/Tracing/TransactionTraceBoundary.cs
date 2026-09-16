@@ -41,8 +41,9 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     public static IBlockTracer Wrap(IBlockTracer tracer, Hash256? transactionHash, IPrefixStateSeedSource? seeds = null) =>
         transactionHash is null || tracer.IsTracingRewards ? tracer : new TransactionTraceBoundary(tracer, transactionHash, seeds);
 
-    /// <summary>Wraps a tracer that wants only what comes after the transactions, on the state the seed source
-    /// supplies for the end of the block. A refused seed replays the block, so the answer is always right.</summary>
+    /// <summary>Wraps a tracer that wants only what comes after the transactions: the seed for the end of the block
+    /// stays armed through the rewards and withdrawals, so they are applied and traced on the state the last
+    /// transaction left, as in the replay. A refused seed replays the block, so the answer is always right.</summary>
     public static IBlockTracer AfterTransactions(IBlockTracer tracer, IPrefixStateSeedSource seeds) => new TransactionTraceBoundary(tracer, null, seeds);
 
     internal int IndexOf(Block block)

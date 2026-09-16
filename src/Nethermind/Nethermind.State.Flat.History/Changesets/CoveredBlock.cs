@@ -10,11 +10,12 @@ namespace Nethermind.State.Flat.History.Changesets;
 
 /// <summary>A covered block opened for a whole-block trace: rows in memory, the overlay of the blocks traced before
 /// it when they are consecutive, and one seed source per worker.</summary>
-internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBlocks, ConsecutiveBlockOverlays chain) : ICoveredBlock
+internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBlocks, ConsecutiveBlockOverlays? chain, IReadOnlySet<AddressAsKey> excluded) : ICoveredBlock
 {
     public IPrefixStateSeedSource CreateWorkerSeeds() => new WorkerSeeds(rows, earlierBlocks);
 
-    public void Complete() => chain.Publish(rows, earlierBlocks);
+    /// <summary>Nothing is published for a block the chain cannot describe exactly.</summary>
+    public void Complete() => chain?.Publish(rows, earlierBlocks, excluded);
 
     public void Dispose()
     {
