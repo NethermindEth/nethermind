@@ -188,7 +188,7 @@ public class TxPoolLockContentionMeasurement
         public int Total { get; private set; }
 
         public FrameTxSimulationResult Simulate(
-            Transaction tx, bool signaturesPreValidated = false, CancellationToken token = default, bool local = false)
+            Transaction tx, bool signaturesPreValidated = false, bool local = false, CancellationToken token = default)
         {
             Calls++;
             Total++;

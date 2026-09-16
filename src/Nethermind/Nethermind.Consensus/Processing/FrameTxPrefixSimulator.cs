@@ -47,7 +47,7 @@ public sealed class FrameTxPrefixSimulator(
     private bool _disposed;
     private bool _nodeFaultReported;
 
-    public FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, CancellationToken token = default, bool local = false)
+    public FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, bool local = false, CancellationToken token = default)
     {
         token.ThrowIfCancellationRequested();
 
@@ -132,7 +132,7 @@ public sealed class FrameTxPrefixSimulator(
             processor.SetBlockExecutionContext(head);
 
             IReleaseSpec spec = specProvider.GetSpec(head);
-            tracer = new FrameTxValidationTracer(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec, token, _timeout, _time);
+            tracer = new FrameTxValidationTracer(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, scope.WorldState, spec, _timeout, _time, token);
             ExecutionOptions opts = ExecutionOptions.FrameValidationPrefixOnly;
             if (signaturesPreValidated) opts |= ExecutionOptions.FrameSignaturesPreValidated;
             TransactionResult result = processor.Process(tx, tracer, opts);

@@ -1023,7 +1023,7 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     private FrameTxValidationTracer Tracer(Transaction tx, TimeSpan timeout = default, TimeProvider? time = null) =>
-        new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec, default, timeout, time);
+        new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec, timeout, time);
 
     private TransactionResult Run(Transaction tx, FrameTxValidationTracer tracer, ulong? slotNumber = null, ExecutionOptions extraOptions = ExecutionOptions.None)
     {

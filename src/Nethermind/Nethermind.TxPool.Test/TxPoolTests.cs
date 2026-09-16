@@ -3023,7 +3023,7 @@ namespace Nethermind.TxPool.Test
         {
             const int budget = 2;
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxEvictionRetryBudget = budget }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
@@ -4142,7 +4142,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(result, Is.EqualTo(shortcut ? AcceptTxResult.Accepted : AcceptTxResult.FrameSimulationFailed));
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(shortcut ? 1 : 0));
                 Assert.That(tx.PayerAddress, shortcut ? Is.EqualTo(TestItem.PrivateKeyA.Address) : Is.Null);
-                simulator.Received(shortcut ? 0 : 1).Simulate(tx, Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
+                simulator.Received(shortcut ? 0 : 1).Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
             }
         }
 
@@ -4162,7 +4162,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(result, Is.EqualTo(shortcut ? AcceptTxResult.Accepted : AcceptTxResult.FrameSimulationFailed));
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(shortcut ? 1 : 0));
                 Assert.That(tx.PayerAddress, shortcut ? Is.EqualTo(TestItem.PrivateKeyA.Address) : Is.Null);
-                simulator.Received(shortcut ? 0 : 1).Simulate(tx, Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
+                simulator.Received(shortcut ? 0 : 1).Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
             }
         }
 
@@ -4424,7 +4424,7 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1), "the verifier is not a tracked dependency");
-                simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
+                simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
             }
         }
 
@@ -4450,7 +4450,7 @@ namespace Nethermind.TxPool.Test
             second.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressF };
             await RaiseBlockAddedToMainAndWaitForNewHead(second);
 
-            simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
+            simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
         }
 
         [Test]
@@ -4508,7 +4508,7 @@ namespace Nethermind.TxPool.Test
                 await RaiseBlockAddedToMainAndWaitForNewHead(head);
             }
 
-            simulator.Received(expectedSimulations).Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
+            simulator.Received(expectedSimulations).Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1),
                 "an exhausted deferral budget leaves the transaction pending and unjudged, it does not evict");
         }
@@ -4543,7 +4543,7 @@ namespace Nethermind.TxPool.Test
 
             // Heads 1 and 2, then the budget is spent; heads 4 and 5 again once head 4 re-armed it. A budget
             // counted over the transaction's whole residency instead would have stopped at three.
-            simulator.Received(4).Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
+            simulator.Received(4).Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
             Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
         }
 
@@ -4594,7 +4594,7 @@ namespace Nethermind.TxPool.Test
             // inside the simulation. Re-indexing the accepted result would leave a dependency entry behind a
             // transaction the pool no longer holds, and no later head removes it.
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressD));
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 }, new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
             EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
             EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
@@ -4604,7 +4604,7 @@ namespace Nethermind.TxPool.Test
 
             // Stands in for the concurrent eviction, pinned to the one interleaving that matters: it lands
             // after the sweep read the transaction and before the accepted result is indexed.
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
                 .Returns(_ =>
                 {
                     _txPool.EvictTransaction(tx);
@@ -4708,7 +4708,7 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1));
-                simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>());
+                simulator.DidNotReceive().Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
             }
         }
 
@@ -4818,7 +4818,7 @@ namespace Nethermind.TxPool.Test
 
             Transaction doomed = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
             IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>())
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
                 .Returns(call =>
                 {
                     if (((Transaction)call[0]).Hash != doomed.Hash) return FrameTxSimulationResult.Accept(sponsor);
@@ -4893,7 +4893,7 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
-                simulator.Received(1).Simulate(tx, signaturesPreValidated: true, token: Arg.Any<CancellationToken>(), local: Arg.Any<bool>());
+                simulator.Received(1).Simulate(tx, signaturesPreValidated: true, local: Arg.Any<bool>(), token: Arg.Any<CancellationToken>());
             }
         }
 
@@ -6021,7 +6021,7 @@ namespace Nethermind.TxPool.Test
         }
 
         private static void SimulatesAs(IFrameTxPrefixSimulator simulator, FrameTxSimulationResult result) =>
-            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<bool>()).Returns(result);
+            simulator.Simulate(Arg.Any<Transaction>(), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(result);
 
         private TxPool CreatePool(
             ITxPoolConfig config = null,
