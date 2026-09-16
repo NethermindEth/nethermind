@@ -306,6 +306,42 @@ public partial class Metrics
         Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStorageMerkleTime.Value : ref _otherStorageMerkleTime.Value, ticks);
     }
 
+    [Description("Time spent flushing storage changes into the storage tries at block end, including waits for speculative root runners (ticks). Part of StorageMerkleTime.")]
+    public static long StorageTriesTime => _mainStorageTriesTime.Value + _otherStorageTriesTime.Value;
+    private static CacheLinePaddedLong _mainStorageTriesTime;
+    private static CacheLinePaddedLong _otherStorageTriesTime;
+    internal static long MainThreadStorageTriesTime => _mainStorageTriesTime.Value;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void IncrementStorageTriesTime(long ticks)
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainStorageTriesTime.Value : ref _otherStorageTriesTime.Value, ticks);
+    }
+
+    [Description("Time spent applying the block's account changes into the state trie when the block-end write batch is disposed (ticks). Part of StorageMerkleTime.")]
+    public static long AccountTrieSetTime => _mainAccountTrieSetTime.Value + _otherAccountTrieSetTime.Value;
+    private static CacheLinePaddedLong _mainAccountTrieSetTime;
+    private static CacheLinePaddedLong _otherAccountTrieSetTime;
+    internal static long MainThreadAccountTrieSetTime => _mainAccountTrieSetTime.Value;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void IncrementAccountTrieSetTime(long ticks)
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainAccountTrieSetTime.Value : ref _otherAccountTrieSetTime.Value, ticks);
+    }
+
+    [Description("Time spent committing the state trie and collecting the block snapshot in CommitTree (ticks).")]
+    public static long CommitTreeTime => _mainCommitTreeTime.Value + _otherCommitTreeTime.Value;
+    private static CacheLinePaddedLong _mainCommitTreeTime;
+    private static CacheLinePaddedLong _otherCommitTreeTime;
+    internal static long MainThreadCommitTreeTime => _mainCommitTreeTime.Value;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void IncrementCommitTreeTime(long ticks)
+    {
+        if (!ExecutionMetricsFlag.IsActive) return;
+        Interlocked.Add(ref IsBlockProcessingThread ? ref _mainCommitTreeTime.Value : ref _otherCommitTreeTime.Value, ticks);
+    }
+
     [Description("Time spent on state root recalculation + commit tree (ticks).")]
     public static long StateRootTime => _mainStateRootTime.Value + _otherStateRootTime.Value;
     private static CacheLinePaddedLong _mainStateRootTime;

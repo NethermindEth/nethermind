@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -206,7 +207,12 @@ public sealed class FlatStorageTree(
                 count++;
             }
 
-            if (count > 0) tree.UpdateRootHash(canBeParallel: count > 64);
+            if (count > 0)
+            {
+                tree.UpdateRootHash(canBeParallel: count > 64);
+                Db.Metrics.IncrementSpeculativeStorageWrites(count);
+                Db.Metrics.IncrementSpeculativeStorageHashPasses();
+            }
         }
         catch (Exception e)
         {
@@ -239,7 +245,9 @@ public sealed class FlatStorageTree(
         if (_speculativeQueue is null) return;
 
         SpinWait spinWait = new();
+        long waitStart = Stopwatch.GetTimestamp();
         while (Interlocked.CompareExchange(ref _speculationState, SpeculationOwned, SpeculationIdle) == SpeculationRunning) spinWait.SpinOnce();
+        Db.Metrics.IncrementSpeculativeStorageJoinWaitTicks(Stopwatch.GetElapsedTime(waitStart).Ticks);
 
         while (_speculativeQueue.TryDequeue(out _)) { }
 
@@ -507,6 +515,7 @@ public sealed class FlatStorageTree(
         FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         private bool _joined;
+        private int _skipped;
         private Dictionary<UInt256, UInt256>? _speculativelyApplied;
         // Slots the runner wrote that the batch has not confirmed: the provider skips a slot the block wrote back to
         // its pre-block value, so whatever is left here at dispose has to be put back to that value.
@@ -532,6 +541,7 @@ public sealed class FlatStorageTree(
                 _unconfirmed!.Remove(index);
                 if (applied == value)
                 {
+                    _skipped++;
                     storageTree.Set(index, value);
                     return;
                 }
@@ -560,8 +570,11 @@ public sealed class FlatStorageTree(
                     storageTree.GetPreBlockSlot(in index, out UInt256 original);
                     trieBatch.Set(in index, original);
                 }
+
+                Db.Metrics.IncrementSpeculativeStorageRestoredWrites(_unconfirmed.Count);
             }
 
+            if (_skipped > 0) Db.Metrics.IncrementSpeculativeStorageSkippedWrites(_skipped);
             if (_speculativelyApplied is not null) trieBatch.MarkSet();
             trieBatch.Dispose();
         }

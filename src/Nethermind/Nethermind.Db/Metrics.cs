@@ -13,6 +13,7 @@ using Nethermind.Core.Threading;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
 [assembly: InternalsVisibleTo("Nethermind.State")]
+[assembly: InternalsVisibleTo("Nethermind.State.Flat")]
 [assembly: InternalsVisibleTo("Nethermind.Evm")]
 [assembly: InternalsVisibleTo("Nethermind.TxPool")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain")]
@@ -135,6 +136,36 @@ namespace Nethermind.Db
         public static long StorageTreeWrites => _storageTreeWrites.Value;
         private static CacheLinePaddedLong _storageTreeWrites;
         internal static void IncrementStorageTreeWrites(long value) => Interlocked.Add(ref _storageTreeWrites.Value, value);
+
+        [CounterMetric]
+        [Description("Storage slot writes the speculative root runner applied to storage tries during execution.")]
+        public static long SpeculativeStorageWrites => _speculativeStorageWrites.Value;
+        private static CacheLinePaddedLong _speculativeStorageWrites;
+        internal static void IncrementSpeculativeStorageWrites(long value) => Interlocked.Add(ref _speculativeStorageWrites.Value, value);
+
+        [CounterMetric]
+        [Description("Root hash passes the speculative root runner ran during execution.")]
+        public static long SpeculativeStorageHashPasses => _speculativeStorageHashPasses.Value;
+        private static CacheLinePaddedLong _speculativeStorageHashPasses;
+        internal static void IncrementSpeculativeStorageHashPasses() => Interlocked.Increment(ref _speculativeStorageHashPasses.Value);
+
+        [CounterMetric]
+        [Description("Block-end storage trie writes skipped because the speculative runner had already applied the final value.")]
+        public static long SpeculativeStorageSkippedWrites => _speculativeStorageSkippedWrites.Value;
+        private static CacheLinePaddedLong _speculativeStorageSkippedWrites;
+        internal static void IncrementSpeculativeStorageSkippedWrites(long value) => Interlocked.Add(ref _speculativeStorageSkippedWrites.Value, value);
+
+        [CounterMetric]
+        [Description("Speculatively written slots the block-end batch restored to their pre-block value.")]
+        public static long SpeculativeStorageRestoredWrites => _speculativeStorageRestoredWrites.Value;
+        private static CacheLinePaddedLong _speculativeStorageRestoredWrites;
+        internal static void IncrementSpeculativeStorageRestoredWrites(long value) => Interlocked.Add(ref _speculativeStorageRestoredWrites.Value, value);
+
+        [CounterMetric]
+        [Description("Time block-end storage commits spent waiting for the speculative root runner (TimeSpan ticks, summed over workers).")]
+        public static long SpeculativeStorageJoinWaitTicks => _speculativeStorageJoinWaitTicks.Value;
+        private static CacheLinePaddedLong _speculativeStorageJoinWaitTicks;
+        internal static void IncrementSpeculativeStorageJoinWaitTicks(long ticks) => Interlocked.Add(ref _speculativeStorageJoinWaitTicks.Value, ticks);
 
         [CounterMetric]
         [Description("Number of storage trie writes skipped in net.")]

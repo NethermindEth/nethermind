@@ -104,6 +104,14 @@ namespace Nethermind.Consensus.Processing
         private long _startStateRootTime;
         private long _startBloomsTime;
         private long _startReceiptsRootTime;
+        private long _startStorageTriesTime;
+        private long _startAccountTrieSetTime;
+        private long _startCommitTreeTime;
+        private long _startSpeculativeWrites;
+        private long _startSpeculativeHashPasses;
+        private long _startSpeculativeSkippedWrites;
+        private long _startSpeculativeRestoredWrites;
+        private long _startSpeculativeJoinWaitTicks;
         private double _chunkMGas;
         private long _chunkProcessingMicroseconds;
         private long _chunkTx;
@@ -215,6 +223,14 @@ namespace Nethermind.Consensus.Processing
             _startStateRootTime = Evm.Metrics.MainThreadStateRootTime;
             _startBloomsTime = Evm.Metrics.MainThreadBloomsTime;
             _startReceiptsRootTime = Evm.Metrics.MainThreadReceiptsRootTime;
+            _startStorageTriesTime = Evm.Metrics.MainThreadStorageTriesTime;
+            _startAccountTrieSetTime = Evm.Metrics.MainThreadAccountTrieSetTime;
+            _startCommitTreeTime = Evm.Metrics.MainThreadCommitTreeTime;
+            _startSpeculativeWrites = DbMetrics.SpeculativeStorageWrites;
+            _startSpeculativeHashPasses = DbMetrics.SpeculativeStorageHashPasses;
+            _startSpeculativeSkippedWrites = DbMetrics.SpeculativeStorageSkippedWrites;
+            _startSpeculativeRestoredWrites = DbMetrics.SpeculativeStorageRestoredWrites;
+            _startSpeculativeJoinWaitTicks = DbMetrics.SpeculativeStorageJoinWaitTicks;
         }
 
         public void UpdateStats(IReadOnlyList<Block> blocks, BlockHeader? baseBlock, long blockProcessingTimeInMicros)
@@ -299,6 +315,14 @@ namespace Nethermind.Consensus.Processing
                 blockData.DeltaStateRootTime = Evm.Metrics.MainThreadStateRootTime - _startStateRootTime;
                 blockData.DeltaBloomsTime = Evm.Metrics.MainThreadBloomsTime - _startBloomsTime;
                 blockData.DeltaReceiptsRootTime = Evm.Metrics.MainThreadReceiptsRootTime - _startReceiptsRootTime;
+                blockData.DeltaStorageTriesTime = Evm.Metrics.MainThreadStorageTriesTime - _startStorageTriesTime;
+                blockData.DeltaAccountTrieSetTime = Evm.Metrics.MainThreadAccountTrieSetTime - _startAccountTrieSetTime;
+                blockData.DeltaCommitTreeTime = Evm.Metrics.MainThreadCommitTreeTime - _startCommitTreeTime;
+                blockData.DeltaSpeculativeWrites = DbMetrics.SpeculativeStorageWrites - _startSpeculativeWrites;
+                blockData.DeltaSpeculativeHashPasses = DbMetrics.SpeculativeStorageHashPasses - _startSpeculativeHashPasses;
+                blockData.DeltaSpeculativeSkippedWrites = DbMetrics.SpeculativeStorageSkippedWrites - _startSpeculativeSkippedWrites;
+                blockData.DeltaSpeculativeRestoredWrites = DbMetrics.SpeculativeStorageRestoredWrites - _startSpeculativeRestoredWrites;
+                blockData.DeltaSpeculativeJoinWaitTicks = DbMetrics.SpeculativeStorageJoinWaitTicks - _startSpeculativeJoinWaitTicks;
 
                 // Snapshot per-tx timing (rents a pooled list for ThreadPool use, null when disabled).
                 // The list is disposed (returning its array to the pool) in BlockDataPolicy.Return.
@@ -719,6 +743,10 @@ namespace Nethermind.Consensus.Processing
                     writer.WriteNumber("state_root_ms", Math.Round(stateRootMs, 3));
                     writer.WriteNumber("state_hash_ms", Math.Round(stateHashMs, 3));
                     writer.WriteNumber("total_ms", Math.Round(totalMs, 3));
+                    // Nethermind-only split of storage_merkle_ms and of the commit that follows the state root.
+                    writer.WriteNumber("storage_trees_ms", Math.Round(data.DeltaStorageTriesTime / (double)TimeSpan.TicksPerMillisecond, 3));
+                    writer.WriteNumber("account_trie_set_ms", Math.Round(data.DeltaAccountTrieSetTime / (double)TimeSpan.TicksPerMillisecond, 3));
+                    writer.WriteNumber("commit_tree_ms", Math.Round(data.DeltaCommitTreeTime / (double)TimeSpan.TicksPerMillisecond, 3));
                     writer.WriteEndObject();
 
                     writer.WriteStartObject("throughput");
@@ -770,6 +798,14 @@ namespace Nethermind.Consensus.Processing
                     writer.WriteNumber("self_destructs", data.CurrentSelfDestructOps - data.StartSelfDestructOps);
                     writer.WriteNumber("contracts_analyzed", data.CurrentContractsAnalyzed - data.StartContractsAnalyzed);
                     writer.WriteNumber("cached_contracts_used", data.CurrentCachedContractsUsed - data.StartCachedContractsUsed);
+                    writer.WriteEndObject();
+
+                    writer.WriteStartObject("speculation");
+                    writer.WriteNumber("applied_writes", data.DeltaSpeculativeWrites);
+                    writer.WriteNumber("hash_passes", data.DeltaSpeculativeHashPasses);
+                    writer.WriteNumber("skipped_writes", data.DeltaSpeculativeSkippedWrites);
+                    writer.WriteNumber("restored_writes", data.DeltaSpeculativeRestoredWrites);
+                    writer.WriteNumber("join_wait_ms", Math.Round(data.DeltaSpeculativeJoinWaitTicks / (double)TimeSpan.TicksPerMillisecond, 3));
                     writer.WriteEndObject();
 
                     // Per-transaction timing breakdown (when enabled).
@@ -899,6 +935,14 @@ namespace Nethermind.Consensus.Processing
                 data.DeltaStateRootTime = 0;
                 data.DeltaBloomsTime = 0;
                 data.DeltaReceiptsRootTime = 0;
+                data.DeltaStorageTriesTime = 0;
+                data.DeltaAccountTrieSetTime = 0;
+                data.DeltaCommitTreeTime = 0;
+                data.DeltaSpeculativeWrites = 0;
+                data.DeltaSpeculativeHashPasses = 0;
+                data.DeltaSpeculativeSkippedWrites = 0;
+                data.DeltaSpeculativeRestoredWrites = 0;
+                data.DeltaSpeculativeJoinWaitTicks = 0;
 
                 return true;
             }
@@ -963,6 +1007,14 @@ namespace Nethermind.Consensus.Processing
             public long DeltaStateRootTime;
             public long DeltaBloomsTime;
             public long DeltaReceiptsRootTime;
+            public long DeltaStorageTriesTime;
+            public long DeltaAccountTrieSetTime;
+            public long DeltaCommitTreeTime;
+            public long DeltaSpeculativeWrites;
+            public long DeltaSpeculativeHashPasses;
+            public long DeltaSpeculativeSkippedWrites;
+            public long DeltaSpeculativeRestoredWrites;
+            public long DeltaSpeculativeJoinWaitTicks;
             public ArrayPoolList<long>? PerTxTicks;
         }
     }
