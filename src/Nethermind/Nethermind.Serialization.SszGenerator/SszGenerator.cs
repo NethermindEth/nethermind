@@ -601,7 +601,8 @@ internal static class SszCodecHelpers
         }
 
         MerkleizeDefaultWithConverter(itemSize, decode, feed, out UInt256 itemRoot);
-        Merkleizer merkleizer = new(Merkle.NextPowerOfTwoExponent(length));
+        Span<UInt256> chunks = stackalloc UInt256[Merkle.NextPowerOfTwoExponent(length) + 1];
+        Merkleizer merkleizer = new(chunks);
         for (ulong i = 0; i < length; i++)
         {
             merkleizer.Feed(itemRoot);
@@ -1046,7 +1047,7 @@ internal static class SszCodecHelpers
 
         return string.Join("\n",
         [
-            $"UInt256[] subRoots = new UInt256[{decl.Members!.Length}];",
+            $"Span<UInt256> subRoots = {(decl.Members!.Length <= 32 ? "stackalloc" : "new")} UInt256[{decl.Members.Length}];",
             ..memberRoots,
             "Merkle.MerkleizeProgressive(out root, subRoots);",
             $"Merkle.MixInActiveFields(ref root, {activeFields});",
@@ -1206,7 +1207,9 @@ internal static class SszCodecHelpers
                 ? ProgressiveContainerMerkleizeBody(decl)
                 : string.Join("\n",
                 [
-                    $"Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent({decl.Members!.Length}));",
+                    $"Span<UInt256> chunks = stackalloc UInt256[Merkle.NextPowerOfTwoExponent({decl.Members!.Length}) + 1];",
+                    decl.Members.Length == 0 ? "chunks.Clear();" : string.Empty,
+                    "Merkleizer merkleizer = new(chunks);",
                     ..decl.Members.Select(m => MerkleizeFeedStatement(m, $"container.{m.Name}")),
                     "merkleizer.CalculateRoot(out root);",
                 ]);
