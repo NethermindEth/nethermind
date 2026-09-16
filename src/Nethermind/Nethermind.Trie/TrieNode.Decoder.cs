@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using Nethermind.Core.Buffers;
@@ -15,6 +16,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
+
+using MemoryMarshal = System.Runtime.InteropServices.MemoryMarshal;
 
 [assembly: InternalsVisibleTo("Ethereum.Trie.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
@@ -31,6 +34,7 @@ namespace Nethermind.Trie
         private class TrieNodeDecoder
         {
             private const int HashPairSize = 2;
+            private const int MinHashBatchSize = 3;
 
             /// <summary>The children of a node already known to be a branch.</summary>
             /// <remarks>
@@ -274,6 +278,12 @@ namespace Nethermind.Trie
 
             private static void HashPreparedBranches(TrieNode item, ushort candidateMask)
             {
+                if (Avx512F.IsSupported && BitOperations.PopCount((uint)candidateMask) >= MinHashBatchSize)
+                {
+                    HashPreparedBranchBatches(item, candidateMask);
+                    return;
+                }
+
                 int firstIndex = BitOperations.TrailingZeroCount(candidateMask);
                 candidateMask ^= (ushort)(1 << firstIndex);
                 if (candidateMask == 0)
@@ -283,6 +293,49 @@ namespace Nethermind.Trie
                 }
 
                 HashPreparedBranchPairs(item, firstIndex, candidateMask);
+            }
+
+            [InlineArray(141)]
+            private struct BranchHashBuffer
+            {
+                private Vector256<byte> _element0;
+            }
+
+            [SkipLocalsInit]
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            private static void HashPreparedBranchBatches(TrieNode item, ushort candidateMask)
+            {
+                const int batchSize = 8;
+                Unsafe.SkipInit(out BranchHashBuffer buffer);
+                Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
+                Span<byte> inputs = storage[..(batchSize * FullBranchRlpLength)];
+                Span<byte> hashes = storage[(batchSize * FullBranchRlpLength)..];
+                do
+                {
+                    int batchCount = Math.Min(batchSize, BitOperations.PopCount((uint)candidateMask));
+                    if (batchCount < batchSize) inputs.Clear();
+                    ushort batchMask = candidateMask;
+                    for (int i = 0; i < batchCount; i++)
+                    {
+                        int index = BitOperations.TrailingZeroCount(candidateMask);
+                        candidateMask ^= (ushort)(1 << index);
+                        CappedArray<byte> rlp = Unsafe.As<TrieNode>(item._nodeData![index])!.FullRlp;
+                        if (rlp.Length != FullBranchRlpLength)
+                            throw new TrieException("A prepared full branch changed before batched hashing.");
+                        rlp.AsSpan().CopyTo(inputs.Slice(i * FullBranchRlpLength, FullBranchRlpLength));
+                    }
+
+                    KeccakHash.ComputeHash532Bytes8Avx512(ref inputs[0], ref hashes[0]);
+                    for (int i = 0; i < batchCount; i++)
+                    {
+                        int index = BitOperations.TrailingZeroCount(batchMask);
+                        batchMask ^= (ushort)(1 << index);
+                        ValueHash256 hash = new(hashes.Slice(i * Hash256.Size, Hash256.Size));
+                        Unsafe.As<TrieNode>(item._nodeData![index])!.SetPreparedKey(in hash);
+                    }
+                } while (BitOperations.PopCount((uint)candidateMask) >= MinHashBatchSize);
+
+                if (candidateMask != 0) HashPreparedBranches(item, candidateMask);
             }
 
             [SkipLocalsInit]
