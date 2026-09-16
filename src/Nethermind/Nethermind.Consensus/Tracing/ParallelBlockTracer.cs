@@ -44,7 +44,8 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     private readonly Workers _workers;
     private readonly int _degree;
     private readonly ILogger _logger;
-    private volatile bool _disposed;
+    private readonly object _runs = new();
+    private bool _disposed;
     private int _inFlight;
 
     public ParallelBlockTracer(Func<IOverridableEnv<Components>> buildEnvironment, IPrefixStateSeedSource seeds, int degree, ILogManager logManager)
@@ -89,13 +90,15 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         out IReadOnlyList<TTrace>? traces)
     {
         traces = null;
-        // Counted before the flag is read, so a tracer being disposed either sees this run and waits for it or
-        // refuses it outright; the caller traces a share of the block itself, and nothing it holds may be disposed
-        // under it.
-        Interlocked.Increment(ref _inFlight);
+        if (_degree < 2 || !_seeds.Enabled || block.Transactions.Length < 2 || !HashesKnown(block.Transactions)) return false;
+
+        // Counted under the same lock disposal takes, so a tracer being disposed either sees this run and waits for
+        // it or refuses it outright: the caller traces a share of the block on its own thread, and nothing it holds
+        // may be disposed under it.
+        if (!Enter()) return false;
+
         try
         {
-            if (_disposed || _degree < 2 || !_seeds.Enabled || block.Transactions.Length < 2 || !HashesKnown(block.Transactions)) return false;
             if (!_seeds.TryOpenBlock(block, out ICoveredBlock? covered)) return false;
 
             using (covered)
@@ -156,7 +159,26 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         }
         finally
         {
-            Interlocked.Decrement(ref _inFlight);
+            Leave();
+        }
+    }
+
+    private bool Enter()
+    {
+        lock (_runs)
+        {
+            if (_disposed) return false;
+
+            _inFlight++;
+            return true;
+        }
+    }
+
+    private void Leave()
+    {
+        lock (_runs)
+        {
+            if (--_inFlight == 0) Monitor.PulseAll(_runs);
         }
     }
 
@@ -286,18 +308,18 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         }
     }
 
+    /// <summary>Waits for the runs already under way, however long their requests take, and refuses the ones that
+    /// arrive from here on so they are replayed instead. A run is not finished until its workers are, so once the
+    /// count reaches zero nothing is holding an environment or a thread.</summary>
     public void Dispose()
     {
-        // Set first: a block arriving from here on is refused outright and replayed, rather than failing on an
-        // environment pool that is already closing.
-        _disposed = true;
+        lock (_runs)
+        {
+            _disposed = true;
+            while (_inFlight > 0) Monitor.Wait(_runs);
+        }
+
         _workers.Dispose();
-
-        // The pool threads are joined by then, but the request that called in traces a share of the block on its own
-        // thread, which nothing else waits for; its environment must not be disposed while it is still processing.
-        SpinWait spin = new();
-        while (Volatile.Read(ref _inFlight) > 0) spin.SpinOnce();
-
         _environments.Dispose();
     }
 

@@ -213,6 +213,27 @@ public class CoveredBlockTests
     }
 
     [Test]
+    public void ARowTheCodecCannotRead_RefusesTheSeedThatNeedsIt_AndNeverFailsTheBlock()
+    {
+        Truncate(_seven, 1);
+        Assert.That(_index.TryOpenBlock(_seven, out ICoveredBlock? covered), Is.True, "the rows are all present; only one of them cannot be read");
+        using ICoveredBlock block = covered!;
+        IPrefixStateSeedSource seeds = block.CreateWorkerSeeds();
+        StateReadOverlaySlot slot = new();
+
+        bool needsTheBadRow = seeds.TrySeed(_seven, 2, slot);
+        bool doesNot = seeds.TrySeed(_seven, 1, slot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(needsTheBadRow, Is.False, "a row the codec cannot read is a refusal here too, and the transaction is traced by replaying the prefix");
+            Assert.That(doesNot, Is.True, "a target whose prefix stops before the unreadable row is still seeded");
+            Assert.That(slot.Current!.TryGetAccount(TestItem.AddressA, Parent, out Account? a) && a!.Balance == 10, Is.True, "and what the refused fold had applied is gone");
+            Assert.That(block.Complete, Throws.Nothing, "the block was traced and answered; a chain node nobody can build must not fail it afterwards");
+        }
+    }
+
+    [Test]
     public void ABlockWhoseParentWasNotTraced_StartsFresh()
     {
         Assert.That(_index.TryOpenBlock(_eight, out ICoveredBlock? eight), Is.True);
@@ -221,6 +242,15 @@ public class CoveredBlockTests
         Assert.That(block.CreateWorkerSeeds().TrySeed(_eight, 1, slot), Is.True);
 
         Assert.That(slot.Current!.TryGetAccount(TestItem.AddressB, Parent, out _), Is.False, "nothing earlier was published, so the read goes to the parent state");
+    }
+
+    private void Truncate(Block block, ushort transactionIndex)
+    {
+        Span<byte> key = stackalloc byte[ChangesetKeyLayout.RowKeyLength];
+        ChangesetKeyLayout.WriteRowKey(key, (ulong)block.Number, transactionIndex);
+        IDb column = _columns.GetColumnDb(FlatHistoryColumns.TransactionChangesets);
+        byte[] row = column.Get(key)!;
+        column.Set(key, row[..^1]);
     }
 
     private static Transaction Tx(ulong nonce) => Build.A.Transaction.WithNonce(nonce).TestObject;

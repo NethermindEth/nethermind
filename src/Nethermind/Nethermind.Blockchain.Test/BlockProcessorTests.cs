@@ -487,6 +487,56 @@ public class BlockProcessorTests
     }
 
     [Test]
+    public async Task ParallelBlockTracer_Disposal_WaitsForTheRunAlreadyUnderWay()
+    {
+        IReleaseSpec spec = Prague.Instance;
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+        IndexThroughTheCapture(chain, index, block, parent, spec);
+        ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, degree: 2, LimboLogs.Instance);
+        using ManualResetEventSlim started = new(false);
+        using ManualResetEventSlim release = new(false);
+        GethTraceOptions traceOptions = new() { Tracer = "callTracer" };
+
+        bool traced = false;
+        Exception? escaped = null;
+        Task run = Task.Run(() =>
+        {
+            try
+            {
+                traced = parallel.TryTrace(block, parent, (state, txHash) =>
+                {
+                    started.Set();
+                    release.Wait();
+                    return GethStyleTracer.CreateOptionsTracer(block.Header, traceOptions with { TxHash = txHash }, state, chain.SpecProvider);
+                }, afterTransactions: null, CancellationToken.None, out _);
+            }
+            catch (Exception e)
+            {
+                escaped = e;
+            }
+        });
+
+        Assert.That(started.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: the run is inside a worker holding an environment");
+        Task disposal = Task.Run(parallel.Dispose);
+        bool finishedWhileTracing = disposal.Wait(TimeSpan.FromMilliseconds(250));
+        release.Set();
+        await run;
+        await disposal;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(finishedWhileTracing, Is.False, "disposal must wait for the run it found under way, or it disposes the environment that run is processing on");
+            Assert.That(traced, Is.True, "the run that was already under way finishes normally");
+            Assert.That(escaped, Is.Null, "and nothing escapes from the pool being torn down beneath it");
+        }
+    }
+
+    [Test]
     public async Task ParallelBlockTracer_LeavesAnUncoveredBlockToTheReplay()
     {
         IReleaseSpec spec = Prague.Instance;
