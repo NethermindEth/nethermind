@@ -416,6 +416,36 @@ public class BlockProcessorTests
     }
 
     [Test]
+    public async Task ParallelBlockTracer_StreamsEachTransactionInBlockOrder_AsItFinishes()
+    {
+        IReleaseSpec spec = Prague.Instance;
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+        IndexThroughTheCapture(chain, index, block, parent, spec);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, degree: 3, LimboLogs.Instance);
+        ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.StateDiff;
+
+        List<ParityLikeTxTrace> streamed = [];
+        bool traced = parallel.TryStream(block, parent,
+            (_, txHash) => new ParityLikeBlockTracer(txHash, types), afterTransactions: null,
+            batch => streamed.AddRange(batch), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traced, Is.True);
+            Assert.That(streamed.Select(static trace => trace.TransactionHash), Is.EqualTo(block.Transactions.Select(static tx => tx.Hash)).AsCollection,
+                "the workers finish in whatever order the state reads allow, and the response must still read in block order");
+            Assert.That(chain.JsonSerializer.Serialize(ParityTxTraceFromStore.FromTxTrace(streamed)),
+                Is.EqualTo(chain.JsonSerializer.Serialize(ParityTxTraceFromStore.FromTxTrace(TraceWholeBlockThroughTraceEnvironment(chain, parent, block, _ => new ParityLikeBlockTracer(types))))),
+                "streaming a block transaction by transaction says what replaying it says");
+        }
+    }
+
+    [Test]
     public async Task ParallelBlockTracer_LeavesAnUncoveredBlockToTheReplay()
     {
         IReleaseSpec spec = Prague.Instance;

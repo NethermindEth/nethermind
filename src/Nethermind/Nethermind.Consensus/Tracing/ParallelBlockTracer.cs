@@ -66,7 +66,26 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction,
         Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions,
         CancellationToken token,
-        [NotNullWhen(true)] out IReadOnlyList<TTrace>? traces)
+        [NotNullWhen(true)] out IReadOnlyList<TTrace>? traces) =>
+        Run(block, parent, forTransaction, afterTransactions, emit: null, token, out traces);
+
+    public bool TryStream<TTrace>(
+        Block block,
+        BlockHeader parent,
+        Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction,
+        Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions,
+        Action<IReadOnlyCollection<TTrace>> emit,
+        CancellationToken token) =>
+        Run(block, parent, forTransaction, afterTransactions, emit, token, out _);
+
+    private bool Run<TTrace>(
+        Block block,
+        BlockHeader parent,
+        Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction,
+        Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions,
+        Action<IReadOnlyCollection<TTrace>>? emit,
+        CancellationToken token,
+        out IReadOnlyList<TTrace>? traces)
     {
         traces = null;
         if (_degree < 2 || !_seeds.Enabled || block.Transactions.Length < 2 || !HashesKnown(block.Transactions)) return false;
@@ -76,11 +95,12 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         {
             Transaction[] transactions = block.Transactions;
             IReadOnlyCollection<TTrace>?[] results = new IReadOnlyCollection<TTrace>?[transactions.Length + 1];
+            Emitter<TTrace> emitter = new(results, emit);
             using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
             Cursor cursor = new();
 
             IPrefixStateSeedSource callerSeeds = covered.CreateWorkerSeeds();
-            if (!TraceOne(block, parent, transactions, cursor.Next(), callerSeeds, forTransaction, results, stop.Token)) return false;
+            if (!TraceOne(block, parent, transactions, cursor.Next(), callerSeeds, forTransaction, results, emitter, stop.Token)) return false;
 
             int helpers = Math.Min(_degree, transactions.Length - 1) - 1;
             Task[] tasks = new Task[Math.Max(0, helpers)];
@@ -90,10 +110,10 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                 for (; queued < tasks.Length; queued++)
                 {
                     IPrefixStateSeedSource seeds = covered.CreateWorkerSeeds();
-                    tasks[queued] = _workers.Run(() => TraceMany(block, parent, transactions, cursor, seeds, forTransaction, results, stop));
+                    tasks[queued] = _workers.Run(() => TraceMany(block, parent, transactions, cursor, seeds, forTransaction, results, emitter, stop));
                 }
 
-                TraceMany(block, parent, transactions, cursor, callerSeeds, forTransaction, results, stop);
+                TraceMany(block, parent, transactions, cursor, callerSeeds, forTransaction, results, emitter, stop);
             }
             finally
             {
@@ -103,30 +123,39 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             if (afterTransactions is not null)
             {
                 results[transactions.Length] = TraceAfterTransactions(block, parent, covered.CreateWorkerSeeds(), afterTransactions, token);
+                emitter.Publish();
             }
 
             covered.Complete();
 
-            List<TTrace> all = new(transactions.Length + 1);
-            foreach (IReadOnlyCollection<TTrace>? result in results)
+            if (emit is null)
             {
-                if (result is not null) all.AddRange(result);
+                List<TTrace> all = new(transactions.Length + 1);
+                foreach (IReadOnlyCollection<TTrace>? result in results)
+                {
+                    if (result is not null) all.AddRange(result);
+                }
+
+                traces = all;
+            }
+            else
+            {
+                traces = [];
             }
 
-            traces = all;
             if (_logger.IsTrace) _logger.Trace($"Traced block {block.Number} in parallel: {transactions.Length} transactions on {tasks.Length + 1} workers.");
             return true;
         }
     }
 
     private void TraceMany<TTrace>(Block block, BlockHeader parent, Transaction[] transactions, Cursor cursor, IPrefixStateSeedSource seeds,
-        Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction, IReadOnlyCollection<TTrace>?[] results, CancellationTokenSource stop)
+        Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction, IReadOnlyCollection<TTrace>?[] results, Emitter<TTrace> emitter, CancellationTokenSource stop)
     {
         try
         {
             for (int i = cursor.Next(); i < transactions.Length; i = cursor.Next())
             {
-                if (!TraceOne(block, parent, transactions, i, seeds, forTransaction, results, stop.Token))
+                if (!TraceOne(block, parent, transactions, i, seeds, forTransaction, results, emitter, stop.Token))
                     throw new InvalidOperationException("The tracer bounded the first transaction and refused a later one.");
             }
         }
@@ -140,7 +169,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     /// <summary>False when the tracer cannot be bounded to one transaction, which only a reward-tracing tracer
     /// cannot; the caller then replays the block as before.</summary>
     private bool TraceOne<TTrace>(Block block, BlockHeader parent, Transaction[] transactions, int index, IPrefixStateSeedSource seeds,
-        Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction, IReadOnlyCollection<TTrace>?[] results, CancellationToken token)
+        Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction, IReadOnlyCollection<TTrace>?[] results, Emitter<TTrace> emitter, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
         Hash256 hash = transactions[index].Hash!;
@@ -160,6 +189,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 
                 scope.Component.Processor.Process(OwnCopy(block), TraceProcessingOptions.ReadOnlyReplay, bounded, token);
                 results[index] = tracer.BuildResult();
+                emitter.Publish();
                 return true;
             }
             catch
@@ -316,6 +346,30 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             }
 
             _jobs.Dispose();
+        }
+    }
+
+    /// <summary>Hands finished traces on in block order: a worker that finishes out of turn leaves its result for
+    /// the transaction before it, and whoever closes the gap passes the run on. Under the lock, so the sink is
+    /// written by one thread at a time, and a trace already handed on is released.</summary>
+    private sealed class Emitter<TTrace>(IReadOnlyCollection<TTrace>?[] results, Action<IReadOnlyCollection<TTrace>>? emit)
+    {
+        private readonly Lock _lock = new();
+        private int _next;
+
+        public void Publish()
+        {
+            if (emit is null) return;
+
+            lock (_lock)
+            {
+                while (_next < results.Length && results[_next] is { } ready)
+                {
+                    emit(ready);
+                    results[_next] = null;
+                    _next++;
+                }
+            }
         }
     }
 

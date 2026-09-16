@@ -174,8 +174,9 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
     }
 
     /// <summary>Writes traces produced elsewhere, in the order given, exactly as they would have been streamed while
-    /// being produced here.</summary>
-    public void WriteTraces(IReadOnlyList<ParityLikeTxTrace> traces)
+    /// being produced here. Called once per transaction as the parallel tracer finishes it, so the response leaves
+    /// while the rest of the block is still being traced.</summary>
+    public void WriteTraces(IReadOnlyCollection<ParityLikeTxTrace> traces)
     {
         foreach (ParityLikeTxTrace trace in traces)
         {

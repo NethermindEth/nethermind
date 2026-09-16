@@ -28,4 +28,16 @@ public interface IParallelBlockTracer
         Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions,
         CancellationToken token,
         [NotNullWhen(true)] out IReadOnlyList<TTrace>? traces);
+
+    /// <summary>The same, handing each transaction's traces to <paramref name="emit"/> in block order as the workers
+    /// finish them, rather than returning the block at the end: the response starts before the block does, and only
+    /// the traces still waiting for an earlier transaction are held. <paramref name="emit"/> is called by one thread
+    /// at a time.</summary>
+    bool TryStream<TTrace>(
+        Block block,
+        BlockHeader parent,
+        Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction,
+        Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions,
+        Action<IReadOnlyCollection<TTrace>> emit,
+        CancellationToken token);
 }

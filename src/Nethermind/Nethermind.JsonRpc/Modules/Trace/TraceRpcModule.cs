@@ -20,6 +20,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.State.OverridableEnv;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Facade;
@@ -261,9 +262,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     using StreamingParityLikeBlockTracer streamingTracer = new(
                         traceTypes1, ParityTraceStreamMode.Replay, includeTxHash: true,
                         writer, pipeWriter, ct);
-                    if (TryExecuteBlockInParallel(parentHeader, block, traceTypes1, ct, out IReadOnlyList<ParityLikeTxTrace>? traces))
-                        streamingTracer.WriteTraces(traces);
-                    else
+                    if (!TryStreamBlockInParallel(parentHeader, block, traceTypes1, streamingTracer, ct))
                         ExecuteBlockStreaming(parentHeader, block, streamingTracer, ct);
                 },
                 runBuffered: () =>
@@ -303,9 +302,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     foreach (Block block in blocks)
                     {
                         if (!TryResolveParentForTracing(block, out BlockHeader? parentHeader)) break;
-                        if (TryExecuteBlockInParallel(parentHeader!, block, types, ct, out IReadOnlyList<ParityLikeTxTrace>? traces))
-                            streamingTracer.WriteTraces(traces);
-                        else
+                        if (!TryStreamBlockInParallel(parentHeader!, block, types, streamingTracer, ct))
                             ExecuteBlockStreaming(parentHeader!, block, streamingTracer, ct);
                     }
                 },
@@ -387,9 +384,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     using StreamingParityLikeBlockTracer streamingTracer = new(
                         types, ParityTraceStreamMode.Store, includeTxHash: false,
                         writer, pipeWriter, ct);
-                    if (forkSpec is null && TryExecuteBlockInParallel(parentHeader, block, types, ct, out IReadOnlyList<ParityLikeTxTrace>? traces))
-                        streamingTracer.WriteTraces(traces);
-                    else
+                    if (forkSpec is not null || !TryStreamBlockInParallel(parentHeader, block, types, streamingTracer, ct))
                         ExecuteBlockStreaming(parentHeader, block, streamingTracer, ct, forkSpec);
                 },
                 runBuffered: () =>
@@ -497,12 +492,24 @@ namespace Nethermind.JsonRpc.Modules.Trace
             traces = null;
             if (parallelTracer is null) return false;
 
-            ParityTraceTypes perTransaction = types & ~ParityTraceTypes.Rewards;
             return parallelTracer.TryTrace(block, parent,
-                (_, txHash) => new ParityLikeBlockTracer(txHash, perTransaction),
-                (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards ? _ => new ParityLikeBlockTracer(types) : null,
-                cancellationToken, out traces);
+                PerTransaction(types), Rewards(types), cancellationToken, out traces);
         }
+
+        /// <summary>The same, writing each transaction's traces out as the workers finish them, so the caller reads
+        /// the first of them while the block is still being traced and the block is never held whole.</summary>
+        private bool TryStreamBlockInParallel(BlockHeader parent, Block block, ParityTraceTypes types, StreamingParityLikeBlockTracer streamingTracer, CancellationToken cancellationToken) =>
+            parallelTracer is not null && parallelTracer.TryStream(block, parent,
+                PerTransaction(types), Rewards(types), streamingTracer.WriteTraces, cancellationToken);
+
+        private static Func<IWorldState, Hash256, IBlockTracer<ParityLikeTxTrace>> PerTransaction(ParityTraceTypes types)
+        {
+            ParityTraceTypes perTransaction = types & ~ParityTraceTypes.Rewards;
+            return (_, txHash) => new ParityLikeBlockTracer(txHash, perTransaction);
+        }
+
+        private static Func<IWorldState, IBlockTracer<ParityLikeTxTrace>>? Rewards(ParityTraceTypes types) =>
+            (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards ? _ => new ParityLikeBlockTracer(types) : null;
 
         private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlockParallelOrReplay(BlockHeader parent, Block block, ParityTraceTypes types)
         {
