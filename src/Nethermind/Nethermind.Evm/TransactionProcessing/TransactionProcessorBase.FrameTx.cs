@@ -997,7 +997,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 /// <summary>A point in the frame loop a later failure can unwind the transaction to.</summary>
 /// <remarks>The six members are only meaningful together: restoring <see cref="Snapshot"/> without
 /// <see cref="Journal"/> would leave the frame journal indexing past its truncated end, and unwinding to it
-/// would throw. Holding them as one value is what stops the two checkpoints the loop keeps from drifting.</remarks>
+/// would throw. Holding them as one value is what stops the two checkpoints the loop keeps from drifting.
+/// The batch's <see cref="StackAccessTracker"/> copy stays outside: it carries its own snapshot/restore pair,
+/// and the prefix-end checkpoint has no counterpart to it.</remarks>
 /// <param name="Snapshot">World-state snapshot taken at the checkpoint.</param>
 /// <param name="Index">Index of the last frame whose effects the checkpoint includes.</param>
 /// <param name="Refund">The EIP-3529 refund counter at the checkpoint.</param>
