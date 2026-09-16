@@ -584,7 +584,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     /// </remarks>
     private sealed class AccountTrieSpeculation(FlatWorldStateScope scope) : ISpeculativeTrie
     {
-        private const int MinDrainToHash = 4;
+        // The state trie is one tree fed by every transaction, so hashing after each drain re-hashed the same upper
+        // levels ~190 times per block on one worker and the block end still waited for it. Hash rarely; the block-end
+        // root pass is parallel and only covers the paths dirtied since the last speculative pass.
+        private const int MinDrainToHash = 64;
+        private const int MaxDrainsBetweenHashes = 16;
+        private int _drainsSinceHash;
         private readonly ConcurrentQueue<AccountWrite> _queue = new();
         private readonly Dictionary<AddressAsKey, Account?> _applied = [];
         private readonly Dictionary<AddressAsKey, Account?> _drain = [];
@@ -678,9 +683,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
                 foreach (KeyValuePair<AddressAsKey, Account?> kv in _drain) _applied[kv.Key] = kv.Value;
                 Db.Metrics.IncrementSpeculativeAccountWrites(_drain.Count);
-                // Same cadence rule as the storage tries: small drains only load and set.
-                if (_drain.Count >= MinDrainToHash)
+                if (_drain.Count >= MinDrainToHash || ++_drainsSinceHash >= MaxDrainsBetweenHashes)
                 {
+                    _drainsSinceHash = 0;
                     scope._stateTree.UpdateRootHash(canBeParallel: false);
                     Db.Metrics.IncrementSpeculativeStorageHashPasses();
                 }
@@ -743,6 +748,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             _applied.Clear();
             _storageRoots.Clear();
+            _drainsSinceHash = 0;
             Volatile.Write(ref _state, SpeculationState.Idle);
         }
 
