@@ -1203,12 +1203,14 @@ internal static class SszCodecHelpers
                 }
             }
 
+            int chunkCount = 1;
+            for (int remaining = decl.Members!.Length - 1; remaining > 0; remaining >>= 1) chunkCount++;
             string containerMerkleizeBody = decl.Kind == Kind.ProgressiveContainer
                 ? ProgressiveContainerMerkleizeBody(decl)
                 : string.Join("\n",
                 [
-                    $"Span<UInt256> chunks = stackalloc UInt256[Merkle.NextPowerOfTwoExponent({decl.Members!.Length}) + 1];",
-                    decl.Members.Length == 0 ? "chunks.Clear();" : string.Empty,
+                    $"Span<UInt256> chunks = stackalloc UInt256[{chunkCount}];",
+                    decl.Members.Length == 0 ? "// With no fields fed, CalculateRoot reads the unwritten top chunk.\nchunks.Clear();" : string.Empty,
                     "Merkleizer merkleizer = new(chunks);",
                     ..decl.Members.Select(m => MerkleizeFeedStatement(m, $"container.{m.Name}")),
                     "merkleizer.CalculateRoot(out root);",

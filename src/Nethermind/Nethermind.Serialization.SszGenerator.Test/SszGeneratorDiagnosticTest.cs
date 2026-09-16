@@ -5,15 +5,76 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz;
+using Nethermind.Serialization.Ssz.Merkleization;
 using NUnit.Framework;
 using System;
 using System.IO;
 using System.Reflection;
+using System.Text;
 
 namespace Nethermind.Serialization.SszGenerator.Test;
 
 public class SszGeneratorDiagnosticTest
 {
+    [TestCase(0, false)]
+    [TestCase(3, false)]
+    [TestCase(32, true)]
+    [TestCase(33, true)]
+    public void Generated_scratch_boundaries_preserve_roots(int fieldCount, bool progressive)
+    {
+        StringBuilder members = new();
+        for (int i = 0; i < fieldCount; i++)
+        {
+            if (progressive) members.AppendLine($"[SszField({i})]");
+            members.AppendLine($"public ulong Field{i} {{ get; set; }} = {i + 1};");
+        }
+        string source = $$"""
+            using System;
+            using Nethermind.Int256;
+            using Nethermind.Serialization.Ssz;
+            [SszContainer]
+            public partial class BoundaryContainer
+            {
+                {{members}}
+                public static (UInt256, long) Measure()
+                {
+                    BoundaryContainer value = new();
+                    for (int i = 0; i < 100; i++) Merkleize(value, out _);
+                    long before = GC.GetAllocatedBytesForCurrentThread();
+                    Merkleize(value, out UInt256 root);
+                    return (root, GC.GetAllocatedBytesForCurrentThread() - before);
+                }
+            }
+            """;
+        CSharpParseOptions options = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
+        RunGenerator(source, options, $"ScratchBoundary{fieldCount}{progressive}", out Compilation compilation);
+        using MemoryStream stream = new();
+        Microsoft.CodeAnalysis.Emit.EmitResult emitted = compilation.Emit(stream);
+        Assert.That(emitted.Success, Is.True, string.Join(Environment.NewLine, emitted.Diagnostics));
+        Assembly assembly = Assembly.Load(stream.ToArray());
+        (UInt256 actual, long allocated) = ((UInt256, long))assembly.GetType("BoundaryContainer")!.GetMethod("Measure")!.Invoke(null, null)!;
+
+        UInt256[] fields = new UInt256[fieldCount];
+        for (int i = 0; i < fieldCount; i++) fields[i] = (ulong)(i + 1);
+        UInt256 expected;
+        if (progressive)
+        {
+            Merkle.MerkleizeProgressive(out expected, fields);
+            byte[] activeFields = new byte[(fieldCount + 7) / 8];
+            for (int i = 0; i < fieldCount; i++) activeFields[i / 8] |= (byte)(1 << (i % 8));
+            Merkle.MixInActiveFields(ref expected, activeFields);
+        }
+        else
+        {
+            Merkle.Merkleize(out expected, fields);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual, Is.EqualTo(expected));
+            Assert.That(allocated, fieldCount <= 32 ? Is.Zero : Is.GreaterThan(0));
+        }
+    }
+
     [Test]
     public void Converter_without_public_const_length_reports_diagnostic()
     {
@@ -340,6 +401,9 @@ public class SszGeneratorDiagnosticTest
     }
 
     private static GeneratorDriverRunResult RunGenerator(string source, CSharpParseOptions parseOptions, string assemblyName)
+        => RunGenerator(source, parseOptions, assemblyName, out _);
+
+    private static GeneratorDriverRunResult RunGenerator(string source, CSharpParseOptions parseOptions, string assemblyName, out Compilation output)
     {
         SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(source, parseOptions);
         CSharpCompilation compilation = CSharpCompilation.Create(
@@ -350,7 +414,7 @@ public class SszGeneratorDiagnosticTest
 
         GeneratorDriver driver = CSharpGeneratorDriver.Create(CreateSszGenerator())
             .WithUpdatedParseOptions(parseOptions);
-        driver = driver.RunGenerators(compilation);
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out output, out _);
 
         return driver.GetRunResult();
     }
