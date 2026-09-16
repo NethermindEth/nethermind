@@ -25,6 +25,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.OverridableEnv;
 using Nethermind.State.Repositories;
 using NSubstitute;
 using NUnit.Framework;
@@ -107,6 +108,21 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 Assert.That(activation, Is.EqualTo(new ForkActivation(pivot.Number, pivot.Timestamp)));
                 Assert.That(levels.LoadLevel(pivot.Number), Is.Null);
             }
+        }
+
+        [Test]
+        public async Task Warmup_does_nothing_when_disabled()
+        {
+            IOverridableEnvFactory envFactory = Substitute.For<IOverridableEnvFactory>();
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(new SyncConfig(), new InitConfig { EvmWarmupEnabled = false }))
+                .AddSingleton(envFactory)
+                .AddSingleton<EvmWarmer>()
+                .Build();
+
+            await container.Resolve<EvmWarmer>().Execute(CancellationToken.None);
+
+            envFactory.DidNotReceive().Create();
         }
 
         private static IContainer CreateWarmupEnvironment(SyncConfig syncConfig, ulong now) => new ContainerBuilder()
