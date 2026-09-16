@@ -194,6 +194,27 @@ public class CoveredBlockTests
     }
 
     [Test]
+    public void ABlockOfAChainWhoseProcessingIsNotDescribed_IsNotChained()
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex aura = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true },
+            new SingleReleaseSpecProvider(Prague.Instance, 1, 1) { SealEngine = SealEngineType.AuRa });
+        CaptureInto(aura, _seven, t => t.ReportBalanceChange(TestItem.AddressA, 100, 10), t => t.ReportNonceChange(TestItem.AddressB, 5, 6), t => t.ReportBalanceChange(TestItem.AddressA, 10, 30));
+        CaptureInto(aura, _eight, t => t.ReportStorageChange(new StorageCell(TestItem.AddressC, 1), [0x01], [0x09]), t => t.ReportBalanceChange(TestItem.AddressA, 30, 40));
+
+        Assert.That(aura.TryOpenBlock(_seven, out ICoveredBlock? covered), Is.True);
+        covered!.Complete();
+        covered.Dispose();
+
+        Assert.That(aura.TryOpenBlock(_eight, out ICoveredBlock? eight), Is.True);
+        using ICoveredBlock block = eight!;
+        StateReadOverlaySlot slot = new();
+        Assert.That(block.CreateWorkerSeeds().TrySeed(_eight, 0, slot), Is.True);
+
+        Assert.That(slot.Current, Is.TypeOf<MidBlockReadOverlay>(), "the withdrawals of such a chain are a contract call whose writes no spec property names, so nothing of its blocks is chained");
+    }
+
+    [Test]
     public void ABlockWhoseParentWasNotTraced_StartsFresh()
     {
         Assert.That(_index.TryOpenBlock(_eight, out ICoveredBlock? eight), Is.True);
@@ -206,9 +227,11 @@ public class CoveredBlockTests
 
     private static Transaction Tx(ulong nonce) => Build.A.Transaction.WithNonce(nonce).TestObject;
 
-    private void Capture(Block block, params Action<ITxTracer>[] writes)
+    private void Capture(Block block, params Action<ITxTracer>[] writes) => CaptureInto(_index, block, writes);
+
+    private static void CaptureInto(TransactionChangesetIndex index, Block block, params Action<ITxTracer>[] writes)
     {
-        using TransactionChangesetIndex.BlockCapture capture = _index.StartBlock((ulong)block.Number);
+        using TransactionChangesetIndex.BlockCapture capture = index.StartBlock((ulong)block.Number);
         capture.Tracer.StartNewBlockTrace(block);
         for (int i = 0; i < writes.Length; i++)
         {
@@ -218,6 +241,6 @@ public class CoveredBlockTests
         }
 
         capture.Tracer.EndBlockTrace();
-        Assert.That(capture.Commit() && _index.TryClaim((ulong)block.Number, (ulong)block.Number), Is.True, "precondition: the block is indexed");
+        Assert.That(capture.Commit() && index.TryClaim((ulong)block.Number, (ulong)block.Number), Is.True, "precondition: the block is indexed");
     }
 }

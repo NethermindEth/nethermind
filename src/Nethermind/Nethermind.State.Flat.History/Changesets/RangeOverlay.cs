@@ -34,7 +34,9 @@ internal sealed class RangeOverlay : IStateReadOverlay
         LastBlock = lastBlock;
         LastHash = lastHash;
         Length = (older?.Length ?? 0) + 1;
-        Entries = (older?.Entries ?? 0) + _refused.Count - (older?._refused.Count ?? 0);
+        // Every node copies the refusal, so the chain holds it once per block: charged in full here, or the budget
+        // the flag points at would under-count what the chain costs as it grows.
+        Entries = (older?.Entries ?? 0) + _refused.Count;
     }
 
     public ulong LastBlock { get; }

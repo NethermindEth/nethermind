@@ -14,10 +14,21 @@ namespace Nethermind.State.Flat.History.Changesets;
 /// hashes) and those the execution-requests processor dequeues from afterwards (EIP-7002 withdrawal requests,
 /// EIP-7251 consolidations, EIP-8282 builder deposits and exits), plus the account a chain spec exempts from
 /// EIP-158 pruning, which a system call can leave written.
-/// A fork that adds a system contract has to be added here; <c>PostTransactionWritersTests</c> is what says so,
-/// by naming every address the execution-requests processor can target.</summary>
+/// The contracts the spec names are checked against it by <c>PostTransactionWritersTests</c>, which walks every
+/// contract address on <see cref="IReleaseSpec"/>, so a fork that adds one there fails the test until it is handled.
+/// The addresses that are constants rather than spec properties, the EIP-8282 predeploys, are listed by hand and a
+/// fork that adds another one of those has to be added here by hand too.
+/// Only the seal engines in <see cref="Describes"/> are described at all: a chain whose plugin replaces the
+/// withdrawal processor or writes more after the transactions is left to the replay.</summary>
 internal static class PostTransactionWriters
 {
+    /// <summary>The seal engines whose block processing is the one described here: the standard processor, crediting
+    /// withdrawals to their recipients and calling only the contracts the spec names. An AuRa chain credits
+    /// withdrawals through a chainspec contract instead, which writes storage no spec property can name; Optimism
+    /// and Taiko carry their own processors. Their blocks are never chained.</summary>
+    public static bool Describes(string sealEngine) =>
+        sealEngine is SealEngineType.Ethash or SealEngineType.BeaconChain or SealEngineType.Clique or SealEngineType.NethDev;
+
     /// <summary>False when the block cannot be described, so nothing of it is chained.</summary>
     public static bool TryCollect(Block block, IReleaseSpec spec, HashSet<AddressAsKey> writers)
     {
@@ -37,6 +48,10 @@ internal static class PostTransactionWriters
     /// <summary>The fork's system contracts, whichever of them it enables.</summary>
     public static void AddSystemContracts(IReleaseSpec spec, HashSet<AddressAsKey> writers)
     {
+        // Refused whether or not the block's processing writes it: the deposit contract is read from the receipts
+        // rather than called, but one more refused address costs a read of the parent state and keeps the rule that
+        // every contract the spec names is refused, which is what the test can check for a fork nobody has written yet.
+        Add(writers, spec.DepositContractAddress);
         Add(writers, spec.Eip4788ContractAddress);
         Add(writers, spec.Eip2935ContractAddress);
         Add(writers, spec.Eip7002ContractAddress);

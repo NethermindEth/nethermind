@@ -96,7 +96,10 @@ public sealed class TransactionChangesetIndex
         HashSet<AddressAsKey> excluded = [];
         // IsPostMerge is set while a block is processed and is not decoded from a stored header, so a block read back
         // for a trace would never chain; the difficulty the header does carry is what says proof of stake.
-        bool chainable = block.Header.IsPoS() && _specProvider is not null && PostTransactionWriters.TryCollect(block, _specProvider.GetSpec(block.Header), excluded);
+        bool chainable = block.Header.IsPoS()
+            && _specProvider is not null
+            && PostTransactionWriters.Describes(_specProvider.SealEngine)
+            && PostTransactionWriters.TryCollect(block, _specProvider.GetSpec(block.Header), excluded);
         covered = new CoveredBlock(rows, number == 0 ? null : _consecutive.EndingAt(number - 1, block.ParentHash), chainable ? _consecutive : null, excluded);
         return true;
     }
