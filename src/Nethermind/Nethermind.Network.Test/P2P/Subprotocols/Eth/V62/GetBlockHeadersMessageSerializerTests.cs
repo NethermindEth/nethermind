@@ -87,7 +87,7 @@ public class GetBlockHeadersMessageSerializerTests
     public void To_string()
     {
         using GetBlockHeadersMessage newBlockMessage = new();
-        _ = newBlockMessage.ToString();
+        Assert.That(newBlockMessage.ToString(), Does.StartWith(nameof(GetBlockHeadersMessage)));
     }
 
     [Test]
@@ -97,10 +97,14 @@ public class GetBlockHeadersMessageSerializerTests
         byte[] bytes = BuildSerializedMessageWithStartBlockSelector(Hash256.Size);
 
         using GetBlockHeadersMessage deserialized = serializer.Deserialize(bytes);
-        Assert.That(deserialized.StartBlockHash, Is.Not.Null);
-        Assert.That(deserialized.MaxHeaders, Is.EqualTo(1));
-        Assert.That(deserialized.Skip, Is.EqualTo(2));
-        Assert.That(deserialized.Reverse, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deserialized.StartBlockHash,
+                Is.EqualTo(new Hash256("0x0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20")));
+            Assert.That(deserialized.MaxHeaders, Is.EqualTo(1));
+            Assert.That(deserialized.Skip, Is.EqualTo(2));
+            Assert.That(deserialized.Reverse, Is.EqualTo(1));
+        }
     }
 
     [Test]

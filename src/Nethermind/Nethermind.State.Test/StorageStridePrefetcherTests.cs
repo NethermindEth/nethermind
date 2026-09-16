@@ -21,7 +21,7 @@ public class StorageStridePrefetcherTests
         using CancellationTokenSource cts = new();
         StorageStridePrefetcher prefetcher = new(
             () => EmptyStorageTree.Instance,
-            new SeqlockCache<StorageCell, byte[]>(),
+            new SeqlockCache<StorageCell, UInt256>(),
             TestItem.AddressA,
             cts.Token,
             readerConcurrency: 4,
@@ -53,7 +53,7 @@ public class StorageStridePrefetcherTests
     public void OnRead_EngagesForLowSlotStrides()
     {
         using CancellationTokenSource cts = new();
-        SeqlockCache<StorageCell, byte[]> cache = new();
+        SeqlockCache<StorageCell, UInt256> cache = new();
         StorageStridePrefetcher prefetcher = new(
             () => EmptyStorageTree.Instance,
             cache,
@@ -83,7 +83,7 @@ public class StorageStridePrefetcherTests
         int engagements = 0;
         using StorageStridePrefetcher prefetcher = new(
             () => EmptyStorageTree.Instance,
-            new SeqlockCache<StorageCell, byte[]>(),
+            new SeqlockCache<StorageCell, UInt256>(),
             TestItem.AddressA,
             cts.Token,
             readerConcurrency: 1,
@@ -124,7 +124,7 @@ public class StorageStridePrefetcherTests
                 Interlocked.Increment(ref treeCreations);
                 return EmptyStorageTree.Instance;
             },
-            new SeqlockCache<StorageCell, byte[]>(),
+            new SeqlockCache<StorageCell, UInt256>(),
             TestItem.AddressA,
             cts.Token,
             readerConcurrency: 1,
@@ -170,7 +170,7 @@ public class StorageStridePrefetcherTests
         using CancellationTokenSource cts = new();
         StorageStridePrefetcher prefetcher = new(
             () => EmptyStorageTree.Instance,
-            new SeqlockCache<StorageCell, byte[]>(),
+            new SeqlockCache<StorageCell, UInt256>(),
             TestItem.AddressA,
             cts.Token,
             readerConcurrency: 4,
@@ -197,7 +197,7 @@ public class StorageStridePrefetcherTests
         int engagements = 0;
         StorageStridePrefetcher prefetcher = new(
             () => EmptyStorageTree.Instance,
-            new SeqlockCache<StorageCell, byte[]>(),
+            new SeqlockCache<StorageCell, UInt256>(),
             TestItem.AddressA,
             cts.Token,
             readerConcurrency: 1,
@@ -229,7 +229,7 @@ public class StorageStridePrefetcherTests
         using CancellationTokenSource cts = new();
         StorageStridePrefetcher prefetcher = new(
             () => EmptyStorageTree.Instance,
-            new SeqlockCache<StorageCell, byte[]>(),
+            new SeqlockCache<StorageCell, UInt256>(),
             TestItem.AddressA,
             cts.Token,
             readerConcurrency: 1,
@@ -255,7 +255,7 @@ public class StorageStridePrefetcherTests
     public void OnRead_DoesNotEngageWithoutAnEngagementBudget()
     {
         using CancellationTokenSource cts = new();
-        SeqlockCache<StorageCell, byte[]> cache = new();
+        SeqlockCache<StorageCell, UInt256> cache = new();
         int engageAttempts = 0;
         int treeCreations = 0;
         StorageStridePrefetcher prefetcher = new(
@@ -304,9 +304,9 @@ public class StorageStridePrefetcherTests
 
         public Hash256 RootHash => Keccak.EmptyTreeHash;
 
-        public byte[] Get(in UInt256 index) => [];
+        public void Get(in UInt256 index, out UInt256 value) => value = default;
 
-        public void HintSet(in UInt256 index, byte[] value) { }
+        public void HintSet(in UInt256 index) { }
 
         public byte[] Get(in ValueHash256 hash) => [];
     }

@@ -39,7 +39,7 @@ namespace Nethermind.State;
 /// </remarks>
 internal sealed class StorageStridePrefetcher(
     Func<IWorldStateScopeProvider.IStorageTree> treeFactory,
-    SeqlockCache<StorageCell, byte[]> cache,
+    SeqlockCache<StorageCell, UInt256> cache,
     Address address,
     CancellationToken token,
     int readerConcurrency,
@@ -68,7 +68,7 @@ internal sealed class StorageStridePrefetcher(
     private const int IdlePollLimit = 250;
 
     private readonly Func<IWorldStateScopeProvider.IStorageTree> _treeFactory = treeFactory;
-    private readonly SeqlockCache<StorageCell, byte[]> _cache = cache;
+    private readonly SeqlockCache<StorageCell, UInt256> _cache = cache;
     private readonly Address _address = address;
     private readonly CancellationToken _token = token;
     private readonly int _readerConcurrency = readerConcurrency;
@@ -228,7 +228,7 @@ internal sealed class StorageStridePrefetcher(
             {
                 UInt256 offset = (UInt256)(ulong)(k + 1) * _stride;
                 UInt256 index = _engageIndex + offset;
-                byte[] value = _tree!.Get(in index);
+                _tree!.Get(in index, out UInt256 value);
                 // The cancelled token marks the end of the block these parent-state values are valid
                 // for; re-check under the publish latch so a straggler cannot repopulate a cache that
                 // is being handed to the next block.
@@ -236,7 +236,7 @@ internal sealed class StorageStridePrefetcher(
                 try
                 {
                     StorageCell cell = new(_address, in index);
-                    _cache.Set(in cell, value);
+                    _cache.Set(in cell, in value);
                 }
                 finally
                 {

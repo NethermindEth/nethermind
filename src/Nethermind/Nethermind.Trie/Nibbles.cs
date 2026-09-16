@@ -12,7 +12,7 @@ using System.Runtime.Intrinsics;
 namespace Nethermind.Trie
 {
     [DebuggerStepThrough]
-    public static class Nibbles
+    public static partial class Nibbles
     {
         private const int StackAllocLengthLimit = 255;
 
@@ -126,16 +126,10 @@ namespace Nethermind.Trie
             }
 
             // Process any remaining bytes that were not handled by SIMD.
-            for (int i = processed; i < bytes.Length; i++)
-            {
-                // We use Unsafe here as we have verified all the bounds above and also only go to length
-                // However the loop doesn't start a 0 and the nibbles span access is complex (rather than just i)
-                // so the Jit can't work out if the bounds checks and their if+exceptions can be eliminated.
-                // Because of this using regular array style access causes 3 bounds checks to be inserted.
-                int value = Unsafe.Add(ref MemoryMarshal.GetReference(bytes), i);
-                Unsafe.Add(ref MemoryMarshal.GetReference(nibbles), i * 2) = (byte)(value >> 4);
-                Unsafe.Add(ref MemoryMarshal.GetReference(nibbles), i * 2 + 1) = (byte)(value & 15);
-            }
+            ExpandNibbles(
+                ref Unsafe.Add(ref MemoryMarshal.GetReference(bytes), processed),
+                ref Unsafe.Add(ref MemoryMarshal.GetReference(nibbles), processed * 2),
+                bytes.Length - processed);
 
             [DoesNotReturn, StackTraceHidden]
             static void ThrowArgumentException() => throw new ArgumentException("Nibbles length must be twice the bytes length");
@@ -179,10 +173,10 @@ namespace Nethermind.Trie
         public static byte[] ToBytes(ReadOnlySpan<byte> nibbles)
         {
             byte[] bytes = new byte[nibbles.Length / 2];
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                bytes[i] = ToByte(nibbles[2 * i], nibbles[2 * i + 1]);
-            }
+            PackNibbles(
+                ref MemoryMarshal.GetReference(nibbles),
+                ref MemoryMarshal.GetArrayDataReference(bytes),
+                bytes.Length);
 
             return bytes;
         }
@@ -222,10 +216,10 @@ namespace Nethermind.Trie
         {
             int oddity = nibbles.Length % 2;
             byte[] bytes = new byte[nibbles.Length / 2 + 1];
-            for (int i = 0; i < bytes.Length - 1; i++)
-            {
-                bytes[i + 1] = ToByte(nibbles[2 * i + oddity], nibbles[2 * i + 1 + oddity]);
-            }
+            PackNibbles(
+                ref Unsafe.Add(ref MemoryMarshal.GetReference(nibbles), oddity),
+                ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), 1),
+                bytes.Length - 1);
 
             if (oddity == 1)
             {

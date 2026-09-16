@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
+using System.Threading;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.BlockAccessLists;
@@ -14,12 +17,17 @@ namespace Nethermind.Core.BlockAccessLists;
 /// account lookup is O(1) via hash map. Iteration order matches insertion order — the decoder
 /// inserts accounts in the order they arrive on the wire (which it has already validated as
 /// sorted by address), so enumerating <see cref="AccountChanges"/> walks accounts in sorted
-/// address order. The only mutation permitted is the prestate load.
+/// address order. The declared content is immutable after construction; the one mutable member is the
+/// lazily built code index, published under <see cref="LazyInitializer"/> with its own lock — a second
+/// lazy field added later needs the same treatment rather than inheriting this claim.
 /// </summary>
-public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
+public sealed class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
 {
     private readonly Dictionary<AddressAsKey, ReadOnlyAccountChanges> _accountChanges;
     private readonly ReadOnlyAccountChanges[] _orderedAccounts;
+    private bool _codeChangesInitialized;
+    private FrozenDictionary<ValueHash256, (uint Index, byte[] Code)>? _codeChangesByHash;
+    private object? _codeChangesLock;
 
     [JsonIgnore]
     public int ItemCount { get; }
@@ -62,8 +70,8 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
     /// <summary>
     /// Constructs a read-only BAL from accounts already in sorted address order (as guaranteed
     /// by the RLP decoder). The dictionary preserves insertion order during iteration provided
-    /// no entries are removed — and this type is immutable post-construction except for prestate
-    /// loading, which only mutates per-account fields, so the sorted iteration is preserved.
+    /// no entries are removed — and this type is immutable post-construction, so the sorted
+    /// iteration is preserved.
     /// </summary>
     public ReadOnlyBlockAccessList(ReadOnlyAccountChanges[] orderedAccounts, int itemCount)
         : this(orderedAccounts, itemCount, wireHash: null) { }
@@ -84,6 +92,35 @@ public class ReadOnlyBlockAccessList : IEquatable<ReadOnlyBlockAccessList>
         TotalStorageReads = totalReads;
         TotalStorageChangeEvents = totalChangeEvents;
         WireHash = wireHash;
+    }
+
+    /// <summary>Returns the shared code index for this BAL, built once and frozen.</summary>
+    internal FrozenDictionary<ValueHash256, (uint Index, byte[] Code)>? GetCodeChangesByHash()
+        => _orderedAccounts.Length == 0 ? null
+            : Volatile.Read(ref _codeChangesInitialized) ? _codeChangesByHash : InitializeCodeChangesByHash();
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private FrozenDictionary<ValueHash256, (uint Index, byte[] Code)>? InitializeCodeChangesByHash()
+        => LazyInitializer.EnsureInitialized(ref _codeChangesByHash, ref _codeChangesInitialized, ref _codeChangesLock, BuildCodeChangesByHash);
+
+    private FrozenDictionary<ValueHash256, (uint Index, byte[] Code)>? BuildCodeChangesByHash()
+    {
+        Dictionary<ValueHash256, (uint Index, byte[] Code)>? result = null;
+        foreach (ReadOnlyAccountChanges account in _orderedAccounts)
+        {
+            foreach (CodeChange change in account.CodeChanges)
+            {
+                result ??= new(GenericEqualityComparer.GetOptimized<ValueHash256>());
+                if (!result.TryGetValue(change.CodeHash, out (uint Index, byte[] Code) existing) || change.Index < existing.Index)
+                {
+                    result[change.CodeHash] = (change.Index, change.Code);
+                }
+            }
+        }
+
+        // Frozen to enforce the shared-read contract: one instance is handed to every worker
+        // on the block and must not be mutable.
+        return result?.ToFrozenDictionary(GenericEqualityComparer.GetOptimized<ValueHash256>());
     }
 
     public bool Equals(ReadOnlyBlockAccessList? other)

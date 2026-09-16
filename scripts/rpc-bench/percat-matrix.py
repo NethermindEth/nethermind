@@ -8,7 +8,8 @@ import re
 import sys
 
 _OVR = {
-    "p50": re.compile(r"\|\s*latency p50 \(ms\)\s*\|\s*([0-9.]+)"),
+    "avg": re.compile(r"\|\s*latency avg \(ms\)\s*\|\s*([0-9.]+)"),
+    "median": re.compile(r"\|\s*latency p50 \(ms\)\s*\|\s*([0-9.]+)"),
     "p90": re.compile(r"\|\s*latency p90 \(ms\)\s*\|\s*([0-9.]+)"),
     "p99": re.compile(r"\|\s*latency p99 \(ms\)\s*\|\s*([0-9.]+)"),
     "tput": re.compile(r"\|\s*throughput \(req/s\)\s*\|\s*([0-9.]+)"),
@@ -74,7 +75,7 @@ def main():
     cols = [(c, r) for c in clients for r in rpss]
 
     # 1) MIXED overall (saturation)
-    print("## MIXED - overall (client x rps): throughput r/s / checks% / p90 / p99 ms\n")
+    print("## MIXED - overall (client x rps): throughput r/s / checks% / avg / median / p90 / p99 ms\n")
     print("| client | " + " | ".join(f"rps {r}" for r in rpss) + " |")
     print("|" + "---|" * (len(rpss) + 1))
     for c in clients:
@@ -85,7 +86,10 @@ def main():
                 row.append("-")
             else:
                 ck = f"{o['checks']:.0f}%" if "checks" in o else "na"  # checks row absent when workload emits no k6 checks
-                row.append(f"{o.get('tput', 0):.0f} / {ck} / {o.get('p90', 0):.0f} / {o.get('p99', 0):.0f}")
+                row.append(
+                    f"{o.get('tput', 0):.0f} / {ck} / {o.get('avg', 0):.2f} / "
+                    f"{o.get('median', 0):.2f} / {o.get('p90', 0):.0f} / {o.get('p99', 0):.0f}"
+                )
         print("| " + " | ".join(row) + " |")
 
     # 2) ISOLATED per-scenario, each run ALONE at the full sweep rps.

@@ -288,6 +288,9 @@ public class SimpleTransferFastPathDifferentialTests
         public override void ReportActionError(EvmExceptionType evmExceptionType) =>
             Events.Add($"ActionError({evmExceptionType})");
 
+        public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) =>
+            Events.Add($"ActionRevert({gas},{output.Span.ToHexString()})");
+
         public override void ReportByteCode(ReadOnlyMemory<byte> byteCode) =>
             Events.Add($"ByteCode({byteCode.Span.ToHexString()})");
 

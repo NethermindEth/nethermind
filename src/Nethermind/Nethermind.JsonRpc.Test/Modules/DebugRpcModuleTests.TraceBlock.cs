@@ -15,6 +15,7 @@ using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -216,6 +217,28 @@ public partial class DebugRpcModuleTests
 
         yield return new TestCaseData(
             transactions,
+            new GethTraceOptions { Tracer = NativeNoopTracer.NoopTracer },
+            """
+            {
+                "jsonrpc": "2.0",
+                "result": [
+                    {
+                        "result": {},
+                        "txHash": "0xb5a78a1eda0ae98d4f62eec3e0b7f5bf81810cd57bc75006b611982667bcdbe7"
+                    },
+                    {
+                        "result": {},
+                        "txHash": "0xdb3d8694a97364e8628aeb18993520ea6bac0b65b02eed1abddaaed1ddd04e7b"
+                    }
+                ],
+                "id": 67
+            }
+            """
+        )
+        { TestName = "Contract with " + NativeNoopTracer.NoopTracer };
+
+        yield return new TestCaseData(
+            transactions,
             new GethTraceOptions { Tracer = NativeCallTracer.CallTracer },
             """
             {
@@ -373,10 +396,8 @@ public partial class DebugRpcModuleTests
         ];
     }
 
-    [TestCase(1)]
-    [TestCase(100)]
-    [TestCase(1000)]
-    public async Task GethLikeTxTraceStreamingResult_WriteToAsync_produces_same_json_as_serializer(int traceCount)
+    [Test]
+    public async Task GethLikeTxTraceStreamingResult_WriteToAsync_produces_same_json_as_serializer([Values(1, 100, 1000)] int traceCount)
     {
         List<GethLikeTxTrace> traces = new(traceCount);
         for (int i = 0; i < traceCount; i++)
@@ -406,9 +427,8 @@ public partial class DebugRpcModuleTests
             $"Streamed JSON differs from serializer output for {traceCount} traces");
     }
 
-    [TestCase("debug_traceBlockByNumber")]
-    [TestCase("debug_traceBlockByHash")]
-    public async Task Debug_traceBlock_returns_error_for_genesis(string method)
+    [Test]
+    public async Task Debug_traceBlock_returns_error_for_genesis([Values("debug_traceBlockByNumber", "debug_traceBlockByHash")] string method)
     {
         using Context context = await Context.Create();
 
@@ -428,10 +448,8 @@ public partial class DebugRpcModuleTests
         Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(-32000));
     }
 
-    [TestCase("debug_traceBlock")]
-    [TestCase("debug_traceBlockByNumber")]
-    [TestCase("debug_traceBlockByHash")]
-    public async Task Debug_traceBlock_json_rpc_request_returns_valid_json(string method)
+    [Test]
+    public async Task Debug_traceBlock_json_rpc_request_returns_valid_json([Values("debug_traceBlock", "debug_traceBlockByNumber", "debug_traceBlockByHash")] string method)
     {
         using Context context = await Context.Create();
         await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));

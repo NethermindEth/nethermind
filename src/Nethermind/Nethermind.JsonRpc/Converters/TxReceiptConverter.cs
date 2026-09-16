@@ -30,10 +30,17 @@ public class TxReceiptConverter : JsonConverter<TxReceipt>
                 writer.WritePropertyName("type");
                 JsonSerializer.Serialize(writer, receipt.Type, options);
             }
-            writer.WritePropertyName("root");
-            ByteArrayConverter.Convert(writer, (receipt.Root ?? Keccak.Zero).Bytes);
-            writer.WritePropertyName("status");
-            JsonSerializer.Serialize(writer, receipt.Status, options);
+            // EIP-658: a receipt carries either a post-state root (pre-Byzantium) or a status code, never both.
+            if (receipt.Root is not null)
+            {
+                writer.WritePropertyName("root");
+                JsonSerializer.Serialize(writer, receipt.Root, options);
+            }
+            else
+            {
+                writer.WritePropertyName("status");
+                JsonSerializer.Serialize(writer, receipt.Status, options);
+            }
 
             writer.WritePropertyName("cumulativeGasUsed");
             JsonSerializer.Serialize(writer, receipt.CumulativeGasUsed, options);

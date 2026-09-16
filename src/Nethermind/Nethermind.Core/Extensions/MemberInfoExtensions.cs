@@ -89,8 +89,8 @@ public static class MemberInfoExtensions
         Type? underlying = Nullable.GetUnderlyingType(body.Type);
         if (underlying != null)
         {
-            MethodInfo getValueOrDefault = body.Type.GetMethod(nameof(Nullable<int>.GetValueOrDefault), Type.EmptyTypes)
-                ?? throw new NotSupportedException($"{body.Type} is nullable but {nameof(Nullable<int>.GetValueOrDefault)}() not found.");
+            MethodInfo getValueOrDefault = body.Type.GetMethod(nameof(Nullable<>.GetValueOrDefault), Type.EmptyTypes)
+                ?? throw new NotSupportedException($"{body.Type} is nullable but {nameof(Nullable<>.GetValueOrDefault)}() not found.");
             body = Expression.Call(body, getValueOrDefault);
         }
 

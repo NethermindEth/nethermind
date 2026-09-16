@@ -14,7 +14,7 @@
 - Prefer low-allocation code patterns
 - Use `Array.Empty<T>()` or `[]` instead of `new T[0]` — avoids allocating a new empty array each time. In attribute arguments (e.g. `[Attr(new string[0])]`), `new T[0]` is acceptable because `Array.Empty<T>()` is not a compile-time constant.
 - Consider performance implications in high-throughput paths
-- **No LINQ** when a simple `for`/`foreach` works — use LINQ only for complex queries
+- **Production code:** No LINQ when a simple `for`/`foreach` works; reserve LINQ for complex queries. Tests may use LINQ for readability. In benchmarks, apply the production restriction to measured code; setup and assertions may use LINQ.
 - Trust null annotations, don't add redundant null checks
 - Code comments explain _why_, not _what_ — a comment that contradicts the code is worse than no comment; fix or remove it
 - Non-obvious consensus rules or algorithms must reference the EIP number or Yellow Paper section

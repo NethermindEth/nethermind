@@ -55,8 +55,8 @@ namespace Nethermind.JsonRpc.Modules.Parity
 
         public ResultWrapper<bool> parity_setEngineSigner(Address address, string password)
         {
-            (ProtectedPrivateKey privateKey, Result result) = _keyStore.GetProtectedKey(address, password.Secure());
-            if (result == Result.Success)
+            (ProtectedPrivateKey? privateKey, Result result) = _keyStore.GetProtectedKey(address, password.Secure());
+            if (result == Result.Success && privateKey is not null)
             {
                 _signerStore.SetSigner(privateKey);
                 return ResultWrapper<bool>.Success(true);

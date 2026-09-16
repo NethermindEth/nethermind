@@ -66,7 +66,7 @@ public class TransactionsMessageSerializerTests
         TransactionsMessageSerializer serializer = new();
         using TransactionsMessage message = new(ArrayPoolList<Transaction>.Empty());
 
-        SerializerTester.TestZero(serializer, message);
+        SerializerTester.TestZero(serializer, message, EthSerializerGoldens.EmptyListRlp);
     }
 
     [Test]
@@ -75,8 +75,11 @@ public class TransactionsMessageSerializerTests
         using TransactionsMessage message = new(ArrayPoolList<Transaction>.Empty());
         using TransactionsMessage message2 = new(null);
 
-        _ = message.ToString();
-        _ = message2.ToString();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(message.ToString(), Does.StartWith(nameof(TransactionsMessage)));
+            Assert.That(message2.ToString(), Does.StartWith(nameof(TransactionsMessage)));
+        }
     }
 
     [TestCaseSource(nameof(GetTransactionMessages))]

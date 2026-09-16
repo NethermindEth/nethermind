@@ -21,11 +21,11 @@
     </AssemblyAttribute>
   </ItemGroup>
 
-  <!-- Exclude the analyzer itself and the source generator (netstandard2.0, can't reference analyzers).
+  <!-- Exclude the analyzer itself, source generator and EVM weaver (netstandard2.0, can't reference analyzers).
        Also skipped on the ZisK guest build (EnableZkEvm), where the analyzers/generators are not wired and
        the generated members are stubbed (e.g. ChainSpecStyle/HardforkLabels.cs). Mainline MUST keep this:
        removing it left HardforkLabels.All empty and broke ChainSpec/BlobSchedule transitions. -->
-  <ItemGroup Condition="'$(MSBuildProjectName)' != 'Nethermind.Analyzers' AND '$(MSBuildProjectName)' != 'Nethermind.Serialization.SszGenerator' AND '$(EnableZkEvm)' != 'true'">
+  <ItemGroup Condition="'$(MSBuildProjectName)' != 'Nethermind.Analyzers' AND '$(MSBuildProjectName)' != 'Nethermind.Serialization.SszGenerator' AND '$(MSBuildProjectName)' != 'Nethermind.Evm.Fody' AND '$(EnableZkEvm)' != 'true'">
     <ProjectReference Include="$(MSBuildThisFileDirectory)Nethermind.Analyzers/Nethermind.Analyzers.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
