@@ -45,6 +45,10 @@ public static class WorldStateExtensions
     }
 
     /// <inheritdoc cref="AddToBalanceAndCreateIfNotEmpty(IWorldState, Address, in UInt256, IReleaseSpec)"/>
+    /// <remarks>
+    /// <see cref="ExecutionType.CREATE"/>/<see cref="ExecutionType.CREATE2"/> frames always create the account,
+    /// because the frame bumps its nonce immediately afterwards and so cannot leave it empty.
+    /// </remarks>
     [SkipLocalsInit]
     public static void AddToBalanceAndCreateIfNotEmpty(this IWorldState worldState, Address address, ExecutionType executionType, in UInt256 balanceChange, IReleaseSpec spec)
     {

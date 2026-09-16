@@ -1177,7 +1177,6 @@ internal class TransactionProcessorEip7702Tests
         BlockExecutionContext blkCtx = CreatePragueBlockContext();
         AuthorizationTuple auth = _ethereumEcdsa.Sign(authority, _specProvider.ChainId, codeSource, 0);
 
-        Snapshot snapshot = _stateProvider.TakeSnapshot();
         Transaction createGhostTx = Build.A.Transaction
             .WithTo(authority.Address)
             .WithValue(0)
@@ -1185,13 +1184,7 @@ internal class TransactionProcessorEip7702Tests
             .SignedAndResolved(_ethereumEcdsa, sender)
             .TestObject;
 
-        _transactionProcessor.BuildUp(createGhostTx, blkCtx, NullTxTracer.Instance);
-        long gasWithGhost = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth, senderNonce: 1);
-
-        _stateProvider.Restore(snapshot);
-        long gasWithoutGhost = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth);
-
-        Assert.That(gasWithGhost, Is.EqualTo(gasWithoutGhost));
+        AssertSetCodeGasUnaffectedBy(blkCtx, sender, auth, createGhostTx, NullTxTracer.Instance);
     }
 
     // The internal zero-value CALL that would mint the ghost is handled
@@ -1210,7 +1203,6 @@ internal class TransactionProcessorEip7702Tests
         BlockExecutionContext blkCtx = CreatePragueBlockContext();
         AuthorizationTuple auth = _ethereumEcdsa.Sign(authority, _specProvider.ChainId, codeSource, 0);
 
-        Snapshot snapshot = _stateProvider.TakeSnapshot();
         Transaction createGhostTx = Build.A.Transaction
             .WithTo(ghostMaker)
             .WithValue(0)
@@ -1218,14 +1210,8 @@ internal class TransactionProcessorEip7702Tests
             .SignedAndResolved(_ethereumEcdsa, sender)
             .TestObject;
 
-        ITxTracer ghostTxTracer = new ActionsTxTracer(isTracingActions);
-        _transactionProcessor.BuildUp(createGhostTx, blkCtx, ghostTxTracer);
-        long gasWithGhost = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth, senderNonce: 1);
-
-        _stateProvider.Restore(snapshot);
-        long gasWithoutGhost = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth);
-
-        Assert.That(gasWithGhost, Is.EqualTo(gasWithoutGhost));
+        using ITxTracer ghostTxTracer = new ActionsTxTracer(isTracingActions);
+        AssertSetCodeGasUnaffectedBy(blkCtx, sender, auth, createGhostTx, ghostTxTracer);
     }
 
     [Test]
@@ -1241,7 +1227,6 @@ internal class TransactionProcessorEip7702Tests
         BlockExecutionContext blkCtx = CreatePragueBlockContext(beneficiary: authority.Address);
         AuthorizationTuple auth = _ethereumEcdsa.Sign(authority, _specProvider.ChainId, codeSource, 0);
 
-        Snapshot snapshot = _stateProvider.TakeSnapshot();
         Transaction zeroFeeTx = Build.A.Transaction
             .WithTo(TestItem.AddressF)
             .WithValue(0)
@@ -1250,13 +1235,7 @@ internal class TransactionProcessorEip7702Tests
             .SignedAndResolved(_ethereumEcdsa, sender)
             .TestObject;
 
-        _transactionProcessor.BuildUp(zeroFeeTx, blkCtx, NullTxTracer.Instance);
-        long gasWithGhost = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth, senderNonce: 1);
-
-        _stateProvider.Restore(snapshot);
-        long gasWithoutGhost = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth);
-
-        Assert.That(gasWithGhost, Is.EqualTo(gasWithoutGhost));
+        AssertSetCodeGasUnaffectedBy(blkCtx, sender, auth, zeroFeeTx, NullTxTracer.Instance);
     }
 
     [Test]
@@ -1273,7 +1252,6 @@ internal class TransactionProcessorEip7702Tests
         BlockExecutionContext blkCtx = CreatePragueBlockContext();
         AuthorizationTuple auth = _ethereumEcdsa.Sign(authority, _specProvider.ChainId, codeSource, 0);
 
-        Snapshot snapshot = _stateProvider.TakeSnapshot();
         Transaction createGhostTx = Build.A.Transaction
             .WithTo(ghostMaker)
             .WithValue(0)
@@ -1281,13 +1259,7 @@ internal class TransactionProcessorEip7702Tests
             .SignedAndResolved(_ethereumEcdsa, sender)
             .TestObject;
 
-        _transactionProcessor.BuildUp(createGhostTx, blkCtx, NullTxTracer.Instance);
-        long gasWithGhost = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth, senderNonce: 1);
-
-        _stateProvider.Restore(snapshot);
-        long gasWithoutGhost = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth);
-
-        Assert.That(gasWithGhost, Is.EqualTo(gasWithoutGhost));
+        AssertSetCodeGasUnaffectedBy(blkCtx, sender, auth, createGhostTx, NullTxTracer.Instance);
     }
 
     private BlockExecutionContext CreatePragueBlockContext(Address? beneficiary = null)
@@ -1314,6 +1286,23 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.BuildUp(setCodeTx, blkCtx, NullTxTracer.Instance);
         return (long)setCodeTx.SpentGas;
+    }
+
+    private void AssertSetCodeGasUnaffectedBy(
+        in BlockExecutionContext blkCtx,
+        PrivateKey sender,
+        AuthorizationTuple auth,
+        Transaction scenarioTransaction,
+        ITxTracer scenarioTracer)
+    {
+        Snapshot snapshot = _stateProvider.TakeSnapshot();
+        _transactionProcessor.BuildUp(scenarioTransaction, blkCtx, scenarioTracer);
+        long gasWithScenario = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth, senderNonce: 1);
+
+        _stateProvider.Restore(snapshot);
+        long gasWithoutScenario = BuildUpSetCodeAndGetSpentGas(blkCtx, sender, auth);
+
+        Assert.That(gasWithScenario, Is.EqualTo(gasWithoutScenario));
     }
 
     private void DeployCode(Address codeSource, byte[] code)
