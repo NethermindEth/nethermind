@@ -113,8 +113,8 @@ public partial class BlockAccessListManager
         }
         else
         {
-            // Reached by a frame transaction that cannot be priced; this check only ever rejects, so
-            // falling back to the scalar gas limit keeps it sound where the reservations are unknown.
+            // Defensive: a decoded block carries its frames, so an unpriceable transaction cannot reach
+            // here. The scalar limit sums both dimensions, so were it reached it would only over-reject.
             outcome = Eip8037BlockGasInclusionCheck.Validate(
                 block.Header.GasLimit,
                 cumulativeExecution,

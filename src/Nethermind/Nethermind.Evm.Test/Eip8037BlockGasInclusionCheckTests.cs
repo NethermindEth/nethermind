@@ -188,10 +188,10 @@ public class Eip8037BlockGasInclusionCheckTests
     // Pins the cases that return false, which is what keeps the fallback arm in
     // BlockAccessListManager.CheckPerTxInclusion reachable rather than dead.
     [TestCase(false, TestName = "TryGetBlockGasReservations_declines_a_frame_tx_reloaded_without_its_frames")]
-    [TestCase(true, TestName = "TryGetBlockGasReservations_declines_a_frame_tx_whose_frame_limits_overflow")]
-    public void TryGetBlockGasReservations_declines_an_unpriceable_frame_tx(bool overflowingFrames)
+    [TestCase(true, TestName = "TryGetBlockGasReservations_declines_a_frame_tx_whose_gas_budget_overflows")]
+    public void TryGetBlockGasReservations_declines_an_unpriceable_frame_tx(bool overflowingBudget)
     {
-        TxFrame[]? frames = overflowingFrames
+        TxFrame[]? frames = overflowingBudget
             ? [UnlimitedFrame(), UnlimitedFrame()]
             : null;
         Transaction tx = new() { Type = TxType.FrameTx, GasLimit = 200_000, Frames = frames };
