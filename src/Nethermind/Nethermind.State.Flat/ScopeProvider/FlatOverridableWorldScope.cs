@@ -140,7 +140,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
 
         public bool HasRoot(BlockHeader? baseBlock) => flatOverrideScope.HasStateForBlock(baseBlock);
 
-        public bool HasStateForTarget(BlockHeader targetBlock)
+        public bool HasStateForTargetBlock(BlockHeader targetBlock)
         {
             ArgumentNullException.ThrowIfNull(targetBlock);
             return TryGetBaseBlock(targetBlock, out BlockHeader? parent) && HasRoot(parent);

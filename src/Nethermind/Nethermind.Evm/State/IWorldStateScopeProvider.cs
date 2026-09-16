@@ -36,7 +36,7 @@ public interface IWorldStateScopeProvider
     /// Checks whether the parent state required to execute <paramref name="targetBlock"/> is available.
     /// </summary>
     /// <remarks>This check is advisory and does not reserve or pin the state.</remarks>
-    bool HasStateForTarget(BlockHeader targetBlock) => throw new NotSupportedException();
+    bool HasStateForTargetBlock(BlockHeader targetBlock) => throw new NotSupportedException();
 
     /// <summary>Attempts to open the state committed at <paramref name="baseBlock"/> (pre-genesis when <c>null</c>).</summary>
     /// <param name="metrics">

@@ -99,7 +99,7 @@ public class DisposableScopeOverridableEnvTests
 
         ctx.StateHeaderProvider.Parent = parent;
         Assert.That(ctx.Env.TryBuildAndOverrideAtTarget(target, stateOverride, null, out Scope<Components>? scope), Is.True);
-        using (scope)
+        using IDisposable _ = scope!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope!.Component.WorldState.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)123));

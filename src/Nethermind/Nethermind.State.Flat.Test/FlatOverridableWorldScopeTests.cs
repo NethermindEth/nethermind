@@ -339,13 +339,13 @@ public class FlatOverridableWorldScopeTests
         overriddenBase.StateRoot = CommitAccount(worldState.BeginScope(overriddenBase), overriddenBase.Number, TestItem.AddressA);
         BlockHeader child = Build.A.BlockHeader.WithParent(overriddenBase).TestObject;
 
-        Assert.That(worldState.HasStateForTarget(child), Is.True);
+        Assert.That(worldState.HasStateForTargetBlock(child), Is.True);
         Assert.That(worldState.TryBeginScopeAtTarget(child, new LocalMetrics(), out IWorldStateScopeProvider.IScope? childScope), Is.True);
         Assert.That(childScope!.Get(TestItem.AddressA), Is.Not.Null);
         child.StateRoot = CommitAccount(childScope, child.Number, TestItem.AddressB);
         BlockHeader grandchild = Build.A.BlockHeader.WithParent(child).TestObject;
 
-        Assert.That(worldState.HasStateForTarget(grandchild), Is.True);
+        Assert.That(worldState.HasStateForTargetBlock(grandchild), Is.True);
         Assert.That(worldState.TryBeginScopeAtTarget(grandchild, new LocalMetrics(), out IWorldStateScopeProvider.IScope? grandchildScope), Is.True);
         using (Assert.EnterMultipleScope())
         {
@@ -355,26 +355,24 @@ public class FlatOverridableWorldScopeTests
         grandchildScope.Dispose();
 
         // Every opened header stays known, not only the latest: a sibling of child still resolves overriddenBase.
-        Assert.That(worldState.HasStateForTarget(Build.A.BlockHeader.WithParent(overriddenBase).WithTimestamp(7).TestObject), Is.True);
+        Assert.That(worldState.HasStateForTargetBlock(Build.A.BlockHeader.WithParent(overriddenBase).WithTimestamp(7).TestObject), Is.True);
 
         overridableScope.ResetOverrides();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(worldState.HasStateForTarget(grandchild), Is.False);
-            Assert.That(worldState.HasStateForTarget(child), Is.False);
+            Assert.That(worldState.HasStateForTargetBlock(grandchild), Is.False);
+            Assert.That(worldState.HasStateForTargetBlock(child), Is.False);
         }
     }
 
     private static Hash256 CommitAccount(IWorldStateScopeProvider.IScope scope, ulong blockNumber, Address address)
     {
-        using (scope)
+        using IDisposable _ = scope;
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
         {
-            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
-            {
-                writeBatch.Set(address, TestItem.GenerateRandomAccount());
-            }
-            scope.Commit(blockNumber);
-            return scope.RootHash;
+            writeBatch.Set(address, TestItem.GenerateRandomAccount());
         }
+        scope.Commit(blockNumber);
+        return scope.RootHash;
     }
 }

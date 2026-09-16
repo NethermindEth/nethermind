@@ -37,7 +37,7 @@ public sealed class KnownHeadersScopeProvider : IWorldStateScopeProvider
 
     public bool HasRoot(BlockHeader? baseBlock) => _baseProvider.HasRoot(baseBlock);
 
-    public bool HasStateForTarget(BlockHeader targetBlock) => _baseProvider.HasStateForTarget(targetBlock);
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) => _baseProvider.HasStateForTargetBlock(targetBlock);
 
     public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {

@@ -55,7 +55,7 @@ public class TrieStoreScopeProvider(
 
     public bool HasRoot(BlockHeader? baseBlock) => _trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
 
-    public bool HasStateForTarget(BlockHeader targetBlock)
+    public bool HasStateForTargetBlock(BlockHeader targetBlock)
     {
         ArgumentNullException.ThrowIfNull(targetBlock);
         return TryGetBaseBlock(targetBlock, out BlockHeader? parent) && HasRoot(parent);

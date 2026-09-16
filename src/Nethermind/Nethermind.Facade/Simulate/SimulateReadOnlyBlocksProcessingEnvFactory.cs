@@ -90,12 +90,12 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         IClearableCache tmpBlockStore,
         IClearableCache tmpChainLevelInfoRepository) : ISimulateReadOnlyBlocksProcessingEnv, IDisposable
     {
-        public SimulateReadOnlyBlocksProcessingScope Begin()
+        public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock)
         {
             tmpHeaderStore.ClearCache();
             tmpBlockStore.ClearCache();
             tmpChainLevelInfoRepository.ClearCache();
-            return inner.Begin();
+            return inner.Begin(baseBlock);
         }
 
         public void Dispose() => scope.Dispose();

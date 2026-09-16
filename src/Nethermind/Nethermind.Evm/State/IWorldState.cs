@@ -39,16 +39,16 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <returns><c>true</c> when the parent state was acquired; otherwise <c>false</c>.</returns>
     bool TryBeginScopeAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IDisposable? scopeCloser) => throw new NotSupportedException();
 
-    /// <summary>Checks whether the parent state required to execute <paramref name="targetBlock"/> is available.</summary>
-    /// <remarks>This check is advisory and does not reserve or pin state.</remarks>
-    bool HasStateForTarget(BlockHeader targetBlock) => throw new NotSupportedException();
-
     Task HintBal(ReadOnlyBlockAccessList bal);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
     new ref readonly UInt256 GetBalance(Address address);
     new ref readonly ValueHash256 GetCodeHash(Address address);
     bool HasStateForBlock(BlockHeader? baseBlock);
+
+    /// <summary>Checks whether the parent state required to execute <paramref name="targetBlock"/> is available.</summary>
+    /// <remarks>This check is advisory and does not reserve or pin state.</remarks>
+    bool HasStateForTargetBlock(BlockHeader targetBlock) => throw new NotSupportedException();
 
     /// <summary>
     /// Return the original persistent storage value from the storage cell.

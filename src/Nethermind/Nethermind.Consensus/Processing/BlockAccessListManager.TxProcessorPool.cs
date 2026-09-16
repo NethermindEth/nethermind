@@ -135,7 +135,7 @@ public partial class BlockAccessListManager
             if (existing is not null) return existing;
 
             TxProcessorWithWorldState processor = RentProcessor();
-            ParentReaderLease? parentReader = RentParentReader();
+            ParentReaderLease? parentReader = RentParentReader(_currentBlock.Header);
 
             try
             {
@@ -239,26 +239,26 @@ public partial class BlockAccessListManager
             _processors.Enqueue(p);
         }
 
-        private ParentReaderLease? RentParentReader()
+        private ParentReaderLease? RentParentReader(BlockHeader targetBlock)
         {
             if (_parentReaderEnvPool is null)
             {
                 return null;
             }
 
-            if (_currentBlock is null) ThrowNotInitialized(nameof(_currentBlock));
-
             IReadOnlyTxProcessorSource source = _parentReaderEnvPool.Get();
-            try
-            {
-                return new ParentReaderLease(source, _parentReaderEnvPool, source.BuildAtTarget(_currentBlock.Header));
-            }
-            catch
+            if (!source.TryBuildAtTarget(targetBlock, out IReadOnlyTxProcessingScope? scope))
             {
                 _parentReaderEnvPool.Return(source);
-                throw;
+                ThrowParentStateUnavailable(targetBlock);
             }
+
+            return new ParentReaderLease(source, _parentReaderEnvPool, scope);
         }
+
+        [DoesNotReturn]
+        private static void ThrowParentStateUnavailable(BlockHeader targetBlock)
+            => throw new InvalidOperationException($"Parent state is unavailable for block {targetBlock.ToString(BlockHeader.Format.Short)}.");
 
         private void ReclaimAndResize(int size, int previousSize)
         {
