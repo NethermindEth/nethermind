@@ -1842,18 +1842,7 @@ public class Eth72ProtocolHandler(
         // eth/72 peers size-check the blob-elided bytes served in PooledTransactions and geth disconnects for
         // larger mismatches. The current devp2p text still says consensus encoding; its correction is tracked at
         // https://github.com/ethereum/devp2p/pull/281
-        int elidedNetworkEncodingSize = tx is LightTransaction lightTx
-            ? lightTx.GetElidedNetworkEncodingSize()
-            : tx.GetElidedNetworkEncodingSize();
-        if (elidedNetworkEncodingSize <= 0)
-        {
-            return 0;
-        }
-
-        return tx is not LightTransaction
-            || tx is LightTransaction { ProofVersion: not null, BlobVersionedHashes.Length: > 0 }
-            ? elidedNetworkEncodingSize
-            : 0;
+        return tx.GetElidedNetworkEncodingSize();
     }
 
     // Stay lenient on receive: peers still announcing the bare consensus size (or the geth wrapper estimate)

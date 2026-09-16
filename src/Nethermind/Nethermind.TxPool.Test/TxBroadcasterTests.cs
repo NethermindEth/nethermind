@@ -203,7 +203,7 @@ public class TxBroadcasterTests
     }
 
     [Test]
-    public void should_reuse_precomputed_blob_announcement_across_peers()
+    public void should_reuse_precomputed_blob_announcement_across_peers([Values] bool isPrecomputed)
     {
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
         _headInfo.CurrentBaseFee = 0.GWei;
@@ -215,8 +215,9 @@ public class TxBroadcasterTests
             .WithShardBlobTxTypeAndFields()
             .SignedAndResolved()
             .TestObject;
+        Transaction input = isPrecomputed ? new LightTransaction(tx) : tx;
 
-        _broadcaster.Broadcast(tx, isPersistent: true);
+        _broadcaster.Broadcast(input, isPersistent: true);
 
         Transaction firstAnnouncement = firstPeer.Sent.Single();
         Transaction secondAnnouncement = secondPeer.Sent.Single();
@@ -224,6 +225,7 @@ public class TxBroadcasterTests
         {
             Assert.That(firstAnnouncement, Is.TypeOf<LightTransaction>());
             Assert.That(secondAnnouncement, Is.SameAs(firstAnnouncement));
+            Assert.That(firstAnnouncement, isPrecomputed ? Is.SameAs(input) : Is.Not.SameAs(input));
         }
     }
 

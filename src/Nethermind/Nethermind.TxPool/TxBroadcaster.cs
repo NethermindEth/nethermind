@@ -121,7 +121,7 @@ namespace Nethermind.TxPool
             if (tx is not null
                 && (tx.MaxFeePerGas >= _baseFeeThreshold || tx.IsFree()))
             {
-                Transaction broadcastTx = tx.SupportsBlobs ? new LightTransaction(tx) : tx;
+                Transaction broadcastTx = PrecomputeBlobAnnouncement(tx);
                 if (_persistentTxs.TryInsert(tx.Hash, broadcastTx, out Transaction? removed)
                     && removed?.Hash != tx.Hash)
                 {
@@ -135,11 +135,15 @@ namespace Nethermind.TxPool
 
         private void BroadcastOnce(Transaction tx)
         {
+            Transaction broadcastTx = PrecomputeBlobAnnouncement(tx);
             lock (_accumulatedTxsLock)
             {
-                _accumulatedTemporaryTxs.Add(tx.SupportsBlobs ? new LightTransaction(tx) : tx);
+                _accumulatedTemporaryTxs.Add(broadcastTx);
             }
         }
+
+        private static Transaction PrecomputeBlobAnnouncement(Transaction tx) =>
+            tx.SupportsBlobs && tx is not LightTransaction ? new LightTransaction(tx) : tx;
 
         public void AnnounceOnce(ITxPoolPeer peer, Transaction[] txs)
         {

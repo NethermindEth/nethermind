@@ -13,8 +13,8 @@ namespace Nethermind.TxPool;
 public class LightTxDecoder : TxDecoder<Transaction>
 {
     private const byte ConsensusEncodingSizeFormatVersion = 1;
-    // Format 2 stored the already-derived elided network-encoding size. It remains readable, while new records keep
-    // the foundational consensus size from which future wrapper encodings can also be derived.
+    // Format 2 holds the already-derived elided network-encoding size. It is still written when the consensus size
+    // is unknown; otherwise records keep the foundational consensus size, from which future encodings can be derived.
     private const byte ElidedNetworkEncodingSizeFormatVersion = 2;
 
     private static int GetLength(Transaction tx, int networkSize, int persistedEncodingSize, byte sizeFormatVersion) => Rlp.LengthOf(tx.Timestamp)

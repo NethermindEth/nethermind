@@ -14,7 +14,6 @@ namespace Nethermind.TxPool
 {
     public static class TransactionExtensions
     {
-        private const int ShortRlpSequenceLimit = 56;
         private static readonly long MaxSizeOfTxForBroadcast = 4.KiB; //4KB, as in Geth https://github.com/ethereum/go-ethereum/pull/27618
         private static readonly ITransactionSizeCalculator _transactionSizeCalculator = new NetworkTransactionSizeCalculator(TxDecoder.Instance);
 
@@ -31,6 +30,11 @@ namespace Nethermind.TxPool
         /// </remarks>
         public static int GetElidedNetworkEncodingSize(this Transaction tx)
         {
+            if (tx is LightTransaction lightTx)
+            {
+                return lightTx.GetElidedNetworkEncodingSize();
+            }
+
             if (!tx.SupportsBlobs)
             {
                 return tx.GetLength();
@@ -47,11 +51,18 @@ namespace Nethermind.TxPool
                 return 0;
             }
 
+            int commitmentsLength = GetFixedByteStringsSequenceLength(wrapper.Commitments.Length, Ckzg.BytesPerCommitment);
+            int proofsLength = GetFixedByteStringsSequenceLength(wrapper.Proofs.Length, Ckzg.BytesPerProof);
+            if (commitmentsLength == 0 || proofsLength == 0)
+            {
+                return 0;
+            }
+
             long contentLength = (long)tx.GetLength(shouldCountBlobs: false) - 1
                 + versionLength
                 + Rlp.OfEmptyList.Length
-                + Rlp.LengthOf(wrapper.Commitments)
-                + Rlp.LengthOf(wrapper.Proofs);
+                + commitmentsLength
+                + proofsLength;
             return GetTypedSequenceLength(contentLength);
         }
 
@@ -68,13 +79,11 @@ namespace Nethermind.TxPool
                 return 0;
             }
 
-            int commitmentLength = Rlp.LengthOfByteString(Ckzg.BytesPerCommitment, firstByte: 0);
-            int proofLength = Rlp.LengthOfByteString(Ckzg.BytesPerProof, firstByte: 0);
             long proofCount = proofVersion is ProofVersion.V1
                 ? (long)blobCount * Ckzg.CellsPerExtBlob
                 : blobCount;
-            int commitmentsLength = GetSequenceLength((long)blobCount * commitmentLength);
-            int proofsLength = GetSequenceLength(proofCount * proofLength);
+            int commitmentsLength = GetFixedByteStringsSequenceLength(blobCount, Ckzg.BytesPerCommitment);
+            int proofsLength = GetFixedByteStringsSequenceLength(proofCount, Ckzg.BytesPerProof);
             if (commitmentsLength == 0 || proofsLength == 0)
             {
                 return 0;
@@ -88,6 +97,14 @@ namespace Nethermind.TxPool
             return GetTypedSequenceLength(contentLength);
         }
 
+        private static int GetFixedByteStringsSequenceLength(long count, int itemLength)
+        {
+            int encodedItemLength = Rlp.LengthOfByteString(itemLength, firstByte: 0);
+            return count < 0 || count > long.MaxValue / encodedItemLength
+                ? 0
+                : GetSequenceLength(count * encodedItemLength);
+        }
+
         private static int GetTypedSequenceLength(long contentLength)
         {
             int sequenceLength = GetSequenceLength(contentLength);
@@ -96,16 +113,13 @@ namespace Nethermind.TxPool
 
         private static int GetSequenceLength(long contentLength)
         {
-            if (contentLength is < 0 or > int.MaxValue)
+            const int maxSequencePrefixLength = 1 + sizeof(int);
+            if (contentLength is < 0 or > int.MaxValue - maxSequencePrefixLength)
             {
                 return 0;
             }
 
-            int length = (int)contentLength;
-            long sequenceLength = length < ShortRlpSequenceLimit
-                ? 1L + length
-                : 1L + Rlp.LengthOfLength(length) + length;
-            return sequenceLength <= int.MaxValue ? (int)sequenceLength : 0;
+            return Rlp.LengthOfSequence((int)contentLength);
         }
 
         private static int GetProofVersionLength(ProofVersion proofVersion) => proofVersion switch

@@ -165,7 +165,7 @@ public class LightTransaction : Transaction
     internal void UpdateBlobPoolMetadata(Transaction blobTx)
     {
         _size = blobTx.GetLength();
-        if (GetElidedNetworkEncodingSize() == 0)
+        if (Volatile.Read(ref _elidedNetworkEncodingSize) == 0)
         {
             Volatile.Write(ref _elidedNetworkEncodingSize, blobTx.GetElidedNetworkEncodingSize());
         }
@@ -186,6 +186,9 @@ public class LightTransaction : Transaction
         int elidedNetworkEncodingSize = Volatile.Read(ref _elidedNetworkEncodingSize);
         return elidedNetworkEncodingSize > 0
             ? elidedNetworkEncodingSize
-            : TransactionExtensions.CalculateElidedNetworkEncodingSize(_consensusEncodingSize, ProofVersion, BlobVersionedHashes?.Length ?? 0);
+            : TransactionExtensions.CalculateElidedNetworkEncodingSize(
+                _consensusEncodingSize,
+                ProofVersion,
+                BlobVersionedHashes?.Length ?? 0);
     }
 }

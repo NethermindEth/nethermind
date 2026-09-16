@@ -109,7 +109,7 @@ public class LightTxDecoderTests
     {
         Transaction tx = BuildBlobTx(proofVersion, blobCount);
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
-        LightTransaction lightTx = new(tx);
+        Transaction lightTx = new LightTransaction(tx);
         Assert.That(wrapper.Version, Is.EqualTo(proofVersion));
 
         int consensusSize = tx.GetLength(shouldCountBlobs: false);
@@ -121,6 +121,7 @@ public class LightTxDecoderTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(lightTx.GetElidedNetworkEncodingSize(), Is.EqualTo(tx.GetElidedNetworkEncodingSize()));
             Assert.That(
                 lightTx.GetElidedNetworkEncodingSize(),
                 Is.EqualTo(1 + Rlp.LengthOfSequence(consensusSize - 1 + wrapperOverhead)));
