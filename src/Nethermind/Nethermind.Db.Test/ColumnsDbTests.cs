@@ -16,7 +16,8 @@ namespace Nethermind.Db.Test;
 
 public class ColumnsDbTests
 {
-    string DbPath => "testdb/" + TestContext.CurrentContext.Test.Name;
+    // RocksDB appends temporary filenames; test names can exceed Windows path limits.
+    string DbPath => "testdb/" + TestContext.CurrentContext.Test.ID;
     private ColumnsDb<ReceiptsColumns> _db = null!;
 
     [SetUp]
