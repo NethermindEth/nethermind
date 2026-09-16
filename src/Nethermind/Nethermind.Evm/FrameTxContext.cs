@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -356,6 +357,7 @@ public sealed class FrameTxContext(
 
     /// <exception cref="ArgumentOutOfRangeException">The set is longer than a well-formed one, which the
     /// fixed-size preimage buffer cannot hold.</exception>
+    [SkipLocalsInit]
     private static ValueHash256 ComputeNonceKeysHash(UInt256[] nonceKeys)
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThan(nonceKeys.Length, Eip8250Constants.MaxNonceKeys);

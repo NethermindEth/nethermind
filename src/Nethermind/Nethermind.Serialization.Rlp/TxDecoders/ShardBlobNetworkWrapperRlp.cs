@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using CkzgLib;
 using Nethermind.Core;
 
@@ -65,6 +66,7 @@ internal static class ShardBlobNetworkWrapperRlp
         return new ShardBlobNetworkWrapper(blobs, commitments, proofs, version, cellMask, cells);
     }
 
+    [SkipLocalsInit]
     public static void Encode<TWriter>(ref TWriter writer, ShardBlobNetworkWrapper wrapper, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
     {

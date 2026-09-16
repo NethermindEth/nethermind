@@ -832,13 +832,13 @@ public class FrameTxMempoolDosMeasurement
         public FrameTxSimulationResult Simulate(
             Transaction tx,
             bool signaturesPreValidated = false,
-            CancellationToken token = default,
-            bool local = false)
+            bool local = false,
+            CancellationToken token = default)
         {
             long start = Stopwatch.GetTimestamp();
             try
             {
-                return inner.Simulate(tx, signaturesPreValidated, token, local);
+                return inner.Simulate(tx, signaturesPreValidated: signaturesPreValidated, local: local, token: token);
             }
             finally
             {
