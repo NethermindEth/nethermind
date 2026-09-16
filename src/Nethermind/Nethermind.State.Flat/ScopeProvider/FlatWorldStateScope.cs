@@ -98,7 +98,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         // VerifyWithTrie reads the tries on the block thread during execution, which the builder must own exclusively.
         if (configuration.ParallelStorageRoot && !configuration.VerifyWithTrie && !isReadOnly && !_trieless)
-            _storageRootBuilder = new StorageRootBuilder(configuration.ParallelStorageRootThreads, configuration.ParallelStorageRootEagerHash, logManager);
+            _storageRootBuilder = new StorageRootBuilder(configuration.ParallelStorageRootThreads, configuration.ParallelStorageRootWarmThreads, configuration.ParallelStorageRootEagerHash, logManager);
     }
 
     /// <summary>The builder to hand committed storage writes to, or null once it has drained or faulted.</summary>

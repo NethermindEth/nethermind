@@ -121,6 +121,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "With ParallelStorageRoot, the number of background builder threads. Each storage trie is owned by exactly one thread, chosen by address.", DefaultValue = "1")]
     int ParallelStorageRootThreads { get; set; }
 
+    [ConfigItem(Description = "With ParallelStorageRoot, the number of threads resolving each committed write's trie path into the node cache ahead of the builder threads.", DefaultValue = "4")]
+    int ParallelStorageRootWarmThreads { get; set; }
+
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "true")]
     bool EnableLongFinality { get; set; }
 

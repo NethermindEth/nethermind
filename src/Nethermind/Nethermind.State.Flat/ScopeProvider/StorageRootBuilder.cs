@@ -45,7 +45,7 @@ internal sealed class StorageRootBuilder
     private volatile bool _faulted;
     private volatile bool _drained;
 
-    public StorageRootBuilder(int threads, bool eagerHash, ILogManager logManager)
+    public StorageRootBuilder(int threads, int warmThreads, bool eagerHash, ILogManager logManager)
     {
         _eagerHash = eagerHash;
         _logger = logManager.GetClassLogger<StorageRootBuilder>();
@@ -59,8 +59,8 @@ internal sealed class StorageRootBuilder
             shard.Thread.Start();
         }
 
-        _warmThreads = new Thread[threads];
-        for (int i = 0; i < threads; i++)
+        _warmThreads = new Thread[Math.Max(1, warmThreads)];
+        for (int i = 0; i < _warmThreads.Length; i++)
         {
             _warmThreads[i] = new Thread(Warm) { IsBackground = true, Name = $"{nameof(StorageRootBuilder)}-warm-{i}" };
             _warmThreads[i].Start();
@@ -101,6 +101,8 @@ internal sealed class StorageRootBuilder
             Db.Metrics.ParallelStorageRootDrainBacklog += shard.Pending.Count;
             shard.Pending.CompleteAdding();
         }
+        // The block thread has nothing else to do until the tries are ready, so it helps warm the last writes' paths.
+        Warm();
         foreach (Thread thread in _warmThreads) thread.Join();
         foreach (Shard shard in _shards) shard.Thread.Join();
         Db.Metrics.ParallelStorageRootDrainWaitMicros += (long)Stopwatch.GetElapsedTime(start).TotalMicroseconds;
