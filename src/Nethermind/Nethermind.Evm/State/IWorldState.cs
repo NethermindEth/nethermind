@@ -189,19 +189,3 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
             && (IsContract(address) || GetNonce(address) != 0);
     }
 }
-
-public static class WorldStateScopeExtensions
-{
-    /// <inheritdoc cref="IWorldState.TryBeginScope"/>
-    /// <exception cref="InvalidOperationException">The state at <paramref name="baseBlock"/> is unavailable.</exception>
-    public static IDisposable BeginScope(this IWorldState worldState, BlockHeader? baseBlock) =>
-        worldState.TryBeginScope(baseBlock, out IDisposable? scopeCloser) ? scopeCloser : ThrowUnavailable<IDisposable>(baseBlock);
-
-    /// <inheritdoc cref="IWorldStateScopeProvider.TryBeginScope"/>
-    /// <exception cref="InvalidOperationException">The state at <paramref name="baseBlock"/> is unavailable.</exception>
-    public static IWorldStateScopeProvider.IScope BeginScope(this IWorldStateScopeProvider scopeProvider, BlockHeader? baseBlock, LocalMetrics metrics) =>
-        scopeProvider.TryBeginScope(baseBlock, metrics, out IWorldStateScopeProvider.IScope? scope) ? scope : ThrowUnavailable<IWorldStateScopeProvider.IScope>(baseBlock);
-
-    private static TScope ThrowUnavailable<TScope>(BlockHeader? baseBlock) =>
-        throw new InvalidOperationException($"State is unavailable for base block {baseBlock?.ToString(BlockHeader.Format.Short) ?? "pre-genesis"}.");
-}
