@@ -22,18 +22,36 @@ namespace Nethermind.State.Flat.ScopeProvider;
 /// </remarks>
 internal sealed class StorageRootBuilder
 {
-    private sealed class Delta(FlatStorageTree tree, in UInt256 index, in UInt256 value)
+    private sealed class Delta(FlatStorageTree tree, Shard shard, in UInt256 index, in UInt256 value)
     {
         public readonly FlatStorageTree Tree = tree;
+        public readonly Shard Shard = shard;
         public readonly UInt256 Index = index;
         public readonly UInt256 Value = value;
-        public volatile bool Warmed;
+        private volatile bool _warmed;
+
+        public bool Warmed => _warmed;
+
+        public void MarkWarmed()
+        {
+            _warmed = true;
+            try
+            {
+                Shard.Warmed.Set();
+            }
+            catch (ObjectDisposedException)
+            {
+                // The builder already drained; nobody is waiting on this shard any more.
+            }
+        }
     }
 
     private sealed class Shard
     {
         public readonly BlockingCollection<Delta> Pending = new(new ConcurrentQueue<Delta>());
         public readonly HashSet<FlatStorageTree> Touched = [];
+        // Pulsed by warm threads; the apply thread re-checks its head delta after every pulse.
+        public readonly ManualResetEventSlim Warmed = new(false, spinCount: 50);
         public Thread Thread = null!;
     }
 
@@ -74,19 +92,29 @@ internal sealed class StorageRootBuilder
 
     public bool TryEnqueue(FlatStorageTree tree, in UInt256 index, in UInt256 value)
     {
-        if (_faulted || _drained) return false;
-        Delta delta = new(tree, in index, in value);
+        if (_faulted) return false;
+        if (_drained)
+        {
+            // A write arriving after the tries were handed over would be missing from a prebuilt trie: make the flush
+            // re-apply everything instead.
+            _faulted = true;
+            return false;
+        }
+
+        Shard shard = _shards[(int)((uint)tree.BuilderShardKey % (uint)_shards.Length)];
+        Delta delta = new(tree, shard, in index, in value);
         try
         {
             // Warm first so the apply thread never sees a delta that no warm thread will ever mark.
             _toWarm.Add(delta);
-            _shards[(int)((uint)tree.BuilderShardKey % (uint)_shards.Length)].Pending.Add(delta);
+            shard.Pending.Add(delta);
             return true;
         }
-        catch (InvalidOperationException)
+        catch (Exception e) when (e is InvalidOperationException or ObjectDisposedException)
         {
-            // Adding completed concurrently; the caller falls back to the serial path for this write.
-            delta.Warmed = true;
+            // Adding completed concurrently with this write; same remedy as above.
+            delta.MarkWarmed();
+            _faulted = true;
             return false;
         }
     }
@@ -108,7 +136,11 @@ internal sealed class StorageRootBuilder
         Db.Metrics.ParallelStorageRootDrainWaitMicros += (long)Stopwatch.GetElapsedTime(start).TotalMicroseconds;
         _drained = true;
         _toWarm.Dispose();
-        foreach (Shard shard in _shards) shard.Pending.Dispose();
+        foreach (Shard shard in _shards)
+        {
+            shard.Pending.Dispose();
+            shard.Warmed.Dispose();
+        }
     }
 
     private void Warm()
@@ -125,7 +157,7 @@ internal sealed class StorageRootBuilder
             }
             finally
             {
-                delta.Warmed = true;
+                delta.MarkWarmed();
             }
         }
     }
@@ -143,8 +175,12 @@ internal sealed class StorageRootBuilder
                     if (!shard.Pending.TryTake(out delta, Timeout.Infinite)) return;
                 }
 
-                SpinWait spinner = new();
-                while (!delta.Warmed) spinner.SpinOnce(sleep1Threshold: -1);
+                while (!delta.Warmed)
+                {
+                    shard.Warmed.Reset();
+                    if (delta.Warmed) break;
+                    shard.Warmed.Wait();
+                }
 
                 long start = Stopwatch.GetTimestamp();
                 delta.Tree.ApplyCommitted(delta.Index, delta.Value);
