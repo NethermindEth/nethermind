@@ -691,6 +691,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     /// </remarks>
     private sealed class AccountTrieSpeculation(FlatWorldStateScope scope) : ISpeculativeTrie
     {
+        private const int MinDrainToHash = 4;
         private readonly ConcurrentQueue<(AddressAsKey Address, Account? Account)> _queue = new();
         private readonly Dictionary<AddressAsKey, Account?> _applied = [];
         private readonly Dictionary<AddressAsKey, Account?> _drain = [];
@@ -753,8 +754,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 }
 
                 foreach (KeyValuePair<AddressAsKey, Account?> kv in _drain) _applied[kv.Key] = kv.Value;
-                scope.StateTree.UpdateRootHash(canBeParallel: false);
                 Db.Metrics.IncrementSpeculativeAccountWrites(_drain.Count);
+                // Same cadence rule as the storage tries: small drains only load and set.
+                if (_drain.Count >= MinDrainToHash)
+                {
+                    scope.StateTree.UpdateRootHash(canBeParallel: false);
+                    Db.Metrics.IncrementSpeculativeStorageHashPasses();
+                }
             }
             catch (Exception e)
             {
