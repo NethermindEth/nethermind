@@ -27,6 +27,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
 using Nethermind.Logging;
 using Nethermind.RocksDbBindings;
+using Native = Nethermind.RocksDbBindings.Native;
 using Testably.Abstractions;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
@@ -373,6 +374,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     protected internal void UpdateReadMetrics() => _totalReads.Increment();
 
+    /// <summary>Counts a batched read as <paramref name="count"/> reads, so batching does not deflate <c>Db.*.Reads</c>.</summary>
     protected internal void UpdateReadMetrics(int count) => _totalReads.Add(count);
 
     protected internal void UpdateWriteMetrics() => Interlocked.Increment(ref _totalWrites.Value);
@@ -755,6 +757,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     int IReadOnlyKeyValueStore.Get(scoped ReadOnlySpan<byte> key, Span<byte> output, ReadFlags flags) => _reader.Get(key, output, flags);
 
+    void IReadOnlyKeyValueStore.MultiGet(ReadOnlySpan<byte> keys, int keyLength, Span<byte[]?> values, ReadFlags flags) =>
+        _reader.MultiGet(keys, keyLength, values, flags);
+
     bool IReadOnlyKeyValueStore.KeyExists(ReadOnlySpan<byte> key) => _reader.KeyExists(key);
 
     void IReadOnlyKeyValueStore.DangerousReleaseMemory(in ReadOnlySpan<byte> span) => _reader.DangerousReleaseMemory(span);
@@ -952,6 +957,140 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             }
         }
     }
+
+    internal unsafe void MultiGet(
+        ReadOnlySpan<byte> keys,
+        int keyLength,
+        Span<byte[]?> values,
+        IColumnFamilyHandle? cf,
+        ReadOptions readOptions)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        if (keyLength <= 0)
+            throw new ArgumentOutOfRangeException(nameof(keyLength));
+        if (keys.Length != (long)values.Length * keyLength)
+            throw new ArgumentException("The key buffer length must match the value count and fixed key length.", nameof(keys));
+        if (values.Length == 0) return;
+
+        UpdateReadMetrics(values.Length);
+
+        if (cf is null)
+        {
+            for (int i = 0; i < values.Length; i++)
+                values[i] = Get(keys.Slice(i * keyLength, keyLength), null, readOptions);
+            return;
+        }
+
+        using ArrayPoolListRef<Native.rocksdb_slice_t> keySlices = new(values.Length, values.Length);
+        using ArrayPoolListRef<IntPtr> valueHandles = new(values.Length, values.Length);
+        using ArrayPoolListRef<IntPtr> errors = new(values.Length, values.Length);
+        Span<Native.rocksdb_slice_t> keySlicesSpan = keySlices.AsSpan();
+        Span<IntPtr> valueHandlesSpan = valueHandles.AsSpan();
+        Span<IntPtr> errorsSpan = errors.AsSpan();
+
+        SafeHandle readOptionsSafeHandle = NativeOptionsSafeHandle(readOptions);
+        bool readOptionsHandleAddedRef = false;
+
+        try
+        {
+            readOptionsSafeHandle.DangerousAddRef(ref readOptionsHandleAddedRef);
+            nint readOptionsHandle = readOptionsSafeHandle.DangerousGetHandle();
+
+            // The native slices point into the pinned key span and remain valid only for the native call. Every
+            // returned value and error handle is released below, including when another result fails.
+            fixed (byte* keysPtr = keys)
+            fixed (Native.rocksdb_slice_t* keySlicesPtr = keySlicesSpan)
+            fixed (IntPtr* valueHandlesPtr = valueHandlesSpan)
+            fixed (IntPtr* errorsPtr = errorsSpan)
+            {
+                for (int i = 0; i < keySlicesSpan.Length; i++)
+                {
+                    keySlicesSpan[i] = new Native.rocksdb_slice_t
+                    {
+                        data = (sbyte*)(keysPtr + (i * keyLength)),
+                        size = (nuint)keyLength
+                    };
+                }
+
+                Native.RocksDbNative.rocksdb_batched_multi_get_cf_slice(
+                    (Native.rocksdb_t*)_db.Handle,
+                    (Native.rocksdb_readoptions_t*)readOptionsHandle,
+                    (Native.rocksdb_column_family_handle_t*)cf.Handle,
+                    (nuint)values.Length,
+                    keySlicesPtr,
+                    (Native.rocksdb_pinnableslice_t**)valueHandlesPtr,
+                    (sbyte**)errorsPtr,
+                    false);
+            }
+
+            RocksDbException? firstError = null;
+            for (int i = 0; i < errorsSpan.Length; i++)
+            {
+                IntPtr error = errorsSpan[i];
+                if (error == IntPtr.Zero) continue;
+
+                string message;
+                try
+                {
+                    message = Marshal.PtrToStringUTF8(error) ?? string.Empty;
+                }
+                finally
+                {
+                    Native.RocksDbNative.rocksdb_free((void*)error);
+                    errorsSpan[i] = IntPtr.Zero;
+                }
+
+                firstError ??= new RocksDbException(message);
+            }
+
+            if (firstError is not null) throw firstError;
+
+            for (int i = 0; i < valueHandlesSpan.Length; i++)
+            {
+                IntPtr handle = valueHandlesSpan[i];
+                if (handle == IntPtr.Zero)
+                {
+                    values[i] = null;
+                    continue;
+                }
+
+                nuint valueLength;
+                sbyte* valuePtr = Native.RocksDbNative.rocksdb_pinnableslice_value(
+                    (Native.rocksdb_pinnableslice_t*)handle, &valueLength);
+                values[i] = valuePtr is null
+                    ? null
+                    : new ReadOnlySpan<byte>((void*)valuePtr, checked((int)valueLength)).ToArray();
+            }
+        }
+        catch (RocksDbException e)
+        {
+            HandleFatalDbError(e);
+            throw;
+        }
+        finally
+        {
+            if (readOptionsHandleAddedRef)
+                readOptionsSafeHandle.DangerousRelease();
+
+            for (int i = 0; i < valueHandlesSpan.Length; i++)
+            {
+                if (valueHandlesSpan[i] != IntPtr.Zero)
+                    Native.RocksDbNative.rocksdb_pinnableslice_destroy(
+                        (Native.rocksdb_pinnableslice_t*)valueHandlesSpan[i]);
+            }
+
+            for (int i = 0; i < errorsSpan.Length; i++)
+            {
+                if (errorsSpan[i] != IntPtr.Zero)
+                    Native.RocksDbNative.rocksdb_free((void*)errorsSpan[i]);
+            }
+        }
+    }
+
+    /// <remarks>The pinned binding exposes no public contiguous-batch or options-handle API, so retain its internal options handle for the native call without expanding the binding surface. The database and column-family handles follow the existing caller lifetime contract.</remarks>
+    [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_SafeHandle")]
+    private static extern SafeHandle NativeOptionsSafeHandle(NativeOptions options);
 
     internal Span<byte> GetSpanWithColumnFamily(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, ReadOptions readOptions)
     {

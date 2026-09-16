@@ -20,6 +20,10 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer
 {
+    private const int AccountReadBatchSize = 256;
+    private const int StorageReadBatchSize = 256;
+    private const int UnprocessedSelfDestructIdx = int.MinValue;
+
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
@@ -206,62 +210,81 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             ParallelOptions parallelOptions = new() { CancellationToken = token };
 
-            Account?[]? accounts = sink is null ? null : new Account?[accountCount];
-            int[]? selfDestructIdxs = sink is null ? null : new int[accountCount];
+            using ArrayPoolList<Account?> loadedAccounts = new(accountCount, accountCount);
+
+            // Doubles as the "phase 1 finished this entry" marker phase 2 keys off. It cannot be the account array:
+            // the batched read fills that before the per-item loop runs, and the loop can bail out mid-range on
+            // _pausePrewarmer. Nor can it be the -1 fill, which is the legitimate "not self-destructed" index; a
+            // half-processed entry would then be read in phase 2 with self-destruct masking silently disabled.
+            using ArrayPoolList<int>? selfDestructIdxs = sink is null ? null : new(accountCount, accountCount);
+            selfDestructIdxs?.AsSpan().Fill(UnprocessedSelfDestructIdx);
+            int[]? selfDestructIdxArray = selfDestructIdxs?.UnsafeGetInternalArray();
 
             try
             {
-                // Phase 1: trie warmup + GetAccount + sink.OnAccountRead. Sink slot reads are
+                // Phase 1: account reads + trie warmup + sink.OnAccountRead. Sink slot reads are
                 // deferred to phase 2 so one huge account doesn't bottleneck a single worker.
-                void WarmAccount(int i)
+                void WarmAccountRange(int start, int end)
                 {
                     if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
 
-                    ReadOnlyAccountChanges ac = accountChanges[i];
-                    Address address = ac.Address;
+                    int rangeLength = end - start;
+                    using ArrayPoolListRef<Address> addressesToRead = new(rangeLength, rangeLength);
+                    for (int i = start; i < end; i++)
+                        addressesToRead[i - start] = accountChanges[i].Address;
 
-                    if (ac.HasStateChanges
-                        && _snapshotBundle.ShouldQueuePrewarm(address)
-                        && _warmer.PushAddressJob(this, address, snapshot))
-                        Interlocked.Increment(ref _outstandingWarmups);
+                    _snapshotBundle.GetAccounts(addressesToRead.AsSpan(), loadedAccounts.AsSpan().Slice(start, rangeLength));
 
-                    ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
-                    int storageChangeCount = storageChanges.Length;
-
-                    Account? account = _snapshotBundle.GetAccount(address);
-
-                    if (sink is not null && sink.StillNeeded(address, out _))
-                        sink.OnAccountRead(address, account);
-
-                    if (account is null) return;
-                    Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
-                    if (storageRoot == Keccak.EmptyTreeHash) return;
-
-                    if (storageChangeCount > 0)
+                    for (int i = start; i < end; i++)
                     {
-                        FlatStorageTree storageWarmer = new(
-                            this,
-                            _warmer,
-                            _snapshotBundle,
-                            _configuration,
-                            _concurrencyQuota,
-                            storageRoot,
-                            address,
-                            _logManager);
+                        if (token.IsCancellationRequested || _hintSequenceId != snapshot || _pausePrewarmer) return;
 
-                        foreach (ReadOnlySlotChanges slotChanges in storageChanges)
+                        ReadOnlyAccountChanges ac = accountChanges[i];
+                        Address address = ac.Address;
+
+                        if (ac.HasStateChanges
+                            && _snapshotBundle.ShouldQueuePrewarm(address)
+                            && _warmer.PushAddressJob(this, address, snapshot))
+                            Interlocked.Increment(ref _outstandingWarmups);
+
+                        ReadOnlySlotChanges[] storageChanges = ac.StorageChanges;
+                        int storageChangeCount = storageChanges.Length;
+
+                        Account? account = loadedAccounts[i];
+
+                        if (sink is not null && sink.StillNeeded(address, out _))
+                            sink.OnAccountRead(address, account);
+
+                        // A missing account, or one with no storage trie, is left unmarked so phase 2 skips it: its
+                        // slots read as zero and the sink resolves them itself. Mirrors TrieStoreScopeProvider.
+                        if (account is null) continue;
+                        Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
+                        if (storageRoot == Keccak.EmptyTreeHash) continue;
+
+                        if (storageChangeCount > 0)
                         {
-                            UInt256 key = slotChanges.Key;
-                            if (_snapshotBundle.ShouldQueuePrewarm(address, key)
-                                && _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
-                                Interlocked.Increment(ref _outstandingWarmups);
-                        }
-                    }
+                            FlatStorageTree storageWarmer = new(
+                                this,
+                                _warmer,
+                                _snapshotBundle,
+                                _configuration,
+                                _concurrencyQuota,
+                                storageRoot,
+                                address,
+                                _logManager);
 
-                    if (accounts is not null)
-                    {
-                        accounts[i] = account;
-                        selfDestructIdxs![i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
+                            foreach (ReadOnlySlotChanges slotChanges in storageChanges)
+                            {
+                                UInt256 key = slotChanges.Key;
+                                if (_snapshotBundle.ShouldQueuePrewarm(address, key)
+                                    && _warmer.PushSlotJobMpmc(storageWarmer, key, snapshot))
+                                    Interlocked.Increment(ref _outstandingWarmups);
+                            }
+                        }
+
+                        // Last statement of the body on purpose; see the marker note above.
+                        if (selfDestructIdxArray is not null)
+                            selfDestructIdxArray[i] = _snapshotBundle.DetermineSelfDestructSnapshotIdx(address);
                     }
                 }
 
@@ -271,15 +294,22 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 if (_warmReadPool is not null)
                 {
                     WarmReadPool pool = _warmReadPool.Value;
-                    int workers = Math.Min(pool.MaxConcurrency, Math.Max(1, accountCount / 64));
-                    pool.Run(accountCount, workers, WarmAccount, token);
+                    int batchCount = (accountCount + AccountReadBatchSize - 1) / AccountReadBatchSize;
+                    int workers = Math.Min(batchCount, Math.Min(pool.MaxConcurrency, Math.Max(1, accountCount / 64)));
+                    pool.Run(batchCount, workers, batchIndex =>
+                    {
+                        int start = batchIndex * AccountReadBatchSize;
+                        WarmAccountRange(start, Math.Min(start + AccountReadBatchSize, accountCount));
+                    }, token);
                 }
                 else
                 {
-                    Parallel.For(0, accountCount, parallelOptions, WarmAccount);
+                    Parallel.ForEach(Partitioner.Create(0, accountCount, AccountReadBatchSize), parallelOptions,
+                        range => WarmAccountRange(range.Item1, range.Item2));
                 }
 
-                if (sink is not null) RunSinkSlotReads(accountChanges, accounts!, selfDestructIdxs!, sink, parallelOptions);
+                if (sink is not null && !token.IsCancellationRequested && _hintSequenceId == snapshot && !_pausePrewarmer)
+                    RunSinkSlotReads(accountChanges, selfDestructIdxArray!, sink, parallelOptions);
             }
             catch (OperationCanceledException) { }
             finally
@@ -289,9 +319,13 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         });
     }
 
+    /// <summary>Phase 2 of <see cref="HintBal"/>: batched slot reads for the accounts phase 1 finished.</summary>
+    /// <param name="selfDestructIdxs">
+    /// Per-account self-destruct snapshot index, or <see cref="UnprocessedSelfDestructIdx"/> for an account phase 1
+    /// did not finish. Only entries carrying a real index are read, so a slot can never be published with masking off.
+    /// </param>
     private void RunSinkSlotReads(
         ArrayPoolList<ReadOnlyAccountChanges> accountChanges,
-        Account?[] accounts,
         int[] selfDestructIdxs,
         IWorldStateScopeProvider.IAsyncBalReaderSink sink,
         ParallelOptions parallelOptions)
@@ -302,7 +336,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         int totalSlots = 0;
         for (int i = 0; i < accountChanges.Count; i++)
         {
-            if (accounts[i] is null) continue;
+            if (selfDestructIdxs[i] == UnprocessedSelfDestructIdx) continue;
             totalSlots += accountChanges[i].StorageChanges.Length
                        + accountChanges[i].StorageReads.Length;
         }
@@ -313,7 +347,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         int idx = 0;
         for (int i = 0; i < accountChanges.Count; i++)
         {
-            if (accounts[i] is null) continue;
+            if (selfDestructIdxs[i] == UnprocessedSelfDestructIdx) continue;
             ReadOnlyAccountChanges ac = accountChanges[i];
             Address address = ac.Address;
             int selfDestructIdx = selfDestructIdxs[i];
@@ -326,22 +360,46 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // Lazy materialisation: this is the only call site that needs the pool, so chains/forks
         // that never see a BAL never allocate the dedicated reader threads.
         WarmReadPool pool = _warmReadPool.Value;
-        int workers = Math.Min(pool.MaxConcurrency, Math.Max(1, idx / 64));
+        int batchCount = (idx + StorageReadBatchSize - 1) / StorageReadBatchSize;
+        int workers = Math.Min(batchCount, Math.Min(pool.MaxConcurrency, Math.Max(1, idx / 64)));
 
-        pool.Run(idx, workers, j =>
+        pool.Run(batchCount, workers, batchIndex =>
         {
             if (_pausePrewarmer) return;
-            (Address address, int selfDestructIdx, UInt256 slot) = jobs[j];
-            ReadSlotToSink(sink, address, in slot, selfDestructIdx);
-        }, parallelOptions.CancellationToken);
-    }
 
-    private void ReadSlotToSink(IWorldStateScopeProvider.IAsyncBalReaderSink sink, Address address, in UInt256 slot, int selfDestructIdx)
-    {
-        StorageCell cell = new(address, in slot);
-        if (!sink.StillNeeded(in cell)) return;
-        _snapshotBundle.GetSlot(address, in slot, selfDestructIdx, out UInt256? value);
-        sink.OnStorageRead(in cell, value.GetValueOrDefault());
+            int start = batchIndex * StorageReadBatchSize;
+            int end = Math.Min(start + StorageReadBatchSize, idx);
+            int rangeLength = end - start;
+            using ArrayPoolListRef<StorageCell> storageCells = new(rangeLength);
+            using ArrayPoolListRef<int> selfDestructStateIdxs = new(rangeLength);
+            int neededCount = 0;
+
+            for (int jobIndex = start; jobIndex < end; jobIndex++)
+            {
+                (Address address, int selfDestructIdx, UInt256 slot) = jobs[jobIndex];
+                StorageCell cell = new(address, in slot);
+                if (!sink.StillNeeded(in cell)) continue;
+
+                storageCells.Add(cell);
+                selfDestructStateIdxs.Add(selfDestructIdx);
+                neededCount++;
+            }
+
+            if (neededCount == 0) return;
+
+            using ArrayPoolListRef<UInt256?> values = new(neededCount, neededCount);
+            _snapshotBundle.GetSlots(
+                storageCells.AsSpan(),
+                selfDestructStateIdxs.AsSpan(),
+                values.AsSpan());
+
+            for (int i = 0; i < neededCount; i++)
+            {
+                StorageCell cell = storageCells[i];
+                UInt256? value = values[i];
+                sink.OnStorageRead(in cell, value.GetValueOrDefault());
+            }
+        }, parallelOptions.CancellationToken);
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }

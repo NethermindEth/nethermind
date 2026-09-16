@@ -32,6 +32,9 @@ public static class BasePersistence
 {
     public const int StoragePrefixPortion = 4;
 
+    /// <summary>Stack buffer for one RLP-encoded account, comfortably above the largest encoding.</summary>
+    internal const int AccountSpanBufferSize = 256;
+
     private static readonly byte[] CurrentStateKey = Keccak.Compute("CurrentState").BytesToArray();
     private static readonly byte[] LayoutKey = Keccak.Compute("Layout").BytesToArray();
     private static readonly byte[] SlotEncodingKey = Keccak.Compute("SlotEncoding").BytesToArray();
@@ -266,7 +269,36 @@ public static class BasePersistence
     public interface IHashedFlatReader
     {
         public int GetAccount(in ValueHash256 address, Span<byte> outBuffer);
+        [SkipLocalsInit]
+        public void GetAccounts(ReadOnlySpan<ValueHash256> addresses, Span<byte[]?> accounts)
+        {
+            if (addresses.Length != accounts.Length)
+                throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
+
+            Span<byte> accountBuffer = stackalloc byte[AccountSpanBufferSize];
+            for (int i = 0; i < addresses.Length; i++)
+            {
+                int responseSize = GetAccount(addresses[i], accountBuffer);
+                accounts[i] = responseSize == 0 ? null : accountBuffer[..responseSize].ToArray();
+            }
+        }
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref UInt256 outValue);
+        public void GetStorages(
+            ReadOnlySpan<ValueHash256> addresses,
+            ReadOnlySpan<ValueHash256> slots,
+            Span<UInt256> values,
+            Span<bool> found)
+        {
+            if (addresses.Length != slots.Length || addresses.Length != values.Length || addresses.Length != found.Length)
+                throw new ArgumentException("Addresses, slots, values, and found flags must have the same length.", nameof(values));
+
+            for (int i = 0; i < addresses.Length; i++)
+            {
+                bool valueFound = TryGetStorage(addresses[i], slots[i], ref values[i]);
+                found[i] = valueFound;
+                if (!valueFound) values[i] = default;
+            }
+        }
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         public bool IsPreimageMode { get; }
@@ -293,7 +325,28 @@ public static class BasePersistence
     public interface IFlatReader
     {
         public Account? GetAccount(Address address);
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            if (addresses.Length != accounts.Length)
+                throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
+
+            for (int i = 0; i < addresses.Length; i++)
+                accounts[i] = GetAccount(addresses[i]);
+        }
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue);
+        public void GetSlots(ReadOnlySpan<StorageCell> storageCells, Span<UInt256> slots, Span<bool> found)
+        {
+            if (storageCells.Length != slots.Length || storageCells.Length != found.Length)
+                throw new ArgumentException("Storage cells, slots, and found flags must have the same length.", nameof(slots));
+
+            for (int i = 0; i < storageCells.Length; i++)
+            {
+                StorageCell cell = storageCells[i];
+                bool slotFound = TryGetSlot(cell.Address, cell.Index, ref slots[i]);
+                found[i] = slotFound;
+                if (!slotFound) slots[i] = default;
+            }
+        }
         public byte[]? GetAccountRaw(in ValueHash256 addrHash);
         public bool TryGetSlotRaw(in ValueHash256 address, in ValueHash256 slotHash, ref UInt256 outValue);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
@@ -387,12 +440,11 @@ public static class BasePersistence
         where TFlatReader : struct, IHashedFlatReader
     {
         private readonly AccountDecoder _accountDecoder = useFlatAccount ? AccountDecoder.Slim : AccountDecoder.Instance;
-        private readonly int _accountSpanBufferSize = 256;
         private TFlatReader _flatReader = flatReader;
 
         public Account? GetAccount(Address address)
         {
-            Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
+            Span<byte> valueBuffer = stackalloc byte[AccountSpanBufferSize];
             int responseSize = _flatReader.GetAccount(address.ToAccountPath, valueBuffer);
             if (responseSize == 0)
             {
@@ -403,6 +455,32 @@ public static class BasePersistence
             return _accountDecoder.Decode(ref ctx);
         }
 
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            if (addresses.Length != accounts.Length)
+                throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
+
+            using ArrayPoolListRef<ValueHash256> addressHashes = new(addresses.Length, addresses.Length);
+            using ArrayPoolListRef<byte[]?> encodedAccounts = new(addresses.Length, addresses.Length);
+            for (int i = 0; i < addresses.Length; i++)
+                addressHashes[i] = addresses[i].ToAccountPath;
+
+            _flatReader.GetAccounts(addressHashes.AsSpan(), encodedAccounts.AsSpan());
+
+            for (int i = 0; i < encodedAccounts.Count; i++)
+            {
+                byte[]? encodedAccount = encodedAccounts[i];
+                if (encodedAccount is null or { Length: 0 })
+                {
+                    accounts[i] = null;
+                    continue;
+                }
+
+                RlpReader ctx = new(encodedAccount);
+                accounts[i] = _accountDecoder.Decode(ref ctx);
+            }
+        }
+
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
         {
             ValueHash256 slotHash = ValueKeccak.Zero;
@@ -411,9 +489,28 @@ public static class BasePersistence
             return TryGetSlotRaw(address.ToAccountPath, slotHash, ref outValue);
         }
 
+        public void GetSlots(ReadOnlySpan<StorageCell> storageCells, Span<UInt256> slots, Span<bool> found)
+        {
+            if (storageCells.Length != slots.Length || storageCells.Length != found.Length)
+                throw new ArgumentException("Storage cells, slots, and found flags must have the same length.", nameof(slots));
+
+            using ArrayPoolListRef<ValueHash256> addressHashes = new(storageCells.Length, storageCells.Length);
+            using ArrayPoolListRef<ValueHash256> slotHashes = new(storageCells.Length, storageCells.Length);
+            for (int i = 0; i < storageCells.Length; i++)
+            {
+                StorageCell cell = storageCells[i];
+                addressHashes[i] = cell.Address.ToAccountPath;
+                StorageTree.ComputeKeyWithLookup(cell.Index, ref slotHashes.GetRef(i));
+            }
+
+            _flatReader.GetStorages(addressHashes.AsSpan(), slotHashes.AsSpan(), slots, found);
+            for (int i = 0; i < found.Length; i++)
+                if (!found[i]) slots[i] = default;
+        }
+
         public byte[]? GetAccountRaw(in ValueHash256 addrHash)
         {
-            Span<byte> valueBuffer = stackalloc byte[_accountSpanBufferSize];
+            Span<byte> valueBuffer = stackalloc byte[AccountSpanBufferSize];
             int responseSize = _flatReader.GetAccount(addrHash, valueBuffer);
             return responseSize == 0 ? null : valueBuffer[..responseSize].ToArray();
         }
@@ -449,8 +546,18 @@ public static class BasePersistence
         public Account? GetAccount(Address address) =>
             _flatReader.GetAccount(address);
 
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts) =>
+            _flatReader.GetAccounts(addresses, accounts);
+
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) =>
             _flatReader.TryGetSlot(address, in slot, ref outValue);
+
+        public void GetSlots(ReadOnlySpan<StorageCell> storageCells, Span<UInt256> slots, Span<bool> found)
+        {
+            _flatReader.GetSlots(storageCells, slots, found);
+            for (int i = 0; i < found.Length; i++)
+                if (!found[i]) slots[i] = default;
+        }
 
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
             _trieReader.TryLoadStateRlp(path, flags);
