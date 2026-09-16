@@ -122,8 +122,11 @@ public class ForkInfoTests
     [TestCase(1735374ul, 1_760_428_360ul, "0xe2ae4999", 1_761_017_184ul, "Future Osaka timestamp")]
     [TestCase(1735373ul, 1_761_017_184ul, "0x56078a1e", 1_761_607_008ul, "First BPO1 timestamp")]
     [TestCase(1735374ul, 1_761_018_184ul, "0x56078a1e", 1_761_607_008ul, "Future BPO1 timestamp")]
-    [TestCase(1735373ul, 1_761_607_008ul, "0x268956b6", 0ul, "First BPO2 timestamp")]
-    [TestCase(1735374ul, 1_761_608_008ul, "0x268956b6", 0ul, "Future BPO2 timestamp")]
+    [TestCase(1735373ul, 1_761_607_008ul, "0x268956b6", SepoliaSpecProvider.AmsterdamTimestamp, "First BPO2 timestamp")]
+    [TestCase(1735374ul, 1_761_608_008ul, "0x268956b6", SepoliaSpecProvider.AmsterdamTimestamp, "Future BPO2 timestamp")]
+    [TestCase(1735373ul, SepoliaSpecProvider.AmsterdamTimestamp - 1, "0x268956b6", SepoliaSpecProvider.AmsterdamTimestamp, "Last timestamp before Amsterdam")]
+    [TestCase(1735373ul, SepoliaSpecProvider.AmsterdamTimestamp, "0x6c1d9423", 0ul, "First Amsterdam timestamp")]
+    [TestCase(1735374ul, SepoliaSpecProvider.AmsterdamTimestamp + 1000, "0x6c1d9423", 0ul, "Future Amsterdam timestamp")]
     public void Fork_id_and_hash_as_expected_on_sepolia(ulong head, ulong headTimestamp, string forkHashHex, ulong next, string description) => Test(head, headTimestamp, KnownHashes.SepoliaGenesis, forkHashHex, next, description, SepoliaSpecProvider.Instance, "sepolia.json");
 
     [TestCase(0ul, 0ul, "0xf64909b1", 1604400ul, "Unsynced, last Frontier, Homestead, Tangerine, Spurious, Byzantium")]
