@@ -44,9 +44,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         where Eip158 : struct, IFlag
     {
         ExecutionEnvironment env = state.Env;
-        vm._worldState.AddToBalanceAndCreateIfNotEmpty(env.ExecutingAccount, state.ExecutionType, in env.Value, vm.Spec);
-        if (Eip158.IsActive && state.ExecutionType.IsAnyCreate())
-            vm._worldState.IncrementNonce(env.ExecutingAccount);
+        if (state.ExecutionType.IsAnyCreate())
+        {
+            // The nonce bump below keeps the account non-empty, so it is always created.
+            vm._worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, in env.Value, vm.Spec);
+            if (Eip158.IsActive)
+                vm._worldState.IncrementNonce(env.ExecutingAccount);
+        }
+        else
+        {
+            vm._worldState.AddToBalanceAndCreateIfNotEmpty(env.ExecutingAccount, state.ExecutionType, in env.Value, vm.Spec);
+        }
     }
 
     private static void AddTransferLogCore<Eip7708>(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
