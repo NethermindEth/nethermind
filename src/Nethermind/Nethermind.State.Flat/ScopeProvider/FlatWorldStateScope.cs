@@ -29,6 +29,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly bool _isReadOnly;
     private readonly bool _trieless;
 
+    private ConcurrencyController? _backgroundConcurrency;
     private PatriciaTree? _warmupStateTree;
     private readonly Hash256 _initialStateRoot;
     private StateTree? _stateTree;
@@ -67,6 +68,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     // A history-backed scope is trie-less: flat reads/writes only, no trie node loads, writes or hashing.
     internal bool Trieless => _trieless;
+
+    internal bool BackgroundStorageTrieUpdates => _configuration.BackgroundStorageTrieUpdates
+        && !_isReadOnly && !_trieless && _snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing;
+
+    internal ConcurrencyController BackgroundConcurrency => _backgroundConcurrency ??= new(Math.Max(1, Environment.ProcessorCount / 2) + 1);
 
     public FlatWorldStateScope(
         StateId currentStateId,
@@ -133,8 +139,27 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         Interlocked.Increment(ref _hintSequenceId);
         CancelHintBal();
         WaitForOutstandingWarmups();
-        _snapshotBundle.Dispose();
-        _warmer.OnExitScope();
+        try
+        {
+            StopBackgroundWrites();
+        }
+        finally
+        {
+            _snapshotBundle.Dispose();
+            _warmer.OnExitScope();
+        }
+    }
+
+    private void StopBackgroundWrites()
+    {
+        if (_backgroundConcurrency is null) return;
+        List<Exception>? failures = null;
+        foreach (FlatStorageTree? storage in _storages.Values)
+        {
+            try { storage?.StopBackgroundWrites(); }
+            catch (Exception exception) { (failures ??= []).Add(exception); }
+        }
+        if (failures is not null) throw new AggregateException(failures);
     }
 
     private void CancelHintBal()
@@ -522,6 +547,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void Commit(ulong blockNumber)
     {
+        StopBackgroundWrites();
         _pausePrewarmer = true;
 
         // With DeferStorageTrieCommit the write batches only hashed the storage trees, so their nodes are written here,

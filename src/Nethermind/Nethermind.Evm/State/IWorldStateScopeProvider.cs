@@ -219,6 +219,14 @@ public interface IWorldStateScopeProvider
 
         /// <summary>Hint that a transaction committed <paramref name="value"/> to a slot.</summary>
         void HintSet(in UInt256 index, in UInt256 value) => HintSet(in index);
+
+        /// <summary>Starts optional background preparation of committed storage writes.</summary>
+        /// <remarks>
+        /// Preparation must not change values visible to execution. The normal storage write batch finalizes it;
+        /// disposing this handle before finalization discards it and waits for its workers. Callers must dispose
+        /// it on reset or storage clear, including a clear that is subsequently reverted.
+        /// </remarks>
+        IStorageWriteBatch? StartBackgroundWriteBatch() => null;
     }
 
     /// <summary>

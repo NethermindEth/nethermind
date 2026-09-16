@@ -50,6 +50,7 @@ public class FlatDbConfig : IFlatDbConfig
     public long PersistenceWriteBufferFloor { get; set; } = 16.MiB;
     public int TrieWarmerWorkerCount { get; set; } = -1;
     public bool EnableCarryForwardCache { get; set; } = true;
+    public bool BackgroundStorageTrieUpdates { get; set; } = true;
     public int WarmReadConcurrency { get; set; } = -1;
     public ulong BlockCacheSizeBudget { get; set; } = 1UL.GiB;
     public long CompactionOffset { get; set; } = -1;

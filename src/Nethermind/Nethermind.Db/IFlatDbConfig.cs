@@ -136,6 +136,10 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Cache flat account and slot reads across heads in the persistence layer, so a new head does not re-read the working set from the database. `false` reads every persistence miss from the database.", DefaultValue = "true")]
     bool EnableCarryForwardCache { get; set; }
 
+    /// <summary>Whether to prepare committed storage writes during execution. Enabled by default.</summary>
+    [ConfigItem(Description = "Experimental background storage trie updates during block execution. Hashing remains deferred until finalization.", DefaultValue = "true")]
+    bool BackgroundStorageTrieUpdates { get; set; }
+
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
 

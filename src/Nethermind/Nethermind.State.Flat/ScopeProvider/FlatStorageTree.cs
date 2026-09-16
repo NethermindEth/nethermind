@@ -34,6 +34,7 @@ public sealed class FlatStorageTree(
     private Hash256? _addressHash;
 
     private Trees? _trees;
+    private BackgroundStorageTrie? _background;
 
     private const int EarlyIdle = 0;
     private const int EarlyApplying = 1;
@@ -105,6 +106,21 @@ public sealed class FlatStorageTree(
     // they don't trigger commit-time tree updates. Warm-up is driven from HintSet on the write
     // path instead.
     public void HintSet(in UInt256 index) => WarmUpSlot(index);
+
+    /// <inheritdoc/>
+    public IWorldStateScopeProvider.IStorageWriteBatch? StartBackgroundWriteBatch()
+    {
+        if (!_scope.BackgroundStorageTrieUpdates) return null;
+        if (_background is null || _background.IsStopped)
+        {
+            StorageTree current = GetTrees().Tree;
+            StorageTree tree = new(current.TrieStore, current.RootHash, _logManager);
+            _background = new BackgroundStorageTrie(tree, _scope.BackgroundConcurrency);
+        }
+        return _background;
+    }
+
+    internal void StopBackgroundWrites() => _background?.Dispose();
 
     public void HintSet(in UInt256 index, in UInt256 value)
     {
@@ -263,6 +279,7 @@ public sealed class FlatStorageTree(
 
     internal void ClearStorage()
     {
+        StopBackgroundWrites();
         _bundle.ClearStorage(_address, AddressHash);
         _selfDestructKnownStateIdx = _bundle.DetermineSelfDestructSnapshotIdx(_address);
         // Trieless scopes too: IWorldState.GetStorageRoot still reads RootHash there.
@@ -284,16 +301,21 @@ public sealed class FlatStorageTree(
         // trie-node access), so it writes only the flat overlay. Pick the strategy once here.
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
 
+        BackgroundStorageTrie? prepared = _background?.Complete() == true ? _background : null;
+        if (prepared is not null) AdoptPreparedTree(prepared.Tree);
         StorageTree tree = GetTrees().Tree;
-        Dictionary<UInt256, UInt256>? earlyApplied = AdoptEarlyTree(tree);
+        Dictionary<UInt256, UInt256>? earlyApplied = prepared is null ? AdoptEarlyTree(tree) : null;
         // Deferred, the batch only hashes the tree and the scope commit writes its nodes after the block is reported
         // valid. The hash then goes parallel from the size at which a commit would split the tree across threads.
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, tree, onRootUpdated, _address,
             commit: !_config.DeferStorageTrieCommit, minWritesToHashInParallel: MinWritesToHashInParallel);
         return earlyApplied is null
-            ? new StorageTreeBulkWriteBatch(trieBatch, this)
+            ? new StorageTreeBulkWriteBatch(trieBatch, this, prepared, onRootUpdated)
             : new EarlyAppliedStorageWriteBatch(trieBatch, this, earlyApplied);
     }
+
+    // The prepared tree holds the block's writes on top of the parent trie, so it becomes the block tree.
+    private void AdoptPreparedTree(StorageTree prepared) => Volatile.Write(ref _trees, new Trees(prepared, GetTrees().Warmup));
 
     // For a tree that already holds the early writes: unchanged slots only update the flat overlay.
     private sealed class EarlyAppliedStorageWriteBatch(
@@ -347,21 +369,39 @@ public sealed class FlatStorageTree(
     // Normal scope: maintain the storage trie (for the root) and mirror values into the flat overlay.
     private sealed class StorageTreeBulkWriteBatch(
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch,
-        FlatStorageTree storageTree) : IWorldStateScopeProvider.IStorageWriteBatch
+        FlatStorageTree storageTree,
+        BackgroundStorageTrie? prepared,
+        Action<Address, Hash256> onRootUpdated) : IWorldStateScopeProvider.IStorageWriteBatch
     {
+        private bool _needsPreparedCommit = prepared is not null;
+
         public void Set(in UInt256 index, in UInt256 value)
         {
-            trieBatch.Set(in index, value);
+            if (prepared?.Contains(index, value) != true)
+            {
+                trieBatch.Set(in index, value);
+                _needsPreparedCommit = false;
+            }
             storageTree.Set(index, value);
         }
 
         public void Clear()
         {
+            prepared = null;
+            _needsPreparedCommit = false;
             trieBatch.Clear();
             storageTree.ClearStorage();
         }
 
-        public void Dispose() => trieBatch.Dispose();
+        public void Dispose()
+        {
+            trieBatch.Dispose();
+            if (_needsPreparedCommit)
+            {
+                storageTree.GetTrees().Tree.Commit();
+                onRootUpdated(storageTree._address, storageTree.RootHash);
+            }
+        }
     }
 
     // Trie-less scope: only the flat overlay is written; there is no storage trie to maintain.
