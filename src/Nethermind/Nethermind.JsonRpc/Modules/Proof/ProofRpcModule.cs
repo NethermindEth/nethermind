@@ -3,7 +3,6 @@
 
 using System.Linq;
 using System.Threading;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Tracing;

@@ -55,6 +55,9 @@ public class TrieStoreScopeProvider(
 
     public bool HasRoot(BlockHeader? baseBlock) => _trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
 
+    /// <summary>Whether a scope can be opened at <paramref name="baseBlock"/>; a backend that recovers missing nodes on demand may accept a root it does not hold.</summary>
+    protected virtual bool CanBeginScope(BlockHeader? baseBlock) => HasRoot(baseBlock);
+
     public bool HasStateForTargetBlock(BlockHeader targetBlock)
     {
         ArgumentNullException.ThrowIfNull(targetBlock);
@@ -90,7 +93,7 @@ public class TrieStoreScopeProvider(
         IDisposable trieStoreCloser = _trieStore.BeginScope(baseBlock);
         try
         {
-            if (!HasRoot(baseBlock))
+            if (!CanBeginScope(baseBlock))
             {
                 trieStoreCloser.Dispose();
                 scope = null;

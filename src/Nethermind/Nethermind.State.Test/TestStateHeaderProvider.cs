@@ -5,7 +5,6 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.State;
 
 namespace Nethermind.Store.Test;
 

@@ -16,7 +16,6 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 
 namespace Nethermind.State.Flat.Test;

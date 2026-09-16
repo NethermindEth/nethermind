@@ -19,7 +19,6 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 

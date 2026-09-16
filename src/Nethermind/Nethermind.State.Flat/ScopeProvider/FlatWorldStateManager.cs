@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using Nethermind.Blockchain;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Db;

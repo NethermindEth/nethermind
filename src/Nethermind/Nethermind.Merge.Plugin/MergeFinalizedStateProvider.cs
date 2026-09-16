@@ -4,9 +4,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Merge.Plugin;
 

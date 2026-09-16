@@ -16,7 +16,6 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.History")]

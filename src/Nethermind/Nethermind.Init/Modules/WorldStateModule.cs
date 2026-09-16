@@ -5,12 +5,10 @@ using System;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Init.Modules;
 
