@@ -97,6 +97,17 @@ namespace Nethermind.TxPool.Test
             _blockTree.BestSuggestedHeader = Build.A.BlockHeader.WithNumber(10000000).WithBaseFee(0).TestObject;
         }
 
+        // The fixture is parallelizable and the pool's ledgers feed process-wide gauges, so an undisposed pool
+        // keeps sweeping heads and mutating those gauges while sibling tests assert on them.
+        [TearDown]
+        public async Task TearDown()
+        {
+            if (_txPool is not null)
+            {
+                await _txPool.DisposeAsync();
+            }
+        }
+
         [TestCase(false, TestName = "should_add_peers")]
         [TestCase(true, TestName = "should_add_and_delete_peers")]
         public void should_manage_peers(bool removePeers)
@@ -2067,6 +2078,8 @@ namespace Nethermind.TxPool.Test
             int maxTryCount = 5;
             for (int i = 0; i < maxTryCount; ++i)
             {
+                // TearDown reaches only the last iteration's pool.
+                if (_txPool is not null) await _txPool.DisposeAsync();
                 _txPool = CreatePool();
                 int transactionsPerPeer = 5;
                 Transaction[] transactions = AddTransactionsToPool(true, false, transactionsPerPeer);
