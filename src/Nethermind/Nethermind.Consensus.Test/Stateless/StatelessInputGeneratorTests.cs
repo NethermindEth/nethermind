@@ -281,7 +281,7 @@ public class StatelessInputGeneratorTests
             state.Commit(spec);
             state.CommitTree(0);
             parent = Build.A.BlockHeader.WithNumber(currentChainActivation ? 30_000_000 : 0)
-                .WithTimestamp(currentChainActivation ? 2_000_000_000UL : 1_000_000UL).WithStateRoot(state.StateRoot).TestObject;
+                .WithTimestamp(currentChainActivation ? MainnetSpecProvider.OsakaBlockTimestamp : 1_000_000UL).WithStateRoot(state.StateRoot).TestObject;
         }
 
         using TrieStore.StableLockScope stableState = container.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore.PrepareStableState(CancellationToken.None);
