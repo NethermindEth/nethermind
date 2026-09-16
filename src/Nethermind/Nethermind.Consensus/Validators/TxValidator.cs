@@ -185,10 +185,11 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
     private static ValidationResult IntrinsicGasError(string error) => new(error) { IsIntrinsicGasError = true };
 }
 
-/// <summary>Applies <paramref name="inner"/> only to transactions carrying the envelope it judges.</summary>
+/// <summary>Applies <paramref name="inner"/> to every transaction except frame transactions, which carry no
+/// envelope for it to judge.</summary>
 /// <remarks>EIP-8141: a frame transaction has no envelope gas limit and no <c>to</c>, so <see cref="TxValidator"/>
 /// omits the envelope size, gas-cap and intrinsic-gas rules from its frame composite; head validation must too.</remarks>
-internal sealed class ExceptFrameTxValidator(ITxValidator inner) : ITxValidator
+internal sealed class NonFrameTxValidator(ITxValidator inner) : ITxValidator
 {
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
         transaction.Type == TxType.FrameTx ? ValidationResult.Success : inner.IsWellFormed(transaction, releaseSpec);
