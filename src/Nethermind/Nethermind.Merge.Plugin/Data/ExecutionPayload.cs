@@ -244,7 +244,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     {
         if (_transactions is not null) return _transactions;
 
-        TransactionDecodingResult res = TxsDecoder.DecodeOwnedTxs(Transactions, skipErrors: false);
+        TransactionDecodingResult res = TxsDecoder.DecodeTxsBorrowingBuffers(Transactions, skipErrors: false);
         if (res.Error is not null) return res.Error;
         return _transactions = res.Transactions;
     }

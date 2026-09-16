@@ -4,9 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using MemoryMarshal = System.Runtime.InteropServices.MemoryMarshal;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
-using Nethermind.Core.Cpu;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -21,40 +20,42 @@ namespace Nethermind.Merge.Plugin.Test;
 [Parallelizable(ParallelScope.All)]
 public class ExecutionPayloadTests
 {
-    private static TxType[] TxTypes() => [TxType.AccessList, TxType.EIP1559, TxType.Blob];
+    private static TxType[] TxTypes() => [TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.Blob];
 
     [Test]
     public void Payload_decoding_borrows_data_and_preserves_hash_after_replacement(
-        [Values(TxType.Legacy, TxType.EIP1559)] TxType type,
+        [ValueSource(nameof(TxTypes))] TxType type,
         [Values(68, 8192, 65536)] int dataLength,
         [Values(1, 64)] int count)
     {
         byte[] data = new byte[dataLength];
         data.AsSpan().Fill(0x42);
-        byte[] encoded = EncodeTx(type, data: data);
-        Hash256 expectedHash = Keccak.Compute(encoded);
-        ExecutionPayload payload = new() { Transactions = Enumerable.Repeat(encoded, count).ToArray() };
+        byte[][] encoded = Enumerable.Range(0, count).Select(i => EncodeTx(type, nonce: (ulong)i, data: data)).ToArray();
+        Hash256[] expectedHashes = encoded.Select(bytes => Keccak.Compute(bytes)).ToArray();
+        ExecutionPayload payload = new() { Transactions = encoded };
 
         Result<Transaction[]> result = payload.TryGetTransactions();
         Assert.That(result.Error, Is.Null);
         payload.Transactions = [];
 
-        foreach (Transaction tx in result.Data!)
+        for (int i = 0; i < count; i++)
         {
+            Transaction tx = result.Data![i];
             Assert.That(MemoryMarshal.TryGetArray(tx.Data, out ArraySegment<byte> segment), Is.True);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(segment.Array, Is.SameAs(encoded));
+                Assert.That(segment.Array, Is.SameAs(encoded[i]));
+                Assert.That(tx.Nonce, Is.EqualTo((ulong)i));
                 Assert.That(tx.Data.ToArray(), Is.EqualTo(data));
-                Assert.That(tx.Hash, Is.EqualTo(expectedHash));
-                Assert.That(TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes, Is.EqualTo(encoded));
+                Assert.That(tx.Hash, Is.EqualTo(expectedHashes[i]));
+                Assert.That(TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes, Is.EqualTo(encoded[i]));
             }
         }
     }
 
     [Test]
     public void Public_decoder_keeps_data_and_lazy_hash_independent_of_input(
-        [Values(TxType.Legacy, TxType.EIP1559)] TxType type, [Values(1, 64)] int count)
+        [ValueSource(nameof(TxTypes))] TxType type, [Values(1, 64)] int count)
     {
         byte[] data = [1, 2, 3, 4];
         byte[] encoded = EncodeTx(type, data: data);
@@ -148,7 +149,7 @@ public class ExecutionPayloadTests
         using (Assert.EnterMultipleScope())
         {
             // A single processor computes the root inline instead of starting the task.
-            Assert.That(rootTask, RuntimeInformation.IsSingleProcessor ? Is.Null : Is.Not.Null);
+            Assert.That(rootTask, Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor ? Is.Null : Is.Not.Null);
             Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(rlps)));
         }
     }
