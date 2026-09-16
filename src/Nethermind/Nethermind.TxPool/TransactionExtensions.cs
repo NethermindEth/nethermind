@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -13,6 +14,7 @@ namespace Nethermind.TxPool
 {
     public static class TransactionExtensions
     {
+        private const int ShortRlpSequenceLimit = 56;
         private static readonly long MaxSizeOfTxForBroadcast = 4.KiB; //4KB, as in Geth https://github.com/ethereum/go-ethereum/pull/27618
         private static readonly ITransactionSizeCalculator _transactionSizeCalculator = new NetworkTransactionSizeCalculator(TxDecoder.Instance);
 
@@ -34,11 +36,84 @@ namespace Nethermind.TxPool
                 return tx.GetLength();
             }
 
-            // A blob transaction without its network wrapper has no network encoding to announce.
-            return tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
-                ? BlobTransactionPayload.Elide(tx, wrapper).GetLength()
-                : 0;
+            if (tx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper)
+            {
+                return 0;
+            }
+
+            int versionLength = GetProofVersionLength(wrapper.Version);
+            if (versionLength < 0)
+            {
+                return 0;
+            }
+
+            long contentLength = (long)tx.GetLength(shouldCountBlobs: false) - 1
+                + versionLength
+                + Rlp.OfEmptyList.Length
+                + Rlp.LengthOf(wrapper.Commitments)
+                + Rlp.LengthOf(wrapper.Proofs);
+            return GetTypedSequenceLength(contentLength);
         }
+
+        internal static int GetElidedNetworkLength(int consensusEncodingSize, ProofVersion? proofVersion, int blobCount)
+        {
+            if (consensusEncodingSize <= 1 || blobCount <= 0 || proofVersion is null)
+            {
+                return 0;
+            }
+
+            int versionLength = GetProofVersionLength(proofVersion.Value);
+            if (versionLength < 0)
+            {
+                return 0;
+            }
+
+            int commitmentLength = Rlp.LengthOfByteString(Ckzg.BytesPerCommitment, firstByte: 0);
+            int proofLength = Rlp.LengthOfByteString(Ckzg.BytesPerProof, firstByte: 0);
+            long proofCount = proofVersion is ProofVersion.V1
+                ? (long)blobCount * Ckzg.CellsPerExtBlob
+                : blobCount;
+            int commitmentsLength = GetSequenceLength((long)blobCount * commitmentLength);
+            int proofsLength = GetSequenceLength(proofCount * proofLength);
+            if (commitmentsLength == 0 || proofsLength == 0)
+            {
+                return 0;
+            }
+
+            long contentLength = (long)consensusEncodingSize - 1
+                + versionLength
+                + Rlp.OfEmptyList.Length
+                + commitmentsLength
+                + proofsLength;
+            return GetTypedSequenceLength(contentLength);
+        }
+
+        private static int GetTypedSequenceLength(long contentLength)
+        {
+            int sequenceLength = GetSequenceLength(contentLength);
+            return sequenceLength is > 0 and < int.MaxValue ? sequenceLength + 1 : 0;
+        }
+
+        private static int GetSequenceLength(long contentLength)
+        {
+            if (contentLength is < 0 or > int.MaxValue)
+            {
+                return 0;
+            }
+
+            int length = (int)contentLength;
+            long sequenceLength = length < ShortRlpSequenceLimit
+                ? 1L + length
+                : 1L + Rlp.LengthOfLength(length) + length;
+            return sequenceLength <= int.MaxValue ? (int)sequenceLength : 0;
+        }
+
+        private static int GetProofVersionLength(ProofVersion proofVersion) => proofVersion switch
+        {
+            ProofVersion.V0 => 0,
+            ProofVersion.V1 => Rlp.LengthOf((byte)proofVersion),
+            _ => -1,
+        };
 
         public static bool CanPayBaseFee(this Transaction tx, UInt256 currentBaseFee) => (UInt256)tx.MaxFeePerGas >= currentBaseFee;
 

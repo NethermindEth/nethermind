@@ -2201,7 +2201,7 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(nonce)
-            .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
+                .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
 
         private static int GetUncachedLength(Transaction transaction)
         {

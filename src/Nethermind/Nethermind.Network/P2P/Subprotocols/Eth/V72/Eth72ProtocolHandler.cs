@@ -311,8 +311,8 @@ public class Eth72ProtocolHandler(
             return base.ShouldNotifyTransactionCore(tx);
         }
 
-        // A light entry whose elided payload was missing during restoration cannot produce a safe eth/72
-        // size announcement. BlobTxStorage reports these entries when it restores the pool.
+        // Light entries persisted before the versioned consensus-size field cannot derive a safe eth/72
+        // announcement size. They keep propagating via eth/68-71 sessions until they churn out.
         if (tx is LightTransaction lightTx && lightTx.GetElidedNetworkSize() == 0)
         {
             return false;

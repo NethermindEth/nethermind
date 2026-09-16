@@ -459,93 +459,6 @@ public class BlobTxStorageTests
         }
     }
 
-    [Test]
-    public void GetAll_should_recover_unknown_elided_network_size_from_stored_payload()
-    {
-        MemColumnsDb<BlobTxsColumns> columnsDb = new();
-        BlobTxStorage blobTxStorage = new(columnsDb);
-        Transaction tx = CreateBlobTransaction();
-        blobTxStorage.Add(tx);
-        byte[] legacyRecord = LightTxDecoder.Encode(tx);
-        legacyRecord[^1] = 1;
-        columnsDb.GetColumnDb(BlobTxsColumns.LightBlobTxs).Set(tx.Hash, legacyRecord);
-
-        int expectedSize = BlobTransactionPayload.Elide(tx).GetLength();
-        LightTransaction restored = blobTxStorage.GetAll().Single();
-        columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs).Remove([0x01, .. tx.Hash!.Bytes]);
-        LightTransaction restoredAfterUpgrade = blobTxStorage.GetAll().Single();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(restored.GetElidedNetworkSize(), Is.EqualTo(expectedSize));
-            Assert.That(restoredAfterUpgrade.GetElidedNetworkSize(), Is.EqualTo(expectedSize));
-        }
-    }
-
-    [Test]
-    public void GetAll_should_warn_when_unknown_elided_network_size_cannot_be_recovered([Values] bool corruptPayload)
-    {
-        InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
-        iLogger.IsWarn.Returns(true);
-        MemColumnsDb<BlobTxsColumns> columnsDb = new();
-        BlobTxStorage blobTxStorage = new(columnsDb, new OneLoggerLogManager(new ILogger(iLogger)));
-        Transaction tx = CreateBlobTransaction();
-        blobTxStorage.Add(tx);
-        byte[] legacyRecord = LightTxDecoder.Encode(tx);
-        legacyRecord[^1] = 1;
-        columnsDb.GetColumnDb(BlobTxsColumns.LightBlobTxs).Set(tx.Hash, legacyRecord);
-        byte[] elidedKey = [0x01, .. tx.Hash!.Bytes];
-        if (corruptPayload)
-        {
-            columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs).Set(elidedKey, [0xc1]);
-        }
-        else
-        {
-            columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs).Remove(elidedKey);
-        }
-
-        LightTransaction restored = blobTxStorage.GetAll().Single();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(restored.GetElidedNetworkSize(), Is.Zero);
-            iLogger.Received(1).Warn(Arg.Is<string>(message =>
-                message.Contains("Could not recover the eth/72 announcement size for 1 restored blob transaction record")));
-        }
-    }
-
-    [Test]
-    public void GetAll_should_recover_and_upgrade_legacy_records_in_bounded_batches()
-    {
-        const int transactionCount = 129;
-        TrackingColumnsDb columnsDb = new();
-        BlobTxStorage blobTxStorage = new(columnsDb);
-        for (int i = 0; i < transactionCount; i++)
-        {
-            Transaction tx = Build.A.Transaction
-                .WithShardBlobTxTypeAndFields()
-                .WithNonce((ulong)i)
-                .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Mainnet), TestItem.PrivateKeyA).TestObject;
-            blobTxStorage.Add(tx);
-            byte[] legacyRecord = LightTxDecoder.Encode(tx);
-            legacyRecord[^1] = 1;
-            columnsDb.SetRaw(BlobTxsColumns.LightBlobTxs, tx.Hash!.Bytes, legacyRecord);
-        }
-
-        columnsDb.ResetTracking();
-
-        LightTransaction[] restored = blobTxStorage.GetAll().ToArray();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(restored, Has.Length.EqualTo(transactionCount));
-            Assert.That(restored.Select(static tx => tx.GetElidedNetworkSize()), Is.All.GreaterThan(0));
-            Assert.That(columnsDb.FullBlobTxSingleReadCount, Is.Zero);
-            Assert.That(columnsDb.FullBlobTxMultiReadCount, Is.EqualTo(2));
-            Assert.That(columnsDb.StartedWriteBatchCount, Is.EqualTo(2));
-        }
-    }
-
     private static Transaction CreateBlobTransaction() => CreateBlobTransaction(TestItem.PrivateKeyA);
 
     private static Transaction CreateBlobTransaction(PrivateKey signer) => Build.A.Transaction
@@ -560,8 +473,6 @@ public class BlobTxStorageTests
         private readonly Dictionary<BlobTxsColumns, IDb> _columnDbs = [];
 
         public int StartedWriteBatchCount { get; private set; }
-        public int FullBlobTxSingleReadCount { get; private set; }
-        public int FullBlobTxMultiReadCount { get; private set; }
         public bool FailNextLightColumnWrite { get; set; }
         public IEnumerable<BlobTxsColumns> ColumnKeys => _inner.ColumnKeys;
 
@@ -569,7 +480,7 @@ public class BlobTxStorageTests
         {
             if (!_columnDbs.TryGetValue(key, out IDb db))
             {
-                db = new DirectWriteRejectingDb(_inner.GetColumnDb(key), key, this);
+                db = new DirectWriteRejectingDb(_inner.GetColumnDb(key), key);
                 _columnDbs.Add(key, db);
             }
 
@@ -583,20 +494,6 @@ public class BlobTxStorageTests
         }
 
         public void ResetWriteBatchTracking() => StartedWriteBatchCount = 0;
-
-        public void ResetTracking()
-        {
-            StartedWriteBatchCount = 0;
-            FullBlobTxSingleReadCount = 0;
-            FullBlobTxMultiReadCount = 0;
-        }
-
-        public void SetRaw(BlobTxsColumns column, ReadOnlySpan<byte> key, byte[] value) =>
-            _inner.GetColumnDb(column).Set(key, value);
-
-        public void RecordFullBlobTxSingleRead() => FullBlobTxSingleReadCount++;
-
-        public void RecordFullBlobTxMultiRead() => FullBlobTxMultiReadCount++;
 
         public IColumnDbSnapshot<BlobTxsColumns> CreateSnapshot() => _inner.CreateSnapshot();
 
@@ -639,32 +536,13 @@ public class BlobTxStorageTests
         public void Dispose() { }
     }
 
-    private sealed class DirectWriteRejectingDb(IDb inner, BlobTxsColumns column, TrackingColumnsDb owner) : IDb
+    private sealed class DirectWriteRejectingDb(IDb inner, BlobTxsColumns column) : IDb
     {
         public string Name => inner.Name;
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys]
-        {
-            get
-            {
-                if (column == BlobTxsColumns.FullBlobTxs)
-                {
-                    owner.RecordFullBlobTxMultiRead();
-                }
+        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => inner[keys];
 
-                return inner[keys];
-            }
-        }
-
-        public byte[] Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-        {
-            if (column == BlobTxsColumns.FullBlobTxs && key.Length == 33)
-            {
-                owner.RecordFullBlobTxSingleRead();
-            }
-
-            return inner.Get(key, flags);
-        }
+        public byte[] Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => inner.Get(key, flags);
 
         public void Set(ReadOnlySpan<byte> key, byte[] value, WriteFlags flags = WriteFlags.None)
         {

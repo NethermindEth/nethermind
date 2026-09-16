@@ -15,6 +15,7 @@ namespace Nethermind.TxPool;
 /// </summary>
 public class LightTransaction : Transaction
 {
+    private readonly int _consensusEncodingSize;
     private int _elidedNetworkSize;
     private StrongBox<BlobCellMask>? _blobCellMask;
 
@@ -35,7 +36,7 @@ public class LightTransaction : Transaction
         PoolIndex = fullTx.PoolIndex;
         ProofVersion = fullTx.GetProofVersion();
         BlobCellMask = (fullTx.NetworkWrapper as ShardBlobNetworkWrapper)?.GetAvailableCellMask() ?? default;
-        _elidedNetworkSize = fullTx.GetElidedNetworkLength();
+        _consensusEncodingSize = fullTx.GetLength(shouldCountBlobs: false);
         _size = fullTx.GetLength();
     }
 
@@ -87,7 +88,44 @@ public class LightTransaction : Transaction
         int size,
         ProofVersion proofVersion,
         BlobCellMask blobCellMask = default,
-        int elidedNetworkSize = 0)
+        int sparseBlobNetworkSize = 0)
+        : this(
+            timestamp,
+            sender,
+            nonce,
+            hash,
+            value,
+            gasLimit,
+            gasPrice,
+            maxFeePerGas,
+            maxFeePerBlobGas,
+            blobVersionHashes,
+            poolIndex,
+            size,
+            proofVersion,
+            blobCellMask,
+            sparseBlobNetworkSize,
+            0)
+    {
+    }
+
+    internal LightTransaction(
+        UInt256 timestamp,
+        Address sender,
+        ulong nonce,
+        Hash256 hash,
+        UInt256 value,
+        ulong gasLimit,
+        UInt256 gasPrice,
+        UInt256 maxFeePerGas,
+        UInt256 maxFeePerBlobGas,
+        byte[][] blobVersionHashes,
+        ulong poolIndex,
+        int size,
+        ProofVersion proofVersion,
+        BlobCellMask blobCellMask,
+        int consensusEncodingSize,
+        int elidedNetworkSize)
     {
         Type = TxType.Blob;
         Hash = hash;
@@ -103,6 +141,7 @@ public class LightTransaction : Transaction
         PoolIndex = poolIndex;
         ProofVersion = proofVersion;
         BlobCellMask = blobCellMask;
+        _consensusEncodingSize = consensusEncodingSize;
         _elidedNetworkSize = elidedNetworkSize;
         _size = size;
     }
@@ -126,7 +165,7 @@ public class LightTransaction : Transaction
     internal void UpdateBlobPoolMetadata(Transaction blobTx)
     {
         _size = blobTx.GetLength();
-        if (Volatile.Read(ref _elidedNetworkSize) == 0)
+        if (GetElidedNetworkSize() == 0)
         {
             Volatile.Write(ref _elidedNetworkSize, blobTx.GetElidedNetworkLength());
         }
@@ -134,14 +173,19 @@ public class LightTransaction : Transaction
         BlobCellMask = (blobTx.NetworkWrapper as ShardBlobNetworkWrapper)?.GetAvailableCellMask() ?? default;
     }
 
-    internal void UpdateElidedNetworkSize(int elidedNetworkSize) =>
-        Volatile.Write(ref _elidedNetworkSize, elidedNetworkSize);
-
     public override ProofVersion? GetProofVersion() => ProofVersion;
 
+    public int GetConsensusEncodingSize() => _consensusEncodingSize;
+
     /// <summary>
-    /// Length of the blob-elided eth/72 network encoding of this transaction, or <c>0</c> when the
-    /// persisted record predates the field. See <see cref="TransactionExtensions.GetElidedNetworkLength"/>.
+    /// Length of the blob-elided eth/72 network encoding of this transaction, or <c>0</c> when it cannot
+    /// be derived from the persisted metadata. See <see cref="TransactionExtensions.GetElidedNetworkLength"/>.
     /// </summary>
-    public int GetElidedNetworkSize() => Volatile.Read(ref _elidedNetworkSize);
+    public int GetElidedNetworkSize()
+    {
+        int elidedNetworkSize = Volatile.Read(ref _elidedNetworkSize);
+        return elidedNetworkSize > 0
+            ? elidedNetworkSize
+            : TransactionExtensions.GetElidedNetworkLength(_consensusEncodingSize, ProofVersion, BlobVersionedHashes?.Length ?? 0);
+    }
 }

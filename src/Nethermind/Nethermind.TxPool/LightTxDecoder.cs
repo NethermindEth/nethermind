@@ -12,15 +12,12 @@ namespace Nethermind.TxPool;
 
 public class LightTxDecoder : TxDecoder<Transaction>
 {
-    /// <summary>
-    /// Format marker for the trailing size field. Version 1 stored the transaction's *consensus* encoding
-    /// size, which is not a valid eth/72 announcement size; version 2 stores the blob-elided network size.
-    /// Records written with any other marker are read back as <c>0</c>; persistent storage recovers the value
-    /// from the corresponding blob-elided payload when available.
-    /// </summary>
+    private const byte ConsensusEncodingSizeFormatVersion = 1;
+    // Format 2 stored the already-derived elided size. It remains readable, while new records keep the
+    // foundational consensus size from which future wrapper encodings can also be derived.
     private const byte ElidedNetworkSizeFormatVersion = 2;
 
-    private static int GetLength(Transaction tx, int networkSize, int elidedNetworkSize) => Rlp.LengthOf(tx.Timestamp)
+    private static int GetLength(Transaction tx, int networkSize, int persistedEncodingSize, byte sizeFormatVersion) => Rlp.LengthOf(tx.Timestamp)
                + Rlp.LengthOf(tx.SenderAddress)
                + Rlp.LengthOf(tx.Nonce)
                + Rlp.LengthOf(tx.Hash)
@@ -34,14 +31,14 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(networkSize)
                + Rlp.LengthOf(sizeof(byte))
                + Rlp.LengthOfByteString(BlobCellMask.FixedByteLength, firstByte: 0)
-               + Rlp.LengthOf(elidedNetworkSize)
-               + Rlp.LengthOf(ElidedNetworkSizeFormatVersion);
+               + Rlp.LengthOf(persistedEncodingSize)
+               + Rlp.LengthOf(sizeFormatVersion);
 
     public static byte[] Encode(Transaction tx)
     {
         int networkSize = tx.GetLength();
-        int elidedNetworkSize = GetElidedNetworkSize(tx);
-        byte[] bytes = new byte[GetLength(tx, networkSize, elidedNetworkSize)];
+        (int persistedEncodingSize, byte sizeFormatVersion) = GetPersistedEncodingSize(tx);
+        byte[] bytes = new byte[GetLength(tx, networkSize, persistedEncodingSize, sizeFormatVersion)];
         RlpWriter writer = new(bytes);
 
         writer.Encode(tx.Timestamp);
@@ -58,8 +55,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
         writer.Encode(networkSize);
         writer.Encode((byte)(tx.GetProofVersion() ?? default));
         EncodeAvailableCellMask(tx, ref writer);
-        writer.Encode(elidedNetworkSize);
-        writer.Encode(ElidedNetworkSizeFormatVersion);
+        writer.Encode(persistedEncodingSize);
+        writer.Encode(sizeFormatVersion);
 
         return bytes;
     }
@@ -93,9 +90,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
             : BlobCellMask.Full;
         int persistedEncodingSize = optionalFieldCount >= 3 ? ctx.DecodePositiveInt() : 0;
         byte sizeFormatVersion = optionalFieldCount >= 4 ? (byte)ctx.DecodeByte() : (byte)0;
-        int elidedNetworkSize = sizeFormatVersion == ElidedNetworkSizeFormatVersion
-            ? persistedEncodingSize
-            : 0;
+        int consensusEncodingSize = sizeFormatVersion == ConsensusEncodingSizeFormatVersion ? persistedEncodingSize : 0;
+        int elidedNetworkSize = sizeFormatVersion == ElidedNetworkSizeFormatVersion ? persistedEncodingSize : 0;
         ctx.Check(data.Length);
 
         return new LightTransaction(
@@ -113,6 +109,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
             size,
             proofVersion,
             blobCellMask,
+            consensusEncodingSize,
             elidedNetworkSize);
     }
 
@@ -130,8 +127,16 @@ public class LightTxDecoder : TxDecoder<Transaction>
                 ? lightTx.BlobCellMask
                 : BlobCellMask.Empty;
 
-    private static int GetElidedNetworkSize(Transaction tx) =>
-        tx is LightTransaction lightTx
-            ? lightTx.GetElidedNetworkSize()
-            : tx.GetElidedNetworkLength();
+    private static (int Size, byte FormatVersion) GetPersistedEncodingSize(Transaction tx)
+    {
+        if (tx is not LightTransaction lightTx)
+        {
+            return (tx.GetLength(shouldCountBlobs: false), ConsensusEncodingSizeFormatVersion);
+        }
+
+        int consensusEncodingSize = lightTx.GetConsensusEncodingSize();
+        return consensusEncodingSize > 0
+            ? (consensusEncodingSize, ConsensusEncodingSizeFormatVersion)
+            : (lightTx.GetElidedNetworkSize(), ElidedNetworkSizeFormatVersion);
+    }
 }
