@@ -111,7 +111,12 @@ internal sealed class StorageRootBuilder
 
     private static void HashTouched(Shard shard)
     {
-        foreach (FlatStorageTree tree in shard.Touched) tree.HashDirtyPaths();
+        foreach (FlatStorageTree tree in shard.Touched)
+        {
+            // Once the block thread is waiting for the join, the parallel flush hashes what is left faster than this thread.
+            if (shard.Pending.IsAddingCompleted) break;
+            tree.HashDirtyPaths();
+        }
         shard.Touched.Clear();
     }
 }
