@@ -73,8 +73,14 @@ jobs:
           if [[ -n "$BASE_SHA" ]] && \
             git cat-file -e "$BASE_SHA:scripts/zisk-bench/report.py" 2>/dev/null && \
             git cat-file -e "$BASE_SHA:$GUEST_DIR/inputs.json" 2>/dev/null; then
-            git archive "$BASE_SHA" scripts/zisk-bench "$GUEST_DIR/inputs.json" | tar -x -C "$definitions"
-            echo "trusted=true" >> "$GITHUB_OUTPUT"
+            if git diff --quiet "$BASE_SHA" HEAD -- "$GUEST_DIR/inputs.json"; then
+              git archive "$BASE_SHA" scripts/zisk-bench "$GUEST_DIR/inputs.json" | tar -x -C "$definitions"
+              echo "trusted=true" >> "$GITHUB_OUTPUT"
+            else
+              # Head redefining the pinned set's expected outputs leaves nothing to compare against.
+              git archive HEAD scripts/zisk-bench "$GUEST_DIR/inputs.json" | tar -x -C "$definitions"
+              echo "trusted=false" >> "$GITHUB_OUTPUT"
+            fi
           else
             # Initial introduction has no base-owned instrument and cannot claim a comparison.
             git archive HEAD scripts/zisk-bench "$GUEST_DIR/inputs.json" | tar -x -C "$definitions"

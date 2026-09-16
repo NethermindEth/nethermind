@@ -26,11 +26,14 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      # inputs.json is the single pinned block set; stateless-benchmarks.yml reads the same file, so
-      # the benchmark can never report on a different set of blocks than this workflow verifies.
+      # inputs.json is the single pinned block set. On master both workflows read it directly; on a
+      # pull request the benchmark deliberately uses the base revision to keep its instrument trusted.
       - name: Read the pinned block set
         id: blocks
-        run: echo "json=$(jq -c . src/Nethermind/Nethermind.Stateless.ZiskGuest/inputs.json)" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          json=$(jq -ce 'if type == "array" and length > 0 and all(.[]; (.input | test("^[0-9]+\\.ssz$")) and (.hash | test("^[0-9a-f]{64}$")) and (.output | test("^[0-9a-f]{64}$"))) then . else error("invalid pinned block set") end' src/Nethermind/Nethermind.Stateless.ZiskGuest/inputs.json)
+          echo "json=$json" >> "$GITHUB_OUTPUT"
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v6

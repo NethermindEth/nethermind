@@ -610,7 +610,7 @@ class InputListTests(unittest.TestCase):
     def test_the_pinned_set_has_the_shape_both_workflows_expect(self):
         inputs = json.loads((self.REPOSITORY / self.GUEST_INPUTS).read_text(encoding="utf-8"))
 
-        self.assertTrue(inputs)
+        self.assertGreaterEqual(len(inputs), 9, "blocks were dropped from the pinned set")
         for entry in inputs:
             self.assertRegex(entry["input"], r"^[0-9]+\.ssz$")
             self.assertRegex(entry["hash"], r"^[0-9a-f]{64}$")
