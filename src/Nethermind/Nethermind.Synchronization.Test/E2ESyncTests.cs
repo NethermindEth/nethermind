@@ -92,6 +92,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
     private static readonly TimeSpan SetupTimeout = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(60);
+    /// <remarks>With <c>Retry(2)</c>, a fixture can use up to four minutes across both attempts.</remarks>
     private static readonly TimeSpan SnapSyncTestTimeout = TimeSpan.FromMinutes(2);
 
     /// <summary>Runs a test body under a timeout.</summary>
@@ -580,7 +581,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         if (dbMode != DbMode.Flat) Assert.Ignore("Stress repro only targets the Flat dbMode where the flake was observed");
         _ = iteration; // index is purely to give NUnit a unique case per attempt
 
-        await RunWithTimeout(TestTimeout, RunSnapSyncOnce);
+        await RunWithTimeout(SnapSyncTestTimeout, RunSnapSyncOnce);
     }
 
     private async Task RunSnapSyncOnce(CancellationToken cancellationToken)
