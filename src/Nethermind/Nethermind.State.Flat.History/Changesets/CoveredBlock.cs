@@ -14,21 +14,8 @@ internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBl
 {
     public IPrefixStateSeedSource CreateWorkerSeeds() => new WorkerSeeds(rows, earlierBlocks);
 
-    /// <summary>Nothing is published for a block the chain cannot describe exactly, a block holding a row the codec
-    /// cannot read included: the trace is already finished and answered, and a chain node nobody can build is not
-    /// worth failing it for.</summary>
-    public void Complete()
-    {
-        if (chain is null) return;
-
-        try
-        {
-            chain.Publish(rows, earlierBlocks, excluded);
-        }
-        catch (InvalidDataException)
-        {
-        }
-    }
+    /// <summary>Nothing is published for a block the chain cannot describe exactly.</summary>
+    public void Complete() => chain?.Publish(rows, earlierBlocks, excluded);
 
     public void Dispose()
     {
@@ -56,19 +43,9 @@ internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBl
             if ((ulong)block.Number != _rows.Number || block.Hash != _rows.Hash) return false;
             if (transactionIndex < 0 || transactionIndex > _rows.Rows.Length) return false;
 
+            // Every row of the block was read when it was opened, so the fold cannot fail here.
             if (_overlay.Folded > transactionIndex) _overlay.Reset(_rows.Number);
-            try
-            {
-                while (_overlay.Folded < transactionIndex) _overlay.Fold(_overlay.Folded, _rows.Rows[_overlay.Folded]);
-            }
-            catch (InvalidDataException)
-            {
-                // A row the codec cannot read is a refusal here too: the boundary replays the prefix and answers,
-                // rather than failing a request the single-transaction path would have served. What the fold had
-                // already applied goes with it, or the next target would be seeded with part of itself.
-                _overlay.Reset(_rows.Number);
-                return false;
-            }
+            while (_overlay.Folded < transactionIndex) _overlay.Fold(_overlay.Folded, _rows.Rows[_overlay.Folded]);
 
             IStateReadOverlay view = new MidBlockReadOverlay(_overlay);
             slot.Arm(_earlierBlocks is null ? view : new ChainedReadOverlay(view, _earlierBlocks), NoLease.Instance);

@@ -213,23 +213,21 @@ public class CoveredBlockTests
     }
 
     [Test]
-    public void ARowTheCodecCannotRead_RefusesTheSeedThatNeedsIt_AndNeverFailsTheBlock()
+    public void ABlockCarryingARowTheCodecCannotRead_IsNotOpened()
     {
+        long refusedBefore = Nethermind.State.Flat.Metrics.UnreadableTransactionChangesetRows;
         Truncate(_seven, 1);
-        Assert.That(_index.TryOpenBlock(_seven, out ICoveredBlock? covered), Is.True, "the rows are all present; only one of them cannot be read");
-        using ICoveredBlock block = covered!;
-        IPrefixStateSeedSource seeds = block.CreateWorkerSeeds();
-        StateReadOverlaySlot slot = new();
 
-        bool needsTheBadRow = seeds.TrySeed(_seven, 2, slot);
-        bool doesNot = seeds.TrySeed(_seven, 1, slot);
+        bool opened = _index.TryOpenBlock(_seven, out ICoveredBlock? covered);
+        bool otherBlockStillOpens = _index.TryOpenBlock(_eight, out ICoveredBlock? eight);
+        eight?.Dispose();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(needsTheBadRow, Is.False, "a row the codec cannot read is a refusal here too, and the transaction is traced by replaying the prefix");
-            Assert.That(doesNot, Is.True, "a target whose prefix stops before the unreadable row is still seeded");
-            Assert.That(slot.Current!.TryGetAccount(TestItem.AddressA, Parent, out Account? a) && a!.Balance == 10, Is.True, "and what the refused fold had applied is gone");
-            Assert.That(block.Complete, Throws.Nothing, "the block was traced and answered; a chain node nobody can build must not fail it afterwards");
+            Assert.That(opened, Is.False, "a row that only failed once a worker reached it would cost a prefix replay per transaction of the block; refusing the block costs the one replay the node did before the index existed");
+            Assert.That(covered, Is.Null);
+            Assert.That(Nethermind.State.Flat.Metrics.UnreadableTransactionChangesetRows, Is.GreaterThan(refusedBefore), "a node whose column carries damage answers correctly and slowly, so the refusal is counted");
+            Assert.That(otherBlockStillOpens, Is.True, "only the block holding the row is refused");
         }
     }
 

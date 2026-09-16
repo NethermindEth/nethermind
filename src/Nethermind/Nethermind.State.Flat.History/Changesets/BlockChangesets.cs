@@ -44,9 +44,34 @@ internal sealed class BlockChangesets
             rows[next++] = view.CurrentValue.ToArray();
         }
 
-        if (next != transactionCount) return false;
+        if (next != transactionCount || !Readable(rows)) return false;
 
         changesets = new BlockChangesets(number, hash, rows);
+        return true;
+    }
+
+    /// <summary>Every row is read once here, before any of them is used. A block is traced by as many workers as
+    /// there are transactions, each folding its own prefix, so a row that only fails when a worker reaches it would
+    /// cost a prefix replay per transaction; refusing the block instead costs the one replay the node did before the
+    /// index existed.</summary>
+    private static bool Readable(byte[][] rows)
+    {
+        foreach (byte[] row in rows)
+        {
+            try
+            {
+                ChangesetCodec.Enumerator entries = ChangesetCodec.Read(row);
+                while (entries.MoveNext())
+                {
+                }
+            }
+            catch (InvalidDataException)
+            {
+                Flat.Metrics.UnreadableTransactionChangesetRows++;
+                return false;
+            }
+        }
+
         return true;
     }
 
