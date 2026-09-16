@@ -728,10 +728,10 @@ public class TxValidatorTests
 
     // A wrapper that forwards only the two-argument overload silently drops the caller's block gas limit.
     [Test]
-    public void ExceptFrameTxValidator_ForwardsEveryOverload_ForNonFrameTransactions()
+    public void NonFrameTxValidator_ForwardsEveryOverload_ForNonFrameTransactions()
     {
         RecordingTxValidator inner = new();
-        ITxValidator wrapped = new ExceptFrameTxValidator(inner);
+        ITxValidator wrapped = new NonFrameTxValidator(inner);
         Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).TestObject;
 
         wrapped.IsWellFormed(tx, Prague.Instance);
