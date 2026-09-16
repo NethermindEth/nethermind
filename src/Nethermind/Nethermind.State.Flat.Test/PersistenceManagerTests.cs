@@ -1601,30 +1601,35 @@ public class PersistenceManagerTests
         Assert.That(_snapshotRepository.HasBasePersistedSnapshot(stale), Is.False);
     }
 
-    [Test]
-    public void DropStateNotReachableFrom_PrunesSideBranchAndKeepsPersistedState([Values] bool knownHead)
+    // Chain Block0->1->2->3->4 plus a fork (3)->(4,1); `remaining` lists the main-chain blocks still held afterwards
+    // (the fork survives exactly when block 4 does).
+    [TestCase(0ul, 3ul, 0, new ulong[] { 1, 2, 3 }, TestName = "known head above the persisted state")]
+    [TestCase(0ul, 3ul, 7, new ulong[] { 1, 2, 3, 4 }, TestName = "unknown head is refused")]
+    [TestCase(2ul, 2ul, 0, new ulong[] { 1, 2 }, TestName = "head at the persisted state")]
+    [TestCase(5ul, 5ul, 0, new ulong[] { }, TestName = "head at a persisted state nothing is keyed at drops everything")]
+    [TestCase(3ul, 2ul, 0, new ulong[] { 1, 2, 3, 4 }, TestName = "head below the persisted state is refused")]
+    public void DropStateNotReachableFrom_KeepsHeadAncestryOnly(ulong persistedBlock, ulong headBlock, int headRootByte, ulong[] remaining)
     {
-        StateId state1 = CreateStateId(1);
-        StateId state2 = CreateStateId(2);
-        StateId state3 = CreateStateId(3);
-        StateId state4 = CreateStateId(4);
+        StateId persisted = persistedBlock == 0 ? Block0 : CreateStateId(persistedBlock);
+        _persistence.CreateReader().CurrentState.Returns(persisted);
+        StateId previous = Block0;
+        for (ulong block = 1; block <= 4; block++)
+        {
+            CreateSnapshot(previous, CreateStateId(block));
+            previous = CreateStateId(block);
+        }
         StateId fork4 = CreateStateId(4, rootByte: 1);
-        CreateSnapshot(Block0, state1);
-        CreateSnapshot(state1, state2);
-        CreateSnapshot(state2, state3);
-        CreateSnapshot(state3, state4);
-        CreateSnapshot(state3, fork4);
+        CreateSnapshot(CreateStateId(3), fork4);
 
-        _persistenceManager.DropStateNotReachableFrom(knownHead ? state3 : CreateStateId(3, rootByte: 7));
+        _persistenceManager.DropStateNotReachableFrom(CreateStateId(headBlock, rootByte: (byte)headRootByte));
 
+        HashSet<ulong> kept = [.. remaining];
         Assert.Multiple(() =>
         {
-            Assert.That(_snapshotRepository.HasState(state1), Is.True);
-            Assert.That(_snapshotRepository.HasState(state2), Is.True);
-            Assert.That(_snapshotRepository.HasState(state3), Is.True);
-            Assert.That(_snapshotRepository.HasState(state4), Is.EqualTo(!knownHead));
-            Assert.That(_snapshotRepository.HasState(fork4), Is.EqualTo(!knownHead));
-            Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(Block0));
+            for (ulong block = 1; block <= 4; block++)
+                Assert.That(_snapshotRepository.HasState(CreateStateId(block)), Is.EqualTo(kept.Contains(block)), $"block {block}");
+            Assert.That(_snapshotRepository.HasState(fork4), Is.EqualTo(kept.Contains(4)), "fork");
+            Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(persisted));
         });
     }
 

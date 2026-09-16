@@ -462,9 +462,16 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         using ArrayPoolList<StateId> inMemoryCandidates = new(SnapshotCount + CompactedSnapshotCount);
         foreach (KeyValuePair<StateId, Snapshot> entry in _snapshots) inMemoryCandidates.Add(entry.Key);
         foreach (KeyValuePair<StateId, Snapshot> entry in _compactedSnapshots) inMemoryCandidates.Add(entry.Key);
-        using ArrayPoolList<StateId> persistedCandidates = GetPersistedStatesInRange(0, long.MaxValue);
 
         using PooledSet<StateId> reachable = CollectAncestry(head);
+
+        // The persisted store cannot be rewound: a head the persisted state does not descend from would have
+        // the pass delete the very snapshots that carry the store forward from it.
+        if (currentPersistedState != StateId.PreGenesis && !reachable.Contains(currentPersistedState))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot reset head to {head}: persisted state {currentPersistedState} does not descend from it.");
+            return 0;
+        }
 
         int totalPruned = 0;
         foreach (StateId stateId in inMemoryCandidates)
@@ -478,13 +485,26 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             }
         }
 
-        foreach (StateId stateId in persistedCandidates)
+        // No up-front candidate list here: a persisted snapshot registered concurrently (the persisted
+        // compactor) is keyed at a To an existing base already holds, so the reachable set decides it the
+        // same way. Batched like the other prunes so a long-finality tier is never materialized in one
+        // range; GetLastSnapshotId folds in the persisted tips.
+        ulong maxBlock = GetLastSnapshotId()?.BlockNumber ?? 0;
+        for (ulong batchStart = 0; batchStart <= maxBlock;)
         {
-            if (!reachable.Contains(stateId) && RemovePersistedStateExact(stateId)) totalPruned++;
+            ulong batchEnd = Math.Min(batchStart + PruneBatchSize - 1, maxBlock);
+            using ArrayPoolList<StateId> persisted = GetPersistedStatesInRange(batchStart, batchEnd);
+            foreach (StateId stateId in persisted)
+            {
+                if (!reachable.Contains(stateId) && RemovePersistedStateExact(stateId)) totalPruned++;
+            }
+            batchStart = batchEnd + 1;
         }
 
+        // Only ids whose snapshot is gone: one registered for a snapshot added during this pass must stay,
+        // or that snapshot becomes invisible to every ordered-set reader and is never released.
         using (_sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots))
-            sortedSnapshots.RemoveWhere(stateId => !reachable.Contains(stateId));
+            sortedSnapshots.RemoveWhere(stateId => !reachable.Contains(stateId) && !_snapshots.ContainsKey(stateId));
 
         SetLastCommittedStateId(head);
         _reachableFromHead.Clear();

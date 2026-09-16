@@ -70,7 +70,7 @@ public class DebugBridge : IDebugBridge
         // Use the shared singleton store, not a private one over the raw DB, so debug reads observe the
         // deferred-body overlay (a private store would miss a block whose body write is still queued).
         _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
-        _worldStateManager = worldStateManager;
+        _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
         dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
         IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
         IDb headersDb = dbProvider.HeadersDb ?? throw new ArgumentNullException(nameof(dbProvider.HeadersDb));
@@ -102,13 +102,24 @@ public class DebugBridge : IDebugBridge
 
     public int DeleteChainSlice(ulong startNumber, bool force = false) => _blockTree.DeleteChainSlice(startNumber, force: force);
 
-    public void UpdateHeadBlock(Hash256 blockHash)
+    public bool UpdateHeadBlock(Hash256 blockHash)
     {
         _blockTree.UpdateHeadBlock(blockHash);
+        BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
+        if (header is null) return false;
+
+        // Move the live head first, by the route forkchoiceUpdated takes, so `latest` and the state kept
+        // below agree; pruning against a head the node does not advertise would drop the state it serves.
+        if (_blockTree.Head?.Hash != header.Hash
+            && !_blockTree.TryUpdateMainChain(header, wereProcessed: true, forceUpdateHeadBlock: true))
+        {
+            return false;
+        }
+
         // benchmarkoor compatibility: it rewinds to the same head after every test, so state kept for the
         // branches those tests built must go, or it accumulates for the whole run.
-        BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
-        if (header is not null) _worldStateManager.DropStateNotReachableFrom(header);
+        _worldStateManager.DropStateNotReachableFrom(header);
+        return true;
     }
 
     public Task<bool> MigrateReceipts(ulong from, ulong to) => _receiptsMigration.Run(from, to);
