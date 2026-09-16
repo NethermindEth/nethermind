@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -25,10 +26,13 @@ public class EvmWarmer(
     IBlockTree blockTree,
     ISyncConfig syncConfig,
     ISpecProvider specProvider,
+    IInitConfig initConfig,
     ITimestamper timestamper) : IStep
 {
     public Task Execute(CancellationToken cancellationToken)
     {
+        if (!initConfig.EvmWarmupEnabled) return Task.CompletedTask;
+
         IOverridableEnv env = envFactory.Create();
         using IDisposable envScope = env.BuildAndOverride(null, null);
 

@@ -68,76 +68,77 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
         where TCheckDepth : struct, IFlag
     {
-        // ADD and SUB run on the stack's own big-endian limbs on every target. Going through UInt256
-        // costs three full-word endianness conversions around a vectorised carry chain that, on the
-        // 256-bit path, also has a data-dependent branch and a table lookup for the carry fix-up.
-        // Swapping each limb as it is read is cheaper than converting the words, and the carry chain
-        // is four dependent adds either way.
+        if (System.Runtime.Intrinsics.Vector256.IsHardwareAccelerated &&
+            (typeof(TOpMath) == typeof(OpAdd) || typeof(TOpMath) == typeof(OpSub)))
+        {
+            if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
+            ref byte arithmeticTopRef = ref stack.Pop1Peek32BytesUnchecked();
+            ref UInt256 arithmeticB = ref As<byte, UInt256>(ref arithmeticTopRef);
+            ref UInt256 arithmeticA = ref Add(ref arithmeticB, 1);
+            TOpMath.Operation(in arithmeticA, in arithmeticB, out arithmeticB);
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref arithmeticTopRef);
+            return EvmExceptionType.None;
+        }
+
         if (typeof(TOpMath) == typeof(OpAdd))
         {
-            Bytes.Bswap64Hoist swap = Bytes.HoistBswap64();
             if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
             ref byte addTopRef = ref stack.Pop1Peek32BytesUnchecked();
 
             ref ulong top = ref As<byte, ulong>(ref addTopRef);
             ref ulong popped = ref Add(ref top, EvmStack.WordSize / sizeof(ulong));
-            // Carry tracked in a ulong rather than through UInt128: shifting a UInt128 down by 64 is
-            // free in principle but reaches a software helper here, which ran 189,789 times - three
-            // per ADD - for what is just the high word. SUB already carries its borrow this way.
-            ulong augend = swap.Bswap64(Add(ref top, 3));
-            ulong addend = swap.Bswap64(Add(ref popped, 3));
-            ulong limb = augend + addend;
+            // Limb layout: limb 0 is the least significant, so the carry runs upward. It is tracked
+            // in a ulong rather than through UInt128, whose shift down by 64 reaches a software
+            // helper on the guest.
+            ulong augend = top;
+            ulong limb = augend + popped;
             ulong carry = limb < augend ? 1UL : 0UL;
-            Add(ref top, 3) = swap.Bswap64(limb);
-
-            for (nint i = 2; i >= 0; i--)
-            {
-                augend = swap.Bswap64(Add(ref top, i));
-                addend = swap.Bswap64(Add(ref popped, i));
-                limb = augend + addend;
-                // The two carries are mutually exclusive: a wrap on augend + addend leaves a result
-                // below both, which cannot then be ulong.MaxValue and wrap again on the incoming carry.
-                ulong wrapped = limb < augend ? 1UL : 0UL;
-                limb += carry;
-                carry = wrapped + (limb < carry ? 1UL : 0UL);
-                Add(ref top, i) = swap.Bswap64(limb);
-            }
-
+            top = limb;
+            // Spelled out rather than looped, so the guest gets straight-line code. The two carries
+            // are mutually exclusive: a wrap on augend + addend leaves a result below both, which
+            // cannot then be ulong.MaxValue and wrap again on the incoming carry.
+            augend = Add(ref top, 1);
+            limb = augend + Add(ref popped, 1);
+            ulong wrapped = limb < augend ? 1UL : 0UL;
+            limb += carry;
+            carry = wrapped + (limb < carry ? 1UL : 0UL);
+            Add(ref top, 1) = limb;
+            augend = Add(ref top, 2);
+            limb = augend + Add(ref popped, 2);
+            wrapped = limb < augend ? 1UL : 0UL;
+            limb += carry;
+            carry = wrapped + (limb < carry ? 1UL : 0UL);
+            Add(ref top, 2) = limb;
+            Add(ref top, 3) = Add(ref top, 3) + Add(ref popped, 3) + carry;
             if (TTracingInst.IsActive) stack.ReportPushWord(ref addTopRef);
             return EvmExceptionType.None;
         }
 
         if (typeof(TOpMath) == typeof(OpSub))
         {
-            Bytes.Bswap64Hoist swap = Bytes.HoistBswap64();
             if (TCheckDepth.IsActive && !stack.EnsureDepth(2)) goto StackUnderflow;
             ref byte subtractTopRef = ref stack.Pop1Peek32BytesUnchecked();
 
             ref ulong subtrahend = ref As<byte, ulong>(ref subtractTopRef);
             ref ulong minuend = ref Add(ref subtrahend, EvmStack.WordSize / sizeof(ulong));
-            ulong minuendPart = swap.Bswap64(Add(ref minuend, 3));
-            ulong difference = minuendPart - swap.Bswap64(Add(ref subtrahend, 3));
+            // Limb layout: limb 0 is the least significant, so the borrow runs upward.
+            ulong minuendPart = minuend;
+            ulong difference = minuendPart - subtrahend;
             ulong borrow = difference > minuendPart ? 1UL : 0UL;
-            Add(ref subtrahend, 3) = swap.Bswap64(difference);
-
-            minuendPart = swap.Bswap64(Add(ref minuend, 2));
-            difference = minuendPart - swap.Bswap64(Add(ref subtrahend, 2));
+            subtrahend = difference;
+            minuendPart = Add(ref minuend, 1);
+            difference = minuendPart - Add(ref subtrahend, 1);
             ulong withoutBorrow = difference;
             difference -= borrow;
             borrow = (withoutBorrow > minuendPart ? 1UL : 0UL) | (difference > withoutBorrow ? 1UL : 0UL);
-            Add(ref subtrahend, 2) = swap.Bswap64(difference);
-
-            minuendPart = swap.Bswap64(Add(ref minuend, 1));
-            difference = minuendPart - swap.Bswap64(Add(ref subtrahend, 1));
+            Add(ref subtrahend, 1) = difference;
+            minuendPart = Add(ref minuend, 2);
+            difference = minuendPart - Add(ref subtrahend, 2);
             withoutBorrow = difference;
             difference -= borrow;
             borrow = (withoutBorrow > minuendPart ? 1UL : 0UL) | (difference > withoutBorrow ? 1UL : 0UL);
-            Add(ref subtrahend, 1) = swap.Bswap64(difference);
-
-            difference = swap.Bswap64(minuend) -
-                swap.Bswap64(subtrahend) - borrow;
-            subtrahend = swap.Bswap64(difference);
-
+            Add(ref subtrahend, 2) = difference;
+            Add(ref subtrahend, 3) = Add(ref minuend, 3) - Add(ref subtrahend, 3) - borrow;
             if (TTracingInst.IsActive) stack.ReportPushWord(ref subtractTopRef);
             return EvmExceptionType.None;
         }
@@ -176,41 +177,35 @@ public static partial class EvmInstructions
     }
 
     /// <remarks>
-    /// Limbs are tested for equality where they lie, which needs no byte order. Only the pair that
-    /// differs is swapped into host order. Most operands are small and agree in their high limbs,
-    /// so the usual cost is one swap pair instead of four.
+    /// Limbs lie in host order, most significant last; the comparison starts from that end and
+    /// stops at the first pair that differs.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool CompareScalar<TOpMath>(ref ulong a, ref ulong b)
         where TOpMath : struct, IOpMath2Param
     {
-        Bytes.Bswap64Hoist swap = Bytes.HoistBswap64();
         bool signed = typeof(TOpMath) == typeof(OpSLt) || typeof(TOpMath) == typeof(OpSGt);
         bool lessThan = typeof(TOpMath) == typeof(OpLt) || typeof(TOpMath) == typeof(OpSLt);
 
-        // Only the most significant limb carries the sign; the rest always compare unsigned.
-        if (a != b)
+        // Limb layout: limb 3 is the most significant and the only one that carries the sign; the
+        // rest always compare unsigned.
+        ulong aHigh = Add(ref a, 3);
+        ulong bHigh = Add(ref b, 3);
+        if (aHigh != bHigh)
         {
-            ulong aHigh = swap.Bswap64(a);
-            ulong bHigh = swap.Bswap64(b);
             bool less = signed ? (long)aHigh < (long)bHigh : aHigh < bHigh;
             return lessThan ? less : !less;
         }
-
-        if (Add(ref a, 1) != Add(ref b, 1))
-            return CompareLimb(in swap, Add(ref a, 1), Add(ref b, 1), lessThan);
         if (Add(ref a, 2) != Add(ref b, 2))
-            return CompareLimb(in swap, Add(ref a, 2), Add(ref b, 2), lessThan);
-        return CompareLimb(in swap, Add(ref a, 3), Add(ref b, 3), lessThan);
+            return CompareLimb(Add(ref a, 2), Add(ref b, 2), lessThan);
+        if (Add(ref a, 1) != Add(ref b, 1))
+            return CompareLimb(Add(ref a, 1), Add(ref b, 1), lessThan);
+        return CompareLimb(a, b, lessThan);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool CompareLimb(in Bytes.Bswap64Hoist swap, ulong a, ulong b, bool lessThan)
-    {
-        ulong aPart = swap.Bswap64(a);
-        ulong bPart = swap.Bswap64(b);
-        return lessThan ? aPart < bPart : aPart > bPart;
-    }
+    private static bool CompareLimb(ulong a, ulong b, bool lessThan)
+        => lessThan ? a < b : a > b;
 
     /// <summary>
     /// Implements addition of two 256-bit unsigned integers.

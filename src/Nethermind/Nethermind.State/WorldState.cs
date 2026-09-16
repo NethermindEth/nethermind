@@ -108,27 +108,46 @@ namespace Nethermind.State
             return _stateProvider.IsContract(address);
         }
 
-        public ReadOnlySpan<byte> GetOriginal(in StorageCell storageCell)
+        public void GetOriginal(in StorageCell storageCell, out UInt256 value)
         {
             DebugGuardInScope();
-            return _persistentStorageProvider.GetOriginal(storageCell);
+            _persistentStorageProvider.GetOriginal(in storageCell, out value);
         }
-        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
+        public void Get(in StorageCell storageCell, out UInt256 value)
         {
             DebugGuardInScope();
-            return _persistentStorageProvider.Get(storageCell);
+            _persistentStorageProvider.Get(in storageCell, out value);
         }
-        public void Set(in StorageCell storageCell, byte[] newValue)
+        public void Set(in StorageCell storageCell, in UInt256 newValue)
         {
             DebugGuardInScope();
             _persistentStorageProvider.Set(storageCell, newValue);
         }
-        public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
+
+        public void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+            => Set(in storageCell, in newValue);
+
+        /// <summary>Reads a parent-state slot without recording a journal entry.</summary>
+        /// <remarks>Only for immutable BAL parent readers.</remarks>
+        internal void GetPureReadStorage(in StorageCell cell, out UInt256 value)
         {
             DebugGuardInScope();
-            return _transientStorageProvider.Get(storageCell);
+            _persistentStorageProvider.GetPureRead(in cell, out value);
         }
-        public void SetTransientState(in StorageCell storageCell, byte[] newValue)
+
+        /// <summary>Reads a parent-state account without recording a journal entry.</summary>
+        /// <remarks>Only for immutable BAL parent readers.</remarks>
+        internal Account? GetPureReadAccount(Address address)
+        {
+            DebugGuardInScope();
+            return _stateProvider.GetPureRead(address);
+        }
+        public void GetTransientState(in StorageCell storageCell, out UInt256 value)
+        {
+            DebugGuardInScope();
+            _transientStorageProvider.Get(in storageCell, out value);
+        }
+        public void SetTransientState(in StorageCell storageCell, in UInt256 newValue)
         {
             DebugGuardInScope();
             _transientStorageProvider.Set(storageCell, newValue);
@@ -278,9 +297,11 @@ namespace Nethermind.State
             {
                 if (_currentScope is not null)
                 {
+                    // Reset first: it unwinds code staged since the last commit, and this scope's only
+                    // remaining chance to report that is the flush below.
+                    Reset();
                     // Fold any counters accumulated outside a Commit (e.g. prewarmer read warming) before the scope closes.
                     _localMetrics.Flush();
-                    Reset();
                     _stateProvider.SetScope(null);
                     _persistentStorageProvider.SetBackendScope(null);
                     _currentScope.Dispose();

@@ -1115,8 +1115,8 @@ public class PersistenceManagerTests
         snapshot.Content.Accounts[TestItem.AddressB] = new Account(2, 200);
 
         // Add storage
-        snapshot.Content.Storages[(TestItem.AddressA, (UInt256)1)] = SlotValue.FromSpanWithoutLeadingZero([42]);
-        snapshot.Content.Storages[(TestItem.AddressA, (UInt256)2)] = SlotValue.FromSpanWithoutLeadingZero([99]);
+        snapshot.Content.Storages[(TestItem.AddressA, (UInt256)1)] = BaseFlatPersistence.DecodeSlotValue([42]);
+        snapshot.Content.Storages[(TestItem.AddressA, (UInt256)2)] = BaseFlatPersistence.DecodeSlotValue([99]);
 
         // Add trie nodes
         TreePath path = TreePath.Empty;
@@ -1132,8 +1132,8 @@ public class PersistenceManagerTests
         // Assert
         Assert.That(writeBatch.SetAccountCalls, Has.Some.Matches<(Address Addr, Account? Account)>(c => c.Addr == TestItem.AddressA));
         Assert.That(writeBatch.SetAccountCalls, Has.Some.Matches<(Address Addr, Account? Account)>(c => c.Addr == TestItem.AddressB));
-        Assert.That(writeBatch.SetStorageCalls, Has.Some.Matches<(Address Addr, UInt256 Slot, SlotValue? Value)>(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)1));
-        Assert.That(writeBatch.SetStorageCalls, Has.Some.Matches<(Address Addr, UInt256 Slot, SlotValue? Value)>(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)2));
+        Assert.That(writeBatch.SetStorageCalls, Has.Some.Matches<(Address Addr, UInt256 Slot, UInt256? Value)>(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)1));
+        Assert.That(writeBatch.SetStorageCalls, Has.Some.Matches<(Address Addr, UInt256 Slot, UInt256? Value)>(c => c.Addr == TestItem.AddressA && c.Slot == (UInt256)2));
         Assert.That(writeBatch.SetStateTrieNodeCalls, Is.Not.Empty);
         Assert.That(node.IsPersisted, Is.True);
     }
@@ -1706,7 +1706,7 @@ public class PersistenceManagerTests
             if (throwOnSetAccount) throw new System.InvalidOperationException();
         }
 
-        public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value) { }
+        public void SetStorage(Address addr, in UInt256 slot, in UInt256? value) { }
         public void SetStateTrieNode(in TreePath path, scoped System.ReadOnlySpan<byte> rlp) { }
         public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped System.ReadOnlySpan<byte> rlp) { }
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped System.ReadOnlySpan<byte> rlpValue) { }

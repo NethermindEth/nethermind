@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
 
@@ -42,6 +43,7 @@ public class GuestJumpDestinationTests
         yield return Shape("JUMPDEST inside PUSH data", Code(40, (0, PUSH32), (5, JUMPDEST), (33, JUMPDEST)));
         yield return Shape("JUMPDEST at position 0", Code(8, (0, JUMPDEST)));
         yield return Shape("JUMPDEST at the last byte", Code(8, (7, JUMPDEST)));
+        yield return Shape("leading STOP before JUMPDEST", [(byte)Instruction.STOP, JUMPDEST]);
 
         // 0x5c-0x5f: in range for the bias, but single-byte, which is the arm the bias reshuffled.
         yield return Shape("TLOAD/TSTORE/MCOPY/PUSH0 run",
@@ -54,6 +56,34 @@ public class GuestJumpDestinationTests
 
     [TestCaseSource(nameof(Shapes))]
     public void Scan_matches_the_reference(byte[] code) => AssertMatchesReference(code);
+
+    [Test]
+    public void Full_analysis_reuses_the_completed_bitmap([Values] bool executeFirst)
+    {
+        CodeInfo codeInfo = new(new byte[] { PUSH1, JUMPDEST, JUMPDEST });
+        if (executeFirst) ((IThreadPoolWorkItem)codeInfo).Execute();
+
+        long[] bitmap = codeInfo.JumpDestinationBitmap;
+        ((IThreadPoolWorkItem)codeInfo).Execute();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeInfo.JumpDestinationBitmap, Is.SameAs(bitmap));
+            Assert.That(codeInfo.ValidateJump(-1), Is.False);
+            Assert.That(codeInfo.ValidateJump(0), Is.False);
+            Assert.That(codeInfo.ValidateJump(1), Is.False);
+            Assert.That(codeInfo.ValidateJump(2), Is.True);
+            Assert.That(codeInfo.ValidateJump(3), Is.False);
+        }
+    }
+
+    [Test]
+    public void Stack_without_code_info_has_no_jump_destinations()
+    {
+        byte stackMemory = 0;
+        EvmStack stack = new(0, ref stackMemory, new byte[] { JUMPDEST }, null);
+        Assert.That(stack.IsJumpDestination(0), Is.False);
+    }
 
     /// <remarks>
     /// The scan classifies a byte by comparing it <em>signed</em> against <c>[JUMPDEST, PUSH32]</c>, which
@@ -122,6 +152,20 @@ public class GuestJumpDestinationTests
             JumpDestinationAnalyzer.CreateBitmap(code.Length), code);
 
         Assert.That(actual, Is.EqualTo(expected), () => Describe(code, expected, actual));
+        if (code[0] == (byte)Instruction.STOP) expected = JumpDestinationAnalyzer.EmptyBitmap;
+        CodeInfo incremental = new(code);
+        byte stackMemory = 0;
+        EvmStack stack = new(0, ref stackMemory, code, incremental);
+        for (int i = 0; i < code.Length; i++)
+        {
+            Assert.That(stack.IsJumpDestination(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"stack forward {i}");
+            Assert.That(incremental.AnalyzeJump(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"forward {i}");
+        }
+        for (int i = code.Length - 1; i >= 0; i--)
+        {
+            Assert.That(stack.IsJumpDestination(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"stack backward {i}");
+            Assert.That(incremental.AnalyzeJump(i), Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"backward {i}");
+        }
     }
 
     /// <summary>Walks byte by byte, marking every JUMPDEST and skipping PUSH immediates.</summary>

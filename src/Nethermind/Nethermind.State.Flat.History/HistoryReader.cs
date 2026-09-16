@@ -130,12 +130,12 @@ public sealed class HistoryReader
     }
 
     /// <summary>Resolves the slot as of <paramref name="block"/>. False when it was unset there.</summary>
-    public bool TryGetStorage(ulong block, Address address, in UInt256 index, out SlotValue value) =>
+    public bool TryGetStorage(ulong block, Address address, in UInt256 index, out UInt256 value) =>
         TryGetStorage(block, address, index, out value, clearsCache: null);
 
     /// <param name="clearsCache">Skips the per-slot destruct probes for an account with no clear markers.</param>
     [SkipLocalsInit]
-    internal bool TryGetStorage(ulong block, Address address, in UInt256 index, out SlotValue value, StorageClearsScopeCache? clearsCache)
+    internal bool TryGetStorage(ulong block, Address address, in UInt256 index, out UInt256 value, StorageClearsScopeCache? clearsCache)
     {
         ValueHash256 addrHash = address.ToAccountPath;
         ValueHash256 slotHash = ValueKeccak.Zero;
@@ -202,7 +202,7 @@ public sealed class HistoryReader
         return true;
     }
 
-    private SlotValue DecodeSlotValue(ReadOnlySpan<byte> stored)
+    private UInt256 DecodeSlotValue(ReadOnlySpan<byte> stored)
     {
         if (_rlpWrapSlots)
         {
@@ -210,6 +210,6 @@ public sealed class HistoryReader
             stored = context.DecodeByteArraySpan();
         }
 
-        return SlotValue.FromSpanWithoutLeadingZero(stored);
+        return BaseFlatPersistence.DecodeSlotValue(stored);
     }
 }

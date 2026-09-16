@@ -4,7 +4,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -15,6 +14,8 @@ namespace Nethermind.Blockchain.BeaconBlockRoot;
 public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState stateProvider) : IBeaconBlockRootHandler
 {
     private const ulong GasLimit = 30_000_000UL;
+
+    private static readonly AccessList BeaconRootsOnlyAccessList = BuildAddressOnlyAccessList(Eip4788Constants.BeaconRootsAddress);
 
     AccessList? IHasAccessList.GetAccessList(Block block, IReleaseSpec spec)
         => BeaconRootsAccessList(block, spec, includeStorageCells: true).accessList;
@@ -37,20 +38,24 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
             return (null, null);
         }
 
+        if (!includeStorageCells)
+        {
+            return (eip4788ContractAddress, eip4788ContractAddress == Eip4788Constants.BeaconRootsAddress
+                ? BeaconRootsOnlyAccessList
+                : BuildAddressOnlyAccessList(eip4788ContractAddress));
+        }
+
         AccessList.Builder builder = new AccessList.Builder()
             .AddAddress(eip4788ContractAddress);
 
-        if (includeStorageCells)
-        {
-            // https://eips.ethereum.org/EIPS/eip-4788
-            // Set the storage value at header.timestamp % HISTORY_BUFFER_LENGTH to be header.timestamp
-            ulong slotIndex = header.Timestamp % HistoryBufferLength;
-            UInt256 slot256 = slotIndex;
-            builder.AddStorage(in slot256);
-            // Set the storage value at header.timestamp % HISTORY_BUFFER_LENGTH + HISTORY_BUFFER_LENGTH to be calldata[0:32]
-            slot256 = slotIndex + HistoryBufferLength;
-            builder.AddStorage(in slot256);
-        }
+        // https://eips.ethereum.org/EIPS/eip-4788
+        // Set the storage value at header.timestamp % HISTORY_BUFFER_LENGTH to be header.timestamp
+        ulong slotIndex = header.Timestamp % HistoryBufferLength;
+        UInt256 slot256 = slotIndex;
+        builder.AddStorage(in slot256);
+        // Set the storage value at header.timestamp % HISTORY_BUFFER_LENGTH + HISTORY_BUFFER_LENGTH to be calldata[0:32]
+        slot256 = slotIndex + HistoryBufferLength;
+        builder.AddStorage(in slot256);
 
         return (eip4788ContractAddress, builder.Build());
     }
@@ -73,9 +78,10 @@ public class BeaconBlockRootHandler(ITransactionProcessor processor, IWorldState
                 AccessList = accessList
             };
 
-            transaction.Hash = transaction.CalculateHash();
-
             processor.Execute(transaction, tracer);
         }
     }
+
+    private static AccessList BuildAddressOnlyAccessList(Address address) =>
+        new AccessList.Builder().AddAddress(address).Build();
 }

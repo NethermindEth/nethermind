@@ -114,7 +114,7 @@ namespace Nethermind.Merge.Plugin
             }
             else if (HasPostTerminalTotalDifficultyGenesis(terminalTotalDifficulty.Value))
             {
-                _finalTotalDifficulty = _chainSpec.Genesis.Difficulty;
+                _finalTotalDifficulty = _chainSpec.Genesis!.Difficulty;
             }
         }
 

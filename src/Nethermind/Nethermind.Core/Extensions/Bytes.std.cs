@@ -42,12 +42,14 @@ public static unsafe partial class Bytes
     }
 
     /// <summary>Compares the 32 bytes at <paramref name="a"/> with the 32 bytes at <paramref name="b"/>.</summary>
-    /// <remarks>Exists as a std/zkevm pair: the guest has no SIMD, where a <see cref="Vector256{T}"/>
-    /// comparison expands to a byte-at-a-time element loop. Loads are unaligned, so a caller may pass
-    /// any byte offset.</remarks>
+    /// <remarks>
+    /// Loads are unaligned, so a caller may pass any byte offset.
+    /// See <c>Bytes.zkevm.cs</c> for the whole-word guest implementation: without SIMD,
+    /// byte-vector comparisons can expand into byte-at-a-time loops.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool AreEqual32(ref byte a, ref byte b)
-        => Unsafe.ReadUnaligned<Vector256<byte>>(ref a) == Unsafe.ReadUnaligned<Vector256<byte>>(ref b);
+        => Unsafe.ReadUnaligned<Vector256<ulong>>(ref a) == Unsafe.ReadUnaligned<Vector256<ulong>>(ref b);
 
     /// <summary>Tests whether all 32 bytes at <paramref name="a"/> are zero.</summary>
     /// <remarks><inheritdoc cref="AreEqual32" path="/remarks"/></remarks>
@@ -58,4 +60,9 @@ public static unsafe partial class Bytes
     /// <summary>Number of leading zero bytes in a 64-bit value; <c>8</c> when it is zero.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int LeadingZeroBytes(ulong value) => BitOperations.LeadingZeroCount(value) >> 3;
+
+    /// <summary>Number of leading zero bits in a 64-bit value; <c>64</c> when it is zero.</summary>
+    /// <remarks>Exists as a std/zkevm pair: one instruction here, a software fallback on the guest.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int LeadingZeroBits(ulong value) => BitOperations.LeadingZeroCount(value);
 }
