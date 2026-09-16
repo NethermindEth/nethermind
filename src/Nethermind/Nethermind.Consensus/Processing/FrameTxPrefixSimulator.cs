@@ -36,7 +36,7 @@ public sealed class FrameTxPrefixSimulator(
     TimeProvider? timeProvider = null) : IFrameTxPrefixSimulator, IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FrameTxPrefixSimulator>();
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
     private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(txPoolConfig.FrameTxSimulationTimeoutMs);
     private readonly long _headBudgetTicks =
@@ -80,7 +80,7 @@ public sealed class FrameTxPrefixSimulator(
         // No wait for gossip: that admission runs on a small pool of background threads which also serve
         // sync. A local submission is on the RPC thread instead, so shedding it protects nothing and would
         // hand a peer the exemption from the per-head budget it was given.
-        if (!Monitor.TryEnter(_lock, local && _timeout > TimeSpan.Zero ? _timeout : TimeSpan.Zero))
+        if (!_lock.TryEnter(local && _timeout > TimeSpan.Zero ? _timeout : TimeSpan.Zero))
         {
             Interlocked.Increment(ref Metrics.FrameTxSimulationsBusy);
             return FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulator busy");
@@ -115,7 +115,7 @@ public sealed class FrameTxPrefixSimulator(
         }
         finally
         {
-            Monitor.Exit(_lock);
+            _lock.Exit();
         }
     }
 
