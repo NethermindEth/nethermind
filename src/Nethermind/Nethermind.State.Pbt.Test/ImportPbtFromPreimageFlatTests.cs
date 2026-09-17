@@ -105,6 +105,7 @@ public class ImportPbtFromPreimageFlatTests
             logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {partitionName}: 100.00 % ")));
         }
         Assert.That(reader.GetCodeReference(bigCodeHash.ValueHash256), Is.EqualTo(2), "shared code references survive later account changes");
+        Assert.That(reader.GetCodeReference(delegationHash.ValueHash256), Is.EqualTo(2), "delegated accounts reference their designator's code hash");
         PbtScanReport scan = await new PbtScanner(pbtDb, config, LimboLogs.Instance).Scan(CancellationToken.None);
         Assert.That(scan.Accounts.RecordCount, Is.EqualTo(5), scan.Format());
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)100));
@@ -122,7 +123,12 @@ public class ImportPbtFromPreimageFlatTests
         Account retained = bundle.GetAccount(TestItem.AddressB)!.WithChangedNonce(4).WithChangedBalance(43);
         bundle.SetAccount(TestItem.AddressB, retained);
         bundle.SetAccount(TestItem.AddressC, null);
-        Assert.That(bundle.GetCodeReference(bigCodeHash.ValueHash256), Is.EqualTo(1));
+        bundle.SetAccount(TestItem.AddressE, new Account(2, 0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.GetCodeReference(bigCodeHash.ValueHash256), Is.EqualTo(1));
+            Assert.That(bundle.GetCodeReference(delegationHash.ValueHash256), Is.EqualTo(1), "clearing an imported delegation releases its reference");
+        }
         int codeLeaves = 0;
         foreach ((PbtStorageFullKey key, ValueHash256 _) in bundle.EnumerateLeaves())
             if (key.Bytes[0] == 0x01) codeLeaves++;
@@ -137,7 +143,7 @@ public class ImportPbtFromPreimageFlatTests
         model.Clear();
         PbtReferenceModel.SetAccount(model, TestItem.AddressA, 1, 100);
         PbtReferenceModel.SetAccount(model, TestItem.AddressD, 1, 0, delegation);
-        PbtReferenceModel.SetAccount(model, TestItem.AddressE, 1, 0, delegation);
+        PbtReferenceModel.SetAccount(model, TestItem.AddressE, 2, 0);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.GetCodeReference(bigCodeHash.ValueHash256), Is.Zero);

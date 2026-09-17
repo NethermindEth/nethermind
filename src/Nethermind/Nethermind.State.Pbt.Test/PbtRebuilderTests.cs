@@ -227,11 +227,13 @@ public class PbtRebuilderTests
         using IPbtPersistence.IReader reader = target.CreateReader();
         Account sharedCodeAccount = PbtTestLeaves.ReadAccount(reader, TestItem.AddressB)!;
         Account uniqueCodeAccount = PbtTestLeaves.ReadAccount(reader, TestItem.AddressC)!;
+        Account delegatedAccount = PbtTestLeaves.ReadAccount(reader, TestItem.AddressF)!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
             Assert.That(reader.GetCodeReference(sharedCodeAccount.CodeHash.ValueHash256), Is.EqualTo(2));
             Assert.That(reader.GetCodeReference(uniqueCodeAccount.CodeHash.ValueHash256), Is.EqualTo(1));
+            Assert.That(reader.GetCodeReference(delegatedAccount.CodeHash.ValueHash256), Is.EqualTo(2), "delegation leaves reference the designator's code hash");
             Assert.That(reader.GetCodeReference(Keccak.OfAnEmptyString.ValueHash256), Is.Zero);
             Assert.That(db.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
         }
