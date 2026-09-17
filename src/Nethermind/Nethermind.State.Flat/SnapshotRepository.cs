@@ -440,6 +440,122 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         }
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// The compactor worker is not serialized with this pass: a compaction in flight for a just-removed
+    /// base can still register one compacted snapshot at its <c>To</c>, and its <c>AddStateId</c> can
+    /// re-add that id to the ordered set. Both are off the ancestry, so the next pass removes them; every
+    /// reader of the ordered set tolerates an id whose lease fails.
+    /// </remarks>
+    public int RemoveUnreachableFrom(in StateId head, in StateId currentPersistedState)
+    {
+        if (head != currentPersistedState && !HasState(head))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot reset head to {head}: no snapshot holds its state.");
+            return 0;
+        }
+
+        // Held for the whole pass. Bucket locks only ever nest inside this scope, never the reverse.
+        using Lock.Scope scope = _finalityCacheLock.EnterScope();
+
+        // Candidates are collected before the walk so a snapshot added concurrently is never removed.
+        using ArrayPoolList<StateId> inMemoryCandidates = new(SnapshotCount + CompactedSnapshotCount);
+        foreach (KeyValuePair<StateId, Snapshot> entry in _snapshots) inMemoryCandidates.Add(entry.Key);
+        foreach (KeyValuePair<StateId, Snapshot> entry in _compactedSnapshots) inMemoryCandidates.Add(entry.Key);
+
+        using PooledSet<StateId> reachable = CollectAncestry(head);
+
+        // The persisted store cannot be rewound: a head that does not descend from the persisted state would
+        // have the pass delete the very snapshots that carry the store forward to it.
+        if (currentPersistedState != StateId.PreGenesis && !reachable.Contains(currentPersistedState))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot reset head to {head}: it does not descend from persisted state {currentPersistedState}.");
+            return 0;
+        }
+
+        int totalPruned = 0;
+        foreach (StateId stateId in inMemoryCandidates)
+        {
+            if (reachable.Contains(stateId)) continue;
+            // A To can live in both in-memory tiers — remove from each.
+            if (RemoveAndReleaseInMemoryKnownState(stateId, SnapshotTier.InMemoryCompacted)
+                | RemoveAndReleaseInMemoryKnownState(stateId, SnapshotTier.InMemoryBase))
+            {
+                totalPruned++;
+            }
+        }
+
+        // No up-front candidate list here: a persisted snapshot registered concurrently (the persisted
+        // compactor) is keyed at a To an existing base already holds, so the reachable set decides it the
+        // same way. Batched like the other prunes so a long-finality tier is never materialized in one
+        // range; GetLastSnapshotId folds in the persisted tips.
+        ulong maxBlock = GetLastSnapshotId()?.BlockNumber ?? 0;
+        for (ulong batchStart = 0; batchStart <= maxBlock;)
+        {
+            ulong batchEnd = Math.Min(batchStart + PruneBatchSize - 1, maxBlock);
+            using ArrayPoolList<StateId> persisted = GetPersistedStatesInRange(batchStart, batchEnd);
+            foreach (StateId stateId in persisted)
+            {
+                if (!reachable.Contains(stateId) && RemovePersistedStateExact(stateId)) totalPruned++;
+            }
+            batchStart = batchEnd + 1;
+        }
+
+        // Only ids whose snapshot is gone: one registered for a snapshot added during this pass must stay,
+        // or that snapshot becomes invisible to every ordered-set reader and is never released.
+        using (_sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots))
+            sortedSnapshots.RemoveWhere(stateId => !reachable.Contains(stateId) && !_snapshots.ContainsKey(stateId));
+
+        SetLastCommittedStateId(head);
+        _reachableFromHead.Clear();
+        _reachabilityHead = null;
+
+        if (totalPruned > 0 && _logger.IsInfo)
+            _logger.Info($"Pruned {totalPruned} snapshot(s) unreachable from head {head}.");
+        return totalPruned;
+    }
+
+    /// <summary>
+    /// Every <c>To</c> on the <c>From</c>-edge ancestry of <paramref name="head"/>, following every tier
+    /// at every node. Caller disposes the set.
+    /// </summary>
+    /// <remarks>
+    /// Lookup-only, so the sentinels need no <see cref="Height"/> ordering: no tier holds a snapshot keyed
+    /// at them, so they are leaves.
+    /// </remarks>
+    private PooledSet<StateId> CollectAncestry(in StateId head)
+    {
+        PooledSet<StateId> seen = [head];
+        using PooledStack<StateId> stack = new();
+        stack.Push(head);
+
+        ReadOnlySpan<SnapshotTier> tiers =
+            [SnapshotTier.InMemoryBase, SnapshotTier.InMemoryCompacted, SnapshotTier.PersistedBase, SnapshotTier.PersistedSmallCompacted, SnapshotTier.PersistedLargeCompacted, SnapshotTier.PersistedCompactSized];
+        while (stack.Count > 0)
+        {
+            StateId current = stack.Pop();
+            foreach (SnapshotTier tier in tiers)
+            {
+                StateId from;
+                if (tier.IsPersisted())
+                {
+                    if (!TryLeasePersistedState(current, tier, out PersistedSnapshot? persisted)) continue;
+                    from = persisted.From;
+                    persisted.Dispose();
+                }
+                else
+                {
+                    if (!TryLeaseInMemoryState(current, tier, out Snapshot? inMemory)) continue;
+                    from = inMemory.From;
+                    inMemory.Dispose();
+                }
+
+                if (seen.Add(from)) stack.Push(from);
+            }
+        }
+        return seen;
+    }
+
     /// <summary>True when the persisted tier holds a non-canonical state at
     /// <paramref name="canonicalStateId"/>'s block — a fork the canonical persist orphans.</summary>
     private bool HasPersistedForkAt(in StateId canonicalStateId)
