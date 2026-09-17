@@ -310,6 +310,14 @@ public static class Metrics
     public static long FlatHistoryWatermark { get; set; }
 
     [GaugeMetric]
+    [Description("Lowest block the per-transaction changeset index covers; 0 when the index is disabled or has indexed nothing yet")]
+    public static long TransactionChangesetIndexFrom { get; set; }
+
+    [GaugeMetric]
+    [Description("Highest block the per-transaction changeset index covers; 0 when the index is disabled or has indexed nothing yet")]
+    public static long TransactionChangesetIndexTo { get; set; }
+
+    [GaugeMetric]
     [Description("1 when history capture has self-disabled (permanent gap, reorged capture, or repeated write failures); as-of reads above the watermark are refused until the flatHistory DB is resynced")]
     public static long FlatHistoryCaptureDisabled { get; set; }
 

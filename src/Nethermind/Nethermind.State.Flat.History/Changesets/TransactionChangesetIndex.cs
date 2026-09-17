@@ -40,6 +40,16 @@ public sealed class TransactionChangesetIndex
 
     public bool TryGetCoverage(out ulong fromBlock, out ulong toBlock) => _store.TryGetCoverage(out fromBlock, out toBlock);
 
+    /// <summary>Publishes the covered range, so that what the index can answer is visible from outside the process:
+    /// a retrofit's progress, and the range a trace benchmark has to stay inside to be measuring the index at all.</summary>
+    public void ReportCoverage()
+    {
+        if (!Enabled || !TryGetCoverage(out ulong from, out ulong to)) return;
+
+        Flat.Metrics.TransactionChangesetIndexFrom = (long)from;
+        Flat.Metrics.TransactionChangesetIndexTo = (long)to;
+    }
+
     public BlockCapture StartBlock(ulong block) => new(this, block);
 
     /// <summary>Writes a whole block's changesets, already collected, and claims it when it touches coverage.</summary>
