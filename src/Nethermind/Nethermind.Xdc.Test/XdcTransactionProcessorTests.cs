@@ -278,7 +278,14 @@ internal class XdcTransactionProcessorTests
     }
 
     [Test]
-    public void BuyGas_RandomizeEip1559Transaction_ChargesEffectiveGasPrice()
+    // The floor waiver is type-agnostic, so it is worth seeing a typed transaction priced under the base fee
+    // charged rather than rejected, not only the legacy ones.
+    [TestCase(2 * XdcBaseFeeCalculator.BaseFee, XdcBaseFeeCalculator.BaseFee / 5, 6 * XdcBaseFeeCalculator.BaseFee / 5,
+        TestName = "Fee cap above the base fee is capped at tip plus base fee")]
+    [TestCase(XdcBaseFeeCalculator.BaseFee / 2, 1_000_000_000L, XdcBaseFeeCalculator.BaseFee / 2,
+        TestName = "Fee cap below the base fee is exempt from the floor and charged at the cap")]
+    public void BuyGas_RandomizeEip1559Transaction_ChargesEffectiveGasPrice(
+        long maxFeePerGas, long maxPriorityFeePerGas, long expectedEffectiveGasPrice)
     {
         const long gasLimit = 100000;
         Address randomizeContract = TestItem.AddressC;
@@ -296,8 +303,8 @@ internal class XdcTransactionProcessorTests
             .WithSenderAddress(TestItem.AddressA)
             .WithTo(randomizeContract)
             .WithType(TxType.EIP1559)
-            .WithMaxFeePerGas(2 * (UInt256)XdcBaseFeeCalculator.BaseFee)          // 25 gwei
-            .WithMaxPriorityFeePerGas((UInt256)XdcBaseFeeCalculator.BaseFee / 5)  // 2.5 gwei
+            .WithMaxFeePerGas((UInt256)maxFeePerGas)
+            .WithMaxPriorityFeePerGas((UInt256)maxPriorityFeePerGas)
             .WithGasLimit(gasLimit)
             .TestObject;
 
@@ -313,8 +320,7 @@ internal class XdcTransactionProcessorTests
 
         Assert.Multiple(() =>
         {
-            // min(25, 2.5 + 12.5) = 15 gwei
-            Assert.That(effectiveGasPrice, Is.EqualTo((UInt256)XdcBaseFeeCalculator.BaseFee * 6 / 5));
+            Assert.That(effectiveGasPrice, Is.EqualTo((UInt256)expectedEffectiveGasPrice));
             Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
             Assert.That(balanceBefore - _stateProvider.GetBalance(TestItem.AddressA),
                 Is.EqualTo(effectiveGasPrice * gasLimit));

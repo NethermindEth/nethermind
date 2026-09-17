@@ -66,8 +66,7 @@ internal class XdcTransactionProcessor(
         if (owner is null || owner == Address.Zero)
             return;
 
-        UInt256 feeEffectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
-        UInt256 fee = feeEffectiveGasPrice * spentGas;
+        UInt256 fee = effectiveGasPrice * spentGas;
 
         WorldState.AddToBalanceAndCreateIfNotExists(owner, fee, spec);
 
@@ -75,10 +74,13 @@ internal class XdcTransactionProcessor(
             tracer.ReportFees(fee, UInt256.Zero);
     }
 
-    // A randomize transaction carries a zero gas price yet must execute, so the reference client
-    // waives the EIP-1559 floor for it — the floor only: gas is still bought and refunded. The premium
-    // is left to the base calculation, which clamps it to zero. See XinFinOrg/XDPoSChain preCheck
-    // https://github.com/XinFinOrg/XDPoSChain/blob/5d080472c84a92a46f5fd0d343c09cca9f1b1356/core/state_transition.go#L356
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A randomize transaction carries a zero gas price yet must execute, so the reference client waives the
+    /// EIP-1559 floor for it - the floor only: gas is still bought and refunded. The premium is left to the base
+    /// calculation, which clamps it to zero. See <c>preCheck</c> in
+    /// https://github.com/XinFinOrg/XDPoSChain/blob/5d080472c84a92a46f5fd0d343c09cca9f1b1356/core/state_transition.go#L356
+    /// </remarks>
     protected override bool TryCalculatePremiumPerGas(Transaction tx, in UInt256 baseFee, out UInt256 premiumPerGas) =>
         base.TryCalculatePremiumPerGas(tx, in baseFee, out premiumPerGas)
         || tx.IsSpecialTransaction((IXdcReleaseSpec)VirtualMachine.BlockExecutionContext.Spec);
