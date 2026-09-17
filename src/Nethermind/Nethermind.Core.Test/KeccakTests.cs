@@ -219,16 +219,15 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase(32, 8)]
-        [TestCase(64, 8)]
-        [TestCase(136, 8)]
-        [TestCase(136, 4)]
-        [TestCase(272, 8)]
-        [TestCase(408, 8)]
-        [TestCase(544, 8)]
-        [TestCase(1088, 8)]
-        [TestCase(2176, 8)]
-        public void Batched_hash_matches_individual_hashes(int inputLength, int batchSize)
+        [Test]
+        public void Eight_way_hash_matches_individual_hashes([Values(32, 64, 136, 272, 408, 544, 1088, 2176)] int inputLength)
+            => AssertBatchedHashMatchesIndividualHashes(inputLength, 8);
+
+        [Test]
+        public void Four_way_padded_hash_matches_individual_hashes()
+            => AssertBatchedHashMatchesIndividualHashes(136, 4);
+
+        private static void AssertBatchedHashMatchesIndividualHashes(int inputLength, int batchSize)
         {
             if (batchSize == 8 ? !Avx512F.IsSupported : !Avx2.IsSupported)
             {
