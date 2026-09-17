@@ -145,11 +145,7 @@ public class PbtRocksDbConfigAdjusterTests
         {
             PbtRocksDbPersistence persistence = new(db, new PbtConfig());
             using IPbtPersistence.IReader reader = persistence.CreateReader();
-            using IPbtIterator<PbtStorageNodePath> enumerator = reader.EnumerateNodeGroupKeys();
-            Assert.That(enumerator.MoveNext(), Is.True);
-            Assert.That(enumerator.Current, Is.EqualTo(expectedPaths[0]));
-            Assert.That(enumerator.MoveNext(), Is.True);
-            Assert.That(enumerator.Current, Is.EqualTo(expectedPaths[1]));
+            Assert.That(reader.EnumerateNodeGroupKeys().Drain(), Is.EquivalentTo(expectedPaths));
         }
 
         using (ColumnsDb<PbtColumns> db = NewDb())
@@ -164,13 +160,13 @@ public class PbtRocksDbConfigAdjusterTests
                 Assert.That(reader.GetSlot(storageKey), Is.EqualTo(slot));
                 Assert.That(reader.GetCode(account.CodeHash.ValueHash256), Is.EqualTo(code));
                 Assert.That(db.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
-                Assert.That(reader.EnumerateNodeGroupKeys().Drain(), Is.EqualTo(expectedPaths));
+                Assert.That(reader.EnumerateNodeGroupKeys().Drain(), Is.EquivalentTo(expectedPaths));
             }
             foreach ((PbtStorageNodePath path, PbtColumns column) in groups)
             {
                 using RefCountingMemory? payload = reader.GetNodeGroup(path);
-                Assert.That(payload, Is.Not.Null, $"group {path.BitDepth}:{Convert.ToHexString(path.ToEncodedArray().AsSpan(4))}");
-                byte[] storageKeyBytes = path.BitDepth == 0 ? "rootNodeGroup"u8.ToArray() : path.ToEncodedArray();
+                Assert.That(payload, Is.Not.Null, $"group {path.BitDepth}:{Convert.ToHexString(path.ToPathArray())}");
+                byte[] storageKeyBytes = path.ToStorageKey(column);
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(db.GetColumnDb(column).Get(storageKeyBytes), Is.EqualTo(payload!.GetSpan().ToArray()));

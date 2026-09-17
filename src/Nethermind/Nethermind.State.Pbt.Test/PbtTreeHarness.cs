@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -147,6 +148,11 @@ internal static class PbtStoreTestExtensions
         path.Encode(encoding);
         return encoding;
     }
+
+    internal static byte[] ToStorageKey<TPath>(this TPath path, PbtColumns column) where TPath : struct, IPbtNodePath<TPath> =>
+        column == PbtColumns.Metadata
+            ? PbtRocksDbPersistence.RootNodeGroupKey.ToArray()
+            : PbtNodeGroupKey.Encode(column, path, new byte[PbtNodeGroupKey.MaxLength]).ToArray();
 
     internal static PbtPartitionBatches PreparePartitions(IEnumerable<(byte[] Key, byte[]? Value)> changes)
     {

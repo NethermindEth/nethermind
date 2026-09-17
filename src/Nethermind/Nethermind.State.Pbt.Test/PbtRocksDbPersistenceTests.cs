@@ -55,7 +55,7 @@ public class PbtRocksDbPersistenceTests
     private static ReadOnlySpan<byte> ValidStateKey => "validState"u8;
 
     [Test]
-    public void Completed_epoch_12_store_reopens_and_serves_canonical_records()
+    public void Completed_epoch_13_store_reopens_and_serves_canonical_records()
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
@@ -91,7 +91,7 @@ public class PbtRocksDbPersistenceTests
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         foreach (PbtColumns column in FastEnum.GetValues<PbtColumns>())
             db.GetColumnDb(column)[new byte[] { 1 }] = [2];
-        db.GetColumnDb(PbtColumns.Metadata)[SchemaEpochKey] = Epoch(11);
+        db.GetColumnDb(PbtColumns.Metadata)[SchemaEpochKey] = Epoch(12);
         Dictionary<PbtColumns, KeyValuePair<byte[], byte[]>[]> before = [];
         foreach (PbtColumns column in FastEnum.GetValues<PbtColumns>())
             before[column] = db.GetColumnDb(column).GetAll(ordered: true).ToArray();
@@ -318,7 +318,7 @@ public class PbtRocksDbPersistenceTests
             Assert.That(olderReader.EnumerateNodeGroupKeys().Drain(), Is.Empty);
             Assert.That(olderReader.CurrentState, Is.EqualTo(StateId.PreGenesis));
             foreach (PbtNodePath path in paths) Assert.That(ReadNode(olderReader, path), Is.Null);
-            Assert.That(reader.EnumerateNodeGroupKeys().Drain(), Is.EqualTo(expected));
+            Assert.That(reader.EnumerateNodeGroupKeys().Drain(), Is.EquivalentTo(expected));
             Assert.That(reader.CurrentState, Is.EqualTo(commit ? new StateId(1, default) : StateId.PreGenesis));
             foreach (PbtNodePath path in paths)
                 Assert.That(ReadNode(reader, path), commit ? Is.EqualTo(BranchNode(1)) : Is.Null);
@@ -500,7 +500,7 @@ public class PbtRocksDbPersistenceTests
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(metadata.Get(SchemaEpochKey), Is.EqualTo(Epoch(12)));
+            Assert.That(metadata.Get(SchemaEpochKey), Is.EqualTo(Epoch(13)));
             Assert.That(metadata.Get(CurrentStateKey), Is.Null);
             Assert.That(metadata.Get(ValidStateKey), Is.Null);
         }
@@ -595,11 +595,11 @@ public class PbtRocksDbPersistenceTests
         yield return new TestCaseData(Epoch(8), null, null, false).SetName("Rejects_epoch_8");
         yield return new TestCaseData(Epoch(9), CurrentState(), new byte[] { 1 }, false).SetName("Rejects_epoch_9");
         yield return new TestCaseData(new byte[] { 9 }, null, null, false).SetName("Rejects_malformed_epoch");
-        yield return new TestCaseData(Epoch(12), new byte[] { 0 }, null, false).SetName("Rejects_malformed_current_state");
-        yield return new TestCaseData(Epoch(12), null, Array.Empty<byte>(), false).SetName("Rejects_empty_validity");
-        yield return new TestCaseData(Epoch(12), null, new byte[] { 2 }, false).SetName("Rejects_unknown_validity");
-        yield return new TestCaseData(Epoch(12), null, new byte[] { 1 }, false).SetName("Rejects_validity_without_current_state");
-        yield return new TestCaseData(Epoch(12), CurrentState(), null, false).SetName("Rejects_current_state_without_validity");
+        yield return new TestCaseData(Epoch(13), new byte[] { 0 }, null, false).SetName("Rejects_malformed_current_state");
+        yield return new TestCaseData(Epoch(13), null, Array.Empty<byte>(), false).SetName("Rejects_empty_validity");
+        yield return new TestCaseData(Epoch(13), null, new byte[] { 2 }, false).SetName("Rejects_unknown_validity");
+        yield return new TestCaseData(Epoch(13), null, new byte[] { 1 }, false).SetName("Rejects_validity_without_current_state");
+        yield return new TestCaseData(Epoch(13), CurrentState(), null, false).SetName("Rejects_current_state_without_validity");
         yield return new TestCaseData(null, CurrentState(), null, false).SetName("Rejects_unstamped_current_state");
         yield return new TestCaseData(null, null, null, true).SetName("Rejects_unstamped_populated_store");
     }
@@ -665,7 +665,7 @@ public class PbtRocksDbPersistenceTests
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
         TPath groupKey = PbtFourLevelGroupGeometry.GroupKeyOf(path);
-        byte[] physicalKey = column == PbtColumns.Metadata ? "rootNodeGroup"u8.ToArray() : groupKey.ToEncodedArray();
+        byte[] physicalKey = groupKey.ToStorageKey(column);
         StateId first = new(1, TestItem.KeccakA.ValueHash256);
         StateId second = new(2, TestItem.KeccakB.ValueHash256);
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default, WriteFlags.None))
@@ -704,7 +704,7 @@ public class PbtRocksDbPersistenceTests
             Assert.That(deletedReader.EnumerateNodeGroupKeys().Drain(), Is.Empty);
             Assert.That(db.GetColumnDb(column).Get(physicalKey), Is.Null);
             Assert.That(ReadNode(olderReader, path), Is.EqualTo(BranchNode(1)));
-            Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get(SchemaEpochKey), Is.EqualTo(Epoch(12)));
+            Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get(SchemaEpochKey), Is.EqualTo(Epoch(13)));
         }
     }
 
@@ -714,9 +714,9 @@ public class PbtRocksDbPersistenceTests
         [Values] bool stamped)
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        byte[] key = column == PbtColumns.Metadata ? "rootNodeGroup"u8.ToArray() : new PbtNodePath(Bytes.FromHexString("00"), 4).ToEncodedArray();
+        byte[] key = new PbtNodePath(Bytes.FromHexString("00"), 4).ToStorageKey(column);
         db.GetColumnDb(column).Set(key, Bytes.FromHexString("01"));
-        if (stamped) db.GetColumnDb(PbtColumns.Metadata).Set(SchemaEpochKey, Epoch(12));
+        if (stamped) db.GetColumnDb(PbtColumns.Metadata).Set(SchemaEpochKey, Epoch(13));
 
         Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig()),
             Throws.TypeOf<InvalidDataException>().With.Message.Contains(stamped ? "interrupted initialization" : "no schema epoch"));

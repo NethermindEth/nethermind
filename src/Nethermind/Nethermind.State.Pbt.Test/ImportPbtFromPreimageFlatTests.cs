@@ -371,7 +371,7 @@ public class ImportPbtFromPreimageFlatTests
     /// <param name="clearKeyChunk">A value of 1 reopens the view after each deleted key, verifying the exclusive resume cursor.</param>
     [TestCase(10_000)]
     [TestCase(1)]
-    public async Task Import_mode_recovers_an_interrupted_epoch_12_attempt(int clearKeyChunk)
+    public async Task Import_mode_recovers_an_interrupted_epoch_13_attempt(int clearKeyChunk)
     {
         PbtConfig config = new() { ImportFromPreimageFlat = true };
 
@@ -424,9 +424,11 @@ public class ImportPbtFromPreimageFlatTests
         maximumLengthKey.AsSpan().Fill(0xFF);
         pbtDb.GetColumnDb(PbtColumns.Storages)[maximumLengthKey] = TestItem.KeccakA.Bytes.ToArray();
 
+        byte[] maximumGroupKey = new PbtStorageNodePath(Bytes.FromHexString(new string('f', 130) + "f0"), PbtFourLevelGroupGeometry.MaxGroupDepth)
+            .ToStorageKey(PbtColumns.StorageNodeGroups);
         PbtColumns[] groupColumns = [PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups];
         foreach (PbtColumns column in groupColumns)
-            pbtDb.GetColumnDb(column)[maximumLengthKey] = Bytes.FromHexString("0x7f");
+            pbtDb.GetColumnDb(column)[maximumGroupKey] = Bytes.FromHexString("0x7f");
         pbtDb.AfterCopy = () =>
         {
             using (Assert.EnterMultipleScope())
@@ -440,7 +442,7 @@ public class ImportPbtFromPreimageFlatTests
         IDb metadata = pbtDb.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x0000000c")));
+            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x0000000d")));
             Assert.That(metadata.Get("rootNodeGroup"u8), Is.Not.Null);
             Assert.That(metadata.Get("currentState"u8), Is.Null);
             Assert.That(metadata.Get("validState"u8), Is.Null);
@@ -455,7 +457,7 @@ public class ImportPbtFromPreimageFlatTests
             Assert.That(metadata.Get("validState"u8), Is.EqualTo(new byte[] { 1 }));
             Assert.That(metadata.Get("rootNodeGroup"u8), Is.Not.Null);
             foreach (PbtColumns column in groupColumns)
-                Assert.That(pbtDb.GetColumnDb(column).Get(maximumLengthKey), Is.Null, column.ToString());
+                Assert.That(pbtDb.GetColumnDb(column).Get(maximumGroupKey), Is.Null, column.ToString());
             Assert.That(pbtDb.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty, "import must not populate a split-leaf column");
             Assert.That(pbtDb.GetColumnDb(PbtColumns.Storages).Get(maximumLengthKey), Is.Null, "the full keyspace must be cleared during retry");
             Assert.That(() => new PbtRocksDbPersistence(pbtDb, new PbtConfig()), Throws.Nothing);
@@ -525,7 +527,7 @@ public class ImportPbtFromPreimageFlatTests
                 : PbtNodeCodec.EncodeLeaf(new PbtStorageFullKey(keyBytes), TestItem.KeccakA.Bytes);
             BufferWriter writer = new(new byte[1024]);
             PbtNodeGroupCodec.Encode(ref writer, group, new[] { new PbtNodeRecord(node, encoding) });
-            Add(column, depth == 0 ? "rootNodeGroup"u8.ToArray() : group.ToEncodedArray(), writer.WrittenSpan.ToArray());
+            Add(column, group.ToStorageKey(column), writer.WrittenSpan.ToArray());
             expectedGroups[depth]++;
             expectedPayloads[depth] += writer.WrittenSpan.Length;
             expectedNodes[node.BitDepth]++;
@@ -657,7 +659,7 @@ public class ImportPbtFromPreimageFlatTests
                 _ => PbtColumns.StorageNodeGroups,
             };
             byte prefix = column == PbtColumns.CodeNodeGroups ? (byte)1 : column == PbtColumns.StorageNodeGroups ? (byte)0xFF : (byte)0;
-            byte[] key = column == PbtColumns.Metadata ? "rootNodeGroup"u8.ToArray() : new PbtNodePath([prefix], 8).ToEncodedArray();
+            byte[] key = new PbtNodePath([prefix], 8).ToStorageKey(column);
             db.GetColumnDb(column).Set(key, Bytes.FromHexString("0x7f"));
         }
         db.Recording = true;

@@ -46,7 +46,7 @@ public interface IPbtPersistence
         /// <exception cref="ArgumentException"><paramref name="groupKey"/> is not at a four-level boundary.</exception>
         RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>;
 
-        /// <summary>Gets a caller-owned iterator over group keys in ascending <see cref="PbtStorageNodePath.CompareTo"/> order.</summary>
+        /// <summary>Gets a caller-owned iterator over the persisted group keys.</summary>
         IPbtIterator<PbtStorageNodePath> EnumerateNodeGroupKeys();
 
         ulong GetCodeReference(in ValueHash256 codeHash);

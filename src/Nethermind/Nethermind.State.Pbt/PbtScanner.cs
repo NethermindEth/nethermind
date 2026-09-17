@@ -102,7 +102,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
                         if (columnName == PbtColumns.Metadata)
                             ScanGroup(new PbtNodePath([], 0), view.CurrentValue, shard.NodeGroups);
                         else if (IsNodeGroupColumn(columnName))
-                            ScanGroup(PbtStorageNodePath.Decode(view.CurrentKey), view.CurrentValue, shard.NodeGroups);
+                            ScanGroup(PbtNodeGroupKey.Decode(view.CurrentKey), view.CurrentValue, shard.NodeGroups);
                         if (++pending == ProgressPublishInterval)
                         {
                             Interlocked.Add(ref scanned, pending);
@@ -184,32 +184,16 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         }
 
         List<byte[]> bounds = [[]];
-        if (IsNodeGroupColumn(column))
+        if (column == PbtColumns.Storages || IsNodeGroupColumn(column))
         {
-            // Depth precedes the path in group keys; split paths within each depth as well.
-            for (int depth = 0; depth <= PbtFourLevelGroupGeometry.MaxGroupDepth; depth += PbtFourLevelGroupGeometry.LevelsPerGroup)
+            ReadOnlySpan<byte> zones = column switch
             {
-                int zoneBytes = depth >= 8 ? 1 : 0;
-                int prefixBits = Math.Min(depth - zoneBytes * 8, 16);
-                int partitions = Math.Min(rangeCount, 1 << prefixBits);
-                ReadOnlySpan<byte> zones = zoneBytes == 0 ? [0] : [Eip8297KeyDerivation.AccountZone, Eip8297KeyDerivation.CodeZone, Eip8297KeyDerivation.StorageZone];
-                foreach (byte zone in zones)
-                    for (int partition = 0; partition < partitions; partition++)
-                    {
-                        byte[] boundary = new byte[4 + zoneBytes + (prefixBits + 7) / 8];
-                        BinaryPrimitives.WriteUInt32BigEndian(boundary, (uint)depth);
-                        if (zoneBytes != 0) boundary[4] = zone;
-                        int prefix = (int)((long)partition * (1 << prefixBits) / partitions) << (16 - prefixBits);
-                        int prefixOffset = 4 + zoneBytes;
-                        if (boundary.Length > prefixOffset) boundary[prefixOffset] = (byte)(prefix >> 8);
-                        if (boundary.Length > prefixOffset + 1) boundary[prefixOffset + 1] = (byte)prefix;
-                        bounds.Add(boundary);
-                    }
-            }
-        }
-        else if (column == PbtColumns.Storages)
-        {
-            foreach (byte zone in new[] { Eip8297KeyDerivation.AccountZone, Eip8297KeyDerivation.StorageZone })
+                PbtColumns.Storages => [Eip8297KeyDerivation.AccountZone, Eip8297KeyDerivation.StorageZone],
+                PbtColumns.AccountNodeGroups => [Eip8297KeyDerivation.AccountZone],
+                PbtColumns.CodeNodeGroups => [Eip8297KeyDerivation.CodeZone],
+                _ => [Eip8297KeyDerivation.StorageZone],
+            };
+            foreach (byte zone in zones)
                 for (int partition = 0; partition < rangeCount; partition++)
                 {
                     byte[] boundary = new byte[3];
