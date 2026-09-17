@@ -15,6 +15,23 @@ on:
           - amd64
           - arm64
         default: amd64
+      client:
+        description: Execution client to benchmark (non-Nethermind clients currently support Fusaka only)
+        required: false
+        type: choice
+        options:
+          - nethermind
+          - reth
+          - geth
+        default: nethermind
+      measurement_source:
+        description: Timing source; auto uses Nethermind SSE when available, engine-api uses the common K6 TTFB table
+        required: false
+        type: choice
+        options:
+          - auto
+          - engine-api
+        default: auto
       expb_repo:
         description: execution-payloads-benchmarks repository in owner/repo format
         required: false
@@ -50,9 +67,11 @@ on:
         default: ""
       additional_extra_flags:
         description: >-
-          Optional extra Nethermind flags. Example (single): --Merge.SweepMemory=NoGC.
+          Optional extra flags appended to the selected client's command line.
+          Nethermind example (single): --Merge.SweepMemory=NoGC.
           Example (multiple): --Sync.FastSync=false, --Pruning.CacheMb=12000
-          (or provide one flag per line).
+          (or provide one flag per line). Reference-client example:
+          --engine.slow-block-threshold=0 for reth.
         required: false
         default: ""
       flat_write_buffer_floor:
@@ -202,6 +221,10 @@ jobs:
       dottrace_mode: ${{ steps.resolve.outputs.dottrace_mode }}
       trace_blocks: ${{ steps.resolve.outputs.trace_blocks }}
       client_env: ${{ steps.resolve.outputs.client_env }}
+      client: ${{ steps.resolve.outputs.client }}
+      measurement_source: ${{ steps.resolve.outputs.measurement_source }}
+      client_snapshot_dir: ${{ steps.resolve.outputs.client_snapshot_dir }}
+      snapshot_mount_path: ${{ steps.resolve.outputs.snapshot_mount_path }}
     steps:
       - name: Resolve branch and configuration
         id: resolve
@@ -213,6 +236,8 @@ jobs:
           PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           CURRENT_REPO: ${{ github.repository }}
           PUSH_BRANCH: ${{ github.ref_name }}
+          DISPATCH_CLIENT: ${{ inputs.client }}
+          DISPATCH_MEASUREMENT_SOURCE: ${{ inputs.measurement_source }}
           DISPATCH_STATE_LAYOUT: ${{ inputs.state_layout }}
           DISPATCH_ARCH: ${{ inputs.arch }}
           DISPATCH_PAYLOAD_SET: ${{ inputs.payload_set }}
@@ -238,11 +263,17 @@ jobs:
 
           should_run="true"
           mode="single"
+          client="nethermind"
+          measurement_source="auto"
+          client_snapshot_dir=""
+          snapshot_mount_path=""
           # Default FlatDb write-buffer floor (bytes) for flat layout; overridden by the dispatch input.
           flat_write_buffer_floor="67108864"
           expb_env=""
           if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
             branch="${PUSH_BRANCH}"
+            client="${DISPATCH_CLIENT:-nethermind}"
+            measurement_source="${DISPATCH_MEASUREMENT_SOURCE:-auto}"
             state_layout="${DISPATCH_STATE_LAYOUT}"
             payload_set="${DISPATCH_PAYLOAD_SET}"
             expb_repo="${DISPATCH_EXPB_REPO}"
@@ -328,6 +359,8 @@ jobs:
             dottrace_mode=""
             trace_blocks=""
             client_env=""
+            client="nethermind"
+            measurement_source="auto"
           else
             branch="${PUSH_BRANCH}"
             state_layout="flat"
@@ -347,6 +380,59 @@ jobs:
             dottrace_mode=""
             trace_blocks=""
             client_env=""
+            client="nethermind"
+            measurement_source="auto"
+          fi
+
+          case "${client}" in
+            nethermind|reth|geth) ;;
+            *) echo "client must be nethermind, reth, or geth (got '${client}')."; exit 1 ;;
+          esac
+          case "${measurement_source}" in
+            auto|engine-api) ;;
+            *) echo "measurement_source must be auto or engine-api (got '${measurement_source}')."; exit 1 ;;
+          esac
+
+          if [[ "${client}" != "nethermind" ]]; then
+            if [[ "${EVENT_NAME}" != "workflow_dispatch" ]]; then
+              echo "client=${client} is available only for workflow_dispatch; automated runs use Nethermind."
+              exit 1
+            fi
+            if [[ "${state_layout}" != "flat" ]]; then
+              echo "::error::Reference client=${client} requires state_layout=flat (got '${state_layout}')."
+              exit 1
+            fi
+            if [[ "${payload_set}" != "fusaka" ]]; then
+              echo "client=${client} currently supports payload_set=fusaka only (got '${payload_set}')."
+              exit 1
+            fi
+            if [[ -z "${docker_images}" ]]; then
+              echo "client=${client} requires explicit docker_images; its image is never built by this workflow."
+              exit 1
+            fi
+            if [[ "${enable_retrospective}" == "true" ]]; then
+              echo "client=${client} does not support Nethermind retrospective image discovery; provide docker_images explicitly."
+              exit 1
+            fi
+            if printf '%s' "${client_env}" | grep -Eq '[^[:space:],]'; then
+              echo "client_env is Nethermind-only and cannot be passed to client=${client}."
+              exit 1
+            fi
+            if printf '%s\n' "${expb_env}" | tr ',' '\n' | sed 's/^[[:space:]]*//' | grep -Eq '^EXPB_EVM_WARMUP[[:space:]]*='; then
+              echo "EXPB_EVM_WARMUP is Nethermind-only and cannot be used with client=${client}."
+              exit 1
+            fi
+            if [[ -n "${trace_blocks}" ]]; then
+              echo "trace_blocks requires client=nethermind (BlockProfiler is Nethermind-specific)."
+              exit 1
+            fi
+            if [[ -n "${dottrace_mode}" ]]; then
+              echo "dottrace requires client=nethermind (dotTrace integration is .NET-specific)."
+              exit 1
+            fi
+            measurement_source="engine-api"
+            rebuild_docker="false"
+            snapshot_mount_path="/execution-data"
           fi
 
           # One switch drives the runner and every path that differs between the two boxes, so a
@@ -358,6 +444,9 @@ jobs:
               # This box carries a single flat snapshot and serves both config spellings from it.
               flat_snapshot_dir="/data/nethermind/nethermind-flat-25490000"
               flat_snapshot_block_dir="/data/nethermind/nethermind-flat-25490000"
+              if [[ "${client}" != "nethermind" ]]; then
+                client_snapshot_dir="/data/${client}/${client}-25490000"
+              fi
               ;;
             amd64)
               runner_label="reproducible-benchmarks"
@@ -365,12 +454,24 @@ jobs:
               # Identity rewrites: the configs on this box already carry these paths.
               flat_snapshot_dir="/mnt/sda/nethermind-flat-snapshot"
               flat_snapshot_block_dir="/mnt/sda/nethermind-flat-25490000"
+              if [[ "${client}" != "nethermind" ]]; then
+                client_snapshot_dir="/mnt/sda/${client}-25490000"
+              fi
               ;;
             *)
               echo "::error::Unsupported arch '${arch}' (expected amd64 or arm64)."
               exit 1
               ;;
           esac
+
+          if [[ "${arch}" == "arm64" && "${client}" == "geth" ]]; then
+            echo "::error::The reproducible-benchmarks-arm runner has the Reth snapshot only; client=geth requires arch=amd64."
+            exit 1
+          fi
+
+          if [[ "${client}" == "geth" ]]; then
+            snapshot_mount_path="/execution-data/geth"
+          fi
 
           # The ARM box stocks only a flat snapshot, and the config render rewrites only the flat
           # paths, so a halfpath run there would fail deep inside expb instead of here in seconds.
@@ -382,7 +483,7 @@ jobs:
           # Default the FlatDb write-buffer (memtable) floor for flat layout by routing it through the
           # extra-flags pipeline, so it actually reaches Nethermind (same path as additional_extra_flags).
           # Skipped for non-flat layouts, when disabled (empty), or when the caller already set it.
-          if [[ "${state_layout}" == "flat" && -n "${flat_write_buffer_floor:-}" ]]; then
+          if [[ "${client}" == "nethermind" && "${state_layout}" == "flat" && -n "${flat_write_buffer_floor:-}" ]]; then
             if ! printf '%s' "${additional_extra_flags}" | grep -qi "PersistenceWriteBufferFloor"; then
               floor_flag="--FlatDb.PersistenceWriteBufferFloor=${flat_write_buffer_floor}"
               if [[ -n "${additional_extra_flags}" ]]; then
@@ -440,6 +541,10 @@ jobs:
           elif [[ "${EVENT_NAME}" == "workflow_dispatch" && "${rebuild_docker}" != "true" ]]; then
             should_trigger_publish_docker="false"
           fi
+          if [[ "${client}" != "nethermind" ]]; then
+            should_trigger_publish_docker="false"
+            should_wait_for_publish_docker="false"
+          fi
 
           if [[ "${state_layout}" == "flat" && "${payload_set}" == "superblocks" ]]; then
             config_file="github-action-compressed-mainnet-flat.yaml"
@@ -455,7 +560,7 @@ jobs:
             config_file="github-action-mainnet.yaml"
           fi
 
-          scenario_name="nethermind-${state_layout}-${payload_set}-${clean_branch}-delay${delay_seconds}s"
+          scenario_name="${client}-${state_layout}-${payload_set}-${clean_branch}-delay${delay_seconds}s"
 
           {
             echo "should_run=${should_run}"
@@ -489,6 +594,10 @@ jobs:
             echo "dottrace_mode=${dottrace_mode}"
             echo "trace_blocks=${trace_blocks}"
             echo "client_env=${client_env}"
+            echo "client=${client}"
+            echo "measurement_source=${measurement_source}"
+            echo "client_snapshot_dir=${client_snapshot_dir}"
+            echo "snapshot_mount_path=${snapshot_mount_path}"
             echo "additional_extra_flags<<EOF"
             printf '%s\n' "${additional_extra_flags}"
             echo "EOF"
@@ -653,6 +762,8 @@ jobs:
       FLAT_SNAPSHOT_BLOCK_DIR: ${{ needs.resolve.outputs.flat_snapshot_block_dir }}
       NETHERMIND_IMAGE: ${{ needs.resolve.outputs.image_label }}
       CLEANUP_GRACE_SECONDS: ${{ needs.resolve.outputs.cleanup_grace_seconds }}
+      CLIENT: ${{ needs.resolve.outputs.client }}
+      MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
     steps:
       - name: Resolve benchmark config for payload set
         id: resolve-config
@@ -664,6 +775,7 @@ jobs:
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
           RUN: ${{ matrix.run }}
           RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
+          CLIENT: ${{ needs.resolve.outputs.client }}
         run: |
           set -euo pipefail
           if [[ "${STATE_LAYOUT}" == "flat" && "${PAYLOAD_SET}" == "superblocks" ]]; then
@@ -679,7 +791,7 @@ jobs:
           else
             config_file="github-action-mainnet.yaml"
           fi
-          scenario_name="nethermind-${STATE_LAYOUT}-${PAYLOAD_SET}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
+          scenario_name="${CLIENT}-${STATE_LAYOUT}-${PAYLOAD_SET}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
           if [[ "${RUN_COUNT}" -gt 1 ]]; then
             scenario_name="${scenario_name}-run${RUN}"
           fi
@@ -695,6 +807,8 @@ jobs:
           echo "Payload set: ${{ matrix.payload_set }}"
           echo "Nethermind branch: ${{ needs.resolve.outputs.branch }}"
           echo "Docker image: ${NETHERMIND_IMAGE}"
+          echo "Client: ${CLIENT}"
+          echo "Measurement source: ${MEASUREMENT_SOURCE}"
           echo "Config file: ${EXPB_DATA_DIR}/${CONFIG_FILE}"
           echo "Delay placeholder value: ${{ needs.resolve.outputs.delay_seconds }}"
           echo "Rebuild docker requested: ${{ needs.resolve.outputs.rebuild_docker }}"
@@ -824,8 +938,9 @@ jobs:
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
 
-          # Append extra flags using yq (proper YAML handling)
           scenario_key="${SCENARIO_NAME}"
+
+          # Append extra flags using yq (proper YAML handling)
           while IFS= read -r flag; do
             [[ -z "${flag}" ]] && continue
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
@@ -854,6 +969,8 @@ jobs:
             done
           fi
 
+          expected_amount="$("${YQ}" -r ".scenarios.\"${scenario_key}\".amount // \"\"" "${RENDERED_CONFIG_FILE}")"
+          echo "expected_amount=${expected_amount}" >> "${GITHUB_OUTPUT}"
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
 
       - name: Install or upgrade expb
@@ -862,6 +979,7 @@ jobs:
           EXPB_REPO: ${{ needs.resolve.outputs.expb_repo }}
           EXPB_BRANCH: ${{ needs.resolve.outputs.expb_branch }}
           PERF: ${{ needs.resolve.outputs.perf }}
+          MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
         run: |
           set -euo pipefail
 
@@ -870,12 +988,7 @@ jobs:
             export PATH="${HOME}/.local/bin:${PATH}"
           fi
 
-          # Remove this temporary pin once default main advertises --perf in execute-scenarios --help (execution-payloads-benchmarks#27); the help probe below is the runtime guard.
-          expb_perf_revision="ec133a2871165fa039c5c12cec6b047fdce05572"
-          if [[ "${PERF}" == "true" && "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
-            expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks@${expb_perf_revision}"
-            echo "perf=true with the default expb main selection; pinning to ${expb_perf_revision}."
-          elif [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
+          if [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
             expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks"
           elif [[ -n "${EXPB_BRANCH}" ]]; then
             expb_source="git+https://github.com/${EXPB_REPO}@${EXPB_BRANCH}"
@@ -886,13 +999,13 @@ jobs:
           echo "Installing expb from ${expb_source}"
           uv tool install --force --from "${expb_source}" expb
           expb_bin="$(uv tool dir --bin)/expb"
-          if [[ "${PERF}" == "true" ]]; then
-            expb_help="$("${expb_bin}" execute-scenarios --help 2>&1)" || {
-              echo "::error::Installed expb from ${expb_source} could not print execute-scenarios help for --perf verification."
-              exit 1
-            }
-            if [[ "${expb_help}" != *"--perf"* ]]; then
-              echo "::error::Installed expb from ${expb_source} does not support --perf. Use the default expb selection (pinned to ${expb_perf_revision}) or select an expb revision that implements --perf."
+          requested_flags=()
+          if [[ "${PERF}" == "true" ]]; then requested_flags+=(--perf); fi
+          if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then requested_flags+=(--no-client-metrics); fi
+          if [[ "${#requested_flags[@]}" -gt 0 ]]; then
+            if ! capability_output="$(NO_COLOR=1 "${expb_bin}" execute-scenarios "${requested_flags[@]}" --help 2>&1)"; then
+              echo "::error::Installed expb from ${expb_source} does not support requested capability flag(s): ${requested_flags[*]}."
+              printf '%s\n' "${capability_output}"
               exit 1
             fi
           fi
@@ -1027,6 +1140,7 @@ jobs:
           PERF: ${{ needs.resolve.outputs.perf }}
           DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
           EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
+          MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
         run: |
           set -euo pipefail
           expb_pid=""
@@ -1073,6 +1187,12 @@ jobs:
           trap on_terminate TERM INT
 
           profiling_flags=()
+          measurement_flags=()
+          if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then
+            # Cross-client runs use the common K6 HTTP timing table. Avoid starting the
+            # Nethermind-only SSE feed even when the selected image happens to be Nethermind.
+            measurement_flags+=(--no-client-metrics)
+          fi
           if [[ "${DOTTRACE}" == "true" ]]; then
             # dotnet-trace (EventPipe runtime events: gc/contention/threading/exception)
             # always rides along with dotTrace - different channel, adds the GC/lock story
@@ -1092,6 +1212,11 @@ jobs:
             printf ' %q' "${profiling_flags[@]}"
             printf '\n'
           fi
+          if [[ "${#measurement_flags[@]}" -eq 0 ]]; then
+            echo "expb measurement flags: client metrics enabled (measurement_source=${MEASUREMENT_SOURCE})"
+          else
+            echo "expb measurement flags: --no-client-metrics (measurement_source=${MEASUREMENT_SOURCE})"
+          fi
 
           # Marker for profiling artifact collection — only files newer than this
           touch "${RUNNER_TEMP}/.expb-run-marker"
@@ -1106,6 +1231,7 @@ jobs:
             --per-payload-metrics \
             --per-payload-metrics-logs \
             --print-logs \
+            ${measurement_flags[@]+"${measurement_flags[@]}"} \
             ${profiling_flags[@]+"${profiling_flags[@]}"} \
             > "${fifo}" 2>&1 &
           expb_pid=$!
@@ -1126,6 +1252,8 @@ jobs:
         shell: bash
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run.log
+          MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
+          EXPECTED_AMOUNT: ${{ steps.render-config.outputs.expected_amount }}
         run: |
           set -euo pipefail
 
@@ -1168,17 +1296,22 @@ jobs:
             fi
           done
 
-          # Extract client-side processing times from SSE data feed (primary)
+          # Extract client-side processing times from SSE data feed unless the caller selected the
+          # common Engine API timing source. The latter must use the K6 table even for Nethermind.
           client_ms="${RUNNER_TEMP}/expb-client-ms.txt"
           client_ms_sorted="${RUNNER_TEMP}/expb-client-ms-sorted.txt"
-          grep -oP '\[payload-server\] client_metric block_number=\d+ processing_ms=\K[0-9]+(\.[0-9]+)?' "${clean_log}" > "${client_ms}" || true
+          if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then
+            : > "${client_ms}"
+            echo "Using K6 TTFB data (measurement_source=engine-api)."
+          else
+            grep -oP '\[payload-server\] client_metric block_number=\d+ processing_ms=\K[0-9]+(\.[0-9]+)?' "${clean_log}" > "${client_ms}" || true
+          fi
 
-          # Fall back to K6 TTFB table if no client metrics available
           if [[ -s "${client_ms}" ]]; then
             echo "Using SSE client_metric data ($(wc -l < "${client_ms}") samples)."
             cp "${client_ms}" "${processing_ms}"
           else
-            echo "No SSE client_metric data found, falling back to K6 TTFB table."
+            [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]] || echo "No SSE client_metric data found, falling back to K6 TTFB table."
             awk -F'|' '
               /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
                 value = $4
@@ -1195,6 +1328,18 @@ jobs:
           if [[ "${count}" -eq 0 ]]; then
             echo "Could not extract any processing_ms data from benchmark output."
             exit 1
+          fi
+          if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then
+            if [[ "${EXPECTED_AMOUNT}" =~ ^[0-9]+$ ]]; then
+              if [[ "${count}" -ne "${EXPECTED_AMOUNT}" ]]; then
+                echo "Expected ${EXPECTED_AMOUNT} K6 TTFB samples, extracted ${count}; refusing a partial engine-api measurement."
+                exit 1
+              fi
+            else
+              # The config carries no usable `amount`, so nothing can say whether the run is complete -
+              # and a partial cross-client run biases the comparison it was dispatched to make.
+              echo "::warning::No usable amount ('${EXPECTED_AMOUNT}') in the rendered config; the engine-api completeness check is disabled for this run."
+            fi
           fi
 
           compute_percentiles() {
@@ -1331,6 +1476,14 @@ jobs:
           name: expb-single-metrics-${{ matrix.payload_set }}-run${{ matrix.run }}
           path: ${{ steps.analyze.outputs.metrics_file }}
           retention-days: 30
+
+      - name: Upload raw benchmark log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: expb-single-log-${{ matrix.payload_set }}-run${{ matrix.run }}
+          path: ${{ runner.temp }}/expb-run.log
+          retention-days: 7
 
       - name: Prepare master metrics cache
         if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true'
@@ -1532,6 +1685,7 @@ jobs:
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CLIENT: ${{ needs.resolve.outputs.client }}
         run: |
           set -euo pipefail
 
@@ -1614,7 +1768,7 @@ jobs:
             local payload_set="$1"
             local current_metrics="$2"
             local master_metrics="$3"
-            local scenario_name="nethermind-${STATE_LAYOUT}-${payload_set}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
+            local scenario_name="${CLIENT}-${STATE_LAYOUT}-${payload_set}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
 
             local metrics=("MIN" "AVG" "MEDIAN" "P90" "P99" "MAX")
             local labels=("Min" "Avg" "P50" "P90" "P99" "Max")
@@ -1781,6 +1935,7 @@ jobs:
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CLIENT: ${{ needs.resolve.outputs.client }}
         run: |
           set -euo pipefail
 
@@ -1819,7 +1974,7 @@ jobs:
           } > "${summary_file}"
 
           for ps in "${payload_sets[@]}"; do
-            scenario_name="nethermind-${STATE_LAYOUT}-${ps}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
+            scenario_name="${CLIENT}-${STATE_LAYOUT}-${ps}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
 
             {
               echo ""
@@ -2001,6 +2156,18 @@ jobs:
                 all_dates+=("n/a")
               fi
             done
+            if [[ "${#all_images[@]}" -eq 0 ]]; then
+              echo "::error::docker_images must contain at least one non-empty image reference."
+              exit 1
+            fi
+            duplicate_tag_count="$(printf '%s\n' "${all_tags[@]}" | sort | uniq -d | wc -l)"
+            if [[ "${duplicate_tag_count}" -gt 0 ]]; then
+              original_tags=("${all_tags[@]}")
+              for i in "${!original_tags[@]}"; do
+                all_tags["${i}"]="${original_tags[${i}]}-${i}"
+              done
+              echo "Duplicate explicit image tags detected; suffixed every matrix tag with its array index."
+            fi
             echo "Parsed ${#all_images[@]} explicit docker images."
           else
             # Retrospective mode: scan Docker Hub for master-* images
@@ -2134,12 +2301,19 @@ jobs:
       CONFIG_FILE: ${{ needs.resolve.outputs.config_file }}
       NETHERMIND_IMAGE: ${{ matrix.image }}
       CLEANUP_GRACE_SECONDS: ${{ needs.resolve.outputs.cleanup_grace_seconds }}
+      CLIENT: ${{ needs.resolve.outputs.client }}
+      MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
+      CLIENT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.client_snapshot_dir }}
+      SNAPSHOT_MOUNT_PATH: ${{ needs.resolve.outputs.snapshot_mount_path }}
     steps:
       - name: Print resolved inputs
         run: |
           echo "Multi-image benchmark run"
           echo "Runner: ${{ needs.resolve.outputs.runner_label }}"
           echo "Docker image: ${NETHERMIND_IMAGE}"
+          echo "Client: ${CLIENT}"
+          echo "Measurement source: ${MEASUREMENT_SOURCE}"
+          if [[ -n "${CLIENT_SNAPSHOT_DIR}" ]]; then echo "Client snapshot: ${CLIENT_SNAPSHOT_DIR}"; fi
           echo "Image tag: ${{ matrix.tag }}"
           echo "Run: ${{ matrix.run }} of ${{ needs.resolve.outputs.run_count }}"
           echo "Config file: ${EXPB_DATA_DIR}/${CONFIG_FILE}"
@@ -2176,12 +2350,16 @@ jobs:
           SOURCE_CONFIG_FILE: ${{ env.EXPB_DATA_DIR }}/${{ env.CONFIG_FILE }}
           RENDERED_CONFIG_FILE: ${{ runner.temp }}/rendered-expb-config-${{ matrix.tag }}-run${{ matrix.run }}.yaml
           DOCKER_TAG: ${{ matrix.tag }}
+          DOCKER_IMAGE: ${{ matrix.image }}
           DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
           AMOUNT: ${{ needs.resolve.outputs.amount }}
-          SCENARIO_NAME: nethermind-multi-${{ matrix.tag }}-run${{ matrix.run }}
+          SCENARIO_NAME: ${{ needs.resolve.outputs.client }}-multi-${{ matrix.tag }}-run${{ matrix.run }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
           TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
           CLIENT_ENV: ${{ needs.resolve.outputs.client_env }}
+          CLIENT: ${{ needs.resolve.outputs.client }}
+          CLIENT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.client_snapshot_dir }}
+          SNAPSHOT_MOUNT_PATH: ${{ needs.resolve.outputs.snapshot_mount_path }}
         run: |
           set -euo pipefail
           flags_file="$(mktemp)"
@@ -2246,8 +2424,30 @@ jobs:
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
 
-          # Append extra flags using yq (proper YAML handling)
+          # Select the adapter and snapshot after preserving the source config's comments and
+          # placeholders. Reference clients use the overlay backend and never inherit Nethermind flags.
           scenario_key="${SCENARIO_NAME}"
+          if [[ "${CLIENT}" != "nethermind" ]]; then
+            # Opening large reference snapshots can take several minutes on the benchmark runners.
+            SK="${scenario_key}" C="${CLIENT}" S="${CLIENT_SNAPSHOT_DIR}" M="${SNAPSHOT_MOUNT_PATH}" DI="${DOCKER_IMAGE}" \
+              "${YQ}" -i '.scenarios.[strenv(SK)].client = strenv(C) |
+                .scenarios.[strenv(SK)].image = strenv(DI) |
+                .scenarios.[strenv(SK)].snapshot_source = strenv(S) |
+                .scenarios.[strenv(SK)].snapshot_backend = "overlay" |
+                .scenarios.[strenv(SK)].extra_flags = [] |
+                .scenarios.[strenv(SK)].extra_env = {} |
+                .scenarios.[strenv(SK)].extra_commands = [] |
+                .scenarios.[strenv(SK)].extra_volumes = {} |
+                .scenarios.[strenv(SK)].snapshot_mount_path = strenv(M) |
+                .scenarios.[strenv(SK)].startup_wait = 600' "${RENDERED_CONFIG_FILE}"
+            echo "Rendered ${CLIENT} scenario against snapshot ${CLIENT_SNAPSHOT_DIR} (overlay, mount ${SNAPSHOT_MOUNT_PATH})."
+          else
+            SK="${scenario_key}" C="${CLIENT}" DI="${DOCKER_IMAGE}" \
+              "${YQ}" -i '.scenarios.[strenv(SK)].client = strenv(C) |
+                .scenarios.[strenv(SK)].image = strenv(DI)' "${RENDERED_CONFIG_FILE}"
+          fi
+
+          # Append extra flags using yq (proper YAML handling)
           while IFS= read -r flag; do
             [[ -z "${flag}" ]] && continue
             "${YQ}" -i ".scenarios.\"${scenario_key}\".extra_flags += [\"${flag}\"]" "${RENDERED_CONFIG_FILE}"
@@ -2276,7 +2476,39 @@ jobs:
             done
           fi
 
+          expected_amount="$("${YQ}" -r ".scenarios.\"${scenario_key}\".amount // \"\"" "${RENDERED_CONFIG_FILE}")"
+          echo "expected_amount=${expected_amount}" >> "${GITHUB_OUTPUT}"
           echo "rendered_config_file=${RENDERED_CONFIG_FILE}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify client snapshot and provenance
+        if: needs.resolve.outputs.client != 'nethermind'
+        shell: bash
+        env:
+          CLIENT: ${{ needs.resolve.outputs.client }}
+          SNAPSHOT_SOURCE: ${{ needs.resolve.outputs.client_snapshot_dir }}
+          SNAPSHOT_MOUNT_PATH: ${{ needs.resolve.outputs.snapshot_mount_path }}
+        run: |
+          set -euo pipefail
+          [[ -n "${SNAPSHOT_SOURCE}" && -d "${SNAPSHOT_SOURCE}" ]] || {
+            echo "::error::Snapshot source '${SNAPSHOT_SOURCE}' for client=${CLIENT} does not exist on this runner."
+            exit 1
+          }
+          if [[ "${CLIENT}" == "geth" && ! -d "${SNAPSHOT_SOURCE}/chaindata" ]]; then
+            echo "::error::Geth snapshot '${SNAPSHOT_SOURCE}' does not contain chaindata contents."
+            exit 1
+          fi
+          if [[ "${CLIENT}" == "reth" && ! -d "${SNAPSHOT_SOURCE}/db" ]]; then
+            echo "::error::Reth snapshot '${SNAPSHOT_SOURCE}' does not contain the db directory."
+            exit 1
+          fi
+          echo "Snapshot provenance: client=${CLIENT} source=${SNAPSHOT_SOURCE} mount=${SNAPSHOT_MOUNT_PATH} backend=overlay"
+          stat --printf='Snapshot stat: device=%D inode=%i mtime=%y\n' "${SNAPSHOT_SOURCE}"
+          for sidecar in _snapshot_metadata.json _snapshot_web3_clientVersion.json; do
+            if [[ -f "${SNAPSHOT_SOURCE}/${sidecar}" ]]; then
+              echo "Snapshot ${sidecar}: $(tr -d '\n' < "${SNAPSHOT_SOURCE}/${sidecar}" | cut -c1-300)"
+            fi
+          done
+          find "${SNAPSHOT_SOURCE}" -mindepth 1 -maxdepth 1 -printf 'Snapshot entry: %f\n' | sort
 
       - name: Install or upgrade expb
         shell: bash
@@ -2284,18 +2516,14 @@ jobs:
           EXPB_REPO: ${{ needs.resolve.outputs.expb_repo }}
           EXPB_BRANCH: ${{ needs.resolve.outputs.expb_branch }}
           PERF: ${{ needs.resolve.outputs.perf }}
+          MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
         run: |
           set -euo pipefail
           if ! command -v uv >/dev/null 2>&1; then
             curl -LsSf https://astral.sh/uv/install.sh | sh
             export PATH="${HOME}/.local/bin:${PATH}"
           fi
-          # Remove this temporary pin once default main advertises --perf in execute-scenarios --help (execution-payloads-benchmarks#27); the help probe below is the runtime guard.
-          expb_perf_revision="ec133a2871165fa039c5c12cec6b047fdce05572"
-          if [[ "${PERF}" == "true" && "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
-            expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks@${expb_perf_revision}"
-            echo "perf=true with the default expb main selection; pinning to ${expb_perf_revision}."
-          elif [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
+          if [[ "${EXPB_REPO}" == "NethermindEth/execution-payloads-benchmarks" && "${EXPB_BRANCH}" == "main" ]]; then
             expb_source="git+https://github.com/NethermindEth/execution-payloads-benchmarks"
           elif [[ -n "${EXPB_BRANCH}" ]]; then
             expb_source="git+https://github.com/${EXPB_REPO}@${EXPB_BRANCH}"
@@ -2305,13 +2533,13 @@ jobs:
           echo "Installing expb from ${expb_source}"
           uv tool install --force --from "${expb_source}" expb
           expb_bin="$(uv tool dir --bin)/expb"
-          if [[ "${PERF}" == "true" ]]; then
-            expb_help="$("${expb_bin}" execute-scenarios --help 2>&1)" || {
-              echo "::error::Installed expb from ${expb_source} could not print execute-scenarios help for --perf verification."
-              exit 1
-            }
-            if [[ "${expb_help}" != *"--perf"* ]]; then
-              echo "::error::Installed expb from ${expb_source} does not support --perf. Use the default expb selection (pinned to ${expb_perf_revision}) or select an expb revision that implements --perf."
+          requested_flags=()
+          if [[ "${PERF}" == "true" ]]; then requested_flags+=(--perf); fi
+          if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then requested_flags+=(--no-client-metrics); fi
+          if [[ "${#requested_flags[@]}" -gt 0 ]]; then
+            if ! capability_output="$(NO_COLOR=1 "${expb_bin}" execute-scenarios "${requested_flags[@]}" --help 2>&1)"; then
+              echo "::error::Installed expb from ${expb_source} does not support requested capability flag(s): ${requested_flags[*]}."
+              printf '%s\n' "${capability_output}"
               exit 1
             fi
           fi
@@ -2446,6 +2674,7 @@ jobs:
           PERF: ${{ needs.resolve.outputs.perf }}
           DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
           EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
+          MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
         run: |
           set -euo pipefail
           expb_pid=""
@@ -2490,6 +2719,10 @@ jobs:
           trap on_terminate TERM INT
 
           profiling_flags=()
+          measurement_flags=()
+          if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then
+            measurement_flags+=(--no-client-metrics)
+          fi
           if [[ "${DOTTRACE}" == "true" ]]; then
             # dotnet-trace (EventPipe runtime events: gc/contention/threading/exception)
             # always rides along with dotTrace - different channel, adds the GC/lock story
@@ -2509,6 +2742,11 @@ jobs:
             printf ' %q' "${profiling_flags[@]}"
             printf '\n'
           fi
+          if [[ "${#measurement_flags[@]}" -eq 0 ]]; then
+            echo "expb measurement flags: client metrics enabled (measurement_source=${MEASUREMENT_SOURCE})"
+          else
+            echo "expb measurement flags: --no-client-metrics (measurement_source=${MEASUREMENT_SOURCE})"
+          fi
 
           # Marker for profiling artifact collection — only files newer than this
           touch "${RUNNER_TEMP}/.expb-run-marker"
@@ -2523,6 +2761,7 @@ jobs:
             --per-payload-metrics \
             --per-payload-metrics-logs \
             --print-logs \
+            ${measurement_flags[@]+"${measurement_flags[@]}"} \
             ${profiling_flags[@]+"${profiling_flags[@]}"} \
             > "${fifo}" 2>&1 &
           expb_pid=$!
@@ -2545,6 +2784,8 @@ jobs:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
           TAG: ${{ matrix.tag }}
           RUN: ${{ matrix.run }}
+          MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
+          EXPECTED_AMOUNT: ${{ steps.render-config.outputs.expected_amount }}
         run: |
           set -euo pipefail
 
@@ -2595,16 +2836,21 @@ jobs:
             fi
           done
 
-          # Extract client-side processing times from SSE data feed (primary)
+          # Use K6 TTFB for engine-api mode so all clients share the same clock. Auto retains
+          # Nethermind's internal SSE processing metric with a TTFB fallback.
           client_ms="${RUNNER_TEMP}/expb-client-ms-${key}.txt"
-          grep -oP '\[payload-server\] client_metric block_number=\d+ processing_ms=\K[0-9]+(\.[0-9]+)?' "${clean_log}" > "${client_ms}" || true
+          if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then
+            : > "${client_ms}"
+            echo "Using K6 TTFB data (measurement_source=engine-api)."
+          else
+            grep -oP '\[payload-server\] client_metric block_number=\d+ processing_ms=\K[0-9]+(\.[0-9]+)?' "${clean_log}" > "${client_ms}" || true
+          fi
 
-          # Fall back to K6 TTFB table if no client metrics available
           if [[ -s "${client_ms}" ]]; then
             echo "Using SSE client_metric data ($(wc -l < "${client_ms}") samples)."
             cp "${client_ms}" "${processing_ms}"
           else
-            echo "No SSE client_metric data found, falling back to K6 TTFB table."
+            [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]] || echo "No SSE client_metric data found, falling back to K6 TTFB table."
             awk -F'|' '
               /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
                 value = $4
@@ -2629,6 +2875,25 @@ jobs:
               echo "ERROR=no_metrics"
             } > "${metrics_dir}/metrics.env"
             exit 1
+          fi
+          if [[ "${MEASUREMENT_SOURCE}" == "engine-api" ]]; then
+            if [[ "${EXPECTED_AMOUNT}" =~ ^[0-9]+$ ]]; then
+              if [[ "${count}" -ne "${EXPECTED_AMOUNT}" ]]; then
+                echo "Expected ${EXPECTED_AMOUNT} K6 TTFB samples, extracted ${count}; refusing a partial engine-api measurement."
+                {
+                  echo "TAG=${TAG}"
+                  echo "RUN=${RUN}"
+                  echo "EXCEPTION_FOUND=${exception_found}"
+                  echo "INVALID_BLOCK_FOUND=${invalid_block_found}"
+                  echo "ERROR=partial_engine_api_metrics"
+                } > "${metrics_dir}/metrics.env"
+                exit 1
+              fi
+            else
+              # The config carries no usable `amount`, so nothing can say whether the run is complete -
+              # and a partial cross-client run biases the comparison it was dispatched to make.
+              echo "::warning::No usable amount ('${EXPECTED_AMOUNT}') in the rendered config; the engine-api completeness check is disabled for this run."
+            fi
           fi
 
           compute_percentiles() {
@@ -2757,6 +3022,14 @@ jobs:
           name: expb-metrics-${{ matrix.tag }}-run${{ matrix.run }}
           path: ${{ runner.temp }}/expb-metrics-${{ matrix.tag }}-run${{ matrix.run }}/metrics.env
           retention-days: 30
+
+      - name: Upload raw benchmark log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: expb-log-${{ matrix.tag }}-run${{ matrix.run }}
+          path: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
+          retention-days: 7
 
       - name: Enforce run quality gates
         if: always()
@@ -2896,6 +3169,7 @@ jobs:
           # Parse ordered tags JSON (unique tags, not expanded by run)
           mapfile -t tags < <(echo "${ORDERED_TAGS}" | jq -r '.[].tag')
           mapfile -t dates < <(echo "${ORDERED_TAGS}" | jq -r '.[].date')
+          mapfile -t images < <(echo "${ORDERED_TAGS}" | jq -r '.[].image')
 
           load_metric() {
             local file="$1"
@@ -2946,6 +3220,21 @@ jobs:
             echo ""
             echo "Benchmarked ${#tags[@]} Docker images${run_count:+, ${run_count} run(s) each}."
             echo ""
+            show_image_mapping=false
+            for i in "${!tags[@]}"; do
+              image_tag="${images[$i]##*:}"
+              if [[ "${tags[$i]}" != "${image_tag}" ]]; then
+                show_image_mapping=true
+                break
+              fi
+            done
+            if [[ "${show_image_mapping}" == "true" ]]; then
+              echo "**Image tag mapping:**"
+              for i in "${!tags[@]}"; do
+                echo "- \`${tags[$i]}\` → \`${images[$i]}\`"
+              done
+              echo ""
+            fi
             echo "${header}"
             echo "${separator}"
           } > "${summary_file}"
