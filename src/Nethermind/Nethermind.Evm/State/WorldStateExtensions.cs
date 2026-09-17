@@ -29,9 +29,36 @@ public static class WorldStateExtensions
     public static bool AddToBalanceAndCreateIfNotExists(this IWorldState worldState, Address address, in UInt256 balanceChange, IReleaseSpec spec)
         => worldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out _);
 
+    /// <summary>
+    /// Applies a balance change to <paramref name="address"/>, creating the account when it doesn't exist,
+    /// but only when the result will be a non-empty account (or pre-EIP-158).
+    /// </summary>
+    [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void AddToBalanceAndCreateIfNotExists(this IWorldState worldState, Address address, ExecutionType executionType, in UInt256 balanceChange, IReleaseSpec spec)
-        => worldState.AddToBalanceAndCreateIfNotExists(address, executionType.GetBalanceCredit(in balanceChange), spec, out _);
+    public static void AddToBalanceAndCreateIfNotEmpty(this IWorldState worldState, Address address, in UInt256 balanceChange, IReleaseSpec spec)
+    {
+        if (!balanceChange.IsZero || !spec.IsEip158Enabled)
+            worldState.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec, out _);
+        else if (worldState.AccountExists(address))
+            worldState.AddToBalance(address, in balanceChange, spec);
+    }
+
+    /// <inheritdoc cref="AddToBalanceAndCreateIfNotEmpty(IWorldState, Address, in UInt256, IReleaseSpec)"/>
+    /// <remarks>
+    /// <see cref="ExecutionType.CREATE"/>/<see cref="ExecutionType.CREATE2"/> frames always create the account,
+    /// because the frame bumps its nonce immediately afterwards and so cannot leave it empty.
+    /// </remarks>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void AddToBalanceAndCreateIfNotEmpty(this IWorldState worldState, Address address, ExecutionType executionType, in UInt256 balanceChange, IReleaseSpec spec)
+    {
+        ref readonly UInt256 credit = ref executionType.GetBalanceCredit(in balanceChange);
+
+        if (executionType.IsAnyCreate()) // CREATE/CREATE2 frame bumps the nonce after, so the account will not be left empty
+            worldState.AddToBalanceAndCreateIfNotExists(address, in credit, spec, out _);
+        else
+            worldState.AddToBalanceAndCreateIfNotEmpty(address, in credit, spec);
+    }
 
     public static void SubtractFromBalance(this IWorldState worldState, Address address, in UInt256 balanceChange, IReleaseSpec spec)
         => worldState.SubtractFromBalance(address, balanceChange, spec, out _);
