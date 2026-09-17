@@ -24,10 +24,10 @@ public class TraceModuleFactory(
     private ContainerBuilder ConfigureCommonBlockProcessing(ContainerBuilder builder, TransactionProcessorAdapterFactory adapterFactory) =>
         builder
             .AddModule(validationBlockProcessingModules)
+            .AddModule(new TransactionTraceModule(validationBlockProcessingModules))
 
             .AddScoped<TransactionProcessorAdapterFactory>(adapterFactory)
-            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+            .AddScoped<IBlockchainProcessor, OneTimeChainProcessor>()
             .AddScoped<IBlockValidator>(Always.Valid) // Why?
 
             .AddDecorator<IRewardCalculator, MergeRpcRewardCalculator>(); // TODO: Check, what if this is pre merge?
@@ -50,8 +50,7 @@ public class TraceModuleFactory(
             .AddScoped<ITracer, IStateReader>((stateReader) => new Tracer(
                 stateReader,
                 rpcProcessingScope.Resolve<BlockchainProcessorFacade>(),
-                validationProcessingScope.Resolve<BlockchainProcessorFacade>(),
-                traceOptions: ProcessingOptions.TraceTransactions)));
+                validationProcessingScope.Resolve<BlockchainProcessorFacade>())));
 
         // Split out only the env to prevent accidental leak
         IOverridableEnv<ITracer> tracerEnv = tracerLifetimeScope.Resolve<IOverridableEnv<ITracer>>();

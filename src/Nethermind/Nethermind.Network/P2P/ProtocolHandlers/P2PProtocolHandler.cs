@@ -273,10 +273,13 @@ public class P2PProtocolHandler(
             return;
         }
 
+        // Nothing from the Hello may be applied until the identity it claims agrees with the authenticated one.
         if (!hello.NodeId.Equals(Session.RemoteNodeId))
         {
             if (Logger.IsDebug) DebugInconsistentNodeId(hello, isInbound);
-            // it does not really matter if there is mismatch - we do not use it anywhere
+            Session.InitiateDisconnect(DisconnectReason.UnexpectedIdentity,
+                $"expected {Session.RemoteNodeId}, received hello with {hello.NodeId}");
+            return;
         }
 
         RemoteClientId = hello.ClientId;
