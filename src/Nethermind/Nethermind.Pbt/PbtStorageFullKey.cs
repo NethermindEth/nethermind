@@ -35,10 +35,10 @@ public readonly struct PbtStorageFullKey : IPbtKey<PbtStorageFullKey>
     }
 
     /// <summary>Widens a key without changing its bytes.</summary>
-    public static explicit operator PbtStorageFullKey(PbtFullKey key) => key.Length == 0 ? default : new(key.Bytes);
+    public static explicit operator PbtStorageFullKey(in PbtFullKey key) => key.Length == 0 ? default : new(key.Bytes);
 
     /// <summary>Narrows a key, rejecting keys longer than 34 bytes.</summary>
-    public static explicit operator PbtFullKey(PbtStorageFullKey key) => key.Length == 0 ? default : new(key.Bytes);
+    public static explicit operator PbtFullKey(in PbtStorageFullKey key) => key.Length == 0 ? default : new(key.Bytes);
 
     public int Length { get; }
     public int BitLength => Length * 8;
@@ -47,17 +47,17 @@ public readonly struct PbtStorageFullKey : IPbtKey<PbtStorageFullKey>
 
     public int GetBit(int bitIndex) => PbtKeyOperations.GetBit(Bytes, bitIndex);
 
-    public bool IsPrefixOf(PbtStorageFullKey other) =>
+    public bool IsPrefixOf(in PbtStorageFullKey other) =>
         Length <= other.Length && other.Bytes[..Length].SequenceEqual(Bytes);
 
-    public int FirstDifferingBit(PbtStorageFullKey other, int startBit = 0) =>
+    public int FirstDifferingBit(in PbtStorageFullKey other, int startBit = 0) =>
         PbtKeyOperations.FirstDifferingBit(Bytes, other.Bytes, startBit);
 
     public int CompareTo(PbtStorageFullKey other) => Bytes.SequenceCompareTo(other.Bytes);
     public bool Equals(PbtStorageFullKey other) => Bytes.SequenceEqual(other.Bytes);
     public override bool Equals(object? obj) => obj is PbtStorageFullKey other && Equals(other);
-    public static bool operator ==(PbtStorageFullKey left, PbtStorageFullKey right) => left.Equals(right);
-    public static bool operator !=(PbtStorageFullKey left, PbtStorageFullKey right) => !left.Equals(right);
+    public static bool operator ==(in PbtStorageFullKey left, in PbtStorageFullKey right) => left.Equals(right);
+    public static bool operator !=(in PbtStorageFullKey left, in PbtStorageFullKey right) => !left.Equals(right);
 
     public override int GetHashCode()
     {

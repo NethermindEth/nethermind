@@ -378,7 +378,7 @@ public class ImportPbtFromPreimageFlatTests
     /// <param name="clearKeyChunk">A value of 1 reopens the view after each deleted key, verifying the exclusive resume cursor.</param>
     [TestCase(10_000)]
     [TestCase(1)]
-    public async Task Import_mode_recovers_an_interrupted_epoch_13_attempt(int clearKeyChunk)
+    public async Task Import_mode_recovers_an_interrupted_epoch_14_attempt(int clearKeyChunk)
     {
         PbtConfig config = new() { ImportFromPreimageFlat = true };
 
@@ -449,7 +449,7 @@ public class ImportPbtFromPreimageFlatTests
         IDb metadata = pbtDb.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x0000000d")));
+            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x0000000e")));
             Assert.That(metadata.Get("rootNodeGroup"u8), Is.Not.Null);
             Assert.That(metadata.Get("currentState"u8), Is.Null);
             Assert.That(metadata.Get("validState"u8), Is.Null);

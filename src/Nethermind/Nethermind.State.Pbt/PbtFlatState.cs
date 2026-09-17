@@ -73,7 +73,7 @@ internal static class PbtFlatState
         return leaves;
     }
 
-    internal static ValueHash256 StorageAddress(PbtStorageFullKey key) => new(key.Bytes.Slice(1, ValueHash256.MemorySize));
+    internal static ValueHash256 StorageAddress(in PbtStorageFullKey key) => new(key.Bytes.Slice(1, ValueHash256.MemorySize));
 
     internal static void ApplyStorage(IDictionary<PbtStorageFullKey, EvmWord> visible, PbtSnapshotContent content, ValueHash256? addressFilter = null)
     {
@@ -85,7 +85,7 @@ internal static class PbtFlatState
                 if (StorageAddress(key) == addressHash) removed.Add(key);
             foreach (PbtStorageFullKey key in removed) visible.Remove(key);
         }
-        foreach ((PbtStorageFullKey key, EvmWord value) in content.Storages)
+        foreach ((HashedKey<PbtStorageFullKey> key, EvmWord value) in content.Storages)
             if (addressFilter is null || StorageAddress(key) == addressFilter.Value) visible[key] = value;
     }
 }

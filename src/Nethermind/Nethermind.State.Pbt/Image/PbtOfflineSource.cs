@@ -109,7 +109,7 @@ internal static class PbtOfflineSource
                 }
             }
 
-            void AddLeaf(PbtStorageFullKey key, ValueHash256 value)
+            void AddLeaf(in PbtStorageFullKey key, ValueHash256 value)
             {
                 byte[] record = new byte[99];
                 key.Bytes.CopyTo(record);

@@ -20,7 +20,8 @@ namespace Nethermind.State.Pbt;
 public sealed class PbtSnapshotContent : IDisposable, IResettable
 {
     internal readonly ConcurrentDictionary<ValueHash256, Account?> Accounts = new();
-    internal readonly ConcurrentDictionary<PbtStorageFullKey, EvmWord> Storages = new();
+    // A read probes every layer with the same key; the pre-hashed key pays the 66-byte hash once instead of once per layer.
+    internal readonly ConcurrentDictionary<HashedKey<PbtStorageFullKey>, EvmWord> Storages = new();
     internal readonly ConcurrentDictionary<ValueHash256, CodeInfo> Codes = new();
     internal readonly ConcurrentDictionary<ValueHash256, bool> SelfDestructedStorageAddresses = new();
     internal readonly ConcurrentDictionary<PbtStorageNodePath, RefCountingMemory?> NodeGroups = new();
@@ -28,7 +29,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
 
     internal void ClearStorage(in ValueHash256 addressHash)
     {
-        foreach ((PbtStorageFullKey key, _) in Storages)
+        foreach ((HashedKey<PbtStorageFullKey> key, _) in Storages)
             if (PbtFlatState.StorageAddress(key) == addressHash) Storages.TryRemove(key, out _);
         SelfDestructedStorageAddresses[addressHash] = true;
     }
@@ -99,7 +100,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         long leafBytes = Accounts.Count * (ValueHash256.MemorySize + 128L)
             + SelfDestructedStorageAddresses.Count * ValueHash256.MemorySize;
         long nodeBytes = 0;
-        foreach ((PbtStorageFullKey key, _) in Storages) leafBytes += key.Length + ValueHash256.MemorySize;
+        foreach ((HashedKey<PbtStorageFullKey> key, _) in Storages) leafBytes += key.Key.Length + ValueHash256.MemorySize;
         foreach ((_, CodeInfo code) in Codes) leafBytes += ValueHash256.MemorySize + code.Code.Length;
 
         foreach ((PbtStorageNodePath path, RefCountingMemory? payload) in NodeGroups)

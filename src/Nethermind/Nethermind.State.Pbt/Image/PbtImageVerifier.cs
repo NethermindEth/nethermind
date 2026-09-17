@@ -160,7 +160,7 @@ internal static class PbtImageVerifier
             _count++;
         }
 
-        public bool TryRead(PbtStorageFullKey key, out ValueHash256 value)
+        public bool TryRead(in PbtStorageFullKey key, out ValueHash256 value)
         {
             Span<byte> record = stackalloc byte[RecordSize];
             long low = 0, high = _count - 1;
@@ -184,7 +184,7 @@ internal static class PbtImageVerifier
             return false;
         }
 
-        public ValueHash256 Required(PbtStorageFullKey key) => TryRead(key, out ValueHash256 value)
+        public ValueHash256 Required(in PbtStorageFullKey key) => TryRead(key, out ValueHash256 value)
             ? value : throw new InvalidDataException("Preimage or required account field has no snapshot leaf.");
 
         public IEnumerable<RebuildEntry> Enumerate(CancellationToken cancellationToken)

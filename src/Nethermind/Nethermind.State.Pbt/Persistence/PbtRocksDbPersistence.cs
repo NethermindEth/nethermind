@@ -26,7 +26,7 @@ public class PbtRocksDbPersistence(
     private static ReadOnlySpan<byte> NodeGroupKeyLayoutKey => "nodeGroupKeyLayout"u8;
     private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
     internal static ReadOnlySpan<byte> RootNodeGroupKey => "rootNodeGroup"u8;
-    private const int SchemaEpoch = 13;
+    private const int SchemaEpoch = 14;
     private const byte ValidState = 1;
 
     private readonly IColumnsDb<PbtColumns> _db = Initialize(db, config.NodeGroupKeyLayout, config.ImportFromPreimageFlat);
@@ -183,6 +183,14 @@ public class PbtRocksDbPersistence(
         return maximum;
     }
 
+    /// <summary>Decodes a persisted slot value: the stripped big-endian bytes, RLP-wrapped as in the flat Storage column.</summary>
+    internal static EvmWord DecodeSlot(ReadOnlySpan<byte> value)
+    {
+        ReadOnlySpan<byte> stripped = new RlpReader(value).DecodeByteArraySpan();
+        if (stripped.Length > ValueHash256.MemorySize) throw new InvalidDataException("Invalid persisted PBT storage value length.");
+        return EvmWordSlot.FromStripped(stripped);
+    }
+
     private sealed class Reader(IColumnDbSnapshot<PbtColumns> snapshot, PbtNodeGroupKeyLayout layout) : IPbtPersistence.IReader
     {
         private readonly (StateId State, ValueHash256 Root) _current = ReadCurrentState(snapshot.GetColumn(PbtColumns.Metadata));
@@ -211,7 +219,7 @@ public class PbtRocksDbPersistence(
             }
         }
 
-        public EvmWord GetSlot(PbtStorageFullKey key)
+        public EvmWord GetSlot(in PbtStorageFullKey key)
         {
             ReadOnlySpan<byte> value = _storages.GetSpan(key.Bytes);
             try
@@ -266,13 +274,7 @@ public class PbtRocksDbPersistence(
         private static Account DecodeAccount(ReadOnlySpan<byte> value)
         {
             RlpReader reader = new(value);
-            return AccountDecoder.Instance.Decode(ref reader) ?? throw new InvalidDataException("Invalid persisted PBT account.");
-        }
-
-        private static EvmWord DecodeSlot(ReadOnlySpan<byte> value)
-        {
-            if (value.Length != ValueHash256.MemorySize) throw new InvalidDataException("Invalid persisted PBT storage value length.");
-            return EvmWordSlot.FromStripped(value);
+            return AccountDecoder.Slim.Decode(ref reader) ?? throw new InvalidDataException("Invalid persisted PBT account.");
         }
 
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
@@ -358,17 +360,22 @@ public class PbtRocksDbPersistence(
             if (account is null) accounts.Set(addressHash.Bytes, null, flags);
             else
             {
-                using ArrayPoolSpan<byte> encoded = AccountDecoder.Instance.EncodeToArrayPoolSpan(account);
+                using ArrayPoolSpan<byte> encoded = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
                 accounts.PutSpan(addressHash.Bytes, encoded, flags);
             }
         }
 
-        public void SetSlot(PbtStorageFullKey key, in EvmWord value)
+        public void SetSlot(in PbtStorageFullKey key, in EvmWord value)
         {
             if (!IsStorageKey(key.Bytes)) throw new ArgumentException("A complete storage key is required.", nameof(key));
             IWriteBatch storage = _batch.GetColumnBatch(PbtColumns.Storages);
             if (EvmWordSlot.IsZero(value)) storage.Set(key.Bytes, null, flags);
-            else storage.PutSpan(key.Bytes, EvmWordSlot.AsReadOnlySpan(in value), flags);
+            else
+            {
+                Span<byte> encoded = stackalloc byte[ValueHash256.MemorySize + 1];
+                int length = Rlp.Encode(EvmWordSlot.AsReadOnlySpan(in value).WithoutLeadingZeros(), encoded);
+                storage.PutSpan(key.Bytes, encoded[..length], flags);
+            }
             ValueHash256 addressHash = new(key.Bytes.Slice(1, ValueHash256.MemorySize));
             if (!_stagedStorageKeys.TryGetValue(addressHash, out HashSet<PbtStorageFullKey>? keys))
                 _stagedStorageKeys[addressHash] = keys = [];

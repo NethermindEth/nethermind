@@ -57,7 +57,7 @@ public sealed class PbtSnapshotBundle(
         else throw new ArgumentException("A canonical account or code key is required.", nameof(key));
     }
 
-    private void SetPbtLeaf(PbtStorageFullKey key, ValueHash256? value)
+    private void SetPbtLeaf(in PbtStorageFullKey key, ValueHash256? value)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
         if (PbtWriteBatchSet<PbtStorageFullKey>.PartitionOf(key) == (int)PbtPartition.Storage) _storageBatch.SetLeaf(key, value);
@@ -220,7 +220,7 @@ public sealed class PbtSnapshotBundle(
     /// <inheritdoc cref="GetSlot(Address, in UInt256)"/>
     public EvmWord GetSlot(Address address, in ValueHash256 addressHash, in UInt256 slot)
     {
-        PbtStorageFullKey key = PbtStateKey.Storage(address, addressHash, slot);
+        HashedKey<PbtStorageFullKey> key = PbtStateKey.Storage(address, addressHash, slot);
         if (WriteBuffer.Storages.TryGetValue(key, out EvmWord value)) return value;
         if (WriteBuffer.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return default;
         for (int index = snapshots.Count - 1; index >= 0; index--)

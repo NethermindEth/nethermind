@@ -558,7 +558,7 @@ public class ImportPbtFromPreimageFlat(
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     RlpReader accountReader = new(view.CurrentValue);
-                    Account account = AccountDecoder.Instance.Decode(ref accountReader)
+                    Account account = AccountDecoder.Slim.Decode(ref accountReader)
                         ?? throw new InvalidDataException("Invalid staged PBT account.");
                     buffered.Add(new(new ValueHash256(view.CurrentKey), account));
                 }
@@ -602,9 +602,8 @@ public class ImportPbtFromPreimageFlat(
                 while (buffered.Count < EntryChunkSize && view.MoveNext())
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    if (view.CurrentValue.Length != ValueHash256.MemorySize)
-                        throw new InvalidDataException("Invalid staged PBT storage value length.");
-                    buffered.Add(new(new PbtStorageFullKey(view.CurrentKey), new ValueHash256(view.CurrentValue)));
+                    EvmWord slot = PbtRocksDbPersistence.DecodeSlot(view.CurrentValue);
+                    buffered.Add(new(new PbtStorageFullKey(view.CurrentKey), new ValueHash256(EvmWordSlot.AsReadOnlySpan(in slot))));
                 }
                 if (buffered.Count == EntryChunkSize) resumeFrom = AfterKey(view.CurrentKey);
             }

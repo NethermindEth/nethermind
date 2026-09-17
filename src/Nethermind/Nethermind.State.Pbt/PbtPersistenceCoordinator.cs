@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -179,7 +180,7 @@ public class PbtPersistenceCoordinator(
 
         foreach ((ValueHash256 addressHash, _) in content.SelfDestructedStorageAddresses) batch.ClearStorage(addressHash);
         foreach ((ValueHash256 addressHash, Account? account) in content.Accounts) batch.SetAccount(addressHash, account);
-        foreach ((PbtStorageFullKey key, EvmWord value) in content.Storages) batch.SetSlot(key, value);
+        foreach ((HashedKey<PbtStorageFullKey> key, EvmWord value) in content.Storages) batch.SetSlot(key, value);
         foreach ((ValueHash256 codeHash, CodeInfo code) in content.Codes) batch.SetCode(codeHash, code);
         foreach ((PbtStorageNodePath groupKey, RefCountingMemory? payload) in content.NodeGroups) batch.SetNodeGroup(groupKey, payload);
         foreach ((ValueHash256 codeHash, ulong? count) in content.CodeReferences) batch.SetCodeReference(codeHash, count);

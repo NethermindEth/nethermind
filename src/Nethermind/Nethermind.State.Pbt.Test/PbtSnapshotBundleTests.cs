@@ -1549,7 +1549,7 @@ public class PbtSnapshotBundleTests
         return writer.WrittenSpan.ToArray();
     }
 
-    private static void AssertSnapshotUnchanged(PbtSnapshotBundle bundle, PbtStorageFullKey leafKey, PbtNodePath nodePath, byte[] node)
+    private static void AssertSnapshotUnchanged(PbtSnapshotBundle bundle, in PbtStorageFullKey leafKey, PbtNodePath nodePath, byte[] node)
     {
         bundle.CompleteLeafChanges();
         using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
@@ -1596,7 +1596,7 @@ public class PbtSnapshotBundleTests
         public StateId CurrentState => StateId.PreGenesis;
         public ValueHash256 CurrentRoot { get; set; }
         public Account? GetAccount(in ValueHash256 addressHash) => null;
-        public EvmWord GetSlot(PbtStorageFullKey requested) => requested == key && value is { } word ? EvmWordSlot.FromStripped(word.Bytes) : default;
+        public EvmWord GetSlot(in PbtStorageFullKey requested) => requested == key && value is { } word ? EvmWordSlot.FromStripped(word.Bytes) : default;
         public CodeInfo? GetCode(in ValueHash256 codeHash)
         {
             CodeReadCount++;

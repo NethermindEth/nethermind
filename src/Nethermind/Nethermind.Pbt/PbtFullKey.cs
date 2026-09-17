@@ -41,10 +41,10 @@ public readonly struct PbtFullKey : IPbtKey<PbtFullKey>
 
     public int GetBit(int bitIndex) => PbtKeyOperations.GetBit(Bytes, bitIndex);
 
-    public bool IsPrefixOf(PbtFullKey other) =>
+    public bool IsPrefixOf(in PbtFullKey other) =>
         Length <= other.Length && other.Bytes[..Length].SequenceEqual(Bytes);
 
-    public int FirstDifferingBit(PbtFullKey other, int startBit = 0) =>
+    public int FirstDifferingBit(in PbtFullKey other, int startBit = 0) =>
         PbtKeyOperations.FirstDifferingBit(Bytes, other.Bytes, startBit);
 
     public int CompareTo(PbtFullKey other) => Bytes.SequenceCompareTo(other.Bytes);

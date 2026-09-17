@@ -113,7 +113,7 @@ internal static class PbtSnapshotCodec
         return result;
     }
 
-    private static void Validate(RebuildEntry entry, PbtStorageFullKey previous)
+    private static void Validate(RebuildEntry entry, in PbtStorageFullKey previous)
     {
         ValidateKey(entry.Key.Bytes);
         if (entry.Leaf == default || (previous.Length != 0 && previous.CompareTo(entry.Key) >= 0))

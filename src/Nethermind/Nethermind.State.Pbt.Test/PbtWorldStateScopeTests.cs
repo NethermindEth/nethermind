@@ -920,7 +920,7 @@ public class PbtWorldStateScopeTests
         public StateId CurrentState => new(0, CurrentRoot.ToHash256());
         public ValueHash256 CurrentRoot { get; } = tree.RootHash;
         public Account? GetAccount(in ValueHash256 addressHash) => null;
-        public EvmWord GetSlot(PbtStorageFullKey key) => default;
+        public EvmWord GetSlot(in PbtStorageFullKey key) => default;
         public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
         public ulong GetCodeReference(in ValueHash256 codeHash) => 0;
         public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => new PbtIterator<KeyValuePair<ValueHash256, Account>>(((IEnumerable<KeyValuePair<ValueHash256, Account>>)[]).GetEnumerator());
@@ -988,7 +988,7 @@ public class PbtWorldStateScopeTests
         }
     }
 
-    private static ValueHash256? ReadDerivedLeaf(PbtSnapshotBundle bundle, PbtStorageFullKey key)
+    private static ValueHash256? ReadDerivedLeaf(PbtSnapshotBundle bundle, in PbtStorageFullKey key)
     {
         foreach ((PbtStorageFullKey leafKey, ValueHash256 value) in bundle.EnumerateLeaves())
             if (leafKey == key) return value;

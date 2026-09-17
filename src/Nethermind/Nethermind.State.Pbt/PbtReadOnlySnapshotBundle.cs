@@ -5,6 +5,7 @@ using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
@@ -187,11 +188,11 @@ public sealed class PbtReadOnlySnapshotBundle(
 
     public EvmWord GetSlot(Address address, in UInt256 slot) => GetSlot(PbtStateKey.Storage(address, slot));
 
-    internal EvmWord GetSlot(PbtStorageFullKey key)
+    internal EvmWord GetSlot(in HashedKey<PbtStorageFullKey> key)
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        ValueHash256 addressHash = PbtFlatState.StorageAddress(key);
+        ValueHash256 addressHash = PbtFlatState.StorageAddress(key.Key);
         for (int index = snapshots.Count - 1; index >= 0; index--)
         {
             PbtSnapshotContent content = snapshots[index].Content;
@@ -203,7 +204,7 @@ public sealed class PbtReadOnlySnapshotBundle(
             }
         }
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        EvmWord result = reader.GetSlot(key);
+        EvmWord result = reader.GetSlot(key.Key);
         if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, EvmWordSlot.IsZero(result) ? _readStoragePersistenceNullLabel : _readStoragePersistenceLabel);
         return result;
     }

@@ -54,7 +54,7 @@ public readonly struct PbtStorageNodePath : IPbtNodePath<PbtStorageNodePath>, IE
     public bool MatchesPrefix<TOther>(TOther other, int bitCount) where TOther : struct, IPbtNodePath<TOther> =>
         PbtNodePathOperations.MatchesPrefix(this, other, bitCount);
 
-    internal static PbtStorageNodePath FromKey(PbtStorageFullKey key, int bitDepth) => PbtNodePathOperations.FromKey<PbtStorageNodePath>(key.Bytes, bitDepth);
+    internal static PbtStorageNodePath FromKey(in PbtStorageFullKey key, int bitDepth) => PbtNodePathOperations.FromKey<PbtStorageNodePath>(key.Bytes, bitDepth);
 
     /// <inheritdoc/>
     public PbtStorageNodePath Append(CompressedPrefix prefix, int direction) =>

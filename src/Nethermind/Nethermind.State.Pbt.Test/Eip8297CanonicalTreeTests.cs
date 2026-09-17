@@ -110,8 +110,8 @@ public class Eip8297CanonicalTreeTests
         public int Length => _key.Length;
         public int BitLength => _key.BitLength;
         public int GetBit(int bitIndex) => _key.GetBit(bitIndex);
-        public bool IsPrefixOf(FixedLengthKey other) => _key.IsPrefixOf(other._key);
-        public int FirstDifferingBit(FixedLengthKey other, int startBit = 0) => _key.FirstDifferingBit(other._key, startBit);
+        public bool IsPrefixOf(in FixedLengthKey other) => _key.IsPrefixOf(other._key);
+        public int FirstDifferingBit(in FixedLengthKey other, int startBit = 0) => _key.FirstDifferingBit(other._key, startBit);
         public int CompareTo(FixedLengthKey other) => _key.CompareTo(other._key);
         public bool Equals(FixedLengthKey other) => _key.Equals(other._key);
         public override bool Equals(object? obj) => obj is FixedLengthKey other && Equals(other);
