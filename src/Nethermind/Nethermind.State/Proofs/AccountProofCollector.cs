@@ -136,13 +136,12 @@ namespace Nethermind.State.Proofs
             }
 
             ValueHash256 keyBuffer = default;
-            int j = 0;
-            foreach (UInt256 storageKey in storageKeys)
+            using IEnumerator<UInt256> keys = storageKeys.GetEnumerator();
+            for (int j = 0; keys.MoveNext(); j++)
             {
-                storageKey.ToBigEndian(keyBuffer.BytesAsSpan);
+                keys.Current.ToBigEndian(keyBuffer.BytesAsSpan);
                 _fullStoragePaths[j] = Nibbles.FromBytes(ValueKeccak.Compute(keyBuffer.Bytes).Bytes);
                 SetStorageProof(j, keyBuffer.Bytes);
-                j++;
             }
         }
 
@@ -179,15 +178,15 @@ namespace Nethermind.State.Proofs
             }
             int j = 0;
             int pending = 0;
-            foreach (UInt256 storageKey in storageKeys)
+            using IEnumerator<UInt256> keys = storageKeys.GetEnumerator();
+            for (; keys.MoveNext(); j++)
             {
                 Span<byte> key = blocks.Slice(pending * rate, 32);
-                storageKey.ToBigEndian(key);
+                keys.Current.ToBigEndian(key);
                 SetStorageProof(j, key);
-                j++;
                 if (++pending == batchSize)
                 {
-                    SetStoragePaths(blocks, hashes, j - batchSize, batchSize);
+                    SetStoragePaths(blocks, hashes, j + 1 - batchSize, batchSize);
                     pending = 0;
                 }
             }

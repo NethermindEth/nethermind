@@ -50,7 +50,8 @@ namespace Nethermind.Store.Test.Proofs
 
         [Test]
         public void Storage_keys_match_individual_hashes(
-            [Values(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 31, 32, 33, 1023, 1024)] int count, [Values] bool useList)
+            [Values(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 31, 32, 33, 1023, 1024)] int count,
+            [Values(0, 1, 2)] int collectionKind)
         {
             UInt256[] keys = new UInt256[count];
             ValueHash256[] expectedHashes = new ValueHash256[count];
@@ -66,7 +67,12 @@ namespace Nethermind.Store.Test.Proofs
                 expectedKeys[i] = bytes.ToHexString(true, true);
             }
 
-            IReadOnlyCollection<UInt256> storageKeys = useList ? new List<UInt256>(keys) : keys;
+            IReadOnlyCollection<UInt256> storageKeys = collectionKind switch
+            {
+                1 => new List<UInt256>(keys),
+                2 => new LinkedList<UInt256>(keys),
+                _ => keys
+            };
             AccountProofCollector collector = new(TestItem.AddressA, storageKeys);
             AccountProof proof = collector.BuildResult();
             using (Assert.EnterMultipleScope())

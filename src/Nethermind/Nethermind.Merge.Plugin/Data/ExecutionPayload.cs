@@ -211,8 +211,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Author = FeeRecipient,
             IsPostMerge = true,
             TotalDifficulty = totalDifficulty,
-            TxRoot = _txRoot ??= _txRootWork is not null ? _txRootWork.GetResult()
-                : txRootTask is not null ? txRootTask.GetAwaiter().GetResult() : TxTrie.CalculateRoot(encodedTransactions),
+            TxRoot = _txRoot ??= _txRootWork?.GetResult()
+                ?? txRootTask?.GetAwaiter().GetResult() ?? TxTrie.CalculateRoot(encodedTransactions),
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 
@@ -238,13 +238,16 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// Call StopTxRootComputation in a finally block if execution can exit before TryGetBlock.</remarks>
     internal void StartTxRootComputation()
     {
+        if (RuntimeInformation.IsSingleProcessor || _encodedTransactions.Length < MinTxsForParallelDecoding)
+            return;
+        if (_txRoot is not null || _txRootWork is not null || _txRootTask is not null)
+            return;
+
         byte[][] encodedTransactions = _encodedTransactions;
-        if (_txRoot is null && _txRootWork is null && _txRootTask is null && encodedTransactions.Length >= MinTxsForParallelDecoding
-            && !RuntimeInformation.IsSingleProcessor)
-        {
-            _txRootWork = TxTrie.StartRootComputation(encodedTransactions);
-            if (_txRootWork is null) _txRootTask = Task.Run(() => TxTrie.CalculateRoot(encodedTransactions));
-        }
+        _txRootWork = TxTrie.StartRootComputation(encodedTransactions);
+        if (_txRootWork is not null) return;
+
+        _txRootTask = Task.Run(() => TxTrie.CalculateRoot(encodedTransactions));
     }
 
     internal void StopTxRootComputation()
