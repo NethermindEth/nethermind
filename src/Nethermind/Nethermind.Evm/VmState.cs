@@ -228,16 +228,17 @@ public class VmState<TGasPolicy> : IDisposable
         StateGasRefundAdvanced = 0;
 
         _statePool.Enqueue(this);
-
-#if DEBUG
-        GC.SuppressFinalize(this);
-#endif
     }
 
 #if DEBUG
 
     private StackTrace? _creationStackTrace;
 
+    /// <remarks>
+    /// A leak is an instance still rented when collected; a disposed one the pool drops (dead thread tier,
+    /// shared overflow) stays silent. <see cref="GC.SuppressFinalize"/> must not be used in <see cref="Dispose"/>:
+    /// it is permanent per object, so it would blind this for every pooled instance after its first reuse.
+    /// </remarks>
     ~VmState()
     {
         if (!_isDisposed)
