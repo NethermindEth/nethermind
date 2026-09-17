@@ -78,6 +78,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private int _currentRecoveryQueueSize;
     private bool _isProcessingBlock;
     private const int MaxBranchSize = 8192;
+    private const int InitialBranchCapacity = 16;
     private readonly CompositeBlockTracer _compositeBlockTracer = new();
     private readonly Stopwatch _stopwatch = new();
     private readonly BlockProcessingPauseGate _pauseGate = new();
@@ -673,7 +674,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         ArrayPoolList<Block> blocksToProcess = processingBranch.BlocksToProcess;
         if (options.ContainsFlag(ProcessingOptions.ForceProcessing))
         {
-            processingBranch.Blocks.Clear(); // TODO: investigate why if we clear it all we need to collect and iterate on all the blocks in PrepareProcessingBranch?
             blocksToProcess.Add(suggestedBlock);
         }
         else
@@ -724,7 +724,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private ProcessingBranch PrepareProcessingBranch(Block suggestedBlock, ProcessingOptions options)
     {
         BlockHeader? branchingPoint = null;
-        ArrayPoolList<Block> blocksToBeAddedToMain = new((int)Reorganization.PersistenceInterval);
+        ArrayPoolList<Block> blocksToBeAddedToMain = new(InitialBranchCapacity);
 
         bool branchingCondition;
 
@@ -739,7 +739,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 ThrowMaxBranchSizeReached();
             }
 
-            if (!options.ContainsFlag(ProcessingOptions.Trace))
+            if (!options.ContainsFlag(ProcessingOptions.ForceProcessing))
             {
                 blocksToBeAddedToMain.Add(toBeProcessed);
             }

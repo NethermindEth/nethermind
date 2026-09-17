@@ -57,11 +57,6 @@ namespace Nethermind.Consensus.Processing
         ProducingBlock = NoValidation | ReadOnlyChain | ForceProcessing | DoNotUpdateHead,
 
         /// <summary>
-        /// EVM tracing needs to process blocks without storing the data on chain.
-        /// </summary>
-        Trace = ForceProcessing | ReadOnlyChain | LoadNonceFromState | NoValidation,
-
-        /// <summary>
         /// Reprocesses a block sequentially after optimistic block access list execution fails.
         /// </summary>
         ForceSequentialBlockAccessList = 1 << 9,
