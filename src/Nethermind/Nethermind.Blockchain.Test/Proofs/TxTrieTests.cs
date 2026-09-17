@@ -76,6 +76,13 @@ public class TxTrieTests(bool useEip2718)
         trie.UpdateRootHash(canBeParallel: false);
 
         Assert.That(TxTrie.CalculateRoot(encoded), Is.EqualTo(trie.RootHash));
+        using TxTrie.RootComputation? work = TxTrie.StartRootComputation(encoded);
+        if (work is not null)
+        {
+            Assert.That(work.GetResult(), Is.EqualTo(trie.RootHash));
+            work.Dispose();
+            Assert.That(work.GetResult(), Is.EqualTo(trie.RootHash));
+        }
     }
 
     [TestCase(65535)]

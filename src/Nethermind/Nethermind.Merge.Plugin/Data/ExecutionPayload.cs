@@ -68,6 +68,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         set
         {
             ArgumentNullException.ThrowIfNull(value);
+            _txRootWork?.Dispose();
+            _txRootWork = null;
             _encodedTransactions = value;
             _transactions = null;
             _txRootTask = null;
@@ -166,7 +168,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         byte[][] encodedTransactions = Transactions;
         // Repeats the check inside StartTxRootComputation so the guest build never reaches the call
         // and carries no task machinery for it.
-        Task<Hash256>? txRootTask = RuntimeInformation.IsSingleProcessor ? null : StartTxRootComputation();
+        using IDisposable? rootLease = RuntimeInformation.IsSingleProcessor ? null : StartTxRootComputation();
+        Task<Hash256>? txRootTask = _txRootTask;
 
         Result<Transaction[]> transactions = TryGetTransactions();
         if (transactions.IsError)
@@ -196,7 +199,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Author = FeeRecipient,
             IsPostMerge = true,
             TotalDifficulty = totalDifficulty,
-            TxRoot = txRootTask is not null ? txRootTask.GetAwaiter().GetResult() : TxTrie.CalculateRoot(encodedTransactions),
+            TxRoot = _txRootWork is not null ? _txRootWork.GetResult()
+                : txRootTask is not null ? txRootTask.GetAwaiter().GetResult() : TxTrie.CalculateRoot(encodedTransactions),
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 
@@ -212,26 +216,23 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     protected Transaction[]? _transactions = null;
 
     private Task<Hash256>? _txRootTask;
+    private TxTrie.RootComputation? _txRootWork;
 
     private const int MinTxsForParallelDecoding = 32;
 
-    /// <summary>
-    /// Starts computing the transactions-trie root in the background, letting callers overlap it
-    /// with serial work that precedes <see cref="TryGetBlock"/> (which consumes the started task).
-    /// </summary>
-    /// <remarks>
-    /// Not thread-safe: concurrent calls, or a concurrent <see cref="Transactions"/> assignment,
-    /// race the memoized task. Callers must invoke both sequentially per payload instance.
-    /// </remarks>
-    /// <returns>
-    /// The started task, or <c>null</c> when the transaction count makes inline computation cheaper.
-    /// </returns>
-    internal Task<Hash256>? StartTxRootComputation()
+    /// <summary>Starts transaction-root work and returns a lease that drains any pooled background work.</summary>
+    /// <remarks>Not thread-safe. Calls and transaction replacement must be sequential per payload.
+    /// Small and sparse roots retain the task path; they do not require a pooled-work lease.</remarks>
+    internal IDisposable? StartTxRootComputation()
     {
         byte[][] encodedTransactions = _encodedTransactions;
-        return _txRootTask ??= encodedTransactions.Length >= MinTxsForParallelDecoding && !RuntimeInformation.IsSingleProcessor
-            ? Task.Run(() => TxTrie.CalculateRoot(encodedTransactions))
-            : null;
+        if (_txRootWork is null && _txRootTask is null && encodedTransactions.Length >= MinTxsForParallelDecoding
+            && !RuntimeInformation.IsSingleProcessor)
+        {
+            _txRootWork = TxTrie.StartRootComputation(encodedTransactions);
+            if (_txRootWork is null) _txRootTask = Task.Run(() => TxTrie.CalculateRoot(encodedTransactions));
+        }
+        return _txRootWork;
     }
 
     /// <summary>

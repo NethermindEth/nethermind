@@ -170,6 +170,15 @@ internal static class IndexedTrieRoot
             return new Calculator<T, TEncoder>(_items, encoder, references.AsSpan()).CalculateSequential();
         }
 
+        private static ParallelOptions GetParallelOptions(int batchCount)
+        {
+            if (typeof(T) != typeof(byte[]) && typeof(T) != typeof(ReadOnlyMemory<byte>))
+                return RuntimeInformation.ParallelOptionsLogicalCores;
+            int workerCount = Math.Min(RuntimeInformation.ProcessorCount,
+                (batchCount * WorkerRatioNumerator + WorkerRatioDenominator - 1) / WorkerRatioDenominator);
+            return ParallelOptionsCache.Values[workerCount - 1];
+        }
+
         private Hash256 CalculateParallel()
         {
             Debug.Assert(_items.Length > 1);
@@ -177,52 +186,101 @@ internal static class IndexedTrieRoot
             using ArrayPoolList<NodeReference> references = new(_items.Length, _items.Length);
             TEncoder leafEncoder = encoder;
             int batchCount = (_items.Length - 1) / LeafBatchSize + 1;
-            ParallelOptions parallelOptions = RuntimeInformation.ParallelOptionsLogicalCores;
-            if (typeof(T) == typeof(byte[]) || typeof(T) == typeof(ReadOnlyMemory<byte>))
+            ParallelUnbalancedWork.For(0, batchCount, GetParallelOptions(batchCount),
+                batch => CalculateLeafBatch(inputs, references, leafEncoder, batch));
+            return FinishParallel(references.AsSpan());
+        }
+
+        private Hash256 FinishParallel(Span<NodeReference> references)
+        {
+            // Avoid scanning tiny-value tries when the first full branch is already ineligible.
+            if (Avx512F.IsSupported && _items.Length >= (BranchBatchSize + 1) * BranchChildCount
+                && references[BranchChildCount - 1].Length == Keccak.Size)
+                BatchTerminalBranches(references);
+            return new Calculator<T, TEncoder>(_items, encoder, references).CalculateSequential();
+        }
+
+        private static void CalculateLeafBatch(ArrayPoolList<T> inputs, ArrayPoolList<NodeReference> references,
+            TEncoder leafEncoder, int batch)
+        {
+            Calculator<T, TEncoder> calculator = new(inputs.AsSpan(), leafEncoder);
+            int start = batch * LeafBatchSize;
+            int end = start + Math.Min(LeafBatchSize, inputs.Count - start);
+            if (Avx512F.IsSupported && typeof(T) == typeof(TxReceipt)
+                && leafEncoder.GetLength(inputs[calculator.GetIndex(start)]) is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength)
             {
-                int workerCount = Math.Min(RuntimeInformation.ProcessorCount,
-                    (batchCount * WorkerRatioNumerator + WorkerRatioDenominator - 1) / WorkerRatioDenominator);
-                parallelOptions = ParallelOptionsCache.Values[workerCount - 1];
+                calculator.CalculateMultiBlockLeafBatch(start, end, references.AsSpan());
+                return;
             }
-            ParallelUnbalancedWork.For(0, batchCount, parallelOptions, batch =>
+            if (Avx2.IsSupported && (typeof(T) == typeof(byte[]) || typeof(T) == typeof(ReadOnlyMemory<byte>)))
             {
-                Calculator<T, TEncoder> calculator = new(inputs.AsSpan(), leafEncoder);
-                int start = batch * LeafBatchSize;
-                int end = start + Math.Min(LeafBatchSize, inputs.Count - start);
-                if (Avx512F.IsSupported && typeof(T) == typeof(TxReceipt)
-                    && leafEncoder.GetLength(inputs[calculator.GetIndex(start)]) is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength)
+                int valueLength = leafEncoder.GetEncodedValue(inputs[calculator.GetIndex(start)]).Length;
+                if (valueLength is >= Keccak.Size and <= MaxSingleBlockValueLength)
+                {
+                    calculator.CalculateEncodedLeafBatch(start, end, references.AsSpan());
+                    return;
+                }
+                if (Avx512F.IsSupported && valueLength is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength)
                 {
                     calculator.CalculateMultiBlockLeafBatch(start, end, references.AsSpan());
                     return;
                 }
-                if (Avx2.IsSupported && (typeof(T) == typeof(byte[]) || typeof(T) == typeof(ReadOnlyMemory<byte>)))
+            }
+            for (int position = start; position < end; position++)
+            {
+                Key key = calculator.GetKey(position);
+                int depth = position == 0 ? 0 : CommonPrefix(key, calculator.GetKey(position - 1), 0);
+                if (position + 1 < inputs.Count)
+                    depth = Math.Max(depth, CommonPrefix(key, calculator.GetKey(position + 1), 0));
+                references[position] = calculator.Leaf(key, depth + 1, inputs[calculator.GetIndex(position)]);
+            }
+        }
+
+        internal sealed class BackgroundRoot : IDisposable
+        {
+            private readonly ArrayPoolList<T> _inputs;
+            private readonly ArrayPoolList<NodeReference> _references;
+            private readonly TEncoder _encoder;
+            private readonly ParallelUnbalancedWork.BackgroundWork _work;
+            private Hash256? _root;
+            private bool _disposed;
+
+            internal BackgroundRoot(ReadOnlySpan<T> items, TEncoder encoder)
+            {
+                _inputs = new(items);
+                _references = new(items.Length, items.Length);
+                _encoder = encoder;
+                int batchCount = (items.Length - 1) / LeafBatchSize + 1;
+                _work = ParallelUnbalancedWork.BackgroundFor(0, batchCount, GetParallelOptions(batchCount),
+                    CalculateBatch, Finish);
+            }
+
+            internal Hash256 GetResult()
+            {
+                try
                 {
-                    int valueLength = leafEncoder.GetEncodedValue(inputs[calculator.GetIndex(start)]).Length;
-                    if (valueLength is >= Keccak.Size and <= MaxSingleBlockValueLength)
-                    {
-                        calculator.CalculateEncodedLeafBatch(start, end, references.AsSpan());
-                        return;
-                    }
-                    if (Avx512F.IsSupported && valueLength is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength)
-                    {
-                        calculator.CalculateMultiBlockLeafBatch(start, end, references.AsSpan());
-                        return;
-                    }
+                    _work.WaitForCompletion();
+                    return _root!;
                 }
-                for (int position = start; position < end; position++)
+                finally
                 {
-                    Key key = calculator.GetKey(position);
-                    int depth = position == 0 ? 0 : CommonPrefix(key, calculator.GetKey(position - 1), 0);
-                    if (position + 1 < inputs.Count)
-                        depth = Math.Max(depth, CommonPrefix(key, calculator.GetKey(position + 1), 0));
-                    references[position] = calculator.Leaf(key, depth + 1, inputs[calculator.GetIndex(position)]);
+                    Dispose();
                 }
-            });
-            // Avoid scanning tiny-value tries when the first full branch is already ineligible.
-            if (Avx512F.IsSupported && _items.Length >= (BranchBatchSize + 1) * BranchChildCount
-                && references[BranchChildCount - 1].Length == Keccak.Size)
-                BatchTerminalBranches(references.AsSpan());
-            return new Calculator<T, TEncoder>(_items, encoder, references.AsSpan()).CalculateSequential();
+            }
+
+            private void CalculateBatch(int batch) => CalculateLeafBatch(_inputs, _references, _encoder, batch);
+
+            private void Finish() => _root = new Calculator<T, TEncoder>(_inputs.AsSpan(), _encoder)
+                .FinishParallel(_references.AsSpan());
+
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _work.Dispose();
+                _references.Dispose();
+                _inputs.Dispose();
+                _disposed = true;
+            }
         }
 
         [SkipLocalsInit]

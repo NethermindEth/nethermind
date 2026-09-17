@@ -98,7 +98,7 @@ public partial class EngineRpcModule : IEngineRpcModule
                 // Start tx-root computation before asynchronous GC-region admission so it can
                 // overlap that work; keep it inside the lock so competing requests cannot run
                 // trie work concurrently.
-                _ = executionPayload.StartTxRootComputation();
+                using IDisposable? txRootWork = executionPayload.StartTxRootComputation();
                 using IDisposable region = _gcKeeper.TryStartNoGCRegion();
                 return await _newPayloadV1Handler.HandleAsync(executionPayload);
             }

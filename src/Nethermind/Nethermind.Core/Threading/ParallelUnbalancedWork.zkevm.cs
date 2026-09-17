@@ -66,4 +66,38 @@ public partial class ParallelUnbalancedWork
         if (fault is not null) ExceptionDispatchInfo.Throw(fault);
         token.ThrowIfCancellationRequested();
     }
+    private static partial BackgroundWork BackgroundForCore(int fromInclusive, int toExclusive,
+        ParallelOptions options, Action<int> action, Action? completed)
+    {
+        options.CancellationToken.ThrowIfCancellationRequested();
+        return new(fromInclusive, toExclusive, options.CancellationToken, action, completed);
+    }
+
+    public sealed partial class BackgroundWork(int from, int to, CancellationToken token, Action<int> action, Action? completed)
+    {
+        private bool _joined;
+        private ExceptionDispatchInfo? _exception;
+
+        public partial void WaitForCompletion()
+        {
+            Dispose();
+            _exception?.Throw();
+            token.ThrowIfCancellationRequested();
+        }
+
+        public partial void Dispose()
+        {
+            if (_joined) return;
+            _joined = true;
+            try
+            {
+                for (int i = from; i < to && !token.IsCancellationRequested; i++) action(i);
+                if (!token.IsCancellationRequested) completed?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                _exception = ExceptionDispatchInfo.Capture(ex);
+            }
+        }
+    }
 }

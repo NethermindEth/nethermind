@@ -117,6 +117,32 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
         return new IndexedTrieRoot.Calculator<byte[], EncodedTransactionEncoder>(encodedTransactions, default).Calculate();
     }
 
+    /// <summary>Starts joinable root computation, or returns null for roots better handled by the normal path.</summary>
+    /// <remarks>The encoded transaction bytes must remain unchanged until the work is drained.</remarks>
+    public static RootComputation? StartRootComputation(ReadOnlySpan<byte[]> encodedTransactions)
+    {
+        if (RuntimeInformation.IsSingleProcessor || encodedTransactions.Length <= MinItemsForParallelRootHash)
+            return null;
+        foreach (byte[] value in encodedTransactions)
+            if (value is null || value.Length == 0) return null;
+        return new RootComputation(encodedTransactions);
+    }
+
+    /// <summary>Owns transaction-root work and its buffers until all workers finish.</summary>
+    /// <remarks>GetResult and Dispose must be called sequentially. The result remains available after disposal.</remarks>
+    public sealed class RootComputation : IDisposable
+    {
+        private readonly IndexedTrieRoot.Calculator<byte[], EncodedTransactionEncoder>.BackgroundRoot _work;
+
+        internal RootComputation(ReadOnlySpan<byte[]> transactions) => _work = new(transactions, default);
+
+        /// <summary>Helps finish pending batches and returns the root, releasing temporary buffers.</summary>
+        public Hash256 GetResult() => _work.GetResult();
+
+        /// <summary>Drains work and releases its buffers without reporting captured computation faults.</summary>
+        public void Dispose() => _work.Dispose();
+    }
+
     private static Hash256 CalculateSparseRoot<T, TEncoder>(ReadOnlySpan<T> values, TEncoder encoder)
         where TEncoder : struct, IndexedTrieRoot.IValueEncoder<T>
     {

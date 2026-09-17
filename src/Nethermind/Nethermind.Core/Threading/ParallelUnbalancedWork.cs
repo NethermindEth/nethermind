@@ -104,6 +104,26 @@ public partial class ParallelUnbalancedWork
         Func<int, TLocal, TLocal> action)
         => ForCore(fromInclusive, toExclusive, parallelOptions, null, state, action, null);
 
+    /// <summary>Starts loop workers without executing iterations on the caller until it joins.</summary>
+    /// <remarks>The worker limit includes the joining caller. Dispose drains work without reporting faults;
+    /// WaitForCompletion reports them. Join and disposal must be called sequentially, outside callbacks.</remarks>
+    public static BackgroundWork BackgroundFor(int fromInclusive, int toExclusive, ParallelOptions options,
+        Action<int> action, Action? completed = null)
+        => BackgroundForCore(fromInclusive, toExclusive, options, action, completed);
+
+    private static partial BackgroundWork BackgroundForCore(int fromInclusive, int toExclusive,
+        ParallelOptions options, Action<int> action, Action? completed);
+
+    /// <summary>Owns a background loop until its iterations and completion callback have finished.</summary>
+    public sealed partial class BackgroundWork : IDisposable
+    {
+        /// <summary>Helps execute outstanding iterations, waits for completion, and reports faults or cancellation.</summary>
+        public partial void WaitForCompletion();
+
+        /// <summary>Drains outstanding work without throwing captured worker faults or cancellation.</summary>
+        public partial void Dispose();
+    }
+
     private static partial void ForCore(int fromInclusive, int toExclusive, ParallelOptions parallelOptions, Action<int> action);
 
     private static partial void ForCore<TLocal>(

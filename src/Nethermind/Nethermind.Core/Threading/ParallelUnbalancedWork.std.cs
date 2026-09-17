@@ -335,4 +335,120 @@ public partial class ParallelUnbalancedWork : IThreadPoolWorkItem
             public void Finally(TValue value) => @finally?.Invoke(value);
         }
     }
+
+    private static partial BackgroundWork BackgroundForCore(int fromInclusive, int toExclusive,
+        ParallelOptions options, Action<int> action, Action? completed)
+        => new(fromInclusive, toExclusive, options, action, completed);
+
+    public sealed partial class BackgroundWork : IThreadPoolWorkItem
+    {
+        private CacheLinePaddedLong _next;
+        private readonly int _to;
+        private readonly Action<int> _action;
+        private readonly Action? _completedAction;
+        private readonly CancellationToken _token;
+        private readonly object _completion = new();
+        private readonly bool _deferred;
+        private int _active;
+        private bool _complete;
+        private bool _joined;
+        private ExceptionDispatchInfo? _exception;
+
+        internal BackgroundWork(int from, int to, ParallelOptions options, Action<int> action, Action? completed)
+        {
+            int workers = Math.Max(1, GetWorkerCount(from, to, options));
+            _next = new(from);
+            _to = to;
+            _action = action;
+            _completedAction = completed;
+            _token = options.CancellationToken;
+            _deferred = workers == 1;
+            _active = _deferred ? 1 : workers - 1;
+            for (int i = 0; i < workers - 1; i++)
+                ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+        }
+
+        public partial void WaitForCompletion()
+        {
+            Dispose();
+            _exception?.Throw();
+            _token.ThrowIfCancellationRequested();
+        }
+
+        public partial void Dispose()
+        {
+            if (_joined) return;
+            bool participate = _deferred;
+            if (!participate)
+            {
+                // Zero closes registration before the finalizer runs; a late join cannot reopen it.
+                int active = Volatile.Read(ref _active);
+                while (active != 0)
+                {
+                    int observed = Interlocked.CompareExchange(ref _active, active + 1, active);
+                    if (observed == active)
+                    {
+                        participate = true;
+                        break;
+                    }
+                    active = observed;
+                }
+            }
+            if (participate) Execute();
+            SpinWait spinner = default;
+            while (!Volatile.Read(ref _complete) && !spinner.NextSpinWillYield) spinner.SpinOnce();
+            if (!Volatile.Read(ref _complete)) WaitSlow();
+            _joined = true;
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private void WaitSlow()
+        {
+            lock (_completion)
+                while (!_complete) Monitor.Wait(_completion);
+        }
+
+        private void Capture(Exception ex) => Interlocked.CompareExchange(ref _exception, ExceptionDispatchInfo.Capture(ex), null);
+
+        void IThreadPoolWorkItem.Execute() => Execute();
+
+        private void Execute()
+        {
+            try
+            {
+                long i = Interlocked.Increment(ref _next.Value) - 1;
+                while (i < _to && !_token.IsCancellationRequested && Volatile.Read(ref _exception) is null)
+                {
+                    _action((int)i);
+                    i = Interlocked.Increment(ref _next.Value) - 1;
+                }
+            }
+            catch (Exception ex)
+            {
+                Capture(ex);
+            }
+            finally
+            {
+                if (Interlocked.Decrement(ref _active) == 0)
+                {
+                    try
+                    {
+                        if (_exception is null && !_token.IsCancellationRequested) _completedAction?.Invoke();
+                    }
+                    catch (Exception ex)
+                    {
+                        Capture(ex);
+                    }
+                    finally
+                    {
+                        lock (_completion)
+                        {
+                            Volatile.Write(ref _complete, true);
+                            Monitor.PulseAll(_completion);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

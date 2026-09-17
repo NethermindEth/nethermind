@@ -226,6 +226,114 @@ public class ParallelUnbalancedWorkTests
         Assert.That(unhandled, Is.EqualTo(0));
     }
 
+    [Test]
+    public void BackgroundFor_runs_each_iteration_once_and_finalizes([Values(1, 2, 8)] int workers,
+        [Values(0, 1, 65, 1000)] int count)
+    {
+        int[] calls = new int[count];
+        int finalized = 0;
+        int caller = Environment.CurrentManagedThreadId;
+        bool joining = false;
+        using ParallelUnbalancedWork.BackgroundWork work = ParallelUnbalancedWork.BackgroundFor(0, count,
+            new ParallelOptions { MaxDegreeOfParallelism = workers }, i =>
+            {
+                Assert.That(Environment.CurrentManagedThreadId != caller || joining, Is.True);
+                Interlocked.Increment(ref calls[i]);
+            }, () =>
+            {
+                Assert.That(calls, Is.All.EqualTo(1));
+                Interlocked.Increment(ref finalized);
+            });
+        joining = true;
+        work.WaitForCompletion();
+        work.WaitForCompletion();
+        Assert.That(finalized, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void BackgroundFor_drains_without_join()
+    {
+        int count = 0;
+        using (ParallelUnbalancedWork.BackgroundFor(0, 1000, FourThreads, _ => Interlocked.Increment(ref count))) { }
+        Assert.That(count, Is.EqualTo(1000));
+    }
+
+    [Test]
+    public void BackgroundFor_reports_faults([Values(false, true)] bool finalizerFault)
+    {
+        InvalidOperationException expected = new("background failure");
+        using ParallelUnbalancedWork.BackgroundWork work = ParallelUnbalancedWork.BackgroundFor(0, 100, FourThreads,
+            _ => { if (!finalizerFault) throw expected; },
+            () => { if (finalizerFault) throw expected; });
+        Assert.That(Assert.Catch<InvalidOperationException>(work.WaitForCompletion), Is.SameAs(expected));
+        Assert.DoesNotThrow(work.Dispose);
+    }
+
+    [Test]
+    public void BackgroundFor_cancellation_stops_deferred_work([Values(false, true)] bool duringExecution)
+    {
+        using CancellationTokenSource source = new();
+        int calls = 0;
+        bool finalized = false;
+        using ParallelUnbalancedWork.BackgroundWork work = ParallelUnbalancedWork.BackgroundFor(0, 100,
+            new ParallelOptions { MaxDegreeOfParallelism = 1, CancellationToken = source.Token }, _ =>
+            {
+                calls++;
+                source.Cancel();
+            }, () => finalized = true);
+        if (!duringExecution) source.Cancel();
+        Assert.Throws<OperationCanceledException>(work.WaitForCompletion);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.EqualTo(duringExecution ? 1 : 0));
+            Assert.That(finalized, Is.False);
+        }
+    }
+
+    [Test]
+    public void BackgroundFor_late_join_waits_for_finalizer()
+    {
+        if (Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor) Assert.Ignore("Requires a background worker.");
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        using ManualResetEventSlim joining = new();
+        using ManualResetEventSlim returned = new();
+        using ParallelUnbalancedWork.BackgroundWork work = ParallelUnbalancedWork.BackgroundFor(0, 2,
+            new ParallelOptions { MaxDegreeOfParallelism = 2 }, _ => { }, () =>
+            {
+                entered.Set();
+                if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException();
+            });
+        Task? waiter = null;
+        try
+        {
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            waiter = Task.Run(() => { joining.Set(); work.WaitForCompletion(); returned.Set(); });
+            Assert.That(joining.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            Assert.That(returned.Wait(20), Is.False);
+        }
+        finally
+        {
+            release.Set();
+            waiter?.GetAwaiter().GetResult();
+        }
+        work.WaitForCompletion();
+    }
+
+    [Test]
+    public void BackgroundFor_handles_integer_boundaries([Values(int.MinValue, -5, int.MaxValue - 5)] int start)
+    {
+        int count = 0;
+        using ParallelUnbalancedWork.BackgroundWork work = ParallelUnbalancedWork.BackgroundFor(start, start + 5,
+            new ParallelOptions { MaxDegreeOfParallelism = 8 }, i =>
+            {
+                Assert.That(i, Is.InRange(start, start + 4));
+                Interlocked.Increment(ref count);
+            });
+        work.WaitForCompletion();
+        Assert.That(count, Is.EqualTo(5));
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void ThrowFromHelper() => throw new InvalidOperationException("from helper");
 }
