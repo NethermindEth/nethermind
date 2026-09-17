@@ -50,38 +50,38 @@ public sealed partial class KeccakHash
         {
             for (int offset = 0; offset <= 3 * HASH_DATA_AREA; offset += HASH_DATA_AREA)
             {
-                a0 ^= GatherLane(inputPtr + offset, 0, 532);
-                a1 ^= GatherLane(inputPtr + offset, 1, 532);
-                a2 ^= GatherLane(inputPtr + offset, 2, 532);
-                a3 ^= GatherLane(inputPtr + offset, 3, 532);
-                a4 ^= GatherLane(inputPtr + offset, 4, 532);
-                a5 ^= GatherLane(inputPtr + offset, 5, 532);
-                a6 ^= GatherLane(inputPtr + offset, 6, 532);
-                a7 ^= GatherLane(inputPtr + offset, 7, 532);
-                a8 ^= GatherLane(inputPtr + offset, 8, 532);
-                a9 ^= GatherLane(inputPtr + offset, 9, 532);
-                a10 ^= GatherLane(inputPtr + offset, 10, 532);
-                a11 ^= GatherLane(inputPtr + offset, 11, 532);
-                a12 ^= GatherLane(inputPtr + offset, 12, 532);
-                a13 ^= GatherLane(inputPtr + offset, 13, 532);
-                a14 ^= GatherLane(inputPtr + offset, 14, 532);
+                a0 ^= GatherLane(inputPtr + offset, 0, Hash532InputLength);
+                a1 ^= GatherLane(inputPtr + offset, 1, Hash532InputLength);
+                a2 ^= GatherLane(inputPtr + offset, 2, Hash532InputLength);
+                a3 ^= GatherLane(inputPtr + offset, 3, Hash532InputLength);
+                a4 ^= GatherLane(inputPtr + offset, 4, Hash532InputLength);
+                a5 ^= GatherLane(inputPtr + offset, 5, Hash532InputLength);
+                a6 ^= GatherLane(inputPtr + offset, 6, Hash532InputLength);
+                a7 ^= GatherLane(inputPtr + offset, 7, Hash532InputLength);
+                a8 ^= GatherLane(inputPtr + offset, 8, Hash532InputLength);
+                a9 ^= GatherLane(inputPtr + offset, 9, Hash532InputLength);
+                a10 ^= GatherLane(inputPtr + offset, 10, Hash532InputLength);
+                a11 ^= GatherLane(inputPtr + offset, 11, Hash532InputLength);
+                a12 ^= GatherLane(inputPtr + offset, 12, Hash532InputLength);
+                a13 ^= GatherLane(inputPtr + offset, 13, Hash532InputLength);
+                a14 ^= GatherLane(inputPtr + offset, 14, Hash532InputLength);
                 if (offset == 3 * HASH_DATA_AREA)
                 {
                     a15 ^= Vector512.Create(
-                        Unsafe.ReadUnaligned<uint>(inputPtr + 528) | (1UL << 32),
-                        Unsafe.ReadUnaligned<uint>(inputPtr + 1060) | (1UL << 32),
-                        Unsafe.ReadUnaligned<uint>(inputPtr + 1592) | (1UL << 32),
-                        Unsafe.ReadUnaligned<uint>(inputPtr + 2124) | (1UL << 32),
-                        Unsafe.ReadUnaligned<uint>(inputPtr + 2656) | (1UL << 32),
-                        Unsafe.ReadUnaligned<uint>(inputPtr + 3188) | (1UL << 32),
-                        Unsafe.ReadUnaligned<uint>(inputPtr + 3720) | (1UL << 32),
-                        Unsafe.ReadUnaligned<uint>(inputPtr + 4252) | (1UL << 32));
+                        Unsafe.ReadUnaligned<uint>(inputPtr + Hash532InputLength - sizeof(uint)) | (1UL << 32),
+                        Unsafe.ReadUnaligned<uint>(inputPtr + 2 * Hash532InputLength - sizeof(uint)) | (1UL << 32),
+                        Unsafe.ReadUnaligned<uint>(inputPtr + 3 * Hash532InputLength - sizeof(uint)) | (1UL << 32),
+                        Unsafe.ReadUnaligned<uint>(inputPtr + 4 * Hash532InputLength - sizeof(uint)) | (1UL << 32),
+                        Unsafe.ReadUnaligned<uint>(inputPtr + 5 * Hash532InputLength - sizeof(uint)) | (1UL << 32),
+                        Unsafe.ReadUnaligned<uint>(inputPtr + 6 * Hash532InputLength - sizeof(uint)) | (1UL << 32),
+                        Unsafe.ReadUnaligned<uint>(inputPtr + 7 * Hash532InputLength - sizeof(uint)) | (1UL << 32),
+                        Unsafe.ReadUnaligned<uint>(inputPtr + 8 * Hash532InputLength - sizeof(uint)) | (1UL << 32));
                     a16 ^= Vector512.Create(0x8000000000000000UL);
                 }
                 else
                 {
-                    a15 ^= GatherLane(inputPtr + offset, 15, 532);
-                    a16 ^= GatherLane(inputPtr + offset, 16, 532);
+                    a15 ^= GatherLane(inputPtr + offset, 15, Hash532InputLength);
+                    a16 ^= GatherLane(inputPtr + offset, 16, Hash532InputLength);
                 }
 
                 for (int round = 0; round < ROUNDS; round++)

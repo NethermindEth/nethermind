@@ -121,6 +121,7 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
     /// <remarks>The encoded transaction bytes must remain unchanged until the work is drained.</remarks>
     public static RootComputation? StartRootComputation(ReadOnlySpan<byte[]> encodedTransactions)
     {
+        // Small uneven AVX2 roots benefit from the normal scheduler; AVX-512 can batch small roots sequentially.
         if (RuntimeInformation.IsSingleProcessor || encodedTransactions.Length <= MinItemsForParallelRootHash)
             return null;
         foreach (byte[] value in encodedTransactions)

@@ -29,7 +29,7 @@ namespace Nethermind.Trie
     {
         // Used to create the nibble key from bytes, and threshold before using ArrayPool for the key
         private const int StackallocByteThreshold = 384;
-        private const int FullBranchRlpLength = 532;
+        internal const int FullBranchRlpLength = KeccakHash.Hash532InputLength;
 
         private class TrieNodeDecoder
         {

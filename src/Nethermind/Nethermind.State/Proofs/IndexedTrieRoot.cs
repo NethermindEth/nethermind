@@ -75,7 +75,7 @@ internal static class IndexedTrieRoot
         private const int PrecomputedBranchLength = -Keccak.Size;
         private const int BranchBatchSize = 8;
         private const int BranchChildCount = 16;
-        private const int FullBranchLength = BranchPrefixLength + MaxBranchContentLength;
+        private const int FullBranchLength = KeccakHash.Hash532InputLength;
         private const int MaxBranchContentLength = 16 * Rlp.LengthOfKeccakRlp + 1;
         // A 136-byte Keccak rate block leaves 11 bytes for the longest RLP/path prefix and one for padding.
         private const int MaxSingleBlockValueLength = 124;
