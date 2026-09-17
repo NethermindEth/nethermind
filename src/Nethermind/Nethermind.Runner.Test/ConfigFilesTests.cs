@@ -352,6 +352,15 @@ public class ConfigFilesTests : ConfigFileTestsBase
         });
     }
 
+    // XDPoSChain peers state-sync via GetNodeData, which SyncServer can only answer from
+    // WorldStateManager.HashServer — non-null solely on the patricia backend with hash-keyed nodes.
+    [Test]
+    public void Xdc_configs_can_serve_node_data([Values("xdc.json", "xdc-testnet.json", "xdc_archive.json")] string configWildcard)
+    {
+        Test<IFlatDbConfig, bool>(configWildcard, static c => c.Enabled, false);
+        Test<IInitConfig, INodeStorage.KeyScheme>(configWildcard, static c => c.StateDbKeyScheme, INodeStorage.KeyScheme.Hash);
+    }
+
     [TestCase("*")]
     public void BufferResponses_rpc_is_off(string configWildcard) => Test<IJsonRpcConfig, bool>(configWildcard, static c => c.BufferResponses, false);
 
