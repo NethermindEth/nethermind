@@ -779,6 +779,31 @@ public class PbtSnapshotBundleTests
         Assert.Throws<InvalidOperationException>(() => retained!.AcquireLease());
     }
 
+    [TestCase(16, false, true)]
+    [TestCase(2048, false, true)]
+    [TestCase(1600, false, false)]
+    [TestCase(2048, true, false)]
+    public void Trie_cache_shares_right_sized_managed_payloads_and_copies_the_rest(int length, bool rocksDbBacked, bool expectedShared)
+    {
+        using PbtTrieNodeCache cache = new(CacheConfig("account", 1048576));
+        PbtNodePath path = CachePath("account");
+        RefCountingMemory source = rocksDbBacked
+            ? RefCountingMemory.OwningRocksDb(ArrayMemoryManager.From(new byte[length])!)
+            : Memory(new byte[length]);
+        cache.Add(default, path, source);
+        Assert.That(cache.TryGet(default, path, out RefCountingMemory? hit), Is.True);
+        using (hit) Assert.That(ReferenceEquals(hit, source), Is.EqualTo(expectedShared));
+        ((IDisposable)source).Dispose();
+        Assert.That(source.TryAcquireLease(), Is.EqualTo(expectedShared), "only a shared payload stays leased by the cache after its producer releases it");
+        if (expectedShared) ((IDisposable)source).Dispose();
+        cache.Clear();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.TryAcquireLease(), Is.False);
+            Assert.That(cache.MemorySize, Is.Zero);
+        }
+    }
+
     [Test]
     public void Trie_cache_concurrent_hits_and_eviction_keep_payloads_alive()
     {
