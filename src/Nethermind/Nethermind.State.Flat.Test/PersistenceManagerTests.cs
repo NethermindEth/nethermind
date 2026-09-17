@@ -402,7 +402,8 @@ public class PersistenceManagerTests
     [Test]
     public void DetermineSnapshotAction_InsufficientInMemoryDepth_ReturnsNull()
     {
-        // Gate passes (60+16=76 > 64) but GetFinalizedStateRootAt(16) is not configured → seed = null.
+        // Two independent reasons for null: the depth above the fold target (60-16=44) is under
+        // MinReorgDepth (64), and no seed is configured at 16.
         StateId persisted = Block0;
         StateId latest = CreateStateId(60);
         _finalizedStateProvider.SetFinalizedBlockNumber(100);
@@ -1068,8 +1069,8 @@ public class PersistenceManagerTests
     [Test]
     public void DetermineSnapshotAction_ExactlyAtMinimumBoundary_ReturnsNull()
     {
-        // Gate passes (79+16=95 > 64), but GetFinalizedStateRootAt(16) is not configured →
-        // returns null → seed = null. No backstop (79 << LongFinalityMaxReorgDepth). Result: null.
+        // One block short of the fold threshold (79-16=63 < MinReorgDepth). No seed at 16 and no
+        // backstop (79 << LongFinalityMaxReorgDepth) either, so all three paths yield null.
         StateId persisted = Block0;
         StateId latest = CreateStateId(79);
         _finalizedStateProvider.SetFinalizedBlockNumber(100);
@@ -1084,8 +1085,8 @@ public class PersistenceManagerTests
     public void DetermineSnapshotAction_OneAboveMinimumBoundary_ReturnsSnapshot()
     {
         // Setup: persisted at Block0, latest at 80, finalized at the candidate block (16) so the
-        // single-seed BFS lands directly on it. Depth (80) + CompactSize (16) = 96 > MinReorgDepth
-        // (64) — passes the normal-trigger gate.
+        // single-seed BFS lands directly on it. Folding to 16 leaves 80-16=64 reachable, exactly
+        // MinReorgDepth — the first head at which the normal-trigger gate opens.
         StateId persisted = Block0;
         StateId latest = CreateStateId(80);
         StateId target = CreateStateId(16);
@@ -1100,6 +1101,29 @@ public class PersistenceManagerTests
         Assert.That(toPersist, Is.Not.Null);
 
         toPersist!.Dispose();
+    }
+
+    // Folding must leave MinReorgDepth reachable above the new base, so the gate opens only once the
+    // head is that far past the fold target (block 16 here) — at head 80, not 79.
+    [TestCase(79u, false, TestName = "DetermineSnapshotAction_FoldKeepsMinReorgDepth_BelowFloorHolds")]
+    [TestCase(80u, true, TestName = "DetermineSnapshotAction_FoldKeepsMinReorgDepth_AtFloorFolds")]
+    public void DetermineSnapshotAction_FoldNeverDropsBelowMinReorgDepth(ulong latestBlock, bool expectFold)
+    {
+        StateId target = CreateStateId(_config.CompactSize);
+        _finalizedStateProvider.SetFinalizedBlockNumber(_config.CompactSize);
+        _finalizedStateProvider.SetFinalizedStateRootAt(_config.CompactSize, new Hash256(target.StateRoot.Bytes));
+
+        using Snapshot seed = CreateSnapshot(Block0, target, compacted: true);
+
+        (_, Snapshot? toPersist, _) = _persistenceManager.DetermineSnapshotAction(CreateStateId(latestBlock));
+
+        Assert.That(toPersist is not null, Is.EqualTo(expectFold));
+        if (toPersist is not null)
+        {
+            Assert.That(latestBlock - toPersist.To.BlockNumber, Is.GreaterThanOrEqualTo(_config.MinReorgDepth),
+                "folding left less than MinReorgDepth reachable above the new base");
+            toPersist.Dispose();
+        }
     }
 
     [Test]

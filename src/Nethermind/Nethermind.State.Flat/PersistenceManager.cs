@@ -95,7 +95,8 @@ public class PersistenceManager(
     /// finalized trigger ran but found nothing to persist:
     /// <list type="bullet">
     ///   <item>Finalized trigger: if <c>finalizedBlock &gt;= persistedBlock + CompactSize</c> AND
-    ///   <c>snapshotsDepth + CompactSize &gt; MinReorgDepth</c> → seed = canonical state at
+    ///   <c>head - nextBoundary &gt;= MinReorgDepth</c> (the depth remaining above the new base)
+    ///   → seed = canonical state at
     ///   the next boundary block (<c>persistedBlock + CompactSize</c>). Looked up via
     ///   <see cref="IFinalizedStateProvider"/> — the boundary is always locally synced even
     ///   during catch-up sync where the CL-reported finalized tip is beyond the chain head.</item>
@@ -131,8 +132,11 @@ public class PersistenceManager(
         // CL-reported finalized tip. The outer gate guarantees boundary <= finalizedBlockNumber, so
         // the provider's own range check passes; the boundary is below chain head by construction, so
         // the canonical header is in the block tree and FindHeader resolves.
+        // MinReorgDepth is a floor on what stays reachable, so the gate is on the depth left *above*
+        // the new base rather than the depth before the fold: folding is allowed only while the state
+        // above nextBoundary still covers MinReorgDepth.
         if (finalizedBlockNumber >= nextBoundary
-            && snapshotsDepth + _compactSize > _minReorgDepth)
+            && latestSnapshot.BlockNumber.SaturatingSub(nextBoundary) >= _minReorgDepth)
         {
             Hash256? canonicalRoot = finalizedStateProvider.GetFinalizedStateRootAt(nextBoundary);
             if (canonicalRoot is not null)
