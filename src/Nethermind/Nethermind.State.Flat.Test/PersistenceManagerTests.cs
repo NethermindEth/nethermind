@@ -1625,6 +1625,38 @@ public class PersistenceManagerTests
         Assert.That(_snapshotRepository.HasBasePersistedSnapshot(stale), Is.False);
     }
 
+    // Chain Block0->1->2->3->4 plus a fork (3)->(4,1); `remaining` lists the main-chain blocks still held afterwards
+    // (the fork survives exactly when block 4 does).
+    [TestCase(0ul, 3ul, 0, new ulong[] { 1, 2, 3 }, TestName = "known head above the persisted state")]
+    [TestCase(0ul, 3ul, 7, new ulong[] { 1, 2, 3, 4 }, TestName = "unknown head is refused")]
+    [TestCase(2ul, 2ul, 0, new ulong[] { 1, 2 }, TestName = "head at the persisted state")]
+    [TestCase(5ul, 5ul, 0, new ulong[] { }, TestName = "head at a persisted state nothing is keyed at drops everything")]
+    [TestCase(3ul, 2ul, 0, new ulong[] { 1, 2, 3, 4 }, TestName = "head below the persisted state is refused")]
+    public void DropStateNotReachableFrom_KeepsHeadAncestryOnly(ulong persistedBlock, ulong headBlock, int headRootByte, ulong[] remaining)
+    {
+        StateId persisted = persistedBlock == 0 ? Block0 : CreateStateId(persistedBlock);
+        _persistence.CreateReader().CurrentState.Returns(persisted);
+        StateId previous = Block0;
+        for (ulong block = 1; block <= 4; block++)
+        {
+            CreateSnapshot(previous, CreateStateId(block));
+            previous = CreateStateId(block);
+        }
+        StateId fork4 = CreateStateId(4, rootByte: 1);
+        CreateSnapshot(CreateStateId(3), fork4);
+
+        _persistenceManager.DropStateNotReachableFrom(CreateStateId(headBlock, rootByte: (byte)headRootByte));
+
+        HashSet<ulong> kept = [.. remaining];
+        using (Assert.EnterMultipleScope())
+        {
+            for (ulong block = 1; block <= 4; block++)
+                Assert.That(_snapshotRepository.HasState(CreateStateId(block)), Is.EqualTo(kept.Contains(block)), $"block {block}");
+            Assert.That(_snapshotRepository.HasState(fork4), Is.EqualTo(kept.Contains(4)), "fork");
+            Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(persisted));
+        }
+    }
+
     private PersistenceManager.ConversionCandidate? InvokeTryFindSnapshotToConvert(StateId currentPersistedState)
     {
         // TryFindSnapshotToConvert is private; reach it via reflection so we can unit-test the

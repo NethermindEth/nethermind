@@ -474,6 +474,14 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         return false;
     }
 
+    public void DropStateNotReachableFrom(in StateId head)
+    {
+        _persistenceManager.DropStateNotReachableFrom(head);
+        // Cached bundles lease the snapshots they were assembled over; without this the pruned ones stay
+        // alive until the periodic clear.
+        ClearReadOnlyBundleCache();
+    }
+
     /// <inheritdoc/>
     /// <remarks>
     /// Drains the queues in feed order — the compactor writes into the persistence queue, so it has to

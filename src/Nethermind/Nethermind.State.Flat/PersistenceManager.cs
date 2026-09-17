@@ -468,6 +468,12 @@ public class PersistenceManager(
         CurrentPersistedStateId = reader.CurrentState;
     }
 
+    public void DropStateNotReachableFrom(in StateId head)
+    {
+        using SemaphoreSlimExtensions.Scope _ = _persistenceLock.EnterScope();
+        snapshotRepository.RemoveUnreachableFrom(head, GetCurrentPersistedStateId());
+    }
+
     public void Dispose()
     {
         _cts.Dispose();

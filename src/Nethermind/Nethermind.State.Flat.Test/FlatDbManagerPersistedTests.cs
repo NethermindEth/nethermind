@@ -10,9 +10,11 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.Trie.Pruning;
 using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
@@ -28,7 +30,7 @@ public class FlatDbManagerPersistedTests
     private ResourcePool _pool = null!;
     private IProcessExitSource _processExitSource = null!;
     private CancellationTokenSource _cts = null!;
-    private IFlatDbConfig _config = null!;
+    private FlatDbConfig _config = null!;
 
     [SetUp]
     public void SetUp()
@@ -126,5 +128,67 @@ public class FlatDbManagerPersistedTests
 
         // A second disposal must be a no-op. A completed channel throws on Complete().
         Assert.DoesNotThrowAsync(async () => await manager.DisposeAsync().AsTask().WaitAsync(DisposeWaitLimit));
+    }
+
+    // The head-reset sequence: commit a branch, reset to its base, commit again from the base. The abandoned
+    // branch must be gone and the new one served, through the real repository, compactor and persistence manager.
+    [Test]
+    public async Task DropStateNotReachableFrom_ThenCommitOnResetHead_DropsAbandonedBranchAndServesNewOne()
+    {
+        StateId head = new(0, Keccak.EmptyTreeHash);
+        StateId abandoned1 = new(1, Keccak.Compute("a1"));
+        StateId abandoned2 = new(2, Keccak.Compute("a2"));
+        StateId reprocessed1 = new(1, Keccak.Compute("b1"));
+
+        using FlatTestContainer tier = new(_config, arenaFileSizeBytes: 4096);
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        reader.CurrentState.Returns(head);
+        IPersistence persistence = Substitute.For<IPersistence>();
+        persistence.CreateReader().Returns(reader);
+        using PersistenceManager persistenceManager = new(
+            _config,
+            tier.Resolve<ICompactionSchedule>(),
+            tier.Resolve<IFinalizedStateProvider>(),
+            persistence,
+            tier.Repository,
+            NullStatePersistenceBarrier.Instance,
+            LimboLogs.Instance,
+            Substitute.For<IPersistedSnapshotCompactor>(),
+            tier.Loader,
+            _processExitSource);
+        await using FlatDbManager manager = new(
+            tier.ResourcePool,
+            _processExitSource,
+            tier.Resolve<ITrieNodeCache>(),
+            tier.Resolve<ISnapshotCompactor>(),
+            tier.Repository,
+            persistenceManager,
+            Substitute.For<IPersistedSnapshotLoader>(),
+            _config,
+            new BlocksConfig(),
+            LimboLogs.Instance,
+            enableDetailedMetrics: false);
+
+        Commit(manager, tier.ResourcePool, head, abandoned1, balance: 1);
+        Commit(manager, tier.ResourcePool, abandoned1, abandoned2, balance: 2);
+
+        manager.DropStateNotReachableFrom(head);
+        Commit(manager, tier.ResourcePool, head, reprocessed1, balance: 3);
+
+        using ReadOnlySnapshotBundle bundle = manager.GatherReadOnlySnapshotBundle(reprocessed1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.HasStateForBlock(abandoned1), Is.False);
+            Assert.That(manager.HasStateForBlock(abandoned2), Is.False);
+            Assert.That(manager.HasStateForBlock(reprocessed1), Is.True);
+            Assert.That(bundle.GetAccount(TestItem.AddressA)?.Balance, Is.EqualTo((UInt256)3));
+        }
+    }
+
+    private static void Commit(FlatDbManager manager, ResourcePool pool, StateId from, StateId to, ulong balance)
+    {
+        Snapshot snapshot = pool.CreateSnapshot(from, to, ResourcePool.Usage.MainBlockProcessing);
+        snapshot.Content.Accounts[TestItem.AddressA] = Build.An.Account.WithBalance(balance).TestObject;
+        manager.AddSnapshot(snapshot, pool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing));
     }
 }
