@@ -68,8 +68,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         set
         {
             ArgumentNullException.ThrowIfNull(value);
-            _txRootWork?.Dispose();
-            _txRootWork = null;
+            StopTxRootComputation();
+            _txRoot = null;
             _encodedTransactions = value;
             _transactions = null;
             _txRootTask = null;
@@ -165,10 +165,22 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// <returns>The decoded execution block or a decoding error.</returns>
     public virtual Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
+        try
+        {
+            return TryGetBlockCore(totalDifficulty);
+        }
+        finally
+        {
+            StopTxRootComputation();
+        }
+    }
+
+    private Result<Block> TryGetBlockCore(UInt256? totalDifficulty)
+    {
         byte[][] encodedTransactions = Transactions;
         // Repeats the check inside StartTxRootComputation so the guest build never reaches the call
         // and carries no task machinery for it.
-        using IDisposable? rootLease = RuntimeInformation.IsSingleProcessor ? null : StartTxRootComputation();
+        if (!RuntimeInformation.IsSingleProcessor) StartTxRootComputation();
         Task<Hash256>? txRootTask = _txRootTask;
 
         Result<Transaction[]> transactions = TryGetTransactions();
@@ -199,7 +211,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Author = FeeRecipient,
             IsPostMerge = true,
             TotalDifficulty = totalDifficulty,
-            TxRoot = _txRootWork is not null ? _txRootWork.GetResult()
+            TxRoot = _txRoot ??= _txRootWork is not null ? _txRootWork.GetResult()
                 : txRootTask is not null ? txRootTask.GetAwaiter().GetResult() : TxTrie.CalculateRoot(encodedTransactions),
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
@@ -217,22 +229,28 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     private Task<Hash256>? _txRootTask;
     private TxTrie.RootComputation? _txRootWork;
+    private Hash256? _txRoot;
 
     private const int MinTxsForParallelDecoding = 32;
 
-    /// <summary>Starts transaction-root work and returns a lease that drains any pooled background work.</summary>
+    /// <summary>Starts transaction-root work owned by this payload.</summary>
     /// <remarks>Not thread-safe. Calls and transaction replacement must be sequential per payload.
-    /// Small and sparse roots retain the task path; they do not require a pooled-work lease.</remarks>
-    internal IDisposable? StartTxRootComputation()
+    /// Call StopTxRootComputation in a finally block if execution can exit before TryGetBlock.</remarks>
+    internal void StartTxRootComputation()
     {
         byte[][] encodedTransactions = _encodedTransactions;
-        if (_txRootWork is null && _txRootTask is null && encodedTransactions.Length >= MinTxsForParallelDecoding
+        if (_txRoot is null && _txRootWork is null && _txRootTask is null && encodedTransactions.Length >= MinTxsForParallelDecoding
             && !RuntimeInformation.IsSingleProcessor)
         {
             _txRootWork = TxTrie.StartRootComputation(encodedTransactions);
             if (_txRootWork is null) _txRootTask = Task.Run(() => TxTrie.CalculateRoot(encodedTransactions));
         }
-        return _txRootWork;
+    }
+
+    internal void StopTxRootComputation()
+    {
+        _txRootWork?.Dispose();
+        _txRootWork = null;
     }
 
     /// <summary>

@@ -251,11 +251,137 @@ public class ParallelUnbalancedWorkTests
     }
 
     [Test]
-    public void BackgroundFor_drains_without_join()
+    public void BackgroundFor_abandons_deferred_work()
     {
         int count = 0;
-        using (ParallelUnbalancedWork.BackgroundFor(0, 1000, FourThreads, _ => Interlocked.Increment(ref count))) { }
-        Assert.That(count, Is.EqualTo(1000));
+        int finalized = 0;
+        using ParallelUnbalancedWork.BackgroundWork work = ParallelUnbalancedWork.BackgroundFor(0, 1000,
+            new ParallelOptions { MaxDegreeOfParallelism = 1 }, _ => count++, () => finalized++);
+        work.Dispose();
+        if (!Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor)
+            ((IThreadPoolWorkItem)(object)work).Execute();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(count, Is.Zero);
+            Assert.That(finalized, Is.Zero);
+            Assert.Throws<ObjectDisposedException>(work.WaitForCompletion);
+        }
+    }
+
+    [Test]
+    public void BackgroundFor_finalizes_on_active_joiner_or_last_worker([Values] bool sleepingJoiner)
+    {
+        if (Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor) Assert.Ignore("Requires a background worker.");
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        using ManualResetEventSlim workerDone = new();
+        int finalizer = 0;
+        using ParallelUnbalancedWork.BackgroundWork work = ParallelUnbalancedWork.BackgroundFor(0, sleepingJoiner ? 1 : 2,
+            new ParallelOptions { MaxDegreeOfParallelism = 1 }, i =>
+            {
+                if (i == 0)
+                {
+                    entered.Set();
+                    if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException();
+                }
+                else
+                {
+                    release.Set();
+                    if (!workerDone.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException();
+                }
+            }, () => finalizer = Environment.CurrentManagedThreadId);
+        Thread worker = new(() => { ((IThreadPoolWorkItem)(object)work).Execute(); workerDone.Set(); });
+        Exception? joinError = null;
+        Thread joiner = new(() =>
+        {
+            try { work.WaitForCompletion(); }
+            catch (Exception ex) { joinError = ex; }
+        });
+        worker.Start();
+        try
+        {
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            joiner.Start();
+            if (sleepingJoiner)
+            {
+                Assert.That(SpinWait.SpinUntil(() => (joiner.ThreadState & ThreadState.WaitSleepJoin) != 0,
+                    TimeSpan.FromSeconds(10)), Is.True);
+                release.Set();
+            }
+            Assert.That(joiner.Join(TimeSpan.FromSeconds(10)), Is.True);
+        }
+        finally
+        {
+            release.Set();
+            worker.Join();
+            if (joiner.ThreadState != ThreadState.Unstarted) joiner.Join();
+        }
+        Assert.That(joinError, Is.Null);
+        Assert.That(finalizer, Is.EqualTo(sleepingJoiner ? worker.ManagedThreadId : joiner.ManagedThreadId));
+    }
+
+    [Test]
+    public void BackgroundFor_disposal_waits_for_running_iteration()
+    {
+        if (Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor) Assert.Ignore("Requires a background worker.");
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        using ManualResetEventSlim disposing = new();
+        using ManualResetEventSlim returned = new();
+        int calls = 0;
+        int finalized = 0;
+        using ParallelUnbalancedWork.BackgroundWork work = ParallelUnbalancedWork.BackgroundFor(0, 100,
+            new ParallelOptions { MaxDegreeOfParallelism = 1 }, _ =>
+            {
+                Interlocked.Increment(ref calls);
+                entered.Set();
+                if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException();
+            }, () => finalized++);
+        Thread worker = new(() => ((IThreadPoolWorkItem)(object)work).Execute());
+        Thread disposer = new(() => { disposing.Set(); work.Dispose(); returned.Set(); });
+        worker.Start();
+        try
+        {
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            disposer.Start();
+            Assert.That(disposing.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            Assert.That(SpinWait.SpinUntil(() => (disposer.ThreadState & ThreadState.WaitSleepJoin) != 0,
+                TimeSpan.FromSeconds(10)), Is.True);
+            Assert.That(returned.IsSet, Is.False);
+        }
+        finally
+        {
+            release.Set();
+            worker.Join();
+            if (disposer.ThreadState != ThreadState.Unstarted) disposer.Join();
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.EqualTo(1));
+            Assert.That(finalized, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void BackgroundFor_finalizer_handoff_preserves_all_results()
+    {
+        for (int pass = 0; pass < 1000; pass++)
+        {
+            int[] results = new int[64];
+            int finalized = 0;
+            using ParallelUnbalancedWork.BackgroundWork work = ParallelUnbalancedWork.BackgroundFor(0, results.Length,
+                FourThreads, i =>
+                {
+                    Thread.SpinWait(i * 4);
+                    results[i] = 1;
+                }, () =>
+                {
+                    Assert.That(results, Is.All.EqualTo(1));
+                    finalized++;
+                });
+            work.WaitForCompletion();
+            Assert.That(finalized, Is.EqualTo(1));
+        }
     }
 
     [Test]

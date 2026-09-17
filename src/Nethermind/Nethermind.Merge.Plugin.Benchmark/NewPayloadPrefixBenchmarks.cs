@@ -89,13 +89,20 @@ public class NewPayloadPrefixBenchmarks
         return _payload.TryGetBlock().Data!;
     }
 
-    [Benchmark(Description = "early root + decode + TryGetBlock")]
+    [Benchmark(Description = "decode + early root + TryGetBlock (validated payload)")]
     public Block HandlerPrefixWithEarlyRoot()
     {
         _payload.Transactions = _encodedTransactions; // resets the decoded-transactions memo
-        _payload.StartTxRootComputation();
         _payload.TryGetTransactions();
-        return _payload.TryGetBlock().Data!;
+        _payload.StartTxRootComputation();
+        try
+        {
+            return _payload.TryGetBlock().Data!;
+        }
+        finally
+        {
+            _payload.StopTxRootComputation();
+        }
     }
 
     private static Transaction[] BuildTransactions(int count)

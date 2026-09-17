@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System;
 using System.Threading.Tasks;
-using Nethermind.Core.Cpu;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -91,12 +90,11 @@ public class ExecutionPayloadTests
         byte[][] rlps = EncodeTxs(count);
 
         ExecutionPayload payload = new() { Transactions = rlps };
-        using IDisposable? rootWork = payload.StartTxRootComputation();
+        payload.StartTxRootComputation();
         Result<Block> block = payload.TryGetBlock();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rootWork, RuntimeInformation.IsSingleProcessor || count <= 64 ? Is.Null : Is.Not.Null);
             Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(rlps)));
         }
     }
@@ -109,7 +107,7 @@ public class ExecutionPayloadTests
         byte[][] replacementRlps = EncodeTxs(count: 128, nonceOffset: 1000);
 
         ExecutionPayload payload = new() { Transactions = originalRlps };
-        using IDisposable? originalWork = payload.StartTxRootComputation();
+        payload.StartTxRootComputation();
         payload.Transactions = replacementRlps;
         Result<Block> block = payload.TryGetBlock();
 
@@ -123,23 +121,23 @@ public class ExecutionPayloadTests
         byte[][] rlps = EncodeTxs(count: 1);
 
         ExecutionPayload payload = new() { Transactions = rlps };
-        using IDisposable? rootWork = payload.StartTxRootComputation();
+        payload.StartTxRootComputation();
         Result<Block> block = payload.TryGetBlock();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rootWork, Is.Null);
             Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(rlps)));
         }
     }
 
     [Test]
-    public void TryGetBlock_reuses_root_after_lease_is_drained([Values(false, true)] bool invalid)
+    public void TryGetBlock_restarts_root_after_abandonment([Values(false, true)] bool invalid)
     {
         byte[][] rlps = EncodeTxs(128);
         if (invalid) rlps[41] = [.. rlps[41], 0xDC, 0xAF];
         ExecutionPayload payload = new() { Transactions = rlps };
-        using (payload.StartTxRootComputation()) { }
+        payload.StartTxRootComputation();
+        payload.StopTxRootComputation();
 
         Result<Block> first = payload.TryGetBlock();
         Result<Block> second = payload.TryGetBlock();

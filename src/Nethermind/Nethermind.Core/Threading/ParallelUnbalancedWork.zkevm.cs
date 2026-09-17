@@ -76,18 +76,18 @@ public partial class ParallelUnbalancedWork
     public sealed partial class BackgroundWork(int from, int to, CancellationToken token, Action<int> action, Action? completed)
     {
         private bool _joined;
+        private bool _abandoned;
         private ExceptionDispatchInfo? _exception;
 
         public partial void WaitForCompletion()
         {
-            Dispose();
-            _exception?.Throw();
-            token.ThrowIfCancellationRequested();
-        }
-
-        public partial void Dispose()
-        {
-            if (_joined) return;
+            ObjectDisposedException.ThrowIf(_abandoned, this);
+            if (_joined)
+            {
+                _exception?.Throw();
+                token.ThrowIfCancellationRequested();
+                return;
+            }
             _joined = true;
             try
             {
@@ -98,6 +98,13 @@ public partial class ParallelUnbalancedWork
             {
                 _exception = ExceptionDispatchInfo.Capture(ex);
             }
+            _exception?.Throw();
+            token.ThrowIfCancellationRequested();
+        }
+
+        public partial void Dispose()
+        {
+            if (!_joined) _abandoned = true;
         }
     }
 }

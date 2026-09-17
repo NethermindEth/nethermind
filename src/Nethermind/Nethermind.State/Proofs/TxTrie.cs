@@ -128,8 +128,8 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
         return new RootComputation(encodedTransactions);
     }
 
-    /// <summary>Owns transaction-root work and its buffers until all workers finish.</summary>
-    /// <remarks>GetResult and Dispose must be called sequentially. The result remains available after disposal.</remarks>
+    /// <summary>Owns transaction-root work and its buffers until running callbacks finish.</summary>
+    /// <remarks>GetResult and Dispose must be called sequentially. A successfully joined result remains available after disposal.</remarks>
     public sealed class RootComputation : IDisposable
     {
         private readonly IndexedTrieRoot.Calculator<byte[], EncodedTransactionEncoder>.BackgroundRoot _work;
@@ -139,7 +139,7 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
         /// <summary>Helps finish pending batches and returns the root, releasing temporary buffers.</summary>
         public Hash256 GetResult() => _work.GetResult();
 
-        /// <summary>Drains work and releases its buffers without reporting captured computation faults.</summary>
+        /// <summary>Abandons pending batches and releases buffers after running callbacks finish.</summary>
         public void Dispose() => _work.Dispose();
     }
 

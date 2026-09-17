@@ -105,8 +105,9 @@ public partial class ParallelUnbalancedWork
         => ForCore(fromInclusive, toExclusive, parallelOptions, null, state, action, null);
 
     /// <summary>Starts loop workers without executing iterations on the caller until it joins.</summary>
-    /// <remarks>The worker limit includes the joining caller. Dispose drains work without reporting faults;
-    /// WaitForCompletion reports them. Join and disposal must be called sequentially, outside callbacks.</remarks>
+    /// <remarks>The worker limit includes the joining caller. Dispose abandons unclaimed iterations and waits for running callbacks without reporting faults;
+    /// WaitForCompletion reports them. Join and disposal must be called sequentially, outside callbacks. The completion callback runs once on success,
+    /// including an empty range. Joining after abandonment throws ObjectDisposedException.</remarks>
     public static BackgroundWork BackgroundFor(int fromInclusive, int toExclusive, ParallelOptions options,
         Action<int> action, Action? completed = null)
         => BackgroundForCore(fromInclusive, toExclusive, options, action, completed);
@@ -114,13 +115,13 @@ public partial class ParallelUnbalancedWork
     private static partial BackgroundWork BackgroundForCore(int fromInclusive, int toExclusive,
         ParallelOptions options, Action<int> action, Action? completed);
 
-    /// <summary>Owns a background loop until its iterations and completion callback have finished.</summary>
+    /// <summary>Coordinates background iterations and their completion callback.</summary>
     public sealed partial class BackgroundWork : IDisposable
     {
         /// <summary>Helps execute outstanding iterations, waits for completion, and reports faults or cancellation.</summary>
         public partial void WaitForCompletion();
 
-        /// <summary>Drains outstanding work without throwing captured worker faults or cancellation.</summary>
+        /// <summary>Abandons unclaimed work and waits for running callbacks without throwing captured faults or cancellation.</summary>
         public partial void Dispose();
     }
 
