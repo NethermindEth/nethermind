@@ -5,34 +5,55 @@ using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.Persistence;
 
-/// <summary>Persisted node-group key: the group path zero-padded to the column's full-key length, then its nibble count.</summary>
+/// <summary>Persisted node-group key, in the <see cref="PbtNodeGroupKeyLayout"/> the database was created with.</summary>
 /// <remarks>
-/// Unlike <see cref="IPbtNodePath{TSelf}.Encode"/>, which sorts by depth first, this layout sorts a group immediately
-/// before its descendants, so a subtree is stored contiguously. The nibble count breaks the tie between a group and a
-/// descendant whose extra bits are all zero.
+/// <see cref="PbtNodeGroupKeyLayout.Padded"/> is the group path zero-padded to the column's full-key length, then its
+/// nibble count. Unlike <see cref="IPbtNodePath{TSelf}.Encode"/>, which sorts by depth first, this sorts a group
+/// immediately before its descendants, so a subtree is stored contiguously. The nibble count breaks the tie between a
+/// group and a descendant whose extra bits are all zero.
+/// <para/>
+/// <see cref="PbtNodeGroupKeyLayout.Variable"/> is the group path bytes, then the number of bits used in the last path
+/// byte (4 or 8). Keys carry no padding, so a subtree is still one contiguous key range, but the trailing byte is
+/// compared against the next path byte of longer keys: a group sorts after the descendants whose next byte is below
+/// it, inside its subtree's range rather than at its front.
 /// </remarks>
 internal static class PbtNodeGroupKey
 {
-    private const int NibbleCountLength = 1;
-    internal const int MaxLength = PbtStorageFullKey.MaxLength + NibbleCountLength;
+    private const int TrailerLength = 1;
+    internal const int MaxLength = PbtStorageFullKey.MaxLength + TrailerLength;
 
     private static int PathLength(PbtColumns column) =>
         column == PbtColumns.StorageNodeGroups ? PbtStorageFullKey.MaxLength : PbtFullKey.MaxLength;
 
-    internal static ReadOnlySpan<byte> Encode<TPath>(PbtColumns column, TPath groupKey, Span<byte> destination)
+    internal static ReadOnlySpan<byte> Encode<TPath>(PbtNodeGroupKeyLayout layout, PbtColumns column, TPath groupKey, Span<byte> destination)
+        where TPath : struct, IPbtNodePath<TPath> => layout switch
+        {
+            PbtNodeGroupKeyLayout.Padded => EncodePadded(column, groupKey, destination),
+            PbtNodeGroupKeyLayout.Variable => EncodeVariable(column, groupKey, destination),
+            _ => throw new ArgumentOutOfRangeException(nameof(layout)),
+        };
+
+    internal static PbtStorageNodePath Decode(PbtNodeGroupKeyLayout layout, ReadOnlySpan<byte> key) => layout switch
+    {
+        PbtNodeGroupKeyLayout.Padded => DecodePadded(key),
+        PbtNodeGroupKeyLayout.Variable => DecodeVariable(key),
+        _ => throw new ArgumentOutOfRangeException(nameof(layout)),
+    };
+
+    private static ReadOnlySpan<byte> EncodePadded<TPath>(PbtColumns column, TPath groupKey, Span<byte> destination)
         where TPath : struct, IPbtNodePath<TPath>
     {
-        Span<byte> key = destination[..(PathLength(column) + NibbleCountLength)];
-        Span<byte> path = key[..^NibbleCountLength];
+        Span<byte> key = destination[..(PathLength(column) + TrailerLength)];
+        Span<byte> path = key[..^TrailerLength];
         path.Clear();
         groupKey.CopyBitsTo(0, path, 0, groupKey.BitDepth);
         key[^1] = (byte)(groupKey.BitDepth / PbtFourLevelGroupGeometry.LevelsPerGroup);
         return key;
     }
 
-    internal static PbtStorageNodePath Decode(ReadOnlySpan<byte> key)
+    private static PbtStorageNodePath DecodePadded(ReadOnlySpan<byte> key)
     {
-        int capacity = key.Length - NibbleCountLength;
+        int capacity = key.Length - TrailerLength;
         if (capacity is not (PbtFullKey.MaxLength or PbtStorageFullKey.MaxLength))
             throw new InvalidDataException("Invalid persisted PBT node-group key length.");
         int depth = key[^1] * PbtFourLevelGroupGeometry.LevelsPerGroup;
@@ -42,7 +63,38 @@ internal static class PbtNodeGroupKey
         int pathLength = (depth + 7) >> 3;
         if (pathLength > capacity || key[pathLength..capacity].ContainsAnyExcept((byte)0))
             throw new InvalidDataException("Invalid persisted PBT node-group key padding.");
-        try { return PbtStorageNodePath.Create(key[..pathLength], depth); }
+        return CreatePath(key[..pathLength], depth);
+    }
+
+    private static ReadOnlySpan<byte> EncodeVariable<TPath>(PbtColumns column, TPath groupKey, Span<byte> destination)
+        where TPath : struct, IPbtNodePath<TPath>
+    {
+        int pathLength = (groupKey.BitDepth + 7) >> 3;
+        if (pathLength > PathLength(column)) throw new ArgumentOutOfRangeException(nameof(groupKey));
+        Span<byte> key = destination[..(pathLength + TrailerLength)];
+        key[^2] = 0;
+        groupKey.CopyBitsTo(0, key, 0, groupKey.BitDepth);
+        key[^1] = (byte)(groupKey.BitDepth - (pathLength - 1) * 8);
+        return key;
+    }
+
+    private static PbtStorageNodePath DecodeVariable(ReadOnlySpan<byte> key)
+    {
+        // The root group lives under its own metadata key, never in a node-group column.
+        if (key.Length < 1 + TrailerLength || key.Length - TrailerLength > PbtStorageFullKey.MaxLength)
+            throw new InvalidDataException("Invalid persisted PBT node-group key length.");
+        int bitsInLastByte = key[^1];
+        if (bitsInLastByte is not (PbtFourLevelGroupGeometry.LevelsPerGroup or 8))
+            throw new InvalidDataException("Invalid persisted PBT node-group key trailer.");
+        int depth = (key.Length - TrailerLength - 1) * 8 + bitsInLastByte;
+        if (!PbtFourLevelGroupGeometry.IsGroupDepth(depth))
+            throw new InvalidDataException("A persisted PBT node-group key depth must be a four-level boundary.");
+        return CreatePath(key[..^TrailerLength], depth);
+    }
+
+    private static PbtStorageNodePath CreatePath(ReadOnlySpan<byte> path, int depth)
+    {
+        try { return PbtStorageNodePath.Create(path, depth); }
         catch (ArgumentException exception) { throw new InvalidDataException("Invalid persisted PBT node-group key padding.", exception); }
     }
 }

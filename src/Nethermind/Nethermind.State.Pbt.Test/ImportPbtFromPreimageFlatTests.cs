@@ -426,7 +426,7 @@ public class ImportPbtFromPreimageFlatTests
         pbtDb.GetColumnDb(PbtColumns.Storages)[maximumLengthKey] = TestItem.KeccakA.Bytes.ToArray();
 
         byte[] maximumGroupKey = new PbtStorageNodePath(Bytes.FromHexString(new string('f', 130) + "f0"), PbtFourLevelGroupGeometry.MaxGroupDepth)
-            .ToStorageKey(PbtColumns.StorageNodeGroups);
+            .ToStorageKey(PbtColumns.StorageNodeGroups, PbtNodeGroupKeyLayout.Padded);
         PbtColumns[] groupColumns = [PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups];
         foreach (PbtColumns column in groupColumns)
             pbtDb.GetColumnDb(column)[maximumGroupKey] = Bytes.FromHexString("0x7f");
@@ -528,7 +528,7 @@ public class ImportPbtFromPreimageFlatTests
                 : PbtNodeCodec.EncodeLeaf(new PbtStorageFullKey(keyBytes), TestItem.KeccakA.Bytes);
             BufferWriter writer = new(new byte[1024]);
             PbtNodeGroupCodec.Encode(ref writer, group, new[] { new PbtNodeRecord(node, encoding) });
-            Add(column, group.ToStorageKey(column), writer.WrittenSpan.ToArray());
+            Add(column, group.ToStorageKey(column, PbtNodeGroupKeyLayout.Padded), writer.WrittenSpan.ToArray());
             expectedGroups[depth]++;
             expectedPayloads[depth] += writer.WrittenSpan.Length;
             expectedNodes[node.BitDepth]++;
@@ -660,7 +660,7 @@ public class ImportPbtFromPreimageFlatTests
                 _ => PbtColumns.StorageNodeGroups,
             };
             byte prefix = column == PbtColumns.CodeNodeGroups ? (byte)1 : column == PbtColumns.StorageNodeGroups ? (byte)0xFF : (byte)0;
-            byte[] key = new PbtNodePath([prefix], 8).ToStorageKey(column);
+            byte[] key = new PbtNodePath([prefix], 8).ToStorageKey(column, PbtNodeGroupKeyLayout.Padded);
             db.GetColumnDb(column).Set(key, Bytes.FromHexString("0x7f"));
         }
         db.Recording = true;

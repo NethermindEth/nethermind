@@ -86,11 +86,12 @@ public class PbtRocksDbConfigAdjusterTests
     }
 
     [Test]
-    public void NodeGroupsReopenFromRocksDbAsCanonicalNodes()
+    public void NodeGroupsReopenFromRocksDbAsCanonicalNodes([Values] PbtNodeGroupKeyLayout layout)
     {
         using TempPath dbPath = TempPath.GetTempDirectory();
         DbConfig dbConfig = new();
-        PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, new PbtConfig());
+        PbtConfig pbtConfig = new() { NodeGroupKeyLayout = layout };
+        PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, pbtConfig);
         byte[] widePath = new byte[35];
         widePath[0] = Eip8297KeyDerivation.StorageZone;
         (PbtStorageNodePath Path, PbtColumns Column)[] groups =
@@ -118,7 +119,7 @@ public class PbtRocksDbConfigAdjusterTests
 
         using (ColumnsDb<PbtColumns> db = NewDb())
         {
-            PbtRocksDbPersistence persistence = new(db, new PbtConfig());
+            PbtRocksDbPersistence persistence = new(db, pbtConfig);
             using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, state, treeRoot, WriteFlags.None);
             batch.SetAccount(addressHash, account);
             batch.SetSlot(storageKey, slot);
@@ -143,14 +144,14 @@ public class PbtRocksDbConfigAdjusterTests
 
         using (ColumnsDb<PbtColumns> db = NewDb())
         {
-            PbtRocksDbPersistence persistence = new(db, new PbtConfig());
+            PbtRocksDbPersistence persistence = new(db, pbtConfig);
             using IPbtPersistence.IReader reader = persistence.CreateReader();
             Assert.That(reader.EnumerateNodeGroupKeys().Drain(), Is.EquivalentTo(expectedPaths));
         }
 
         using (ColumnsDb<PbtColumns> db = NewDb())
         {
-            PbtRocksDbPersistence persistence = new(db, new PbtConfig());
+            PbtRocksDbPersistence persistence = new(db, pbtConfig);
             using IPbtPersistence.IReader reader = persistence.CreateReader();
             using (Assert.EnterMultipleScope())
             {
@@ -166,7 +167,7 @@ public class PbtRocksDbConfigAdjusterTests
             {
                 using RefCountingMemory? payload = reader.GetNodeGroup(path);
                 Assert.That(payload, Is.Not.Null, $"group {path.BitDepth}:{Convert.ToHexString(path.ToPathArray())}");
-                byte[] storageKeyBytes = path.ToStorageKey(column);
+                byte[] storageKeyBytes = path.ToStorageKey(column, layout);
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(db.GetColumnDb(column).Get(storageKeyBytes), Is.EqualTo(payload!.GetSpan().ToArray()));

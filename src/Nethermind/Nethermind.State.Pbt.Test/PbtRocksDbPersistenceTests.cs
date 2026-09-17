@@ -53,6 +53,51 @@ public class PbtRocksDbPersistenceTests
     private static ReadOnlySpan<byte> CurrentStateKey => "currentState"u8;
     private static ReadOnlySpan<byte> SchemaEpochKey => "schemaEpoch"u8;
     private static ReadOnlySpan<byte> ValidStateKey => "validState"u8;
+    private static ReadOnlySpan<byte> NodeGroupKeyLayoutKey => "nodeGroupKeyLayout"u8;
+
+    [TestCase(null, PbtNodeGroupKeyLayout.Padded, PbtNodeGroupKeyLayout.Variable, TestName = "Unstamped_epoch_13_store_is_padded")]
+    [TestCase(new byte[] { 0 }, PbtNodeGroupKeyLayout.Padded, PbtNodeGroupKeyLayout.Variable, TestName = "Padded_stamp_rejects_variable")]
+    [TestCase(new byte[] { 1 }, PbtNodeGroupKeyLayout.Variable, PbtNodeGroupKeyLayout.Padded, TestName = "Variable_stamp_rejects_padded")]
+    [TestCase(new byte[] { 2 }, null, PbtNodeGroupKeyLayout.Padded, TestName = "Unknown_stamp_is_rejected")]
+    [TestCase(new byte[] { 0, 0 }, null, PbtNodeGroupKeyLayout.Variable, TestName = "Malformed_stamp_is_rejected")]
+    public void Node_group_key_layout_stamp_gates_the_configured_layout(byte[]? stamp, PbtNodeGroupKeyLayout? accepted, PbtNodeGroupKeyLayout rejected)
+    {
+        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
+        metadata[SchemaEpochKey] = Epoch(13);
+        if (stamp is not null) metadata[NodeGroupKeyLayoutKey] = stamp;
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (accepted is not null)
+                Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig { NodeGroupKeyLayout = accepted.Value }), Throws.Nothing);
+            Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig { NodeGroupKeyLayout = rejected }),
+                Throws.TypeOf<InvalidDataException>().With.Message.Contains("layout"));
+            Assert.That(metadata.Get(NodeGroupKeyLayoutKey), Is.EqualTo(stamp));
+        }
+    }
+
+    [Test]
+    public void Fresh_store_is_stamped_with_the_configured_layout([Values] PbtNodeGroupKeyLayout layout)
+    {
+        SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        PbtRocksDbPersistence persistence = new(db, new PbtConfig { NodeGroupKeyLayout = layout });
+        PbtNodePath groupKey = new(Bytes.FromHexString("80"), 8);
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), default, WriteFlags.None))
+        {
+            WriteGroup(batch, groupKey.AppendNib(1), BranchNode(1));
+            batch.Commit();
+        }
+
+        using IPbtPersistence.IReader reader = persistence.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get(NodeGroupKeyLayoutKey), Is.EqualTo(new[] { (byte)layout }));
+            Assert.That(db.GetColumnDb(PbtColumns.AccountNodeGroups).Get(groupKey.ToStorageKey(PbtColumns.AccountNodeGroups, layout)), Is.Not.Null);
+            Assert.That(reader.EnumerateNodeGroupKeys().Drain(), Is.EqualTo(new[] { groupKey.ToPath<PbtStorageNodePath>() }));
+            Assert.That(() => new PbtRocksDbPersistence(db, new PbtConfig { NodeGroupKeyLayout = layout }), Throws.Nothing);
+        }
+    }
 
     [Test]
     public void Completed_epoch_13_store_reopens_and_serves_canonical_records()
@@ -665,7 +710,7 @@ public class PbtRocksDbPersistenceTests
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
         TPath groupKey = PbtFourLevelGroupGeometry.GroupKeyOf(path);
-        byte[] physicalKey = groupKey.ToStorageKey(column);
+        byte[] physicalKey = groupKey.ToStorageKey(column, PbtNodeGroupKeyLayout.Padded);
         StateId first = new(1, TestItem.KeccakA.ValueHash256);
         StateId second = new(2, TestItem.KeccakB.ValueHash256);
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default, WriteFlags.None))
@@ -714,7 +759,7 @@ public class PbtRocksDbPersistenceTests
         [Values] bool stamped)
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
-        byte[] key = new PbtNodePath(Bytes.FromHexString("00"), 4).ToStorageKey(column);
+        byte[] key = new PbtNodePath(Bytes.FromHexString("00"), 4).ToStorageKey(column, PbtNodeGroupKeyLayout.Padded);
         db.GetColumnDb(column).Set(key, Bytes.FromHexString("01"));
         if (stamped) db.GetColumnDb(PbtColumns.Metadata).Set(SchemaEpochKey, Epoch(13));
 

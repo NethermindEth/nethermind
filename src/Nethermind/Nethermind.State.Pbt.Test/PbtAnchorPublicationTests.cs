@@ -310,13 +310,13 @@ public class PbtAnchorPublicationTests
         }
     }
 
-    /// <remarks>Opening the persistence stamps the schema epoch; nothing else may be there.</remarks>
+    /// <remarks>Opening the persistence stamps the schema epoch and key layout; nothing else may be there.</remarks>
     private static void AssertNoNativeState(Harness harness)
     {
         foreach (PbtColumns column in harness.Target.ColumnKeys)
         {
             IEnumerable<byte[]> keys = harness.Target.GetColumnDb(column).GetAllKeys();
-            if (column == PbtColumns.Metadata) Assert.That(keys, Is.EqualTo(new[] { "schemaEpoch"u8.ToArray() }));
+            if (column == PbtColumns.Metadata) Assert.That(keys, Is.EquivalentTo(new[] { "schemaEpoch"u8.ToArray(), "nodeGroupKeyLayout"u8.ToArray() }));
             else Assert.That(keys, Is.Empty, column.ToString());
         }
     }
