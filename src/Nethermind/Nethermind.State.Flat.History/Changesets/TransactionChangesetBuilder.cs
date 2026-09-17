@@ -24,6 +24,7 @@ public sealed class TransactionChangesetBuilder(
     internal const int WarnAfterAttempts = 8;
     internal static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan RepeatedFailureInterval = TimeSpan.FromMinutes(1);
 
     private readonly int _dutyCyclePercent = Math.Clamp(config.HistoryTransactionIndexDutyCyclePercent, 1, 100);
     private readonly ulong _retrofitFromBlock = config.HistoryTransactionIndexRetrofitFromBlock;
@@ -38,6 +39,8 @@ public sealed class TransactionChangesetBuilder(
     private IHistoryBlockExecutor? _tipExecutor;
     private ulong? _nextChunkTop;
     private long _progressReportedAt;
+    private string? _lastFailure;
+    private long _lastFailureReportedAt;
     private bool _wasRetrofitting;
     private long _builtSinceReport;
     private int _disposed;
@@ -105,8 +108,8 @@ public sealed class TransactionChangesetBuilder(
             if (from == 0 || top < _retrofitFromBlock || _retrofitFromBlock == 0) return false;
 
             ulong bottom = top >= ChunkBlocks - 1 + _retrofitFromBlock ? top - (ChunkBlocks - 1) : _retrofitFromBlock;
-            while (availability.IsBelowGlobalFloor(bottom) && bottom < top) bottom++;
-            if (availability.IsBelowGlobalFloor(bottom)) return false;
+            while (!CanExecute(bottom) && bottom < top) bottom++;
+            if (!CanExecute(bottom)) return false;
 
             chunk = new Chunk(bottom, top);
             _nextChunkTop = bottom == 0 ? null : bottom - 1;
@@ -235,8 +238,24 @@ public sealed class TransactionChangesetBuilder(
         }
         catch (Exception exception)
         {
-            if (_logger.IsWarn) _logger.Warn($"Transaction changeset build failed, retrying: {exception.Message}");
+            if (_logger.IsWarn && ShouldReportFailure(exception.Message)) _logger.Warn($"Transaction changeset build failed, retrying: {exception.Message}");
             return false;
+        }
+    }
+
+    /// <summary>A step retries at the idle interval, so a failure that persists would otherwise be logged every two
+    /// seconds for as long as it lasts. The first one is worth seeing and a change of reason is worth seeing; the
+    /// same reason again is worth seeing once a minute.</summary>
+    private bool ShouldReportFailure(string message)
+    {
+        lock (_chunks)
+        {
+            long now = Stopwatch.GetTimestamp();
+            if (message == _lastFailure && Stopwatch.GetElapsedTime(_lastFailureReportedAt, now) < RepeatedFailureInterval) return false;
+
+            _lastFailure = message;
+            _lastFailureReportedAt = now;
+            return true;
         }
     }
 
@@ -292,20 +311,26 @@ public sealed class TransactionChangesetBuilder(
         if (!index.TryGetCoverage(out ulong from, out ulong to))
         {
             block = watermark;
-            return availability.IsCovered(block);
+            return CanExecute(block) && availability.IsCovered(block);
         }
 
         if (to < watermark)
         {
             block = to + 1;
-            return availability.IsCovered(block);
+            return CanExecute(block) && availability.IsCovered(block);
         }
 
         if (RetrofitOnWorkers || _retrofitFromBlock == 0 || from <= _retrofitFromBlock) return false;
 
         block = from - 1;
-        return !availability.IsBelowGlobalFloor(block) && availability.IsCovered(block);
+        return CanExecute(block) && availability.IsCovered(block);
     }
+
+    /// <summary>A block is re-executed against the state of its parent, so the floor that decides whether it can be
+    /// built at all is the parent's, not its own. The lowest buildable block is therefore one above the floor, and a
+    /// seeded sync pivot - where the watermark and the floor are the same block - has nothing to build until the
+    /// capture moves the watermark past it.</summary>
+    private bool CanExecute(ulong block) => block > 0 && !availability.IsBelowGlobalFloor(block - 1);
 
     internal readonly record struct Chunk(ulong Bottom, ulong Top, int Attempts = 0);
 }

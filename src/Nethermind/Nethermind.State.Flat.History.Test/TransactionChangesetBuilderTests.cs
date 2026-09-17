@@ -161,8 +161,47 @@ public class TransactionChangesetBuilderTests
         {
         }
 
-        Assert.That(_executor.Executed, Is.EqualTo(new ulong[] { 20, 19 }).AsCollection,
-            "a block whose history is pruned cannot be re-executed against its parent");
+        Assert.That(_executor.Executed, Is.EqualTo(new ulong[] { 20 }).AsCollection,
+            "block 19 is executed against block 18's state, which the floor at 19 has pruned");
+    }
+
+    [Test]
+    public void ASeededSyncPivot_IsNotBuiltUntilTheCaptureMovesPastIt()
+    {
+        Capture(upTo: 20);
+        _availability.PublishGlobalFloor(20);
+        using TransactionChangesetBuilder builder = Builder();
+
+        bool atThePivot = builder.TryBuildNext();
+        Capture(upTo: 21);
+        bool aboveThePivot = builder.TryBuildNext();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(atThePivot, Is.False, "a snap pivot seeds the watermark and the floor at the same block, whose parent state is gone");
+            Assert.That(aboveThePivot, Is.True);
+            Assert.That(_executor.Executed, Is.EqualTo(new ulong[] { 21 }).AsCollection, "the first buildable block is one above the floor");
+        }
+    }
+
+    [Test]
+    public void AChunk_NeverStartsAtTheFloorItself()
+    {
+        Capture(upTo: 300);
+        _availability.PublishGlobalFloor(200);
+        _config.HistoryTransactionIndexRetrofitFromBlock = 1;
+        _config.HistoryTransactionIndexWorkers = 2;
+        using TransactionChangesetBuilder builder = Builder();
+        builder.TryBuildNext();
+
+        builder.TryClaimChunk(out TransactionChangesetBuilder.Chunk first);
+        bool second = builder.TryClaimChunk(out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((first.Bottom, first.Top), Is.EqualTo((201UL, 299UL)), "the bottom of a chunk is executed against its parent, so it stops one above the floor");
+            Assert.That(second, Is.False);
+        }
     }
 
     [Test]
