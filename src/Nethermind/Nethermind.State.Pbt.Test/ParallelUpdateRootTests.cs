@@ -466,7 +466,7 @@ public class ParallelUpdateRootTests
     {
         List<string> records = [];
         foreach (PbtPhysicalPayload payload in payloads)
-            records.Add(Convert.ToHexString(payload.Key.Span) + Convert.ToHexString(payload.Payload.Span));
+            records.Add(Convert.ToHexString(payload.Key.ToEncodedArray()) + Convert.ToHexString(payload.Payload.Span));
         records.Sort(StringComparer.Ordinal);
         return [.. records];
     }

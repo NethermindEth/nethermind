@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -100,7 +101,7 @@ internal static class PbtStoreTestExtensions
             PbtNodeGroupLocation<PbtStorageNodePath> location = PbtFourLevelGroupGeometry.Locate(path);
             byte[]? encoding = null;
             foreach (PbtPhysicalPayload physical in groups)
-                if (PbtStorageNodePath.Decode(physical.Key.Span).Equals(location.GroupKey))
+                if (physical.Key.Equals(location.GroupKey))
                     encoding = ResolveNode(PbtStoreTestExtensions.ReadGroup(location.GroupKey, physical.Payload.Span), location.GroupKey, location.Position);
             if (encoding is null) return default;
             PbtNodeReader node = new(encoding);
@@ -137,15 +138,17 @@ internal static class PbtStoreTestExtensions
 
     internal static byte[] ToPathArray<TPath>(this TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
-        Span<byte> encoding = stackalloc byte[path.EncodedLength];
-        path.Encode(encoding);
-        return encoding[4..].ToArray();
+        byte[] bytes = new byte[(path.BitDepth + 7) >> 3];
+        path.CopyBitsTo(0, bytes, 0, path.BitDepth);
+        return bytes;
     }
 
+    /// <summary>The path's capacity-independent identity as bytes: its big-endian depth, then its canonical bytes.</summary>
     internal static byte[] ToEncodedArray<TPath>(this TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
-        byte[] encoding = new byte[path.EncodedLength];
-        path.Encode(encoding);
+        byte[] encoding = new byte[4 + ((path.BitDepth + 7) >> 3)];
+        BinaryPrimitives.WriteInt32BigEndian(encoding, path.BitDepth);
+        path.CopyBitsTo(0, encoding.AsSpan(4), 0, path.BitDepth);
         return encoding;
     }
 

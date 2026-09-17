@@ -48,12 +48,6 @@ public readonly struct PbtNodePath : IPbtNodePath<PbtNodePath>, IEquatable<PbtNo
     public bool MatchesPrefix<TOther>(TOther other, int bitCount) where TOther : struct, IPbtNodePath<TOther> =>
         PbtNodePathOperations.MatchesPrefix(this, other, bitCount);
 
-    /// <inheritdoc/>
-    public int EncodedLength => 4 + ((BitDepth + 7) >> 3);
-    /// <inheritdoc/>
-    public void Encode(Span<byte> destination) => PbtNodePathOperations.Encode(_path.Bytes, BitDepth, destination);
-    public static PbtNodePath Decode(ReadOnlySpan<byte> encoding) => PbtNodePathOperations.Decode<PbtNodePath>(encoding);
-
     internal static PbtNodePath FromKey(PbtFullKey key, int bitDepth) => PbtNodePathOperations.FromKey<PbtNodePath>(key.Bytes, bitDepth);
 
     /// <inheritdoc/>

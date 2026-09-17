@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
@@ -27,24 +26,6 @@ internal static class PbtNodePathOperations
         if (path.Length != byteLength) throw new ArgumentException("Path length does not match the bit depth.", nameof(path));
         if (byteLength != 0 && (bitDepth & 7) != 0 && (path[^1] & (0xFF >> (bitDepth & 7))) != 0)
             throw new ArgumentException("Unused path bits must be zero.", nameof(path));
-    }
-
-    internal static void Encode(ReadOnlySpan<byte> path, int bitDepth, Span<byte> destination)
-    {
-        if (destination.Length < 4 + path.Length)
-            throw new ArgumentException("The destination is too short.", nameof(destination));
-        BinaryPrimitives.WriteUInt32BigEndian(destination, (uint)bitDepth);
-        path.CopyTo(destination[4..]);
-    }
-
-    internal static TPath Decode<TPath>(ReadOnlySpan<byte> encoding) where TPath : struct, IPbtNodePath<TPath>
-    {
-        if (encoding.Length < 4) throw new InvalidDataException("Truncated PBT node path.");
-        uint depth = BinaryPrimitives.ReadUInt32BigEndian(encoding);
-        if (depth > TPath.MaxBitDepth || encoding.Length != 4 + ((depth + 7) >> 3))
-            throw new InvalidDataException("Invalid PBT node path length.");
-        try { return TPath.Create(encoding[4..], (int)depth); }
-        catch (ArgumentException exception) { throw new InvalidDataException("Invalid PBT node path padding.", exception); }
     }
 
     [SkipLocalsInit]

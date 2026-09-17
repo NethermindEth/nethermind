@@ -389,7 +389,7 @@ public class PbtRocksDbPersistenceTests
                     foreach (PbtPhysicalPayload physical in tree.PhysicalPayloads)
                     {
                         using RefCountingMemory payload = RefCountingMemory.Wrapping(physical.Payload.ToArray());
-                        content.SetNodeGroup(PbtStorageNodePath.Decode(physical.Key.Span), payload);
+                        content.SetNodeGroup(physical.Key, payload);
                     }
                     repository.TryAdd(new PbtSnapshot(last, next, tree.RootHash, content, pool, PbtResourcePool.Usage.MainBlockProcessing));
                     compactor.DoCompactSnapshot(next);
@@ -418,7 +418,7 @@ public class PbtRocksDbPersistenceTests
                 PbtNodeGroupReader group = PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan());
                 if (groupKey.BitDepth != 0)
                     Assert.That(group.Availability & (1u << PbtFourLevelGroupGeometry.RootPosition), Is.Zero);
-                persisted.Add(new PbtPhysicalPayload(groupKey.ToEncodedArray(), payload.GetSpan()));
+                persisted.Add(new PbtPhysicalPayload(groupKey, payload.GetSpan()));
             }
             using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(persisted);
             Assert.That(reopened.EnumerateRecords().Count, Is.EqualTo(tree.Nodes.Count));
