@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO.Abstractions;
 using System.Threading;
 using Autofac;
@@ -13,6 +14,8 @@ using Nethermind.Db.FullPruning;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.State.Flat;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Healing;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -32,6 +35,8 @@ public class PruningTrieStoreModule : Module
             .AddKeyedSingleton<IDb>(DbNames.State, (ctx) =>
             {
                 DbSettings stateDbSettings = new(GetTitleDbName(DbNames.State), DbNames.State);
+                stateDbSettings.DeleteOnStart = ShouldDropPruningTrieState(
+                    ctx.Resolve<IFlatDbConfig>(), ctx.Resolve<IPersistence>, ctx.Resolve<ILogManager>());
                 IFileSystem fileSystem = ctx.Resolve<IFileSystem>();
                 IDbFactory dbFactory = ctx.Resolve<IDbFactory>();
                 FullPruningDb db = new(
@@ -113,6 +118,48 @@ public class PruningTrieStoreModule : Module
             ))
             .AddSingleton<ICodeRecovery, CodeRecovery>()
             ;
+
+    /// <summary>
+    /// Whether the patricia-trie state DB should be wiped as it is opened, leaving an empty store behind.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately decided from configuration plus the flat store's own state rather than from
+    /// <see cref="FlatStateActivationPolicy"/>: that policy depends on this database, so consulting it here
+    /// would close a dependency cycle. The checks below are a strict subset of the policy's - with the flat
+    /// backend enabled and its store already populated the policy resolves to flat whatever the trie holds -
+    /// so this never wipes a database the node is about to run on.
+    /// The populated-store check is what makes this safe. A node with a patricia state and an empty flat store
+    /// runs on patricia, and dropping the trie there would leave it with no state at all.
+    /// </remarks>
+    internal static bool ShouldDropPruningTrieState(IFlatDbConfig flatDbConfig, Func<IPersistence> flatPersistence, ILogManager logManager)
+    {
+        if (!flatDbConfig.DropPruningTrieState) return false;
+
+        ILogger logger = logManager.GetClassLogger<PruningTrieStoreModule>();
+
+        if (!flatDbConfig.Enabled)
+        {
+            if (logger.IsWarn) logger.Warn($"Keeping the patricia trie state: {nameof(IFlatDbConfig.DropPruningTrieState)} is set but the flat DB is disabled.");
+            return false;
+        }
+
+        // The importer reads the trie, and IStateBoundary keeps a trie boundary alive while this is set.
+        if (flatDbConfig.ImportFromPruningTrieState)
+        {
+            if (logger.IsWarn) logger.Warn($"Keeping the patricia trie state: {nameof(IFlatDbConfig.ImportFromPruningTrieState)} is still set. Remove it once the import has completed, then restart to drop the trie.");
+            return false;
+        }
+
+        using IPersistence.IPersistenceReader reader = flatPersistence().CreateReader();
+        if (reader.CurrentState == StateId.PreGenesis)
+        {
+            if (logger.IsWarn) logger.Warn("Keeping the patricia trie state: the flat DB is empty, so the node would be left without any state.");
+            return false;
+        }
+
+        if (logger.IsWarn) logger.Warn("Dropping the patricia trie state DB: the flat DB owns the state. This is irreversible - a switch back to the patricia backend will require a resync.");
+        return true;
+    }
 
     private static string GetTitleDbName(string dbName) => char.ToUpper(dbName[0]) + dbName[1..];
 
