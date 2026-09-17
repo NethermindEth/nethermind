@@ -15,35 +15,62 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
 
     public IEnumerable<EthereumTest> Load(string testsDir, string wildcard = null)
     {
-        string testsDirectoryName = TestFixtureDownloader.EnsureDownloaded(
-            "PyTests", Constants.ARCHIVE_URL_TEMPLATE, ArchiveVersion, ArchiveName);
-
-        TestType testType = TestType.Blockchain;
-        foreach (TestType type in Enum.GetValues<TestType>())
-        {
-            if (testsDir.Contains($"{type}_tests", StringComparison.OrdinalIgnoreCase))
-            {
-                testType = type;
-                break;
-            }
-        }
-
-        string rootDir = !string.IsNullOrEmpty(testsDir)
-            ? ResolveTestsDirectory(testsDirectoryName, testsDir)
-            : testsDirectoryName;
+        string rootDir = ResolveTestsRoot(testsDir);
+        TestType testType = GetTestType(testsDir);
 
         // Skip absent fork fixtures instead of throwing
         if (!Directory.Exists(rootDir))
             return [];
 
-        IEnumerable<string> directories = Directory.EnumerateDirectories(rootDir, "*", new EnumerationOptions { RecurseSubdirectories = true });
         List<string> testDirs = [];
-        foreach (string testDir in directories)
+        foreach (string testDir in Directory.EnumerateDirectories(rootDir, "*", new EnumerationOptions { RecurseSubdirectories = true }))
         {
             testDirs.Add(testDir);
         }
 
         return TestLoadStrategy.LoadTestsFromDirectories(testDirs, wildcard, testType);
+    }
+
+    /// <summary>
+    /// Downloads (if needed) and resolves the fixture root for <paramref name="testsDir"/>.
+    /// </summary>
+    internal string ResolveTestsRoot(string testsDir)
+    {
+        string testsDirectoryName = TestFixtureDownloader.EnsureDownloaded(
+            "PyTests", Constants.ARCHIVE_URL_TEMPLATE, ArchiveVersion, ArchiveName);
+
+        return !string.IsNullOrEmpty(testsDir)
+            ? ResolveTestsDirectory(testsDirectoryName, testsDir)
+            : testsDirectoryName;
+    }
+
+    internal static TestType GetTestType(string testsDir)
+    {
+        foreach (TestType type in Enum.GetValues<TestType>())
+        {
+            if (testsDir.Contains($"{type}_tests", StringComparison.OrdinalIgnoreCase))
+            {
+                return type;
+            }
+        }
+
+        return TestType.Blockchain;
+    }
+
+    /// <summary>
+    /// Enumerates fixture files under <paramref name="rootDir"/> in the same order
+    /// <see cref="Load"/> parses them: recursive subdirectories (excluding the root itself),
+    /// top-level files per directory.
+    /// </summary>
+    internal static IEnumerable<(string File, string Directory)> EnumerateTestFiles(string rootDir)
+    {
+        foreach (string testDir in Directory.EnumerateDirectories(rootDir, "*", new EnumerationOptions { RecurseSubdirectories = true }))
+        {
+            foreach (string testFile in Directory.EnumerateFiles(testDir))
+            {
+                yield return (testFile, testDir);
+            }
+        }
     }
 
     private static string ResolveTestsDirectory(string testsDirectoryName, string testsDir)
