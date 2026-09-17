@@ -119,6 +119,9 @@ public class DebugBridge : IDebugBridge
 
         // benchmarkoor compatibility: it rewinds to the same head after every test, so state kept for the
         // branches those tests built must go, or it accumulates for the whole run.
+        // Known limitation: the block tree keeps WasProcessed on the dropped blocks and NewPayloadHandler
+        // keeps its result cache, so resubmitting one of them returns VALID without re-execution and its
+        // child then answers SYNCING for want of parent state. Callers must replay fresh payloads only.
         _worldStateManager.DropStateNotReachableFrom(header);
         return true;
     }

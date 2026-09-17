@@ -465,11 +465,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
         using PooledSet<StateId> reachable = CollectAncestry(head);
 
-        // The persisted store cannot be rewound: a head the persisted state does not descend from would have
-        // the pass delete the very snapshots that carry the store forward from it.
+        // The persisted store cannot be rewound: a head that does not descend from the persisted state would
+        // have the pass delete the very snapshots that carry the store forward to it.
         if (currentPersistedState != StateId.PreGenesis && !reachable.Contains(currentPersistedState))
         {
-            if (_logger.IsWarn) _logger.Warn($"Cannot reset head to {head}: persisted state {currentPersistedState} does not descend from it.");
+            if (_logger.IsWarn) _logger.Warn($"Cannot reset head to {head}: it does not descend from persisted state {currentPersistedState}.");
             return 0;
         }
 
