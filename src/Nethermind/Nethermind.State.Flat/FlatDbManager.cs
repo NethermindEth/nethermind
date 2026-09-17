@@ -441,6 +441,17 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Persist every snapshot up to the committed head into RocksDB and clear the caches.
+    /// </summary>
+    /// <remarks>
+    /// Persists every tier up to the committed head, finalized or not, and prunes both tiers behind it.
+    /// That collapses the reorg window to zero: the single RocksDB state ends up at an unfinalized block,
+    /// and a later reorg below it cannot be served because the branch-point state no longer exists and
+    /// <see cref="AddSnapshot"/> rejects snapshots at or below the persisted block. Only for special cases
+    /// that need the state at the tip in RocksDB — genesis load and tests — never on the normal
+    /// shutdown path, where the persisted-snapshot tier is already durable and reloaded on start.
+    /// </remarks>
     public void FlushCache(CancellationToken cancellationToken)
     {
         if (_logger.IsInfo) _logger.Info("FlatDbManager FlushCache started.");
@@ -463,16 +474,20 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         return false;
     }
 
+    public void DropStateNotReachableFrom(in StateId head)
+    {
+        _persistenceManager.DropStateNotReachableFrom(head);
+        // Cached bundles lease the snapshots they were assembled over; without this the pruned ones stay
+        // alive until the periodic clear.
+        ClearReadOnlyBundleCache();
+    }
+
     /// <inheritdoc/>
     /// <remarks>
-    /// Persists the in-memory tier before tearing the workers down, so the flat state on disk matches
-    /// the block tree. Without it the process exits with the state up to <c>MinReorgDepth</c> blocks
-    /// behind the last committed block, and the next start has to re-run that branch from the persisted
-    /// base — a path that only survives as far as the next compaction boundary.
-    ///
-    /// The queues are completed in feed order — the compactor writes into the persistence queue, so it
-    /// has to drain first — and both are drained before the flush, so nothing still in flight is lost.
-    /// Cancellation comes after, otherwise it would abort the very work being drained.
+    /// Drains the queues in feed order — the compactor writes into the persistence queue, so it has to
+    /// drain first — before cancelling, so in-flight finality-driven persistence is not lost. It does not
+    /// <see cref="FlushCache"/>: that would persist the unfinalized tail and break reorgs across the
+    /// restart. The in-memory tier is re-executed from the persisted-snapshot tier on the next start.
     /// </remarks>
     public async ValueTask DisposeAsync()
     {
@@ -487,8 +502,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             _persistenceJobs.Writer.TryComplete();
             await _persistenceTask;
-
-            FlushCache(CancellationToken.None);
         }
         finally
         {
