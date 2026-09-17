@@ -65,16 +65,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     /// <summary>Returns a caller-owned group lease or a null tombstone; false means this layer has no entry.</summary>
     internal bool TryGetNodeGroup<TPath>(TPath groupKey, out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
     {
-        if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
-            throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(groupKey));
-        return TryGetNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), out payload);
-    }
-
-    /// <inheritdoc cref="TryGetNodeGroup{TPath}"/>
-    /// <remarks>Skips depth validation so a bundle can validate once and probe every layer with the same key.</remarks>
-    internal bool TryGetNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload)
-    {
-        bool found = NodeGroups.TryGetValue(groupKey, out payload);
+        bool found = NodeGroups.TryGetValue(groupKey.ToPath<PbtStorageNodePath>(), out payload);
         payload?.AcquireLease();
         return found;
     }
