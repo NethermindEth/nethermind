@@ -108,6 +108,15 @@ jobs:
           - Nethermind.TxPool.Test
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
+        include:
+          - project: Nethermind.Core.Test
+            variant:
+              label: avx2
+              dotnet-args: ''
+              hw-intrinsic: ''
+              artifact: release
+              avx512: 0
+              require-avx2: 1
         exclude:
           - { variant: *no_intrinsics, project: Nethermind.Api.Test }
           - { variant: *no_intrinsics, project: Nethermind.Config.Test }
@@ -135,7 +144,24 @@ jobs:
         working-directory: src/Nethermind/${{ matrix.project }}
         env:
           DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
+          DOTNET_EnableAVX512: ${{ matrix.variant.avx512 }}
+          NETHERMIND_TEST_REQUIRE_AVX2: ${{ matrix.variant.require-avx2 }}
         run: |
+          if [[ "${{ matrix.variant.label }}" == "avx2" ]]; then
+            for target in \
+              'Nethermind.Core.Test:KeccakTests|KeccakCacheTests' \
+              'Nethermind.Trie.Test:TrieNodeTests' \
+              'Nethermind.State.Test:StateTreeTests|ScopeProviderTests' \
+              'Nethermind.Blockchain.Test:TxTrieTests|ReceiptTrieTests|WithdrawalTrieTests'; do
+              project="${target%%:*}"
+              names="${target#*:}"
+              filter="FullyQualifiedName~${names//|/|FullyQualifiedName~}"
+              dotnet restore "../$project/$project.csproj"
+              dotnet test --project "../$project/$project.csproj" -c release --no-build --no-restore \
+                --hangdump --hangdump-timeout 8m --hangdump-type Mini -- --filter "$filter"
+            done
+            exit 0
+          fi
           dotnet restore ${{ matrix.project }}.csproj
           # A hung test host is killed with a dump of every thread instead of running into the job
           # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and

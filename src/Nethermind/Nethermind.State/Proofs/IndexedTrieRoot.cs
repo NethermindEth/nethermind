@@ -320,6 +320,8 @@ internal static class IndexedTrieRoot
                     }
                     else writer.Encode(value);
                     int totalLength = writer.Position;
+                    Debug.Assert(totalLength == Rlp.LengthOfSequence(contentLength));
+                    Debug.Assert(paddedLength == (totalLength / KeccakRate + 1) * KeccakRate);
                     block[totalLength..].Clear();
                     block[totalLength] = 0x01;
                     block[^1] |= 0x80;
@@ -378,6 +380,7 @@ internal static class IndexedTrieRoot
                     encoder.Encode(ref writer, item);
                 }
                 else writer.Encode(value);
+                Debug.Assert(writer.Position == Rlp.LengthOfSequence(Rlp.LengthOf(path[..pathLength]) + Rlp.LengthOfByteString(valueLength, 128)));
                 if (writer.Position < Keccak.Size)
                 {
                     references[position] = NodeReference.FromRlp(block[..writer.Position]);

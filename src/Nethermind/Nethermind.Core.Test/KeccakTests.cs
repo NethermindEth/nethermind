@@ -17,6 +17,20 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class KeccakTests
     {
+        [OneTimeSetUp]
+        public void Check_instruction_set_expectations()
+        {
+            TestContext.Progress.WriteLine($"AVX2={Avx2.IsSupported}; AVX512F={Avx512F.IsSupported}");
+            if (Environment.GetEnvironmentVariable("NETHERMIND_TEST_REQUIRE_AVX2") == "1")
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(Avx2.IsSupported, Is.True, "The AVX2 job requires AVX2 hardware.");
+                    Assert.That(Avx512F.IsSupported, Is.False, "The AVX2 job must disable AVX-512.");
+                }
+            }
+        }
+
         [Test]
         public void ToUInt256_preserves_big_endian_limb_order([Values] bool zero)
         {
