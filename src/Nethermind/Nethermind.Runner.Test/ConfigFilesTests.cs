@@ -394,7 +394,8 @@ public class ConfigFilesTests : ConfigFileTestsBase
         {
             Assert.That(baseFee, Is.GreaterThan(UInt256.Zero), "EIP-1559 must be active for this to be meaningful");
             Assert.That((bool)result, Is.True, result.ToString());
-        });    }
+        });
+    }
 
     [TestCase("*")]
     public void BufferResponses_rpc_is_off(string configWildcard) => Test<IJsonRpcConfig, bool>(configWildcard, static c => c.BufferResponses, false);
