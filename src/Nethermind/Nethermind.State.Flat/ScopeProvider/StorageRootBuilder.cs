@@ -77,7 +77,8 @@ internal sealed class StorageRootBuilder
             shard.Thread.Start();
         }
 
-        _warmThreads = new Thread[Math.Max(1, warmThreads)];
+        // Zero warm threads: the apply thread resolves each write's path itself, relying on the trie warmer's hints.
+        _warmThreads = new Thread[Math.Max(0, warmThreads)];
         for (int i = 0; i < _warmThreads.Length; i++)
         {
             _warmThreads[i] = new Thread(Warm) { IsBackground = true, Name = $"{nameof(StorageRootBuilder)}-warm-{i}" };
@@ -106,7 +107,8 @@ internal sealed class StorageRootBuilder
         try
         {
             // Warm first so the apply thread never sees a delta that no warm thread will ever mark.
-            _toWarm.Add(delta);
+            if (_warmThreads.Length == 0) delta.MarkWarmed();
+            else _toWarm.Add(delta);
             shard.Pending.Add(delta);
             return true;
         }
