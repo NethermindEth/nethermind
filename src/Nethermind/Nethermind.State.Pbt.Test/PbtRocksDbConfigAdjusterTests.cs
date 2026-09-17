@@ -7,6 +7,7 @@ using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Builders;
@@ -26,12 +27,14 @@ namespace Nethermind.State.Pbt.Test;
 [Parallelizable(ParallelScope.All)]
 public class PbtRocksDbConfigAdjusterTests
 {
-    private static PbtRocksDbConfigAdjuster CreateAdjuster(IRocksDbConfigFactory baseFactory) =>
-        new(baseFactory, new DbConfig { RocksDbOptions = "global=1;" }, MarkedConfig());
+    private static PbtRocksDbConfigAdjuster CreateAdjuster(IRocksDbConfigFactory baseFactory, IDisposableStack? disposeStack = null, ulong blockCacheSizeBudget = 1_000_000_000) =>
+        new(baseFactory, new DbConfig { RocksDbOptions = "global=1;" }, MarkedConfig(blockCacheSizeBudget),
+            disposeStack ?? Substitute.For<IDisposableStack>(), LimboLogs.Instance);
 
     /// <summary>Marks every option string with the column it belongs to, so the mapping is what is asserted, not the tuning.</summary>
-    private static PbtConfig MarkedConfig() => new()
+    private static PbtConfig MarkedConfig(ulong blockCacheSizeBudget) => new()
     {
+        BlockCacheSizeBudget = blockCacheSizeBudget,
         RocksDbOptions = "shared=1;",
         MetadataRocksDbOptions = $"column={nameof(PbtColumns.Metadata)};",
         AccountsRocksDbOptions = $"column={nameof(PbtColumns.Accounts)};",
@@ -67,13 +70,54 @@ public class PbtRocksDbConfigAdjusterTests
         Assert.That(config.RocksDbOptions, Is.EqualTo("global=1;shared=1;"));
     }
 
+    /// <summary>Mirrors the flat account/storage split: the record columns get their own caches, everything else stays in the shared one.</summary>
+    [Test]
+    public void OnlyTheAccountAndStorageColumnsGetADedicatedBlockCache(
+        [Values(null, nameof(PbtColumns.Metadata), nameof(PbtColumns.Accounts), nameof(PbtColumns.Codes), nameof(PbtColumns.Storages),
+            nameof(PbtColumns.AccountNodeGroups), nameof(PbtColumns.CodeNodeGroups), nameof(PbtColumns.StorageNodeGroups),
+            nameof(PbtColumns.CodeReferences))] string? columnName)
+    {
+        IDisposableStack disposeStack = Substitute.For<IDisposableStack>();
+
+        IRocksDbConfig config = CreateAdjuster(Substitute.For<IRocksDbConfigFactory>(), disposeStack)
+            .GetForDatabase(nameof(DbNames.Pbt), columnName);
+
+        bool dedicated = columnName is nameof(PbtColumns.Accounts) or nameof(PbtColumns.Storages);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(config.BlockCache, dedicated ? Is.Not.Null : Is.Null);
+            disposeStack.Received(dedicated ? 1 : 0).Push(Arg.Any<HyperClockCacheWrapper>());
+        }
+    }
+
+    [Test]
+    public void AccountAndStorageColumnsGetDistinctBlockCaches()
+    {
+        PbtRocksDbConfigAdjuster adjuster = CreateAdjuster(Substitute.For<IRocksDbConfigFactory>());
+
+        nint? accounts = adjuster.GetForDatabase(nameof(DbNames.Pbt), nameof(PbtColumns.Accounts)).BlockCache;
+        nint? storages = adjuster.GetForDatabase(nameof(DbNames.Pbt), nameof(PbtColumns.Storages)).BlockCache;
+
+        Assert.That(accounts, Is.Not.EqualTo(storages));
+    }
+
+    [TestCase(0UL, TestName = "ZeroBlockCacheBudgetReportsConfigurationError")]
+    [TestCase(2UL, TestName = "BlockCacheBudgetTooSmallToSplitReportsConfigurationError")]
+    public void UnusableBlockCacheBudgetReportsConfigurationError(ulong budget)
+    {
+        PbtRocksDbConfigAdjuster adjuster = CreateAdjuster(Substitute.For<IRocksDbConfigFactory>(), blockCacheSizeBudget: budget);
+
+        Assert.That(() => adjuster.GetForDatabase(nameof(DbNames.Pbt), nameof(PbtColumns.Accounts)),
+            Throws.TypeOf<InvalidConfigurationException>());
+    }
+
     /// <summary>An option rocksdb does not know fails the database open, which with pbt enabled is the node failing to start.</summary>
     [Test]
     public void DefaultOptionsOfEveryColumnAreAcceptedByRocksDb()
     {
         using TempPath dbPath = TempPath.GetTempDirectory();
         DbConfig dbConfig = new();
-        PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, new PbtConfig());
+        PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, new PbtConfig(), Substitute.For<IDisposableStack>(), LimboLogs.Instance);
 
         using ColumnsDb<PbtColumns> db = new(dbPath.Path, new DbSettings(nameof(DbNames.Pbt), DbNames.Pbt), dbConfig,
             adjuster, LimboLogs.Instance, FastEnum.GetValues<PbtColumns>());
@@ -91,7 +135,7 @@ public class PbtRocksDbConfigAdjusterTests
         using TempPath dbPath = TempPath.GetTempDirectory();
         DbConfig dbConfig = new();
         PbtConfig pbtConfig = new() { NodeGroupKeyLayout = layout };
-        PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, pbtConfig);
+        PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, pbtConfig, Substitute.For<IDisposableStack>(), LimboLogs.Instance);
         byte[] widePath = new byte[35];
         widePath[0] = Eip8297KeyDerivation.StorageZone;
         (PbtStorageNodePath Path, PbtColumns Column)[] groups =

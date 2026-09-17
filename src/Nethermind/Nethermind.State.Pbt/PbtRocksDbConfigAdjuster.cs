@@ -1,8 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Logging;
 
 namespace Nethermind.State.Pbt;
 
@@ -15,13 +19,20 @@ namespace Nethermind.State.Pbt;
 /// the backend that owns them owns their tuning too. The per-table config is therefore built with
 /// validation off, and the pbt options appended to it - the column's last, so that it wins over the
 /// shared one, which in turn wins over the global database options.
+/// Like the flat account and storage columns, <see cref="PbtColumns.Accounts"/> and
+/// <see cref="PbtColumns.Storages"/> get their own block caches carved out of
+/// <see cref="IPbtConfig.BlockCacheSizeBudget"/> instead of competing in the shared one.
 /// </remarks>
 internal sealed class PbtRocksDbConfigAdjuster(
     IRocksDbConfigFactory rocksDbConfigFactory,
     IDbConfig dbConfig,
-    IPbtConfig pbtConfig)
+    IPbtConfig pbtConfig,
+    IDisposableStack disposeStack,
+    ILogManager logManager)
     : IRocksDbConfigFactory
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<PbtRocksDbConfigAdjuster>();
+
     public IRocksDbConfig GetForDatabase(string databaseName, string? columnName)
     {
         if (databaseName != nameof(DbNames.Pbt)) return rocksDbConfigFactory.GetForDatabase(databaseName, columnName);
@@ -30,7 +41,8 @@ internal sealed class PbtRocksDbConfigAdjuster(
         return new AdjustedRocksdbConfig(
             config,
             pbtConfig.RocksDbOptions + ColumnRocksDbOptions(columnName),
-            config.WriteBufferSize.GetValueOrDefault());
+            config.WriteBufferSize.GetValueOrDefault(),
+            DedicatedBlockCache(columnName));
     }
 
     private string ColumnRocksDbOptions(string? columnName) => columnName switch
@@ -44,4 +56,21 @@ internal sealed class PbtRocksDbConfigAdjuster(
         nameof(PbtColumns.CodeReferences) => pbtConfig.CodeReferencesRocksDbOptions,
         _ => "",
     };
+
+    private nint? DedicatedBlockCache(string? columnName)
+    {
+        double share = columnName switch
+        {
+            nameof(PbtColumns.Accounts) => 0.3,
+            nameof(PbtColumns.Storages) => 0.7,
+            _ => 0,
+        };
+        if (share == 0) return null;
+
+        ulong cacheCapacity = (ulong)(pbtConfig.BlockCacheSizeBudget * share);
+        if (_logger.IsInfo) _logger.Info($"Setting {(cacheCapacity / 1UL.MiB):N0} MB of block cache to {columnName}");
+        HyperClockCacheWrapper cacheWrapper = new(cacheCapacity);
+        disposeStack.Push(cacheWrapper);
+        return cacheWrapper.Handle;
+    }
 }

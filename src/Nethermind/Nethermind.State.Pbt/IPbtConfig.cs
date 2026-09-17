@@ -52,6 +52,9 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Memory budget for cached storage PBT trie node groups, in bytes. Zero disables this cache partition.", DefaultValue = "234881024")]
     ulong StorageTrieNodeCacheSizeBudget { get; set; }
 
+    [ConfigItem(Description = "Block cache size budget for the PBT account and storage record columns, in bytes.", DefaultValue = "1073741824")]
+    ulong BlockCacheSizeBudget { get; set; }
+
     [ConfigItem(Description = "The number of in-memory snapshots (one per block) merged into a single snapshot by compaction, and the persist batch granularity, in blocks.", DefaultValue = "32")]
     int CompactSize { get; set; }
 

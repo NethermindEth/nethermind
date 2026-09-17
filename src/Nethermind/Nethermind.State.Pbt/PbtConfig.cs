@@ -20,6 +20,7 @@ public class PbtConfig : IPbtConfig
     public ulong AccountTrieNodeCacheSizeBudget { get; set; } = 128UL.MiB;
     public ulong CodeTrieNodeCacheSizeBudget { get; set; } = 32UL.MiB;
     public ulong StorageTrieNodeCacheSizeBudget { get; set; } = 224UL.MiB;
+    public ulong BlockCacheSizeBudget { get; set; } = 1UL.GiB;
     public int CompactSize { get; set; } = 32;
     public long CompactionOffset { get; set; } = -1;
     public int MinReorgDepth { get; set; } = 128;
