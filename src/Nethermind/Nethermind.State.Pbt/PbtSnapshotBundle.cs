@@ -215,10 +215,12 @@ public sealed class PbtSnapshotBundle(
         return readOnlyBundle.GetAccount(addressHash);
     }
 
-    public EvmWord GetSlot(Address address, in UInt256 slot)
+    public EvmWord GetSlot(Address address, in UInt256 slot) => GetSlot(address, PbtKeyDerivation.AddressKeyHash(address), slot);
+
+    /// <inheritdoc cref="GetSlot(Address, in UInt256)"/>
+    public EvmWord GetSlot(Address address, in ValueHash256 addressHash, in UInt256 slot)
     {
-        PbtStorageFullKey key = PbtStateKey.Storage(address, slot);
-        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
+        PbtStorageFullKey key = PbtStateKey.Storage(address, addressHash, slot);
         if (WriteBuffer.Storages.TryGetValue(key, out EvmWord value)) return value;
         if (WriteBuffer.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return default;
         for (int index = snapshots.Count - 1; index >= 0; index--)

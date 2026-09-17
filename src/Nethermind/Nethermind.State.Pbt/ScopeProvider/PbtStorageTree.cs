@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
 
@@ -13,6 +14,8 @@ public sealed class PbtStorageTree(
     PbtWorldStateScope scope,
     Address address) : IWorldStateScopeProvider.IStorageTree
 {
+    private readonly ValueHash256 _addressHash = PbtKeyDerivation.AddressKeyHash(address);
+
     public Hash256 RootHash => Keccak.EmptyTreeHash;
 
     /// <inheritdoc/>
@@ -24,7 +27,7 @@ public sealed class PbtStorageTree(
 
     public void Get(in UInt256 index, out UInt256 value)
     {
-        EvmWord word = scope.Bundle.GetSlot(address, index);
+        EvmWord word = scope.Bundle.GetSlot(address, _addressHash, index);
         value = EvmWordSlot.ToUInt256(in word);
     }
 

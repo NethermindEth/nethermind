@@ -10,23 +10,33 @@ namespace Nethermind.State.Pbt;
 
 internal static class PbtStateKey
 {
-    public static PbtFullKey Account(Address address, byte subIndex) =>
-        Eip8297KeyDerivation.AccountKey(Address32(address), subIndex);
-
-    public static PbtFullKey Account(in ValueHash256 addressHash, byte subIndex)
+    public static PbtFullKey Account(Address address, byte subIndex)
     {
-        Span<byte> key = stackalloc byte[Eip8297KeyDerivation.AccountKeyLength];
-        key[0] = Eip8297KeyDerivation.AccountZone;
-        addressHash.Bytes.CopyTo(key[1..]);
-        key[^1] = subIndex;
-        return new PbtFullKey(key);
+        Span<byte> address32 = stackalloc byte[32];
+        Address32(address, address32);
+        return Eip8297KeyDerivation.AccountKey(address32, subIndex);
     }
+
+    public static PbtFullKey Account(in ValueHash256 addressHash, byte subIndex) =>
+        Eip8297KeyDerivation.AccountKey(addressHash, subIndex);
 
     public static PbtFullKey Code(in ValueHash256 addressHash, in ValueHash256 codeHash, int chunkId) =>
         Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunkId);
 
-    public static PbtStorageFullKey Storage(Address address, in UInt256 slot) =>
-        Eip8297KeyDerivation.StorageKey(Address32(address), slot);
+    public static PbtStorageFullKey Storage(Address address, in UInt256 slot)
+    {
+        Span<byte> address32 = stackalloc byte[32];
+        Address32(address, address32);
+        return Eip8297KeyDerivation.StorageKey(address32, slot);
+    }
+
+    /// <summary><see cref="Storage(Address, in UInt256)"/> reusing a precomputed <see cref="PbtKeyDerivation.AddressKeyHash"/>.</summary>
+    public static PbtStorageFullKey Storage(Address address, in ValueHash256 addressHash, in UInt256 slot)
+    {
+        Span<byte> address32 = stackalloc byte[32];
+        Address32(address, address32);
+        return Eip8297KeyDerivation.StorageKey(address32, addressHash, slot);
+    }
 
     public static PbtFullKey Code(Address address, in ValueHash256 codeHash, int chunkId) =>
         Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunkId);
@@ -40,10 +50,9 @@ internal static class PbtStateKey
         return new PbtStorageFullKey(prefix);
     }
 
-    private static byte[] Address32(Address address)
+    private static void Address32(Address address, Span<byte> address32)
     {
-        byte[] address32 = new byte[32];
-        address.Bytes.CopyTo(address32.AsSpan(12));
-        return address32;
+        address32[..12].Clear();
+        address.Bytes.CopyTo(address32[12..]);
     }
 }
