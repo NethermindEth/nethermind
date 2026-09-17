@@ -41,7 +41,7 @@ public class TrieNodeTests
         }
         TreePath path = TreePath.Empty;
         CappedArray<byte> oldRlp = original.RlpEncode(NullTrieNodeResolver.Instance, ref path);
-        Assert.That(oldRlp.Length, Is.EqualTo(532));
+        Assert.That(oldRlp.Length, Is.EqualTo(TrieNode.FullBranchRlpLength));
         TrieNode restored = new(NodeType.Branch, oldRlp);
         restored.ResolveNode(NullTrieNodeResolver.Instance, path);
         restored = restored.Clone();
@@ -409,7 +409,8 @@ public class TrieNodeTests
     }
 
     [Test]
-    public void Resolves_full_branch_children_to_their_individual_hashes([Values(0x0001, 0x0003, 0x0007, 0x5555, 0xffff)] int branchMask)
+    public void Resolves_full_branch_children_to_their_individual_hashes(
+        [Values(0x0001, 0x0003, 0x0007, 0x007f, 0x5555, 0x01ff, 0x03ff, 0x07ff, 0x7fff, 0xffff)] int branchMask)
     {
         if (!System.Runtime.Intrinsics.X86.Avx512F.VL.IsSupported)
         {

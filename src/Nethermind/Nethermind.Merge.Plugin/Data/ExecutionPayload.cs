@@ -68,6 +68,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         set
         {
             ArgumentNullException.ThrowIfNull(value);
+            StopTxRootComputation();
+            _txRoot = null;
             _encodedTransactions = value;
             _transactions = null;
             _txRootTask = null;
@@ -163,10 +165,23 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     /// <returns>The decoded execution block or a decoding error.</returns>
     public virtual Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
+        try
+        {
+            return TryGetBlockCore(totalDifficulty);
+        }
+        finally
+        {
+            StopTxRootComputation();
+        }
+    }
+
+    private Result<Block> TryGetBlockCore(UInt256? totalDifficulty)
+    {
         byte[][] encodedTransactions = Transactions;
         // Repeats the check inside StartTxRootComputation so the guest build never reaches the call
         // and carries no task machinery for it.
-        Task<Hash256>? txRootTask = RuntimeInformation.IsSingleProcessor ? null : StartTxRootComputation();
+        if (!RuntimeInformation.IsSingleProcessor) StartTxRootComputation();
+        Task<Hash256>? txRootTask = _txRootTask;
 
         Result<Transaction[]> transactions = TryGetTransactions();
         if (transactions.IsError)
@@ -196,7 +211,8 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             Author = FeeRecipient,
             IsPostMerge = true,
             TotalDifficulty = totalDifficulty,
-            TxRoot = txRootTask is not null ? txRootTask.GetAwaiter().GetResult() : TxTrie.CalculateRoot(encodedTransactions),
+            TxRoot = _txRoot ??= _txRootWork?.GetResult()
+                ?? txRootTask?.GetAwaiter().GetResult() ?? TxTrie.CalculateRoot(encodedTransactions),
             WithdrawalsRoot = BuildWithdrawalsRoot(),
         };
 
@@ -212,26 +228,32 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
     protected Transaction[]? _transactions = null;
 
     private Task<Hash256>? _txRootTask;
+    private TxTrie.RootComputation? _txRootWork;
+    private Hash256? _txRoot;
 
     private const int MinTxsForParallelDecoding = 32;
 
-    /// <summary>
-    /// Starts computing the transactions-trie root in the background, letting callers overlap it
-    /// with serial work that precedes <see cref="TryGetBlock"/> (which consumes the started task).
-    /// </summary>
-    /// <remarks>
-    /// Not thread-safe: concurrent calls, or a concurrent <see cref="Transactions"/> assignment,
-    /// race the memoized task. Callers must invoke both sequentially per payload instance.
-    /// </remarks>
-    /// <returns>
-    /// The started task, or <c>null</c> when the transaction count makes inline computation cheaper.
-    /// </returns>
-    internal Task<Hash256>? StartTxRootComputation()
+    /// <summary>Starts transaction-root work owned by this payload.</summary>
+    /// <remarks>Not thread-safe. Calls and transaction replacement must be sequential per payload.
+    /// Call StopTxRootComputation in a finally block if execution can exit before TryGetBlock.</remarks>
+    internal void StartTxRootComputation()
     {
+        if (RuntimeInformation.IsSingleProcessor || _encodedTransactions.Length < MinTxsForParallelDecoding)
+            return;
+        if (_txRoot is not null || _txRootWork is not null || _txRootTask is not null)
+            return;
+
         byte[][] encodedTransactions = _encodedTransactions;
-        return _txRootTask ??= encodedTransactions.Length >= MinTxsForParallelDecoding && !RuntimeInformation.IsSingleProcessor
-            ? Task.Run(() => TxTrie.CalculateRoot(encodedTransactions))
-            : null;
+        _txRootWork = TxTrie.StartRootComputation(encodedTransactions);
+        if (_txRootWork is not null) return;
+
+        _txRootTask = Task.Run(() => TxTrie.CalculateRoot(encodedTransactions));
+    }
+
+    internal void StopTxRootComputation()
+    {
+        _txRootWork?.Dispose();
+        _txRootWork = null;
     }
 
     /// <summary>

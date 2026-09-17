@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Core.Cpu;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -83,30 +82,28 @@ public class ExecutionPayloadTests
         Assert.That(result.Error, Contains.Substring($"Transaction {invalidIndex}"));
     }
 
-    // The early-started root task must be the one TryGetBlock consumes, with an identical root
+    // The early-started root work must be the one TryGetBlock consumes, with an identical root
     [Test]
-    public void TryGetBlock_uses_early_started_tx_root_computation()
+    public void TryGetBlock_uses_early_started_tx_root_computation([Values(31, 32, 64, 65, 128)] int count)
     {
-        byte[][] rlps = EncodeTxs(count: 64);
+        byte[][] rlps = EncodeTxs(count);
 
         ExecutionPayload payload = new() { Transactions = rlps };
-        Task<Hash256>? rootTask = payload.StartTxRootComputation();
+        payload.StartTxRootComputation();
         Result<Block> block = payload.TryGetBlock();
 
         using (Assert.EnterMultipleScope())
         {
-            // A single processor computes the root inline instead of starting the task.
-            Assert.That(rootTask, RuntimeInformation.IsSingleProcessor ? Is.Null : Is.Not.Null);
             Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(rlps)));
         }
     }
 
-    // A root task started for one transaction set must never produce the root of a mutated payload
+    // A root work started for one transaction set must never produce the root of a mutated payload
     [Test]
     public void TryGetBlock_recomputes_tx_root_when_transactions_change_after_early_start()
     {
-        byte[][] originalRlps = EncodeTxs(count: 64);
-        byte[][] replacementRlps = EncodeTxs(count: 64, nonceOffset: 1000);
+        byte[][] originalRlps = EncodeTxs(count: 128);
+        byte[][] replacementRlps = EncodeTxs(count: 128, nonceOffset: 1000);
 
         ExecutionPayload payload = new() { Transactions = originalRlps };
         payload.StartTxRootComputation();
@@ -123,13 +120,35 @@ public class ExecutionPayloadTests
         byte[][] rlps = EncodeTxs(count: 1);
 
         ExecutionPayload payload = new() { Transactions = rlps };
-        Task<Hash256>? rootTask = payload.StartTxRootComputation();
+        payload.StartTxRootComputation();
         Result<Block> block = payload.TryGetBlock();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rootTask, Is.Null);
             Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(rlps)));
+        }
+    }
+
+    [Test]
+    public void TryGetBlock_restarts_root_after_abandonment([Values(false, true)] bool invalid)
+    {
+        byte[][] rlps = EncodeTxs(128);
+        if (invalid) rlps[41] = [.. rlps[41], 0xDC, 0xAF];
+        ExecutionPayload payload = new() { Transactions = rlps };
+        payload.StartTxRootComputation();
+        payload.StopTxRootComputation();
+
+        Result<Block> first = payload.TryGetBlock();
+        Result<Block> second = payload.TryGetBlock();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.IsError, Is.EqualTo(invalid));
+            Assert.That(second.IsError, Is.EqualTo(invalid));
+            if (!invalid)
+            {
+                Assert.That(first.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(rlps)));
+                Assert.That(second.Data!.Header.TxRoot, Is.EqualTo(first.Data!.Header.TxRoot));
+            }
         }
     }
 

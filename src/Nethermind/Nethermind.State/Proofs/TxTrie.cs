@@ -117,6 +117,33 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
         return new IndexedTrieRoot.Calculator<byte[], EncodedTransactionEncoder>(encodedTransactions, default).Calculate();
     }
 
+    /// <summary>Starts joinable root computation, or returns null for roots better handled by the normal path.</summary>
+    /// <remarks>The encoded transaction bytes must remain unchanged until the work is drained.</remarks>
+    public static RootComputation? StartRootComputation(ReadOnlySpan<byte[]> encodedTransactions)
+    {
+        // Small uneven AVX2 roots benefit from the normal scheduler; AVX-512 can batch small roots sequentially.
+        if (RuntimeInformation.IsSingleProcessor || encodedTransactions.Length <= MinItemsForParallelRootHash)
+            return null;
+        foreach (byte[] value in encodedTransactions)
+            if (value is null || value.Length == 0) return null;
+        return new RootComputation(encodedTransactions);
+    }
+
+    /// <summary>Owns transaction-root work and its buffers until running callbacks finish.</summary>
+    /// <remarks>GetResult and Dispose must be called sequentially. A successfully joined result remains available after disposal.</remarks>
+    public sealed class RootComputation : IDisposable
+    {
+        private readonly IndexedTrieRoot.Calculator<byte[], EncodedTransactionEncoder>.BackgroundRoot _work;
+
+        internal RootComputation(ReadOnlySpan<byte[]> transactions) => _work = new(transactions, default);
+
+        /// <summary>Helps finish pending batches and returns the root, releasing temporary buffers.</summary>
+        public Hash256 GetResult() => _work.GetResult();
+
+        /// <summary>Abandons pending batches and releases buffers after running callbacks finish.</summary>
+        public void Dispose() => _work.Dispose();
+    }
+
     private static Hash256 CalculateSparseRoot<T, TEncoder>(ReadOnlySpan<T> values, TEncoder encoder)
         where TEncoder : struct, IndexedTrieRoot.IValueEncoder<T>
     {
@@ -136,6 +163,7 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
 
     private readonly struct TransactionEncoder : IndexedTrieRoot.IValueEncoder<Transaction>
     {
+        public IndexedTrieRoot.LeafBatching Batching => IndexedTrieRoot.LeafBatching.None;
         public ReadOnlySpan<byte> GetEncodedValue(Transaction item) => item.PreHash.Span;
         public int GetLength(Transaction item) => _txDecoder.GetLength(item, RlpBehaviors.SkipTypedWrapping);
         public void Encode<TWriter>(ref TWriter writer, Transaction item) where TWriter : struct, IRlpWriteBackend, allows ref struct => _txDecoder.Encode(ref writer, item, RlpBehaviors.SkipTypedWrapping);
@@ -143,6 +171,7 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
 
     private readonly struct EncodedTransactionEncoder : IndexedTrieRoot.IValueEncoder<byte[]>
     {
+        public IndexedTrieRoot.LeafBatching Batching => IndexedTrieRoot.LeafBatching.Encoded;
         public ReadOnlySpan<byte> GetEncodedValue(byte[] item) => item;
         public int GetLength(byte[] item) => item.Length;
         public void Encode<TWriter>(ref TWriter writer, byte[] item) where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(item);
@@ -150,6 +179,7 @@ public sealed class TxTrie : PatriciaTrie<Transaction>
 
     private readonly struct EncodedMemoryEncoder : IndexedTrieRoot.IValueEncoder<ReadOnlyMemory<byte>>
     {
+        public IndexedTrieRoot.LeafBatching Batching => IndexedTrieRoot.LeafBatching.Encoded;
         public ReadOnlySpan<byte> GetEncodedValue(ReadOnlyMemory<byte> item) => item.Span;
         public int GetLength(ReadOnlyMemory<byte> item) => item.Length;
         public void Encode<TWriter>(ref TWriter writer, ReadOnlyMemory<byte> item) where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(item.Span);

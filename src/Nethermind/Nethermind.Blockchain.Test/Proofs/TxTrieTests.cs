@@ -26,7 +26,9 @@ public class TxTrieTests(bool useEip2718)
 {
     private readonly IReleaseSpec _releaseSpec = useEip2718 ? Berlin.Instance : MuirGlacier.Instance;
 
-    private static readonly int[] RootCounts = [0, 1, 2, 15, 16, 17, 63, 64, 65, 127, 128, 129, 255, 256, 257, 4096];
+    private static readonly int[] MultiBlockLengths = [31, 100, 132, 133, 134, 135, 261, 262, 263, 264, 300, 1000, 2164, 2165, 8192];
+
+    private static readonly int[] RootCounts = [0, 1, 2, 7, 8, 9, 15, 16, 17, 18, 19, 20, 21, 22, 23, 31, 32, 33, 47, 48, 49, 63, 64, 65, 127, 128, 129, 143, 144, 145, 255, 256, 257, 271, 272, 273, 4096];
 
     [Test]
     public void Root_matches_mutable_trie([ValueSource(nameof(RootCounts))] int count, [Values] bool cached)
@@ -55,7 +57,8 @@ public class TxTrieTests(bool useEip2718)
     }
 
     [Test]
-    public void Encoded_root_matches_mutable_trie([ValueSource(nameof(RootCounts))] int count, [Values] bool sparse)
+    public void Encoded_root_matches_mutable_trie([ValueSource(nameof(RootCounts))] int count, [Values] bool sparse,
+        [Values(-1, 0, 124, 125, 136, 300, 2164, 2165, 8192)] int valueLength)
     {
         byte[][] encoded = new byte[count][];
         Random random = new(42);
@@ -64,7 +67,8 @@ public class TxTrieTests(bool useEip2718)
         for (int i = 0; i < count; i++)
         {
             // Include unprefixed bytes, inline nodes, and the 32/56-byte RLP boundaries.
-            byte[] value = new byte[sparse && i % 3 == 0 ? 0 : i % 65 + 1];
+            int length = valueLength == -1 ? MultiBlockLengths[i % MultiBlockLengths.Length] : valueLength == 0 ? i % 65 + 1 : valueLength;
+            byte[] value = new byte[sparse && i % 3 == 0 ? 0 : length];
             random.NextBytes(value);
             encoded[i] = sparse && i % 6 == 0 ? null! : value;
             trie.Set(Rlp.Encode(i).Bytes, value);
@@ -72,6 +76,13 @@ public class TxTrieTests(bool useEip2718)
         trie.UpdateRootHash(canBeParallel: false);
 
         Assert.That(TxTrie.CalculateRoot(encoded), Is.EqualTo(trie.RootHash));
+        using TxTrie.RootComputation? work = TxTrie.StartRootComputation(encoded);
+        if (work is not null)
+        {
+            Assert.That(work.GetResult(), Is.EqualTo(trie.RootHash));
+            work.Dispose();
+            Assert.That(work.GetResult(), Is.EqualTo(trie.RootHash));
+        }
     }
 
     [TestCase(65535)]
