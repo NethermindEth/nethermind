@@ -69,6 +69,9 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Rebuild the PBT state from an existing preimage-flat state database, then exit. Requires a fully synced FlatLayout.PreimageFlat 'flat' database (and the 'code' database) in the data directory.", DefaultValue = "false")]
     bool ImportFromPreimageFlat { get; set; }
 
+    [ConfigItem(Description = "Number of parallel workers folding the key zones and their wide buckets when computing the tree root. 0 uses the processor count; 1 folds serially.", DefaultValue = "0")]
+    int FoldConcurrency { get; set; }
+
     [ConfigItem(Description = "Number of parallel workers copying the source and scanning staged key ranges to derive leaves during the preimage-flat import. 0 uses the processor count. The tree fold runs in a separate single consumer.", DefaultValue = "0")]
     int ImportStorageReadConcurrency { get; set; }
 

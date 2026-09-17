@@ -77,7 +77,7 @@ public class MigrationScopeProviderTests
         await using PbtTestContext pbt = new();
         FlatWorldStateManager flat = container.Resolve<FlatWorldStateManager>();
         MigrationBackendSelector selector = new(Specs(), pbt.Manager, pbt.Coordinator);
-        MigrationScopeProvider provider = new(flat, pbt.WorldStateManager, pbt.Manager, pbt.ResourcePool, selector, LimboLogs.Instance);
+        MigrationScopeProvider provider = new(flat, pbt.WorldStateManager, pbt.Manager, pbt.ResourcePool, selector, pbt.Config, LimboLogs.Instance);
         BlockHeader genesis = Build.A.BlockHeader.WithNumber(0).WithTimestamp(0).TestObject;
         BlockHeader block1 = Build.A.BlockHeader.WithParent(genesis).WithTimestamp(12).TestObject;
         BlockHeader activation = Build.A.BlockHeader.WithParent(block1).WithTimestamp(Activation).TestObject;

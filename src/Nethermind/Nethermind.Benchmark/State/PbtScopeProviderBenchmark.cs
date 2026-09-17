@@ -120,13 +120,13 @@ public class PbtScopeProviderBenchmark
         PbtCompactionSchedule schedule = new(new MemDb(), config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(resourcePool, schedule, repository, config);
         PbtPersistenceCoordinator coordinator = new(
-            config, new BenchFinalizedStateProvider(), persistence, repository, compactor, schedule,
+            config, new BenchFinalizedStateProvider(), persistence, repository, schedule,
             NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         _pbtManager = new PbtDbManager(
-            repository, coordinator, persistence, resourcePool, compactor, new BenchProcessExitSource(_cts), LimboLogs.Instance);
+            repository, coordinator, persistence, resourcePool, compactor, new BenchProcessExitSource(_cts), LimboLogs.Instance, config, new MetricsConfig());
         return new PbtScopeProvider(
             new MemDb(), _pbtManager, NullPbtChildHeaderSource.Instance, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false,
-            new NoopTrieWarmer());
+            new NoopTrieWarmer(), config);
     }
 
     [Benchmark]

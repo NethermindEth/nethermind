@@ -29,6 +29,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     private readonly ILogManager _logManager;
     private readonly IPbtDbManager _manager;
     private readonly IPbtResourcePool _resourcePool;
+    private readonly IPbtConfig _config;
     private readonly PbtTrieNodeCache? _trieNodeCache;
     private readonly bool _recordDetailedMetrics;
     private bool _isDisposed;
@@ -38,10 +39,12 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         IPbtDbManager manager,
         IPbtResourcePool resourcePool,
         IMetricsConfig metricsConfig,
+        IPbtConfig config,
         ILogManager? logManager = null,
         PbtTrieNodeCache? trieNodeCache = null)
     {
         _logManager = logManager ?? NullLogManager.Instance;
+        _config = config;
         _manager = manager;
         _resourcePool = resourcePool;
         _trieNodeCache = trieNodeCache;
@@ -125,7 +128,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
             StateId stateId = new(baseBlock);
             return new PbtWorldStateScope(
                 stateId, baseBlock, outer.GatherBundle(stateId), _codeDb, outer, NullPbtChildHeaderSource.Instance,
-                outer._resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: false, _noopTrieWarmer, outer._logManager);
+                outer._resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: false, _noopTrieWarmer, outer._config, outer._logManager);
         }
     }
 

@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
@@ -130,7 +131,7 @@ public class ParallelUpdateRootTests
             (byte[] Key, byte[]? Value)[] writes = new (byte[], byte[]?)[mutations.Length];
             for (int index = 0; index < mutations.Length; index++)
                 writes[index] = (mutations[index].Key, zeroDeletes && mutations[index].Value is null ? new byte[32] : mutations[index].Value);
-            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(writes));
+            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(writes), ParallelUnbalancedWork.DefaultOptions);
             sequential.ApplyBatch(mutations);
             foreach ((byte[] key, byte[]? value) in mutations)
             {
@@ -143,7 +144,7 @@ public class ParallelUpdateRootTests
                 Assert.That(root, Is.EqualTo(sequential.RootHash));
                 Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
                 Assert.That(PhysicalRecords(store), Is.EqualTo(PhysicalRecords(sequential.PhysicalPayloads)));
-                Assert.That(TrieUpdater.UpdateRoot(reopened, root, PreparePartitions(writes)), Is.EqualTo(root));
+                Assert.That(TrieUpdater.UpdateRoot(reopened, root, PreparePartitions(writes), ParallelUnbalancedWork.DefaultOptions), Is.EqualTo(root));
                 Assert.That(PhysicalRecords(reopened), Is.EqualTo(PhysicalRecords(store)));
             }
         }
@@ -178,7 +179,7 @@ public class ParallelUpdateRootTests
             if (parallel)
             {
                 using PbtPartitionBatches partitions = PreparePartitions([.. writes]);
-                root = TrieUpdater.UpdateRoot(target, root, partitions);
+                root = TrieUpdater.UpdateRoot(target, root, partitions, ParallelUnbalancedWork.DefaultOptions);
             }
             else
             {
@@ -248,7 +249,7 @@ public class ParallelUpdateRootTests
         void ApplyAndCompare(PbtNodeGroupStore target, (byte[] Key, byte[]? Value)[] changes)
         {
             using PbtPartitionBatches partitions = PreparePartitions(changes);
-            root = TrieUpdater.UpdateRoot(target, root, partitions);
+            root = TrieUpdater.UpdateRoot(target, root, partitions, ParallelUnbalancedWork.DefaultOptions);
             sequential.ApplyBatch(changes);
             foreach ((byte[] key, byte[]? value) in changes)
             {
@@ -264,20 +265,24 @@ public class ParallelUpdateRootTests
         }
     }
 
-    [TestCase(8297)]
-    [TestCase(9341)]
-    public void Random_partition_mutations_match_reference_after_each_fold(int seed)
+    // Zones wider than TrieUpdater.MinOperationsToFoldInParallel fold their buckets on worker threads; the
+    // single-batch harness is the serial oracle for both the root and the byte-identical group payloads.
+    [TestCase(8297, 64, 40, 100, 0)]
+    [TestCase(9341, 64, 40, 100, 0)]
+    [TestCase(8297, 4096, 4, 4096, 0)]
+    [TestCase(8297, 4096, 4, 4096, 1)]
+    public void Random_partition_mutations_match_reference_after_each_fold(int seed, int keysPerZone, int rounds, int changesPerRound, int foldConcurrency)
     {
         Random random = new(seed);
         using PbtNodeGroupStore store = new();
         using PbtTreeHarness sequential = new();
         EipReferenceTree oracle = new();
-        (byte[] Key, byte[]? Value)[] entries = ZoneEntries(3, false);
-        foreach ((byte[] key, _) in entries) random.NextBytes(key.AsSpan(2));
+        (byte[] Key, byte[]? Value)[] entries = RandomZoneEntries(random, keysPerZone);
+        ParallelOptions foldOptions = new() { MaxDegreeOfParallelism = foldConcurrency > 0 ? foldConcurrency : Environment.ProcessorCount };
         ValueHash256 root = default;
-        for (int round = 0; round < 40; round++)
+        for (int round = 0; round < rounds; round++)
         {
-            (byte[] Key, byte[]? Value)[] changes = new (byte[], byte[]?)[100];
+            (byte[] Key, byte[]? Value)[] changes = new (byte[], byte[]?)[changesPerRound];
             for (int index = 0; index < changes.Length; index++)
             {
                 byte[] key = entries[random.Next(entries.Length)].Key;
@@ -286,7 +291,7 @@ public class ParallelUpdateRootTests
                 if (value is null) oracle.Delete(key);
                 else oracle.Insert(key, value);
             }
-            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes));
+            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), foldOptions);
             sequential.ApplyBatch(changes);
             using (Assert.EnterMultipleScope())
             {
@@ -297,14 +302,14 @@ public class ParallelUpdateRootTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Zone_workers_write_disjoint_groups_and_join_before_returning(bool failWorker)
+    // 20000 keys per zone fan out at depth 8 and again at depth 12, so the join and failure paths cover nested workers.
+    [Test]
+    public void Zone_workers_write_disjoint_groups_and_join_before_returning([Values] bool failWorker, [Values(64, 20000)] int keysPerZone)
     {
-        (byte[] Key, byte[]? Value)[] initial = ZoneEntries(3, false);
+        (byte[] Key, byte[]? Value)[] initial = RandomZoneEntries(new Random(keysPerZone), keysPerZone);
         using CoordinatedStore store = new();
         using PbtTreeHarness sequential = new();
-        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial));
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), ParallelUnbalancedWork.DefaultOptions);
         sequential.ApplyBatch(initial);
         string[] initialRecords = PhysicalRecords(store.Inner);
         (byte[] Key, byte[]? Value)[] changes = Changes(initial);
@@ -314,7 +319,7 @@ public class ParallelUpdateRootTests
         store.Writes = 0;
         if (failWorker)
         {
-            Assert.Throws<AggregateException>(() => TrieUpdater.UpdateRoot(store, root, prepared));
+            Assert.Throws<AggregateException>(() => TrieUpdater.UpdateRoot(store, root, prepared, ParallelUnbalancedWork.DefaultOptions));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(store.Writes, Is.GreaterThan(0), "partial writes belong to the caller on failure");
@@ -325,7 +330,7 @@ public class ParallelUpdateRootTests
             Assert.That(store.DuplicateWrites, Is.False, "each group has one owner");
             return;
         }
-        ValueHash256 result = TrieUpdater.UpdateRoot(store, root, prepared);
+        ValueHash256 result = TrieUpdater.UpdateRoot(store, root, prepared, ParallelUnbalancedWork.DefaultOptions);
         sequential.ApplyBatch(changes);
         using (Assert.EnterMultipleScope())
         {
@@ -334,7 +339,7 @@ public class ParallelUpdateRootTests
             Assert.That(PhysicalRecords(store.Inner), Is.EqualTo(PhysicalRecords(sequential.PhysicalPayloads)));
             Assert.That(store.ActiveReads, Is.Zero);
             Assert.That(store.DuplicateWrites, Is.False, "each group has one owner");
-            Assert.Throws<InvalidOperationException>(() => TrieUpdater.UpdateRoot(store, result, prepared));
+            Assert.Throws<InvalidOperationException>(() => TrieUpdater.UpdateRoot(store, result, prepared, ParallelUnbalancedWork.DefaultOptions));
         }
     }
 
@@ -379,7 +384,7 @@ public class ParallelUpdateRootTests
             if (parallel)
             {
                 using PbtPartitionBatches partitions = PreparePartitions(changes);
-                root = TrieUpdater.UpdateRoot(store, root, partitions);
+                root = TrieUpdater.UpdateRoot(store, root, partitions, ParallelUnbalancedWork.DefaultOptions);
             }
             else
             {
@@ -458,6 +463,22 @@ public class ParallelUpdateRootTests
                     entries.Add((key, Value((byte)(suffix + 1))));
                 }
         return [.. entries];
+    }
+
+    /// <summary>Keys spread uniformly below each zone byte, so every group level fans out into all sixteen buckets.</summary>
+    private static (byte[] Key, byte[]? Value)[] RandomZoneEntries(Random random, int keysPerZone)
+    {
+        (byte[] Key, byte[]? Value)[] entries = new (byte[], byte[]?)[3 * keysPerZone];
+        byte[] zones = [0x01, 0x00, 0xFF];
+        for (int index = 0; index < entries.Length; index++)
+        {
+            byte zone = zones[index / keysPerZone];
+            byte[] key = new byte[zone == 0xFF ? 66 : 34];
+            random.NextBytes(key);
+            key[0] = zone;
+            entries[index] = (key, Value((byte)(index % 4 + 1)));
+        }
+        return entries;
     }
 
     private static string[] PhysicalRecords(PbtNodeGroupStore store) => PhysicalRecords(store.ExportPhysicalPayloads());

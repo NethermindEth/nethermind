@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using static Nethermind.Pbt.TrieUpdater;
 using static Nethermind.Pbt.TrieUpdater<Nethermind.Pbt.PbtStorageFullKey, Nethermind.Pbt.PbtStorageNodePath>;
@@ -39,19 +40,23 @@ public static partial class TrieUpdater
 
     /// <summary>Folds disjoint partitions concurrently before merging their shared ancestors.</summary>
     /// <remarks>
-    /// The supplied store must support concurrent reads and writes. Failed folds may leave partial writes;
-    /// the caller owns failure isolation and must not reuse that state without recovery.
+    /// The zones fold under <paramref name="foldOptions"/>, and so do the touched buckets of every frame wide enough
+    /// to fan out; a degree of one folds everything serially. The supplied store must support concurrent reads and
+    /// writes. Failed folds may leave partial writes; the caller owns failure isolation and must not reuse that
+    /// state without recovery.
     /// </remarks>
     [SkipLocalsInit]
     internal static ValueHash256 UpdateRoot(
         IPbtStore store,
         in ValueHash256 currentRoot,
         PbtPartitionBatches changes,
+        ParallelOptions foldOptions,
         TrieUpdaterMetrics? metrics = null,
         IRefCountingMemoryProvider? memoryProvider = null)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(changes);
+        ArgumentNullException.ThrowIfNull(foldOptions);
         using ArrayPoolList<PartitionFold> workers = new(3);
         using ArrayPoolListRef<GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath>> sharedReaders = new(16, 16);
         using ArrayPoolListRef<PbtNodeGroupWriter<PbtStorageNodePath>?> sharedWriters = new(16, 16);
@@ -101,7 +106,7 @@ public static partial class TrieUpdater
                         worker.Current = TakeBoundary(ref sharedReader, sharedWriter, sharedPath, ref zoneFrontiers.AsSpan()[slot], worker.Zone & 15, sourceBuffer).Materialize();
                     }
 
-                    Parallel.ForEach(workers, new ParallelOptions { MaxDegreeOfParallelism = 3 }, static worker => worker.Fold());
+                    Parallel.ForEach(workers, foldOptions, static worker => worker.Fold());
 
                     foreach (PartitionFold worker in workers)
                     {
@@ -147,7 +152,7 @@ public static partial class TrieUpdater
                 if (batch is null) return;
                 ArgumentOutOfRangeException.ThrowIfNotEqual(batch.ShardNibbleIndex, 2);
                 batch.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table);
-                PartitionFold<TKey, TPath> worker = new(store, zone, operations, table, metrics is not null, memoryProvider);
+                PartitionFold<TKey, TPath> worker = new(store, zone, operations, table, metrics is not null, memoryProvider, foldOptions);
                 if (operations.Count != 0) workers.Add(worker);
                 else worker.Dispose();
             }
@@ -168,7 +173,7 @@ public static partial class TrieUpdater
 
     private sealed class PartitionFold<TKey, TPath>(IPbtStore store, byte zone,
         ArrayPoolList<PbtWriteOperation<TKey>> operations, ArrayPoolList<int> table,
-        bool collectMetrics, IRefCountingMemoryProvider memoryProvider) : PartitionFold(zone, collectMetrics)
+        bool collectMetrics, IRefCountingMemoryProvider memoryProvider, ParallelOptions foldOptions) : PartitionFold(zone, collectMetrics)
         where TKey : struct, IPbtKey<TKey>
         where TPath : struct, IPbtNodePath<TPath>
     {
@@ -187,8 +192,11 @@ public static partial class TrieUpdater
                 TrieUpdater<TKey, TPath>.OwnedSubtree ownedCurrent = TrieUpdater<TKey, TPath>.OwnedSubtree.TakeFrom<PbtStorageFullKey, PbtStorageNodePath>(ref Current);
                 TrieUpdater<TKey, TPath>.TraversalSubtree current = ownedCurrent.Borrow(sourceBuffer);
                 TrieUpdater<TKey, TPath>.OwnedSubtree result = default;
+                bool foldBucketsInParallel = foldOptions.MaxDegreeOfParallelism != 1 && !RuntimeInformation.IsSingleProcessor;
+                TrieUpdater<TKey, TPath>.FoldContext context = new(store, memoryProvider, Metrics,
+                    foldBucketsInParallel ? foldOptions : null, foldBucketsInParallel ? operations.UnsafeGetInternalArray() : null);
                 // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
-                result = TrieUpdater<TKey, TPath>.FoldBoundary(store, Metrics, ref reader, writer, memoryProvider, current,
+                result = TrieUpdater<TKey, TPath>.FoldBoundary(context, ref reader, writer, current,
                     operations.AsSpan(), ref path, 8, new(table.AsSpan(), 8, false));
                 using (RefCountingMemory? payload = writer.Detach())
                     store.SetNodeGroup(path, result.Borrow(sourceBuffer).Hash(8, Metrics), payload);
@@ -210,11 +218,9 @@ internal static partial class TrieUpdater<TKey, TPath>
 {
     [SkipLocalsInit]
     internal static OwnedSubtree FoldBoundary(
-        IPbtStore store,
-        TrieUpdaterMetrics? metrics,
+        FoldContext context,
         ref GroupFrameReader<TKey, TPath> reader,
         PbtNodeGroupWriter<TPath> writer,
-        IRefCountingMemoryProvider memoryProvider,
         scoped TraversalSubtree current,
         Span<PbtWriteOperation<TKey>> operations,
         ref PbtTraversalPath path,
@@ -222,7 +228,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         BucketPlan plan)
     {
         Span<byte> buffer = stackalloc byte[plan.GetBufferSize(operations.Length, bitDepth)];
-        PartitionOutcome partition = plan.WithBuffer(buffer).BucketSort(operations, bitDepth, metrics);
-        return FoldBoundaryFromPartition(store, metrics, ref reader, writer, memoryProvider, current, operations, ref path, bitDepth, partition);
+        PartitionOutcome partition = plan.WithBuffer(buffer).BucketSort(operations, bitDepth, context.Metrics);
+        return FoldBoundaryFromPartition(context, ref reader, writer, current, operations, ref path, bitDepth, partition);
     }
 }

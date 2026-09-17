@@ -10,6 +10,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Pbt;
 using NUnit.Framework;
 
@@ -1169,14 +1170,14 @@ public class PbtNodeGroupTests
         if (split)
         {
             using PbtPartitionBatches initialBatch = PbtStoreTestExtensions.PreparePartitions(initial);
-            root = TrieUpdater.UpdateRoot(store, default, initialBatch);
+            root = TrieUpdater.UpdateRoot(store, default, initialBatch, ParallelUnbalancedWork.DefaultOptions);
             expected.ApplyBatch(initial);
         }
         TrieUpdaterMetrics metrics = new();
         if (partitioned)
         {
             using PbtPartitionBatches batch = PbtStoreTestExtensions.PreparePartitions(changes);
-            root = TrieUpdater.UpdateRoot(store, root, batch, metrics);
+            root = TrieUpdater.UpdateRoot(store, root, batch, ParallelUnbalancedWork.DefaultOptions, metrics);
         }
         else
         {
@@ -1749,7 +1750,7 @@ public class PbtNodeGroupTests
         if (parallel)
         {
             using PbtPartitionBatches partitions = PbtStoreTestExtensions.PreparePartitions(changes);
-            actualRoot = TrieUpdater.UpdateRoot(store, root, partitions);
+            actualRoot = TrieUpdater.UpdateRoot(store, root, partitions, ParallelUnbalancedWork.DefaultOptions);
         }
         else actualRoot = TrieUpdater.UpdateRoot(store, root, batch.Build());
 

@@ -22,6 +22,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private readonly long _scopeId = Interlocked.Increment(ref _nextScopeId);
     private readonly ILogger _logger;
     private readonly PbtResourcePool.Usage _usage;
+    private readonly ParallelOptions _foldOptions;
     private readonly IPbtCommitTarget _commitTarget;
     private readonly IPbtChildHeaderSource _childHeaders;
     private readonly bool _isReadOnly;
@@ -52,9 +53,11 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         PbtResourcePool.Usage usage,
         bool isReadOnly,
         ITrieWarmer trieWarmer,
+        IPbtConfig config,
         ILogManager? logManager = null)
     {
         _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<PbtWorldStateScope>();
+        _foldOptions = new ParallelOptions { MaxDegreeOfParallelism = config.FoldConcurrency > 0 ? config.FoldConcurrency : Environment.ProcessorCount };
         _usage = usage;
         _currentStateId = currentStateId;
         _currentHeader = currentHeader;
@@ -153,7 +156,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             Metrics.PbtPrepareLeafChangesTime.Observe(Stopwatch.GetTimestamp() - start);
             LastFoldMutationCount = Bundle.PendingMutationCount;
             long updaterStart = Stopwatch.GetTimestamp();
-            _treeRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(Bundle), _treeRoot, changes);
+            _treeRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(Bundle), _treeRoot, changes, _foldOptions);
             Metrics.PbtTrieUpdaterTime.Observe(Stopwatch.GetTimestamp() - updaterStart);
             Bundle.CompleteLeafChanges();
         }

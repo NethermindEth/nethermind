@@ -18,10 +18,11 @@ internal sealed class MigrationScopeProvider(
     IPbtDbManager pbtManager,
     IPbtResourcePool resourcePool,
     MigrationBackendSelector selector,
+    IPbtConfig config,
     ILogManager logManager) : IWorldStateScopeProvider
 {
     private readonly IWorldStateScopeProvider _flat = flat.GlobalWorldState;
-    private readonly IWorldStateScopeProvider _mirror = new PbtMirrorScopeProvider(flat.GlobalWorldState, pbtManager, resourcePool, logManager);
+    private readonly IWorldStateScopeProvider _mirror = new PbtMirrorScopeProvider(flat.GlobalWorldState, pbtManager, resourcePool, config, logManager);
     private readonly IWorldStateScopeProvider _pbt = pbt.GlobalWorldState;
 
     internal IWorldStateScopeProvider Select(BlockHeader? baseBlock, BlockHeader? targetBlock)

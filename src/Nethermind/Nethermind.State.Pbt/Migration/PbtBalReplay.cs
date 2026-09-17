@@ -26,6 +26,7 @@ internal sealed class PbtBalReplay(
     IPbtResourcePool resourcePool,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     ISpecProvider specProvider,
+    IPbtConfig config,
     ILogManager logManager)
 {
     public void Apply(BlockHeader parent, BlockHeader child, ReadOnlyBlockAccessList blockAccessList)
@@ -46,7 +47,7 @@ internal sealed class PbtBalReplay(
         return new PbtWorldStateScope(stateId, parent, manager.GatherBundle(stateId, PbtResourcePool.Usage.ReadOnlyProcessingEnv),
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(codeDb, isPersistent: true), manager,
             NullPbtChildHeaderSource.Instance, resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: false,
-            new NoopTrieWarmer(), logManager);
+            new NoopTrieWarmer(), config, logManager);
     }
 
     private sealed class SingleScopeProvider(PbtBalReplay owner, BlockHeader parent, BlockHeader child) : IWorldStateScopeProvider
