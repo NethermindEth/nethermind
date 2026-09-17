@@ -1862,10 +1862,12 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            int lengthBeforeTranslation = blobTxAdded.GetLength();
 
             AcceptTxResult result = _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None);
             Assert.That(result, Is.EqualTo(isTxValid ? AcceptTxResult.Accepted : AcceptTxResult.Invalid));
             Assert.That(_txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned), Is.EqualTo(isTxValid));
+            int lengthAfterTranslation = isTxValid && isOsakaActivated ? GetUncachedLength(blobTxAdded) : 0;
 
             if (isTxValid)
             {
@@ -1875,6 +1877,11 @@ namespace Nethermind.TxPool.Test
                     ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
                     Assert.That(wrapper.Proofs.Length, Is.EqualTo(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1));
                     Assert.That(wrapper.Version, Is.EqualTo(isOsakaActivated ? ProofVersion.V1 : ProofVersion.V0));
+                    if (isOsakaActivated)
+                    {
+                        Assert.That(blobTxAdded.GetLength(), Is.EqualTo(lengthAfterTranslation));
+                        Assert.That(blobTxAdded.GetLength(), Is.GreaterThan(lengthBeforeTranslation));
+                    }
 
                     Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
                     if (isPersistentStorage)
@@ -1913,10 +1920,12 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            int lengthBeforeTranslation = blobTxAdded.GetLength();
 
             AcceptTxResult result = _txPool.SubmitTx(blobTxAdded, TxHandlingOptions.None);
             Assert.That(result, Is.EqualTo(isConversionEnabled ? AcceptTxResult.Accepted : AcceptTxResult.Invalid));
             Assert.That(_txPool.TryGetPendingTransaction(blobTxAdded.Hash!, out Transaction blobTxReturned), Is.EqualTo(isConversionEnabled));
+            int lengthAfterTranslation = isConversionEnabled ? GetUncachedLength(blobTxAdded) : 0;
 
             if (isConversionEnabled)
             {
@@ -1927,6 +1936,8 @@ namespace Nethermind.TxPool.Test
                     Assert.That(wrapper.Proofs.Length, Is.EqualTo(1));
                     Assert.That(wrapper.Version, Is.EqualTo(ProofVersion.V0));
                     Assert.That(IBlobProofsManager.For(ProofVersion.V0).ValidateProofs(wrapper), Is.True);
+                    Assert.That(blobTxAdded.GetLength(), Is.EqualTo(lengthAfterTranslation));
+                    Assert.That(blobTxAdded.GetLength(), Is.LessThan(lengthBeforeTranslation));
 
                     Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
                     if (isPersistentStorage)
@@ -2237,6 +2248,14 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(nonce)
                 .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
+
+        private static int GetUncachedLength(Transaction transaction)
+        {
+            Transaction copy = new();
+            transaction.CopyTo(copy, copyHash: true);
+            copy.ClearLengthCache();
+            return copy.GetLength();
+        }
 
         [Test]
         public async Task should_evict_txs_with_too_many_blobs_per_tx_after_fork()

@@ -203,6 +203,33 @@ public class TxBroadcasterTests
     }
 
     [Test]
+    public void should_reuse_precomputed_blob_announcement_across_peers([Values] bool isPrecomputed)
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        _headInfo.CurrentBaseFee = 0.GWei;
+        RecordingPeer firstPeer = new(TestItem.PublicKeyA);
+        RecordingPeer secondPeer = new(TestItem.PublicKeyB);
+        _broadcaster.AddPeer(firstPeer);
+        _broadcaster.AddPeer(secondPeer);
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields()
+            .SignedAndResolved()
+            .TestObject;
+        Transaction input = isPrecomputed ? new LightTransaction(tx) : tx;
+
+        _broadcaster.Broadcast(input, isPersistent: true);
+
+        Transaction firstAnnouncement = firstPeer.Sent.Single();
+        Transaction secondAnnouncement = secondPeer.Sent.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstAnnouncement, Is.TypeOf<LightTransaction>());
+            Assert.That(secondAnnouncement, Is.SameAs(firstAnnouncement));
+            Assert.That(firstAnnouncement, isPrecomputed ? Is.SameAs(input) : Is.Not.SameAs(input));
+        }
+    }
+
+    [Test]
     public void should_skip_large_or_blob_txs_when_picking_best_persistent_txs_to_broadcast(
         [Values(1, 2, 25, 50, 99, 100, 101, 1000)] int threshold,
         [Values(true, false)] bool useBlobTxs)

@@ -198,9 +198,10 @@ public abstract class BlockchainTestBase
         IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
         IWorldState stateProvider = mainBlockProcessingContext.WorldState;
         BlockchainProcessor blockchainProcessor = (BlockchainProcessor)mainBlockProcessingContext.BlockchainProcessor;
+        IBlockProcessingQueue blockchainProcessingQueue = mainBlockProcessingContext.BlockProcessingQueue;
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
-        blockchainProcessor.Start();
+        blockchainProcessingQueue.Start();
 
         try
         {
@@ -287,7 +288,7 @@ public abstract class BlockchainTestBase
 
             // NOTE: Tracer removal must happen AFTER StopAsync to ensure all blocks are traced
             // Blocks are queued asynchronously, so we need to wait for processing to complete
-            await blockchainProcessor.StopAsync(true);
+            await blockchainProcessingQueue.StopAsync(true);
             lastValidationError ??= asyncBlockError;
             stopwatch?.Stop();
 
@@ -342,7 +343,7 @@ public abstract class BlockchainTestBase
         }
         catch (Exception)
         {
-            await blockchainProcessor.StopAsync(true);
+            await blockchainProcessingQueue.StopAsync(true);
             throw;
         }
     }

@@ -89,7 +89,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         lookup[(int)Instruction.EXP] = SpecFlags.Eip160(spec)
             ? OpcodeHandler<ExpOpcode<TTracingInst, OnFlag>, TTracingInst, TCancelable>()
             : OpcodeHandler<ExpOpcode<TTracingInst, OffFlag>, TTracingInst, TCancelable>();
-        lookup[(int)Instruction.SIGNEXTEND] = OpcodeHandler<SignExtendOpcode, TTracingInst, TCancelable>();
+        lookup[(int)Instruction.SIGNEXTEND] = OpcodeHandler<SignExtendOpcode<TTracingInst>, TTracingInst, TCancelable>();
 
         lookup[(int)Instruction.LT] = OpcodeHandler<Math2Opcode<EvmInstructions.OpLt, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.GT] = OpcodeHandler<Math2Opcode<EvmInstructions.OpGt, TTracingInst>, TTracingInst, TCancelable>();
@@ -111,7 +111,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         if (spec.CLZEnabled)
-            lookup[(int)Instruction.CLZ] = OpcodeHandler<CountLeadingZerosOpcode, TTracingInst, TCancelable>();
+            lookup[(int)Instruction.CLZ] = OpcodeHandler<CountLeadingZerosOpcode<TTracingInst>, TTracingInst, TCancelable>();
 
         lookup[(int)Instruction.KECCAK256] = OpcodeHandler<KeccakOpcode<TTracingInst>, TTracingInst, TCancelable>();
 
@@ -595,9 +595,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
         {
             if (!HasCheckedBody)
-                return EvmInstructions.InstructionMath1Param<TGasPolicy, TOpMath>(ref stack, ref gas, vm);
+                return EvmInstructions.InstructionMath1Param<TGasPolicy, TOpMath, TTracingInst>(ref stack, ref gas, vm);
 
-            return EvmInstructions.Math1ParamCore<TOpMath, OffFlag>(ref stack);
+            return EvmInstructions.Math1ParamCore<TOpMath, TTracingInst, OffFlag>(ref stack);
         }
     }
 
@@ -619,9 +619,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
         {
             if (!HasCheckedBody)
-                return EvmInstructions.InstructionBitwise<TGasPolicy, TOpBitwise>(ref stack, ref gas, vm);
+                return EvmInstructions.InstructionBitwise<TGasPolicy, TOpBitwise, TTracingInst>(ref stack, ref gas, vm);
 
-            return EvmInstructions.BitwiseCore<TOpBitwise, OffFlag>(ref stack);
+            return EvmInstructions.BitwiseCore<TOpBitwise, TTracingInst, OffFlag>(ref stack);
         }
     }
 
@@ -635,14 +635,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     }
 
     [SkipLocalsInit]
-    private readonly struct SignExtendOpcode : IOpcodeBody
+    private readonly struct SignExtendOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionSignExtend(ref stack, ref gas, vm);
+            EvmInstructions.InstructionSignExtend<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
     [SkipLocalsInit]
-    private readonly struct CountLeadingZerosOpcode : IOpcodeBody
+    private readonly struct CountLeadingZerosOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
         public static bool HasCheckedBody => true;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -650,7 +650,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static int StackInputs => 1;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.CountLeadingZerosCore<OffFlag>(ref stack);
+            EvmInstructions.CountLeadingZerosCore<TTracingInst, OffFlag>(ref stack);
     }
 
     [SkipLocalsInit]

@@ -35,12 +35,12 @@ public class NodeHealthServiceTests
         IBlockTree blockFinder = Substitute.For<IBlockTree>();
         ISyncServer syncServer = Substitute.For<ISyncServer>();
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-        IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
+        IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
         IBlockProducerRunner blockProducerRunner = Substitute.For<IBlockProducerRunner>();
         ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
         syncConfig.SynchronizationEnabled.Returns(true);
         IHealthHintService healthHintService = Substitute.For<IHealthHintService>();
-        blockchainProcessor.IsProcessingBlocks(Arg.Any<ulong?>()).Returns(test.IsProcessingBlocks);
+        blockProcessingQueue.IsProcessingBlocks(Arg.Any<ulong?>()).Returns(test.IsProcessingBlocks);
         blockProducerRunner.IsProducingBlocks(Arg.Any<ulong?>()).Returns(test.IsProducingBlocks);
         syncServer.GetPeerCount().Returns(test.PeerCount);
 
@@ -63,7 +63,7 @@ public class NodeHealthServiceTests
         IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder, Substitute.For<ISyncPointers>(), syncConfig, Substitute.For<ISyncModeSelector>(), Substitute.For<ISyncProgressResolver>(), LimboLogs.Instance);
         IClHealthTracker tracker = Substitute.For<IClHealthTracker>();
         NodeHealthService nodeHealthService =
-            new(syncServer, blockchainProcessor, blockProducerRunner, new HealthChecksConfig(),
+            new(syncServer, blockProcessingQueue, blockProducerRunner, new HealthChecksConfig(),
                 healthHintService, ethSyncingInfo, tracker, null, new[] { drive }, test.IsMining);
         CheckHealthResult result = nodeHealthService.CheckHealth();
         AssertHealth(result, test.ExpectedHealthy, test.ExpectedMessage, test.ExpectedLongMessage, test.IsSyncing, test.ExpectedErrors);
@@ -74,7 +74,7 @@ public class NodeHealthServiceTests
     {
         IBlockTree blockFinder = Substitute.For<IBlockTree>();
         ISyncServer syncServer = Substitute.For<ISyncServer>();
-        IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
+        IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
         IBlockProducerRunner blockProducerRunner = Substitute.For<IBlockProducerRunner>();
         IHealthHintService healthHintService = Substitute.For<IHealthHintService>();
         ISyncModeSelector syncModeSelector = new StaticSelector(test.SyncMode);
@@ -101,7 +101,7 @@ public class NodeHealthServiceTests
         IClHealthTracker tracker = Substitute.For<IClHealthTracker>();
         tracker.CheckClAlive().Returns(test.ClAlive);
         NodeHealthService nodeHealthService =
-            new(syncServer, blockchainProcessor, blockProducerRunner, new HealthChecksConfig(),
+            new(syncServer, blockProcessingQueue, blockProducerRunner, new HealthChecksConfig(),
                 healthHintService, ethSyncingInfo, tracker, UInt256.Zero, new[] { drive }, false);
 
         CheckHealthResult result = nodeHealthService.CheckHealth();

@@ -62,6 +62,7 @@ internal static class BlobProofsTranslator
         }
 
         tx.NetworkWrapper = wrapper with { Proofs = cellProofs, Version = ProofVersion.V1 };
+        tx.ClearLengthCache();
         return true;
     }
 
@@ -84,6 +85,7 @@ internal static class BlobProofsTranslator
         }
 
         tx.NetworkWrapper = wrapper with { Proofs = proofs, Version = ProofVersion.V0 };
+        tx.ClearLengthCache();
         return true;
     }
 

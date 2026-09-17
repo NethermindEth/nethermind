@@ -869,8 +869,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         TryGetBlobTxSortingEquivalent(blobTx.Hash!, out Transaction? lightTx);
         if (lightTx is LightTransaction light)
         {
-            BlobCellMask cellMask = (blobTx.NetworkWrapper as ShardBlobNetworkWrapper)?.GetAvailableCellMask() ?? default;
-            light.UpdateBlobPoolMetadata(cellMask, blobTx.GetLength());
+            light.UpdateBlobPoolMetadata(blobTx);
         }
 
         _blobTxCache.Set(blobTx.Hash, blobTx);
