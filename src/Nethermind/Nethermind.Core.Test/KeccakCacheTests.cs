@@ -121,9 +121,11 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        [NonParallelizable]
         public void Compute_WithUnalignedInput_MatchesUncachedHash(
             [Values(20, 32, 63, 64, 65, 92)] int length,
-            [Values(0, 1, 7, 15)] int offset)
+            [Values(0, 1, 7, 15)] int offset,
+            [Values] bool storeComputedHash)
         {
             Random random = new(42);
             for (int i = 0; i < 1000; i++)
@@ -133,6 +135,7 @@ namespace Nethermind.Core.Test
                 ReadOnlySpan<byte> bytes = buffer.AsSpan(offset, length);
 
                 ValueHash256 expected = ValueKeccak.Compute(bytes);
+                if (storeComputedHash) KeccakCache.Store(bytes, in expected);
                 ValueHash256 actual = KeccakCache.Compute(bytes);
                 using (Assert.EnterMultipleScope())
                 {
@@ -140,12 +143,14 @@ namespace Nethermind.Core.Test
 
                     // Second call should hit cache
                     Assert.That(KeccakCache.Compute(bytes), Is.EqualTo(expected));
+                    Assert.That(KeccakCache.TryGet(bytes, out ValueHash256 cached), Is.True);
+                    Assert.That(cached, Is.EqualTo(expected));
                 }
             }
         }
 
         [Test]
-        public void Concurrent_read_write_stress([Values(32, 64)] int length)
+        public void Concurrent_read_write_stress([Values(20, 32, 64)] int length, [Values] bool storeComputedHash)
         {
             // Stress test the seqlock pattern with concurrent readers and writers
             const int iterations = 100_000;
@@ -178,8 +183,11 @@ namespace Nethermind.Core.Test
             {
                 int idx = i % 4;
                 byte[] input = collisions[idx];
+                if (storeComputedHash) KeccakCache.Store(input, in expectedValues[idx]);
                 ValueHash256 result = KeccakCache.Compute(input);
                 Assert.That(result, Is.EqualTo(expectedValues[idx]), $"iteration {i}, index {idx}");
+                if (KeccakCache.TryGet(input, out ValueHash256 cached))
+                    Assert.That(cached, Is.EqualTo(expectedValues[idx]), $"cached iteration {i}, index {idx}");
             });
         }
     }

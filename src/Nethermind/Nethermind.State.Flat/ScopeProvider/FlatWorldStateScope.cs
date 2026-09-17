@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -554,10 +555,17 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 // normal scope additionally bulk-applies the dirty accounts into the state trie.
                 if (!scope._trieless)
                 {
-                    using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
-                    foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
+                    if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
                     {
-                        stateSetter.Set(kv.Key, kv.Value);
+                        scope._stateTree.SetAccounts(_dirtyAccounts);
+                    }
+                    else
+                    {
+                        using StateTree.StateTreeBulkSetter stateSetter = scope._stateTree.BeginSet(_dirtyAccounts.Count);
+                        foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
+                        {
+                            stateSetter.Set(kv.Key, kv.Value);
+                        }
                     }
                 }
             }

@@ -62,17 +62,26 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_CanSaveToState()
+    public void Test_CanSaveToState([Values(1, 4, 8, 9)] int count)
     {
         using Context ctx = new(useFlat);
+        Address[] addresses = new Address[count];
+        addresses[0] = TestItem.AddressA;
+        Random random = new(2941 + count);
+        for (int i = 1; i < count; i++)
+        {
+            byte[] bytes = new byte[Address.Size];
+            random.NextBytes(bytes);
+            addresses[i] = new Address(bytes);
+        }
 
         Hash256 stateRoot;
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
         {
             Assert.That(scope.Get(TestItem.AddressA), Is.EqualTo(null));
-            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(count))
             {
-                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                for (int i = 0; i < count; i++) writeBatch.Set(addresses[i], new Account(100, (UInt256)(100 + i)));
             }
 
             scope.Commit(1);
@@ -80,11 +89,11 @@ public class ScopeProviderTests(bool useFlat)
         }
 
         Assert.That(stateRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
-        if (!useFlat) Assert.That(ctx.Kv.WritesCount, Is.EqualTo(1));
+        if (!useFlat && count == 1) Assert.That(ctx.Kv.WritesCount, Is.EqualTo(1));
 
         using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
-            Assert.That(scope.Get(TestItem.AddressA).Balance, Is.EqualTo((UInt256)100));
+            for (int i = 0; i < count; i++) Assert.That(scope.Get(addresses[i]).Balance, Is.EqualTo((UInt256)(100 + i)));
         }
     }
 
