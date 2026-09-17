@@ -402,8 +402,8 @@ public class PersistenceManagerTests
     [Test]
     public void DetermineSnapshotAction_InsufficientInMemoryDepth_ReturnsNull()
     {
-        // Depth above the fold target (60-16=44) is below MinReorgDepth (64), so the gate holds folding
-        // back; the seed at 16 is not configured either.
+        // Two independent reasons for null: the depth above the fold target (60-16=44) is under
+        // MinReorgDepth (64), and no seed is configured at 16.
         StateId persisted = Block0;
         StateId latest = CreateStateId(60);
         _finalizedStateProvider.SetFinalizedBlockNumber(100);
@@ -1069,8 +1069,8 @@ public class PersistenceManagerTests
     [Test]
     public void DetermineSnapshotAction_ExactlyAtMinimumBoundary_ReturnsNull()
     {
-        // One block short: folding to 16 would leave 79-16=63 reachable, below MinReorgDepth (64), so
-        // the gate holds. No backstop either (79 << LongFinalityMaxReorgDepth). Result: null.
+        // One block short of the fold threshold (79-16=63 < MinReorgDepth). No seed at 16 and no
+        // backstop (79 << LongFinalityMaxReorgDepth) either, so all three paths yield null.
         StateId persisted = Block0;
         StateId latest = CreateStateId(79);
         _finalizedStateProvider.SetFinalizedBlockNumber(100);
@@ -1103,9 +1103,9 @@ public class PersistenceManagerTests
         toPersist!.Dispose();
     }
 
-    // MinReorgDepth is a floor on what stays reachable, so the gate is on the depth left above the fold
-    // target. Gating on the depth before the fold left only MinReorgDepth-2*CompactSize.
-    [TestCase(65u, false, TestName = "DetermineSnapshotAction_FoldKeepsMinReorgDepth_BelowFloorHolds")]
+    // Folding must leave MinReorgDepth reachable above the new base, so the gate opens only once the
+    // head is that far past the fold target (block 16 here) — at head 80, not 79.
+    [TestCase(79u, false, TestName = "DetermineSnapshotAction_FoldKeepsMinReorgDepth_BelowFloorHolds")]
     [TestCase(80u, true, TestName = "DetermineSnapshotAction_FoldKeepsMinReorgDepth_AtFloorFolds")]
     public void DetermineSnapshotAction_FoldNeverDropsBelowMinReorgDepth(ulong latestBlock, bool expectFold)
     {
@@ -1120,7 +1120,7 @@ public class PersistenceManagerTests
         Assert.That(toPersist is not null, Is.EqualTo(expectFold));
         if (toPersist is not null)
         {
-            Assert.That(latestBlock - toPersist.To.BlockNumber, Is.GreaterThanOrEqualTo((ulong)_config.MinReorgDepth),
+            Assert.That(latestBlock - toPersist.To.BlockNumber, Is.GreaterThanOrEqualTo(_config.MinReorgDepth),
                 "folding left less than MinReorgDepth reachable above the new base");
             toPersist.Dispose();
         }

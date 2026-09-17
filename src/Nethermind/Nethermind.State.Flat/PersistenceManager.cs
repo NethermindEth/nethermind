@@ -136,7 +136,7 @@ public class PersistenceManager(
         // the new base rather than the depth before the fold: folding is allowed only while the state
         // above nextBoundary still covers MinReorgDepth.
         if (finalizedBlockNumber >= nextBoundary
-            && latestSnapshot.BlockNumber.SaturatingSub(nextBoundary) >= _minReorgDepth)
+            && snapshotsDepth + _compactSize > _minReorgDepth)
         {
             Hash256? canonicalRoot = finalizedStateProvider.GetFinalizedStateRootAt(nextBoundary);
             if (canonicalRoot is not null)
