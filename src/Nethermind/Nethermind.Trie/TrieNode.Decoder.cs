@@ -35,6 +35,9 @@ namespace Nethermind.Trie
         {
             private const int HashPairSize = 2;
             private const int MinHashBatchSize = 3;
+            private const int HashBatchSize = 8;
+            private const int VectorByteLength = 32;
+            private const int BranchHashBufferLength = HashBatchSize * (FullBranchRlpLength + Hash256.Size);
 
             /// <summary>The children of a node already known to be a branch.</summary>
             /// <remarks>
@@ -295,7 +298,7 @@ namespace Nethermind.Trie
                 HashPreparedBranchPairs(item, firstIndex, candidateMask);
             }
 
-            [InlineArray(141)]
+            [InlineArray(BranchHashBufferLength / VectorByteLength)]
             private struct BranchHashBuffer
             {
                 private Vector256<byte> _element0;
@@ -305,7 +308,7 @@ namespace Nethermind.Trie
             [MethodImpl(MethodImplOptions.NoInlining)]
             private static void HashPreparedBranchBatches(TrieNode item, ushort candidateMask)
             {
-                const int batchSize = 8;
+                const int batchSize = HashBatchSize;
                 Unsafe.SkipInit(out BranchHashBuffer buffer);
                 Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
                 Span<byte> inputs = storage[..(batchSize * FullBranchRlpLength)];

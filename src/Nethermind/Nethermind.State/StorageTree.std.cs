@@ -14,6 +14,11 @@ namespace Nethermind.State
     public partial class StorageTree
     {
         private const int LookupSize = 1024;
+        private const int Avx2HashBatchSize = 4;
+        private const int MaxHashBatchSize = 8;
+        private const int KeccakRate = 136;
+        private const int VectorByteLength = 32;
+        private const int LookupHashBufferLength = MaxHashBatchSize * KeccakRate;
 
         /// <summary>Hashed trie keys for storage slots <c>0</c> to <see cref="LookupSize"/> - 1.</summary>
         /// <remarks>
@@ -22,7 +27,7 @@ namespace Nethermind.State
         /// </remarks>
         private static readonly ValueHash256[] Lookup = CreateLookup();
 
-        [InlineArray(34)]
+        [InlineArray(LookupHashBufferLength / VectorByteLength)]
         private struct LookupHashBuffer
         {
             private Vector256<byte> _element0;
@@ -33,11 +38,11 @@ namespace Nethermind.State
             ValueHash256[] lookup = new ValueHash256[LookupSize];
             if (Avx2.IsSupported)
             {
-                int rate = Avx512F.IsSupported ? Keccak.Size : 136;
+                int rate = Avx512F.IsSupported ? Keccak.Size : KeccakRate;
                 LookupHashBuffer buffer = default;
                 Span<byte> blocks = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
                 Span<byte> hashes = MemoryMarshal.AsBytes(lookup.AsSpan());
-                int batchSize = Avx512F.IsSupported ? 8 : 4;
+                int batchSize = Avx512F.IsSupported ? MaxHashBatchSize : Avx2HashBatchSize;
                 for (int lane = 0; !Avx512F.IsSupported && lane < batchSize; lane++)
                 {
                     blocks[lane * rate + Keccak.Size] = 1;

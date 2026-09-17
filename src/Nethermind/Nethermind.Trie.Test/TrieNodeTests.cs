@@ -410,13 +410,8 @@ public class TrieNodeTests
 
     [Test]
     public void Resolves_full_branch_children_to_their_individual_hashes(
-        [Values(0x0001, 0x0003, 0x0007, 0x007f, 0x5555, 0x01ff, 0x03ff, 0x07ff, 0x7fff, 0xffff)] int branchMask)
+        [Values(0x0001, 0x0003, 0x0007, 0x000f, 0x001f, 0x003f, 0x007f, 0x5555, 0x01ff, 0x03ff, 0x07ff, 0x7fff, 0xffff)] int branchMask)
     {
-        if (!System.Runtime.Intrinsics.X86.Avx512F.VL.IsSupported)
-        {
-            Assert.Ignore("AVX-512VL intrinsics are not supported on this machine.");
-        }
-
         TrieNode root = new(NodeType.Branch);
         TrieNode?[] branches = new TrieNode?[TrieNode.BranchesCount];
 

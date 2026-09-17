@@ -129,7 +129,7 @@ namespace Nethermind.State.Proofs
             _fullStoragePaths = new Nibble[storageKeys.Count][];
             _storageProofItems = new List<byte[]>[storageKeys.Count];
 
-            if (Avx2.IsSupported && storageKeys.Count >= (Avx512F.IsSupported ? 2 : 4))
+            if (Avx2.IsSupported && storageKeys.Count >= (Avx512F.IsSupported ? 2 : Avx2HashBatchSize))
             {
                 InitializeBatchedStorageProofs(storageKeys);
                 return;
@@ -155,7 +155,13 @@ namespace Nethermind.State.Proofs
             };
         }
 
-        [InlineArray(42)]
+        private const int Avx2HashBatchSize = 4;
+        private const int MaxHashBatchSize = 8;
+        private const int KeccakRate = 136;
+        private const int VectorByteLength = 32;
+        private const int StorageHashBufferLength = MaxHashBatchSize * (KeccakRate + Keccak.Size);
+
+        [InlineArray(StorageHashBufferLength / VectorByteLength)]
         private struct StorageHashBuffer
         {
             private Vector256<byte> _element0;
@@ -164,16 +170,16 @@ namespace Nethermind.State.Proofs
         [SkipLocalsInit]
         private void InitializeBatchedStorageProofs(IReadOnlyCollection<UInt256> storageKeys)
         {
-            int rate = Avx512F.IsSupported ? Keccak.Size : 136;
-            int batchSize = Avx512F.IsSupported ? 8 : 4;
+            int rate = Avx512F.IsSupported ? Keccak.Size : KeccakRate;
+            int batchSize = Avx512F.IsSupported ? MaxHashBatchSize : Avx2HashBatchSize;
             Unsafe.SkipInit(out StorageHashBuffer buffer);
             Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
             Span<byte> blocks = storage[..(batchSize * rate)];
-            Span<byte> hashes = storage[(8 * rate)..];
+            Span<byte> hashes = storage[(MaxHashBatchSize * rate)..];
             blocks.Clear();
             for (int i = 0; !Avx512F.IsSupported && i < batchSize; i++)
             {
-                blocks[i * rate + 32] = 1;
+                blocks[i * rate + Keccak.Size] = 1;
                 blocks[i * rate + rate - 1] = 128;
             }
             int j = 0;
@@ -181,7 +187,7 @@ namespace Nethermind.State.Proofs
             using IEnumerator<UInt256> keys = storageKeys.GetEnumerator();
             for (; keys.MoveNext(); j++)
             {
-                Span<byte> key = blocks.Slice(pending * rate, 32);
+                Span<byte> key = blocks.Slice(pending * rate, Keccak.Size);
                 keys.Current.ToBigEndian(key);
                 SetStorageProof(j, key);
                 if (++pending == batchSize)
@@ -191,13 +197,13 @@ namespace Nethermind.State.Proofs
                 }
             }
             int tailStart = 0;
-            if (pending >= (Avx512F.IsSupported ? 2 : 4))
+            if (pending >= (Avx512F.IsSupported ? 2 : Avx2HashBatchSize))
             {
-                SetStoragePaths(blocks, hashes, j - pending, Avx512F.IsSupported ? pending : 4);
-                tailStart = Avx512F.IsSupported ? pending : 4;
+                SetStoragePaths(blocks, hashes, j - pending, Avx512F.IsSupported ? pending : Avx2HashBatchSize);
+                tailStart = Avx512F.IsSupported ? pending : Avx2HashBatchSize;
             }
             for (int i = tailStart; i < pending; i++)
-                _fullStoragePaths[j - pending + i] = Nibbles.FromBytes(ValueKeccak.Compute(blocks.Slice(i * rate, 32)).Bytes);
+                _fullStoragePaths[j - pending + i] = Nibbles.FromBytes(ValueKeccak.Compute(blocks.Slice(i * rate, Keccak.Size)).Bytes);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
