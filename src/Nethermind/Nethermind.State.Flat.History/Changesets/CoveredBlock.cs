@@ -12,7 +12,11 @@ namespace Nethermind.State.Flat.History.Changesets;
 /// it when they are consecutive, and one seed source per worker.</summary>
 internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBlocks, ConsecutiveBlockOverlays? chain, IReadOnlySet<AddressAsKey> excluded) : ICoveredBlock
 {
-    public IPrefixStateSeedSource CreateWorkerSeeds() => new WorkerSeeds(rows, earlierBlocks);
+    // One per block, handed to every worker: they all stand on the same parent state, so the first to read a key
+    // reads it for all of them.
+    private readonly BlockReadCache _reads = new();
+
+    public IPrefixStateSeedSource CreateWorkerSeeds() => new WorkerSeeds(rows, earlierBlocks, _reads);
 
     /// <summary>Nothing is published for a block the chain cannot describe exactly.</summary>
     public void Complete() => chain?.Publish(rows, earlierBlocks, excluded);
@@ -27,12 +31,14 @@ internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBl
     {
         private readonly BlockChangesets _rows;
         private readonly RangeOverlay? _earlierBlocks;
+        private readonly BlockReadCache _reads;
         private readonly MidBlockOverlay _overlay = new();
 
-        public WorkerSeeds(BlockChangesets rows, RangeOverlay? earlierBlocks)
+        public WorkerSeeds(BlockChangesets rows, RangeOverlay? earlierBlocks, BlockReadCache reads)
         {
             _rows = rows;
             _earlierBlocks = earlierBlocks;
+            _reads = reads;
             _overlay.Reset(rows.Number);
         }
 
@@ -48,7 +54,7 @@ internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBl
             while (_overlay.Folded < transactionIndex) _overlay.Fold(_overlay.Folded, _rows.Rows[_overlay.Folded]);
 
             IStateReadOverlay view = new MidBlockReadOverlay(_overlay);
-            slot.Arm(_earlierBlocks is null ? view : new ChainedReadOverlay(view, _earlierBlocks), NoLease.Instance);
+            slot.Arm(_earlierBlocks is null ? view : new ChainedReadOverlay(view, _earlierBlocks), NoLease.Instance, _reads);
             return true;
         }
 

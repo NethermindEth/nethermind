@@ -36,7 +36,20 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
 
         public Account? Get(Address address)
         {
-            Account? underlying = inner.Get(address);
+            Account? underlying;
+            if (slot.Cache is { } cache)
+            {
+                if (!cache.TryGetAccount(address, out underlying))
+                {
+                    underlying = inner.Get(address);
+                    cache.SetAccount(address, underlying);
+                }
+            }
+            else
+            {
+                underlying = inner.Get(address);
+            }
+
             return slot.Current is { } overlay && overlay.TryGetAccount(address, underlying, out Account? overlaid) ? overlaid : underlying;
         }
 
@@ -64,7 +77,16 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
         {
             if (slot.Current is { } overlay && overlay.TryGetStorage(address, in index, out value)) return;
 
+            if (slot.Cache is not { } cache)
+            {
+                inner.Get(in index, out value);
+                return;
+            }
+
+            if (cache.TryGetSlot(address, in index, out value)) return;
+
             inner.Get(in index, out value);
+            cache.SetSlot(address, in index, in value);
         }
 
         public void HintSet(in UInt256 index) => inner.HintSet(in index);
