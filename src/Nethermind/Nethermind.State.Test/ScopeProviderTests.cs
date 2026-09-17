@@ -146,6 +146,43 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
+    [NonParallelizable]
+    public void Batched_storage_keys_match_scalar_hashes(
+        [Values(4, 5, 7, 8, 9, 16, 17, 33)] int count, [Values] bool includeLookupSlots)
+    {
+        using Context ctx = new(useFlat);
+        using IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null);
+        UInt256[] indices = new UInt256[count];
+        Random random = new(6513 + count);
+        byte[] bytes = new byte[Hash256.Size];
+        for (int i = 0; i < count; i++)
+        {
+            random.NextBytes(bytes);
+            indices[i] = includeLookupSlots && i % 3 == 0 ? (UInt256)i : new UInt256(bytes, isBigEndian: true);
+        }
+        for (int round = 0; round < 2; round++)
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch write = scope.StartWriteBatch(1))
+            {
+                if (round == 0) write.Set(TestItem.AddressA, new Account(100, 100));
+                using IWorldStateScopeProvider.IStorageWriteBatch storage = write.CreateStorageWriteBatch(TestItem.AddressA, Math.Max(17, count));
+                for (int i = 0; i < count; i++) storage.Set(indices[i], round == 1 && i % 2 == 0 ? UInt256.Zero : (UInt256)(i + 1));
+            }
+            IWorldStateScopeProvider.IStorageTree tree = scope.CreateStorageTree(TestItem.AddressA);
+            for (int i = 0; i < count; i++)
+            {
+                indices[i].ToBigEndian(bytes);
+                tree.Get(indices[i], out UInt256 value);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(KeccakCache.Compute(bytes), Is.EqualTo(ValueKeccak.Compute(bytes)), "cached slot hash");
+                    Assert.That(value, Is.EqualTo(round == 1 && i % 2 == 0 ? UInt256.Zero : (UInt256)(i + 1)), "slot value");
+                }
+            }
+        }
+    }
+
+    [Test]
     public void Test_CanSaveToCode()
     {
         using Context ctx = new(useFlat);
