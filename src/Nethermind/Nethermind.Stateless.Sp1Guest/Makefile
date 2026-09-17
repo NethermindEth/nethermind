@@ -60,8 +60,6 @@ build: dotnet-build
 	if [ -z "$$len" ]; then echo "error: could not read __embedded_resourcedata from the ILC map" >&2; exit 1; fi; \
 	if [ "$$len" != "0" ]; then echo "error: the guest image embeds $$len bytes of manifest resources; the guest reads none, find the assembly that added them" >&2; exit 1; fi; \
 	echo "Resource verification: OK - no manifest resources in the guest image"
-	# No .patched step here: bflat runs patch_elf for --libc zisk only, so
-	# the linked Program is the artifact.
 	mkdir -p $(GUEST_DIR)/bin && \
 		mv -f $(GUEST_DIR)/Program $(GUEST_DIR)/bin/nethermind
 

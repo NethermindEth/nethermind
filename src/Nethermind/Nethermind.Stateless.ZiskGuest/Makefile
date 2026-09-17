@@ -49,8 +49,7 @@ build: dotnet-build
 	if [ "$$len" != "0" ]; then echo "error: the guest image embeds $$len bytes of manifest resources; the guest reads none, find the assembly that added them" >&2; exit 1; fi; \
 	echo "Resource verification: OK - no manifest resources in the guest image"
 	mkdir -p $(GUEST_DIR)/bin && \
-		mv -f $(GUEST_DIR)/Program.patched $(GUEST_DIR)/bin/nethermind && \
-		rm -f $(GUEST_DIR)/Program
+		mv -f $(GUEST_DIR)/Program $(GUEST_DIR)/bin/nethermind
 
 run:
 	docker run --rm -e RUST_BACKTRACE=full \
@@ -65,7 +64,6 @@ clean:
 		$(GUEST_DIR)/bin/** \
 		$(GUEST_DIR)/Program \
 		$(GUEST_DIR)/Program.o \
-		$(GUEST_DIR)/Program.patched \
 		$(GUEST_DIR)/Program.map.xml
 	dotnet clean -c release $(MAKEFILE_DIR)/../Stateless.slnx
 
