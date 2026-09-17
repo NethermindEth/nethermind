@@ -82,6 +82,19 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Setup_restores_default_activation_between_tests()
+    {
+        Execute(MainnetSpecProvider.CancunActivation, (byte)Instruction.STOP);
+        Assert.That(Activation, Is.EqualTo(MainnetSpecProvider.CancunActivation));
+
+        TearDown();
+        Setup();
+
+        Assert.That(Activation, Is.EqualTo(new ForkActivation(MainnetSpecProvider.ByzantiumBlockNumber, 0)));
+        AssertExpZeroTo160();
+    }
+
+    [Test]
     public void Opcode_refresh_recaptures_frame_handlers()
     {
         Type tableType = (typeof(VirtualMachine<>).GetNestedType("OpcodeTable", BindingFlags.NonPublic)
@@ -1104,7 +1117,9 @@ public class VirtualMachineTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Exp_0_160()
+    public void Exp_0_160() => AssertExpZeroTo160();
+
+    private void AssertExpZeroTo160()
     {
         TestAllTracerWithOutput receipt = Execute(
             (byte)Instruction.PUSH1,

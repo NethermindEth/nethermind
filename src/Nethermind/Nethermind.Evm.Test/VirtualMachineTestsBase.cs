@@ -62,6 +62,9 @@ public abstract class VirtualMachineTestsBase
     [SetUp]
     public virtual void Setup()
     {
+        BlockNumber = MainnetSpecProvider.ByzantiumBlockNumber;
+        Timestamp = 0UL;
+
         ILogManager logManager = GetLogManager();
 
         _stateDb = new MemDb();
