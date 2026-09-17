@@ -37,7 +37,12 @@ public interface IDebugBridge
     object GetConfigValue(string category, string name);
     ChainLevelInfo GetLevelInfo(ulong number);
     int DeleteChainSlice(ulong startNumber, bool force = false);
-    /// <summary>Rewinds to a canonical block with retained state and prunes abandoned state; returns false if refused.</summary>
+    /// <summary>Rewinds to a canonical block with retained state and prunes abandoned flat-state snapshots.</summary>
+    /// <remarks>
+    /// Does not requeue removed transactions or clear receipt indexes, safe/finalized hashes or sync metadata.
+    /// Receipt lookups may still return removed transactions. Requires quiescent block processing and persistence.
+    /// </remarks>
+    /// <returns>Whether the rewind succeeded.</returns>
     bool UpdateHeadBlock(Hash256 blockHash);
     Task<bool> MigrateReceipts(ulong from, ulong to);
     void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);

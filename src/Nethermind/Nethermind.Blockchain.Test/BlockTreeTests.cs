@@ -2925,23 +2925,24 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void TryRewindHead_MovesTheHeadBackAndDeCanonicalizesTheBlocksAbove()
+    public void TryRewindHead_MovesTheHeadBackAndDeCanonicalizesTheBlocksAbove([Values(0UL, 2UL)] ulong targetNumber)
     {
         (BlockTree blockTree, Block[] chain) = BuildCanonicalChain(5);
 
-        Assert.That(blockTree.TryRewindHead(chain[1].Hash!), Is.True);
+        Block target = blockTree.FindBlock(targetNumber, BlockTreeLookupOptions.None)!;
+        Assert.That(blockTree.TryRewindHead(target.Hash!), Is.True);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(blockTree.Head!.Hash, Is.EqualTo(chain[1].Hash!));
-            foreach (Block above in chain[2..])
+            Assert.That(blockTree.Head!.Hash, Is.EqualTo(target.Hash!));
+            foreach (Block above in chain.Where(block => block.Number > targetNumber))
             {
                 Assert.That(blockTree.IsMainChain(above.Header), Is.False, $"H={above.Number} must lose its canonical marker");
                 Assert.That(blockTree.FindCanonicalBlockInfo(above.Number), Is.Null, $"H={above.Number} must have no canonical block");
             }
 
-            Assert.That(blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(chain[1].Hash!));
-            Assert.That(blockTree.BestSuggestedBody!.Hash, Is.EqualTo(chain[1].Hash!));
+            Assert.That(blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(target.Hash!));
+            Assert.That(blockTree.BestSuggestedBody!.Hash, Is.EqualTo(target.Hash!));
         }
     }
 
@@ -3029,8 +3030,12 @@ public class BlockTreeTests
     {
         (BlockTree blockTree, Block[] chain) = BuildCanonicalChain(3);
 
-        Assert.That(blockTree.TryRewindHead(TestItem.KeccakA), Is.False);
-        Assert.That(blockTree.Head!.Hash, Is.EqualTo(chain[^1].Hash!));
+        bool rewound = blockTree.TryRewindHead(TestItem.KeccakA);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewound, Is.False);
+            Assert.That(blockTree.Head!.Hash, Is.EqualTo(chain[^1].Hash!));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -3047,8 +3052,12 @@ public class BlockTreeTests
         Assert.That(blockTree.Head!.Hash, Is.EqualTo(chain[0].Hash!), "precondition: the head stays behind");
         Assert.That(blockTree.IsMainChain(chain[^1].Header), Is.True, "precondition: the target is canonical");
 
-        Assert.That(blockTree.TryRewindHead(chain[^1].Hash!), Is.False);
-        Assert.That(blockTree.Head!.Hash, Is.EqualTo(chain[0].Hash!));
+        bool rewound = blockTree.TryRewindHead(chain[^1].Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewound, Is.False);
+            Assert.That(blockTree.Head!.Hash, Is.EqualTo(chain[0].Hash!));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -3074,14 +3083,19 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void TryRewindHead_RefusesABlockOffTheMainChain()
+    public void TryRewindHead_RefusesABlockOffTheMainChain([Values(2UL, 3UL)] ulong targetNumber)
     {
         (BlockTree blockTree, Block[] chain) = BuildCanonicalChain(3);
-        Block sibling = Build.A.Block.WithNumber(2).WithParent(chain[0]).WithExtraData([0xBB]).TestObject;
+        Block parent = blockTree.FindBlock(targetNumber - 1, BlockTreeLookupOptions.None)!;
+        Block sibling = Build.A.Block.WithParent(parent).WithExtraData([0xBB]).TestObject;
         blockTree.SuggestBlock(sibling);
 
-        Assert.That(blockTree.TryRewindHead(sibling.Hash!), Is.False);
-        Assert.That(blockTree.Head!.Hash, Is.EqualTo(chain[^1].Hash!));
+        bool rewound = blockTree.TryRewindHead(sibling.Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewound, Is.False);
+            Assert.That(blockTree.Head!.Hash, Is.EqualTo(chain[^1].Hash!));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

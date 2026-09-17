@@ -1477,7 +1477,7 @@ namespace Nethermind.Blockchain
             Block? block = FindBlock(blockHash, BlockTreeLookupOptions.None);
             if (block?.Hash is null)
             {
-                if (Logger.IsWarn) Logger.Warn($"Cannot rewind the head to {blockHash} - the block is unknown.");
+                if (Logger.IsWarn) Logger.Warn($"Cannot rewind the head to {blockHash} - the block is unknown or its body is unavailable.");
                 return false;
             }
 

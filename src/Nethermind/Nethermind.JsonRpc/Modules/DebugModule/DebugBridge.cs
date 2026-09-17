@@ -20,6 +20,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
@@ -31,6 +32,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugBridge : IDebugBridge
 {
+    private readonly ILogger _logger = NullLogger.Instance;
     private readonly IConfigProvider _configProvider;
     private readonly IGethStyleTracer _tracer;
     private readonly IBlockTree _blockTree;
@@ -43,6 +45,25 @@ public class DebugBridge : IDebugBridge
     private readonly IBlockStore _blockStore;
     private readonly IWorldStateManager _worldStateManager;
     private readonly Dictionary<string, IDb> _dbMappings;
+
+    /// <summary>Creates a debug bridge with diagnostics for refused head resets.</summary>
+    public DebugBridge(
+        IConfigProvider configProvider,
+        IReadOnlyDbProvider dbProvider,
+        IGethStyleTracer tracer,
+        IBlockTree blockTree,
+        IReceiptStorage receiptStorage,
+        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
+        IReceiptsMigration receiptsMigration,
+        ISpecProvider specProvider,
+        ISyncModeSelector syncModeSelector,
+        IBadBlockStore badBlockStore,
+        IBlockStore blockStore,
+        IWorldStateManager worldStateManager,
+        ILogManager logManager)
+        : this(configProvider, dbProvider, tracer, blockTree, receiptStorage, receiptFinder,
+            receiptsMigration, specProvider, syncModeSelector, badBlockStore, blockStore, worldStateManager)
+        => _logger = logManager.GetClassLogger<DebugBridge>();
 
     public DebugBridge(
         IConfigProvider configProvider,
@@ -107,11 +128,13 @@ public class DebugBridge : IDebugBridge
         BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
         if (header is null) return false;
 
-        if (!_worldStateManager.GlobalStateReader.HasStateForBlock(header)
-            || !_blockTree.TryRewindHead(blockHash))
+        if (!_worldStateManager.GlobalStateReader.HasStateForBlock(header))
         {
+            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockHash}: state is unavailable.");
             return false;
         }
+
+        if (!_blockTree.TryRewindHead(blockHash)) return false;
 
         // Replayed payloads retain WasProcessed/cached VALID results despite losing state; use fresh payloads.
         _worldStateManager.DropStateNotReachableFrom(header);

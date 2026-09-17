@@ -10,9 +10,11 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.State;
+using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -53,6 +55,8 @@ public class DebugBridgeTests
         };
         IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
         worldStateManager.GlobalStateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(target != Target.MissingState);
+        TestLogger logger = new();
+        ILogManager logManager = new OneLoggerLogManager(new ILogger(logger));
         DebugBridge bridge = new(
             Substitute.For<IConfigProvider>(),
             Substitute.For<IReadOnlyDbProvider>(),
@@ -65,7 +69,8 @@ public class DebugBridgeTests
             Substitute.For<ISyncModeSelector>(),
             Substitute.For<IBadBlockStore>(),
             Substitute.For<IBlockStore>(),
-            worldStateManager);
+            worldStateManager,
+            logManager);
 
         bool updated = bridge.UpdateHeadBlock(hash);
 
@@ -73,6 +78,8 @@ public class DebugBridgeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(updated, Is.EqualTo(expected));
+            if (target == Target.MissingState)
+                Assert.That(logger.LogList, Does.Contain($"Cannot rewind the head to {hash}: state is unavailable."));
             Assert.That(blockTree.Head!.Hash, Is.EqualTo(expectedHead.Hash));
             // The persisted head pointer (keyed by Keccak.Zero) must follow the live head, never a rejected target.
             Assert.That(builder.BlockInfoDb.Get(Keccak.Zero.Bytes), Is.EqualTo(expectedHead.Hash!.Bytes.ToArray()));
