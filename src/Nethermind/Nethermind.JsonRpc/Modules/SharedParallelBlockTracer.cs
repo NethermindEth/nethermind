@@ -6,7 +6,6 @@ using System.Threading;
 using Autofac;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
-using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State.OverridableEnv;

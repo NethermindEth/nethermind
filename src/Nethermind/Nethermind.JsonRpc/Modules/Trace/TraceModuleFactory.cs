@@ -9,7 +9,6 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
-using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State.OverridableEnv;
