@@ -13,6 +13,7 @@ namespace Nethermind.State.Pbt;
 /// <remarks>
 /// Each partition is split into hash-selected shards holding set-associative slots with second-chance replacement.
 /// Each shard owns its payload references; a hit acquires a separate caller-owned reference under the shard lock.
+/// Account and code entries key on the narrower <see cref="PbtNodePath"/>; only the storage partition pays for <see cref="PbtStorageNodePath"/>.
 /// </remarks>
 public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
 {
@@ -21,40 +22,34 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
     private const long EntryOverhead = 384;
     // Sizes the slot table only; a slot is one reference, so a small assumption over-provisions slots rather than starving the byte budget.
     private const long AssumedEntrySize = EntryOverhead + 512;
-    private readonly Partition[] _partitions =
-    [
-        new(config.AccountTrieNodeCacheSizeBudget, "account"),
-        new(config.CodeTrieNodeCacheSizeBudget, "code"),
-        new(config.StorageTrieNodeCacheSizeBudget, "storage"),
-    ];
+    private readonly Partition<PbtNodePath> _account = new(config.AccountTrieNodeCacheSizeBudget, "account");
+    private readonly Partition<PbtNodePath> _code = new(config.CodeTrieNodeCacheSizeBudget, "code");
+    private readonly Partition<PbtStorageNodePath> _storage = new(config.StorageTrieNodeCacheSizeBudget, "storage");
     private long _memorySize;
     private bool _disposed;
 
     internal long MemorySize => Interlocked.Read(ref _memorySize);
 
-    private static Shard[] CreateShards()
-    {
-        Shard[] shards = new Shard[ShardCount];
-        for (int index = 0; index < shards.Length; index++) shards[index] = new Shard();
-        return shards;
-    }
+    private static bool IsStorage<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath> =>
+        path.BitDepth == 4 && path.GetByte(0) == 0xF0
+        || path.BitDepth >= 8 && path.GetByte(0) == Eip8297KeyDerivation.StorageZone;
 
-    private Partition GetPartition<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath>
-    {
-        if (path.BitDepth == 0) return _partitions[0];
-        if (path.BitDepth == 4 && path.GetByte(0) == 0xF0
-            || path.BitDepth >= 8 && path.GetByte(0) == Eip8297KeyDerivation.StorageZone)
-            return _partitions[2];
-        return _partitions[path.BitDepth >= 8 && path.GetByte(0) == Eip8297KeyDerivation.CodeZone ? 1 : 0];
-    }
+    private static bool IsCode<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath> =>
+        path.BitDepth >= 8 && path.GetByte(0) == Eip8297KeyDerivation.CodeZone;
 
     private static int ShardIndex(int hash) => (int)((uint)hash >> 24);
 
-    internal bool TryGet<TPath>(in ValueHash256 groupHash, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+    internal bool TryGet<TPath>(in ValueHash256 groupHash, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> =>
+        IsStorage(path)
+            ? TryGet(_storage, groupHash, path, out payload)
+            : TryGet(IsCode(path) ? _code : _account, groupHash, path, out payload);
+
+    private bool TryGet<TPath, TStored>(Partition<TStored> partition, in ValueHash256 groupHash, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload)
+        where TPath : struct, IPbtNodePath<TPath>
+        where TStored : struct, IPbtNodePath<TStored>
     {
-        Partition partition = GetPartition(path);
         int hash = path.GetHashCode();
-        Shard shard = partition.Shards[ShardIndex(hash)];
+        Shard<TStored> shard = partition.Shards[ShardIndex(hash)];
         lock (shard.Sync)
         {
             if (!Volatile.Read(ref _disposed) && shard.Entries is not null)
@@ -62,7 +57,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
                 int first = partition.SetIndex(hash) * WaysPerSet;
                 for (int slot = first; slot < first + WaysPerSet; slot++)
                 {
-                    Entry? entry = shard.Entries[slot];
+                    Entry<TStored>? entry = shard.Entries[slot];
                     if (entry is not null && entry.GroupHash == groupHash && entry.Path.Equals(path))
                     {
                         entry.Referenced = true;
@@ -81,17 +76,24 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
 
     internal void Add<TPath>(in ValueHash256 groupHash, TPath path, RefCountingMemory payload) where TPath : struct, IPbtNodePath<TPath>
     {
-        Partition partition = GetPartition(path);
+        if (IsStorage(path)) Add(_storage, groupHash, path, payload);
+        else Add(IsCode(path) ? _code : _account, groupHash, path, payload);
+    }
+
+    private void Add<TPath, TStored>(Partition<TStored> partition, in ValueHash256 groupHash, TPath path, RefCountingMemory payload)
+        where TPath : struct, IPbtNodePath<TPath>
+        where TStored : struct, IPbtNodePath<TStored>
+    {
         long size = payload.GetSpan().Length + EntryOverhead;
         if ((ulong)(size + partition.TableSize) > partition.ShardBudget) return;
         int hash = path.GetHashCode();
-        Shard shard = partition.Shards[ShardIndex(hash)];
+        Shard<TStored> shard = partition.Shards[ShardIndex(hash)];
         lock (shard.Sync)
         {
             if (Volatile.Read(ref _disposed)) return;
             if (shard.Entries is null)
             {
-                shard.Entries = new Entry[partition.SetCount * WaysPerSet];
+                shard.Entries = new Entry<TStored>[partition.SetCount * WaysPerSet];
                 shard.Hands = new byte[partition.SetCount];
                 ChangeSize(partition, shard, partition.TableSize);
             }
@@ -101,7 +103,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
             int stale = -1;
             for (int slot = first; slot < first + WaysPerSet; slot++)
             {
-                Entry? entry = shard.Entries[slot];
+                Entry<TStored>? entry = shard.Entries[slot];
                 if (entry is null) target = target < 0 ? slot : target;
                 else if (entry.Path.Equals(path))
                 {
@@ -121,13 +123,13 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
             }
             // Copy only on admission: a shrunk pooled payload may retain far more memory than its visible length.
             RefCountingMemory cachedPayload = RefCountingMemory.Wrapping(payload.GetSpan().ToArray());
-            shard.Entries[target] = new Entry(groupHash, path.ToPath<PbtStorageNodePath>(), cachedPayload, size);
+            shard.Entries[target] = new Entry<TStored>(groupHash, path.ToPath<TStored>(), cachedPayload, size);
             ChangeSize(partition, shard, size);
         }
     }
 
     /// <summary>Second-chance sweep of one set: returns the first unreferenced slot other than <paramref name="skip"/>, clearing the flags it passes, or -1 when there is none.</summary>
-    private static int ClockVictim(Shard shard, int set, int skip)
+    private static int ClockVictim<TStored>(Shard<TStored> shard, int set, int skip) where TStored : struct, IPbtNodePath<TStored>
     {
         int first = set * WaysPerSet;
         int hand = shard.Hands![set];
@@ -135,7 +137,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
         {
             int slot = first + hand;
             hand = (hand + 1) % WaysPerSet;
-            Entry? entry = shard.Entries![slot];
+            Entry<TStored>? entry = shard.Entries![slot];
             if (entry is null || slot == skip) continue;
             if (entry.Referenced)
             {
@@ -148,9 +150,9 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
         return -1;
     }
 
-    private void Evict(Partition partition, Shard shard, int slot)
+    private void Evict<TStored>(Partition partition, Shard<TStored> shard, int slot) where TStored : struct, IPbtNodePath<TStored>
     {
-        Entry entry = shard.Entries![slot]!;
+        Entry<TStored> entry = shard.Entries![slot]!;
         shard.Entries[slot] = null;
         ((IDisposable)entry.Payload).Dispose();
         ChangeSize(partition, shard, -entry.Size);
@@ -159,15 +161,21 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
     /// <summary>Releases retained groups without invalidating caller-owned leases.</summary>
     public void Clear()
     {
-        foreach (Partition partition in _partitions)
-            foreach (Shard shard in partition.Shards)
-                lock (shard.Sync) ClearShard(partition, shard);
+        Clear(_account);
+        Clear(_code);
+        Clear(_storage);
     }
 
-    private void ClearShard(Partition partition, Shard shard)
+    private void Clear<TStored>(Partition<TStored> partition) where TStored : struct, IPbtNodePath<TStored>
+    {
+        foreach (Shard<TStored> shard in partition.Shards)
+            lock (shard.Sync) ClearShard(partition, shard);
+    }
+
+    private void ClearShard<TStored>(Partition partition, Shard<TStored> shard) where TStored : struct, IPbtNodePath<TStored>
     {
         if (shard.Entries is null) return;
-        foreach (Entry? entry in shard.Entries) ((IDisposable?)entry?.Payload)?.Dispose();
+        foreach (Entry<TStored>? entry in shard.Entries) ((IDisposable?)entry?.Payload)?.Dispose();
         shard.Entries = null;
         shard.Hands = null;
         ChangeSize(partition, shard, -shard.MemorySize);
@@ -187,9 +195,8 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
         Clear();
     }
 
-    private sealed class Partition(ulong budget, string label)
+    private abstract class Partition(ulong budget, string label)
     {
-        internal readonly Shard[] Shards = CreateShards();
         internal readonly ulong ShardBudget = budget / ShardCount;
         internal readonly int SetCount = (int)Math.Max(1, budget / ShardCount / (ulong)(WaysPerSet * AssumedEntrySize));
         internal readonly string Label = label;
@@ -199,18 +206,34 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
         internal int SetIndex(int hash) => (hash & 0xFFFFFF) % SetCount;
     }
 
-    private sealed class Shard
+    private sealed class Partition<TStored>(ulong budget, string label) : Partition(budget, label) where TStored : struct, IPbtNodePath<TStored>
+    {
+        internal readonly Shard<TStored>[] Shards = CreateShards();
+
+        private static Shard<TStored>[] CreateShards()
+        {
+            Shard<TStored>[] shards = new Shard<TStored>[ShardCount];
+            for (int index = 0; index < shards.Length; index++) shards[index] = new Shard<TStored>();
+            return shards;
+        }
+    }
+
+    private abstract class Shard
     {
         internal readonly Lock Sync = new();
-        internal Entry?[]? Entries;
         internal byte[]? Hands;
         internal long MemorySize;
     }
 
-    private sealed class Entry(ValueHash256 groupHash, PbtStorageNodePath path, RefCountingMemory payload, long size)
+    private sealed class Shard<TStored> : Shard where TStored : struct, IPbtNodePath<TStored>
+    {
+        internal Entry<TStored>?[]? Entries;
+    }
+
+    private sealed class Entry<TStored>(ValueHash256 groupHash, TStored path, RefCountingMemory payload, long size) where TStored : struct, IPbtNodePath<TStored>
     {
         internal readonly ValueHash256 GroupHash = groupHash;
-        internal readonly PbtStorageNodePath Path = path;
+        internal readonly TStored Path = path;
         internal readonly RefCountingMemory Payload = payload;
         internal readonly long Size = size;
         internal bool Referenced;
