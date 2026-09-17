@@ -124,18 +124,6 @@ public class ImportPbtFromPreimageFlatTests
         bundle.SetAccount(TestItem.AddressB, retained);
         bundle.SetAccount(TestItem.AddressC, null);
         bundle.SetAccount(TestItem.AddressE, new Account(2, 0));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(bundle.GetCodeReference(bigCodeHash.ValueHash256), Is.EqualTo(1));
-            Assert.That(bundle.GetCodeReference(delegationHash.ValueHash256), Is.EqualTo(1), "clearing an imported delegation releases its reference");
-        }
-        int codeLeaves = 0;
-        foreach ((PbtStorageFullKey key, ValueHash256 _) in bundle.EnumerateLeaves())
-            if (key.Bytes[0] == 0x01) codeLeaves++;
-        int expectedCodeLeaves = 0;
-        foreach (string key in model.Keys)
-            if (key.StartsWith("01", StringComparison.Ordinal)) expectedCodeLeaves++;
-        Assert.That(codeLeaves, Is.EqualTo(expectedCodeLeaves), "zero chunks remain absent after reopening");
         bundle.SetAccount(TestItem.AddressB, null);
         using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
         ValueHash256 remainingRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(bundle), reader.CurrentRoot, changes, ParallelUnbalancedWork.DefaultOptions);
@@ -144,11 +132,7 @@ public class ImportPbtFromPreimageFlatTests
         PbtReferenceModel.SetAccount(model, TestItem.AddressA, 1, 100);
         PbtReferenceModel.SetAccount(model, TestItem.AddressD, 1, 0, delegation);
         PbtReferenceModel.SetAccount(model, TestItem.AddressE, 2, 0);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(bundle.GetCodeReference(bigCodeHash.ValueHash256), Is.Zero);
-            Assert.That(remainingRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "last-owner deletion must remove all persisted code chunks");
-        }
+        Assert.That(remainingRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "last-owner deletion must remove all persisted code chunks");
     }
 
     [Test]

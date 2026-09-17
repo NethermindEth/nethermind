@@ -23,7 +23,6 @@ namespace Nethermind.State.Pbt.Test;
 public class PbtSnapshotBundleTests
 {
     [TestCase(false, false, false)]
-    [TestCase(true, false, false)]
     [TestCase(false, true, false)]
     [TestCase(true, true, false)]
     [TestCase(false, true, true)]
@@ -47,7 +46,7 @@ public class PbtSnapshotBundleTests
         }
         else
         {
-            using IEnumerator<KeyValuePair<ValueHash256, Account>> iterator = (writable ? bundle.EnumerateAccounts() : readOnly.EnumerateAccounts()).GetEnumerator();
+            using IEnumerator<KeyValuePair<ValueHash256, Account>> iterator = readOnly.EnumerateAccounts().GetEnumerator();
             Assert.That(iterator.MoveNext(), Is.True);
         }
         Assert.That(reader.IteratorDisposals, Is.EqualTo(1));
@@ -57,7 +56,6 @@ public class PbtSnapshotBundleTests
     public void Enumeration_merges_local_deletes_clears_and_same_layer_rewrites([Values] bool filtered)
     {
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
-        ValueHash256 otherHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressB);
         PbtStorageFullKey deleted = PbtStateKey.Storage(TestItem.AddressA, 1);
         PbtStorageFullKey rewritten = PbtStateKey.Storage(TestItem.AddressA, 1000);
         PbtStorageFullKey cleared = PbtStateKey.Storage(TestItem.AddressA, 2000);
@@ -65,30 +63,19 @@ public class PbtSnapshotBundleTests
         EvmWord original = EvmWordSlot.FromStripped(Value(1));
         EvmWord replacement = EvmWordSlot.FromStripped(Value(2));
         SortedDictionary<PbtStorageFullKey, EvmWord> persisted = new() { [deleted] = original, [rewritten] = original, [cleared] = original, [other] = original };
-        SortedDictionary<ValueHash256, Account> accounts = new(Comparer<ValueHash256>.Create(static (left, right) => left.Bytes.SequenceCompareTo(right.Bytes)))
-        {
-            [addressHash] = new Account(1, 1),
-            [otherHash] = new Account(1, 1)
-        };
-        Reader reader = new(default, null) { Accounts = accounts, Storage = persisted };
+        Reader reader = new(default, null) { Storage = persisted };
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent content = new();
         content.ClearStorage(addressHash);
         content.Storages[rewritten] = original;
         content.Storages[deleted] = original;
-        content.Accounts[addressHash] = null;
         PbtSnapshotPooledList snapshots = new(1) { new PbtSnapshot(StateId.PreGenesis, new StateId(1, default), default, content, pool, PbtResourcePool.Usage.MainBlockProcessing) };
         using PbtSnapshotBundle bundle = new(snapshots, new PbtReadOnlySnapshotBundle(new(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing);
         bundle.SetSlot(TestItem.AddressA, 1, default);
         bundle.SetSlot(TestItem.AddressA, 1000, replacement);
-        bundle.SetAccount(TestItem.AddressB, new Account(2, 2));
         SortedDictionary<PbtStorageFullKey, EvmWord> expected = new() { [rewritten] = replacement };
         if (!filtered) expected[other] = original;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(bundle.EnumerateStorage(filtered ? addressHash : (ValueHash256?)null), Is.EqualTo(expected));
-            Assert.That(bundle.EnumerateAccounts(), Is.EqualTo(new[] { new KeyValuePair<ValueHash256, Account>(otherHash, new Account(2, 2)) }));
-        }
+        Assert.That(bundle.EnumerateStorage(filtered ? addressHash : (ValueHash256?)null), Is.EqualTo(expected));
     }
 
     [Test]
@@ -187,35 +174,6 @@ public class PbtSnapshotBundleTests
         }
     }
 
-    [TestCase(null)]
-    [TestCase(0)]
-    [TestCase(1)]
-    public void PrewarmHints_AgreeAcrossOverloadsAndResetBetweenSnapshots(int? slotIndex)
-    {
-        using TrackingTransientPool pool = new();
-        using PbtSnapshotBundle bundle = CreatePrewarmBundle(pool);
-        UInt256? slot = slotIndex is null ? null : (UInt256)(uint)slotIndex.Value;
-        ValueAddress address = new(TestItem.AddressA.Bytes);
-        Assert.That(bundle.ShouldQueuePrewarm(TestItem.AddressA, slot), Is.True);
-        Assert.That(bundle.ShouldQueuePrewarm(address, slot), Is.False);
-        using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
-        Assert.That(bundle.ShouldQueuePrewarm(address, slot), Is.True);
-        Assert.That(bundle.ShouldQueuePrewarm(TestItem.AddressA, slot), Is.False);
-        bundle.Dispose();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(bundle.ShouldQueuePrewarm(address, slot), Is.False);
-            Assert.That(bundle.ShouldQueuePrewarm(TestItem.AddressA, slot), Is.False);
-            Assert.That(pool.ReturnCount, Is.EqualTo(2));
-            Assert.That(snapshot.Content.Accounts, Is.Empty);
-            Assert.That(snapshot.Content.Storages, Is.Empty);
-            Assert.That(snapshot.Content.Codes, Is.Empty);
-            Assert.That(snapshot.Content.NodeGroups, Is.Empty);
-        }
-        using PbtSnapshotBundle nextBundle = CreatePrewarmBundle(pool);
-        Assert.That(nextBundle.ShouldQueuePrewarm(address, slot), Is.True);
-    }
-
     [TestCase(false)]
     [TestCase(true)]
     public void RetiredPrewarmResource_IsNotRecycledUntilItsLastReaderReleases(bool dispose)
@@ -223,23 +181,17 @@ public class PbtSnapshotBundleTests
         using TrackingTransientPool pool = new();
         using PbtSnapshotBundle bundle = CreatePrewarmBundle(pool);
         PbtTransientResource retired = pool.LastRented!;
-        Assert.That(bundle.ShouldQueuePrewarm(TestItem.AddressA), Is.True);
+        Assert.That(retired.ShouldPrewarm(TestItem.AddressA), Is.True);
         Assert.That(retired.TryAcquireLease(), Is.True);
         try
         {
             if (dispose) bundle.Dispose();
-            else
-            {
-                using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default);
-                Assert.That(bundle.ShouldQueuePrewarm(TestItem.AddressA), Is.True);
-            }
+            else bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), default).Dispose();
             Assert.That(pool.ReturnCount, Is.Zero);
             Assert.That(retired.ShouldPrewarm(TestItem.AddressA), Is.False);
             using PbtSnapshotBundle concurrentBundle = CreatePrewarmBundle(pool);
             Assert.That(pool.LastRented, Is.Not.SameAs(retired));
-            Assert.That(concurrentBundle.ShouldQueuePrewarm(TestItem.AddressA), Is.True);
             Assert.That(retired.ShouldPrewarm(TestItem.AddressB), Is.True);
-            Assert.That(concurrentBundle.ShouldQueuePrewarm(TestItem.AddressB), Is.True);
         }
         finally
         {
@@ -248,7 +200,6 @@ public class PbtSnapshotBundleTests
         Assert.That(pool.ReturnCount, Is.EqualTo(2));
         using PbtSnapshotBundle nextBundle = CreatePrewarmBundle(pool);
         Assert.That(pool.LastRented, Is.SameAs(retired));
-        Assert.That(nextBundle.ShouldQueuePrewarm(TestItem.AddressA), Is.True);
     }
 
     [Test]
@@ -258,11 +209,7 @@ public class PbtSnapshotBundleTests
         PbtSnapshotBundle bundle = CreatePrewarmBundle(pool);
         Assert.Throws<IOException>(bundle.Dispose);
         Assert.DoesNotThrow(bundle.Dispose);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(pool.ReturnCount, Is.EqualTo(1));
-            Assert.That(bundle.ShouldQueuePrewarm(TestItem.AddressA), Is.False);
-        }
+        Assert.That(pool.ReturnCount, Is.EqualTo(1));
     }
 
     private static PbtSnapshotBundle CreatePrewarmBundle(IPbtResourcePool pool) => new(
@@ -353,23 +300,13 @@ public class PbtSnapshotBundleTests
         {
             new PbtSnapshot(StateId.PreGenesis, new StateId(1, default), default, sharedContent, pool, PbtResourcePool.Usage.MainBlockProcessing)
         };
-        PbtReadOnlySnapshotBundle readOnly = new(sharedSnapshots, new Reader(matching, null));
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing);
+        using PbtReadOnlySnapshotBundle readOnly = new(sharedSnapshots, new Reader(matching, null));
         List<PbtStorageFullKey> expected = filtered ? [matching] : [matching, other];
         expected.Sort();
         List<PbtStorageFullKey> sharedKeys = [];
         foreach (KeyValuePair<PbtStorageFullKey, ValueHash256> leaf in filtered ? readOnly.EnumerateLeaves(prefix) : readOnly.EnumerateLeaves())
             sharedKeys.Add(leaf.Key);
-        bundle.SetSlot(TestItem.AddressA, 1000, EvmWordSlot.FromStripped(Value(3)));
-        List<PbtStorageFullKey> visibleKeys = [];
-        foreach (KeyValuePair<PbtStorageFullKey, ValueHash256> leaf in filtered ? bundle.EnumerateLeaves(prefix) : bundle.EnumerateLeaves())
-            visibleKeys.Add(leaf.Key);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(sharedKeys, Is.EqualTo(expected));
-            Assert.That(visibleKeys, Is.EqualTo(expected));
-        }
+        Assert.That(sharedKeys, Is.EqualTo(expected));
     }
 
     [TestCase(0u)]
@@ -395,10 +332,6 @@ public class PbtSnapshotBundleTests
                 Assert.That(changes.Account?.Count ?? 0, Is.EqualTo(slot < 64 ? 1 : 0));
                 Assert.That(changes.Storage?.Count ?? 0, Is.EqualTo(slot < 64 ? 0 : 1));
                 Assert.That(changes.Code, Is.Null);
-                Assert.That(bundle.EnumeratePendingLeafMutationsForTest(), Is.EquivalentTo(new[]
-                {
-                    new KeyValuePair<PbtStorageFullKey, ValueHash256?>(key, delete ? (ValueHash256?)null : new ValueHash256(Value(9)))
-                }));
             }
             bundle.CompleteLeafChanges();
         }
@@ -429,7 +362,6 @@ public class PbtSnapshotBundleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.GetSlot(TestItem.AddressA, 1), Is.EqualTo(EvmWordSlot.FromStripped(flatValue.Bytes)));
-            Assert.That(bundle.EnumeratePendingLeafMutationsForTest(), Is.EquivalentTo(new[] { new KeyValuePair<PbtStorageFullKey, ValueHash256?>(key, flatValue) }));
             Assert.That(updatedRoot, Is.EqualTo(delete ? default : PbtNodeCodec.Hash(new PbtNodeReader(expectedLeaf))));
             Assert.That(store.GetNode(new PbtNodePath([], 0), updatedRoot), Is.EqualTo(delete ? null : expectedLeaf));
         }
@@ -454,7 +386,6 @@ public class PbtSnapshotBundleTests
         ValueHash256 root = Fold(bundle, default);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(bundle.GetCodeReference(account.CodeHash.ValueHash256), Is.EqualTo(1));
             Assert.That(bundle.GetSlot(TestItem.AddressA, slot), Is.EqualTo(value));
             Assert.That(bundle.GetCode(account.CodeHash.ValueHash256)!.Code.ToArray(), Is.EqualTo(code));
         }
@@ -466,8 +397,6 @@ public class PbtSnapshotBundleTests
         {
             Assert.That(bundle.GetAccount(TestItem.AddressA), Is.EqualTo(deleteAccount ? null : account));
             Assert.That(bundle.GetSlot(TestItem.AddressA, slot), Is.EqualTo(default(EvmWord)));
-            Assert.That(bundle.EnumerateLeaves(PbtStateKey.Storage(TestItem.AddressA, slot)), Is.Empty);
-            Assert.That(bundle.GetCodeReference(account.CodeHash.ValueHash256), Is.EqualTo(deleteAccount ? 0 : 1));
         }
     }
 
@@ -1105,10 +1034,6 @@ public class PbtSnapshotBundleTests
         {
             Assert.That(bundle.GetAccount(TestItem.AddressA), Is.SameAs(account));
             Assert.That(bundle.GetCode(account.CodeHash.ValueHash256), Is.SameAs(code));
-            Dictionary<PbtStorageFullKey, ValueHash256> staged = [];
-            foreach ((PbtStorageFullKey key, ValueHash256? value) in bundle.EnumeratePendingLeafMutationsForTest())
-                if (value is not null) staged[key] = value.Value;
-            Assert.That(staged, Is.EquivalentTo(bundle.EnumerateLeaves()), "setters must translate before root preparation");
         }
         ValueHash256 root = Fold(bundle, default);
         Dictionary<string, byte[]> model = [];
@@ -1122,7 +1047,6 @@ public class PbtSnapshotBundleTests
             Assert.That(bundle.GetCode(account.CodeHash.ValueHash256), Is.SameAs(code));
             Assert.That(snapshot.Content.Accounts[PbtKeyDerivation.AddressKeyHash(TestItem.AddressA)], Is.SameAs(account));
             Assert.That(snapshot.Content.Codes[account.CodeHash.ValueHash256], Is.SameAs(code));
-            Assert.That(bundle.GetCodeReference(account.CodeHash.ValueHash256), Is.EqualTo(1));
         }
     }
 
@@ -1141,13 +1065,6 @@ public class PbtSnapshotBundleTests
         bundle.SetCode(account.CodeHash.ValueHash256, code);
         bundle.SetAccount(TestItem.AddressA, account);
         bundle.SetAccount(TestItem.AddressB, account);
-        int codeLeaves = 0;
-        foreach ((PbtStorageFullKey key, ValueHash256 _) in bundle.EnumerateLeaves())
-        {
-            if (key.Bytes[0] == 0x01) codeLeaves++;
-            else Assert.That(key.Bytes[^1], Is.LessThan(128), "code must not occupy account header leaves");
-        }
-        Assert.That(codeLeaves, Is.EqualTo(chunkCount), "identical bytecode must share every chunk");
         ValueHash256 root = Fold(bundle, default);
         using PbtSnapshot original = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root);
         byte[] replacementBytes = Bytes.FromHexString(replacementCode);
@@ -1163,7 +1080,6 @@ public class PbtSnapshotBundleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
-            Assert.That(bundle.GetCodeReference(account.CodeHash.ValueHash256), Is.EqualTo(1));
             Assert.That(original.Content.Accounts[PbtKeyDerivation.AddressKeyHash(TestItem.AddressA)], Is.SameAs(account));
             Assert.That(original.Content.Codes[account.CodeHash.ValueHash256], Is.SameAs(code));
         }
@@ -1174,7 +1090,6 @@ public class PbtSnapshotBundleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
-            Assert.That(bundle.GetCodeReference(account.CodeHash.ValueHash256), Is.Zero);
             Assert.That(bundle.GetCode(account.CodeHash.ValueHash256), Is.SameAs(code));
         }
     }
@@ -1225,9 +1140,6 @@ public class PbtSnapshotBundleTests
             else accounts[address] = bytes;
             Dictionary<string, byte[]> model = [];
             foreach ((Address owner, byte[] ownerCode) in accounts) PbtReferenceModel.SetAccount(model, owner, 1, 0, ownerCode);
-            EipReferenceTree rebuilt = new();
-            foreach ((PbtStorageFullKey key, ValueHash256 value) in bundle.EnumerateLeaves()) rebuilt.Insert(key.Bytes, value.Bytes.ToArray());
-            Assert.That(new ValueHash256(rebuilt.Merkelize()), Is.EqualTo(PbtReferenceModel.Root(model)), "deduplicated flat reconstruction");
             if (foldEachChange)
             {
                 root = Fold(bundle, root);
@@ -1266,8 +1178,6 @@ public class PbtSnapshotBundleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
-            Assert.That(bundle.GetCodeReference(account.CodeHash.ValueHash256), Is.EqualTo(accountCount));
-            Assert.That(bundle.GetCodeReference(otherAccount.CodeHash.ValueHash256), Is.EqualTo(1));
             Assert.That(bundle.PendingMutationCount, Is.Zero);
         }
     }
@@ -1290,19 +1200,10 @@ public class PbtSnapshotBundleTests
         bundle.SetCode(account.CodeHash.ValueHash256, new CodeInfo(bytes));
         bundle.SetAccount(TestItem.AddressA, null);
         bundle.SetAccount(TestItem.AddressB, account);
-        Dictionary<PbtStorageFullKey, ValueHash256> staged = [];
-        foreach ((PbtStorageFullKey key, ValueHash256? value) in bundle.EnumeratePendingLeafMutationsForTest())
-            if (value is not null) staged[key] = value.Value;
-        Assert.That(staged, Is.EquivalentTo(bundle.EnumerateLeaves()));
         ValueHash256 root = Fold(bundle, default);
         Dictionary<string, byte[]> model = [];
         PbtReferenceModel.SetAccount(model, TestItem.AddressB, account.Nonce, account.Balance, bytes);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
-            Assert.That(bundle.GetCodeReference(abandoned.CodeHash.ValueHash256), Is.Zero);
-            Assert.That(bundle.GetCodeReference(account.CodeHash.ValueHash256), Is.EqualTo(1));
-        }
+        Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
     }
 
     [TestCase(false)]
@@ -1315,82 +1216,16 @@ public class PbtSnapshotBundleTests
         byte[] bytes = Bytes.FromHexString("6001600055");
         Account account = Build.An.Account.WithCode(bytes).TestObject;
         bundle.SetAccount(TestItem.AddressA, account);
-        if (failFirstFold)
-        {
-            Assert.Throws<InvalidDataException>(() => Fold(bundle, default));
-            Assert.That(bundle.GetCodeReference(account.CodeHash.ValueHash256), Is.EqualTo(1));
-        }
+        if (failFirstFold) Assert.Throws<InvalidDataException>(() => Fold(bundle, default));
         bundle.ReadCode = hash => hash == account.CodeHash.ValueHash256 ? bytes : null;
-        if (!failFirstFold)
-        {
-            KeyValuePair<PbtStorageFullKey, ValueHash256?>[] pending = [.. bundle.EnumeratePendingLeafMutationsForTest()];
-            Assert.That(bundle.GetCode(account.CodeHash.ValueHash256), Is.Not.Null);
-            Assert.That(bundle.EnumeratePendingLeafMutationsForTest(), Is.EquivalentTo(pending), "a read-through fill must not translate mutations");
-        }
+        if (!failFirstFold) Assert.That(bundle.GetCode(account.CodeHash.ValueHash256), Is.Not.Null);
         ValueHash256 root = Fold(bundle, default);
         Dictionary<string, byte[]> model = [];
         PbtReferenceModel.SetAccount(model, TestItem.AddressA, account.Nonce, account.Balance, bytes);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
-            Assert.That(bundle.GetCodeReference(account.CodeHash.ValueHash256), Is.EqualTo(1));
             Assert.That(bundle.PendingMutationCount, Is.Zero);
-        }
-    }
-
-    [Test]
-    public void Code_chunks_are_staged_only_when_the_code_becomes_referenced(
-        [Values("codeFirst", "codeAfterAccount", "codeAfterUpdate")] string codeArrival, [Values(1, 3)] int chunkCount)
-    {
-        PbtResourcePool pool = new(new PbtConfig());
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing);
-        byte[] bytes = new byte[chunkCount * 31];
-        bytes.AsSpan().Fill(0x5b);
-        Account account = Build.An.Account.WithBalance(1).WithCode(bytes).TestObject;
-        ValueHash256 codeHash = account.CodeHash.ValueHash256;
-        Dictionary<string, byte[]> model = [];
-
-        if (codeArrival == "codeFirst") bundle.SetCode(codeHash, new CodeInfo(bytes));
-        bundle.SetAccount(TestItem.AddressA, account);
-        if (codeArrival == "codeAfterUpdate") bundle.SetAccount(TestItem.AddressA, account.WithChangedBalance(2));
-        if (codeArrival != "codeFirst") bundle.SetCode(codeHash, new CodeInfo(bytes));
-        Account current = bundle.GetAccount(TestItem.AddressA)!;
-        Assert.That(CodeZoneMutations(bundle), Is.EqualTo((chunkCount, 0)), "a first reference stages every chunk");
-        PbtReferenceModel.SetAccount(model, TestItem.AddressA, current.Nonce, current.Balance, bytes);
-        ValueHash256 root = Fold(bundle, default);
-        Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "first reference root");
-
-        current = current.WithChangedBalance(3);
-        bundle.SetAccount(TestItem.AddressA, current);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(CodeZoneMutations(bundle), Is.EqualTo((0, 0)), "a balance change stages no chunk");
-            Assert.That(StagedAccountLeafKeys(bundle), Is.EquivalentTo(new[] { PbtKeyDerivation.BasicDataLeafKey, PbtKeyDerivation.CodeHashLeafKey }));
-        }
-        PbtReferenceModel.SetAccount(model, TestItem.AddressA, current.Nonce, current.Balance, bytes);
-        root = Fold(bundle, root);
-        Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "balance change root");
-
-        bundle.SetAccount(TestItem.AddressB, account);
-        Assert.That(CodeZoneMutations(bundle), Is.EqualTo((0, 0)), "adopting referenced code stages no chunk");
-        PbtReferenceModel.SetAccount(model, TestItem.AddressB, account.Nonce, account.Balance, bytes);
-        root = Fold(bundle, root);
-        Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "shared code root");
-
-        bundle.SetAccount(TestItem.AddressA, null);
-        Assert.That(CodeZoneMutations(bundle), Is.EqualTo((0, 0)), "a surviving reference keeps every chunk");
-        bundle.SetAccount(TestItem.AddressB, null);
-        Assert.That(CodeZoneMutations(bundle), Is.EqualTo((0, chunkCount)), "removing the last reference deletes every chunk");
-        bundle.SetAccount(TestItem.AddressA, account);
-        Assert.That(CodeZoneMutations(bundle), Is.EqualTo((chunkCount, 0)), "re-referencing the code stages every chunk again");
-        model.Clear();
-        PbtReferenceModel.SetAccount(model, TestItem.AddressA, account.Nonce, account.Balance, bytes);
-        root = Fold(bundle, root);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "re-referenced code root");
-            Assert.That(bundle.GetCodeReference(codeHash), Is.EqualTo(1));
         }
     }
 
@@ -1425,27 +1260,6 @@ public class PbtSnapshotBundleTests
         }
     }
 
-    private static (int Written, int Deleted) CodeZoneMutations(PbtSnapshotBundle bundle)
-    {
-        int written = 0;
-        int deleted = 0;
-        foreach ((PbtStorageFullKey key, ValueHash256? value) in bundle.EnumeratePendingLeafMutationsForTest())
-        {
-            if (key.Bytes[0] != Eip8297KeyDerivation.CodeZone) continue;
-            if (value is null) deleted++;
-            else written++;
-        }
-        return (written, deleted);
-    }
-
-    private static List<int> StagedAccountLeafKeys(PbtSnapshotBundle bundle)
-    {
-        List<int> keys = [];
-        foreach ((PbtStorageFullKey key, ValueHash256? value) in bundle.EnumeratePendingLeafMutationsForTest())
-            if (key.Bytes[0] == Eip8297KeyDerivation.AccountZone && value is not null) keys.Add(key.Bytes[^1]);
-        return keys;
-    }
-
     [TestCase(0x00)]
     [TestCase(0x01)]
     [TestCase(0xFF)]
@@ -1471,15 +1285,12 @@ public class PbtSnapshotBundleTests
         Account other = Build.An.Account.WithCode(otherBytes).TestObject;
         bundle.SetCode(other.CodeHash.ValueHash256, new CodeInfo(otherBytes));
         bundle.SetAccount(TestItem.AddressB, other);
-        KeyValuePair<PbtStorageFullKey, ValueHash256?>[] pending = [.. bundle.EnumeratePendingLeafMutationsForTest()];
         CountingStore store = new(bundle) { FailedZone = failedZone };
         Assert.Throws<AggregateException>(() => TrieUpdater.UpdateRoot(store, root, bundle.PrepareLeafChanges(), ParallelUnbalancedWork.DefaultOptions));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.TreeRoot, Is.EqualTo(root));
-            Assert.That(bundle.EnumeratePendingLeafMutationsForTest(), Is.EquivalentTo(pending));
             Assert.That(bundle.GetAccount(TestItem.AddressA), Is.SameAs(replacement));
-            Assert.That(bundle.GetCodeReference(account.CodeHash.ValueHash256), Is.EqualTo(1));
             Assert.Throws<InvalidOperationException>(() => bundle.CollectSnapshot(new StateId(1, default), new StateId(2, default), root));
             Assert.That(original.TreeRoot, Is.EqualTo(root));
             Assert.That(original.Content.Accounts[PbtKeyDerivation.AddressKeyHash(TestItem.AddressA)], Is.SameAs(account));

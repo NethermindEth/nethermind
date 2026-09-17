@@ -114,58 +114,12 @@ public sealed class PbtSnapshotBundle(
         return payload;
     }
 
-    internal ulong GetCodeReference(in ValueHash256 codeHash)
+    private ulong GetCodeReference(in ValueHash256 codeHash)
     {
         if (WriteBuffer.TryGetCodeReference(codeHash, out ulong? count)) return count ?? 0;
         for (int index = snapshots.Count - 1; index >= 0; index--)
             if (snapshots[index].Content.TryGetCodeReference(codeHash, out count)) return count ?? 0;
         return readOnlyBundle.GetCodeReference(codeHash);
-    }
-
-    internal IEnumerable<KeyValuePair<PbtStorageFullKey, ValueHash256?>> EnumeratePendingLeafMutationsForTest()
-    {
-        foreach ((PbtFullKey key, ValueHash256? value) in _accountBatch.Leaves) yield return new((PbtStorageFullKey)key, value);
-        foreach ((PbtFullKey key, ValueHash256? value) in _codeBatch.Leaves) yield return new((PbtStorageFullKey)key, value);
-        foreach (KeyValuePair<PbtStorageFullKey, ValueHash256?> mutation in _storageBatch.Leaves) yield return mutation;
-    }
-
-    internal IEnumerable<KeyValuePair<PbtStorageFullKey, ValueHash256>> EnumerateLeaves() =>
-        PbtFlatState.EnumerateLeaves(EnumerateAccounts(), EnumerateStorage(), hash => GetCode(hash));
-
-    internal IEnumerable<KeyValuePair<PbtStorageFullKey, ValueHash256>> EnumerateLeaves(PbtStorageFullKey prefix)
-    {
-        foreach (KeyValuePair<PbtStorageFullKey, ValueHash256> leaf in EnumerateLeaves())
-            if (prefix.IsPrefixOf(leaf.Key)) yield return leaf;
-    }
-
-    internal IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts()
-    {
-        ObjectDisposedException.ThrowIf(_isDisposed, this);
-        SortedDictionary<ValueHash256, Account?> changes = new(Comparer<ValueHash256>.Create(static (left, right) => left.Bytes.SequenceCompareTo(right.Bytes)));
-        foreach (PbtSnapshot snapshot in snapshots)
-            foreach ((ValueHash256 hash, Account? account) in snapshot.Content.Accounts) changes[hash] = account;
-        foreach ((ValueHash256 hash, Account? account) in WriteBuffer.Accounts) changes[hash] = account;
-        using IEnumerator<KeyValuePair<ValueHash256, Account?>> changed = changes.GetEnumerator();
-        bool hasChange = changed.MoveNext();
-        foreach (KeyValuePair<ValueHash256, Account> persisted in readOnlyBundle.EnumerateAccounts())
-        {
-            while (hasChange && changes.Comparer.Compare(changed.Current.Key, persisted.Key) < 0)
-            {
-                if (changed.Current.Value is { } account) yield return new(changed.Current.Key, account);
-                hasChange = changed.MoveNext();
-            }
-            if (hasChange && changed.Current.Key == persisted.Key)
-            {
-                if (changed.Current.Value is { } account) yield return new(changed.Current.Key, account);
-                hasChange = changed.MoveNext();
-            }
-            else yield return persisted;
-        }
-        while (hasChange)
-        {
-            if (changed.Current.Value is { } account) yield return new(changed.Current.Key, account);
-            hasChange = changed.MoveNext();
-        }
     }
 
     internal IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(ValueHash256? addressFilter = null)
@@ -353,55 +307,6 @@ public sealed class PbtSnapshotBundle(
     }
 
     private readonly record struct AwaitedCode(ValueHash256 CodeHash, bool IncludeCode);
-
-    /// <summary>Records a prewarm hint, returning false for probable duplicates or a disposed bundle.</summary>
-    public bool ShouldQueuePrewarm(Address address, UInt256? slot = null)
-    {
-        PbtTransientResource? transientResource = TryLeaseTransientResource();
-        if (transientResource is null) return false;
-        try
-        {
-            return transientResource.ShouldPrewarm(address, slot);
-        }
-        finally
-        {
-            transientResource.ReleaseLease();
-        }
-    }
-
-    /// <inheritdoc cref="ShouldQueuePrewarm(Address, UInt256?)"/>
-    public bool ShouldQueuePrewarm(in ValueAddress address, UInt256? slot = null)
-    {
-        PbtTransientResource? transientResource = TryLeaseTransientResource();
-        if (transientResource is null) return false;
-        try
-        {
-            return transientResource.ShouldPrewarm(address, slot);
-        }
-        finally
-        {
-            transientResource.ReleaseLease();
-        }
-    }
-
-    private PbtTransientResource? TryLeaseTransientResource()
-    {
-        SpinWait spinWait = default;
-        while (true)
-        {
-            if (Volatile.Read(ref _isDisposed)) return null;
-            PbtTransientResource transientResource = Volatile.Read(ref _transientResource);
-            if (transientResource.TryAcquireLease())
-            {
-                // A stale resource may already belong to another bundle after retirement and re-rental.
-                if (ReferenceEquals(Volatile.Read(ref _transientResource), transientResource)
-                    && !Volatile.Read(ref _isDisposed))
-                    return transientResource;
-                transientResource.ReleaseLease();
-            }
-            spinWait.SpinOnce();
-        }
-    }
 
     // The owning scope serializes capture with snapshot collection and disposal.
     internal PbtTrieWarmupSession CreateTrieWarmupSession(ITrieWarmer trieWarmer, int sequenceId)

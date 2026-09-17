@@ -313,12 +313,13 @@ public class PbtWorldStateScopeTests
         if (codeAfterAccount) WriteShortCode();
         scope.Commit(1);
 
+        using PbtReadOnlySnapshotBundle committed = ((IPbtDbManager)ctx.Manager).GatherReadOnlyBundle(new StateId(1, scope.RootHash));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(scope.Bundle.GetCodeReference(longHash.ValueHash256), Is.Zero);
-            Assert.That(scope.Bundle.GetCodeReference(shortHash.ValueHash256), Is.EqualTo(1));
+            Assert.That(committed.GetCodeReference(longHash.ValueHash256), Is.Zero);
+            Assert.That(committed.GetCodeReference(shortHash.ValueHash256), Is.EqualTo(1));
             for (int chunkId = 1; chunkId < 4; chunkId++)
-                Assert.That(ReadDerivedLeaf(scope.Bundle, (PbtStorageFullKey)PbtStateKey.Code(TestItem.AddressA, longHash.ValueHash256, chunkId)), Is.Null);
+                Assert.That(committed.EnumerateLeaves((PbtStorageFullKey)PbtStateKey.Code(TestItem.AddressA, longHash.ValueHash256, chunkId)), Is.Empty);
         }
 
         void WriteShortCode()
@@ -351,52 +352,32 @@ public class PbtWorldStateScopeTests
         Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(7), Is.EqualTo((UInt256)0xab));
         scope.UpdateRootHash();
         Assert.That(scope.Bundle.PendingMutationCount, Is.Zero);
-        Dictionary<PbtStorageFullKey, ValueHash256> pending = new(scope.Bundle.EnumerateLeaves());
         Hash256 initialRoot = scope.RootHash;
         scope.UpdateRootHash();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(scope.RootHash, Is.EqualTo(initialRoot));
-            Assert.That(scope.Bundle.EnumeratePendingLeafMutationsForTest(), Is.Empty);
-            Assert.That(scope.Bundle.EnumerateLeaves(), Is.EquivalentTo(pending));
-            Assert.That(pending.ContainsKey(PbtStateKey.Storage(TestItem.AddressA, 7)), Is.True);
-            Assert.That(pending.ContainsKey(PbtStateKey.Storage(TestItem.AddressA, 1000)), Is.True);
-            Assert.That(pending.ContainsKey((PbtStorageFullKey)PbtStateKey.Code(TestItem.AddressA, codeHash.ValueHash256, PbtKeyDerivation.StemSubtreeWidth)), Is.True);
-        }
+        Assert.That(scope.RootHash, Is.EqualTo(initialRoot));
 
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
         using (IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressA, 1))
             storage.Set(updatedSlot, (UInt256)0xef);
         scope.Get(TestItem.AddressB);
-        KeyValuePair<PbtStorageFullKey, ValueHash256?>[] secondFold = [.. scope.Bundle.EnumeratePendingLeafMutationsForTest()];
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(secondFold.Length, Is.EqualTo(1));
-            Assert.That(secondFold[0].Key, Is.EqualTo(PbtStateKey.Storage(TestItem.AddressA, updatedSlot)));
-        }
+        Assert.That(scope.Bundle.PendingMutationCount, Is.EqualTo(1));
         scope.UpdateRootHash();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(scope.LastFoldMutationCount, Is.EqualTo(1));
             Assert.That(scope.Bundle.PendingMutationCount, Is.Zero);
         }
-        PbtStorageFullKey updatedKey = PbtStateKey.Storage(TestItem.AddressA, updatedSlot);
-        foreach ((PbtStorageFullKey key, ValueHash256 value) in pending)
-            if (!key.Equals(updatedKey)) Assert.That(ReadDerivedLeaf(scope.Bundle, key), Is.EqualTo(value), key.Bytes.ToArray().ToHexString());
-
-        EipReferenceTree reference = new();
-        Dictionary<PbtStorageFullKey, ValueHash256> expectedLeaves = new(scope.Bundle.EnumerateLeaves());
-        foreach ((PbtStorageFullKey key, ValueHash256 value) in expectedLeaves)
-            reference.Insert(key.Bytes, value.Bytes.ToArray());
-        Assert.That(scope.RootHash.Bytes.ToArray(), Is.EqualTo(reference.Merkelize()));
         scope.Commit(0);
 
-        IPbtDbManager manager = ctx.Manager;
-        using PbtSnapshotBundle reopened = manager.GatherBundle(new StateId(0, scope.RootHash), PbtResourcePool.Usage.ReadOnlyProcessingEnv);
+        using PbtReadOnlySnapshotBundle reopened = ((IPbtDbManager)ctx.Manager).GatherReadOnlyBundle(new StateId(0, scope.RootHash));
+        Dictionary<PbtStorageFullKey, ValueHash256> leaves = new(reopened.EnumerateLeaves());
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reopened.EnumerateLeaves(), Is.EquivalentTo(expectedLeaves));
-            Assert.That(reopened.TreeRoot.Bytes.ToArray(), Is.EqualTo(reference.Merkelize()));
+            Assert.That(leaves.ContainsKey(PbtStateKey.Storage(TestItem.AddressA, 7)), Is.True);
+            Assert.That(leaves.ContainsKey(PbtStateKey.Storage(TestItem.AddressA, 1000)), Is.True);
+            Assert.That(leaves.ContainsKey((PbtStorageFullKey)PbtStateKey.Code(TestItem.AddressA, codeHash.ValueHash256, PbtKeyDerivation.StemSubtreeWidth)), Is.True);
+            Assert.That(scope.RootHash.Bytes.ToArray(), Is.EqualTo(ReferenceRoot(leaves)));
+            Assert.That(reopened.TreeRoot, Is.EqualTo(scope.RootHash.ValueHash256));
         }
         void WriteCode()
         {
@@ -433,14 +414,8 @@ public class PbtWorldStateScopeTests
         AssertStorage();
         scope.UpdateRootHash();
         AssertStorage();
-        EipReferenceTree reference = new();
-        Dictionary<PbtStorageFullKey, ValueHash256> expected = new(scope.Bundle.EnumerateLeaves());
-        foreach ((PbtStorageFullKey key, ValueHash256 value) in expected) reference.Insert(key.Bytes, value.Bytes.ToArray());
-        Assert.That(scope.RootHash.Bytes.ToArray(), Is.EqualTo(reference.Merkelize()));
         scope.Commit(0);
-        IPbtDbManager manager = ctx.Manager;
-        using PbtSnapshotBundle reopened = manager.GatherBundle(new StateId(0, scope.RootHash), PbtResourcePool.Usage.ReadOnlyProcessingEnv);
-        Assert.That(reopened.EnumerateLeaves(), Is.EquivalentTo(expected));
+        AssertCommittedLeavesMatchRoot(ctx, scope);
 
         void AssertStorage()
         {
@@ -449,8 +424,6 @@ public class PbtWorldStateScopeTests
                 Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(1001), Is.EqualTo(UInt256.Zero));
                 Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(1000), Is.EqualTo(UInt256.Zero));
                 Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(2000), Is.EqualTo((UInt256)0xef));
-                Assert.That(ReadDerivedLeaf(scope.Bundle, PbtStateKey.Storage(TestItem.AddressA, 1001)), Is.Null);
-                Assert.That(ReadDerivedLeaf(scope.Bundle, PbtStateKey.Storage(TestItem.AddressA, 1000)), Is.Null);
             }
         }
     }
@@ -491,14 +464,8 @@ public class PbtWorldStateScopeTests
                 Assert.That(storage.Get(1128), Is.EqualTo((UInt256)0xcd));
             }
         }
-        EipReferenceTree reference = new();
-        Dictionary<PbtStorageFullKey, ValueHash256> expected = new(scope.Bundle.EnumerateLeaves());
-        foreach ((PbtStorageFullKey key, ValueHash256 value) in expected) reference.Insert(key.Bytes, value.Bytes.ToArray());
-        Assert.That(scope.RootHash.Bytes.ToArray(), Is.EqualTo(reference.Merkelize()));
         scope.Commit(0);
-        IPbtDbManager manager = ctx.Manager;
-        using PbtSnapshotBundle reopened = manager.GatherBundle(new StateId(0, scope.RootHash), PbtResourcePool.Usage.ReadOnlyProcessingEnv);
-        Assert.That(reopened.EnumerateLeaves(), Is.EquivalentTo(expected));
+        AssertCommittedLeavesMatchRoot(ctx, scope);
     }
 
     [TestCase(false)]
@@ -523,7 +490,6 @@ public class PbtWorldStateScopeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reused.Bundle.PendingMutationCount, Is.Zero);
-            Assert.That(reused.Bundle.EnumerateLeaves(), Is.Empty);
             Assert.That(reused.CreateStorageTree(TestItem.AddressA).Get(1000), Is.EqualTo(UInt256.Zero));
         }
     }
@@ -988,10 +954,16 @@ public class PbtWorldStateScopeTests
         }
     }
 
-    private static ValueHash256? ReadDerivedLeaf(PbtSnapshotBundle bundle, in PbtStorageFullKey key)
+    private static void AssertCommittedLeavesMatchRoot(PbtTestContext ctx, PbtWorldStateScope scope)
     {
-        foreach ((PbtStorageFullKey leafKey, ValueHash256 value) in bundle.EnumerateLeaves())
-            if (leafKey == key) return value;
-        return null;
+        using PbtReadOnlySnapshotBundle committed = ((IPbtDbManager)ctx.Manager).GatherReadOnlyBundle(new StateId(0, scope.RootHash));
+        Assert.That(scope.RootHash.Bytes.ToArray(), Is.EqualTo(ReferenceRoot(new Dictionary<PbtStorageFullKey, ValueHash256>(committed.EnumerateLeaves()))));
+    }
+
+    private static byte[] ReferenceRoot(Dictionary<PbtStorageFullKey, ValueHash256> leaves)
+    {
+        EipReferenceTree reference = new();
+        foreach ((PbtStorageFullKey key, ValueHash256 value) in leaves) reference.Insert(key.Bytes, value.Bytes.ToArray());
+        return reference.Merkelize();
     }
 }
