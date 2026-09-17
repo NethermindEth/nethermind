@@ -224,8 +224,8 @@ namespace Nethermind.Core.Test
             => AssertBatchedHashMatchesIndividualHashes(inputLength, 8);
 
         [Test]
-        public void Four_way_padded_hash_matches_individual_hashes()
-            => AssertBatchedHashMatchesIndividualHashes(136, 4);
+        public void Four_way_padded_hash_matches_individual_hashes([Values(136, 272, 408, 544, 1088, 2176)] int inputLength)
+            => AssertBatchedHashMatchesIndividualHashes(inputLength, 4);
 
         private static void AssertBatchedHashMatchesIndividualHashes(int inputLength, int batchSize)
         {
@@ -253,10 +253,12 @@ namespace Nethermind.Core.Test
                         block[length] = 0x01;
                         block[^1] |= 0x80;
                     }
-                    if (inputLength > 136)
+                    if (inputLength > 136 && batchSize == 8)
                         KeccakHash.ComputePaddedMultiBlocks8Avx512(ref input[0], inputLength, ref output[0]);
                     else if (batchSize == 8)
                         KeccakHash.ComputePaddedBlocks8Avx512(ref input[0], ref output[0]);
+                    else if (inputLength > 136)
+                        KeccakHash.ComputePaddedMultiBlocks4Avx2(ref input[0], inputLength, ref output[0]);
                     else
                         KeccakHash.ComputePaddedBlocks4Avx2(ref input[0], ref output[0]);
                 }

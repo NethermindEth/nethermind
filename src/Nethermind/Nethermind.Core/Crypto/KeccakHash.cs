@@ -15,6 +15,7 @@ namespace Nethermind.Core.Crypto;
 public sealed partial class KeccakHash
 {
     internal const int Hash532InputLength = 532;
+    internal const int Hash532PaddedLength = (Hash532InputLength / HASH_DATA_AREA + 1) * HASH_DATA_AREA;
     private const int HASH_SIZE = 32;
     private const int STATE_SIZE = 200;
     private const int STATE_LANES = STATE_SIZE / sizeof(ulong);

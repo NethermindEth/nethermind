@@ -17,7 +17,11 @@ namespace Nethermind.State.Flat.History.Walk;
 internal static class NodeViews
 {
     private const int MaxNibbles = 2 * Hash256.Size;
-    private const int MinHashBatchSize = 3;
+    private const int Avx2HashBatchSize = 4;
+    private const int Avx512HashBatchSize = 8;
+    private const int VectorByteLength = 32;
+    private const int BranchHashBufferLength = Avx512HashBatchSize * (KeccakHash.Hash532InputLength + Hash256.Size);
+    private static int MinHashBatchSize => Avx512F.IsSupported ? 3 : Avx2HashBatchSize;
 
     public static NodeView FromRoot(TrieNode? root, int depth, ITrieNodeResolver resolver)
     {
@@ -67,25 +71,28 @@ internal static class NodeViews
     /// <remarks>The destination must be zero-initialized. The caller must release initialized views even if decoding throws.</remarks>
     public static void FromChildrenRlp(ReadOnlySpan<byte[]?> children, Span<NodeView> views)
     {
-        uint candidates = 0;
-        if (Avx512F.IsSupported)
+        uint initialized = 0;
+        if (Avx2.IsSupported)
         {
+            uint candidates = 0;
+
             for (int index = 0; index < BranchRlp.ChildCount; index++)
             {
                 if (children[index]?.Length == KeccakHash.Hash532InputLength) candidates |= 1u << index;
             }
-            if (BitOperations.PopCount(candidates) >= MinHashBatchSize) InitializeBatched(children, views, candidates);
+            if (BitOperations.PopCount(candidates) >= MinHashBatchSize)
+                initialized = candidates ^ InitializeBatched(children, views, candidates);
         }
 
         for (int index = 0; index < BranchRlp.ChildCount; index++)
         {
-            if (views[index].Kind != NodeViewKind.Empty) continue;
+            if ((initialized & (1u << index)) != 0) continue;
             byte[]? child = children[index];
             views[index] = child is null ? NodeView.Empty : FromRlp(child);
         }
     }
 
-    [InlineArray(8 * (KeccakHash.Hash532InputLength + Hash256.Size) / 32)]
+    [InlineArray(BranchHashBufferLength / VectorByteLength)]
     private struct BranchHashBuffer
     {
         private Vector256<ulong> _element0;
@@ -93,13 +100,14 @@ internal static class NodeViews
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void InitializeBatched(ReadOnlySpan<byte[]?> children, Span<NodeView> views, uint candidates)
+    private static uint InitializeBatched(ReadOnlySpan<byte[]?> children, Span<NodeView> views, uint candidates)
     {
-        const int batchSize = 8;
+        int batchSize = Avx512F.IsSupported ? Avx512HashBatchSize : Avx2HashBatchSize;
+        int inputLength = Avx512F.IsSupported ? KeccakHash.Hash532InputLength : KeccakHash.Hash532PaddedLength;
         Unsafe.SkipInit(out BranchHashBuffer buffer);
         Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<ulong>>)buffer);
-        Span<byte> inputs = storage[..(batchSize * KeccakHash.Hash532InputLength)];
-        Span<byte> hashes = storage[(batchSize * KeccakHash.Hash532InputLength)..];
+        Span<byte> inputs = storage[..(batchSize * inputLength)];
+        Span<byte> hashes = storage[(batchSize * inputLength)..];
         do
         {
             int count = Math.Min(batchSize, BitOperations.PopCount(candidates));
@@ -109,9 +117,19 @@ internal static class NodeViews
             {
                 int index = BitOperations.TrailingZeroCount(candidates);
                 candidates &= candidates - 1;
-                children[index]!.CopyTo(inputs.Slice(i * KeccakHash.Hash532InputLength, KeccakHash.Hash532InputLength));
+                Span<byte> block = inputs.Slice(i * inputLength, inputLength);
+                children[index]!.CopyTo(block);
+                if (!Avx512F.IsSupported)
+                {
+                    block[KeccakHash.Hash532InputLength..].Clear();
+                    block[KeccakHash.Hash532InputLength] = 0x01;
+                    block[^1] = 0x80;
+                }
             }
-            KeccakHash.ComputeHash532Bytes8Avx512(ref inputs[0], ref hashes[0]);
+            if (Avx512F.IsSupported)
+                KeccakHash.ComputeHash532Bytes8Avx512(ref inputs[0], ref hashes[0]);
+            else
+                KeccakHash.ComputePaddedMultiBlocks4Avx2(ref inputs[0], inputLength, ref hashes[0]);
             for (int i = 0; i < count; i++)
             {
                 int index = BitOperations.TrailingZeroCount(batch);
@@ -119,6 +137,7 @@ internal static class NodeViews
                 views[index] = FromRlp(children[index], new ValueHash256(hashes.Slice(i * Hash256.Size, Hash256.Size)));
             }
         } while (BitOperations.PopCount(candidates) >= MinHashBatchSize);
+        return candidates;
     }
 
     public static NodeView Combine(ReadOnlySpan<NodeView> children)
