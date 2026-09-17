@@ -49,6 +49,34 @@ namespace Nethermind.Store.Test.Proofs
         }
 
         [Test]
+        public void Storage_keys_match_individual_hashes(
+            [Values(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 31, 32, 33, 1023, 1024)] int count, [Values] bool useList)
+        {
+            UInt256[] keys = new UInt256[count];
+            ValueHash256[] expectedHashes = new ValueHash256[count];
+            string[] expectedKeys = new string[count];
+            Random random = new(42);
+            byte[] bytes = new byte[32];
+            for (int i = 0; i < count; i++)
+            {
+                random.NextBytes(bytes);
+                if (i % 3 == 0) Array.Fill(bytes, (byte)(i % 2 == 0 ? 0 : 255));
+                keys[i] = new UInt256(bytes, isBigEndian: true);
+                expectedHashes[i] = ValueKeccak.Compute(bytes);
+                expectedKeys[i] = bytes.ToHexString(true, true);
+            }
+
+            IReadOnlyCollection<UInt256> storageKeys = useList ? new List<UInt256>(keys) : keys;
+            AccountProofCollector collector = new(TestItem.AddressA, storageKeys);
+            AccountProof proof = collector.BuildResult();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(collector.GetHashedStorageKeys(), Is.EqualTo(expectedHashes));
+                Assert.That(proof.StorageProofs.Select(static item => item.Key), Is.EqualTo(expectedKeys));
+            }
+        }
+
+        [Test]
         public void ShouldVisit_throws_when_cancellation_requested()
         {
             using CancellationTokenSource cts = new();
