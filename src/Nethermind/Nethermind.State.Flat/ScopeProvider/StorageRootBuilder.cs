@@ -1,221 +1,60 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
-using System.Diagnostics;
-using Nethermind.Int256;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
 /// <summary>
-/// Applies committed storage writes into the scope's storage tries on dedicated threads while the block is still
-/// executing, so the block-end flush only has to commit already-built (and mostly hashed) tries.
+/// Shared state for building storage tries in the background while the block is still executing: a bounded budget of
+/// concurrent per-contract jobs, the batch threshold above which a contract's pending writes are handed to a job, and
+/// the block-level fault and close flags.
 /// </summary>
 /// <remarks>
-/// Warm threads first resolve each write's path nodes into the node cache, then the tree's shard thread (chosen by
-/// address) applies it, so the Set finds warm nodes. Flat execution never reads the storage tries, so each tree has a
-/// single mutator until
-/// <see cref="CompleteAndJoin"/> returns. Writes are applied in commit order, so a tree ends in the state the flush would
-/// have produced. A fault poisons the builder; the scope then discards its tries and the flush rebuilds them from the
-/// committed parent, so the concurrency never costs correctness.
+/// Each <see cref="FlatStorageTree"/> coalesces its committed writes into a pending map (last value per slot wins) and,
+/// once the map holds <see cref="BatchSize"/> entries and a budget slot is free, applies them on a thread-pool job with
+/// a bulk set. A contract never has more than one job in flight, so each trie keeps a single writer. Contracts that
+/// never reach the threshold take the normal flush path untouched. The scope closes the builder when the write batch
+/// starts; from then on no new job starts, and each contract's write batch joins its own job and applies the
+/// remaining tail on the flush worker that handles that contract, so the block thread never waits for the whole
+/// backlog. A fault poisons the builder; every trie a job touched is then rebuilt from the parent root by the flush.
 /// </remarks>
-internal sealed class StorageRootBuilder
+internal sealed class StorageRootBuilder(int concurrency, int batchSize, bool eagerHash, ILogManager logManager)
 {
-    private sealed class Delta(FlatStorageTree tree, Shard shard, in UInt256 index, in UInt256 value)
-    {
-        public readonly FlatStorageTree Tree = tree;
-        public readonly Shard Shard = shard;
-        public readonly UInt256 Index = index;
-        public readonly UInt256 Value = value;
-        private volatile bool _warmed;
-
-        public bool Warmed => _warmed;
-
-        public void MarkWarmed()
-        {
-            _warmed = true;
-            try
-            {
-                Shard.Warmed.Set();
-            }
-            catch (ObjectDisposedException)
-            {
-                // The builder already drained; nobody is waiting on this shard any more.
-            }
-        }
-    }
-
-    private sealed class Shard
-    {
-        public readonly BlockingCollection<Delta> Pending = new(new ConcurrentQueue<Delta>());
-        public readonly HashSet<FlatStorageTree> Touched = [];
-        // Pulsed by warm threads; the apply thread re-checks its head delta after every pulse.
-        public readonly ManualResetEventSlim Warmed = new(false, spinCount: 50);
-        public Thread Thread = null!;
-    }
-
-    private readonly BlockingCollection<Delta> _toWarm = new(new ConcurrentQueue<Delta>());
-    private readonly Thread[] _warmThreads;
-    private readonly Shard[] _shards;
-    private readonly bool _eagerHash;
-    private readonly ILogger _logger;
+    // The controller counts the calling thread as a slot, hence +1 for exactly `concurrency` concurrent jobs.
+    private readonly ConcurrencyController _budget = new(Math.Max(1, concurrency) + 1);
+    private readonly ILogger _logger = logManager.GetClassLogger<StorageRootBuilder>();
     private volatile bool _faulted;
-    private volatile bool _drained;
+    private volatile bool _closed;
 
-    public StorageRootBuilder(int threads, int warmThreads, bool eagerHash, ILogManager logManager)
-    {
-        _eagerHash = eagerHash;
-        _logger = logManager.GetClassLogger<StorageRootBuilder>();
-        threads = Math.Max(1, threads);
-        _shards = new Shard[threads];
-        for (int i = 0; i < threads; i++)
-        {
-            Shard shard = new();
-            shard.Thread = new Thread(() => Apply(shard)) { IsBackground = true, Name = $"{nameof(StorageRootBuilder)}-apply-{i}" };
-            _shards[i] = shard;
-            shard.Thread.Start();
-        }
+    /// <summary>Pending writes a contract accumulates before a background job is started for it.</summary>
+    public int BatchSize { get; } = Math.Max(1, batchSize);
 
-        // Zero warm threads: the apply thread resolves each write's path itself, relying on the trie warmer's hints.
-        _warmThreads = new Thread[Math.Max(0, warmThreads)];
-        for (int i = 0; i < _warmThreads.Length; i++)
-        {
-            _warmThreads[i] = new Thread(Warm) { IsBackground = true, Name = $"{nameof(StorageRootBuilder)}-warm-{i}" };
-            _warmThreads[i].Start();
-        }
-    }
+    /// <summary>Hash a trie's dirty paths at the end of each job when nothing is pending, so hashing overlaps execution.</summary>
+    public bool EagerHash { get; } = eagerHash;
 
     public bool IsFaulted => _faulted;
 
-    /// <summary>True once every write has been applied and the threads have exited; the tries then belong to the caller.</summary>
-    public bool IsDrained => _drained;
+    /// <summary>True once the write batch started: no new job may start, tries are finalized by the flush.</summary>
+    public bool IsClosed => _closed;
 
-    public bool TryEnqueue(FlatStorageTree tree, in UInt256 index, in UInt256 value)
-    {
-        if (_faulted) return false;
-        if (_drained)
-        {
-            // A write arriving after the tries were handed over would be missing from a prebuilt trie: make the flush
-            // re-apply everything instead.
-            _faulted = true;
-            return false;
-        }
+    /// <summary>Test hook invoked on the job thread before each bulk apply.</summary>
+    internal static Action? OnBeforeApplyForTests;
 
-        Shard shard = _shards[(int)((uint)tree.BuilderShardKey % (uint)_shards.Length)];
-        Delta delta = new(tree, shard, in index, in value);
-        try
-        {
-            // Warm first so the apply thread never sees a delta that no warm thread will ever mark.
-            if (_warmThreads.Length == 0) delta.MarkWarmed();
-            else _toWarm.Add(delta);
-            shard.Pending.Add(delta);
-            return true;
-        }
-        catch (Exception e) when (e is InvalidOperationException or ObjectDisposedException)
-        {
-            // Adding completed concurrently with this write; same remedy as above.
-            delta.MarkWarmed();
-            _faulted = true;
-            return false;
-        }
-    }
+    /// <summary>Test hook receiving every fault, so tests can assert the background path ran clean.</summary>
+    internal static Action<Exception>? OnFaultForTests;
 
-    public void CompleteAndJoin()
-    {
-        if (_drained) return;
-        long start = Stopwatch.GetTimestamp();
-        _toWarm.CompleteAdding();
-        foreach (Shard shard in _shards)
-        {
-            Db.Metrics.ParallelStorageRootDrainBacklog += shard.Pending.Count;
-            shard.Pending.CompleteAdding();
-        }
-        // The block thread has nothing else to do until the tries are ready, so it helps warm the last writes' paths.
-        Warm();
-        foreach (Thread thread in _warmThreads) thread.Join();
-        foreach (Shard shard in _shards) shard.Thread.Join();
-        Db.Metrics.ParallelStorageRootDrainWaitMicros += (long)Stopwatch.GetElapsedTime(start).TotalMicroseconds;
-        _drained = true;
-        _toWarm.Dispose();
-        foreach (Shard shard in _shards)
-        {
-            shard.Pending.Dispose();
-            shard.Warmed.Dispose();
-        }
-    }
+    public bool TryAcquireJobSlot() => !_closed && !_faulted && _budget.TryRequestConcurrencyQuota();
 
-    private void Warm()
-    {
-        while (_toWarm.TryTake(out Delta? delta, Timeout.Infinite))
-        {
-            try
-            {
-                if (!_faulted) delta.Tree.WarmPathForBuilder(in delta.Index);
-            }
-            catch (Exception e)
-            {
-                Fault(e);
-            }
-            finally
-            {
-                delta.MarkWarmed();
-            }
-        }
-    }
+    public void ReleaseJobSlot() => _budget.ReturnConcurrencyQuota();
 
-    private void Apply(Shard shard)
-    {
-        try
-        {
-            while (true)
-            {
-                if (!shard.Pending.TryTake(out Delta? delta))
-                {
-                    // Nothing pending: the writes seen so far are final for now, so hash them before blocking.
-                    if (_eagerHash) HashTouched(shard);
-                    if (!shard.Pending.TryTake(out delta, Timeout.Infinite)) return;
-                }
+    public void Close() => _closed = true;
 
-                while (!delta.Warmed)
-                {
-                    shard.Warmed.Reset();
-                    if (delta.Warmed) break;
-                    shard.Warmed.Wait();
-                }
-
-                long start = Stopwatch.GetTimestamp();
-                delta.Tree.ApplyCommitted(delta.Index, delta.Value);
-                long micros = (long)Stopwatch.GetElapsedTime(start).TotalMicroseconds;
-                Db.Metrics.AddParallelStorageRootApplyMicros(micros);
-                if (shard.Pending.IsAddingCompleted) Db.Metrics.AddParallelStorageRootTailApplyMicros(micros);
-                if (_eagerHash) shard.Touched.Add(delta.Tree);
-            }
-        }
-        catch (Exception e)
-        {
-            Fault(e);
-        }
-    }
-
-    private void Fault(Exception e)
+    public void Fault(Exception e)
     {
         _faulted = true;
+        OnFaultForTests?.Invoke(e);
         if (_logger.IsError) _logger.Error("Storage root builder faulted; storage tries will be rebuilt at commit.", e);
-    }
-
-    private static void HashTouched(Shard shard)
-    {
-        foreach (FlatStorageTree tree in shard.Touched)
-        {
-            // Once the block thread is waiting for the join, the parallel flush hashes what is left faster than this thread.
-            if (shard.Pending.IsAddingCompleted) break;
-            long start = Stopwatch.GetTimestamp();
-            tree.HashDirtyPaths();
-            long micros = (long)Stopwatch.GetElapsedTime(start).TotalMicroseconds;
-            Db.Metrics.AddParallelStorageRootHashMicros(micros);
-            if (shard.Pending.IsAddingCompleted) Db.Metrics.AddParallelStorageRootTailHashMicros(micros);
-        }
-        shard.Touched.Clear();
     }
 }

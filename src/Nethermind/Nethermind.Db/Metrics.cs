@@ -146,15 +146,19 @@ namespace Nethermind.Db
         [Description("Number of committed storage slot writes the parallel storage root builder applied into storage tries while the block was still executing.")]
         public static long ParallelStorageRootWrites => _parallelStorageRootWrites.Value;
         private static CacheLinePaddedLong _parallelStorageRootWrites;
-        public static void IncrementParallelStorageRootWrites() => Interlocked.Increment(ref _parallelStorageRootWrites.Value);
+        public static void AddParallelStorageRootWrites(long value) => Interlocked.Add(ref _parallelStorageRootWrites.Value, value);
 
         [CounterMetric]
-        [Description("Microseconds the block thread spent waiting for the parallel storage root builder to finish its backlog at commit.")]
-        public static long ParallelStorageRootDrainWaitMicros { get; set; }
+        [Description("Microseconds flush workers spent waiting for an in-flight parallel storage root builder job before finalizing that contract's trie.")]
+        public static long ParallelStorageRootDrainWaitMicros => _parallelStorageRootDrainWaitMicros.Value;
+        private static CacheLinePaddedLong _parallelStorageRootDrainWaitMicros;
+        public static void AddParallelStorageRootDrainWaitMicros(long value) => Interlocked.Add(ref _parallelStorageRootDrainWaitMicros.Value, value);
 
         [CounterMetric]
-        [Description("Committed storage writes still queued for the parallel storage root builder when the block commit started.")]
-        public static long ParallelStorageRootDrainBacklog { get; set; }
+        [Description("Committed storage writes still pending for a builder-built trie when its flush finalization started, applied by the flush worker.")]
+        public static long ParallelStorageRootDrainBacklog => _parallelStorageRootDrainBacklog.Value;
+        private static CacheLinePaddedLong _parallelStorageRootDrainBacklog;
+        public static void AddParallelStorageRootDrainBacklog(long value) => Interlocked.Add(ref _parallelStorageRootDrainBacklog.Value, value);
 
         [CounterMetric]
         [Description("Storage tries committed straight from the parallel storage root builder's output instead of being rebuilt at commit.")]
@@ -173,18 +177,6 @@ namespace Nethermind.Db
         public static long ParallelStorageRootHashMicros => _parallelStorageRootHashMicros.Value;
         private static CacheLinePaddedLong _parallelStorageRootHashMicros;
         public static void AddParallelStorageRootHashMicros(long value) => Interlocked.Add(ref _parallelStorageRootHashMicros.Value, value);
-
-        [CounterMetric]
-        [Description("Microseconds the parallel storage root builder spent applying writes after the block thread had requested the join.")]
-        public static long ParallelStorageRootTailApplyMicros => _parallelStorageRootTailApplyMicros.Value;
-        private static CacheLinePaddedLong _parallelStorageRootTailApplyMicros;
-        public static void AddParallelStorageRootTailApplyMicros(long value) => Interlocked.Add(ref _parallelStorageRootTailApplyMicros.Value, value);
-
-        [CounterMetric]
-        [Description("Microseconds the parallel storage root builder spent in a hashing pass that overlapped the block thread's join request.")]
-        public static long ParallelStorageRootTailHashMicros => _parallelStorageRootTailHashMicros.Value;
-        private static CacheLinePaddedLong _parallelStorageRootTailHashMicros;
-        public static void AddParallelStorageRootTailHashMicros(long value) => Interlocked.Add(ref _parallelStorageRootTailHashMicros.Value, value);
 
         [GaugeMetric]
         [Description("Indicator if StateDb is being pruned.")]

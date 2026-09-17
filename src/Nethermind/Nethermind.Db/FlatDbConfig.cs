@@ -34,8 +34,8 @@ public class FlatDbConfig : IFlatDbConfig
     public bool VerifyWithTrie { get; set; } = false;
     public bool ParallelStorageRoot { get; set; } = false;
     public bool ParallelStorageRootEagerHash { get; set; } = true;
-    public int ParallelStorageRootThreads { get; set; } = 1;
-    public int ParallelStorageRootWarmThreads { get; set; } = 4;
+    public int ParallelStorageRootThreads { get; set; } = 2;
+    public int ParallelStorageRootBatchSize { get; set; } = 128;
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
     public ulong CompactSize { get; set; } = 32;
     public int MaxInFlightCompactJob { get; set; } = 32;

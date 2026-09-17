@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Threading;
 using Autofac;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -14,6 +16,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.State.Flat.ScopeProvider;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
@@ -26,23 +29,54 @@ public class FlatParallelStorageRootTests
 {
     private const int ContractCount = 6; // above the multi-threaded storage-root threshold
 
-    [TestCase(false, false)]
-    [TestCase(true, false)]
-    [TestCase(false, true)]
-    [TestCase(true, true)]
-    public void Parallel_storage_root_matches_serial_flush_and_trie_backend(bool eagerHash, bool viaPrewarmerScope)
+    [TearDown]
+    public void TearDown()
     {
-        Hash256 serialFlat = ComputeRoot(parallel: false, eagerHash: false, viaPrewarmerScope);
+        StorageRootBuilder.OnBeforeApplyForTests = null;
+        StorageRootBuilder.OnFaultForTests = null;
+    }
+
+    // Batch size 1 sends every contract to a background job; the default 128 keeps this small block entirely on the flush path.
+    [TestCase(false, false, 1)]
+    [TestCase(true, false, 1)]
+    [TestCase(false, true, 1)]
+    [TestCase(true, true, 1)]
+    [TestCase(true, true, 128)]
+    public void Parallel_storage_root_matches_serial_flush_and_trie_backend(bool eagerHash, bool viaPrewarmerScope, int batchSize)
+    {
+        Exception fault = null;
+        StorageRootBuilder.OnFaultForTests = e => fault = e;
+        Hash256 serialFlat = ComputeRoot(parallel: false, eagerHash: false, viaPrewarmerScope, batchSize);
         long builderWritesBefore = Db.Metrics.ParallelStorageRootWrites;
-        Hash256 parallelFlat = ComputeRoot(parallel: true, eagerHash, viaPrewarmerScope);
+        Hash256 parallelFlat = ComputeRoot(parallel: true, eagerHash, viaPrewarmerScope, batchSize);
         Hash256 trie = ComputeRootOnTrieBackend();
 
-        Assert.That(Db.Metrics.ParallelStorageRootWrites, Is.GreaterThan(builderWritesBefore), "the builder must have applied the committed writes");
+        Assert.That(fault, Is.Null, () => $"the builder faulted: {fault}");
+
+        if (batchSize == 1)
+            Assert.That(Db.Metrics.ParallelStorageRootWrites, Is.GreaterThan(builderWritesBefore), "the builder must have applied the committed writes");
         Assert.That(parallelFlat, Is.EqualTo(serialFlat));
         Assert.That(parallelFlat, Is.EqualTo(trie));
     }
 
-    private static Hash256 ComputeRoot(bool parallel, bool eagerHash, bool viaPrewarmerScope)
+    [Test]
+    public void Faulted_builder_falls_back_to_the_serial_flush()
+    {
+        Hash256 serialFlat = ComputeRoot(parallel: false, eagerHash: false, viaPrewarmerScope: false, batchSize: 1);
+
+        // Let the first job apply, then fail the next one: one trie is left half-built and must be rebuilt from the parent.
+        int applies = 0;
+        StorageRootBuilder.OnBeforeApplyForTests = () =>
+        {
+            if (Interlocked.Increment(ref applies) == 2) throw new InvalidOperationException("injected builder fault");
+        };
+        Hash256 parallelFlat = ComputeRoot(parallel: true, eagerHash: true, viaPrewarmerScope: false, batchSize: 1);
+
+        Assert.That(applies, Is.GreaterThanOrEqualTo(2), "the fault must actually have been injected");
+        Assert.That(parallelFlat, Is.EqualTo(serialFlat));
+    }
+
+    private static Hash256 ComputeRoot(bool parallel, bool eagerHash, bool viaPrewarmerScope, int batchSize)
     {
         ConfigProvider configProvider = new();
         IFlatDbConfig flatConfig = configProvider.GetConfig<IFlatDbConfig>();
@@ -50,7 +84,7 @@ public class FlatParallelStorageRootTests
         flatConfig.ParallelStorageRoot = parallel;
         flatConfig.ParallelStorageRootEagerHash = eagerHash;
         flatConfig.ParallelStorageRootThreads = 3;
-        flatConfig.ParallelStorageRootWarmThreads = 2;
+        flatConfig.ParallelStorageRootBatchSize = batchSize;
         using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule(configProvider)).Build();
         IWorldStateScopeProvider scopeProvider = container.Resolve<IWorldStateManager>().GlobalWorldState;
         if (viaPrewarmerScope)
