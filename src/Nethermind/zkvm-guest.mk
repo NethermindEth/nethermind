@@ -27,7 +27,7 @@
 # the series is maintained and submitted upstream. It costs ~2.6% more SP1
 # cycles and ~2.5% more ZisK steps over the nine stateless-tests mainnet
 # blocks, and gives ~6.5% smaller binaries.
-BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:d72f5982a8ccb9baf9186755fb1d4f3a327fd486@sha256:0e7a543c3034949f052da80ddafc32dcb1b8d1f2fd6e5bf51effe56cfbf00767
+BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:e48bd7b555baa1a592e9825240ca16ce4b012247@sha256:f5d546ee2cbf5c53790be755ef82da58031b1a323f47c0d6fc4ce1bbb1bb686a
 
 # Every target here decodes rv64im only and reads the whole .text up front -
 # ziskemu ROMs it, SP1 panics on the first word it cannot decode, OpenVM turns
