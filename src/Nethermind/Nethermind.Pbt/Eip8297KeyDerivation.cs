@@ -18,7 +18,12 @@ public static class Eip8297KeyDerivation
     public static PbtFullKey AccountKey(ReadOnlySpan<byte> address32, byte subIndex)
     {
         Validate32(address32, nameof(address32));
-        ValueHash256 addressHash = Blake3Hash.Hash(address32);
+        return AccountKey(Blake3Hash.Hash(address32), subIndex);
+    }
+
+    /// <summary><see cref="AccountKey(ReadOnlySpan{byte}, byte)"/> reusing a precomputed address hash.</summary>
+    public static PbtFullKey AccountKey(in ValueHash256 addressHash, byte subIndex)
+    {
         Span<byte> key = stackalloc byte[AccountKeyLength];
         key[0] = AccountZone;
         addressHash.Bytes.CopyTo(key[1..]);
@@ -29,16 +34,25 @@ public static class Eip8297KeyDerivation
     public static PbtStorageFullKey StorageKey(ReadOnlySpan<byte> address32, in UInt256 slot)
     {
         Validate32(address32, nameof(address32));
+        return StorageKey(address32, Blake3Hash.Hash(address32), slot);
+    }
+
+    /// <summary>
+    /// <see cref="StorageKey(ReadOnlySpan{byte}, in UInt256)"/> reusing a precomputed address hash, so a run of
+    /// slots for one address pays only the per-tree-index suffix hash.
+    /// </summary>
+    public static PbtStorageFullKey StorageKey(ReadOnlySpan<byte> address32, in ValueHash256 addressHash, in UInt256 slot)
+    {
+        Validate32(address32, nameof(address32));
         if (slot < PbtKeyDerivation.HeaderStorageOffset)
         {
-            return (PbtStorageFullKey)AccountKey(address32, (byte)(PbtKeyDerivation.HeaderStorageOffset + slot.u0));
+            return (PbtStorageFullKey)AccountKey(addressHash, (byte)(PbtKeyDerivation.HeaderStorageOffset + slot.u0));
         }
 
         UInt256 treeIndex = slot >> 8;
         Span<byte> suffixInput = stackalloc byte[64];
         address32.CopyTo(suffixInput);
         treeIndex.ToBigEndian(suffixInput[32..]);
-        ValueHash256 addressHash = Blake3Hash.Hash(address32);
         ValueHash256 suffixHash = Blake3Hash.Hash(suffixInput);
         Span<byte> key = stackalloc byte[StorageKeyLength];
         key[0] = StorageZone;

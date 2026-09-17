@@ -89,12 +89,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         _rootHash = root;
     }
 
-    public Account? Get(Address address)
-    {
-        Account? account = Bundle.GetAccount(address);
-        HintGet(address, account);
-        return account;
-    }
+    // A read rewrites nothing at commit, so its trie path needs no warming; changes hint through HintWarmAccount.
+    public Account? Get(Address address) => Bundle.GetAccount(address);
 
     public void HintGet(Address address, Account? account) => HintWarmAccount(new ValueAddress(address.Bytes));
 
@@ -119,9 +115,14 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     /// <inheritdoc/>
     public IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession()
     {
+        if (_trieWarmer is NoopTrieWarmer) return IWorldStateScopeProvider.ITrieWarmupSession.Noop.Instance;
+        // A live session is leased without the lock; a lease landing while the session is retired is harmless
+        // because a stopped session ignores hints and its cleanup waits for the last lease.
+        PbtTrieWarmupSession? session = Volatile.Read(ref _warmupSession);
+        if (session is not null && session.TryAcquireLease()) return session;
         lock (_warmupLock)
         {
-            if (_isDisposed || _pausePrewarmer || _trieWarmer is NoopTrieWarmer)
+            if (_isDisposed || _pausePrewarmer)
                 return IWorldStateScopeProvider.ITrieWarmupSession.Noop.Instance;
             _warmupSession ??= Bundle.CreateTrieWarmupSession(_trieWarmer, _hintSequenceId);
             _warmupSession.AcquireLease();

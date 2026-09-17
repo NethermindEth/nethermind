@@ -29,9 +29,11 @@ internal sealed class PbtTrieWarmupSession(
     internal ValueHash256 TreeRoot { get; } = initialSnapshots.Count > 0 ? initialSnapshots[^1].TreeRoot : readOnlyBundle.TreeRoot;
     internal bool IsStopped => Volatile.Read(ref _isStopped);
 
+    internal bool TryAcquireLease() => RefCountingLease.TryAcquire(ref _leases);
+
     internal void AcquireLease()
     {
-        if (!RefCountingLease.TryAcquire(ref _leases)) throw new ObjectDisposedException(nameof(PbtTrieWarmupSession));
+        if (!TryAcquireLease()) throw new ObjectDisposedException(nameof(PbtTrieWarmupSession));
     }
 
     internal void StopWarming()
@@ -150,6 +152,8 @@ internal sealed class PbtTrieWarmupSession(
 
     private sealed class StorageWarmer(PbtTrieWarmupSession session, Address address) : ITrieWarmer.IStorageWarmer
     {
-        public bool WarmUpStorageTrie(UInt256 index, int jobSequenceId) => session.WarmUpPath(PbtStateKey.Storage(address, index), jobSequenceId);
+        private readonly ValueHash256 _addressHash = PbtKeyDerivation.AddressKeyHash(address);
+
+        public bool WarmUpStorageTrie(UInt256 index, int jobSequenceId) => session.WarmUpPath(PbtStateKey.Storage(address, _addressHash, index), jobSequenceId);
     }
 }
