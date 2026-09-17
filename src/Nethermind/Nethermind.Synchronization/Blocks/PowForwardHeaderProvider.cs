@@ -251,26 +251,36 @@ public class PowForwardHeaderProvider(
         cancellation.ThrowIfCancellationRequested();
         headers = FilterPosHeader(headers);
 
+        // Consistency must be checked before seals: ValidateSeals force-validates the last header, and
+        // its peer-chosen Number picks the Ethash epoch, whose cache is then built synchronously
+        // (gigabytes, or billions of seed-hash rounds) before anything else could reject the response.
+        ValidateBatchConsistency(peer, headers.AsSpan(), currentNumber);
         ValidateSeals(headers, cancellation);
-        ValidateBatchConsistency(peer, headers.AsSpan());
         return headers;
     }
 
-    private void ValidateBatchConsistency(PeerInfo bestPeer, ReadOnlySpan<BlockHeader> headers)
+    private void ValidateBatchConsistency(PeerInfo bestPeer, ReadOnlySpan<BlockHeader> headers, ulong startNumber)
     {
+        if (headers.Length > 0 && headers[0] is not null && headers[0].Number != startNumber)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Block list from peer {bestPeer} does not start at the requested {startNumber}");
+            throw new EthSyncException("Peer sent a block list that does not start at the requested number");
+        }
+
         // in the past (version 1.11) and possibly now too Parity was sending non canonical blocks in responses
         // so we need to confirm that the blocks form a valid subchain
         for (int i = 1; i < headers.Length; i++)
         {
-            if (headers[i] is not null && headers[i]?.ParentHash != headers[i - 1]?.Hash)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {bestPeer}");
-                throw new EthSyncException("Peer sent an inconsistent block list");
-            }
-
             if (headers[i] is null)
             {
                 break;
+            }
+
+            BlockHeader? previous = headers[i - 1];
+            if (previous is null || headers[i].ParentHash != previous.Hash || headers[i].Number != previous.Number + 1)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {bestPeer}");
+                throw new EthSyncException("Peer sent an inconsistent block list");
             }
         }
     }

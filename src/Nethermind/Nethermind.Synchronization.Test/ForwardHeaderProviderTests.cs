@@ -189,6 +189,35 @@ public partial class ForwardHeaderProviderTests
     }
 
     [Test]
+    public async Task Throws_on_forged_header_number_before_validating_seals()
+    {
+        ISealValidator sealValidator = Substitute.For<ISealValidator>();
+        sealValidator.ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>()).Returns(true);
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<ISealValidator>(sealValidator));
+        Context ctx = node.Resolve<Context>();
+
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.ForgedLastNumber));
+
+        PeerInfo peerInfo = new(syncPeer);
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.HeadNumber.Returns(1024UL);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
+        Assert.That((await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)), Is.Null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
+            // No seal may be looked at: the forged number selects the Ethash epoch, and validating it
+            // builds that epoch's cache synchronously before the response could be rejected.
+            sealValidator.DidNotReceiveWithAnyArgs().ValidateSeal(null!, default);
+        }
+    }
+
+    [Test]
     public async Task Throws_on_invalid_seal()
     {
         await using IContainer node = CreateNode(builder => builder.AddSingleton<ISealValidator>(Always.Invalid));
@@ -498,6 +527,7 @@ public partial class ForwardHeaderProviderTests
         JustFirst = 8,
         AllKnown = 16,
         TimeoutOnFullBatch = 32,
+        ForgedLastNumber = 64,
         WithTransactions = 128,
     }
 
@@ -704,6 +734,7 @@ public partial class ForwardHeaderProviderTests
             bool justFirst = flags.HasFlag(Response.JustFirst);
             bool allKnown = flags.HasFlag(Response.AllKnown);
             bool timeoutOnFullBatch = flags.HasFlag(Response.TimeoutOnFullBatch);
+            bool forgedLastNumber = flags.HasFlag(Response.ForgedLastNumber);
             bool withTransaction = flags.HasFlag(Response.WithTransactions);
 
             if (timeoutOnFullBatch && number == SyncBatchSizeMax)
@@ -744,6 +775,15 @@ public partial class ForwardHeaderProviderTests
             foreach (BlockHeader header in headers)
             {
                 _headers[header.Hash!] = header;
+            }
+
+            if (forgedLastNumber && number > 1)
+            {
+                // The parent hash still links, so only the block-number check can catch this. Epoch
+                // 10_000 is what a real Ethash node would build a >1 GiB cache for.
+                BlockHeader forged = headers[^1].Clone();
+                forged.Number += 300_000_000;
+                headers[^1] = forged;
             }
 
             using BlockHeadersMessage message = new(headers.ToPooledList());
