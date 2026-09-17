@@ -12,14 +12,17 @@ namespace Nethermind.State.Pbt.Persistence;
 /// immediately before its descendants, so a subtree is stored contiguously. The nibble count breaks the tie between a
 /// group and a descendant whose extra bits are all zero.
 /// <para/>
-/// <see cref="PbtNodeGroupKeyLayout.Variable"/> is the group path bytes, then the number of bits used in the last path
-/// byte (4 or 8). Keys carry no padding, so a subtree is still one contiguous key range, but the trailing byte is
-/// compared against the next path byte of longer keys: a group sorts after the descendants whose next byte is below
-/// it, inside its subtree's range rather than at its front.
+/// <see cref="PbtNodeGroupKeyLayout.Variable"/> is the group path bytes, then a trailer byte: 0 when the path fills its
+/// last byte, 1 when it ends on a nibble. Keys carry no padding, so a subtree is still one contiguous key range, but the
+/// trailer is compared against the next path byte of longer keys. A byte-aligned group's 0 never exceeds that byte, and
+/// on a tie the shorter key wins, so it sorts at the front of its subtree; a nibble group's 1 sorts it after the
+/// descendants whose next byte is zero, inside its subtree's range rather than at its front.
 /// </remarks>
 internal static class PbtNodeGroupKey
 {
     private const int TrailerLength = 1;
+    private const byte ByteAlignedTrailer = 0;
+    private const byte NibbleAlignedTrailer = 1;
     internal const int MaxLength = PbtStorageFullKey.MaxLength + TrailerLength;
 
     private static int PathLength(PbtColumns column) =>
@@ -74,7 +77,7 @@ internal static class PbtNodeGroupKey
         Span<byte> key = destination[..(pathLength + TrailerLength)];
         key[^2] = 0;
         groupKey.CopyBitsTo(0, key, 0, groupKey.BitDepth);
-        key[^1] = (byte)(groupKey.BitDepth - (pathLength - 1) * 8);
+        key[^1] = (groupKey.BitDepth & 7) == 0 ? ByteAlignedTrailer : NibbleAlignedTrailer;
         return key;
     }
 
@@ -83,9 +86,12 @@ internal static class PbtNodeGroupKey
         // The root group lives under its own metadata key, never in a node-group column.
         if (key.Length < 1 + TrailerLength || key.Length - TrailerLength > PbtStorageFullKey.MaxLength)
             throw new InvalidDataException("Invalid persisted PBT node-group key length.");
-        int bitsInLastByte = key[^1];
-        if (bitsInLastByte is not (PbtFourLevelGroupGeometry.LevelsPerGroup or 8))
-            throw new InvalidDataException("Invalid persisted PBT node-group key trailer.");
+        int bitsInLastByte = key[^1] switch
+        {
+            ByteAlignedTrailer => 8,
+            NibbleAlignedTrailer => PbtFourLevelGroupGeometry.LevelsPerGroup,
+            _ => throw new InvalidDataException("Invalid persisted PBT node-group key trailer."),
+        };
         int depth = (key.Length - TrailerLength - 1) * 8 + bitsInLastByte;
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(depth))
             throw new InvalidDataException("A persisted PBT node-group key depth must be a four-level boundary.");

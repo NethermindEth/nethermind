@@ -9,6 +9,6 @@ public enum PbtNodeGroupKeyLayout
     /// <summary>The group path zero-padded to the column's full-key length, then its nibble count. A group sorts immediately before its descendants.</summary>
     Padded,
 
-    /// <summary>The group path bytes, then the number of bits used in the last path byte. Keys are shorter, and a group sorts inside its descendants' range.</summary>
+    /// <summary>The group path bytes, then 0 for a byte-aligned path or 1 for a nibble-aligned one. Keys are shorter; a byte-aligned group sorts before its descendants, a nibble-aligned one inside their range.</summary>
     Variable,
 }
