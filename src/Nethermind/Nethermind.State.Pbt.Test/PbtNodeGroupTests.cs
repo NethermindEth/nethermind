@@ -1099,14 +1099,14 @@ public class PbtNodeGroupTests
         if (split)
         {
             using PbtPartitionBatches initialBatch = PbtStoreTestExtensions.PreparePartitions(initial);
-            root = TrieUpdater.UpdateRoot(store, default, initialBatch, ParallelUnbalancedWork.DefaultOptions);
+            root = TrieUpdater.UpdateRoot(store, default, initialBatch, ParallelUnbalancedWork.DefaultOptions, null);
             expected.ApplyBatch(initial);
         }
         TrieUpdaterMetrics metrics = new();
         if (partitioned)
         {
             using PbtPartitionBatches batch = PbtStoreTestExtensions.PreparePartitions(changes);
-            root = TrieUpdater.UpdateRoot(store, root, batch, ParallelUnbalancedWork.DefaultOptions, metrics);
+            root = TrieUpdater.UpdateRoot(store, root, batch, ParallelUnbalancedWork.DefaultOptions, null, metrics);
         }
         else
         {
@@ -1679,7 +1679,7 @@ public class PbtNodeGroupTests
         if (parallel)
         {
             using PbtPartitionBatches partitions = PbtStoreTestExtensions.PreparePartitions(changes);
-            actualRoot = TrieUpdater.UpdateRoot(store, root, partitions, ParallelUnbalancedWork.DefaultOptions);
+            actualRoot = TrieUpdater.UpdateRoot(store, root, partitions, ParallelUnbalancedWork.DefaultOptions, null);
         }
         else actualRoot = TrieUpdater.UpdateRoot(store, root, batch.Build());
 

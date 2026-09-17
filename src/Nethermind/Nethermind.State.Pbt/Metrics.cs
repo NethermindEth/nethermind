@@ -60,6 +60,12 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40)]
     public static IMetricObserver PbtTrieUpdaterTime { get; set; } = new NoopMetricObserver();
 
+    /// <remarks>The partitions fold concurrently, so the slowest one bounds <see cref="PbtTrieUpdaterTime"/>.</remarks>
+    [DetailedMetric]
+    [Description("Time folding one pbt partition's dirty stems inside the trie updater, by partition (Stopwatch ticks)")]
+    [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40, LabelNames = ["partition"])]
+    public static IMetricObserver PbtPartitionFoldTime { get; set; } = new NoopMetricObserver();
+
     [DetailedMetric]
     [Description("Pbt pooled resources currently rented, by category and type")]
     [KeyIsLabel("category", "resource_type")]

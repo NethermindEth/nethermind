@@ -1286,7 +1286,7 @@ public class PbtSnapshotBundleTests
         bundle.SetCode(other.CodeHash.ValueHash256, new CodeInfo(otherBytes));
         bundle.SetAccount(TestItem.AddressB, other);
         CountingStore store = new(bundle) { FailedZone = failedZone };
-        Assert.Throws<AggregateException>(() => TrieUpdater.UpdateRoot(store, root, bundle.PrepareLeafChanges(), ParallelUnbalancedWork.DefaultOptions));
+        Assert.Throws<AggregateException>(() => TrieUpdater.UpdateRoot(store, root, bundle.PrepareLeafChanges(), ParallelUnbalancedWork.DefaultOptions, null));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.TreeRoot, Is.EqualTo(root));
@@ -1302,7 +1302,7 @@ public class PbtSnapshotBundleTests
         PbtPartitionBatches changes = bundle.PrepareLeafChanges();
         try
         {
-            ValueHash256 updated = TrieUpdater.UpdateRoot(new PbtSnapshotStore(bundle), root, changes, ParallelUnbalancedWork.DefaultOptions);
+            ValueHash256 updated = TrieUpdater.UpdateRoot(new PbtSnapshotStore(bundle), root, changes, ParallelUnbalancedWork.DefaultOptions, null);
             bundle.CompleteLeafChanges();
             return updated;
         }

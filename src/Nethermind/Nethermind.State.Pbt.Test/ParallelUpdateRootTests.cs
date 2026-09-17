@@ -131,7 +131,7 @@ public class ParallelUpdateRootTests
             (byte[] Key, byte[]? Value)[] writes = new (byte[], byte[]?)[mutations.Length];
             for (int index = 0; index < mutations.Length; index++)
                 writes[index] = (mutations[index].Key, zeroDeletes && mutations[index].Value is null ? new byte[32] : mutations[index].Value);
-            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(writes), ParallelUnbalancedWork.DefaultOptions);
+            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(writes), ParallelUnbalancedWork.DefaultOptions, null);
             sequential.ApplyBatch(mutations);
             foreach ((byte[] key, byte[]? value) in mutations)
             {
@@ -144,7 +144,7 @@ public class ParallelUpdateRootTests
                 Assert.That(root, Is.EqualTo(sequential.RootHash));
                 Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
                 Assert.That(PhysicalRecords(store), Is.EqualTo(PhysicalRecords(sequential.PhysicalPayloads)));
-                Assert.That(TrieUpdater.UpdateRoot(reopened, root, PreparePartitions(writes), ParallelUnbalancedWork.DefaultOptions), Is.EqualTo(root));
+                Assert.That(TrieUpdater.UpdateRoot(reopened, root, PreparePartitions(writes), ParallelUnbalancedWork.DefaultOptions, null), Is.EqualTo(root));
                 Assert.That(PhysicalRecords(reopened), Is.EqualTo(PhysicalRecords(store)));
             }
         }
@@ -179,7 +179,7 @@ public class ParallelUpdateRootTests
             if (parallel)
             {
                 using PbtPartitionBatches partitions = PreparePartitions([.. writes]);
-                root = TrieUpdater.UpdateRoot(target, root, partitions, ParallelUnbalancedWork.DefaultOptions);
+                root = TrieUpdater.UpdateRoot(target, root, partitions, ParallelUnbalancedWork.DefaultOptions, null);
             }
             else
             {
@@ -249,7 +249,7 @@ public class ParallelUpdateRootTests
         void ApplyAndCompare(PbtNodeGroupStore target, (byte[] Key, byte[]? Value)[] changes)
         {
             using PbtPartitionBatches partitions = PreparePartitions(changes);
-            root = TrieUpdater.UpdateRoot(target, root, partitions, ParallelUnbalancedWork.DefaultOptions);
+            root = TrieUpdater.UpdateRoot(target, root, partitions, ParallelUnbalancedWork.DefaultOptions, null);
             sequential.ApplyBatch(changes);
             foreach ((byte[] key, byte[]? value) in changes)
             {
@@ -291,7 +291,7 @@ public class ParallelUpdateRootTests
                 if (value is null) oracle.Delete(key);
                 else oracle.Insert(key, value);
             }
-            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), foldOptions);
+            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), foldOptions, null);
             sequential.ApplyBatch(changes);
             using (Assert.EnterMultipleScope())
             {
@@ -309,7 +309,7 @@ public class ParallelUpdateRootTests
         (byte[] Key, byte[]? Value)[] initial = RandomZoneEntries(new Random(keysPerZone), keysPerZone);
         using CoordinatedStore store = new();
         using PbtTreeHarness sequential = new();
-        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), ParallelUnbalancedWork.DefaultOptions);
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), ParallelUnbalancedWork.DefaultOptions, null);
         sequential.ApplyBatch(initial);
         string[] initialRecords = PhysicalRecords(store.Inner);
         (byte[] Key, byte[]? Value)[] changes = Changes(initial);
@@ -319,7 +319,7 @@ public class ParallelUpdateRootTests
         store.Writes = 0;
         if (failWorker)
         {
-            Assert.Throws<AggregateException>(() => TrieUpdater.UpdateRoot(store, root, prepared, ParallelUnbalancedWork.DefaultOptions));
+            Assert.Throws<AggregateException>(() => TrieUpdater.UpdateRoot(store, root, prepared, ParallelUnbalancedWork.DefaultOptions, null));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(store.Writes, Is.GreaterThan(0), "partial writes belong to the caller on failure");
@@ -330,7 +330,7 @@ public class ParallelUpdateRootTests
             Assert.That(store.DuplicateWrites, Is.False, "each group has one owner");
             return;
         }
-        ValueHash256 result = TrieUpdater.UpdateRoot(store, root, prepared, ParallelUnbalancedWork.DefaultOptions);
+        ValueHash256 result = TrieUpdater.UpdateRoot(store, root, prepared, ParallelUnbalancedWork.DefaultOptions, null);
         sequential.ApplyBatch(changes);
         using (Assert.EnterMultipleScope())
         {
@@ -339,7 +339,7 @@ public class ParallelUpdateRootTests
             Assert.That(PhysicalRecords(store.Inner), Is.EqualTo(PhysicalRecords(sequential.PhysicalPayloads)));
             Assert.That(store.ActiveReads, Is.Zero);
             Assert.That(store.DuplicateWrites, Is.False, "each group has one owner");
-            Assert.Throws<InvalidOperationException>(() => TrieUpdater.UpdateRoot(store, result, prepared, ParallelUnbalancedWork.DefaultOptions));
+            Assert.Throws<InvalidOperationException>(() => TrieUpdater.UpdateRoot(store, result, prepared, ParallelUnbalancedWork.DefaultOptions, null));
         }
     }
 
@@ -384,7 +384,7 @@ public class ParallelUpdateRootTests
             if (parallel)
             {
                 using PbtPartitionBatches partitions = PreparePartitions(changes);
-                root = TrieUpdater.UpdateRoot(store, root, partitions, ParallelUnbalancedWork.DefaultOptions);
+                root = TrieUpdater.UpdateRoot(store, root, partitions, ParallelUnbalancedWork.DefaultOptions, null);
             }
             else
             {

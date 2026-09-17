@@ -1,12 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Metric;
 using static Nethermind.Pbt.TrieUpdater;
 using static Nethermind.Pbt.TrieUpdater<Nethermind.Pbt.PbtStorageFullKey, Nethermind.Pbt.PbtStorageNodePath>;
 
@@ -14,6 +17,10 @@ namespace Nethermind.Pbt;
 
 public static partial class TrieUpdater
 {
+    private static readonly StringLabel _accountFoldLabel = new("account");
+    private static readonly StringLabel _codeFoldLabel = new("code");
+    private static readonly StringLabel _storageFoldLabel = new("storage");
+
     /// <summary>Applies an account/code key batch to a tree containing only small keys.</summary>
     public static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch<PbtFullKey> changes) =>
         TrieUpdater<PbtFullKey, PbtNodePath>.UpdateRoot(store, currentRoot, changes);
@@ -41,9 +48,10 @@ public static partial class TrieUpdater
     /// <summary>Folds disjoint partitions concurrently before merging their shared ancestors.</summary>
     /// <remarks>
     /// The zones fold under <paramref name="foldOptions"/>, and so do the touched buckets of every frame wide enough
-    /// to fan out; a degree of one folds everything serially. The supplied store must support concurrent reads and
-    /// writes. Failed folds may leave partial writes; the caller owns failure isolation and must not reuse that
-    /// state without recovery.
+    /// to fan out; a degree of one folds everything serially. Each zone's fold time is observed on
+    /// <paramref name="partitionFoldTime"/> labelled by partition, so an imbalance between them is visible. The
+    /// supplied store must support concurrent reads and writes. Failed folds may leave partial writes; the caller
+    /// owns failure isolation and must not reuse that state without recovery.
     /// </remarks>
     [SkipLocalsInit]
     internal static ValueHash256 UpdateRoot(
@@ -51,6 +59,7 @@ public static partial class TrieUpdater
         in ValueHash256 currentRoot,
         PbtPartitionBatches changes,
         ParallelOptions foldOptions,
+        IMetricObserver? partitionFoldTime,
         TrieUpdaterMetrics? metrics = null,
         IRefCountingMemoryProvider? memoryProvider = null)
     {
@@ -69,9 +78,9 @@ public static partial class TrieUpdater
             touchedZoneMasks.Clear();
             try
             {
-                AddWorker<PbtFullKey, PbtNodePath>(changes.Account, Eip8297KeyDerivation.AccountZone);
-                AddWorker<PbtFullKey, PbtNodePath>(changes.Code, Eip8297KeyDerivation.CodeZone);
-                AddWorker<PbtStorageFullKey, PbtStorageNodePath>(changes.Storage, Eip8297KeyDerivation.StorageZone);
+                AddWorker<PbtFullKey, PbtNodePath>(changes.Account, Eip8297KeyDerivation.AccountZone, _accountFoldLabel);
+                AddWorker<PbtFullKey, PbtNodePath>(changes.Code, Eip8297KeyDerivation.CodeZone, _codeFoldLabel);
+                AddWorker<PbtStorageFullKey, PbtStorageNodePath>(changes.Storage, Eip8297KeyDerivation.StorageZone, _storageFoldLabel);
                 if (workers.Count == 0) return currentRoot;
 
                 GroupFrameReader<PbtStorageFullKey, PbtStorageNodePath> rootReader = new(store, 0, currentRoot, metrics);
@@ -145,14 +154,14 @@ public static partial class TrieUpdater
                 }
             }
 
-            void AddWorker<TKey, TPath>(PbtWriteBatch<TKey>? batch, byte zone)
+            void AddWorker<TKey, TPath>(PbtWriteBatch<TKey>? batch, byte zone, StringLabel foldLabel)
                 where TKey : struct, IPbtKey<TKey>
                 where TPath : struct, IPbtNodePath<TPath>
             {
                 if (batch is null) return;
                 ArgumentOutOfRangeException.ThrowIfNotEqual(batch.ShardNibbleIndex, 2);
                 batch.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table);
-                PartitionFold<TKey, TPath> worker = new(store, zone, operations, table, metrics is not null, memoryProvider, foldOptions);
+                PartitionFold<TKey, TPath> worker = new(store, zone, operations, table, metrics is not null, memoryProvider, foldOptions, partitionFoldTime, foldLabel);
                 if (operations.Count != 0) workers.Add(worker);
                 else worker.Dispose();
             }
@@ -173,13 +182,15 @@ public static partial class TrieUpdater
 
     private sealed class PartitionFold<TKey, TPath>(IPbtStore store, byte zone,
         ArrayPoolList<PbtWriteOperation<TKey>> operations, ArrayPoolList<int> table,
-        bool collectMetrics, IRefCountingMemoryProvider memoryProvider, ParallelOptions foldOptions) : PartitionFold(zone, collectMetrics)
+        bool collectMetrics, IRefCountingMemoryProvider memoryProvider, ParallelOptions foldOptions,
+        IMetricObserver? foldTime, StringLabel foldLabel) : PartitionFold(zone, collectMetrics)
         where TKey : struct, IPbtKey<TKey>
         where TPath : struct, IPbtNodePath<TPath>
     {
         [SkipLocalsInit]
         internal override void Fold()
         {
+            long start = Stopwatch.GetTimestamp();
             Span<byte> pathBuffer = stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)];
             PbtTraversalPath path = new(pathBuffer);
             path.AppendMut(Zone >> 4);
@@ -202,6 +213,7 @@ public static partial class TrieUpdater
                     store.SetNodeGroup(path, result.Borrow(sourceBuffer).Hash(8, Metrics), payload);
                 Result = OwnedSubtree.TakeFrom<TKey, TPath>(ref result);
             }
+            foldTime?.Observe(Stopwatch.GetTimestamp() - start, foldLabel);
         }
 
         public override void Dispose()
