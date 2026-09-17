@@ -156,7 +156,7 @@ public class PbtSnapshotBundleTests
                         Assert.That(current?.GetSpan().ToArray(), Is.EqualTo(tombstone ? null : replacement));
                         Assert.That(retained[index]!.GetSpan().ToArray(), Is.EqualTo(original));
                     }
-                    expectedNodeBytes[index] = storagePath.EncodedLength + (tombstone ? 0 : replacement.Length);
+                    expectedNodeBytes[index] = storagePath.ToPathArray().Length + (tombstone ? 0 : replacement.Length);
                 });
 
                 long nodeBytes = 0;

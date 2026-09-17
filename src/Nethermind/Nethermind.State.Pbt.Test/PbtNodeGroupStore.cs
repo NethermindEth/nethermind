@@ -1,10 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.IO;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Pbt;
 
-namespace Nethermind.Pbt;
+namespace Nethermind.State.Pbt.Test;
 
 /// <summary>In-memory store of canonical nodes grouped by four-level ownership boundaries.</summary>
 public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider = null) : IPbtStore, IDisposable
@@ -26,7 +30,7 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
             Span<byte> pathBuffer = stackalloc byte[PbtStorageFullKey.MaxLength];
             foreach (PbtPhysicalPayload payload in payloads)
             {
-                PbtStorageNodePath groupKey = PbtStorageNodePath.Decode(payload.Key.Span);
+                PbtStorageNodePath groupKey = payload.Key;
                 if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))
                     throw new InvalidDataException("A PBT node-group key depth must be a four-level boundary.");
                 if (store._groups.ContainsKey(groupKey)) throw new InvalidDataException("Duplicate PBT node group.");
@@ -120,13 +124,8 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
         PbtStorageNodePath[] keys = [.. _groups.Keys];
         Array.Sort(keys);
         PbtPhysicalPayload[] payloads = new PbtPhysicalPayload[keys.Length];
-        Span<byte> encodedKey = stackalloc byte[4 + PbtStorageFullKey.MaxLength];
         for (int index = 0; index < keys.Length; index++)
-        {
-            PbtStorageNodePath key = keys[index];
-            key.Encode(encodedKey);
-            payloads[index] = new PbtPhysicalPayload(encodedKey[..key.EncodedLength], _groups[key].GetSpan());
-        }
+            payloads[index] = new PbtPhysicalPayload(keys[index], _groups[keys[index]].GetSpan());
         return payloads;
     }
 
@@ -140,38 +139,19 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
     }
 }
 
-/// <summary>An owned canonical path/node record.</summary>
-public sealed class PbtNodeRecord
-{
-    private readonly byte[] _encoding;
-
-    internal PbtNodeRecord(PbtStorageNodePath path, ReadOnlySpan<byte> encoding)
-    {
-        Path = path;
-        _encoding = encoding.ToArray();
-    }
-
-    /// <summary>Gets the complete canonical path.</summary>
-    public PbtStorageNodePath Path { get; }
-
-    /// <summary>Gets the exact canonical node encoding.</summary>
-    public ReadOnlyMemory<byte> Encoding => _encoding;
-}
-
-/// <summary>An owned physical key and opaque payload.</summary>
+/// <summary>A node-group key and an owned copy of its opaque payload.</summary>
 public sealed class PbtPhysicalPayload
 {
-    private readonly byte[] _key;
     private readonly byte[] _payload;
 
-    public PbtPhysicalPayload(ReadOnlySpan<byte> key, ReadOnlySpan<byte> payload)
+    public PbtPhysicalPayload(PbtStorageNodePath key, ReadOnlySpan<byte> payload)
     {
-        _key = key.ToArray();
+        Key = key;
         _payload = payload.ToArray();
     }
 
-    /// <summary>Gets the physical key.</summary>
-    public ReadOnlyMemory<byte> Key => _key;
+    /// <summary>Gets the node-group key.</summary>
+    public PbtStorageNodePath Key { get; }
 
     /// <summary>Gets the opaque physical payload.</summary>
     public ReadOnlyMemory<byte> Payload => _payload;

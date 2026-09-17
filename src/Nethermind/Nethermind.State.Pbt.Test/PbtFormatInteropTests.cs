@@ -63,7 +63,7 @@ public class PbtFormatInteropTests
             legacyPayload[^1] = 0x40;
             payload = legacyPayload;
         }
-        PbtPhysicalPayload invalid = new(physical.Key.Span, payload);
+        PbtPhysicalPayload invalid = new(physical.Key, payload);
 
         Assert.That(() => PbtNodeGroupStore.FromPhysicalPayloads([invalid]), Throws.TypeOf<InvalidDataException>());
     }
@@ -134,7 +134,7 @@ public class PbtFormatInteropTests
         List<byte> bytes = [];
         foreach (PbtPhysicalPayload payload in tree.PhysicalPayloads)
         {
-            bytes.AddRange(payload.Key.ToArray());
+            bytes.AddRange(payload.Key.ToEncodedArray());
             bytes.AddRange(payload.Payload.ToArray());
         }
         return Blake3Hash.Hash(bytes.ToArray()).ToString();

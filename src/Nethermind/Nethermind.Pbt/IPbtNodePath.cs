@@ -47,9 +47,4 @@ public interface IPbtNodePath<TSelf> : IEquatable<TSelf>, IComparable<TSelf> whe
     /// <summary>Tests the first bits against another path; insufficient length is a mismatch.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The bit count is negative.</exception>
     bool MatchesPrefix<TOther>(TOther other, int bitCount) where TOther : struct, IPbtNodePath<TOther>;
-    /// <summary>Gets the encoded length of the four-byte depth and canonical path bytes.</summary>
-    int EncodedLength { get; }
-    /// <summary>Writes the big-endian depth and canonical path bytes, leaving excess destination bytes unchanged.</summary>
-    /// <exception cref="ArgumentException">The destination is shorter than <see cref="EncodedLength"/>.</exception>
-    void Encode(Span<byte> destination);
 }

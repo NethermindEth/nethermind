@@ -705,18 +705,13 @@ public class Eip8297CanonicalTreeTests
         PbtStorageNodePath constructed = new(constructorInput, bitDepth);
         constructorInput.AsSpan().Clear();
         source.AsSpan().Clear();
-        PbtStorageNodePath decoded = PbtStorageNodePath.Decode(constructed.ToEncodedArray());
         PbtNodeGroupLocation<PbtStorageNodePath> location = PbtFourLevelGroupGeometry.Locate(constructed);
         byte[] copiedPath = constructed.ToPathArray();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(copiedPath, Is.EqualTo(expected));
-            Assert.That(constructed.EncodedLength, Is.EqualTo(4 + expected.Length));
             Assert.That(fromKey, Is.EqualTo(constructed));
-            Assert.That(decoded, Is.EqualTo(constructed));
-            Assert.That(decoded.GetHashCode(), Is.EqualTo(constructed.GetHashCode()));
-            Assert.That(decoded.CompareTo(constructed), Is.Zero);
             Assert.That(PbtFourLevelGroupGeometry.PathOf(location.GroupKey, location.Position), Is.EqualTo(constructed));
             if (bitDepth > 0)
             {
@@ -864,7 +859,6 @@ public class Eip8297CanonicalTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.Throws<ArgumentOutOfRangeException>(() => new PbtStorageNodePath(new byte[67], 529));
-            Assert.Throws<InvalidDataException>(() => PbtStorageNodePath.Decode([0, 0, 2, 17, .. new byte[67]]));
             Assert.Throws<ArgumentOutOfRangeException>(() => maximum.Append(default, 0));
             Assert.Throws<ArgumentException>(() => new PbtStorageNodePath(Bytes.FromHexString("01"), 1));
             Assert.Throws<ArgumentException>(() => new PbtStorageNodePath([], 8));
@@ -884,7 +878,6 @@ public class Eip8297CanonicalTreeTests
         Assert.DoesNotThrow(() => new PbtStorageFullKey(new byte[PbtStorageFullKey.MaxLength]));
         Assert.Throws<ArgumentOutOfRangeException>(() => new PbtStorageFullKey(new byte[PbtStorageFullKey.MaxLength + 1]));
         Assert.Throws<ArgumentException>(() => new PbtBitPrefix([0x01], 1));
-        Assert.Throws<InvalidDataException>(() => PbtStorageNodePath.Decode([0, 0, 0, 1, 0x01]));
 
         using PbtTreeHarness tree = new();
         tree.ApplyBatch([([0x12], Value(1))]);
@@ -1455,7 +1448,7 @@ public class Eip8297CanonicalTreeTests
             {
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(preparedPayloads[index].Key.ToArray(), Is.EqualTo(genericPayloads[index].Key.ToArray()));
+                    Assert.That(preparedPayloads[index].Key, Is.EqualTo(genericPayloads[index].Key));
                     Assert.That(preparedPayloads[index].Payload.ToArray(), Is.EqualTo(genericPayloads[index].Payload.ToArray()));
                 }
             }
@@ -2591,7 +2584,7 @@ public class Eip8297CanonicalTreeTests
     {
         List<string> records = [];
         foreach (PbtPhysicalPayload payload in payloads)
-            records.Add(Convert.ToHexString(payload.Key.Span) + Convert.ToHexString(payload.Payload.Span));
+            records.Add(Convert.ToHexString(payload.Key.ToEncodedArray()) + Convert.ToHexString(payload.Payload.Span));
         records.Sort(StringComparer.Ordinal);
         return [.. records];
     }

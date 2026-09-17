@@ -103,7 +103,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         foreach ((_, CodeInfo code) in Codes) leafBytes += ValueHash256.MemorySize + code.Code.Length;
 
         foreach ((PbtStorageNodePath path, RefCountingMemory? payload) in NodeGroups)
-            nodeBytes += path.EncodedLength + (payload?.Memory.Length ?? 0);
+            nodeBytes += ((path.BitDepth + 7) >> 3) + (payload?.Memory.Length ?? 0);
 
         long codeReferenceBytes = CodeReferences.Count * (ValueHash256.MemorySize + sizeof(ulong));
         return new PbtSnapshotPayloadSize(leafBytes, nodeBytes, codeReferenceBytes);

@@ -25,9 +25,8 @@ public class PbtNodePathBenchmark
         new Random(8297).NextBytes(keyBytes);
         _key = new PbtStorageFullKey(keyBytes);
         _path = PbtStorageNodePath.FromKey(_key, BitDepth);
-        Span<byte> encoding = stackalloc byte[_path.EncodedLength];
-        _path.Encode(encoding);
-        _bytes = encoding[4..].ToArray();
+        _bytes = new byte[(BitDepth + 7) >> 3];
+        _path.CopyBitsTo(0, _bytes, 0, BitDepth);
     }
 
     [Benchmark]
@@ -35,13 +34,6 @@ public class PbtNodePathBenchmark
 
     [Benchmark]
     public PbtStorageNodePath FromKey() => PbtStorageNodePath.FromKey(_key, BitDepth);
-
-    [Benchmark]
-    public void Encode()
-    {
-        Span<byte> destination = stackalloc byte[_path.EncodedLength];
-        _path.Encode(destination);
-    }
 
     [Benchmark]
     public PbtStorageNodePath LocateAndReconstruct()
