@@ -23,11 +23,10 @@ public class TraceModuleFactory(
     ILifetimeScope rootLifetimeScope,
     IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules,
     IPrefixStateSeedSource prefixSeeds,
-    IFlatDbConfig flatDbConfig,
     ILogManager logManager
 ) : ModuleFactoryBase<ITraceRpcModule>
 {
-    private readonly SharedParallelBlockTracer _parallelTracer = new(overridableEnvFactory, rootLifetimeScope, prefixSeeds, flatDbConfig, logManager,
+    private readonly SharedParallelBlockTracer _parallelTracer = new(overridableEnvFactory, rootLifetimeScope, prefixSeeds, logManager,
         builder => ConfigureCommonBlockProcessing(builder, static p => new ExecuteTransactionProcessorAdapter(p), validationBlockProcessingModules));
 
     private static ContainerBuilder ConfigureCommonBlockProcessing(ContainerBuilder builder, TransactionProcessorAdapterFactory adapterFactory, IReadOnlyList<IBlockValidationModule> validationBlockProcessingModules) =>

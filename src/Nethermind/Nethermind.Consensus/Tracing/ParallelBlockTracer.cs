@@ -36,8 +36,6 @@ namespace Nethermind.Consensus.Tracing;
 /// transaction instead of the second waiting for the whole of the first. The calling thread is one of the workers.</summary>
 public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 {
-    public const int MaxDefaultDegree = 16;
-
     private readonly ShareableOverridableEnvSource<Components> _environments;
     private readonly IPrefixStateSeedSource _seeds;
     private readonly SemaphoreSlim _slots;
@@ -58,9 +56,10 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         _logger = logManager.GetClassLogger<ParallelBlockTracer>();
     }
 
-    /// <summary>0 means one worker per core, capped; anything else is taken as given.</summary>
-    public static int DegreeFrom(IFlatDbConfig config) =>
-        config.HistoryTransactionIndexTraceParallelism <= 0 ? Math.Clamp(Environment.ProcessorCount, 1, MaxDefaultDegree) : config.HistoryTransactionIndexTraceParallelism;
+    /// <summary>One worker per core. Measured on an eight-core archive over a whole-block trace load, one, two and
+    /// four workers per core were within the noise of one another, so there is nothing here for an operator to tune:
+    /// the workers spend most of their time in state reads, and the machine decides the rest.</summary>
+    public static int Degree => Math.Max(1, Environment.ProcessorCount);
 
     public bool TryTrace<TTrace>(
         Block block,

@@ -23,7 +23,6 @@ public class FlatDbConfig : IFlatDbConfig
     public int HistoryTransactionIndexDutyCyclePercent { get; set; } = 25;
     public ulong HistoryTransactionIndexRetrofitFromBlock { get; set; } = 0;
     public int HistoryTransactionIndexWorkers { get; set; } = 1;
-    public int HistoryTransactionIndexTraceParallelism { get; set; } = 0;
     public bool ArchiveProofServeEnabled { get; set; } = false;
     public bool ArchiveProofBuildEnabled { get; set; } = false;
     public int ArchiveProofFanOut { get; set; } = 8;

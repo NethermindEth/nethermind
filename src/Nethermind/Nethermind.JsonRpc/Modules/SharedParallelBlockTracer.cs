@@ -20,7 +20,6 @@ public sealed class SharedParallelBlockTracer(
     IOverridableEnvFactory envFactory,
     ILifetimeScope rootLifetimeScope,
     IPrefixStateSeedSource prefixSeeds,
-    IFlatDbConfig flatDbConfig,
     ILogManager logManager,
     Func<ContainerBuilder, ContainerBuilder> configureProcessing)
 {
@@ -36,7 +35,7 @@ public sealed class SharedParallelBlockTracer(
         {
             if (_tracer is null)
             {
-                _tracer = new ParallelBlockTracer(BuildEnvironment, prefixSeeds, ParallelBlockTracer.DegreeFrom(flatDbConfig), logManager);
+                _tracer = new ParallelBlockTracer(BuildEnvironment, prefixSeeds, ParallelBlockTracer.Degree, logManager);
                 rootLifetimeScope.Disposer.AddInstanceForDisposal(_tracer);
             }
 
