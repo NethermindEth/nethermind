@@ -236,7 +236,6 @@ public class TxBroadcasterTests
     public void should_announce_a_blob_carrying_frame_tx_as_a_light_transaction()
     {
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _headInfo.CurrentBaseFee = 0.GWei;
         RecordingPeer peer = new(TestItem.PublicKeyA);
         _broadcaster.AddPeer(peer);
 
