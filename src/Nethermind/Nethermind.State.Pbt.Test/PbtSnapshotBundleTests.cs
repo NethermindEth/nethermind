@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Pbt;
@@ -1472,7 +1473,7 @@ public class PbtSnapshotBundleTests
         bundle.SetAccount(TestItem.AddressB, other);
         KeyValuePair<PbtStorageFullKey, ValueHash256?>[] pending = [.. bundle.EnumeratePendingLeafMutationsForTest()];
         CountingStore store = new(bundle) { FailedZone = failedZone };
-        Assert.Throws<AggregateException>(() => TrieUpdater.UpdateRoot(store, root, bundle.PrepareLeafChanges()));
+        Assert.Throws<AggregateException>(() => TrieUpdater.UpdateRoot(store, root, bundle.PrepareLeafChanges(), ParallelUnbalancedWork.DefaultOptions));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.TreeRoot, Is.EqualTo(root));
@@ -1490,7 +1491,7 @@ public class PbtSnapshotBundleTests
         PbtPartitionBatches changes = bundle.PrepareLeafChanges();
         try
         {
-            ValueHash256 updated = TrieUpdater.UpdateRoot(new PbtSnapshotStore(bundle), root, changes);
+            ValueHash256 updated = TrieUpdater.UpdateRoot(new PbtSnapshotStore(bundle), root, changes, ParallelUnbalancedWork.DefaultOptions);
             bundle.CompleteLeafChanges();
             return updated;
         }

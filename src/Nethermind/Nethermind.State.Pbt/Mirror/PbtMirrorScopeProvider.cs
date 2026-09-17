@@ -24,6 +24,7 @@ public class PbtMirrorScopeProvider(
     IWorldStateScopeProvider authoritative,
     IPbtDbManager manager,
     IPbtResourcePool resourcePool,
+    IPbtConfig config,
     ILogManager? logManager = null) : IWorldStateScopeProvider
 {
     private static readonly ITrieWarmer _noopTrieWarmer = new NoopTrieWarmer();
@@ -50,6 +51,7 @@ public class PbtMirrorScopeProvider(
                 PbtResourcePool.Usage.MainBlockProcessing,
                 isReadOnly: false,
                 _noopTrieWarmer,
+                config,
                 logManager);
 
             return new Scope(authoritativeScope, pbtScope);

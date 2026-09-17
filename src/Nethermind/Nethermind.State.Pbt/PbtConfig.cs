@@ -25,6 +25,7 @@ public class PbtConfig : IPbtConfig
     public int MaxReorgDepth { get; set; } = 256;
     public bool MirrorFlat { get; set; }
     public bool ImportFromPreimageFlat { get; set; }
+    public int FoldConcurrency { get; set; }
     public int ImportStorageReadConcurrency { get; set; }
     public int ImportWindowSize { get; set; }
     public bool ScanTree { get; set; }

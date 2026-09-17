@@ -912,7 +912,7 @@ public class PbtWorldStateScopeTests
         PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
         return new PbtWorldStateScope(reader.CurrentState, null, bundle, Substitute.For<IWorldStateScopeProvider.ICodeDb>(),
             Substitute.For<IPbtCommitTarget>(), NullPbtChildHeaderSource.Instance, pool, PbtResourcePool.Usage.MainBlockProcessing,
-            true, warmer);
+            true, warmer, new PbtConfig());
     }
 
     private sealed class CountingWarmupReader(PbtTreeHarness tree) : IPbtPersistence.IReader

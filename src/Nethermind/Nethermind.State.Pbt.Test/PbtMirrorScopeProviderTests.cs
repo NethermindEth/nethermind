@@ -38,7 +38,7 @@ public class PbtMirrorScopeProviderTests
 
         await using PbtTestContext ctx = new();
         Hash256[] mirroredRoots = RunBlocks(
-            new PbtMirrorScopeProvider(BuildPatriciaProvider(), ctx.Manager, ctx.ResourcePool));
+            new PbtMirrorScopeProvider(BuildPatriciaProvider(), ctx.Manager, ctx.ResourcePool, ctx.Config));
 
         Assert.That(mirroredRoots, Is.EqualTo(plainRoots));
 
@@ -65,7 +65,7 @@ public class PbtMirrorScopeProviderTests
         IWorldStateScopeProvider authoritative = Substitute.For<IWorldStateScopeProvider>();
         authoritative.BeginScope(null, null, Arg.Any<LocalMetrics>()).Returns(authoritativeScope);
 
-        PbtMirrorScopeProvider provider = new(authoritative, ctx.Manager, ctx.ResourcePool);
+        PbtMirrorScopeProvider provider = new(authoritative, ctx.Manager, ctx.ResourcePool, ctx.Config);
         using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, null, new LocalMetrics());
 
         PbtMirrorMismatchException? mismatch = divergeOnSlot

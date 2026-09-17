@@ -67,6 +67,7 @@ public class PbtMirrorModule(IPbtConfig config) : Module
                             worldStateScopeProvider,
                             ctx.Resolve<IPbtDbManager>(),
                             ctx.Resolve<IPbtResourcePool>(),
+                            ctx.Resolve<IPbtConfig>(),
                             ctx.Resolve<ILogManager>()));
     }
 }
