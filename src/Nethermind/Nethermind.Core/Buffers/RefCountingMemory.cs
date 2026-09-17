@@ -106,8 +106,12 @@ public sealed class RefCountingMemory : MemoryManager<byte>
     /// <exception cref="InvalidOperationException">The memory is already being torn down.</exception>
     public void AcquireLease()
     {
-        if (!RefCountingLease.TryAcquire(ref _leases)) throw new InvalidOperationException("The lease cannot be acquired");
+        if (!TryAcquireLease()) throw new InvalidOperationException("The lease cannot be acquired");
     }
+
+    /// <summary>Acquires one additional reference unless the memory is already being torn down.</summary>
+    /// <returns><c>true</c> when the caller now holds a lease to release with <see cref="IDisposable.Dispose"/>.</returns>
+    public bool TryAcquireLease() => RefCountingLease.TryAcquire(ref _leases);
 
     public override Span<byte> GetSpan() => _backingKind is BackingKind.RocksDb
         ? _owner!.GetSpan()[.._length]

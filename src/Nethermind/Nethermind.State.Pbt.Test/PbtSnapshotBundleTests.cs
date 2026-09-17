@@ -710,7 +710,10 @@ public class PbtSnapshotBundleTests
         using PbtTrieNodeCache cache = new(CacheConfig(partition, 1048576));
         using RefCountingMemory source = Memory(Bytes.FromHexString("010203"));
         foreach (string label in CachePartitions) cache.Add(default, CachePath(label), source);
-        long entrySize = cache.MemorySize / CachePartitions.Length;
+        // Slot tables differ per partition: storage slots carry the wider path.
+        long[] entryMemory = new long[CachePartitions.Length];
+        for (int index = 0; index < CachePartitions.Length; index++)
+            entryMemory[index] = Metrics.PbtTrieCacheMemory[CachePartitions[index]] - initialMemory[index];
         PbtNodePath path = CachePath(partition);
         ValueHash256 replacementRoot = new(Value(1));
         cache.Add(replacementRoot, path, source);
@@ -735,7 +738,7 @@ public class PbtSnapshotBundleTests
                 {
                     string label = CachePartitions[index];
                     long memory = Metrics.PbtTrieCacheMemory[label] - initialMemory[index];
-                    Assert.That(memory, Is.EqualTo(entrySize + (label == partition ? 1600 - 3 : 0)), label);
+                    Assert.That(memory, Is.EqualTo(entryMemory[index] + (label == partition ? 1600 - 3 : 0)), label);
                     totalMemory += memory;
                 }
                 Assert.That(cache.MemorySize, Is.EqualTo(totalMemory));
@@ -780,15 +783,18 @@ public class PbtSnapshotBundleTests
     public void Trie_cache_concurrent_hits_and_eviction_keep_payloads_alive()
     {
         using PbtTrieNodeCache cache = new(CacheConfig("account", 1048576));
-        using RefCountingMemory source = Memory(Bytes.FromHexString("010203"));
-        System.Threading.Tasks.Parallel.For(0, 1000, iteration =>
+        RefCountingMemory[] sources = [Memory(Bytes.FromHexString("010203")), Memory(new byte[1600]), Memory(new byte[8])];
+        System.Threading.Tasks.Parallel.For(0, 10000, iteration =>
         {
             PbtNodePath path = CachePath(CachePartitions[iteration % CachePartitions.Length]);
-            cache.Add(default, path, source);
-            if (cache.TryGet(default, path, out RefCountingMemory? payload))
-                using (payload) Assert.That(payload.GetSpan().ToArray(), Is.EqualTo(Bytes.FromHexString("010203")));
-            if ((iteration & 3) == 0) cache.Clear();
+            int variant = (iteration / CachePartitions.Length) % sources.Length;
+            ValueHash256 groupHash = new(Value((byte)variant));
+            cache.Add(groupHash, path, sources[variant]);
+            if (cache.TryGet(groupHash, path, out RefCountingMemory? payload))
+                using (payload) Assert.That(payload.GetSpan().ToArray(), Is.EqualTo(sources[variant].GetSpan().ToArray()), "a lock-free hit must return the payload admitted under its own subtree hash");
+            if ((iteration & 63) == 0) cache.Clear();
         });
+        foreach (RefCountingMemory source in sources) ((IDisposable)source).Dispose();
         cache.Clear();
         Assert.That(cache.MemorySize, Is.Zero);
     }
