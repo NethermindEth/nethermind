@@ -353,6 +353,10 @@ public class DbConfig : IDbConfig
         // Smaller
         "write_buffer_size=16000000;" +
         "max_write_buffer_number=4;" +
+        // Hashed account keys are 20-byte Keccak prefixes and are near-uniform. Auto selects interpolation when the
+        // key-gap coefficient of variation is below this dimensionless threshold, and otherwise uses binary search.
+        "block_based_table_factory.index_block_search_type=kAuto;" +
+        "block_based_table_factory.uniform_cv_threshold=0.2;" +
         "";
     public string? FlatAccountDbAdditionalRocksDbOptions { get; set; }
 
