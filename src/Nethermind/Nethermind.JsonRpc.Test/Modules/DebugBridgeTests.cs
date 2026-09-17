@@ -21,12 +21,15 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public class DebugBridgeTests
 {
-    public enum Target { Unknown, HeaderOnly, CurrentHead, Ancestor }
+    public enum Target { Unknown, HeaderOnly, CurrentHead, Ancestor, MissingState, AboveHead, SideBranch }
 
     [TestCase(Target.Unknown, false)]
     [TestCase(Target.HeaderOnly, false)]
     [TestCase(Target.CurrentHead, true)]
     [TestCase(Target.Ancestor, true)]
+    [TestCase(Target.MissingState, false)]
+    [TestCase(Target.AboveHead, false)]
+    [TestCase(Target.SideBranch, false)]
     public void UpdateHeadBlock_MovesTheLiveHeadBeforeDroppingState(Target target, bool expected)
     {
         BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(3);
@@ -35,14 +38,21 @@ public class DebugBridgeTests
         BlockHeader headerOnly = Build.A.BlockHeader.WithParent(previousHead.Header).TestObject;
         blockTree.SuggestHeader(headerOnly);
         BlockHeader ancestor = blockTree.FindHeader(1, BlockTreeLookupOptions.None)!;
+        Block future = Build.A.Block.WithParent(previousHead).TestObject;
+        Block sibling = Build.A.Block.WithParent(blockTree.FindBlock(0, BlockTreeLookupOptions.None)!).WithExtraData([0xAB]).TestObject;
+        blockTree.SuggestBlock(future);
+        blockTree.SuggestBlock(sibling);
         Hash256 hash = target switch
         {
             Target.Unknown => TestItem.KeccakA,
             Target.HeaderOnly => headerOnly.Hash!,
             Target.CurrentHead => previousHead.Hash!,
+            Target.AboveHead => future.Hash!,
+            Target.SideBranch => sibling.Hash!,
             _ => ancestor.Hash!,
         };
         IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
+        worldStateManager.GlobalStateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(target != Target.MissingState);
         DebugBridge bridge = new(
             Substitute.For<IConfigProvider>(),
             Substitute.For<IReadOnlyDbProvider>(),

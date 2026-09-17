@@ -26,7 +26,7 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false);
 
     [JsonRpcMethod(
-        Description = "Moves the head to the given block and drops state kept for other branches; returns false when the block is unknown or cannot be made the head (Nethermind specific).",
+        Description = "Rewinds to a canonical block with retained state and prunes abandoned state; returns false if refused (Nethermind specific).",
         IsSharable = true)]
     ResultWrapper<bool> debug_resetHead(Hash256 blockHash);
 
@@ -69,7 +69,7 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]
     ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter);
 
-    [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
+    [JsonRpcMethod(Description = "Rewinds the head to a canonical block with retained state, given by number, tag or hash, and drops state for abandoned branches.", IsImplemented = true, IsSharable = true)]
     ResultWrapper<bool> debug_setHead(BlockParameter blockParameter);
 
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]

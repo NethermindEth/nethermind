@@ -45,6 +45,17 @@ public class FlatStateReaderTests
         Assert.That(exception!.Message, Does.Contain("historical"));
     }
 
+    [TestCase(false, TestName = "state dropped")]
+    [TestCase(true, TestName = "state retained")]
+    public void HasStateForBlock_ReportsWhatTheManagerRetains(bool retained)
+    {
+        FlatStateReader reader = CreateReader(retained
+            ? new HistoricalBundleFlatDbManager()
+            : new ThrowingFlatDbManager());
+
+        Assert.That(reader.HasStateForBlock(_header), Is.EqualTo(retained));
+    }
+
     private class ThrowingFlatDbManager : IFlatDbManager
     {
         public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>

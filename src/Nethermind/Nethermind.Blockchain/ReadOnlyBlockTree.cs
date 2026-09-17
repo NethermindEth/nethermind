@@ -64,6 +64,10 @@ namespace Nethermind.Blockchain
             // hacky while there is not special tree for RPC
             _wrapped.UpdateHeadBlock(blockHash);
 
+        public bool TryRewindHead(Hash256 blockHash) =>
+            // hacky while there is not special tree for RPC
+            _wrapped.TryRewindHead(blockHash);
+
         public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
 
         public ValueTask<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlockAsync)} calls");

@@ -107,21 +107,13 @@ public class DebugBridge : IDebugBridge
         BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
         if (header is null) return false;
 
-        // Move the live head first, by the route forkchoiceUpdated takes, so `latest` and the state kept
-        // below agree; pruning against a head the node does not advertise would drop the state it serves.
-        // A successful move also writes the persisted head pointer; a rejected one must not, or a restart
-        // would start from a head the node never reached.
-        if (_blockTree.Head?.Hash != header.Hash
-            && !_blockTree.TryUpdateMainChain(header, wereProcessed: true, forceUpdateHeadBlock: true))
+        if (!_worldStateManager.GlobalStateReader.HasStateForBlock(header)
+            || !_blockTree.TryRewindHead(blockHash))
         {
             return false;
         }
 
-        // benchmarkoor compatibility: it rewinds to the same head after every test, so state kept for the
-        // branches those tests built must go, or it accumulates for the whole run.
-        // Known limitation: the block tree keeps WasProcessed on the dropped blocks and NewPayloadHandler
-        // keeps its result cache, so resubmitting one of them returns VALID without re-execution and its
-        // child then answers SYNCING for want of parent state. Callers must replay fresh payloads only.
+        // Replayed payloads retain WasProcessed/cached VALID results despite losing state; use fresh payloads.
         _worldStateManager.DropStateNotReachableFrom(header);
         return true;
     }

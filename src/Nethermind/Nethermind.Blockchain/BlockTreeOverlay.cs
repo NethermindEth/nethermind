@@ -87,6 +87,9 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
     public void UpdateHeadBlock(Hash256 blockHash) =>
         _overlayTree.UpdateHeadBlock(blockHash);
 
+    public bool TryRewindHead(Hash256 blockHash) =>
+        _overlayTree.TryRewindHead(blockHash);
+
     public AddBlockResult SuggestBlock(Block block,
         BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) =>
         _overlayTree.SuggestBlock(block, options);

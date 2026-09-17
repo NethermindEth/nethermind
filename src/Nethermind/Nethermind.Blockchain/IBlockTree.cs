@@ -83,7 +83,19 @@ namespace Nethermind.Blockchain
         AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
             BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags bodiesWriteFlags = WriteFlags.None);
 
+        /// <summary>Writes the persisted head pointer without moving the live head.</summary>
         void UpdateHeadBlock(Hash256 blockHash);
+
+        /// <summary>
+        /// Rewinds the canonical head to <paramref name="blockHash"/>.
+        /// </summary>
+        /// <remarks>
+        /// Requires a canonical target at or below the current head. Retains block bodies and state,
+        /// clears canonical markers above the target, and resets the best-suggested pointers.
+        /// The caller must check state availability before rewinding.
+        /// </remarks>
+        /// <returns>Whether the head could be rewound.</returns>
+        bool TryRewindHead(Hash256 blockHash);
 
         void NewOldestBlock(ulong oldestBlock);
 

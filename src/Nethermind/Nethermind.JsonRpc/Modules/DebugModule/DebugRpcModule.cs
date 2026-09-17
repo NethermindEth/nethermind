@@ -491,7 +491,13 @@ public class DebugRpcModule(
 
     public ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter) => throw new NotImplementedException();
 
-    public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter) => throw new NotImplementedException();
+    public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter)
+    {
+        Block? block = debugBridge.GetBlock(blockParameter);
+        return block?.Hash is { } hash
+            ? debug_resetHead(hash)
+            : ResultWrapper<bool>.Fail($"Block {blockParameter} not found", ErrorCodes.ResourceNotFound);
+    }
 
     public ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key)
     {

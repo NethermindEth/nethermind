@@ -37,8 +37,7 @@ public interface IDebugBridge
     object GetConfigValue(string category, string name);
     ChainLevelInfo GetLevelInfo(ulong number);
     int DeleteChainSlice(ulong startNumber, bool force = false);
-    /// <summary>Moves the head to <paramref name="blockHash"/> and drops state kept for other branches.</summary>
-    /// <returns><c>false</c> when the block is unknown or cannot be made the head; nothing is dropped then.</returns>
+    /// <summary>Rewinds to a canonical block with retained state and prunes abandoned state; returns false if refused.</summary>
     bool UpdateHeadBlock(Hash256 blockHash);
     Task<bool> MigrateReceipts(ulong from, ulong to);
     void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
