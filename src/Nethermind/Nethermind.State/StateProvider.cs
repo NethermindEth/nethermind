@@ -43,7 +43,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     private readonly AssociativeKeyCache<ValueHash256> _blockCodeInsertFilter = new(256);
     // Code staged for CodeDb by the current transaction, paired with the change-log position of the
     // code-hash update referencing it, so Restore can drop code whose deployment an ancestor frame reverted.
-    private readonly List<(int Position, ValueHash256 CodeHash)> _codeInsertJournal = [];
+    private readonly List<(int Position, ValueHash256 CodeHash, int Length)> _codeInsertJournal = [];
     private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
     private List<AddressAsKey> _removedWithStorage = [];
     // Handed back by a detached write-back once it is done with the list it took.
@@ -175,7 +175,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
             if (journalCode)
             {
-                _codeInsertJournal.Add((_changes.Count, codeHash));
+                _codeInsertJournal.Add((_changes.Count, codeHash, code.Length));
 
                 _metrics.IncrementCodeWrites();
                 _metrics.IncrementCodeBytesWritten(code.Length);
@@ -474,19 +474,21 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// reference it. Dropping it loses nothing: such code is already durable in CodeDb, which is why
     /// the account carries its hash, so the staging is a redundant re-write rather than load-bearing.
     /// The insert filter is rolled back with the batch, otherwise a later surviving deployment of the
-    /// same code would be suppressed and lost.
+    /// same code would be suppressed and lost. The staged-write counters are rolled back too, so they
+    /// keep reporting the bytes that actually reach CodeDb.
     /// </remarks>
     private void RestoreCodeInserts(int snapshot)
     {
-        ReadOnlySpan<(int Position, ValueHash256 CodeHash)> entries = CollectionsMarshal.AsSpan(_codeInsertJournal);
+        ReadOnlySpan<(int Position, ValueHash256 CodeHash, int Length)> entries = CollectionsMarshal.AsSpan(_codeInsertJournal);
         int keep = entries.Length;
         while (keep > 0)
         {
-            ref readonly (int Position, ValueHash256 CodeHash) entry = ref entries[keep - 1];
+            ref readonly (int Position, ValueHash256 CodeHash, int Length) entry = ref entries[keep - 1];
             if (entry.Position <= snapshot) break;
 
             _codeBatchAlternate.Remove(entry.CodeHash);
             _blockCodeInsertFilter.Delete(entry.CodeHash);
+            _metrics.DecrementCodeWrites(entry.Length);
             keep--;
         }
 
@@ -1027,19 +1029,16 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     public void Reset(bool resetBlockChanges = true)
     {
         if (_logger.IsTrace) Trace();
+        // The changes being discarded are exactly the ones the journal covers (it is cleared on every
+        // commit), so unwind it on both paths: otherwise its code either reaches CodeDb unreferenced
+        // or, when the batch is dropped below, stays counted as written without ever being written.
+        if (_codeInsertJournal.Count > 0) RestoreCodeInserts(Snapshot.EmptyPosition);
         if (resetBlockChanges)
         {
             _blockCodeInsertFilter.Clear();
             _blockChanges.Clear();
             _removedWithStorage.Clear();
             _codeBatch?.Clear();
-            _codeInsertJournal.Clear();
-        }
-        else
-        {
-            // The batch survives this reset, but the changes being discarded are exactly the ones the
-            // journal covers (it is cleared on every commit), so their code would reach CodeDb unreferenced.
-            if (_codeInsertJournal.Count > 0) RestoreCodeInserts(Snapshot.EmptyPosition);
         }
         _intraTxCache.ClearAndTrim();
         _committedThisRound.ClearAndTrim();

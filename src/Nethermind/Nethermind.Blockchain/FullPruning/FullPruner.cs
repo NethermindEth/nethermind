@@ -107,8 +107,7 @@ namespace Nethermind.Blockchain.FullPruning
             // If we are already pruning, we don't need to do anything
             else if (CanStartNewPruning())
             {
-                // Check if we have enough disk space to run pruning
-                if (!HaveEnoughDiskSpaceToRun() && _pruningConfig.AvailableSpaceCheckEnabled)
+                if (_pruningConfig.AvailableSpaceCheckEnabled && !HaveEnoughDiskSpaceToRun())
                 {
                     e.Status = PruningStatus.NotEnoughDiskSpace;
                 }
