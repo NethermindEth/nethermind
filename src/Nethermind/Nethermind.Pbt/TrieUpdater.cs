@@ -87,7 +87,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     private static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, Span<PbtWriteOperation<TKey>> operations, BucketPlan plan, TrieUpdaterMetrics? metrics, IRefCountingMemoryProvider? memoryProvider)
     {
         if (operations.IsEmpty) return currentRoot;
-        FoldContext context = new(store, memoryProvider ?? PooledRefCountingMemoryProvider.Instance, null, null);
+        FoldContext context = new(store, memoryProvider ?? PooledRefCountingMemoryProvider.Instance, metrics, null, null);
         Span<byte> pathBuffer = stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)];
         PbtTraversalPath path = new(pathBuffer);
         GroupFrameReader<TKey, TPath> reader = new(store, 0, currentRoot, metrics);
@@ -95,7 +95,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         {
             using PbtNodeGroupWriter<TPath> writer = new(0, context.MemoryProvider);
             TraversalSubtree root = new(path, reader.Take(path, writer, PbtFourLevelGroupGeometry.RootPosition, allowAbsent: true));
-            OwnedSubtree result = FoldMutations(context, metrics, ref reader, writer, root, operations, ref path, 0, plan);
+            OwnedSubtree result = FoldMutations(context, ref reader, writer, root, operations, ref path, 0, plan);
             TraversalSubtree resolved = result.Borrow(stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)]);
             ValueHash256 hash = writer.Write(path, PbtFourLevelGroupGeometry.RootPosition, 0, ref resolved, metrics);
             using (RefCountingMemory? payload = writer.Detach())
@@ -115,10 +115,11 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// This may be deeper than the owner group after skipping a shared prefix.
     /// </param>
     [SkipLocalsInit]
-    private static OwnedSubtree FoldMutations(FoldContext context, TrieUpdaterMetrics? metrics, ref GroupFrameReader<TKey, TPath> ownerReader, PbtNodeGroupWriter<TPath> ownerWriter,
+    private static OwnedSubtree FoldMutations(FoldContext context, ref GroupFrameReader<TKey, TPath> ownerReader, PbtNodeGroupWriter<TPath> ownerWriter,
         scoped TraversalSubtree input, Span<PbtWriteOperation<TKey>> operations, ref PbtTraversalPath path, int bitDepth, scoped BucketPlan plan)
     {
         Debug.Assert(path.BitDepth == bitDepth);
+        TrieUpdaterMetrics? metrics = context.Metrics;
         // Normally the subtree in a boundary slot of the parent group, whose reader/writer are passed here.
         // The initial call supplies the tree root; prefix jumps carry the same subtree to a deeper bitDepth.
         TraversalSubtree current = input;
@@ -168,10 +169,10 @@ internal static partial class TrieUpdater<TKey, TPath>
                 PbtWriteOperation<TKey> operation = operations[terminalIndex];
                 operations[..terminalIndex].CopyTo(operations[1..]);
                 operations[0] = operation;
-                OwnedSubtree terminalResult = FoldMutations(context, metrics, ref ownerReader, ownerWriter, terminal, operations[..1], ref path, bitDepth, plan);
+                OwnedSubtree terminalResult = FoldMutations(context, ref ownerReader, ownerWriter, terminal, operations[..1], ref path, bitDepth, plan);
                 operations = operations[1..];
                 plan = plan.AfterFiltering(preservesOrder: true);
-                OwnedSubtree descendantResult = FoldMutations(context, metrics, ref ownerReader, ownerWriter, current, operations, ref path, bitDepth, plan);
+                OwnedSubtree descendantResult = FoldMutations(context, ref ownerReader, ownerWriter, current, operations, ref path, bitDepth, plan);
                 if (terminalResult.IsEmpty) return descendantResult;
                 if (!descendantResult.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
                 return terminalResult;
@@ -179,7 +180,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (hasTerminalLeaf)
             {
                 TraversalSubtree descendants = default;
-                OwnedSubtree descendantResult = FoldMutations(context, metrics, ref ownerReader, ownerWriter, descendants, operations, ref path, bitDepth, plan);
+                OwnedSubtree descendantResult = FoldMutations(context, ref ownerReader, ownerWriter, descendants, operations, ref path, bitDepth, plan);
                 if (!descendantResult.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
                 return current.Materialize();
             }
@@ -211,7 +212,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             // This can skip multiple four-bit groups at once, e.g. bitDepth 8 to groupDepth 24.
             // The range's prefix survives the jump; the existing subtree only limits how far we can jump.
             path.AppendKey(firstKey.Bytes, groupDepth);
-            OwnedSubtree result = FoldMutations(context, metrics, ref ownerReader, ownerWriter, current, operations, ref path, groupDepth, partition.Plan.ForChild());
+            OwnedSubtree result = FoldMutations(context, ref ownerReader, ownerWriter, current, operations, ref path, groupDepth, partition.Plan.ForChild());
             path.Truncate(bitDepth);
             return result;
         }
@@ -221,7 +222,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         // is stored in that parent group. Then this is false, as it is after a deeper prefix jump;
         // open the descendant group below. The code that opened each frame is responsible for flushing it.
         if (ownerReader.BitDepth == bitDepth)
-            return FoldBoundaryFromPartition(context, metrics, ref ownerReader, ownerWriter, current, operations, ref path, bitDepth, partition);
+            return FoldBoundaryFromPartition(context, ref ownerReader, ownerWriter, current, operations, ref path, bitDepth, partition);
 
         // A deeper group needs its own frame. Publish its completed contents here; the returned subtree root
         // is left for the caller to place, allowing composition to promote it through a compressed path.
@@ -229,7 +230,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
         {
             using PbtNodeGroupWriter<TPath> writer = new(bitDepth, context.MemoryProvider);
-            OwnedSubtree result = FoldBoundaryFromPartition(context, metrics, ref reader, writer, current, operations, ref path, bitDepth, partition);
+            OwnedSubtree result = FoldBoundaryFromPartition(context, ref reader, writer, current, operations, ref path, bitDepth, partition);
             using (RefCountingMemory? payload = writer.Detach())
                 context.Store.SetNodeGroup(path, result.Borrow(stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)]).Hash(bitDepth, metrics), payload);
             return result;
@@ -239,7 +240,6 @@ internal static partial class TrieUpdater<TKey, TPath>
     [SkipLocalsInit]
     private static OwnedSubtree FoldBoundaryFromPartition(
         FoldContext context,
-        TrieUpdaterMetrics? metrics,
         ref GroupFrameReader<TKey, TPath> reader,
         PbtNodeGroupWriter<TPath> writer,
         scoped TraversalSubtree current,
@@ -254,14 +254,14 @@ internal static partial class TrieUpdater<TKey, TPath>
         Span<byte> sourceBuffer = stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)];
 
         if (context.BucketFoldOptions is { } foldOptions && operations.Length >= MinOperationsToFoldInParallel && !BitOperations.IsPow2((uint)partition.UsedMask))
-            FoldBucketsInParallel(context, foldOptions, metrics, ref reader, writer, ref frontier, operations, path, bitDepth, partition, sourceBuffer);
+            FoldBucketsInParallel(context, foldOptions, ref reader, writer, ref frontier, operations, path, bitDepth, partition, sourceBuffer);
         else
-            FoldBuckets(context, metrics, ref reader, writer, ref frontier, operations, ref path, bitDepth, partition, sourceBuffer);
+            FoldBuckets(context, ref reader, writer, ref frontier, operations, ref path, bitDepth, partition, sourceBuffer);
 
-        return Compose(ref reader, writer, path, metrics, ref frontier, sourceBuffer).Materialize();
+        return Compose(ref reader, writer, path, context.Metrics, ref frontier, sourceBuffer).Materialize();
     }
 
-    private static void FoldBuckets(FoldContext context, TrieUpdaterMetrics? metrics, scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
+    private static void FoldBuckets(FoldContext context, scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
         scoped ref Frontier frontier, Span<PbtWriteOperation<TKey>> operations, ref PbtTraversalPath path, int bitDepth, scoped PartitionOutcome partition, scoped Span<byte> sourceBuffer)
     {
         int offset = 0;
@@ -274,7 +274,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             offset += count;
             TraversalSubtree boundary = TakeBoundary(ref reader, writer, path, ref frontier, slot, sourceBuffer);
             path.AppendMut(slot);
-            OwnedSubtree result = FoldMutations(context, metrics, ref reader, writer, boundary,
+            OwnedSubtree result = FoldMutations(context, ref reader, writer, boundary,
                 bucket, ref path, bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup, partition.Plan.ForChild());
             path.Truncate(bitDepth);
             TraversalSubtree resolved = result.Borrow(sourceBuffer);
@@ -287,7 +287,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// Every child opens and publishes its own group, so the parent frame is only read here and each group
     /// keeps a single writer. Results are materialized copies, so no reader lease crosses threads.
     /// </remarks>
-    private static void FoldBucketsInParallel(FoldContext context, ParallelOptions foldOptions, TrieUpdaterMetrics? metrics, scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
+    private static void FoldBucketsInParallel(FoldContext context, ParallelOptions foldOptions, scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
         scoped ref Frontier frontier, Span<PbtWriteOperation<TKey>> operations, scoped PbtTraversalPath path, int bitDepth, scoped PartitionOutcome partition, scoped Span<byte> sourceBuffer)
     {
         using ArrayPoolList<BucketFold> buckets = new(BitOperations.PopCount((uint)partition.UsedMask));
@@ -298,18 +298,18 @@ internal static partial class TrieUpdater<TKey, TPath>
             int slot = BitOperations.TrailingZeroCount(mask);
             int count = partition.Counts[countIndex++];
             OwnedSubtree boundary = TakeBoundary(ref reader, writer, path, ref frontier, slot, sourceBuffer).Materialize();
-            buckets.Add(new BucketFold(slot, offset, count, boundary, metrics is null ? null : new()));
+            buckets.Add(new BucketFold(slot, offset, count, boundary, context.Metrics is null ? context : context.WithMetrics(new())));
             offset += count;
         }
 
         TPath groupPath = path.ToPath<TPath>();
         int knownCommonPrefixLength = partition.Plan.KnownCommonPrefixLength;
         bool isSorted = partition.Plan.IsSorted;
-        ParallelUnbalancedWork.For(0, buckets.Count, foldOptions, index => buckets[index].Fold(context, groupPath, bitDepth, knownCommonPrefixLength, isSorted));
+        ParallelUnbalancedWork.For(0, buckets.Count, foldOptions, index => buckets[index].Fold(groupPath, bitDepth, knownCommonPrefixLength, isSorted));
 
         foreach (BucketFold bucket in buckets)
         {
-            if (bucket.Metrics is not null) metrics!.Add(bucket.Metrics);
+            if (bucket.Context.Metrics is { } bucketMetrics) context.Metrics!.Add(bucketMetrics);
             TraversalSubtree resolved = bucket.Result.Borrow(sourceBuffer);
             SetBoundary(path, ref frontier, bucket.Slot, ref resolved);
         }
@@ -326,33 +326,37 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <remarks>
     /// <see cref="BucketFoldOptions"/> and <see cref="Operations"/> are set only when wide frames fold their buckets
     /// concurrently; the latter is the backing array of every operation range, so a bucket can rebuild its span on another thread.
+    /// <see cref="Metrics"/> is not thread-safe, so each concurrent bucket folds under <see cref="WithMetrics"/> and is merged afterwards.
     /// </remarks>
-    internal sealed class FoldContext(IPbtStore store, IRefCountingMemoryProvider memoryProvider, ParallelOptions? bucketFoldOptions, PbtWriteOperation<TKey>[]? operations)
+    internal sealed class FoldContext(IPbtStore store, IRefCountingMemoryProvider memoryProvider, TrieUpdaterMetrics? metrics, ParallelOptions? bucketFoldOptions, PbtWriteOperation<TKey>[]? operations)
     {
         internal IPbtStore Store { get; } = store;
         internal IRefCountingMemoryProvider MemoryProvider { get; } = memoryProvider;
+        internal TrieUpdaterMetrics? Metrics { get; } = metrics;
         internal ParallelOptions? BucketFoldOptions { get; } = bucketFoldOptions;
         internal PbtWriteOperation<TKey>[]? Operations { get; } = operations;
+
+        internal FoldContext WithMetrics(TrieUpdaterMetrics metrics) => new(Store, MemoryProvider, metrics, BucketFoldOptions, Operations);
     }
 
-    private sealed class BucketFold(int slot, int offset, int count, OwnedSubtree current, TrieUpdaterMetrics? metrics)
+    private sealed class BucketFold(int slot, int offset, int count, OwnedSubtree current, FoldContext context)
     {
         internal int Slot { get; } = slot;
-        internal TrieUpdaterMetrics? Metrics { get; } = metrics;
+        internal FoldContext Context { get; } = context;
         internal OwnedSubtree Result;
 
         [SkipLocalsInit]
-        internal void Fold(FoldContext context, TPath groupPath, int bitDepth, int knownCommonPrefixLength, bool isSorted)
+        internal void Fold(TPath groupPath, int bitDepth, int knownCommonPrefixLength, bool isSorted)
         {
             Span<byte> pathBuffer = stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)];
             PbtTraversalPath path = PbtTraversalPath.FromPath(pathBuffer, groupPath);
             path.AppendMut(Slot);
             // A child below the boundary only compares the owner frame's depth with its own, so an unloaded stand-in
             // replaces the parent's frame, which must not be shared across threads.
-            GroupFrameReader<TKey, TPath> owner = new(context.Store, bitDepth, default, null);
-            using PbtNodeGroupWriter<TPath> ownerWriter = new(bitDepth, context.MemoryProvider);
+            GroupFrameReader<TKey, TPath> owner = new(Context.Store, bitDepth, default, null);
+            using PbtNodeGroupWriter<TPath> ownerWriter = new(bitDepth, Context.MemoryProvider);
             TraversalSubtree boundary = current.Borrow(stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)]);
-            Result = FoldMutations(context, Metrics, ref owner, ownerWriter, boundary, context.Operations!.AsSpan(offset, count),
+            Result = FoldMutations(Context, ref owner, ownerWriter, boundary, Context.Operations!.AsSpan(offset, count),
                 ref path, bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup, new BucketPlan(default, knownCommonPrefixLength, isSorted));
         }
     }
