@@ -103,24 +103,22 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
         }
 
-        // VerifyWithTrie reads the tries on the block thread during execution, which the builder must own exclusively.
+        // VerifyWithTrie reads the tries on the block thread during execution, which the builder jobs must own exclusively.
         if (configuration.ParallelStorageRoot && !configuration.VerifyWithTrie && !isReadOnly && !_trieless)
-            _storageRootBuilder = new StorageRootBuilder(configuration.ParallelStorageRootThreads, configuration.ParallelStorageRootWarmThreads, configuration.ParallelStorageRootEagerHash, logManager);
+            _storageRootBuilder = new StorageRootBuilder(configuration.ParallelStorageRootThreads, configuration.ParallelStorageRootBatchSize, configuration.ParallelStorageRootEagerHash, logManager);
     }
 
-    /// <summary>The builder to hand committed storage writes to, or null once it has drained or faulted.</summary>
+    /// <summary>The builder to hand committed storage writes to, or null once it is closed or faulted.</summary>
     internal StorageRootBuilder? StorageRootBuilder =>
-        _storageRootBuilder is { IsFaulted: false, IsDrained: false } ? _storageRootBuilder : null;
+        _storageRootBuilder is { IsFaulted: false, IsClosed: false } ? _storageRootBuilder : null;
 
-    /// <summary>True when the drained builder left every storage trie already built, so the flush only commits them.</summary>
-    internal bool UsePrebuiltStorageTries => _storageRootBuilder is { IsDrained: true, IsFaulted: false };
+    /// <summary>The builder the flush finalizes each storage trie against, or null when the feature is off.</summary>
+    internal StorageRootBuilder? StorageRootBuilderForFinalization => _storageRootBuilder;
 
-    private void DrainStorageRootBuilder()
+    private void WaitForBuilderJobs()
     {
         if (_storageRootBuilder is null) return;
-        _storageRootBuilder.CompleteAndJoin();
-        // A faulted builder may have left a trie half-applied; drop them all so the flush rebuilds from the committed parent.
-        if (_storageRootBuilder.IsFaulted) _storages.Clear();
+        foreach (FlatStorageTree storage in _storages.Values) storage.WaitForJob();
     }
 
     internal bool AppliesStorageWritesEarly => _earlyApplier is not null && !_earlyApplyClosed;
@@ -152,7 +150,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // Nothing reads the warmed paths after this, so queued jobs skip their walk and the wait covers only walks in flight.
         Interlocked.Increment(ref _hintSequenceId);
         CancelHintBal();
-        _storageRootBuilder?.CompleteAndJoin();
+        WaitForBuilderJobs();
         WaitForOutstandingWarmups();
         _snapshotBundle.Dispose();
         _warmer.OnExitScope();
@@ -538,7 +536,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         CancelHintBal();
         _earlyApplyClosed = true;
-        DrainStorageRootBuilder();
+        // From here on the flush owns the tries: no new job starts, each contract's write batch joins its own job.
+        _storageRootBuilder?.Close();
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
