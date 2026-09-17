@@ -5,7 +5,6 @@ using System;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.ExceptionServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using System.Threading.Tasks;
@@ -14,6 +13,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Serialization.Rlp;
 
 using MemoryMarshal = System.Runtime.InteropServices.MemoryMarshal;
@@ -25,8 +25,22 @@ namespace Nethermind.State.Proofs;
 internal static class IndexedTrieRoot
 {
     internal const int LeafBatchSize = 16;
+    private const int MinParallelLeafBatches = 3;
+    private const int WorkerRatioNumerator = 4;
+    private const int WorkerRatioDenominator = 7;
     internal const int MinItemsForParallelRootHash = 64;
     internal const int MinReceiptsForParallelRootHash = LeafBatchSize;
+
+    private static class ParallelOptionsCache
+    {
+        internal static readonly ParallelOptions[] Values = new ParallelOptions[RuntimeInformation.ProcessorCount];
+
+        static ParallelOptionsCache()
+        {
+            for (int i = 0; i < Values.Length; i++)
+                Values[i] = new ParallelOptions { MaxDegreeOfParallelism = i + 1 };
+        }
+    }
 
     internal interface IValueEncoder<T>
     {
@@ -69,12 +83,12 @@ internal static class IndexedTrieRoot
         private readonly ReadOnlySpan<T> _items = items;
         private readonly ReadOnlySpan<NodeReference> _leaves = leaves;
 
-        public Hash256 Calculate(bool canBeParallel = true, int minItemsForParallel = MinItemsForParallelRootHash)
+        public Hash256 Calculate(bool canBeParallel = true, int minItemsForParallel = MinParallelLeafBatches * LeafBatchSize - 1)
             => _items.IsEmpty ? Keccak.EmptyTreeHash
                 : Avx512F.IsSupported && _leaves.IsEmpty && _items.Length is >= 8 and <= MinItemsForParallelRootHash
                     && CanBatchMultiBlockLeaves(_items[GetIndex(0)]) ? CalculateMultiBlockSequential()
-                // One batch is the floor: below it there is no fan-out, and a lone leaf gets the wrong depth.
-                : !canBeParallel || RuntimeInformation.IsSingleProcessor || _items.Length <= Math.Max(LeafBatchSize, minItemsForParallel)
+                : !canBeParallel || RuntimeInformation.IsSingleProcessor
+                    || _items.Length < MinParallelLeafBatches * LeafBatchSize || _items.Length <= minItemsForParallel
                 ? CalculateSequential()
                 : CalculateParallel();
 
@@ -162,47 +176,48 @@ internal static class IndexedTrieRoot
             using ArrayPoolList<T> inputs = new(_items);
             using ArrayPoolList<NodeReference> references = new(_items.Length, _items.Length);
             TEncoder leafEncoder = encoder;
-            try
+            int batchCount = (_items.Length - 1) / LeafBatchSize + 1;
+            ParallelOptions parallelOptions = RuntimeInformation.ParallelOptionsLogicalCores;
+            if (typeof(T) == typeof(byte[]) || typeof(T) == typeof(ReadOnlyMemory<byte>))
             {
-                Parallel.For(0, (_items.Length - 1) / LeafBatchSize + 1, RuntimeInformation.ParallelOptionsLogicalCores, batch =>
+                int workerCount = Math.Min(RuntimeInformation.ProcessorCount,
+                    (batchCount * WorkerRatioNumerator + WorkerRatioDenominator - 1) / WorkerRatioDenominator);
+                parallelOptions = ParallelOptionsCache.Values[workerCount - 1];
+            }
+            ParallelUnbalancedWork.For(0, batchCount, parallelOptions, batch =>
+            {
+                Calculator<T, TEncoder> calculator = new(inputs.AsSpan(), leafEncoder);
+                int start = batch * LeafBatchSize;
+                int end = start + Math.Min(LeafBatchSize, inputs.Count - start);
+                if (Avx512F.IsSupported && typeof(T) == typeof(TxReceipt)
+                    && leafEncoder.GetLength(inputs[calculator.GetIndex(start)]) is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength)
                 {
-                    Calculator<T, TEncoder> calculator = new(inputs.AsSpan(), leafEncoder);
-                    int start = batch * LeafBatchSize;
-                    int end = start + Math.Min(LeafBatchSize, inputs.Count - start);
-                    if (Avx512F.IsSupported && typeof(T) == typeof(TxReceipt)
-                        && leafEncoder.GetLength(inputs[calculator.GetIndex(start)]) is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength)
+                    calculator.CalculateMultiBlockLeafBatch(start, end, references.AsSpan());
+                    return;
+                }
+                if (Avx2.IsSupported && (typeof(T) == typeof(byte[]) || typeof(T) == typeof(ReadOnlyMemory<byte>)))
+                {
+                    int valueLength = leafEncoder.GetEncodedValue(inputs[calculator.GetIndex(start)]).Length;
+                    if (valueLength is >= Keccak.Size and <= MaxSingleBlockValueLength)
+                    {
+                        calculator.CalculateEncodedLeafBatch(start, end, references.AsSpan());
+                        return;
+                    }
+                    if (Avx512F.IsSupported && valueLength is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength)
                     {
                         calculator.CalculateMultiBlockLeafBatch(start, end, references.AsSpan());
                         return;
                     }
-                    if (Avx2.IsSupported && (typeof(T) == typeof(byte[]) || typeof(T) == typeof(ReadOnlyMemory<byte>)))
-                    {
-                        int valueLength = leafEncoder.GetEncodedValue(inputs[calculator.GetIndex(start)]).Length;
-                        if (valueLength is >= Keccak.Size and <= MaxSingleBlockValueLength)
-                        {
-                            calculator.CalculateEncodedLeafBatch(start, end, references.AsSpan());
-                            return;
-                        }
-                        if (Avx512F.IsSupported && valueLength is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength)
-                        {
-                            calculator.CalculateMultiBlockLeafBatch(start, end, references.AsSpan());
-                            return;
-                        }
-                    }
-                    for (int position = start; position < end; position++)
-                    {
-                        Key key = calculator.GetKey(position);
-                        int depth = position == 0 ? 0 : CommonPrefix(key, calculator.GetKey(position - 1), 0);
-                        if (position + 1 < inputs.Count)
-                            depth = Math.Max(depth, CommonPrefix(key, calculator.GetKey(position + 1), 0));
-                        references[position] = calculator.Leaf(key, depth + 1, inputs[calculator.GetIndex(position)]);
-                    }
-                });
-            }
-            catch (AggregateException exception)
-            {
-                ExceptionDispatchInfo.Throw(exception.InnerExceptions[0]);
-            }
+                }
+                for (int position = start; position < end; position++)
+                {
+                    Key key = calculator.GetKey(position);
+                    int depth = position == 0 ? 0 : CommonPrefix(key, calculator.GetKey(position - 1), 0);
+                    if (position + 1 < inputs.Count)
+                        depth = Math.Max(depth, CommonPrefix(key, calculator.GetKey(position + 1), 0));
+                    references[position] = calculator.Leaf(key, depth + 1, inputs[calculator.GetIndex(position)]);
+                }
+            });
             // Avoid scanning tiny-value tries when the first full branch is already ineligible.
             if (Avx512F.IsSupported && _items.Length >= (BranchBatchSize + 1) * BranchChildCount
                 && references[BranchChildCount - 1].Length == Keccak.Size)
