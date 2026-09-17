@@ -15,14 +15,19 @@
 # Pinned by digest, with the tag recording which bflat-riscv64 commit produced
 # the image - :latest moves with every CI run there.
 #
-# The .NET 10 PERF variant is required, not preferred. The min profile does not
-# carry perf-36 (atomics as plain load/modify/store), so a guest built from it
-# trips the --error-on-atomic gate below with ~240 A instructions, and no zkVM
-# here implements the A extension. Between the two .NET lines, 10 runs ~2.6%
-# fewer SP1 cycles and ~2.5% fewer ZisK steps over the nine stateless-tests
-# mainnet blocks, while 11 gives ~6.5% smaller binaries - which matters less
-# than proving cost.
-BFLAT_IMAGE ?= nethermindeth/bflat-riscv64:1554355c92e0026cbb498ef1d0d7be7e53e2eebe@sha256:c0bea3f84b34be74237c513ea92d56ab9103a0cc9b28b2900a4e3a8547065832
+# The PERF variant is required, not preferred. The min profile does not lower
+# atomics to a plain load/modify/store, so a guest built from it trips the
+# --error-on-atomic gate below with ~240 A instructions, and no zkVM here
+# implements the A extension.
+#
+# .NET 11, not 10: the soft-float work landed in the 11 series first and the
+# 10 series had to be brought up to it one hole at a time (multiply and divide
+# reaching codegen as fmul.d/fdiv.d, float-to-integer conversions handing the
+# helpers raw float bits). Both pass the soft-float suite now, but 11 is where
+# the series is maintained and submitted upstream. It costs ~2.6% more SP1
+# cycles and ~2.5% more ZisK steps over the nine stateless-tests mainnet
+# blocks, and gives ~6.5% smaller binaries.
+BFLAT_IMAGE ?= nethermindeth/bflat-riscv64-11:d72f5982a8ccb9baf9186755fb1d4f3a327fd486@sha256:0e7a543c3034949f052da80ddafc32dcb1b8d1f2fd6e5bf51effe56cfbf00767
 
 # Every target here decodes rv64im only and reads the whole .text up front -
 # ziskemu ROMs it, SP1 panics on the first word it cannot decode, OpenVM turns
