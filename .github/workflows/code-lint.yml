@@ -85,6 +85,28 @@ jobs:
       - name: Run script test suites
         run: python -m unittest discover -s scripts/ci -p 'test*.py' -v
 
+  zisk-bench-scripts:
+    name: Test zkVM benchmark scripts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+<<<<<<< HEAD
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # Covers the emulator-log parse the guest cost report is built on, and the check that
+      # stateless-tests.yml still builds its matrix from inputs.json rather than restating it.
+      # Both fail silently otherwise: a drifted parse reports nothing, a second block list
+      # lets the benchmark report on blocks the tests never verified.
+      - name: Run script test suites
+        run: python -m unittest discover -s scripts/zisk-bench -p 'test*.py' -v
+
   frame-verify-gas-scripts:
     name: Test frame-verify-gas artifact fetch
     runs-on: ubuntu-latest
