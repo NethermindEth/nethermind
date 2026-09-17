@@ -56,7 +56,9 @@ public sealed class FlatStorageTree(
     private readonly bool _speculate = config.SpeculativeStorageRoots && !scope.Trieless && !scope.IsReadOnly && !config.VerifyWithTrie;
     private readonly int _speculationCap = config.SpeculativeStorageRootContractCap;
     private readonly int _minDrainToHash = config.SpeculativeStorageRootMinDrainToHash;
+    private readonly int _minDrainToApply = Math.Max(1, config.SpeculativeStorageRootMinDrainToApply);
     private int _speculativeWriteCount;
+    private int _pendingSinceQueued;
     private ConcurrentQueue<SpeculativeWrite>? _speculativeQueue;
     private Dictionary<UInt256, UInt256>? _speculativelyApplied;
     private Dictionary<UInt256, UInt256>? _drainBatch;
@@ -161,6 +163,12 @@ public sealed class FlatStorageTree(
         }
 
         _speculativeQueue.Enqueue(new SpeculativeWrite(in index, in value));
+        // Hand the tree to a worker only once enough writes have piled up: a drain wide enough to bulk-set pays for
+        // the path loads the way the block-end batch does, while a drain of one or two writes loads the same paths
+        // for a fraction of the work and a slot written again before the drain is coalesced away for free.
+        if (++_pendingSinceQueued < _minDrainToApply) return;
+
+        _pendingSinceQueued = 0;
         if (Interlocked.CompareExchange(ref _speculationState, SpeculationState.Queued, SpeculationState.Idle) == SpeculationState.Idle)
         {
             _scope.EnqueueSpeculation(this);
@@ -178,9 +186,10 @@ public sealed class FlatStorageTree(
         Interlocked.Exchange(ref _speculationState, SpeculationState.Idle);
         OnSpeculationReleased?.Invoke();
 
-        // Writes enqueued during the drain re-queue the tree behind the other contracts' work. Once finalization
-        // has claimed the trie the exchange fails and they are left for the block-end batch.
-        if (!queue.IsEmpty && Interlocked.CompareExchange(ref _speculationState, SpeculationState.Queued, SpeculationState.Idle) == SpeculationState.Idle)
+        // Writes enqueued during the drain re-queue the tree behind the other contracts' work, once there are enough
+        // of them to be worth a pass. Any that stay queued cost nothing: the block-end batch writes them anyway.
+        // Once finalization has claimed the trie the exchange fails and they are left for that batch.
+        if (queue.Count >= _minDrainToApply && Interlocked.CompareExchange(ref _speculationState, SpeculationState.Queued, SpeculationState.Idle) == SpeculationState.Idle)
         {
             _scope.EnqueueSpeculation(this);
         }
