@@ -41,7 +41,7 @@ auth_header=()
 if [[ -n "${GH_TOKEN:-}" ]]; then
   auth_header=(-H "Authorization: Bearer ${GH_TOKEN}")
 fi
-if ! release_json=$(curl -fsS "${auth_header[@]}" "https://api.github.com/repos/${REPO}/releases/tags/${version}" 2>"${work}/fetch.err"); then
+if ! release_json=$(curl -fsS --retry 3 --max-time 30 "${auth_header[@]}" "https://api.github.com/repos/${REPO}/releases/tags/${version}" 2>"${work}/fetch.err"); then
   echo "::error::Release ${version} could not be read from ${REPO} (a nonexistent, draft or not-yet-published release looks identical here): $(paste -sd ' ' "${work}/fetch.err")"
   exit 1
 fi
