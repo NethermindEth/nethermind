@@ -229,6 +229,37 @@ public class TxBroadcasterTests
         }
     }
 
+    // The announcement predicate must be CarriesBlobs, not SupportsBlobs: an EIP-8141 frame transaction carries
+    // blobs as a type-6, so the type-only SupportsBlobs check misses it and the full sidecar-bearing tx would be
+    // handed to every peer instead of the light record. A master merge has silently reverted this once already.
+    [Test]
+    public void should_announce_a_blob_carrying_frame_tx_as_a_light_transaction()
+    {
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        _headInfo.CurrentBaseFee = 0.GWei;
+        RecordingPeer peer = new(TestItem.PublicKeyA);
+        _broadcaster.AddPeer(peer);
+
+        Transaction tx = Build.A.Transaction
+            .WithNonce(0UL)
+            .WithShardBlobTxTypeAndFields()
+            .SignedAndResolved()
+            .TestObject;
+        tx.Type = TxType.FrameTx;
+        tx.Frames = [];
+        tx.FrameSignatures = [];
+        tx.Hash = tx.CalculateHash();
+
+        // Guards the discrimination this test exists for: the two predicates must disagree on this fixture,
+        // or it cannot tell them apart and the regression it covers would pass unnoticed.
+        Assert.That(tx.CarriesBlobs, Is.True);
+        Assert.That(tx.SupportsBlobs, Is.False);
+
+        _broadcaster.Broadcast(tx, isPersistent: true);
+
+        Assert.That(peer.Sent.Single(), Is.TypeOf<LightTransaction>());
+    }
+
     [Test]
     public void should_skip_large_or_blob_txs_when_picking_best_persistent_txs_to_broadcast(
         [Values(1, 2, 25, 50, 99, 100, 101, 1000)] int threshold,
