@@ -399,7 +399,7 @@ public class PbtRocksDbPersistenceTests
         using MemDb metadata = new();
         PbtConfig config = new() { CompactSize = 2, CompactionOffset = 0 };
         DbConfig dbConfig = new();
-        PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, config);
+        PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, config, Substitute.For<IDisposableStack>(), LimboLogs.Instance);
         PbtResourcePool pool = new(config);
         PbtSnapshotRepository repository = new();
         PbtCompactionSchedule schedule = new(metadata, config, LimboLogs.Instance);
@@ -492,7 +492,7 @@ public class PbtRocksDbPersistenceTests
     {
         using TempPath dbPath = TempPath.GetTempDirectory();
         DbConfig dbConfig = new();
-        PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, new PbtConfig());
+        PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, new PbtConfig(), Substitute.For<IDisposableStack>(), LimboLogs.Instance);
         ColumnsDb<PbtColumns> db = new(dbPath.Path, new DbSettings(nameof(DbNames.Pbt), DbNames.Pbt), dbConfig,
             adjuster, LimboLogs.Instance, FastEnum.GetValues<PbtColumns>());
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
