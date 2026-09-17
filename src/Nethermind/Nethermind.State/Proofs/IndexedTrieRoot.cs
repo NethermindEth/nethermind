@@ -42,8 +42,17 @@ internal static class IndexedTrieRoot
         }
     }
 
+    internal enum LeafBatching
+    {
+        None,
+        Encoded,
+        SmallValues,
+        MultiBlock
+    }
+
     internal interface IValueEncoder<T>
     {
+        LeafBatching Batching { get; }
         ReadOnlySpan<byte> GetEncodedValue(T item);
         int GetLength(T item);
         void Encode<TWriter>(ref TWriter writer, T item) where TWriter : struct, IRlpWriteBackend, allows ref struct;
@@ -84,13 +93,18 @@ internal static class IndexedTrieRoot
         private readonly ReadOnlySpan<NodeReference> _leaves = leaves;
 
         public Hash256 Calculate(bool canBeParallel = true, int minItemsForParallel = MinParallelLeafBatches * LeafBatchSize - 1)
-            => _items.IsEmpty ? Keccak.EmptyTreeHash
-                : Avx512F.IsSupported && _leaves.IsEmpty && _items.Length is >= 8 and <= MinItemsForParallelRootHash
-                    && CanBatchMultiBlockLeaves(_items[GetIndex(0)]) ? CalculateMultiBlockSequential()
-                : !canBeParallel || RuntimeInformation.IsSingleProcessor
-                    || _items.Length < MinParallelLeafBatches * LeafBatchSize || _items.Length <= minItemsForParallel
-                ? CalculateSequential()
-                : CalculateParallel();
+        {
+            if (_items.IsEmpty) return Keccak.EmptyTreeHash;
+            if (CanBatchMultiBlockLeavesSequentially()) return CalculateMultiBlockSequential();
+            if (!canBeParallel || RuntimeInformation.IsSingleProcessor
+                || _items.Length < MinParallelLeafBatches * LeafBatchSize || _items.Length <= minItemsForParallel)
+                return CalculateSequential();
+            return CalculateParallel();
+        }
+
+        private bool CanBatchMultiBlockLeavesSequentially()
+            => Avx512F.IsSupported && _leaves.IsEmpty && _items.Length is >= 8 and <= MinItemsForParallelRootHash
+                && CanBatchMultiBlockLeaves(_items[GetIndex(0)]);
 
         [SkipLocalsInit]
         private void BatchTerminalBranches(Span<NodeReference> references)
@@ -141,7 +155,7 @@ internal static class IndexedTrieRoot
 
         private bool CanBatchLeavesSequentially()
         {
-            if (typeof(T) == typeof(Withdrawal)) return _items.Length >= 8;
+            if (encoder.Batching == LeafBatching.SmallValues) return _items.Length >= 8;
             if (_items.Length is < LeafBatchSize or > MinItemsForParallelRootHash)
                 return false;
             foreach (T item in _items)
@@ -158,8 +172,8 @@ internal static class IndexedTrieRoot
         }
 
         private bool CanBatchMultiBlockLeaves(T item)
-            => (typeof(T) == typeof(TxReceipt) ? encoder.GetLength(item)
-                : typeof(T) == typeof(byte[]) || typeof(T) == typeof(ReadOnlyMemory<byte>) ? encoder.GetEncodedValue(item).Length : 0)
+            => encoder.Batching is LeafBatching.Encoded or LeafBatching.MultiBlock
+                && encoder.GetLength(item)
                 is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength;
 
         private Hash256 CalculateMultiBlockSequential()
@@ -170,9 +184,9 @@ internal static class IndexedTrieRoot
             return new Calculator<T, TEncoder>(_items, encoder, references.AsSpan()).CalculateSequential();
         }
 
-        private static ParallelOptions GetParallelOptions(int batchCount)
+        private static ParallelOptions GetParallelOptions(int batchCount, TEncoder leafEncoder)
         {
-            if (typeof(T) != typeof(byte[]) && typeof(T) != typeof(ReadOnlyMemory<byte>))
+            if (leafEncoder.Batching != LeafBatching.Encoded)
                 return RuntimeInformation.ParallelOptionsLogicalCores;
             int workerCount = Math.Min(RuntimeInformation.ProcessorCount,
                 (batchCount * WorkerRatioNumerator + WorkerRatioDenominator - 1) / WorkerRatioDenominator);
@@ -186,7 +200,7 @@ internal static class IndexedTrieRoot
             using ArrayPoolList<NodeReference> references = new(_items.Length, _items.Length);
             TEncoder leafEncoder = encoder;
             int batchCount = (_items.Length - 1) / LeafBatchSize + 1;
-            ParallelUnbalancedWork.For(0, batchCount, GetParallelOptions(batchCount),
+            ParallelUnbalancedWork.For(0, batchCount, GetParallelOptions(batchCount, encoder),
                 batch => CalculateLeafBatch(inputs, references, leafEncoder, batch));
             return FinishParallel(references.AsSpan());
         }
@@ -206,13 +220,13 @@ internal static class IndexedTrieRoot
             Calculator<T, TEncoder> calculator = new(inputs.AsSpan(), leafEncoder);
             int start = batch * LeafBatchSize;
             int end = start + Math.Min(LeafBatchSize, inputs.Count - start);
-            if (Avx512F.IsSupported && typeof(T) == typeof(TxReceipt)
+            if (Avx512F.IsSupported && leafEncoder.Batching == LeafBatching.MultiBlock
                 && leafEncoder.GetLength(inputs[calculator.GetIndex(start)]) is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength)
             {
                 calculator.CalculateMultiBlockLeafBatch(start, end, references.AsSpan());
                 return;
             }
-            if (Avx2.IsSupported && (typeof(T) == typeof(byte[]) || typeof(T) == typeof(ReadOnlyMemory<byte>)))
+            if (Avx2.IsSupported && leafEncoder.Batching == LeafBatching.Encoded)
             {
                 int valueLength = leafEncoder.GetEncodedValue(inputs[calculator.GetIndex(start)]).Length;
                 if (valueLength is >= Keccak.Size and <= MaxSingleBlockValueLength)
@@ -251,7 +265,7 @@ internal static class IndexedTrieRoot
                 _references = new(items.Length, items.Length);
                 _encoder = encoder;
                 int batchCount = (items.Length - 1) / LeafBatchSize + 1;
-                _work = ParallelUnbalancedWork.BackgroundFor(0, batchCount, GetParallelOptions(batchCount),
+                _work = ParallelUnbalancedWork.BackgroundFor(0, batchCount, GetParallelOptions(batchCount, encoder),
                     CalculateBatch, Finish);
             }
 
@@ -396,7 +410,7 @@ internal static class IndexedTrieRoot
                 T item = _items[GetIndex(position)];
                 ReadOnlySpan<byte> value = encoder.GetEncodedValue(item);
                 int valueLength = value.IsEmpty ? encoder.GetLength(item) : value.Length;
-                if (valueLength < (typeof(T) == typeof(Withdrawal) ? 2 : Keccak.Size) || valueLength > MaxSingleBlockValueLength)
+                if (valueLength < (encoder.Batching == LeafBatching.SmallValues ? 2 : Keccak.Size) || valueLength > MaxSingleBlockValueLength)
                 {
                     references[position] = Leaf(key, depth + 1, item);
                     continue;
