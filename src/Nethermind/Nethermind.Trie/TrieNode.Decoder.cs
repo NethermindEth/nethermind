@@ -10,6 +10,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
@@ -36,6 +37,7 @@ namespace Nethermind.Trie
             private const int HashPairSize = 2;
             private const int MinHashBatchSize = 3;
             private const int HashBatchSize = 8;
+            private const int Avx2HashBatchSize = 4;
             private const int VectorByteLength = 32;
             private const int BranchHashBufferLength = HashBatchSize * (FullBranchRlpLength + Hash256.Size);
 
@@ -281,7 +283,8 @@ namespace Nethermind.Trie
 
             private static void HashPreparedBranches(TrieNode item, ushort candidateMask)
             {
-                if (Avx512F.IsSupported && BitOperations.PopCount((uint)candidateMask) >= MinHashBatchSize)
+                if ((Avx512F.IsSupported && BitOperations.PopCount((uint)candidateMask) >= MinHashBatchSize)
+                    || (Avx2.IsSupported && !Avx512F.VL.IsSupported && BitOperations.PopCount((uint)candidateMask) >= Avx2HashBatchSize))
                 {
                     HashPreparedBranchBatches(item, candidateMask);
                     return;
@@ -295,7 +298,20 @@ namespace Nethermind.Trie
                     return;
                 }
 
-                HashPreparedBranchPairs(item, firstIndex, candidateMask);
+                if (Avx512F.VL.IsSupported)
+                {
+                    HashPreparedBranchPairs(item, firstIndex, candidateMask);
+                }
+                else
+                {
+                    Unsafe.As<TrieNode>(item._nodeData![firstIndex])!.ResolvePreparedKey();
+                    do
+                    {
+                        int index = BitOperations.TrailingZeroCount(candidateMask);
+                        candidateMask ^= (ushort)(1 << index);
+                        Unsafe.As<TrieNode>(item._nodeData![index])!.ResolvePreparedKey();
+                    } while (candidateMask != 0);
+                }
             }
 
             [InlineArray(BranchHashBufferLength / VectorByteLength)]
@@ -304,15 +320,26 @@ namespace Nethermind.Trie
                 private Vector256<byte> _element0;
             }
 
+            [InlineArray(Avx2HashBatchSize * (KeccakHash.Hash532PaddedLength + Hash256.Size) / VectorByteLength)]
+            private struct Avx2BranchHashBuffer
+            {
+                private Vector256<ulong> _element0;
+            }
+
             [SkipLocalsInit]
             [MethodImpl(MethodImplOptions.NoInlining)]
             private static void HashPreparedBranchBatches(TrieNode item, ushort candidateMask)
             {
-                const int batchSize = HashBatchSize;
-                Unsafe.SkipInit(out BranchHashBuffer buffer);
-                Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
-                Span<byte> inputs = storage[..(batchSize * FullBranchRlpLength)];
-                Span<byte> hashes = storage[(batchSize * FullBranchRlpLength)..];
+                int batchSize = Avx512F.IsSupported ? HashBatchSize : Avx2HashBatchSize;
+                int inputLength = Avx512F.IsSupported ? FullBranchRlpLength : KeccakHash.Hash532PaddedLength;
+                int minimumBatch = Avx512F.IsSupported ? MinHashBatchSize : Avx2HashBatchSize;
+                Unsafe.SkipInit(out BranchHashBuffer wideBuffer);
+                Unsafe.SkipInit(out Avx2BranchHashBuffer narrowBuffer);
+                Span<byte> storage = Avx512F.IsSupported
+                    ? MemoryMarshal.AsBytes((Span<Vector256<byte>>)wideBuffer)
+                    : MemoryMarshal.AsBytes((Span<Vector256<ulong>>)narrowBuffer);
+                Span<byte> inputs = storage[..(batchSize * inputLength)];
+                Span<byte> hashes = storage[(batchSize * inputLength)..];
                 do
                 {
                     int batchCount = Math.Min(batchSize, BitOperations.PopCount((uint)candidateMask));
@@ -325,10 +352,20 @@ namespace Nethermind.Trie
                         CappedArray<byte> rlp = Unsafe.As<TrieNode>(item._nodeData![index])!.FullRlp;
                         if (rlp.Length != FullBranchRlpLength)
                             throw new TrieException("A prepared full branch changed before batched hashing.");
-                        rlp.AsSpan().CopyTo(inputs.Slice(i * FullBranchRlpLength, FullBranchRlpLength));
+                        Span<byte> input = inputs.Slice(i * inputLength, inputLength);
+                        rlp.AsSpan().CopyTo(input);
+                        if (!Avx512F.IsSupported)
+                        {
+                            input[FullBranchRlpLength..].Clear();
+                            input[FullBranchRlpLength] = 1;
+                            input[^1] = 128;
+                        }
                     }
 
-                    KeccakHash.ComputeHash532Bytes8Avx512(ref inputs[0], ref hashes[0]);
+                    if (Avx512F.IsSupported)
+                        KeccakHash.ComputeHash532Bytes8Avx512(ref inputs[0], ref hashes[0]);
+                    else
+                        KeccakHash.ComputePaddedMultiBlocks4Avx2(ref inputs[0], inputLength, ref hashes[0]);
                     for (int i = 0; i < batchCount; i++)
                     {
                         int index = BitOperations.TrailingZeroCount(batchMask);
@@ -336,7 +373,7 @@ namespace Nethermind.Trie
                         ValueHash256 hash = new(hashes.Slice(i * Hash256.Size, Hash256.Size));
                         Unsafe.As<TrieNode>(item._nodeData![index])!.SetPreparedKey(in hash);
                     }
-                } while (BitOperations.PopCount((uint)candidateMask) >= MinHashBatchSize);
+                } while (BitOperations.PopCount((uint)candidateMask) >= minimumBatch);
 
                 if (candidateMask != 0) HashPreparedBranches(item, candidateMask);
             }
@@ -601,12 +638,26 @@ namespace Nethermind.Trie
                     ? WriteChildrenRlpBranchRlp(tree, ref path, item, destination, bufferPool, canBeParallel)
                     : WriteChildrenRlpBranchNonRlp(tree, ref path, item, destination, bufferPool, canBeParallel);
 
-            /// <inheritdoc cref="WriteChildrenRlpBranch" />
-            private static int WriteChildrenRlpBranchNonRlp(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel)
+            [InlineArray(BranchesCount)]
+            private struct ChildHashPositions
             {
-                int position = 0;
-                ref object? child = ref FirstBranchChild(item);
-                for (int i = 0; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
+                private ushort _element0;
+            }
+
+            /// <inheritdoc cref="WriteChildrenRlpBranch" />
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static int WriteChildrenRlpBranchNonRlp(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel) =>
+                WriteChildrenRlpBranchNonRlp<OffFlag>(tree, ref path, item, destination, bufferPool, canBeParallel, 0, 0);
+
+            /// <remarks>Keep batching scratch and bookkeeping off the path that only copies cached child hashes.</remarks>
+            [SkipLocalsInit]
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            private static int WriteChildrenRlpBranchNonRlp<TBatch>(ITrieNodeResolver tree, ref TreePath path, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool, bool canBeParallel, int start, int position) where TBatch : struct, IFlag
+            {
+                ushort candidates = 0;
+                Unsafe.SkipInit(out ChildHashPositions positions);
+                ref object? child = ref Unsafe.Add(ref FirstBranchChild(item), start);
+                for (int i = start; i < BranchesCount; i++, child = ref Unsafe.Add(ref child, 1))
                 {
                     object? data = child;
                     if (ReferenceEquals(data, _nullNode) || data is null)
@@ -619,10 +670,33 @@ namespace Nethermind.Trie
                     }
                     else
                     {
-                        path.AppendMut(i);
                         Debug.Assert(data is TrieNode, "Data is not TrieNode");
                         TrieNode childNode = Unsafe.As<TrieNode>(data);
-                        childNode!.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
+                        if (childNode.Keccak is { } knownHash)
+                        {
+                            position = Rlp.Encode(destination, position, knownHash);
+                            continue;
+                        }
+                        if (!TBatch.IsActive && Avx2.IsSupported && !Avx512F.VL.IsSupported && childNode.IsBranch)
+                            return WriteChildrenRlpBranchNonRlp<OnFlag>(tree, ref path, item, destination, bufferPool, canBeParallel, i, position);
+                        path.AppendMut(i);
+                        if (TBatch.IsActive && childNode.IsBranch)
+                        {
+                            CappedArray<byte> rlp = childNode.PrepareRlp(tree, ref path, bufferPool, canBeParallel);
+                            if (rlp.Length == FullBranchRlpLength)
+                            {
+                                candidates |= (ushort)(1 << i);
+                                positions[i] = (ushort)position;
+                                position += Rlp.LengthOfKeccakRlp;
+                                path.TruncateOne();
+                                continue;
+                            }
+                            childNode.ResolvePreparedKey(in rlp);
+                        }
+                        else
+                        {
+                            childNode.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
+                        }
                         path.TruncateOne();
 
                         Hash256? childHash = childNode.Keccak;
@@ -639,6 +713,16 @@ namespace Nethermind.Trie
                     }
                 }
 
+                if (TBatch.IsActive && candidates != 0)
+                {
+                    HashPreparedBranches(item, candidates);
+                    do
+                    {
+                        int index = BitOperations.TrailingZeroCount(candidates);
+                        candidates ^= (ushort)(1 << index);
+                        Rlp.Encode(destination, positions[index], Unsafe.As<TrieNode>(item._nodeData![index])!.Keccak!);
+                    } while (candidates != 0);
+                }
                 return position;
             }
 
