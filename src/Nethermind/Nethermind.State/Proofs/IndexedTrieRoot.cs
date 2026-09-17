@@ -25,8 +25,21 @@ namespace Nethermind.State.Proofs;
 internal static class IndexedTrieRoot
 {
     internal const int LeafBatchSize = 16;
+    private const int Avx2HashBatchSize = 4;
+    private const int MaxHashBatchSize = 8;
+    private const int KeccakRate = 136;
+    private const int MaxEncodedPathLength = 6;
+    private const int VectorByteLength = 32;
+    private const int LeafBatchBufferLength = MaxHashBatchSize * (KeccakRate + Keccak.Size + 2 * sizeof(int)) + MaxEncodedPathLength;
+    private const int MultiBlockLeafBufferLength = LeafBatchSize * (3 * sizeof(int) + MaxEncodedPathLength) + MaxHashBatchSize * (Keccak.Size + 2 * sizeof(int));
+    private const int BranchBatchBufferLength = MaxHashBatchSize * (KeccakHash.Hash532InputLength + Keccak.Size + sizeof(int));
     internal const int MinItemsForParallelRootHash = 64;
     internal const int MinReceiptsForParallelRootHash = LeafBatchSize;
+
+    private readonly struct PrecomputedBranches : IFlag
+    {
+        public static bool IsActive => true;
+    }
 
     internal enum LeafBatching
     {
@@ -45,19 +58,19 @@ internal static class IndexedTrieRoot
     }
 
     /// <summary>Provides 1440 bytes for eight padded rate blocks, hashes, indices, lengths, and an encoded path.</summary>
-    [InlineArray(45)]
+    [InlineArray((LeafBatchBufferLength + VectorByteLength - 1) / VectorByteLength)]
     private struct LeafBatchBuffer
     {
         private Vector256<byte> _element0;
     }
 
     /// <summary>Provides 608 bytes for sixteen leaf descriptors and eight output hashes, positions, and lengths.</summary>
-    [InlineArray(19)]
+    [InlineArray((MultiBlockLeafBufferLength + VectorByteLength - 1) / VectorByteLength)]
     private struct MultiBlockLeafBuffer
     {
         private Vector256<byte> _element0;
     }
-    [InlineArray(142)]
+    [InlineArray((BranchBatchBufferLength + VectorByteLength - 1) / VectorByteLength)]
     private struct BranchBatchBuffer
     {
         private Vector256<byte> _element0;
@@ -68,13 +81,13 @@ internal static class IndexedTrieRoot
     {
         private const int BranchPrefixLength = 3;
         private const int PrecomputedBranchLength = -Keccak.Size;
-        private const int BranchBatchSize = 8;
+        private static int BranchBatchSize => Avx512F.IsSupported ? MaxHashBatchSize : Avx2HashBatchSize;
         private const int BranchChildCount = 16;
         private const int FullBranchLength = KeccakHash.Hash532InputLength;
         private const int MaxBranchContentLength = 16 * Rlp.LengthOfKeccakRlp + 1;
         // A 136-byte Keccak rate block leaves 11 bytes for the longest RLP/path prefix and one for padding.
         private const int MaxSingleBlockValueLength = 124;
-        private const int MaxMultiBlockValueLength = 16 * 136 - 12;
+        private const int MaxMultiBlockValueLength = 16 * KeccakRate - 12;
         private readonly ReadOnlySpan<T> _items = items;
         private readonly ReadOnlySpan<NodeReference> _leaves = leaves;
 
@@ -89,7 +102,7 @@ internal static class IndexedTrieRoot
         }
 
         private bool CanBatchMultiBlockLeavesSequentially()
-            => Avx512F.IsSupported && _leaves.IsEmpty && _items.Length is >= 8 and <= MinItemsForParallelRootHash
+            => Avx2.IsSupported && _leaves.IsEmpty && _items.Length is >= MaxHashBatchSize and <= MinItemsForParallelRootHash
                 && CanBatchMultiBlockLeaves(_items[GetIndex(0)]);
 
         [SkipLocalsInit]
@@ -97,7 +110,8 @@ internal static class IndexedTrieRoot
         {
             Unsafe.SkipInit(out BranchBatchBuffer scratch);
             Span<byte> memory = MemoryMarshal.AsBytes((Span<Vector256<byte>>)scratch);
-            Span<byte> blocks = memory[..(BranchBatchSize * FullBranchLength)];
+            int inputLength = Avx512F.IsSupported ? FullBranchLength : KeccakHash.Hash532PaddedLength;
+            Span<byte> blocks = memory[..(BranchBatchSize * inputLength)];
             Span<byte> hashes = memory.Slice(blocks.Length, BranchBatchSize * Keccak.Size);
             Span<int> positions = MemoryMarshal.Cast<byte, int>(memory.Slice(blocks.Length + hashes.Length, BranchBatchSize * sizeof(int)));
             int pending = 0;
@@ -116,7 +130,7 @@ internal static class IndexedTrieRoot
                     }
                 }
                 if (!allHashed) continue;
-                Span<byte> block = blocks.Slice(pending * FullBranchLength, FullBranchLength);
+                Span<byte> block = blocks.Slice(pending * inputLength, inputLength);
                 Rlp.StartSequence(block, 0, MaxBranchContentLength);
                 for (int j = 0; j < BranchChildCount; j++)
                 {
@@ -125,10 +139,19 @@ internal static class IndexedTrieRoot
                     references[start + j].Value.Bytes.CopyTo(block.Slice(offset + 1, Keccak.Size));
                 }
                 block[FullBranchLength - 1] = Rlp.EmptyByteArrayByte;
+                if (!Avx512F.IsSupported)
+                {
+                    block[FullBranchLength..].Clear();
+                    block[FullBranchLength] = 0x01;
+                    block[^1] = 0x80;
+                }
                 positions[pending++] = start;
                 start += BranchChildCount - 1;
                 if (pending != BranchBatchSize) continue;
-                KeccakHash.ComputeHash532Bytes8Avx512(ref MemoryMarshal.GetReference(blocks), ref MemoryMarshal.GetReference(hashes));
+                if (Avx512F.IsSupported)
+                    KeccakHash.ComputeHash532Bytes8Avx512(ref MemoryMarshal.GetReference(blocks), ref MemoryMarshal.GetReference(hashes));
+                else
+                    KeccakHash.ComputePaddedMultiBlocks4Avx2(ref MemoryMarshal.GetReference(blocks), inputLength, ref MemoryMarshal.GetReference(hashes));
                 for (int j = 0; j < BranchBatchSize; j++)
                 {
                     ValueHash256 hash = default;
@@ -164,7 +187,7 @@ internal static class IndexedTrieRoot
 
         private Hash256 CalculateMultiBlockSequential()
         {
-            using ArrayPoolList<NodeReference> references = new(_items.Length, _items.Length);
+            using ArrayPoolListRef<NodeReference> references = new(_items.Length, _items.Length);
             for (int start = 0; start < _items.Length; start += LeafBatchSize)
                 CalculateMultiBlockLeafBatch(start, Math.Min(start + LeafBatchSize, _items.Length), references.AsSpan());
             return new Calculator<T, TEncoder>(_items, encoder, references.AsSpan()).CalculateSequential();
@@ -183,7 +206,7 @@ internal static class IndexedTrieRoot
                     Calculator<T, TEncoder> calculator = new(inputs.AsSpan(), leafEncoder);
                     int start = batch * LeafBatchSize;
                     int end = start + Math.Min(LeafBatchSize, inputs.Count - start);
-                    if (Avx512F.IsSupported && leafEncoder.Batching == LeafBatching.MultiBlock
+                    if (Avx2.IsSupported && leafEncoder.Batching == LeafBatching.MultiBlock
                         && leafEncoder.GetLength(inputs[calculator.GetIndex(start)]) is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength)
                     {
                         calculator.CalculateMultiBlockLeafBatch(start, end, references.AsSpan());
@@ -197,7 +220,7 @@ internal static class IndexedTrieRoot
                             calculator.CalculateEncodedLeafBatch(start, end, references.AsSpan());
                             return;
                         }
-                        if (Avx512F.IsSupported && valueLength is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength)
+                        if (valueLength is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength)
                         {
                             calculator.CalculateMultiBlockLeafBatch(start, end, references.AsSpan());
                             return;
@@ -218,20 +241,21 @@ internal static class IndexedTrieRoot
                 ExceptionDispatchInfo.Throw(exception.InnerExceptions[0]);
             }
             // Avoid scanning tiny-value tries when the first full branch is already ineligible.
-            if (Avx512F.IsSupported && _items.Length >= (BranchBatchSize + 1) * BranchChildCount
-                && references[BranchChildCount - 1].Length == Keccak.Size)
-                BatchTerminalBranches(references.AsSpan());
-            return new Calculator<T, TEncoder>(_items, encoder, references.AsSpan()).CalculateSequential();
+            bool batchBranches = Avx2.IsSupported && _items.Length >= (BranchBatchSize + 1) * BranchChildCount
+                && references[BranchChildCount - 1].Length == Keccak.Size;
+            if (batchBranches) BatchTerminalBranches(references.AsSpan());
+            return new Calculator<T, TEncoder>(_items, encoder, references.AsSpan()).CalculateSequential(batchBranches);
         }
 
         [SkipLocalsInit]
         private void CalculateMultiBlockLeafBatch(int start, int end, Span<NodeReference> references)
         {
+            int batchSize = Avx512F.IsSupported ? MaxHashBatchSize : Avx2HashBatchSize;
             const int metadataLength = LeafBatchSize * sizeof(int);
-            const int pathsLength = LeafBatchSize * 6;
+            const int pathsLength = LeafBatchSize * MaxEncodedPathLength;
             const int hashesOffset = 3 * metadataLength + pathsLength;
-            const int positionsOffset = hashesOffset + 8 * Keccak.Size;
-            const int indicesLength = 8 * sizeof(int);
+            const int positionsOffset = hashesOffset + MaxHashBatchSize * Keccak.Size;
+            const int indicesLength = MaxHashBatchSize * sizeof(int);
             Debug.Assert(end - start <= LeafBatchSize);
             Unsafe.SkipInit(out MultiBlockLeafBuffer scratch);
             Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)scratch);
@@ -256,18 +280,18 @@ internal static class IndexedTrieRoot
                     references[position] = Leaf(key, depth + 1, item);
                     continue;
                 }
-                Span<byte> path = paths.Slice(slot * 6, 6);
+                Span<byte> path = paths.Slice(slot * MaxEncodedPathLength, MaxEncodedPathLength);
                 int pathLength = EncodePath(key, depth + 1, key.Length - depth - 1, isLeaf: true, path);
                 int contentLength = Rlp.LengthOf(path[..pathLength]) + Rlp.LengthOfByteString(valueLength, 128);
-                int paddedLength = (Rlp.LengthOfSequence(contentLength) / 136 + 1) * 136;
+                int paddedLength = (Rlp.LengthOfSequence(contentLength) / KeccakRate + 1) * KeccakRate;
                 paddedLengths[slot] = paddedLength;
                 valueLengths[slot] = valueLength;
                 pathLengths[slot] = pathLength;
                 maxPaddedLength = Math.Max(maxPaddedLength, paddedLength);
             }
             if (maxPaddedLength == 0) return;
-            using ArrayPoolDisposableReturn rental = ArrayPoolDisposableReturn.Rent(8 * maxPaddedLength, out byte[] buffer);
-            Span<byte> hashes = storage.Slice(hashesOffset, 8 * Keccak.Size);
+            using ArrayPoolDisposableReturn rental = ArrayPoolDisposableReturn.Rent(batchSize * maxPaddedLength, out byte[] buffer);
+            Span<byte> hashes = storage.Slice(hashesOffset, MaxHashBatchSize * Keccak.Size);
             Span<int> positions = MemoryMarshal.Cast<byte, int>(storage.Slice(positionsOffset, indicesLength));
             Span<int> lengths = MemoryMarshal.Cast<byte, int>(storage.Slice(positionsOffset + indicesLength, indicesLength));
             for (int first = 0; first < end - start; first++)
@@ -282,7 +306,7 @@ internal static class IndexedTrieRoot
                     int position = start + slot;
                     T item = _items[GetIndex(position)];
                     ReadOnlySpan<byte> value = encoder.GetEncodedValue(item);
-                    ReadOnlySpan<byte> path = paths.Slice(slot * 6, pathLengths[slot]);
+                    ReadOnlySpan<byte> path = paths.Slice(slot * MaxEncodedPathLength, pathLengths[slot]);
                     int valueLength = valueLengths[slot];
                     int contentLength = Rlp.LengthOf(path) + Rlp.LengthOfByteString(valueLength, 128);
                     Span<byte> block = buffer.AsSpan(pending * paddedLength, paddedLength);
@@ -301,9 +325,9 @@ internal static class IndexedTrieRoot
                     block[^1] |= 0x80;
                     positions[pending] = position;
                     lengths[pending++] = totalLength;
-                    if (pending == 8)
+                    if (pending == batchSize)
                     {
-                        HashMultiBlockLeaves(buffer, paddedLength, hashes, positions, lengths, references);
+                        HashMultiBlockLeaves(buffer, paddedLength, hashes, positions[..pending], lengths, references);
                         pending = 0;
                     }
                 }
@@ -315,11 +339,11 @@ internal static class IndexedTrieRoot
         [SkipLocalsInit]
         private void CalculateEncodedLeafBatch(int start, int end, Span<NodeReference> references)
         {
-            int batchSize = Avx512F.IsSupported ? 8 : 4;
-            const int rate = 136;
-            const int blocksLength = 8 * rate;
-            const int hashesLength = 8 * Keccak.Size;
-            const int indicesLength = 8 * sizeof(int);
+            int batchSize = Avx512F.IsSupported ? MaxHashBatchSize : Avx2HashBatchSize;
+            const int rate = KeccakRate;
+            const int blocksLength = MaxHashBatchSize * rate;
+            const int hashesLength = MaxHashBatchSize * Keccak.Size;
+            const int indicesLength = MaxHashBatchSize * sizeof(int);
             Unsafe.SkipInit(out LeafBatchBuffer buffer);
             Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
             Span<byte> blocks = storage[..blocksLength];
@@ -393,11 +417,13 @@ internal static class IndexedTrieRoot
             }
         }
 
-        private Hash256 CalculateSequential()
+        private Hash256 CalculateSequential(bool hasPrecomputedBranches = false)
         {
             if (_leaves.IsEmpty && Avx2.IsSupported && CanBatchLeavesSequentially())
                 return CalculateEncodedSequential();
-            NodeReference root = _leaves.IsEmpty ? Build<OffFlag>(0, _items.Length, 0) : Build<OnFlag>(0, _items.Length, 0);
+            NodeReference root = _leaves.IsEmpty ? Build<OffFlag>(0, _items.Length, 0)
+                : hasPrecomputedBranches ? Build<PrecomputedBranches>(0, _items.Length, 0)
+                : Build<OnFlag>(0, _items.Length, 0);
             return root.Length == 32 ? new Hash256(root.Value) : Keccak.Compute(root.Value.Bytes[..root.Length]);
         }
 
@@ -425,7 +451,7 @@ internal static class IndexedTrieRoot
             }
 
             // A completed terminal branch replaces its first leaf; extension paths above it still apply.
-            if (Avx512F.IsSupported && TPrecomputed.IsActive && end - start == BranchChildCount && _leaves[start].Length == PrecomputedBranchLength)
+            if (typeof(TPrecomputed) == typeof(PrecomputedBranches) && end - start == BranchChildCount && _leaves[start].Length == PrecomputedBranchLength)
                 return new NodeReference(_leaves[start].Value, Keccak.Size);
             int offset = BranchPrefixLength;
             if (TPrecomputed.IsActive && first.Length == depth + 1 && last.Length == first.Length)
@@ -540,14 +566,18 @@ internal static class IndexedTrieRoot
     private static void HashMultiBlockLeaves(byte[] buffer, int paddedLength, Span<byte> hashes,
         ReadOnlySpan<int> positions, ReadOnlySpan<int> lengths, Span<NodeReference> references)
     {
-        if (positions.Length < 2)
+        int batchSize = Avx512F.IsSupported ? MaxHashBatchSize : Avx2HashBatchSize;
+        if (positions.Length < (Avx512F.IsSupported ? 2 : Avx2HashBatchSize))
         {
             for (int i = 0; i < positions.Length; i++)
                 references[positions[i]] = NodeReference.FromRlp(buffer.AsSpan(i * paddedLength, lengths[i]));
             return;
         }
-        buffer.AsSpan(positions.Length * paddedLength, (8 - positions.Length) * paddedLength).Clear();
-        KeccakHash.ComputePaddedMultiBlocks8Avx512(ref buffer[0], paddedLength, ref hashes[0]);
+        buffer.AsSpan(positions.Length * paddedLength, (batchSize - positions.Length) * paddedLength).Clear();
+        if (Avx512F.IsSupported)
+            KeccakHash.ComputePaddedMultiBlocks8Avx512(ref buffer[0], paddedLength, ref hashes[0]);
+        else
+            KeccakHash.ComputePaddedMultiBlocks4Avx2(ref buffer[0], paddedLength, ref hashes[0]);
         ReadOnlySpan<ValueHash256> values = MemoryMarshal.Cast<byte, ValueHash256>(hashes);
         for (int i = 0; i < positions.Length; i++)
         {
@@ -559,11 +589,11 @@ internal static class IndexedTrieRoot
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void HashLeafBatchAvx512(ref LeafBatchBuffer buffer, Span<NodeReference> references, int count)
     {
-        const int blocksLength = 8 * 136;
-        const int hashesLength = 8 * Keccak.Size;
+        const int blocksLength = MaxHashBatchSize * KeccakRate;
+        const int hashesLength = MaxHashBatchSize * Keccak.Size;
         Span<byte> storage = MemoryMarshal.AsBytes((Span<Vector256<byte>>)buffer);
         ReadOnlySpan<ValueHash256> hashes = MemoryMarshal.Cast<byte, ValueHash256>(storage.Slice(blocksLength, hashesLength))[..count];
-        ReadOnlySpan<int> positions = MemoryMarshal.Cast<byte, int>(storage.Slice(blocksLength + hashesLength, 8 * sizeof(int)))[..count];
+        ReadOnlySpan<int> positions = MemoryMarshal.Cast<byte, int>(storage.Slice(blocksLength + hashesLength, MaxHashBatchSize * sizeof(int)))[..count];
         KeccakHash.ComputePaddedBlocks8Avx512(ref storage[0], ref storage[blocksLength]);
         for (int i = 0; i < hashes.Length; i++)
             references[positions[i]] = new NodeReference(hashes[i], Keccak.Size);

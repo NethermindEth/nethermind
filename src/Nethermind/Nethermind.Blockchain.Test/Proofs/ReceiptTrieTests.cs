@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain.Test.Proofs;
 public class ReceiptTrieTests
 {
     private static readonly ReceiptMessageDecoder _decoder = new();
-    private static readonly int[] RootCounts = [0, 1, 2, 7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129, 143, 144, 145, 255, 256, 257, 271, 272, 273, 4096];
+    private static readonly int[] RootCounts = [0, 1, 2, 7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65, 79, 80, 81, 127, 128, 129, 143, 144, 145, 255, 256, 257, 271, 272, 273, 4096];
     private static readonly int[] InlineCounts = [1, 2, 3, 4, 8, 16, 128, 129, 144, 257];
 
     [Test]

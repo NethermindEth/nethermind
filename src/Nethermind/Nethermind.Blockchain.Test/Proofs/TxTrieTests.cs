@@ -28,7 +28,7 @@ public class TxTrieTests(bool useEip2718)
 
     private static readonly int[] MultiBlockLengths = [31, 100, 132, 133, 134, 135, 261, 262, 263, 264, 300, 1000, 2164, 2165, 8192];
 
-    private static readonly int[] RootCounts = [0, 1, 2, 7, 8, 9, 15, 16, 17, 18, 19, 20, 21, 22, 23, 31, 32, 33, 63, 64, 65, 127, 128, 129, 143, 144, 145, 255, 256, 257, 271, 272, 273, 4096];
+    private static readonly int[] RootCounts = [0, 1, 2, 7, 8, 9, 15, 16, 17, 18, 19, 20, 21, 22, 23, 31, 32, 33, 63, 64, 65, 79, 80, 81, 127, 128, 129, 143, 144, 145, 255, 256, 257, 271, 272, 273, 4096];
 
     [Test]
     public void Root_matches_mutable_trie([ValueSource(nameof(RootCounts))] int count, [Values] bool cached)
