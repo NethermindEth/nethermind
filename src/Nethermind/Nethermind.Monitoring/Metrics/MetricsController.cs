@@ -120,11 +120,6 @@ namespace Nethermind.Monitoring.Metrics
 
         public class SummaryMetricUpdater(Summary summary) : IMetricUpdater, IMetricObserver
         {
-            // `WithLabels` rebuilds a label sequence and looks the child up on every call, which showed up on the
-            // storage read path in a block-processing profile. Call sites reuse one label object per label set, so
-            // the child is cached against it; the table holds the key weakly in case a caller does allocate per call.
-            private readonly ConditionalWeakTable<IMetricLabels, Summary.Child> _children = [];
-
             public void Update()
             {
                 // Noop: Updated when `Observe` is called.
@@ -134,22 +129,17 @@ namespace Nethermind.Monitoring.Metrics
             {
                 if (labels is not null)
                 {
-                    _children.GetValue(labels, Create).Observe(value);
+                    summary.WithLabels(labels.Labels).Observe(value);
                 }
                 else
                 {
                     summary.Observe(value);
                 }
             }
-
-            private Summary.Child Create(IMetricLabels labels) => summary.WithLabels(labels.Labels);
         }
 
         public class HistogramMetricUpdater(Histogram histogram) : IMetricUpdater, IMetricObserver
         {
-            /// <inheritdoc cref="SummaryMetricUpdater"/>
-            private readonly ConditionalWeakTable<IMetricLabels, Histogram.Child> _children = [];
-
             public void Update()
             {
                 // Noop: Updated when `Observe` is called.
@@ -159,15 +149,13 @@ namespace Nethermind.Monitoring.Metrics
             {
                 if (labels is not null)
                 {
-                    _children.GetValue(labels, Create).Observe(value);
+                    histogram.WithLabels(labels.Labels).Observe(value);
                 }
                 else
                 {
                     histogram.Observe(value);
                 }
             }
-
-            private Histogram.Child Create(IMetricLabels labels) => histogram.WithLabels(labels.Labels);
         }
 
         internal record CommonMetricInfo(string Name, string Description, Dictionary<string, string> Tags);
