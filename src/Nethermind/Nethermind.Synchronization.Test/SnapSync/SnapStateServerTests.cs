@@ -17,7 +17,6 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.State.Flat;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
 using Nethermind.Synchronization.FastSync;
