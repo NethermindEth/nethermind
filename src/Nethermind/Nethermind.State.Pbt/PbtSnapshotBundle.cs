@@ -208,9 +208,10 @@ public sealed class PbtSnapshotBundle(
                     ValueHash256 previousHash = previous.CodeHash.ValueHash256;
                     ulong count = checked(GetCodeReference(previousHash) - 1);
                     WriteBuffer.SetCodeReference(previousHash, count == 0 ? null : count);
-                    if (count == 0 && previousCode is not null)
-                        foreach ((PbtFullKey key, _) in PbtFlatState.AccountLeaves(addressHash, previous, previousCode))
-                            if (key.Bytes[0] == Eip8297KeyDerivation.CodeZone) SetPbtLeaf(key, null);
+                    // Deleting an absent chunk is a no-op, so zero chunks need not be skipped here.
+                    if (count == 0 && previousCode is not null && !Eip7702Constants.IsDelegatedCode(previousCode.CodeSpan))
+                        for (int chunkId = 0; chunkId < CodeChunkCount(previousCode); chunkId++)
+                            SetPbtLeaf(PbtStateKey.Code(addressHash, previousHash, chunkId), null);
                 }
                 if (account is { HasCode: true })
                 {
@@ -236,27 +237,44 @@ public sealed class PbtSnapshotBundle(
         }
     }
 
+    private static int CodeChunkCount(CodeInfo code) => (code.Code.Length + 30) / 31;
+
     private void WriteAccountLeaves(ValueHash256 addressHash, Account? account, CodeInfo? code, bool includeCode)
     {
-        bool hasBasicData = false;
+        bool isDelegation = code is not null && Eip7702Constants.IsDelegatedCode(code.CodeSpan);
+        ValueHash256 basicData = default;
         if (account is not null && (!account.HasCode || code is not null))
         {
-            foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressHash, account, code, includeCode))
+            PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, (uint)(code?.Code.Length ?? 0), account.Nonce, account.Balance);
+            if (isDelegation)
             {
-                if (key.Bytes[0] == Eip8297KeyDerivation.AccountZone && key.Bytes[^1] == PbtKeyDerivation.BasicDataLeafKey)
-                    hasBasicData = true;
-                SetPbtLeaf(key, value);
+                ValueHash256 delegation = default;
+                code!.CodeSpan.CopyTo(delegation.BytesAsSpan);
+                SetPbtLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.DelegationLeafKey), delegation);
+            }
+            else
+            {
+                SetPbtLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), account.CodeHash.ValueHash256);
+                if (code is not null && includeCode)
+                {
+                    int chunkCount = CodeChunkCount(code);
+                    using ArrayPoolListRef<byte> chunks = new(chunkCount * PbtKeyDerivation.CodeChunkSize, chunkCount * PbtKeyDerivation.CodeChunkSize);
+                    PbtKeyDerivation.ChunkifyCode(code.CodeSpan, chunks.AsSpan());
+                    for (int chunkId = 0; chunkId < chunkCount; chunkId++)
+                    {
+                        ValueHash256 chunk = new(chunks.AsSpan().Slice(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize));
+                        if (chunk != default) SetPbtLeaf(PbtStateKey.Code(addressHash, account.CodeHash.ValueHash256, chunkId), chunk);
+                    }
+                }
             }
         }
         else
         {
             SetPbtLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), account?.CodeHash.ValueHash256);
         }
-        if (!hasBasicData) SetPbtLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), null);
-        byte inactiveCodeLeaf = code is not null && Eip7702Constants.IsDelegatedCode(code.CodeSpan)
-            ? (byte)PbtKeyDerivation.CodeHashLeafKey
-            : (byte)PbtKeyDerivation.DelegationLeafKey;
-        SetPbtLeaf(PbtStateKey.Account(addressHash, inactiveCodeLeaf), null);
+        // A zero basic-data value is stored as a deletion by the batch builder.
+        SetPbtLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), basicData);
+        SetPbtLeaf(PbtStateKey.Account(addressHash, isDelegation ? (byte)PbtKeyDerivation.CodeHashLeafKey : (byte)PbtKeyDerivation.DelegationLeafKey), null);
     }
 
     public void SetSlot(Address address, in UInt256 slot, in EvmWord value)
