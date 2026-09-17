@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Find;
@@ -14,10 +15,12 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
@@ -54,6 +57,8 @@ public class BlockTreeTests
         Assert.That(tree.LowestServedBlock, Is.EqualTo(published), "the served floor never reports below the published boundary");
     }
 
+    private IContainer? _rewindContainer;
+
     private TestMemDb _blocksInfosDb = null!;
     private TestMemDb _headersDb = null!;
     private TestMemDb _blocksDb = null!;
@@ -61,6 +66,7 @@ public class BlockTreeTests
     [TearDown]
     public void TearDown()
     {
+        _rewindContainer?.Dispose();
         _blocksDb?.Dispose();
         _headersDb?.Dispose();
     }
@@ -2885,9 +2891,33 @@ public class BlockTreeTests
         Assert.That(blockTree.FindBlock(head.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Not.Null, "head must remain canonical");
     }
 
+    private BlockTree BuildRewindTree()
+    {
+        _rewindContainer = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(Frontier.Instance))
+            .Build();
+        return (BlockTree)_rewindContainer.Resolve<IBlockTree>();
+    }
+
+    private (BlockTree blockTree, Block genesis) BuildRewindTreeWithGenesis()
+    {
+        BlockTree blockTree = BuildRewindTree();
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.TryUpdateMainChain(genesis.Header, wereProcessed: true, forceUpdateHeadBlock: true, genesis);
+        return (blockTree, genesis);
+    }
+
+    [Test]
+    public void TryRewindHead_WithoutImplementation_RefusesTheRewind()
+    {
+        IBlockTree blockTree = new StatelessBlockTree([]);
+        Assert.That(blockTree.TryRewindHead(TestItem.KeccakA), Is.False);
+    }
+
     private (BlockTree blockTree, Block[] chain) BuildCanonicalChain(int length)
     {
-        (BlockTree blockTree, Block genesis) = BuildBlockTreeWithGenesis(forceUpdateHead: true);
+        (BlockTree blockTree, Block genesis) = BuildRewindTreeWithGenesis();
         Block[] chain = BuildAndSuggestChain(blockTree, genesis, length);
         blockTree.TryUpdateMainChain(chain[^1].Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: chain);
         Assert.That(blockTree.Head!.Hash, Is.EqualTo(chain[^1].Hash!), "precondition: head sits on the tip");
@@ -2952,9 +2982,14 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void TryRewindHead_AtTheCurrentHead_ChangesNothingAndStaysSilent()
+    public void TryRewindHead_AtTheCurrentHead_ResetsSuggestionsAndStaysSilent([Values] bool suggestionsAhead)
     {
         (BlockTree blockTree, Block[] chain) = BuildCanonicalChain(3);
+        Block[] ahead = suggestionsAhead ? BuildAndSuggestChain(blockTree, chain[^1], 2) : [];
+        foreach (Block block in ahead)
+        {
+            blockTree.TryUpdateMainChain(block.Header, wereProcessed: false, preloadedBlocks: new[] { block });
+        }
         int announced = 0;
         blockTree.NewHeadBlock += (_, _) => announced++;
 
@@ -2964,13 +2999,19 @@ public class BlockTreeTests
         {
             Assert.That(blockTree.Head!.Hash, Is.EqualTo(chain[^1].Hash!));
             Assert.That(announced, Is.Zero);
+            Assert.That(blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(chain[^1].Hash));
+            Assert.That(blockTree.BestSuggestedBody!.Hash, Is.EqualTo(chain[^1].Hash));
+            foreach (Block block in ahead)
+            {
+                Assert.That(blockTree.FindCanonicalBlockInfo(block.Number), Is.Null);
+            }
         }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void TryRewindHead_RefusesACanonicalBlockWhenThereIsNoHead()
     {
-        BlockTree blockTree = BuildBlockTree();
+        BlockTree blockTree = BuildRewindTree();
         Block genesis = Build.A.Block.WithNumber(0).TestObject;
         blockTree.SuggestBlock(genesis);
         Block block = Build.A.Block.WithNumber(1).WithParent(genesis).TestObject;
@@ -2995,7 +3036,7 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void TryRewindHead_RefusesACanonicalBlockAboveTheHead()
     {
-        (BlockTree blockTree, Block genesis) = BuildBlockTreeWithGenesis(forceUpdateHead: true);
+        (BlockTree blockTree, Block genesis) = BuildRewindTreeWithGenesis();
         Block[] chain = BuildAndSuggestChain(blockTree, genesis, 3);
         blockTree.TryUpdateMainChain(chain[0].Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { chain[0] });
         foreach (Block above in chain[1..])

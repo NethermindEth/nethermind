@@ -64,6 +64,7 @@ namespace Nethermind.Blockchain
             // hacky while there is not special tree for RPC
             _wrapped.UpdateHeadBlock(blockHash);
 
+        /// <inheritdoc/>
         public bool TryRewindHead(Hash256 blockHash) =>
             // Debug RPCs use this wrapper to rewind the live tree.
             _wrapped.TryRewindHead(blockHash);

@@ -1969,8 +1969,11 @@ public partial class EngineModuleTests
         ResultWrapper<bool> rewind = byHash
             ? debug.debug_resetHead(blocks[0].BlockHash!)
             : debug.debug_setHead(new BlockParameter(blocks[0].BlockNumber));
-        Assert.That(rewind.Data, Is.True);
-        Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(blocks[0].BlockHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewind.Data, Is.True);
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(blocks[0].BlockHash));
+        }
 
         // A different prevRandao makes this a genuinely new block rather than a replay of blocks[1].
         IReadOnlyList<ExecutionPayload> replacement = await ProduceBranchV1(rpc, chain, 1, blocks[0], setHead: true, TestItem.KeccakE);

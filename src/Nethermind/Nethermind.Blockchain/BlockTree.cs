@@ -1493,15 +1493,19 @@ namespace Nethermind.Blockchain
                 return false;
             }
 
-            if (block.Hash == Head.Hash) return true;
-
-            if (Logger.IsWarn) Logger.Warn($"Rewinding the head from {Head.ToString(Block.Format.Short)} to {block.ToString(Block.Format.Short)}.");
+            bool isCurrentHead = block.Hash == Head.Hash;
+            if (!isCurrentHead && Logger.IsWarn) Logger.Warn($"Rewinding the head from {Head.ToString(Block.Format.Short)} to {block.ToString(Block.Format.Short)}.");
 
             BlockAcceptingNewBlocks();
             try
             {
+                if (isCurrentHead)
+                {
+                    using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
+                    ClearStaleMarkersAbove(block.Number, batch);
+                }
                 // Updating an existing canonical block clears the canonical markers above it.
-                if (!TryUpdateMainChain(block.Header, wereProcessed: true, forceUpdateHeadBlock: true, block))
+                else if (!TryUpdateMainChain(block.Header, wereProcessed: true, forceUpdateHeadBlock: true, block))
                 {
                     if (Logger.IsWarn) Logger.Warn($"Failed to rewind the head to {block.ToString(Block.Format.Short)}.");
                     return false;

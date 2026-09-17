@@ -94,8 +94,8 @@ namespace Nethermind.Blockchain
         /// clears canonical markers above the target, and resets the best-suggested pointers.
         /// The caller must check state availability before rewinding.
         /// </remarks>
-        /// <returns>Whether the head could be rewound.</returns>
-        bool TryRewindHead(Hash256 blockHash);
+        /// <returns>Whether the head could be rewound; false if rewinding is unsupported.</returns>
+        bool TryRewindHead(Hash256 blockHash) => false;
 
         void NewOldestBlock(ulong oldestBlock);
 

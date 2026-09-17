@@ -108,9 +108,6 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     public void UpdateHeadBlock(Hash256 blockHash)
         => throw new NotSupportedException();
 
-    public bool TryRewindHead(Hash256 blockHash)
-        => throw new NotSupportedException();
-
     public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
         => throw new NotSupportedException();
 
