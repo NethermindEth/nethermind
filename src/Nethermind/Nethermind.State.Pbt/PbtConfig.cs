@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt;
 
@@ -30,6 +31,8 @@ public class PbtConfig : IPbtConfig
     public int ImportWindowSize { get; set; }
     public bool ScanTree { get; set; }
     public int ScanTreeConcurrency { get; set; }
+
+    public PbtNodeGroupKeyLayout NodeGroupKeyLayout { get; set; } = PbtNodeGroupKeyLayout.Padded;
 
     public string RocksDbOptions { get; set; } =
 

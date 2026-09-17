@@ -3,6 +3,7 @@
 
 using Nethermind.Config;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt;
 
@@ -83,6 +84,9 @@ public interface IPbtConfig : IConfig
 
     [ConfigItem(Description = "Number of parallel workers scanning ranges within each PBT column. 0 uses the processor count.", DefaultValue = "0")]
     int ScanTreeConcurrency { get; set; }
+
+    [ConfigItem(Description = "The persisted node-group key layout: Padded (the group path zero-padded to the column key length, then its nibble count) or Variable (the group path bytes, then the number of bits used in the last byte). Fixed when the pbt database is created; a populated database created with the other layout is rejected.", DefaultValue = "Padded", HiddenFromDocs = true)]
+    PbtNodeGroupKeyLayout NodeGroupKeyLayout { get; set; }
 
     [ConfigItem(Description = "RocksDB options shared by every column of the pbt database. Applied on top of the global database options, and overridden in turn by the per-column options below.", HiddenFromDocs = true)]
     string RocksDbOptions { get; set; }

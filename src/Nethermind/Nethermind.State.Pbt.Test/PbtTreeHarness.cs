@@ -152,10 +152,10 @@ internal static class PbtStoreTestExtensions
         return encoding;
     }
 
-    internal static byte[] ToStorageKey<TPath>(this TPath path, PbtColumns column) where TPath : struct, IPbtNodePath<TPath> =>
+    internal static byte[] ToStorageKey<TPath>(this TPath path, PbtColumns column, PbtNodeGroupKeyLayout layout) where TPath : struct, IPbtNodePath<TPath> =>
         column == PbtColumns.Metadata
             ? PbtRocksDbPersistence.RootNodeGroupKey.ToArray()
-            : PbtNodeGroupKey.Encode(column, path, new byte[PbtNodeGroupKey.MaxLength]).ToArray();
+            : PbtNodeGroupKey.Encode(layout, column, path, new byte[PbtNodeGroupKey.MaxLength]).ToArray();
 
     internal static PbtPartitionBatches PreparePartitions(IEnumerable<(byte[] Key, byte[]? Value)> changes)
     {

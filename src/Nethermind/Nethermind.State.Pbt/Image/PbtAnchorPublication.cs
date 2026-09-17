@@ -175,7 +175,7 @@ internal sealed class PbtAnchorPublication(
         {
             foreach (PbtColumns column in database.ColumnKeys)
                 foreach (byte[] recordKey in database.GetColumnDb(column).GetAllKeys())
-                    if (column != PbtColumns.Metadata || !recordKey.AsSpan().SequenceEqual("schemaEpoch"u8))
+                    if (column != PbtColumns.Metadata || !PbtRocksDbPersistence.IsSchemaStamp(recordKey))
                         throw new InvalidDataException("Populated native anchor has no matching prepared provenance.");
             metadata.Set(key, provenance);
             metadata.SyncWal();
