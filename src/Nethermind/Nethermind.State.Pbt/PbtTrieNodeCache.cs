@@ -40,12 +40,16 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
     private static bool IsCode<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath> =>
         path.BitDepth >= 8 && path.GetByte(0) == Eip8297KeyDerivation.CodeZone;
 
-    internal bool TryGet<TPath>(in ValueHash256 groupHash, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> =>
+    /// <summary>Leases the retained group at <paramref name="path"/> whose subtree hash is <paramref name="groupHash"/>.</summary>
+    /// <returns><c>true</c> when <paramref name="payload"/> holds a caller-owned lease to release with <see cref="IDisposable.Dispose"/>.</returns>
+    public bool TryGet<TPath>(in ValueHash256 groupHash, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> =>
         IsStorage(path)
             ? _storage.TryGet(groupHash, path, out payload)
             : (IsCode(path) ? _code : _account).TryGet(groupHash, path, out payload);
 
-    internal void Add<TPath>(in ValueHash256 groupHash, TPath path, RefCountingMemory payload) where TPath : struct, IPbtNodePath<TPath>
+    /// <summary>Retains a group under its path and subtree hash, superseding an older hash at the same path; the caller keeps its own lease.</summary>
+    /// <remarks>A payload with more than 20% pool slack, or one borrowed from RocksDB, is copied rather than leased.</remarks>
+    public void Add<TPath>(in ValueHash256 groupHash, TPath path, RefCountingMemory payload) where TPath : struct, IPbtNodePath<TPath>
     {
         if (IsStorage(path)) _storage.Add(groupHash, path, payload);
         else (IsCode(path) ? _code : _account).Add(groupHash, path, payload);
@@ -140,7 +144,9 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
             return false;
         }
 
-        internal void Add<TPath>(in ValueHash256 groupHash, TPath path, RefCountingMemory payload) where TPath : struct, IPbtNodePath<TPath>
+        /// <summary>Retains a group under its path and subtree hash, superseding an older hash at the same path; the caller keeps its own lease.</summary>
+    /// <remarks>A payload with more than 20% pool slack, or one borrowed from RocksDB, is copied rather than leased.</remarks>
+    public void Add<TPath>(in ValueHash256 groupHash, TPath path, RefCountingMemory payload) where TPath : struct, IPbtNodePath<TPath>
         {
             long size = EntrySize(payload);
             if (size > _shardBudget) return;
