@@ -54,6 +54,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public bool EnableLogsStreamMode { get; set; } = false;
     public long? MaxLogsResponseBodySize { get; set; } = null;
     public int? DebugModuleConcurrentInstances { get; set; } = null;
+    public int TraceBlockPrewarmConcurrency { get; set; }
     public int? EthModuleConcurrentInstances { get; set; } = null;
     public string JwtSecretFile { get; set; } = null;
     public bool UnsecureDevNoRpcAuthentication { get; set; }

@@ -143,6 +143,11 @@ public interface IJsonRpcConfig : IConfig
     public int? DebugModuleConcurrentInstances { get; set; }
 
     [ConfigItem(
+        Description = "Experimental parallel read prewarming for canonical full-block debug traces at least 256 blocks behind head. Zero disables it. At most one request prewarms at a time, for up to 5 seconds of cooperative work; other requests bypass it. Concurrency is capped at the logical processor count.",
+        DefaultValue = "0")]
+    public int TraceBlockPrewarmConcurrency { get; set; }
+
+    [ConfigItem(
         Description = """
             The number of concurrent instances for non-sharable calls:
 
