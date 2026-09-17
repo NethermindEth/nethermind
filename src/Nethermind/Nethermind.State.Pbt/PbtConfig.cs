@@ -93,6 +93,7 @@ public class PbtConfig : IPbtConfig
 
     public string NodeGroupsRocksDbOptions { get; set; } =
         "level_compaction_dynamic_level_bytes=true;" +
+        "block_based_table_factory.block_restart_interval=8;" +
         "block_based_table_factory.block_size=16000;" +
         "max_bytes_for_level_base=350000000;" +
         "write_buffer_size=64000000;" +
