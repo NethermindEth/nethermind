@@ -136,6 +136,15 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Slot writes a speculative drain must carry before it also hashes that storage tree. Higher means fewer, wider hash passes during execution. Only used with SpeculativeStorageRoots.", DefaultValue = "4")]
     int SpeculativeStorageRootMinDrainToHash { get; set; }
 
+    /// <summary>Slot writes that must pile up on a storage tree before a speculation worker drains it.</summary>
+    /// <remarks>
+    /// A wide drain bulk-sets sorted entries the way the block-end batch does, so it pays for its path loads; a drain
+    /// of one or two writes loads the same paths for a fraction of the work. Writes still queued at the block end
+    /// cost nothing, because that batch writes every final value anyway.
+    /// </remarks>
+    [ConfigItem(Description = "Slot writes that must pile up on one storage tree before a speculation worker drains it. Higher means fewer, wider applies during execution. Only used with SpeculativeStorageRoots.", DefaultValue = "1")]
+    int SpeculativeStorageRootMinDrainToApply { get; set; }
+
     /// <summary>Whether committed account writes are also applied to the state trie on the speculation workers.</summary>
     /// <remarks>
     /// Account writes only become known when the block commits, so they share the workers with the last storage drains

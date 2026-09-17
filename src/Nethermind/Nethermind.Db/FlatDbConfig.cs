@@ -39,6 +39,7 @@ public class FlatDbConfig : IFlatDbConfig
     /// <inheritdoc/>
     public int SpeculativeStorageRootContractCap { get; set; } = 256;
     public int SpeculativeStorageRootMinDrainToHash { get; set; } = 4;
+    public int SpeculativeStorageRootMinDrainToApply { get; set; } = 1;
     public bool SpeculativeAccountTrie { get; set; } = false;
     public FlatLayout Layout { get; set; } = FlatLayout.Flat;
     public ulong CompactSize { get; set; } = 32;
