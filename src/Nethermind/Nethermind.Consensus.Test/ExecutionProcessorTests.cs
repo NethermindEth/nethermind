@@ -6,6 +6,7 @@ using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
@@ -144,6 +145,52 @@ public class ExecutionProcessorTests
         _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec));
         executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
         return block.Header.RequestsHash;
+    }
+
+    private static IEnumerable<TestCaseData> AccessListHintCases()
+    {
+        yield return new TestCaseData(Cancun.Instance, 1UL, Array.Empty<Address>()) { TestName = "GetAccessList_BeforeAnyRequestFork_IsNull" };
+        yield return new TestCaseData(Prague.Instance, 0UL, Array.Empty<Address>()) { TestName = "GetAccessList_ForGenesis_IsNull" };
+        yield return new TestCaseData(Prague.Instance, 1UL, new[]
+        {
+            Eip7002Constants.WithdrawalRequestPredeployAddress,
+            Eip7251Constants.ConsolidationRequestPredeployAddress
+        })
+        { TestName = "GetAccessList_AtPrague_CoversTheWithdrawalAndConsolidationQueues" };
+        yield return new TestCaseData(Amsterdam.Instance, 1UL, new[]
+        {
+            Eip7002Constants.WithdrawalRequestPredeployAddress,
+            Eip7251Constants.ConsolidationRequestPredeployAddress,
+            Eip8282Constants.BuilderDepositRequestPredeployAddress,
+            Eip8282Constants.BuilderExitRequestPredeployAddress
+        })
+        { TestName = "GetAccessList_AtAmsterdam_AlsoCoversTheBuilderQueues" };
+    }
+
+    [TestCaseSource(nameof(AccessListHintCases))]
+    public void GetAccessList_AtGivenFork_HintsTheQueueWordsOfEveryDequeuedContract(
+        IReleaseSpec spec, ulong blockNumber, Address[] expectedAddresses)
+    {
+        Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
+
+        AccessList accessList = ((IHasAccessList)new ExecutionRequestsProcessor(_transactionProcessor)).GetAccessList(block, spec);
+
+        if (expectedAddresses.Length == 0)
+        {
+            Assert.That(accessList, Is.Null);
+            return;
+        }
+
+        Assert.That(accessList, Is.Not.Null);
+        List<Address> hintedAddresses = [];
+        foreach ((Address address, AccessList.StorageKeysEnumerable storageKeys) in accessList)
+        {
+            hintedAddresses.Add(address);
+            Assert.That(storageKeys, Is.EqualTo(new UInt256[] { 0, 1, 2, 3 }),
+                $"{address} must have its excess, count, queue head and queue tail words hinted");
+        }
+
+        Assert.That(hintedAddresses, Is.EquivalentTo(expectedAddresses));
     }
 
     [Test]

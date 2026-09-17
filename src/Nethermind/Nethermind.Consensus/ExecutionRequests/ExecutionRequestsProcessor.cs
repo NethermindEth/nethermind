@@ -5,6 +5,7 @@
 using Nethermind.Abi;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.ExecutionRequest;
@@ -21,11 +22,15 @@ using Nethermind.Core.Messages;
 
 namespace Nethermind.Consensus.ExecutionRequests;
 
-public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
+public class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAccessList
 {
     public static readonly AbiSignature DepositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
 
     private const ulong GasLimit = Eip8037Constants.SystemCallGasLimit;
+
+    // EIP-7002 WITHDRAWAL_REQUEST_QUEUE_STORAGE_OFFSET: the slots below it hold the excess, count, queue head and
+    // queue tail words. EIP-7251 and the EIP-8282 builder contracts are derived from the same queue template.
+    private const ulong QueueStorageOffset = 4;
 
     // Canonical ABI layout of the EIP-6110 `DepositEvent(bytes,bytes,bytes,bytes,bytes)` log data: five head
     // words holding the offsets below, each pointing at a length word followed by the right-padded field.
@@ -88,6 +93,49 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         _consolidationTransaction.Hash = _consolidationTransaction.CalculateHash();
         _builderDepositTransaction.Hash = _builderDepositTransaction.CalculateHash();
         _builderExitTransaction.Hash = _builderExitTransaction.CalculateHash();
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Hints the prewarmer with the fixed queue words that every enabled dequeue system call reads. The addresses are
+    /// taken from the system calls themselves, so the hint cannot drift from the accounts the calls actually target.
+    /// </remarks>
+    AccessList? IHasAccessList.GetAccessList(Block block, IReleaseSpec spec)
+    {
+        if (!spec.RequestsEnabled || block.IsGenesis) return null;
+
+        AccessList.Builder builder = new();
+        bool hasContract = false;
+        if (spec.WithdrawalRequestsEnabled)
+        {
+            AddQueueContract(builder, _withdrawalTransaction);
+            hasContract = true;
+        }
+
+        if (spec.ConsolidationRequestsEnabled)
+        {
+            AddQueueContract(builder, _consolidationTransaction);
+            hasContract = true;
+        }
+
+        if (spec.BuilderRequestsEnabled)
+        {
+            AddQueueContract(builder, _builderDepositTransaction);
+            AddQueueContract(builder, _builderExitTransaction);
+            hasContract = true;
+        }
+
+        return hasContract ? builder.Build() : null;
+
+        static void AddQueueContract(AccessList.Builder builder, SystemCall dequeueCall)
+        {
+            builder.AddAddress(dequeueCall.To!);
+            for (ulong slot = 0; slot < QueueStorageOffset; slot++)
+            {
+                UInt256 index = slot;
+                builder.AddStorage(in index);
+            }
+        }
     }
 
     public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
