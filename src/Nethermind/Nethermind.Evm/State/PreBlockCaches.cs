@@ -62,7 +62,7 @@ public class PreBlockCaches
     /// <remarks>
     /// Registration, removal, and <see cref="IWorldStateScopeProvider.IScope.CreateTrieWarmupSession"/> calls
     /// must hold the lock on this cache instance. Borrowers release their references on disposal;
-    /// the main scope's disposal stops further warm-up and drains active reads.
+    /// the main scope's disposal stops further warm-up without waiting for active reads.
     /// </remarks>
     public IWorldStateScopeProvider.IScope? MainScope
     {

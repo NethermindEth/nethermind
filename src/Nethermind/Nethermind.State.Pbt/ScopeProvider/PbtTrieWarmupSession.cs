@@ -22,26 +22,22 @@ internal sealed class PbtTrieWarmupSession(
     PbtTrieNodeCache? trieNodeCache) : IWorldStateScopeProvider.ITrieWarmupSession, ITrieWarmer.IAddressWarmer, IPbtStore
 {
     private readonly ConcurrentDictionary<AddressAsKey, StorageWarmer> _storageWarmers = [];
-    private long _leases = RefCountingLease.Single;
-    private long _operations = RefCountingLease.Single;
+    // The owner's lease, each borrow and each in-flight warm-up hold one count; the last to leave releases the frozen layers.
+    private long _accessors = RefCountingLease.Single;
     private bool _isStopped;
 
     internal ValueHash256 TreeRoot { get; } = initialSnapshots.Count > 0 ? initialSnapshots[^1].TreeRoot : readOnlyBundle.TreeRoot;
     internal bool IsStopped => Volatile.Read(ref _isStopped);
 
-    internal bool TryAcquireLease() => RefCountingLease.TryAcquire(ref _leases);
+    internal bool TryAcquireLease() => RefCountingLease.TryAcquire(ref _accessors);
 
     internal void AcquireLease()
     {
         if (!TryAcquireLease()) throw new ObjectDisposedException(nameof(PbtTrieWarmupSession));
     }
 
-    internal void StopWarming()
-    {
-        if (!Interlocked.Exchange(ref _isStopped, true)) RefCountingLease.ReleaseOnce(ref _operations);
-        SpinWait spinWait = default;
-        while (Volatile.Read(ref _operations) > RefCountingLease.NoAccessors) spinWait.SpinOnce();
-    }
+    /// <summary>Refuses further warm-ups without waiting for those in flight, which keep the frozen layers until they exit.</summary>
+    internal void StopWarming() => Volatile.Write(ref _isStopped, true);
 
     public void HintWarmAccount(in ValueAddress address)
     {
@@ -107,13 +103,16 @@ internal sealed class PbtTrieWarmupSession(
 
     private bool TryEnterOperation(int jobSequenceId)
     {
-        if (IsStopped || jobSequenceId != sequenceId || !RefCountingLease.TryAcquire(ref _operations)) return false;
+        if (IsStopped || jobSequenceId != sequenceId || !RefCountingLease.TryAcquire(ref _accessors)) return false;
         if (!IsStopped) return true;
         ExitOperation();
         return false;
     }
 
-    private void ExitOperation() => RefCountingLease.ReleaseOnce(ref _operations);
+    private void ExitOperation()
+    {
+        if (RefCountingLease.ReleaseOnce(ref _accessors)) ReleaseFrozenLayers();
+    }
 
     // Only frozen, independently leased layers participate; live write buffers and growing snapshot lists never do.
     RefCountingMemory? IPbtStore.GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash)
@@ -129,10 +128,10 @@ internal sealed class PbtTrieWarmupSession(
 
     void IPbtStore.SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload) => throw new NotSupportedException();
 
-    public void Dispose()
+    public void Dispose() => ExitOperation();
+
+    private void ReleaseFrozenLayers()
     {
-        if (!RefCountingLease.ReleaseOnce(ref _leases)) return;
-        StopWarming();
         try
         {
             transientResource.ReleaseLease();

@@ -175,7 +175,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     public void Commit(ulong blockNumber)
     {
         if (_logger.IsDebug) LogLifecycle($"commit begin block={blockNumber}");
-        PauseAndDrainPrewarmer();
+        RetireWarmupSession();
         try
         {
             UpdateRootHash();
@@ -199,7 +199,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         }
     }
 
-    private void PauseAndDrainPrewarmer()
+    private void RetireWarmupSession()
     {
         PbtTrieWarmupSession? session;
         lock (_warmupLock)
@@ -231,7 +231,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         {
             try
             {
-                PauseAndDrainPrewarmer();
+                RetireWarmupSession();
             }
             finally
             {

@@ -696,7 +696,7 @@ public class PbtWorldStateScopeTests
     }
 
     [Test]
-    public async Task Retirement_waits_only_for_active_operations_and_last_borrow_releases_reader([Values] bool disposeScope)
+    public async Task Retirement_does_not_wait_for_active_operations_and_last_accessor_releases_reader([Values] bool disposeScope, [Values] bool borrowLeavesLast)
     {
         using PbtTreeHarness tree = new();
         CountingWarmupReader reader = new(tree);
@@ -706,34 +706,30 @@ public class PbtWorldStateScopeTests
         RecordingTrieWarmer warmer = new();
         using PbtWorldStateScope scope = CreateCountingScope(reader, null, warmer);
         IWorldStateScopeProvider.ITrieWarmupSession borrow = scope.CreateTrieWarmupSession();
+        borrow.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
+        Task<bool> operation = Task.Run(() => ExecuteHint(warmer, -1));
         try
         {
-            borrow.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
-            Task<bool> operation = Task.Run(() => ExecuteHint(warmer, -1));
-            Task? retirement = null;
-            try
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            await Task.Run(() => { if (disposeScope) scope.Dispose(); else scope.Commit(0); }).WaitAsync(TimeSpan.FromSeconds(10));
+            if (!borrowLeavesLast) borrow.Dispose();
+            using (Assert.EnterMultipleScope())
             {
-                Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True);
-                retirement = Task.Run(() => { if (disposeScope) scope.Dispose(); else scope.Commit(0); });
-                Assert.That(SpinWait.SpinUntil(() => ((PbtTrieWarmupSession)borrow).IsStopped, TimeSpan.FromSeconds(10)), Is.True);
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(retirement.IsCompleted, Is.False);
-                    Assert.That(reader.DisposeCount, Is.Zero);
-                    Assert.That(ExecuteHint(warmer, -1), Is.False);
-                }
+                Assert.That(((PbtTrieWarmupSession)borrow).IsStopped, Is.True);
+                Assert.That(operation.IsCompleted, Is.False, "retirement must not wait for the active operation");
+                Assert.That(reader.DisposeCount, Is.Zero, "an active operation pins the reader after retirement");
+                Assert.That(ExecuteHint(warmer, -1), Is.False);
             }
-            finally
-            {
-                release.Set();
-                await operation.WaitAsync(TimeSpan.FromSeconds(10));
-                if (retirement is not null) await retirement.WaitAsync(TimeSpan.FromSeconds(10));
-            }
-            scope.Dispose();
-            Assert.That(reader.DisposeCount, Is.Zero, "a retained borrow pins the reader after scope retirement");
         }
         finally
         {
+            release.Set();
+        }
+        Assert.That(await operation.WaitAsync(TimeSpan.FromSeconds(10)), Is.True);
+        scope.Dispose();
+        if (borrowLeavesLast)
+        {
+            Assert.That(reader.DisposeCount, Is.Zero, "a retained borrow pins the reader after scope retirement");
             borrow.Dispose();
         }
         Assert.That(reader.DisposeCount, Is.EqualTo(1));
