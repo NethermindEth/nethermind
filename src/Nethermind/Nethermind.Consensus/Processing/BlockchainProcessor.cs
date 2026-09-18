@@ -48,7 +48,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public const int MaxProcessingQueueSize = 2048; // adjust based on tx or gas
 
     public static bool IsMainProcessingThread => IsBlockProcessingThread;
-    public bool IsMainProcessor { get; init; }
 
     private readonly IBranchProcessor _branchProcessor;
     private readonly ISpecProvider _specProvider;
@@ -362,7 +361,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
             IsProcessingBlock = true;
             bool previousMainThread = IsBlockProcessingThread;
-            IsBlockProcessingThread = IsMainProcessor;
+            IsBlockProcessingThread = true;
             try
             {
                 ProcessBlocks();

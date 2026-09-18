@@ -67,10 +67,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                             DumpOptions = initConfig.AutoDump
                         },
                         processingStats,
-                        blockTracers)
-                    {
-                        IsMainProcessor = true // Manual construction because of this flag
-                    })
+                        blockTracers))
                 .AddScoped<IBlockchainProcessor>(ctx => ctx.Resolve<BlockchainProcessor>())
                 .AddScoped<IBlockProcessingQueue>(ctx => ctx.Resolve<BlockchainProcessor>())
                 // And finally, to wrap things up.
