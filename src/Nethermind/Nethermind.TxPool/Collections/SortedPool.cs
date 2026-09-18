@@ -189,6 +189,9 @@ namespace Nethermind.TxPool.Collections
 
         private static TValue[] CopyBucketToArray(EnhancedSortedSet<TValue> bucket)
         {
+            // Avoid allocating the SortedSet enumerator's traversal stack for a single item.
+            if (bucket.Count == 1) return [bucket.Min!];
+
             TValue[] snapshot = new TValue[bucket.Count];
             int index = 0;
             foreach (TValue value in bucket)
