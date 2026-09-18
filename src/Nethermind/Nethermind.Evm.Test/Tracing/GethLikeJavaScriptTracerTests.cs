@@ -95,6 +95,15 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         AssertResult(traces, expectedStrings);
     }
 
+    [TestCase("flatCallTracer", ExpectedResult = false)]
+    [TestCase("noSuchTracer.js", ExpectedResult = false)]
+    [TestCase("_bigInteger", ExpectedResult = false)]
+    [TestCase("../JSTracers/callTracer_legacy", ExpectedResult = false)]
+    [TestCase("callTracer_legacy", ExpectedResult = true)]
+    [TestCase(" opcountTracer.js ", ExpectedResult = true)]
+    [TestCase("{ result: function(ctx, db) { return null } }", ExpectedResult = true)]
+    public bool Tracer_name_is_resolved_without_an_engine(string tracer) => Engine.IsKnownTracer(tracer);
+
     private GethLikeBlockJavaScriptTracer GetTracer(string userTracer) => new(TestState, Shanghai.Instance, GethTraceOptions.Default with { EnableMemory = true, Tracer = userTracer });
 
 
@@ -745,70 +754,32 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    [NonParallelizable]
-    public void Engine_construction_failing_under_a_pending_violation_leaves_later_engines_usable()
+    public void Engine_in_another_runtime_stays_usable_while_a_violation_is_pending()
     {
-        using (Engine hoarder = new(Shanghai.Instance))
+        using Engine hoarder = new(Shanghai.Instance);
+        dynamic hoardingTracer = hoarder.CreateTracer(HoardingTracer);
+        try
         {
-            dynamic hoardingTracer = hoarder.CreateTracer(HoardingTracer);
-            try
+            Action hoard = () =>
             {
-                Action hoard = () =>
+                for (int i = 0; i < 400; i++)
                 {
-                    for (int i = 0; i < 400; i++)
-                    {
-                        hoardingTracer.step(null, null);
-                    }
-                };
-                Assert.That(hoard, Throws.InstanceOf(typeof(IScriptEngineException)), "the hoarding script must trip the limit");
-                Assert.That(() => new Engine(Shanghai.Instance).Dispose(), Throws.InstanceOf(typeof(IScriptEngineException)), "engines cannot start while the hoard still holds the heap over the limit");
-            }
-            finally
-            {
-                ((object)hoardingTracer as IDisposable)?.Dispose();
-            }
+                    hoardingTracer.step(null, null);
+                }
+            };
+            Assert.That(hoard, Throws.InstanceOf(typeof(IScriptEngineException)), "the hoarding script must trip the limit");
+
+            using Engine bystander = new(Shanghai.Instance);
+            dynamic probe = bystander.CreateTracer("{ result: function(ctx, db) { return 7; } }");
+
+            Assert.That((int)probe.result(), Is.EqualTo(7), "an engine in another runtime is unaffected");
+            Assert.That(() => hoarder.CreateTracer("{ result: function(ctx, db) { return 1; } }"), Throws.InstanceOf(typeof(IScriptEngineException)),
+                "the violation stands in the hoarder's own runtime while it is alive");
         }
-
-        using Engine recovered = new(Shanghai.Instance);
-        dynamic probe = recovered.CreateTracer("{ result: function(ctx, db) { return 7; } }");
-
-        Assert.That((int)probe.result(), Is.EqualTo(7));
-    }
-
-    [Test]
-    [NonParallelizable]
-    public void Releasing_an_unrelated_engine_does_not_lift_a_pending_violation()
-    {
-        using (Engine bystander = new(Shanghai.Instance))
-        using (Engine offender = new(Shanghai.Instance))
+        finally
         {
-            dynamic hoardingTracer = offender.CreateTracer(HoardingTracer);
-            try
-            {
-                Action hoard = () =>
-                {
-                    for (int i = 0; i < 400; i++)
-                    {
-                        hoardingTracer.step(null, null);
-                    }
-                };
-                Assert.That(hoard, Throws.InstanceOf(typeof(IScriptEngineException)), "the hoarding script must trip the limit");
-            }
-            finally
-            {
-                ((object)hoardingTracer as IDisposable)?.Dispose();
-            }
-
-            bystander.Dispose();
-
-            Assert.That(() => offender.CreateTracer("{ result: function(ctx, db) { return 1; } }"), Throws.InstanceOf(typeof(IScriptEngineException)),
-                "the violation must still stand after an unrelated engine was released while the offender is alive");
+            ((object)hoardingTracer as IDisposable)?.Dispose();
         }
-
-        using Engine recovered = new(Shanghai.Instance);
-        dynamic probe = recovered.CreateTracer("{ result: function(ctx, db) { return 7; } }");
-
-        Assert.That((int)probe.result(), Is.EqualTo(7));
     }
 
     private const string HoardingTracer = @"{

@@ -12,6 +12,7 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State.OverridableEnv;
 using NSubstitute;
@@ -48,5 +49,21 @@ public class GethStyleTracerTests
 #pragma warning restore CS0618
 
         Assert.That(exception.Message, Does.Contain("the requested tx index was -1"));
+    }
+
+    /// <remarks>
+    /// A name that is neither a native tracer nor a shipped JavaScript tracer used to reach the JavaScript
+    /// block tracer, which built a V8 engine per traced transaction only to fail loading the script.
+    /// </remarks>
+    [TestCase("flatCallTracer")]
+    [TestCase("_bigInteger")]
+    public void Create_options_tracer_rejects_an_unknown_tracer_name(string tracer)
+    {
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        GethTraceOptions options = GethTraceOptions.Default with { Tracer = tracer };
+
+        Assert.That(
+            () => GethStyleTracer.CreateOptionsTracer(header, options, Substitute.For<IWorldState>(), Substitute.For<ISpecProvider>()),
+            Throws.ArgumentException.With.Message.Contains("not found"));
     }
 }
