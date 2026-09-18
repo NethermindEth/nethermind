@@ -834,9 +834,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v3-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v4-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v3-${{ matrix.payload_set }}-
+            expb-master-metrics-v4-${{ matrix.payload_set }}-
 
       - name: Ensure EXPB config file exists
         shell: bash
@@ -937,6 +937,9 @@ jobs:
             -e "s#/mnt/sda/nethermind-flat-25490000#${FLAT_SNAPSHOT_BLOCK_DIR}#g" \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
+
+          # Zero disables the CPU quota; omitting cpu would restore EXPB's default quota.
+          "${YQ}" -i '.resources.cpu = 0' "${RENDERED_CONFIG_FILE}"
 
           scenario_key="${SCENARIO_NAME}"
 
@@ -1498,7 +1501,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v3-${{ matrix.payload_set }}-${{ github.run_id }}
+          key: expb-master-metrics-v4-${{ matrix.payload_set }}-${{ github.run_id }}
 
       - name: Enforce run quality gates
         if: always()
@@ -1648,9 +1651,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: /tmp/expb-master-metrics-cache-superblocks
-          key: expb-master-metrics-v3-superblocks-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v4-superblocks-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v3-superblocks-
+            expb-master-metrics-v4-superblocks-
 
       - name: Restore master metrics (realblocks)
         id: restore-master-realblocks
@@ -1658,9 +1661,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: /tmp/expb-master-metrics-cache-realblocks
-          key: expb-master-metrics-v3-realblocks-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v4-realblocks-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v3-realblocks-
+            expb-master-metrics-v4-realblocks-
 
       - name: Restore master metrics (fusaka)
         id: restore-master-fusaka
@@ -1668,9 +1671,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: /tmp/expb-master-metrics-cache-fusaka
-          key: expb-master-metrics-v3-fusaka-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v4-fusaka-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v3-fusaka-
+            expb-master-metrics-v4-fusaka-
 
       - name: Build PR comparison comment
         id: pr-comment
@@ -2423,6 +2426,9 @@ jobs:
             -e "s#/mnt/sda/nethermind-flat-25490000#${FLAT_SNAPSHOT_BLOCK_DIR}#g" \
             -e "s#^\([[:space:]]*\)nethermind:#\1${SCENARIO_NAME}:#g" \
             "${SOURCE_CONFIG_FILE}" > "${RENDERED_CONFIG_FILE}"
+
+          # Zero disables the CPU quota; omitting cpu would restore EXPB's default quota.
+          "${YQ}" -i '.resources.cpu = 0' "${RENDERED_CONFIG_FILE}"
 
           # Select the adapter and snapshot after preserving the source config's comments and
           # placeholders. Reference clients use the overlay backend and never inherit Nethermind flags.
