@@ -78,9 +78,8 @@ public class PruningTrieStoreModuleTests
     [Test]
     public void State_db_still_resolves_when_the_drop_is_requested()
     {
-        // The state DB factory reaches for the flat IPersistence to decide, so this closes a cycle if
-        // anything the flat persistence needs leads back to the state DB. Only the drop path does that,
-        // and no shipped config enables it, so nothing else in the suite would catch it.
+        // The state DB factory resolves the flat IPersistence to decide, so a real container is the only
+        // place a dependency cycle would show up.
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
             .Intercept<IFlatDbConfig>((cfg) =>

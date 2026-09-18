@@ -119,17 +119,10 @@ public class PruningTrieStoreModule : Module
             .AddSingleton<ICodeRecovery, CodeRecovery>()
             ;
 
-    /// <summary>
-    /// Whether the patricia-trie state DB should be wiped as it is opened, leaving an empty store behind.
-    /// </summary>
+    /// <summary>Whether to wipe the patricia-trie state DB as it is opened.</summary>
     /// <remarks>
-    /// Deliberately decided from configuration plus the flat store's own state rather than from
-    /// <see cref="FlatStateActivationPolicy"/>: that policy depends on this database, so consulting it here
-    /// would close a dependency cycle. The checks below are a strict subset of the policy's - with the flat
-    /// backend enabled and its store already populated the policy resolves to flat whatever the trie holds -
-    /// so this never wipes a database the node is about to run on.
-    /// The populated-store check is what makes this safe. A node with a patricia state and an empty flat store
-    /// runs on patricia, and dropping the trie there would leave it with no state at all.
+    /// Not decided from <see cref="FlatStateActivationPolicy"/>, which depends on this database. The checks
+    /// below are a strict subset of it, so this never wipes a DB the node is about to run on.
     /// </remarks>
     internal static bool ShouldDropPruningTrieState(IFlatDbConfig flatDbConfig, Func<IPersistence> flatPersistence, ILogManager logManager)
     {
@@ -143,7 +136,7 @@ public class PruningTrieStoreModule : Module
             return false;
         }
 
-        // The importer reads the trie, and IStateBoundary keeps a trie boundary alive while this is set.
+        // The importer and the fallback boundary both read the trie.
         if (flatDbConfig.ImportFromPruningTrieState)
         {
             if (logger.IsWarn) logger.Warn($"Keeping the patricia trie state: {nameof(IFlatDbConfig.ImportFromPruningTrieState)} is still set. Remove it once the import has completed, then restart to drop the trie.");
