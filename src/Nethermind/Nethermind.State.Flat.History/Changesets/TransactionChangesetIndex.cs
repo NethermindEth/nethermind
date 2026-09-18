@@ -90,7 +90,7 @@ public sealed class TransactionChangesetIndex
         return Covers(block)
             && _store.TryGetBlockHash(block, out ValueHash256 indexed)
             && indexed == blockHash
-            && _overlays.TryRent(block, beforeTransaction, out lease);
+            && _overlays.TryRent(block, in indexed, beforeTransaction, out lease);
     }
 
     /// <summary>The whole block for a trace of every transaction: rows in memory, and the chain of the consecutive

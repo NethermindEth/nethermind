@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -14,6 +15,9 @@ namespace Nethermind.State.Flat.History.Test;
 public class MidBlockOverlayCacheTests
 {
     private const ulong Block = 100;
+
+    private static readonly ValueHash256 HashA = TestItem.KeccakA;
+    private static readonly ValueHash256 HashB = TestItem.KeccakB;
 
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _columns = null!;
     private TransactionChangesetStore _store = null!;
@@ -36,13 +40,13 @@ public class MidBlockOverlayCacheTests
     public void TracingTheNextTransactionOfABlock_ExtendsTheOverlayInsteadOfRebuildingIt()
     {
         MidBlockOverlay first;
-        Assert.That(_cache.TryRent(Block, 2, out MidBlockOverlayCache.Lease lease), Is.True);
+        Assert.That(_cache.TryRent(Block, in HashA, 2, out MidBlockOverlayCache.Lease lease), Is.True);
         using (lease)
         {
             first = lease.Overlay;
         }
 
-        _cache.TryRent(Block, 5, out MidBlockOverlayCache.Lease second);
+        _cache.TryRent(Block, in HashA, 5, out MidBlockOverlayCache.Lease second);
         using (second)
         {
 
@@ -58,8 +62,8 @@ public class MidBlockOverlayCacheTests
     [Test]
     public void AnOverlayAnotherRequestStillHolds_IsNotExtendedUnderIt()
     {
-        _cache.TryRent(Block, 2, out MidBlockOverlayCache.Lease held);
-        _cache.TryRent(Block, 6, out MidBlockOverlayCache.Lease other);
+        _cache.TryRent(Block, in HashA, 2, out MidBlockOverlayCache.Lease held);
+        _cache.TryRent(Block, in HashA, 6, out MidBlockOverlayCache.Lease other);
         using (held)
         using (other)
         {
@@ -76,10 +80,10 @@ public class MidBlockOverlayCacheTests
     [Test]
     public void AnEarlierTransactionOfTheSameBlock_FoldsTheBlockAgain()
     {
-        _cache.TryRent(Block, 6, out MidBlockOverlayCache.Lease later);
+        _cache.TryRent(Block, in HashA, 6, out MidBlockOverlayCache.Lease later);
         later.Dispose();
 
-        _cache.TryRent(Block, 1, out MidBlockOverlayCache.Lease earlier);
+        _cache.TryRent(Block, in HashA, 1, out MidBlockOverlayCache.Lease earlier);
         using (earlier)
         {
 
@@ -94,7 +98,7 @@ public class MidBlockOverlayCacheTests
     [Test]
     public void TheFirstTransactionOfABlock_SeesNothing()
     {
-        _cache.TryRent(Block, 0, out MidBlockOverlayCache.Lease lease);
+        _cache.TryRent(Block, in HashA, 0, out MidBlockOverlayCache.Lease lease);
         using (lease)
         {
             Assert.That(lease.Overlay.TryGetAccount(TestItem.AddressA, out _), Is.False);
@@ -103,7 +107,7 @@ public class MidBlockOverlayCacheTests
 
     [Test]
     public void APrefixTheRowsDoNotReach_IsNotLent() =>
-        Assert.That(_cache.TryRent(Block, 12, out _), Is.False, "eight transactions are written; a twelfth cannot be seeded from them and must be replayed");
+        Assert.That(_cache.TryRent(Block, in HashA, 12, out _), Is.False, "eight transactions are written; a twelfth cannot be seeded from them and must be replayed");
 
     [Test]
     public void APrefixWithARowMissing_IsNotLent()
@@ -112,7 +116,7 @@ public class MidBlockOverlayCacheTests
         ChangesetKeyLayout.WriteRowKey(key, Block, 3);
         _columns.GetColumnDb(FlatHistoryColumns.TransactionChangesets).Remove(key);
 
-        Assert.That(_cache.TryRent(Block, 6, out _), Is.False, "a gap in the prefix would be folded over silently and change the target's state");
+        Assert.That(_cache.TryRent(Block, in HashA, 6, out _), Is.False, "a gap in the prefix would be folded over silently and change the target's state");
     }
 
     [Test]
@@ -122,8 +126,8 @@ public class MidBlockOverlayCacheTests
         // with part of transaction 3's own writes already in the overlay.
         WriteHalfReadableRow(3, 99);
 
-        bool past = _cache.TryRent(Block, 6, out MidBlockOverlayCache.Lease pastLease);
-        bool atTheBoundary = _cache.TryRent(Block, 3, out MidBlockOverlayCache.Lease boundaryLease);
+        bool past = _cache.TryRent(Block, in HashA, 6, out MidBlockOverlayCache.Lease pastLease);
+        bool atTheBoundary = _cache.TryRent(Block, in HashA, 3, out MidBlockOverlayCache.Lease boundaryLease);
 
         using (Assert.EnterMultipleScope())
         {
@@ -153,6 +157,27 @@ public class MidBlockOverlayCacheTests
     {
         overlay.TryGetAccount(TestItem.AddressA, out MidBlockOverlay.AccountOverlay? account);
         return account?.Balance;
+    }
+
+    [Test]
+    public void ASiblingIndexedAtTheSameHeight_IsNotLentTheOtherBlocksPrefix()
+    {
+        MidBlockOverlay folded;
+        Assert.That(_cache.TryRent(Block, in HashA, 5, out MidBlockOverlayCache.Lease first), Is.True);
+        using (first)
+        {
+            folded = first.Overlay;
+        }
+
+        Assert.That(_cache.TryRent(Block, in HashB, 5, out MidBlockOverlayCache.Lease second), Is.True);
+        using (second)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(second.Overlay, Is.Not.SameAs(folded), "a height is not an identity: the sibling gets its own fold, not the one already in the cache");
+                Assert.That(second.Overlay.Hash, Is.EqualTo(HashB));
+            }
+        }
     }
 
     private void WriteBalance(ushort transactionIndex, UInt256 balance)
