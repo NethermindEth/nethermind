@@ -369,10 +369,10 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
          Span<ReadOnlyMemory<byte[]>> proofs)
     {
         int found = 0;
-        using ArrayPoolList<TxLookupKey> dbKeys = new(requestedBlobVersionedHashes.Length);
-        using ArrayPoolList<Transaction> dbLightTransactions = new(requestedBlobVersionedHashes.Length);
-        using ArrayPoolList<int> missOutputIndex = new(requestedBlobVersionedHashes.Length);
-        using ArrayPoolList<int> missBlobIndex = new(requestedBlobVersionedHashes.Length);
+        using ArrayPoolListRef<TxLookupKey> dbKeys = new(requestedBlobVersionedHashes.Length);
+        using ArrayPoolListRef<Transaction> dbLightTransactions = new(requestedBlobVersionedHashes.Length);
+        using ArrayPoolListRef<int> missOutputIndex = new(requestedBlobVersionedHashes.Length);
+        using ArrayPoolListRef<int> missBlobIndex = new(requestedBlobVersionedHashes.Length);
 
         // Phase 1: Under lock — in-memory lookups only
         using (McsLock.Disposable lockRelease = Lock.Acquire())
