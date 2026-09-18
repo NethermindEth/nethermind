@@ -82,6 +82,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
 
+    [ConfigItem(Description = "Delete the patricia-trie state DB on start once the flat DB owns the state. Irreversible: switching back to the patricia backend afterwards requires a resync.", DefaultValue = "false")]
+    bool DropPruningTrieState { get; set; }
+
     [ConfigItem(Description = "Inline compaction", DefaultValue = "false")]
     bool InlineCompaction { get; set; }
 
