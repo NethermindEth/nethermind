@@ -43,9 +43,22 @@ public class PruningTrieStoreModuleTests
         bool dropped = PruningTrieStoreModule.ShouldDropPruningTrieState(
             Config(flags),
             () => Persistence(flags.HasFlag(Flags.FlatHasData)),
-            LimboLogs.Instance);
+            () => LimboLogs.Instance);
 
         Assert.That(dropped, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Keeps_the_trie_when_nothing_registered_the_flat_config()
+    {
+        // The state DB is registered in containers that know nothing about the flat backend.
+        // Resolving IFlatDbConfig there is not merely useless, it breaks the registration.
+        bool dropped = PruningTrieStoreModule.ShouldDropPruningTrieState(
+            null,
+            () => throw new AssertionException("the flat persistence must not be resolved"),
+            () => throw new AssertionException("the log manager must not be resolved"));
+
+        Assert.That(dropped, Is.False);
     }
 
     [Test]
@@ -57,7 +70,7 @@ public class PruningTrieStoreModuleTests
         PruningTrieStoreModule.ShouldDropPruningTrieState(
             Config(flags),
             () => Persistence(true),
-            new OneLoggerLogManager(new ILogger(logger)));
+            () => new OneLoggerLogManager(new ILogger(logger)));
 
         Assert.That(logger.LogList.Any(l => l.Contains("irreversible", StringComparison.OrdinalIgnoreCase)), Is.True);
     }
@@ -73,7 +86,7 @@ public class PruningTrieStoreModuleTests
         PruningTrieStoreModule.ShouldDropPruningTrieState(
             Config(Flags.Drop | Flags.FlatHasData),
             () => Persistence(true),
-            new OneLoggerLogManager(new ILogger(logger)));
+            () => new OneLoggerLogManager(new ILogger(logger)));
 
         logger.DidNotReceive().Warn(Arg.Any<string>());
         logger.Received().Info(Arg.Any<string>());
@@ -87,7 +100,7 @@ public class PruningTrieStoreModuleTests
         PruningTrieStoreModule.ShouldDropPruningTrieState(
             Config(Flags.Enabled | Flags.FlatHasData),
             () => { resolved = true; return Persistence(true); },
-            LimboLogs.Instance);
+            () => LimboLogs.Instance);
 
         Assert.That(resolved, Is.False, "the flat persistence must not be resolved unless the drop is actually requested");
     }

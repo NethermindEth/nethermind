@@ -36,7 +36,7 @@ public class PruningTrieStoreModule : Module
             {
                 DbSettings stateDbSettings = new(GetTitleDbName(DbNames.State), DbNames.State);
                 stateDbSettings.DeleteOnStart = ShouldDropPruningTrieState(
-                    ctx.Resolve<IFlatDbConfig>(), ctx.Resolve<IPersistence>, ctx.Resolve<ILogManager>());
+                    ctx.ResolveOptional<IFlatDbConfig>(), ctx.Resolve<IPersistence>, ctx.Resolve<ILogManager>);
                 IFileSystem fileSystem = ctx.Resolve<IFileSystem>();
                 IDbFactory dbFactory = ctx.Resolve<IDbFactory>();
                 FullPruningDb db = new(
@@ -124,11 +124,13 @@ public class PruningTrieStoreModule : Module
     /// Not decided from <see cref="FlatStateActivationPolicy"/>, which depends on this database. The checks
     /// below are a strict subset of it, so this never wipes a DB the node is about to run on.
     /// </remarks>
-    internal static bool ShouldDropPruningTrieState(IFlatDbConfig flatDbConfig, Func<IPersistence> flatPersistence, ILogManager logManager)
+    internal static bool ShouldDropPruningTrieState(IFlatDbConfig? flatDbConfig, Func<IPersistence> flatPersistence, Func<ILogManager> logManager)
     {
-        if (!flatDbConfig.DropPruningTrieState) return false;
+        // Null when nothing registered the flat config: the state DB must still resolve, and
+        // nothing else here may be resolved before the flag is known to be set.
+        if (flatDbConfig?.DropPruningTrieState != true) return false;
 
-        ILogger logger = logManager.GetClassLogger<PruningTrieStoreModule>();
+        ILogger logger = logManager().GetClassLogger<PruningTrieStoreModule>();
 
         if (!flatDbConfig.Enabled)
         {
