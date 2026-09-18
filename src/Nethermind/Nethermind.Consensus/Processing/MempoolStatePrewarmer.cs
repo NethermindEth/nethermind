@@ -162,6 +162,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
             transactions.Add((tx, -1));
         }
 
+        if (warmedPerSender.Count == 0) warmedPerSender.EnsureCapacity(bySender.Count);
         using ArrayPoolListRef<Transaction> delta = new(0);
         foreach (KeyValuePair<AddressAsKey, (int first, int last, int count)> senderGroup in bySender)
         {
