@@ -9,18 +9,20 @@ namespace Nethermind.Core.Threading;
 /// Fork-join parallelism over a process-wide work-stealing pool, after Rust's rayon-core.
 /// </summary>
 /// <remarks>
-/// Each pool thread owns a LIFO deque; <see cref="Join{TSa,TSb,TA,TB}"/> pushes its second operand there,
+/// Each worker context owns a LIFO deque; <see cref="Join{TSa,TSb,TA,TB}"/> pushes its second operand there,
 /// runs the first inline and then either pops the second back or, when a thief took it, helps with other
-/// work until it completes. Callers that are not pool threads inject the join and block until it is done.
-/// Fork cost is one small heap object, so recursive splitting down to a few hundred entries is cheap.
+/// work until it completes. Contexts run on thread pool threads while there is work to steal; a caller
+/// that is not a worker takes a free context for the duration of its join, or injects it and blocks
+/// when all are busy. Fork cost is one small heap object, so recursive splitting down to a few hundred
+/// entries is cheap.
 /// On the zkVM guest both operands run sequentially on the caller.
 /// </remarks>
 public static partial class Rayon
 {
-    /// <summary>Number of pool threads.</summary>
+    /// <summary>Number of worker contexts, one per logical core.</summary>
     public static partial int WorkerCount { get; }
 
-    /// <summary>Whether the current thread is a pool thread.</summary>
+    /// <summary>Whether the current thread is running as a worker context.</summary>
     public static partial bool IsWorkerThread { get; }
 
     /// <summary>

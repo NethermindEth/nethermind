@@ -10,18 +10,19 @@ namespace Nethermind.Core.Threading;
 
 public static partial class Rayon
 {
-    /// <summary>The process-wide pool: one worker per logical core, a global injector queue and sleep accounting.</summary>
+    /// <summary>
+    /// The process-wide pool: one worker context per logical core, a global injector queue and the
+    /// accounting that decides when an inactive context is activated on the thread pool.
+    /// </summary>
     internal sealed class Registry
     {
-        private const int WorkerStackSize = 16 * 1024 * 1024;
-
         public static readonly Registry Instance = new(Cpu.RuntimeInformation.ProcessorCount);
 
         public readonly Worker[] Workers;
         private readonly ConcurrentQueue<Job> _injector = new();
-        private CacheLinePaddedLong _sleepingCount;
+        private CacheLinePaddedLong _inactiveCount;
         private CacheLinePaddedLong _searchingCount;
-        private int _wakeCursor;
+        private int _activateCursor;
 
         private Registry(int workerCount)
         {
@@ -31,16 +32,7 @@ public static partial class Rayon
                 Workers[i] = new Worker(this, i);
             }
 
-            // Start only once every worker exists: the steal sweep visits all of them.
-            for (int i = 0; i < workerCount; i++)
-            {
-                Thread thread = new(Workers[i].RunLoop, WorkerStackSize)
-                {
-                    IsBackground = true,
-                    Name = $"Rayon worker {i}",
-                };
-                thread.Start();
-            }
+            _inactiveCount = new CacheLinePaddedLong(workerCount);
         }
 
         public void Inject(Job job)
@@ -52,39 +44,48 @@ public static partial class Rayon
         public bool TryDequeueInjected([NotNullWhen(true)] out Job? job) => _injector.TryDequeue(out job);
 
         /// <summary>
-        /// Called after every push or injection. Wakes one sleeper only when nobody is already searching
-        /// for work; a searching worker will pick the job up itself.
+        /// Called after every push or injection. Activates one inactive context only when nobody is
+        /// already searching for work; a searching worker will pick the job up itself.
         /// </summary>
         public void NotifyPushed()
         {
-            // Full fence pairs with the fence in Worker.Sleep: either the pusher sees the sleeper's
-            // announcement or the sleeper sees the pushed job.
+            // Full fence pairs with the fence in Worker.Deactivate: either the pusher sees the context
+            // become inactive or the deactivating worker sees the pushed job.
             Interlocked.MemoryBarrier();
-            WakeOneIfNoneSearching();
+            ActivateOneIfNoneSearching();
         }
 
-        public void WakeOneIfNoneSearching()
+        public void ActivateOneIfNoneSearching()
         {
-            if (Volatile.Read(ref _sleepingCount.Value) > 0 && Volatile.Read(ref _searchingCount.Value) == 0)
+            if (Volatile.Read(ref _inactiveCount.Value) > 0 && Volatile.Read(ref _searchingCount.Value) == 0)
             {
-                WakeOne();
-            }
-        }
-
-        public void StartSearching() => Interlocked.Increment(ref _searchingCount.Value);
-
-        public void StopSearching() => Interlocked.Decrement(ref _searchingCount.Value);
-
-        private void WakeOne()
-        {
-            int start = Interlocked.Increment(ref _wakeCursor);
-            for (int k = 0; k < Workers.Length; k++)
-            {
-                if (Workers[(int)((uint)(start + k) % (uint)Workers.Length)].TryWake())
+                Worker? worker = TryAcquire();
+                if (worker is not null)
                 {
-                    return;
+                    ThreadPool.UnsafeQueueUserWorkItem(worker, preferLocal: false);
                 }
             }
+        }
+
+        /// <summary>Claims an inactive context, for the caller to run on the current thread or to queue.</summary>
+        public Worker? TryAcquire()
+        {
+            if (Volatile.Read(ref _inactiveCount.Value) == 0)
+            {
+                return null;
+            }
+
+            int start = Interlocked.Increment(ref _activateCursor);
+            for (int k = 0; k < Workers.Length; k++)
+            {
+                Worker worker = Workers[(int)((uint)(start + k) % (uint)Workers.Length)];
+                if (worker.TryActivate())
+                {
+                    return worker;
+                }
+            }
+
+            return null;
         }
 
         public bool HasVisibleWork()
@@ -105,22 +106,28 @@ public static partial class Rayon
             return false;
         }
 
-        public void IncrementSleeping() => Interlocked.Increment(ref _sleepingCount.Value);
+        public void StartSearching() => Interlocked.Increment(ref _searchingCount.Value);
 
-        public void DecrementSleeping() => Interlocked.Decrement(ref _sleepingCount.Value);
+        public void StopSearching() => Interlocked.Decrement(ref _searchingCount.Value);
+
+        public void IncrementInactive() => Interlocked.Increment(ref _inactiveCount.Value);
+
+        public void DecrementInactive() => Interlocked.Decrement(ref _inactiveCount.Value);
     }
 
-    /// <summary>A pool thread: owns a deque, steals from the others, and parks when there is nothing to do.</summary>
-    internal sealed class Worker(Registry registry, int index)
+    /// <summary>
+    /// A worker context: a deque plus steal/sleep state. It runs on whichever thread pool thread picks it
+    /// up (or on a caller's thread that acquired it) until it finds nothing to do, then goes inactive.
+    /// </summary>
+    internal sealed class Worker(Registry registry, int index) : IThreadPoolWorkItem
     {
+        private const int Inactive = 0;
+        private const int Active = 1;
         private const int Awake = 0;
         private const int Sleeping = 1;
         private const int Woken = 2;
-        // Spin briefly, then yield for about a millisecond before parking: fork-join bursts (a state
-        // tree flush, then its storage tries) arrive close together, and a parked worker costs a
-        // futex wake plus a C-state exit (~50-150us) per burst otherwise.
         private const int RoundsUntilSleepy = 32;
-        private const int RoundsUntilSleeping = RoundsUntilSleepy + 256;
+        private const int RoundsUntilSleeping = 48;
         private const int MaxSpinShift = 6;
 
         [ThreadStatic]
@@ -130,13 +137,63 @@ public static partial class Rayon
 
         public readonly WorkStealingDeque Deque = new();
         private readonly ManualResetEventSlim _event = new(false, spinCount: 0);
+        private int _state;
         private int _sleepState;
         private uint _rng = (uint)(index + 1) * 2654435761u;
 
-        public void RunLoop()
+        public bool TryActivate()
+        {
+            if (Interlocked.CompareExchange(ref _state, Active, Inactive) != Inactive)
+            {
+                return false;
+            }
+
+            registry.DecrementInactive();
+            return true;
+        }
+
+        /// <summary>Thread pool entry: run as a worker until there is nothing left to steal.</summary>
+        public void Execute()
         {
             t_current = this;
-            WaitUntil(null);
+            try
+            {
+                WaitUntil(null);
+            }
+            finally
+            {
+                t_current = null;
+                Deactivate();
+            }
+        }
+
+        /// <summary>Runs <paramref name="body"/> on the current thread as this (freshly acquired) context.</summary>
+        public TResult RunAsCurrent<TState, TResult>(in TState state, Func<Worker, TState, TResult> body)
+        {
+            t_current = this;
+            try
+            {
+                return body(this, state);
+            }
+            finally
+            {
+                t_current = null;
+                Deactivate();
+            }
+        }
+
+        private void Deactivate()
+        {
+            Deque.ClearIfEmpty();
+            Volatile.Write(ref _state, Inactive);
+            registry.IncrementInactive();
+            // Full fence between going inactive and the re-check: pairs with Registry.NotifyPushed so a
+            // job pushed meanwhile either activates us or is seen here.
+            Interlocked.MemoryBarrier();
+            if (registry.HasVisibleWork() && TryActivate())
+            {
+                ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+            }
         }
 
         public void Push(Job job)
@@ -146,9 +203,9 @@ public static partial class Rayon
         }
 
         /// <summary>
-        /// Runs other work until <paramref name="latch"/> is set (forever when null): searches by
-        /// spinning, then yielding, then parks when there is nothing to steal. A searcher that finds
-        /// work passes the searching role to a sleeper, so ramp-up follows the available work.
+        /// Runs other work until <paramref name="latch"/> is set: searches by spinning, then yielding,
+        /// then blocks on the latch. With a null latch it is the worker's main loop, which returns
+        /// (deactivating the context) once the search comes up empty.
         /// </summary>
         public void WaitUntil(Latch? latch)
         {
@@ -159,7 +216,7 @@ public static partial class Rayon
                 if (FindWork(out Job? job))
                 {
                     registry.StopSearching();
-                    registry.WakeOneIfNoneSearching();
+                    registry.ActivateOneIfNoneSearching();
                     job.Execute();
                     rounds = 0;
                     registry.StartSearching();
@@ -173,6 +230,10 @@ public static partial class Rayon
                 {
                     Thread.Yield();
                     rounds++;
+                }
+                else if (latch is null)
+                {
+                    break;
                 }
                 else
                 {
@@ -240,16 +301,15 @@ public static partial class Rayon
             return _rng = x;
         }
 
-        private void Sleep(Latch? latch)
+        /// <summary>Blocks until the latch is set (its setter wakes us) or work becomes visible.</summary>
+        private void Sleep(Latch latch)
         {
             // Reset before announcing so a Set() that follows the announcement cannot be lost.
             _event.Reset();
-            registry.IncrementSleeping();
             Volatile.Write(ref _sleepState, Sleeping);
-            // Full fence between the state store and the re-check below: pairs with
-            // Registry.NotifyPushed so a push is either seen here or wakes us.
+            // Full fence between the state store and the re-check below: pairs with Latch.Set.
             Interlocked.MemoryBarrier();
-            if ((latch is not null && latch.IsSet) || registry.HasVisibleWork())
+            if (latch.IsSet || registry.HasVisibleWork())
             {
                 WakeSelf();
                 return;
@@ -261,13 +321,9 @@ public static partial class Rayon
 
         private void WakeSelf()
         {
-            if (Interlocked.CompareExchange(ref _sleepState, Awake, Sleeping) == Sleeping)
+            if (Interlocked.CompareExchange(ref _sleepState, Awake, Sleeping) != Sleeping)
             {
-                registry.DecrementSleeping();
-            }
-            else
-            {
-                // A waker claimed us and already adjusted the sleeping count.
+                // A waker claimed us; clear its mark.
                 Volatile.Write(ref _sleepState, Awake);
             }
         }
@@ -279,7 +335,6 @@ public static partial class Rayon
                 return false;
             }
 
-            registry.DecrementSleeping();
             _event.Set();
             return true;
         }

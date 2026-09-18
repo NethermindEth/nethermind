@@ -82,6 +82,16 @@ public static partial class Rayon
             Volatile.Write(ref _bottom.Value, bottom + 1);
         }
 
+        /// <summary>Owner only. Drops the references left in consumed slots once the deque is empty.</summary>
+        public void ClearIfEmpty()
+        {
+            if (_hasStaleSlots && IsEmpty)
+            {
+                _hasStaleSlots = false;
+                _array.Clear();
+            }
+        }
+
         /// <summary>Owner only. Returns the most recently pushed job, or null when empty or lost to a thief.</summary>
         public Job? Pop()
         {

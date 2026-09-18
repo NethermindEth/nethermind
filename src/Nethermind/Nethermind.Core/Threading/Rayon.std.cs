@@ -62,9 +62,18 @@ public static partial class Rayon
 
     private static (TA, TB) JoinCold<TSa, TSb, TA, TB>(in TSa aState, Func<TSa, bool, TA> a, in TSb bState, Func<TSb, bool, TB> b)
     {
+        ColdJoinState<TSa, TSb, TA, TB> state = new(aState, a, bState, b);
+
+        // A free context lets the caller take part instead of handing everything over and blocking.
+        Worker? worker = Registry.Instance.TryAcquire();
+        if (worker is not null)
+        {
+            return worker.RunAsCurrent(in state, static (w, s) => JoinOnWorker(w, s.AState, s.A, s.BState, s.B));
+        }
+
         StackJob<ColdJoinState<TSa, TSb, TA, TB>, (TA, TB)> job = new(
-            new ColdJoinState<TSa, TSb, TA, TB>(aState, a, bState, b),
-            static (state, _) => JoinOnWorker(Worker.Current!, state.AState, state.A, state.BState, state.B),
+            in state,
+            static (s, _) => JoinOnWorker(Worker.Current!, s.AState, s.A, s.BState, s.B),
             owner: null);
         Registry.Instance.Inject(job);
         job.Latch.WaitCold();
