@@ -101,12 +101,14 @@ namespace Nethermind.Consensus.Producers
                     continue;
                 }
 
-                foreach (Transaction blobTx in PickBlobTxsBetterThanCurrentTx(selectedBlobTxs, tx, comparer))
+                while (selectedBlobTxs.Count > 0 && comparer.Compare(selectedBlobTxs[0], tx) < Equal)
                 {
+                    Transaction blobTx = selectedBlobTxs[0];
                     if (TryResolveSelectedBlob(blobTx, out Transaction? fullBlobTx))
                     {
                         yield return fullBlobTx;
                     }
+                    selectedBlobTxs.RemoveAt(0);
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be potentially included in block.");
@@ -147,23 +149,6 @@ namespace Nethermind.Consensus.Producers
             { NetworkWrapper: ShardBlobNetworkWrapper wrapper } => wrapper.HasFullBlobs(),
             _ => false
         };
-
-        private static IEnumerable<Transaction> PickBlobTxsBetterThanCurrentTx(ArrayPoolList<Transaction> selectedBlobTxs, Transaction tx, IComparer<Transaction> comparer)
-        {
-            while (selectedBlobTxs.Count > 0)
-            {
-                Transaction blobTx = selectedBlobTxs[0];
-                if (comparer.Compare(blobTx, tx) < Equal)
-                {
-                    yield return blobTx;
-                    selectedBlobTxs.Remove(blobTx);
-                }
-                else
-                {
-                    break;
-                }
-            }
-        }
 
         private Dictionary<Hash256, Transaction>? SelectBlobTransactions(
             IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions,

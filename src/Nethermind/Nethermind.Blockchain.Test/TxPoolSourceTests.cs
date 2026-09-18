@@ -270,7 +270,9 @@ public class TxPoolSourceTests
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
 
         // Act
-        Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
+        IEnumerable<Transaction> selection = txSource.GetTransactions(parent, targetBlock, long.MaxValue);
+        Assert.That(selection.Take(1), Is.EqualTo(new[] { highPriorityBlobTx }).UsingTransactionComparer());
+        Transaction[] result = selection.ToArray();
 
         // Assert: High priority blob tx should come BEFORE lower priority regular tx
         Assert.That(result, Is.EqualTo(new[] { highPriorityBlobTx, lowerPriorityRegularTx }).UsingTransactionComparer());
