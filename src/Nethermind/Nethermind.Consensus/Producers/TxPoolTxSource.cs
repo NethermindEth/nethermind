@@ -513,10 +513,14 @@ namespace Nethermind.Consensus.Producers
                 if (bucket.Length > 0) transactions.Enqueue((bucket, 0, 0), bucket[0]);
             }
 
-            while (transactions.TryDequeue(out (Transaction[] bucket, int index, ulong resource) cursor, out Transaction? candidateTx))
+            while (transactions.TryPeek(out (Transaction[] bucket, int index, ulong resource) cursor, out Transaction? candidateTx))
             {
                 ulong totalResource = cursor.resource + resourceSelector(candidateTx);
-                if (totalResource > resourceLimit || !filter(candidateTx)) continue;
+                if (totalResource > resourceLimit || !filter(candidateTx))
+                {
+                    transactions.Dequeue();
+                    continue;
+                }
 
                 int nextIndex = cursor.index + 1;
                 if (nextIndex < cursor.bucket.Length
@@ -524,7 +528,12 @@ namespace Nethermind.Consensus.Producers
                         || candidateTx.Nonce != ulong.MaxValue
                         && cursor.bucket[nextIndex].Nonce == candidateTx.Nonce + 1))
                 {
-                    transactions.Enqueue((cursor.bucket, nextIndex, totalResource), cursor.bucket[nextIndex]);
+                    transactions.DequeueEnqueue((cursor.bucket, nextIndex, totalResource), cursor.bucket[nextIndex]);
+                }
+
+                else
+                {
+                    transactions.Dequeue();
                 }
 
                 yield return (candidateTx, cursor.resource);
