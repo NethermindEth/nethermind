@@ -19,7 +19,9 @@ namespace Nethermind.State.Proofs;
 // ordered 1..127, 0, 128..N, so each subtree can be hashed before encoding its sibling.
 internal static class IndexedTrieRoot
 {
+    internal const int LeafBatchSize = 16;
     internal const int MinItemsForParallelRootHash = 64;
+    internal const int MinReceiptsForParallelRootHash = LeafBatchSize;
 
     internal interface IValueEncoder<T>
     {
@@ -31,15 +33,15 @@ internal static class IndexedTrieRoot
     internal readonly ref struct Calculator<T, TEncoder>(ReadOnlySpan<T> items, TEncoder encoder,
         ReadOnlySpan<NodeReference> leaves = default) where TEncoder : struct, IValueEncoder<T>
     {
-        private const int LeafBatchSize = 16;
         private const int BranchPrefixLength = 3;
         private const int MaxBranchContentLength = 16 * Rlp.LengthOfKeccakRlp + 1;
         private readonly ReadOnlySpan<T> _items = items;
         private readonly ReadOnlySpan<NodeReference> _leaves = leaves;
 
-        public Hash256 Calculate(bool canBeParallel = true)
+        public Hash256 Calculate(bool canBeParallel = true, int minItemsForParallel = MinItemsForParallelRootHash)
             => _items.IsEmpty ? Keccak.EmptyTreeHash
-                : !canBeParallel || RuntimeInformation.IsSingleProcessor || _items.Length <= MinItemsForParallelRootHash
+                // One batch is the floor: below it there is no fan-out, and a lone leaf gets the wrong depth.
+                : !canBeParallel || RuntimeInformation.IsSingleProcessor || _items.Length <= Math.Max(LeafBatchSize, minItemsForParallel)
                 ? CalculateSequential()
                 : CalculateParallel();
 

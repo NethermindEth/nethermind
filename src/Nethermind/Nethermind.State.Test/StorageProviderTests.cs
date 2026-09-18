@@ -842,35 +842,44 @@ public class StorageProviderTests(bool useFlat)
     }
 
     /// <summary>A transient write must not allocate: TSTORE is priced per call and can fill a block.</summary>
-    /// <remarks>The warm-up runs first so the journal's amortized growth is out of the measurement and
-    /// what is left is the write itself.</remarks>
+    /// <remarks>
+    /// Reports the cheapest of several identical measurement windows. Allocation by the writes is bounded
+    /// below by zero and every other allocation the runtime charges to this thread only adds to a window,
+    /// so a per-write cost survives the minimum while a one-off chunk landing in one window does not.
+    /// The warm-up runs first so no window pays a first-call cost.
+    /// </remarks>
     [Test]
+    [NonParallelizable]
     public void Transient_write_does_not_allocate()
     {
         const int Iterations = 1000;
+        const int Windows = 5;
 
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell cell = new(ctx.Address1, 2);
 
-        // Alternate two words so no write takes the unchanged-value shortcut: every one journals, which
-        // is what grows the journal past what the measured loop needs. The reset then leaves it empty
-        // with that capacity retained.
-        for (int i = 0; i < Iterations * 4; i++)
-        {
-            provider.SetTransientState(in cell, (UInt256)7);
-            provider.SetTransientState(in cell, (UInt256)9);
-        }
+        Write(provider, in cell, Iterations);
 
-        provider.Reset();
-        long start = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < Iterations; i++)
+        long allocated = long.MaxValue;
+        for (int window = 0; window < Windows; window++)
         {
-            provider.SetTransientState(in cell, (i & 1) == 0 ? (UInt256)7 : (UInt256)9);
+            provider.Reset();
+            long start = GC.GetAllocatedBytesForCurrentThread();
+            Write(provider, in cell, Iterations);
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - start);
         }
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - start;
 
         Assert.That(allocated, Is.Zero);
+
+        // Alternate two words so no write takes the unchanged-value shortcut.
+        static void Write(WorldState provider, in StorageCell cell, int iterations)
+        {
+            for (int i = 0; i < iterations; i++)
+            {
+                provider.SetTransientState(in cell, (i & 1) == 0 ? (UInt256)7 : (UInt256)9);
+            }
+        }
     }
 
     /// <summary>
@@ -1388,6 +1397,115 @@ public class StorageProviderTests(bool useFlat)
             provider.Commit(Frontier.Instance);
             provider.CommitTree(baseBlock.Number + 1);
             Assert.That(provider.StateRoot, Is.EqualTo(baseBlock.StateRoot));
+        }
+    }
+
+    [Test]
+    public void Clearing_storage_preserves_other_accounts_across_restore_and_commit(
+        [Values] bool readBeforeClear, [Values] bool writeBeforeClear)
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell clearedCell = new(TestItem.AddressA, 1);
+        StorageCell otherCell = new(TestItem.AddressB, 1);
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(TestItem.AddressA, 1);
+            provider.CreateAccount(TestItem.AddressB, 1);
+            provider.Set(clearedCell, (UInt256)7);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.Get(otherCell, out _);
+            provider.Set(otherCell, (UInt256)9);
+            if (readBeforeClear) provider.Get(clearedCell, out _);
+            if (writeBeforeClear) provider.Set(clearedCell, (UInt256)8);
+            Snapshot snapshot = provider.TakeSnapshot();
+
+            provider.ClearStorage(TestItem.AddressA);
+            AssertSlots(UInt256.Zero);
+            AssertOtherOriginal();
+            if (!readBeforeClear && !writeBeforeClear)
+            {
+                provider.GetOriginal(clearedCell, out UInt256 original);
+                Assert.That(original, Is.EqualTo(UInt256.Zero));
+            }
+
+            provider.Restore(snapshot);
+            AssertSlots(writeBeforeClear ? (UInt256)8 : (UInt256)7);
+            AssertOtherOriginal();
+
+            provider.ClearStorage(TestItem.AddressA);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(1);
+            baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock)) AssertSlots(UInt256.Zero);
+
+        void AssertOtherOriginal()
+        {
+            provider.GetOriginal(otherCell, out UInt256 original);
+            Assert.That(original, Is.EqualTo(UInt256.Zero));
+        }
+
+        void AssertSlots(UInt256 expected)
+        {
+            provider.Get(clearedCell, out UInt256 clearedValue);
+            provider.Get(otherCell, out UInt256 otherValue);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(clearedValue, Is.EqualTo(expected));
+                Assert.That(otherValue, Is.EqualTo((UInt256)9));
+            }
+        }
+    }
+
+    [Test]
+    public void Storage_map_release_rejects_pending_writes_and_ends_the_originals_round([Values] bool detach)
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(TestItem.AddressA, 1);
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(TestItem.AddressA, 1);
+            provider.Set(cell, (UInt256)42);
+            Assert.That(DropMap, Throws.InvalidOperationException);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using IDisposable scope = provider.BeginScope(baseBlock);
+        provider.Get(cell, out _);
+        provider.GetOriginal(cell, out _);
+        Assert.That(DropMap, Throws.Nothing);
+        Assert.That(() => provider.GetOriginal(cell, out _), Throws.InvalidOperationException);
+        provider.Get(cell, out UInt256 value);
+        provider.GetOriginal(cell, out UInt256 original);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(value, Is.EqualTo((UInt256)42));
+            Assert.That(original, Is.EqualTo(value));
+        }
+
+        void DropMap()
+        {
+            if (detach)
+            {
+                using IWorldStateScopeProvider.IBlockChangeSnapshot snapshot = provider._persistentStorageProvider.DetachBlockChanges();
+            }
+            else
+            {
+                provider._persistentStorageProvider.ClearStorageMap();
+            }
         }
     }
 

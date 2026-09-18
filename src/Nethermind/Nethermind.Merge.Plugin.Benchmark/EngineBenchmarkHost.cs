@@ -17,6 +17,7 @@ using Microsoft.Extensions.Logging;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -102,44 +103,49 @@ internal static class EngineBenchmarkHost
         RpcModuleProvider modules = new(fs, config, Serializer, LimboLogs.Instance);
         modules.Register(new SingletonModulePool<IEngineRpcModule>(engine, allowExclusive: true));
 
-        JsonRpcService service = new(modules, LimboLogs.Instance, config);
-        JsonRpcProcessor processor = new(service, config, fs, LimboLogs.Instance);
-
         return Build(
-            _ => { },
-            app => app.Use(async (ctx, next) =>
+            services => services
+                .AddSingleton<IGCStrategy>(NoGCStrategy.Instance)
+                .AddSingleton<GCKeeper>(),
+            app =>
             {
-                if (ctx.Request.Method != "POST" ||
-                    !(ctx.Request.ContentType?.Contains("application/json") ?? false))
+                GCKeeper gcKeeper = app.ApplicationServices.GetRequiredService<GCKeeper>();
+                JsonRpcService service = new(modules, LimboLogs.Instance, config, gcKeeper);
+                JsonRpcProcessor processor = new(service, config, fs, LimboLogs.Instance);
+                app.Use(async (ctx, next) =>
                 {
-                    await next();
-                    return;
-                }
+                    if (ctx.Request.Method != "POST" ||
+                        !(ctx.Request.ContentType?.Contains("application/json") ?? false))
+                    {
+                        await next();
+                        return;
+                    }
 
-                IJsonRpcUrlCollection urls = ctx.RequestServices.GetRequiredService<IJsonRpcUrlCollection>();
-                if (!urls.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl? url) || !url.IsAuthenticated)
-                {
-                    await next();
-                    return;
-                }
+                    IJsonRpcUrlCollection urls = ctx.RequestServices.GetRequiredService<IJsonRpcUrlCollection>();
+                    if (!urls.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl? url) || !url.IsAuthenticated)
+                    {
+                        await next();
+                        return;
+                    }
 
-                IRpcAuthentication auth = ctx.RequestServices.GetRequiredService<IRpcAuthentication>();
-                string? authHeader = ctx.Request.Headers.Authorization;
-                if (authHeader is null || !await auth.Authenticate(authHeader))
-                {
-                    ctx.Response.StatusCode = 401;
-                    return;
-                }
+                    IRpcAuthentication auth = ctx.RequestServices.GetRequiredService<IRpcAuthentication>();
+                    string? authHeader = ctx.Request.Headers.Authorization;
+                    if (authHeader is null || !await auth.Authenticate(authHeader))
+                    {
+                        ctx.Response.StatusCode = 401;
+                        return;
+                    }
 
-                using JsonRpcContext rpcContext = JsonRpcContext.Http(url);
-                BenchmarkJsonRpcResponseSink sink = new(ctx);
-                await processor.ProcessAsync(
-                    ctx.Request.BodyReader,
-                    rpcContext,
-                    sink,
-                    new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument),
-                    ctx.RequestAborted);
-            }));
+                    using JsonRpcContext rpcContext = JsonRpcContext.Http(url);
+                    BenchmarkJsonRpcResponseSink sink = new(ctx);
+                    await processor.ProcessAsync(
+                        ctx.Request.BodyReader,
+                        rpcContext,
+                        sink,
+                        new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument),
+                        ctx.RequestAborted);
+                });
+            });
     }
 
     public static Withdrawal[] BuildWithdrawals(int count)

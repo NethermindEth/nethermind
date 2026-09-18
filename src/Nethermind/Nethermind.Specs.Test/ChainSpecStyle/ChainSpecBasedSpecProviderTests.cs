@@ -190,6 +190,9 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO1Timestamp + 1000)) { TestName = "BPO1" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO2Timestamp)) { TestName = "First BPO2" };
             yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.BPO2Timestamp + 1000)) { TestName = "BPO2" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.AmsterdamTimestamp - 1)) { TestName = "Before Amsterdam" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.AmsterdamTimestamp)) { TestName = "First Amsterdam" };
+            yield return new TestCaseData(new ForkActivation(1735372, SepoliaSpecProvider.AmsterdamTimestamp + 1000)) { TestName = "Amsterdam" };
         }
     }
 
