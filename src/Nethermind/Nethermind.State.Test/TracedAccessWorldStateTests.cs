@@ -78,6 +78,33 @@ public class TracedAccessWorldStateTests(bool parallel)
         Assert.That(inner.GetNonce(TestItem.AddressA), Is.Zero);
     }
 
+    [Test]
+    public void Balance_create_returns_true_only_for_first_creation(
+        [Values] bool initiallyExists, [Values(0u, 1u)] uint balanceChange)
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
+        {
+            if (initiallyExists) ws.CreateAccount(TestItem.AddressA, 0);
+        });
+        using (scope)
+        {
+            bool created = tws.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec, out UInt256 oldBalance);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(created, Is.EqualTo(!initiallyExists));
+                Assert.That(oldBalance, Is.EqualTo(UInt256.Zero));
+            }
+
+            created = tws.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balanceChange, Spec, out oldBalance);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(created, Is.False);
+                Assert.That(oldBalance, Is.EqualTo((UInt256)balanceChange));
+                Assert.That(tws.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)(2 * balanceChange)));
+            }
+        }
+    }
+
     [TestCase(true, 50u, 100u, 150u, TestName = "AddToBalance")]
     [TestCase(false, 30u, 100u, 70u, TestName = "SubtractFromBalance")]
     public void BalanceOp_RecordsBalanceChange(
