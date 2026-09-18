@@ -11,11 +11,11 @@ const MARKER = '<!-- ocr-summary -->';
 function configure(defaults, environment) {
   const config = structuredClone(defaults);
   config.model = environment.OCR_MODEL?.trim();
-  if (!config.model) throw new Error('Set the required OCR_MODEL Actions variable');
+  if (!config.model) throw new Error('Set the required OCR_MODEL Actions secret');
   if (/[\x00-\x1f\x7f]/.test(config.model)) throw new Error('OCR_MODEL must be a single-line model identifier');
   const provider = config.providers.litellm;
   const base = environment.OCR_API_BASE_URL?.trim();
-  if (!base) throw new Error('Set the required OCR_API_BASE_URL Actions variable');
+  if (!base) throw new Error('Set the required OCR_API_BASE_URL Actions secret');
   let url;
   try { url = new URL(base); } catch { throw new Error('OCR_API_BASE_URL must be an HTTPS API base URL'); }
   if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) {
@@ -103,7 +103,7 @@ function assess(result, preview, target, exitCode, expectedModel) {
   const lines = [
     '**AI code review: ' + (complete ? 'completed selected files' : 'INCOMPLETE') + '**',
     '',
-    'Advisory review of `' + target.head + '` with `' + quote(expectedModel || 'unconfigured') + '`.',
+    'Advisory review of `' + target.head + '`.',
     'Reviewed ' + ((coverage?.completed?.length || 0) + (coverage?.reused?.length || 0)) +
       ' / ' + (coverage?.selected?.length || 0) + ' selected files; excluded ' + excluded.length + '.',
     'Tokens: ' + (summary.input_tokens ?? 'unknown') + ' input, ' +
@@ -112,11 +112,11 @@ function assess(result, preview, target, exitCode, expectedModel) {
   ];
   if (complete) lines.push('Findings: ' + result.comments.length + '. Human review is still required.');
   else lines.push('', ...reasons.map(reason => '- ' + reason),
-    '', 'This run cannot establish that the PR is clean. Findings are retained in the run artifacts.');
+    '', 'This run cannot establish that the PR is clean. Findings from incomplete reviews are not published.');
   if (excluded.length) {
     lines.push('', '<details><summary>Excluded files</summary>', '',
       ...excluded.slice(0, 100).map(item => '- `' + quote(item.path) + '`: ' + quote(item.exclude_reason)),
-      ...(excluded.length > 100 ? ['- See the selection artifact for the remaining files.'] : []),
+      ...(excluded.length > 100 ? ['- ' + (excluded.length - 100) + ' additional files excluded.'] : []),
       '', '</details>');
   }
   return { complete, reasons, markdown: lines.join('\n') };
@@ -143,7 +143,7 @@ async function publish({ github, context, core, directory, enabled, postReview }
   });
   if (current.state !== 'open' || current.head.sha !== target.head || current.base.sha !== target.base ||
       (target.automatic && current.draft)) {
-    core.warning('PR closed, changed, or returned to draft during review; retaining artifacts without posting.');
+    core.warning('PR closed, changed, or returned to draft during review; retaining the summary without posting.');
     core.setOutput('stale', 'true');
     return report;
   }
@@ -154,6 +154,7 @@ async function publish({ github, context, core, directory, enabled, postReview }
     ...args,
     body: args.body?.includes(MARKER)
       ? args.body.replace(MARKER, MARKER + '\n' + report.markdown + '\n\n---\n')
+        .replace(/^⚠️ GitHub could not post this as an inline comment: (Routed to summary \([^\r\n]*\))$/gm, 'ℹ️ $1.')
       : args.body,
   });
   if (report.complete) {

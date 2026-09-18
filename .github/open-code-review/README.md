@@ -1,6 +1,6 @@
 AI Code Review automatically reviews non-draft PRs when opened, reopened, marked
 ready for review, or updated with new commits. It publishes a summary and inline
-findings using the model configured in Actions variables. Each run reviews the full PR diff; a newer run
+findings using the model configured in Actions secrets. Each run reviews the full PR diff; a newer run
 cancels an older run for the same PR. Reviews are advisory and do not change the
 Claude review gate.
 
@@ -18,11 +18,11 @@ read for each run, so changing the model, API base URL, or key needs no code cha
 
 | Setting | Type | Default / purpose |
 | --- | --- | --- |
-| `OCR_MODEL` | Variable | Required. Exact model alias accepted by the gateway; no code default. |
-| `OCR_API_BASE_URL` | Variable | Required. HTTPS API base URL, including any path prefix such as `/v1`; no code default. |
+| `OCR_MODEL` | Secret | Required. Exact model alias accepted by the gateway; no code default. |
+| `OCR_API_BASE_URL` | Secret | Required. HTTPS API base URL, including any path prefix such as `/v1`; no code default. |
 | `OCR_LITELLM_API_KEY` | Secret | API key used when no alternative secret name is configured. |
 | `OCR_API_KEY_SECRET` | Variable | Optional name of another Actions secret containing the key. Defaults to `OCR_LITELLM_API_KEY`. |
-| `OCR_EXTRA_BODY` | Variable | Optional JSON object of nonsecret, model-specific request options. Defaults to `{}`. |
+| `OCR_EXTRA_BODY` | Secret | Optional JSON object of model-specific request options. Defaults to `{}`. |
 | `OCR_AUTO_REVIEW` | Variable | Automatic reviews are enabled unless this is `false`. Manual runs remain available. |
 | `OCR_AUTO_TOKEN_BUDGET` | Variable | Soft token budget for automatic runs: `500000`, `1000000`, or `2000000` (default). |
 
@@ -35,18 +35,20 @@ which must support the OpenAI-compatible chat completions API with tool calls.
 Enter the model, API base URL, and key at the CLI prompts:
 
 ```sh
-gh variable set OCR_MODEL --repo NethermindEth/nethermind
-gh variable set OCR_API_BASE_URL --repo NethermindEth/nethermind
+gh secret set OCR_MODEL --repo NethermindEth/nethermind
+gh secret set OCR_API_BASE_URL --repo NethermindEth/nethermind
 gh secret set OCR_LITELLM_API_KEY --repo NethermindEth/nethermind
 ```
 
 Missing or blank `OCR_MODEL` or `OCR_API_BASE_URL` values fail configuration before
 any model request. The checked-in `config.json` contains only shared review
 settings. Runtime configuration gets its model and endpoint exclusively from the
-Actions variables.
+Actions secrets. Move any existing `OCR_MODEL`, `OCR_API_BASE_URL`, and
+`OCR_EXTRA_BODY` variables to secrets with the same names before using this workflow.
+Secrets also mask these settings in Actions logs; artifact contents are not masked.
 
 Set `OCR_EXTRA_BODY` only when the selected model needs additional request options.
-When changing models, update or clear this variable to match the new model's API.
+When changing models, update or clear this secret to match the new model's API.
 Unset, empty, or `{}` values send no additional options. The options cannot override
 `model`, `messages`, or `tools`.
 
@@ -95,22 +97,25 @@ The review process has an 18-minute limit; the job has a 25-minute limit.
 `.agents/rules/` files on each run, so the ArrayPool.Shared exception and other
 project guidance stay current. C# tests and MSBuild/solution files are included.
 OCR still excludes binary, deleted, secret, unsupported, and oversized files;
-the preview artifact and summary disclose exclusions. Vendored test suites under
+the public summary discloses exclusions. Vendored test suites under
 `src/tests` and `src/bench_precompiles` are excluded.
 
-Each run saves its effective configuration and validates against that captured model.
+Each run captures its effective configuration on the runner and validates against that model.
 Before posting, the wrapper checks the reviewed commits, model, selected-file
 coverage, token-budget status, and current PR commits. Incomplete reviews publish
-an explicit incomplete summary; their findings remain in artifacts. Stale runs
+an explicit incomplete summary; their findings are not published. Stale runs
 publish nothing; automatic runs also suppress publication if the PR has returned
 to draft. Completed reviews use OCR's upstream publisher for one updated
 summary and deduplicated inline findings. Low-severity and style/documentation
-findings go in the summary. The bot does not approve PRs or resolve discussions.
+findings go in the summary with an informational routing notice. Actual inline
+posting failures retain a warning. The bot does not approve PRs or resolve discussions.
 Keep `Advisory AI review` out of required branch-protection checks.
 
-Artifacts expire after 14 days. They contain the effective configuration (with a
-credential lookup command, not the secret value), captured commits, selected and
-excluded files, findings, tool statistics, token usage, elapsed time, and stderr.
+Artifacts expire after 14 days and contain only the public `summary.md`: reviewed
+commit, coverage, exclusions, finding count, token usage, elapsed time, and run link.
+Runtime configuration, the model identifier, raw OCR output, selection preview,
+and stderr are not uploaded. Configuration and raw evidence exist only on the
+ephemeral runner; debug a failed review locally when those details are needed.
 OCR does not expose LiteLLM's billed cost, so use the dedicated key's spend logs
 for cost per run. Compare roughly 20 PRs across networking, EVM/state, tests, and
 CI: record accepted findings, false positives, missed defects, cost, and latency.
