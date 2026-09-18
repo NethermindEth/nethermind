@@ -21,14 +21,14 @@ OPENVM_IMAGE ?= nethermindeth/openvm-runner:v2.1.0-rv64@sha256:d8209a5db5d59df6d
 OPENVM_RUNNER ?=
 
 dotnet-build:
-	dotnet build -c release -p:EnableZkEvm=true $(GUEST_DIR)/Nethermind.Stateless.OpenVmGuest.csproj
+	dotnet build -c release -p:EnableZkEvm=true $(GUEST_DIR)/Nethermind.Stateless.OpenVMGuest.csproj
 
 build: dotnet-build
 	docker run --platform linux/amd64 --rm \
 		-e DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
 		-e DOTNET_TYPELOADER_TRACE_INTERFACE_RESOLUTION=0 \
 		-w $(SRC_DIR) \
-		--mount type=bind,source="$(ARTIFACTS_DIR)/Nethermind.Stateless.OpenVmGuest/release",target=$(BIN_DIR) \
+		--mount type=bind,source="$(ARTIFACTS_DIR)/Nethermind.Stateless.OpenVMGuest/release",target=$(BIN_DIR) \
 		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
 		$(SHARED_MOUNT) \
 		$(BFLAT_IMAGE) \
