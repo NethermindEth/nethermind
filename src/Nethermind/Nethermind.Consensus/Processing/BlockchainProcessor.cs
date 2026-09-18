@@ -346,7 +346,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             await _pauseGate.WaitWhilePausedAsync(CancellationToken);
 
-            using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
+            using BlockProcessingPriorityScope priorityScope = BlockProcessingPriorityScope.Enter(_logger);
             // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
             IsProcessingBlock = true;
