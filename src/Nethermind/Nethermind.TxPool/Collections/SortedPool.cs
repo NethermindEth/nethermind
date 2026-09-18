@@ -153,6 +153,7 @@ namespace Nethermind.TxPool.Collections
         {
             using McsLock.Disposable lockRelease = Lock.Acquire();
             if (where is null && _productionSnapshot is not null) return _productionSnapshot;
+            if (_buckets.Count == 0) return _productionSnapshot ??= new([], 0);
 
             KeyValuePair<TGroupKey, TValue[]>[] entries = new KeyValuePair<TGroupKey, TValue[]>[_buckets.Count];
             int count = 0;

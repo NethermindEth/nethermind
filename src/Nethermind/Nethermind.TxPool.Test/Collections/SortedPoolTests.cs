@@ -50,6 +50,36 @@ namespace Nethermind.TxPool.Test.Collections
         }
 
         [Test]
+        public void Empty_production_snapshot_is_invalidated_when_pool_changes([Values] bool initiallyFiltered)
+        {
+            int filterCalls = 0;
+            Predicate<(AddressAsKey key, Transaction first)> filter = _ => { filterCalls++; return true; };
+            IDictionary<AddressAsKey, Transaction[]> empty = _sortedPool.GetProductionSnapshot(initiallyFiltered ? filter : null);
+            Assert.That(_sortedPool.GetProductionSnapshot(filter), Is.SameAs(empty));
+            Assert.That(filterCalls, Is.Zero);
+
+            Transaction transaction = _transactions[1];
+            InsertSnapshotTransaction(transaction);
+            Assert.That(_sortedPool.GetProductionSnapshot(filter)[transaction.SenderAddress!], Is.EqualTo(new[] { transaction }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(filterCalls, Is.EqualTo(1));
+                Assert.That(empty, Is.Empty);
+                Assert.That(empty.IsReadOnly, Is.True);
+            }
+
+            Assert.That(_sortedPool.TryRemove(transaction.Hash!), Is.True);
+            IDictionary<AddressAsKey, Transaction[]> drained = _sortedPool.GetProductionSnapshot(filter);
+            Assert.That(drained, Is.Empty);
+            Assert.That(_sortedPool.GetProductionSnapshot(filter), Is.SameAs(drained));
+            Assert.That(filterCalls, Is.EqualTo(1));
+
+            InsertSnapshotTransaction(transaction);
+            Assert.That(_sortedPool.GetProductionSnapshot(filter)[transaction.SenderAddress!], Is.EqualTo(new[] { transaction }));
+            Assert.That(drained, Is.Empty);
+        }
+
+        [Test]
         public void Production_snapshot_reuses_only_unchanged_buckets()
         {
             Transaction first = _transactions[1];
