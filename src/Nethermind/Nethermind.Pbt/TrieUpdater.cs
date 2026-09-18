@@ -32,7 +32,7 @@ public static partial class TrieUpdater
     }
 
     /// <summary>Default minimum operations a bucket worker folds; narrower fan-out costs more than it saves.</summary>
-    internal const int DefaultFoldMinOperationsPerWorker = 1024;
+    internal const int DefaultFoldMinOperationsPerWorker = 256;
 
     /// <summary>Groups consecutive buckets into runs of at least <paramref name="minOperations"/> operations each.</summary>
     /// <remarks>A trailing shortfall joins the preceding run, so a frame that cannot fill two runs yields one.</remarks>
