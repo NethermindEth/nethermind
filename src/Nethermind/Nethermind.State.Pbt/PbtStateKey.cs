@@ -10,17 +10,17 @@ namespace Nethermind.State.Pbt;
 
 internal static class PbtStateKey
 {
-    public static PbtFullKey Account(Address address, byte subIndex)
+    public static PbtPath Account(Address address, byte subIndex)
     {
         Span<byte> address32 = stackalloc byte[32];
         Address32(address, address32);
         return Eip8297KeyDerivation.AccountKey(address32, subIndex);
     }
 
-    public static PbtFullKey Account(in ValueHash256 addressHash, byte subIndex) =>
+    public static PbtPath Account(in ValueHash256 addressHash, byte subIndex) =>
         Eip8297KeyDerivation.AccountKey(addressHash, subIndex);
 
-    public static PbtFullKey Code(in ValueHash256 addressHash, in ValueHash256 codeHash, int chunkId) =>
+    public static PbtPath Code(in ValueHash256 addressHash, in ValueHash256 codeHash, int chunkId) =>
         Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunkId);
 
     public static PbtStorageTreeKey Storage(Address address, in UInt256 slot)
@@ -38,7 +38,7 @@ internal static class PbtStateKey
         return Eip8297KeyDerivation.StorageKey(address32, addressHash, slot);
     }
 
-    public static PbtFullKey Code(Address address, in ValueHash256 codeHash, int chunkId) =>
+    public static PbtPath Code(Address address, in ValueHash256 codeHash, int chunkId) =>
         Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunkId);
 
     public static PbtStorageTreeKey StoragePrefix(Address address)

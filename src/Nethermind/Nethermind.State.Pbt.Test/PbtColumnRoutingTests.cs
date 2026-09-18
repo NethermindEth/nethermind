@@ -20,7 +20,7 @@ public class PbtColumnRoutingTests
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
-        PbtFullKey leaf = PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey);
+        PbtPath leaf = PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey);
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
         PbtStorageTreeKey storageKey = PbtStateKey.Storage(TestItem.AddressA, 0);
         Account account = new(7, 9);

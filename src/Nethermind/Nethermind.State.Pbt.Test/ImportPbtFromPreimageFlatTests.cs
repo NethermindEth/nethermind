@@ -877,7 +877,7 @@ public class ImportPbtFromPreimageFlatTests
                     Account account = new(1, 100);
                     staging.SetAccount(hash, account);
                     expectedRows.Add($"{PbtColumns.Accounts}:{Convert.ToHexString(hashBytes)}");
-                    foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(hash, account, null))
+                    foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.AccountLeaves(hash, account, null))
                         model[Convert.ToHexString(key.Bytes)] = value.Bytes.ToArray();
                     foreach (byte zone in new byte[] { 0, 0xFF })
                     {

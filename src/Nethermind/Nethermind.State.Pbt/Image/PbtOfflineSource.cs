@@ -57,7 +57,7 @@ internal static class PbtOfflineSource
                     if (Keccak.Compute(bytes) != account.CodeHash) throw new InvalidDataException("Source code hash mismatch.");
                     code = new CodeInfo(bytes);
                 }
-                foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(PbtKeyDerivation.AddressKeyHash(address), account, code))
+                foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.AccountLeaves(PbtKeyDerivation.AddressKeyHash(address), account, code))
                     AddLeaf((PbtStorageTreeKey)key, value);
                 ValueHash256 addressHash = ValueKeccak.Compute(address.Bytes);
                 uint count = 0;

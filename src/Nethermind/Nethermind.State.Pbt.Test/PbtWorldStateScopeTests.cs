@@ -743,7 +743,7 @@ public class PbtWorldStateScopeTests
         scope.Commit(1);
         using PbtTreeHarness expected = new();
         List<(byte[] Key, byte[]? Value)> leaves = [];
-        foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(
+        foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.AccountLeaves(
             PbtKeyDerivation.AddressKeyHash(TestItem.AddressA), Build.An.Account.WithBalance(2).TestObject, null))
             leaves.Add((key.Bytes.ToArray(), value.Bytes.ToArray()));
         expected.ApplyBatch(leaves);

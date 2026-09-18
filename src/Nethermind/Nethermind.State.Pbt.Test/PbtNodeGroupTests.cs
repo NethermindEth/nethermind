@@ -633,33 +633,33 @@ public class PbtNodeGroupTests
     [TestCase(66, 528)]
     public void Key_families_enforce_capacity_without_changing_storage_bytes(int length, int depth)
     {
-        Assert.That(Unsafe.SizeOf<PbtFullKey>(), Is.EqualTo(34));
+        Assert.That(Unsafe.SizeOf<PbtPath>(), Is.EqualTo(34));
         Assert.That(Unsafe.SizeOf<PbtTreeKey>(), Is.EqualTo(40));
-        Assert.That(Unsafe.SizeOf<PbtStorageFullKey>(), Is.EqualTo(66));
+        Assert.That(Unsafe.SizeOf<PbtStoragePath>(), Is.EqualTo(66));
         Assert.That(Unsafe.SizeOf<PbtStorageTreeKey>(), Is.EqualTo(72));
         byte[] keyBytes = new byte[length];
         keyBytes[^1] = 1;
         PbtStorageTreeKey storageKey = new(keyBytes);
         PbtStorageNodePath storagePath = PbtStorageNodePath.FromKey(storageKey, depth);
         Assert.That(storageKey.FirstDifferingBit(new PbtStorageTreeKey(new byte[length])), Is.EqualTo(depth - 1));
-        if (length == PbtFullKey.KeyLength)
+        if (length == PbtPath.KeyLength)
         {
-            PbtFullKey key = (PbtFullKey)storageKey;
+            PbtPath key = (PbtPath)storageKey;
             PbtTreeKey treeKey = (PbtTreeKey)key;
-            Assert.That(key.FirstDifferingBit(new PbtFullKey(new byte[length])), Is.EqualTo(depth - 1));
+            Assert.That(key.FirstDifferingBit(new PbtPath(new byte[length])), Is.EqualTo(depth - 1));
             Assert.That(treeKey.FirstDifferingBit(new PbtTreeKey(new byte[length])), Is.EqualTo(depth - 1));
             Assert.That(((PbtStorageTreeKey)key).Bytes.ToArray(), Is.EqualTo(keyBytes));
-            Assert.That((PbtFullKey)treeKey, Is.EqualTo(key));
-            Assert.Throws<ArgumentOutOfRangeException>(() => _ = (PbtFullKey)new PbtTreeKey(keyBytes.AsSpan(0, length - 1)));
+            Assert.That((PbtPath)treeKey, Is.EqualTo(key));
+            Assert.Throws<ArgumentOutOfRangeException>(() => _ = (PbtPath)new PbtTreeKey(keyBytes.AsSpan(0, length - 1)));
         }
         else
         {
-            Assert.Throws<ArgumentOutOfRangeException>(() => _ = (PbtFullKey)storageKey);
+            Assert.Throws<ArgumentOutOfRangeException>(() => _ = (PbtPath)storageKey);
             Assert.Throws<ArgumentOutOfRangeException>(() => new PbtTreeKey(keyBytes));
         }
-        Assert.That(PbtFullKey.IsFixedLength, Is.True);
-        Assert.Throws<ArgumentOutOfRangeException>(() => new PbtFullKey(new byte[33]));
-        Assert.Throws<ArgumentOutOfRangeException>(() => new PbtFullKey(new byte[35]));
+        Assert.That(PbtPath.IsFixedLength, Is.True);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new PbtPath(new byte[33]));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new PbtPath(new byte[35]));
         Assert.Throws<ArgumentOutOfRangeException>(() => new PbtTreeKey(new byte[35]));
         Assert.Throws<ArgumentOutOfRangeException>(() => new PbtStorageTreeKey(new byte[67]));
         Assert.Throws<ArgumentOutOfRangeException>(() => new PbtNodePath(new byte[35], 273));
@@ -963,7 +963,7 @@ public class PbtNodeGroupTests
         [Values(0, 4)] int localLength, [Range(0, 3)] int remainder)
     {
         if (storage) AssertContextualBranch<PbtStorageTreeKey, PbtStorageNodePath>(original, groupDepth == 252 ? 508 : groupDepth, localLength, remainder);
-        else AssertContextualBranch<PbtFullKey, PbtNodePath>(original, groupDepth, localLength, remainder);
+        else AssertContextualBranch<PbtPath, PbtNodePath>(original, groupDepth, localLength, remainder);
     }
 
     private static void AssertContextualBranch<TKey, TPath>(bool original, int groupDepth, int localLength, int remainder)
@@ -1024,7 +1024,7 @@ public class PbtNodeGroupTests
     public void Frontier_preserves_foreign_ancestor_anchor_after_descendant_fills_its_tail([Values] bool storage)
     {
         if (storage) AssertFrontierAncestor<PbtStorageTreeKey, PbtStorageNodePath>();
-        else AssertFrontierAncestor<PbtFullKey, PbtNodePath>();
+        else AssertFrontierAncestor<PbtPath, PbtNodePath>();
     }
 
     private static void AssertFrontierAncestor<TKey, TPath>()
@@ -1066,12 +1066,12 @@ public class PbtNodeGroupTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Unsafe.SizeOf<NodeGroupPath>(), Is.EqualTo(1));
-            Assert.That(Unsafe.SizeOf<TrieUpdater<PbtFullKey, PbtNodePath>.Subtree>(), Is.LessThan(176));
-            Assert.That(Unsafe.SizeOf<TrieUpdater<PbtFullKey, PbtNodePath>.DecompositionEntry>(), Is.LessThan(184));
+            Assert.That(Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.Subtree>(), Is.LessThan(176));
+            Assert.That(Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.DecompositionEntry>(), Is.LessThan(184));
             Assert.That(Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Subtree>(), Is.LessThan(240));
             Assert.That(Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.DecompositionEntry>(), Is.LessThan(248));
         }
-        TestContext.Out.WriteLine($"Small subtree/entry/owned/frontier: {Unsafe.SizeOf<TrieUpdater<PbtFullKey, PbtNodePath>.Subtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtFullKey, PbtNodePath>.DecompositionEntry>()}/{Unsafe.SizeOf<TrieUpdater<PbtFullKey, PbtNodePath>.OwnedSubtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtFullKey, PbtNodePath>.Frontier>()}");
+        TestContext.Out.WriteLine($"Small subtree/entry/owned/frontier: {Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.Subtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.DecompositionEntry>()}/{Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.OwnedSubtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.Frontier>()}");
         TestContext.Out.WriteLine($"Storage subtree/entry/owned/frontier: {Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Subtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.DecompositionEntry>()}/{Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.OwnedSubtree>()}/{Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Frontier>()}");
     }
 

@@ -23,7 +23,7 @@ internal static class PbtTestLeaves
 
     public static void AddAccount(List<RebuildEntry> into, Address address, in Account account, byte[]? code)
     {
-        foreach ((PbtFullKey key, ValueHash256 leaf) in PbtFlatState.AccountLeaves(
+        foreach ((PbtPath key, ValueHash256 leaf) in PbtFlatState.AccountLeaves(
             PbtKeyDerivation.AddressKeyHash(address), account, code is { Length: > 0 } ? new CodeInfo(code) : null))
             into.Add(new RebuildEntry((PbtStorageTreeKey)key, leaf));
     }

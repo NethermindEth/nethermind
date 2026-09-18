@@ -14,7 +14,7 @@ namespace Nethermind.State.Pbt;
 /// <summary>Derives canonical tree leaves from whole flat values without retaining a second flat index.</summary>
 internal static class PbtFlatState
 {
-    internal static IEnumerable<KeyValuePair<PbtFullKey, ValueHash256>> AccountLeaves(ValueHash256 addressHash, Account account, CodeInfo? code, bool includeCode = true)
+    internal static IEnumerable<KeyValuePair<PbtPath, ValueHash256>> AccountLeaves(ValueHash256 addressHash, Account account, CodeInfo? code, bool includeCode = true)
     {
         if (account.HasCode && code is null) throw new InvalidDataException($"Missing PBT bytecode for {account.CodeHash}.");
         ValueHash256 basicData = default;
@@ -66,7 +66,7 @@ internal static class PbtFlatState
         SortedDictionary<PbtStorageTreeKey, ValueHash256> leaves = [];
         HashSet<ValueHash256> emittedCode = [];
         foreach ((ValueHash256 addressHash, Account account) in accounts)
-            foreach ((PbtFullKey key, ValueHash256 value) in AccountLeaves(addressHash, account, account.HasCode ? getCode(account.CodeHash.ValueHash256) : null, emittedCode.Add(account.CodeHash.ValueHash256)))
+            foreach ((PbtPath key, ValueHash256 value) in AccountLeaves(addressHash, account, account.HasCode ? getCode(account.CodeHash.ValueHash256) : null, emittedCode.Add(account.CodeHash.ValueHash256)))
                 leaves[(PbtStorageTreeKey)key] = value;
         foreach ((PbtStorageTreeKey key, EvmWord value) in storages)
             if (!EvmWordSlot.IsZero(value)) leaves[key] = new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value));

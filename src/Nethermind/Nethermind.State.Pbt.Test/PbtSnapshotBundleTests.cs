@@ -245,15 +245,15 @@ public class PbtSnapshotBundleTests
 
         public PbtSnapshotContent GetSnapshotContent(PbtResourcePool.Usage usage) => new();
         public void ReturnSnapshotContent(PbtResourcePool.Usage usage, PbtSnapshotContent content) => content.Dispose();
-        public PbtWriteBatchBuilder<PbtFullKey> GetWriteBatch(PbtResourcePool.Usage usage) => new(2);
-        public void ReturnWriteBatch(PbtResourcePool.Usage usage, PbtWriteBatchBuilder<PbtFullKey> builder)
+        public PbtWriteBatchBuilder<PbtPath> GetWriteBatch(PbtResourcePool.Usage usage) => new(2);
+        public void ReturnWriteBatch(PbtResourcePool.Usage usage, PbtWriteBatchBuilder<PbtPath> builder)
         {
             builder.Dispose();
             if (ThrowOnBuilderReturn) throw new IOException("Builder return failed");
         }
 
-        public PbtWriteBatchBuilder<PbtStorageFullKey> GetStorageWriteBatch(PbtResourcePool.Usage usage) => new(2);
-        public void ReturnStorageWriteBatch(PbtResourcePool.Usage usage, PbtWriteBatchBuilder<PbtStorageFullKey> builder)
+        public PbtWriteBatchBuilder<PbtStoragePath> GetStorageWriteBatch(PbtResourcePool.Usage usage) => new(2);
+        public void ReturnStorageWriteBatch(PbtResourcePool.Usage usage, PbtWriteBatchBuilder<PbtStoragePath> builder)
         {
             builder.Dispose();
             if (ThrowOnBuilderReturn) throw new IOException("Builder return failed");
@@ -1131,10 +1131,10 @@ public class PbtSnapshotBundleTests
         byte[] code = Bytes.FromHexString("ef01000000000000000000000000000000000000000001");
         Account account = Build.An.Account.WithCode(code).TestObject;
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
-        Dictionary<PbtFullKey, ValueHash256> expected = new()
+        Dictionary<PbtPath, ValueHash256> expected = new()
         {
-            [new PbtFullKey([0, .. addressHash.Bytes, 0])] = new(Bytes.FromHexString("0000000000000017000000000000000000000000000000000000000000000000")),
-            [new PbtFullKey([0, .. addressHash.Bytes, 2])] = new([.. code, .. new byte[9]]),
+            [new PbtPath([0, .. addressHash.Bytes, 0])] = new(Bytes.FromHexString("0000000000000017000000000000000000000000000000000000000000000000")),
+            [new PbtPath([0, .. addressHash.Bytes, 2])] = new([.. code, .. new byte[9]]),
         };
         Assert.That(PbtFlatState.AccountLeaves(addressHash, account, new CodeInfo(code), includeCode), Is.EquivalentTo(expected));
     }

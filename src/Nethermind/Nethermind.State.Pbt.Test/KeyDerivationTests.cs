@@ -51,7 +51,7 @@ public class KeyDerivationTests
     public void CodeChunkKeysMatchEipTestVectors([Values(0, 5, 127, 128, 255, 256, 300)] int chunkId)
     {
         ValueHash256 codeHash = TestItem.KeccakA.ValueHash256;
-        PbtFullKey expected = PbtReferenceModel.CodeKey(codeHash, chunkId);
+        PbtPath expected = PbtReferenceModel.CodeKey(codeHash, chunkId);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Eip8297KeyDerivation.CodeKey(Address32(TestItem.AddressA), codeHash.Bytes, chunkId), Is.EqualTo(expected));

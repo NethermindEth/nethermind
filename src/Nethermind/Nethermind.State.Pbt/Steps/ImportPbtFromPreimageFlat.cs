@@ -578,7 +578,7 @@ public class ImportPbtFromPreimageFlat(
                         ?? throw new InvalidDataException($"Missing staged bytecode for account {addressHash}.");
                     code = new CodeInfo(bytes);
                 }
-                foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressHash, account, code))
+                foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressHash, account, code))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     await sink.Add(new RebuildEntry((PbtStorageTreeKey)key, value));

@@ -158,27 +158,27 @@ internal static class PbtStoreTestExtensions
             ? PbtRocksDbPersistence.RootNodeGroupKey.ToArray()
             : PbtNodeGroupKey.Encode(layout, column, path, new byte[PbtNodeGroupKey.MaxLength]).ToArray();
 
-    /// <summary>Zero-pads a zone prefix to the fixed <see cref="PbtStorageFullKey"/> or <see cref="PbtFullKey"/> length the partition fold requires.</summary>
+    /// <summary>Zero-pads a zone prefix to the fixed <see cref="PbtStoragePath"/> or <see cref="PbtPath"/> length the partition fold requires.</summary>
     internal static byte[] ZoneKey(string hexPrefix)
     {
         byte[] prefix = Bytes.FromHexString(hexPrefix);
-        byte[] key = new byte[prefix[0] == Eip8297KeyDerivation.StorageZone ? PbtStorageFullKey.KeyLength : PbtFullKey.KeyLength];
+        byte[] key = new byte[prefix[0] == Eip8297KeyDerivation.StorageZone ? PbtStoragePath.KeyLength : PbtPath.KeyLength];
         prefix.CopyTo(key, 0);
         return key;
     }
 
     internal static PbtPartitionBatches PreparePartitions(IEnumerable<(byte[] Key, byte[]? Value)> changes)
     {
-        using PbtWriteBatchBuilder<PbtFullKey> account = new(2);
-        using PbtWriteBatchBuilder<PbtFullKey> code = new(2);
-        using PbtWriteBatchBuilder<PbtStorageFullKey> storage = new(2);
+        using PbtWriteBatchBuilder<PbtPath> account = new(2);
+        using PbtWriteBatchBuilder<PbtPath> code = new(2);
+        using PbtWriteBatchBuilder<PbtStoragePath> storage = new(2);
         foreach ((byte[] key, byte[]? value) in changes)
         {
             switch (key[0])
             {
-                case 0x00: Apply(account, new PbtFullKey(key), value); break;
-                case 0x01: Apply(code, new PbtFullKey(key), value); break;
-                case 0xFF: Apply(storage, new PbtStorageFullKey(key), value); break;
+                case 0x00: Apply(account, new PbtPath(key), value); break;
+                case 0x01: Apply(code, new PbtPath(key), value); break;
+                case 0xFF: Apply(storage, new PbtStoragePath(key), value); break;
                 default: throw new ArgumentException("Unsupported partition zone.", nameof(changes));
             }
         }

@@ -37,12 +37,12 @@ internal static class PbtReferenceModel
         int chunkCount = chunks.Length / PbtKeyDerivation.CodeChunkSize;
         for (int i = 0; i < chunkCount; i++)
         {
-            PbtFullKey key = CodeKey(codeHash, i);
+            PbtPath key = CodeKey(codeHash, i);
             Set(model, key, Chunk(chunks, i));
         }
     }
 
-    public static PbtFullKey CodeKey(in ValueHash256 codeHash, int chunkId)
+    public static PbtPath CodeKey(in ValueHash256 codeHash, int chunkId)
     {
         byte[] input = new byte[64];
         codeHash.Bytes.CopyTo(input);
@@ -51,7 +51,7 @@ internal static class PbtReferenceModel
         key[0] = 0x01;
         Blake3.Hasher.Hash(input, key.AsSpan(1, 32));
         key[^1] = (byte)(chunkId % 256);
-        return new PbtFullKey(key);
+        return new PbtPath(key);
     }
 
     public static void SetSlot(Dictionary<string, byte[]> model, Address address, in UInt256 slot, in UInt256 value)

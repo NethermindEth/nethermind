@@ -10,7 +10,7 @@ using Nethermind.Pbt;
 namespace Nethermind.Benchmarks.State;
 
 [MemoryDiagnoser]
-public class PbtFullKeyBenchmark
+public class PbtPathBenchmark
 {
     private byte[] _bytes;
     private PbtStorageTreeKey _key;
@@ -54,7 +54,7 @@ public class PbtFullKeyBenchmark
 }
 
 [MemoryDiagnoser]
-public class PbtFullKeyDerivationBenchmark
+public class PbtPathDerivationBenchmark
 {
     private byte[] _address;
     private readonly UInt256 _slot = new(256);
@@ -67,14 +67,14 @@ public class PbtFullKeyDerivationBenchmark
     }
 
     [Benchmark]
-    public PbtFullKey Account() => Eip8297KeyDerivation.AccountKey(_address, 0);
+    public PbtPath Account() => Eip8297KeyDerivation.AccountKey(_address, 0);
 
     [Benchmark]
     public PbtStorageTreeKey Storage() => Eip8297KeyDerivation.StorageKey(_address, _slot);
 }
 
 [MemoryDiagnoser]
-[GenericTypeArguments(typeof(PbtFullKey))]
+[GenericTypeArguments(typeof(PbtPath))]
 [GenericTypeArguments(typeof(PbtStorageTreeKey))]
 public class PbtWriteBatchMemoryBenchmark<TKey> where TKey : struct, IPbtKey<TKey>
 {

@@ -11,7 +11,7 @@ namespace Nethermind.Pbt;
 /// Every key is exactly <see cref="KeyLength"/> bytes, so <see cref="TrieUpdater"/> skips its variable-length
 /// terminal handling. Shorter account-zone paths are represented by <see cref="PbtTreeKey"/>.
 /// </remarks>
-public readonly struct PbtFullKey : IPbtKey<PbtFullKey>
+public readonly struct PbtPath : IPbtKey<PbtPath>
 {
     public const int KeyLength = Eip8297KeyDerivation.AccountKeyLength;
     /// <inheritdoc/>
@@ -19,7 +19,7 @@ public readonly struct PbtFullKey : IPbtKey<PbtFullKey>
     /// <inheritdoc/>
     public static int Capacity => KeyLength;
     /// <inheritdoc/>
-    public static PbtFullKey Create(ReadOnlySpan<byte> bytes) => new(bytes);
+    public static PbtPath Create(ReadOnlySpan<byte> bytes) => new(bytes);
     private readonly KeyBytes _bytes;
 
     [InlineArray(KeyLength)]
@@ -28,14 +28,14 @@ public readonly struct PbtFullKey : IPbtKey<PbtFullKey>
         private byte _element0;
     }
 
-    public PbtFullKey(ReadOnlySpan<byte> bytes)
+    public PbtPath(ReadOnlySpan<byte> bytes)
     {
         ArgumentOutOfRangeException.ThrowIfNotEqual(bytes.Length, KeyLength, nameof(bytes));
         bytes.CopyTo(_bytes);
     }
 
     /// <summary>Creates a key from a prefix of at most <see cref="KeyLength"/> bytes, leaving the tail zero.</summary>
-    internal static PbtFullKey ZeroPad(ReadOnlySpan<byte> prefix)
+    internal static PbtPath ZeroPad(ReadOnlySpan<byte> prefix)
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThan(prefix.Length, KeyLength, nameof(prefix));
         Span<byte> padded = stackalloc byte[KeyLength];
@@ -50,16 +50,16 @@ public readonly struct PbtFullKey : IPbtKey<PbtFullKey>
 
     public int GetBit(int bitIndex) => PbtKeyOperations.GetBit(Bytes, bitIndex);
 
-    public bool IsPrefixOf(in PbtFullKey other) => Equals(other);
+    public bool IsPrefixOf(in PbtPath other) => Equals(other);
 
-    public int FirstDifferingBit(in PbtFullKey other, int startBit = 0) =>
+    public int FirstDifferingBit(in PbtPath other, int startBit = 0) =>
         PbtKeyOperations.FirstDifferingBit(Bytes, other.Bytes, startBit);
 
-    public int CompareTo(PbtFullKey other) => Bytes.SequenceCompareTo(other.Bytes);
-    public bool Equals(PbtFullKey other) => Bytes.SequenceEqual(other.Bytes);
-    public override bool Equals(object? obj) => obj is PbtFullKey other && Equals(other);
-    public static bool operator ==(PbtFullKey left, PbtFullKey right) => left.Equals(right);
-    public static bool operator !=(PbtFullKey left, PbtFullKey right) => !left.Equals(right);
+    public int CompareTo(PbtPath other) => Bytes.SequenceCompareTo(other.Bytes);
+    public bool Equals(PbtPath other) => Bytes.SequenceEqual(other.Bytes);
+    public override bool Equals(object? obj) => obj is PbtPath other && Equals(other);
+    public static bool operator ==(PbtPath left, PbtPath right) => left.Equals(right);
+    public static bool operator !=(PbtPath left, PbtPath right) => !left.Equals(right);
 
     public override int GetHashCode()
     {

@@ -7,7 +7,7 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.Pbt;
 
 /// <summary>An immutable complete EIP-8297 tree key of any zone and length.</summary>
-/// <remarks>Keys larger than 66 bytes are unsupported. The default value is not a valid complete key. Storage-zone keys of the fixed 66-byte layout are also represented by <see cref="PbtStorageFullKey"/>.</remarks>
+/// <remarks>Keys larger than 66 bytes are unsupported. The default value is not a valid complete key. Storage-zone keys of the fixed 66-byte layout are also represented by <see cref="PbtStoragePath"/>.</remarks>
 public readonly struct PbtStorageTreeKey : IPbtKey<PbtStorageTreeKey>
 {
     public const int MaxLength = 66;
@@ -35,10 +35,10 @@ public readonly struct PbtStorageTreeKey : IPbtKey<PbtStorageTreeKey>
     }
 
     /// <summary>Widens a key without changing its bytes.</summary>
-    public static explicit operator PbtStorageTreeKey(in PbtFullKey key) => new(key.Bytes);
+    public static explicit operator PbtStorageTreeKey(in PbtPath key) => new(key.Bytes);
 
-    /// <summary>Narrows a key, rejecting any length other than <see cref="PbtFullKey.KeyLength"/>.</summary>
-    public static explicit operator PbtFullKey(in PbtStorageTreeKey key) => new(key.Bytes);
+    /// <summary>Narrows a key, rejecting any length other than <see cref="PbtPath.KeyLength"/>.</summary>
+    public static explicit operator PbtPath(in PbtStorageTreeKey key) => new(key.Bytes);
 
     public int Length { get; }
     public int BitLength => Length * 8;

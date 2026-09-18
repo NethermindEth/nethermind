@@ -15,20 +15,20 @@ public static class Eip8297KeyDerivation
     public const int AccountKeyLength = 34;
     public const int StorageKeyLength = 66;
 
-    public static PbtFullKey AccountKey(ReadOnlySpan<byte> address32, byte subIndex)
+    public static PbtPath AccountKey(ReadOnlySpan<byte> address32, byte subIndex)
     {
         Validate32(address32, nameof(address32));
         return AccountKey(Blake3Hash.Hash(address32), subIndex);
     }
 
     /// <summary><see cref="AccountKey(ReadOnlySpan{byte}, byte)"/> reusing a precomputed address hash.</summary>
-    public static PbtFullKey AccountKey(in ValueHash256 addressHash, byte subIndex)
+    public static PbtPath AccountKey(in ValueHash256 addressHash, byte subIndex)
     {
         Span<byte> key = stackalloc byte[AccountKeyLength];
         key[0] = AccountZone;
         addressHash.Bytes.CopyTo(key[1..]);
         key[^1] = subIndex;
-        return new PbtFullKey(key);
+        return new PbtPath(key);
     }
 
     public static PbtStorageTreeKey StorageKey(ReadOnlySpan<byte> address32, in UInt256 slot)
@@ -62,10 +62,10 @@ public static class Eip8297KeyDerivation
         return new PbtStorageTreeKey(key);
     }
 
-    public static PbtFullKey CodeKey(ReadOnlySpan<byte> address32, ReadOnlySpan<byte> codeHash32, int chunkId) =>
+    public static PbtPath CodeKey(ReadOnlySpan<byte> address32, ReadOnlySpan<byte> codeHash32, int chunkId) =>
         OverflowCodeKey(codeHash32, chunkId);
 
-    public static PbtFullKey OverflowCodeKey(ReadOnlySpan<byte> codeHash32, int chunkId)
+    public static PbtPath OverflowCodeKey(ReadOnlySpan<byte> codeHash32, int chunkId)
     {
         Validate32(codeHash32, nameof(codeHash32));
         if (chunkId < 0) throw new ArgumentOutOfRangeException(nameof(chunkId));
@@ -77,7 +77,7 @@ public static class Eip8297KeyDerivation
         key[0] = CodeZone;
         digest.Bytes.CopyTo(key[1..]);
         key[^1] = (byte)chunkId;
-        return new PbtFullKey(key);
+        return new PbtPath(key);
     }
 
     private static void Validate32(ReadOnlySpan<byte> value, string parameterName)

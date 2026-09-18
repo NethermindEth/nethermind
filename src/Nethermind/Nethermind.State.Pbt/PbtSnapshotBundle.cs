@@ -23,9 +23,9 @@ public sealed class PbtSnapshotBundle(
     PbtTrieNodeCache? trieNodeCache = null) : IDisposable
 {
     private PbtSnapshotContent? _writeBuffer = resourcePool.GetSnapshotContent(usage);
-    private readonly PbtWriteBatchBuilder<PbtFullKey> _accountBatch = resourcePool.GetWriteBatch(usage);
-    private readonly PbtWriteBatchBuilder<PbtFullKey> _codeBatch = resourcePool.GetWriteBatch(usage);
-    private readonly PbtWriteBatchBuilder<PbtStorageFullKey> _storageBatch = resourcePool.GetStorageWriteBatch(usage);
+    private readonly PbtWriteBatchBuilder<PbtPath> _accountBatch = resourcePool.GetWriteBatch(usage);
+    private readonly PbtWriteBatchBuilder<PbtPath> _codeBatch = resourcePool.GetWriteBatch(usage);
+    private readonly PbtWriteBatchBuilder<PbtStoragePath> _storageBatch = resourcePool.GetStorageWriteBatch(usage);
     private readonly Lock _accountLock = new();
     private readonly Dictionary<ValueHash256, AwaitedCode> _accountsAwaitingCode = [];
     // Read-through memo of bytecode served by the read-only base; never snapshot content, so it is not persisted.
@@ -48,10 +48,10 @@ public sealed class PbtSnapshotBundle(
 
     internal int PendingMutationCount => _accountBatch.Count + _codeBatch.Count + _storageBatch.Count;
 
-    private void SetPbtLeaf(PbtFullKey key, ValueHash256? value)
+    private void SetPbtLeaf(PbtPath key, ValueHash256? value)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        int partition = PbtWriteBatchSet<PbtFullKey>.PartitionOf(key);
+        int partition = PbtWriteBatchSet<PbtPath>.PartitionOf(key);
         if (partition == (int)PbtPartition.Account) _accountBatch.SetLeaf(key, value);
         else if (partition == (int)PbtPartition.Code) _codeBatch.SetLeaf(key, value);
         else throw new ArgumentException("A canonical account or code key is required.", nameof(key));
@@ -60,8 +60,8 @@ public sealed class PbtSnapshotBundle(
     private void SetPbtLeaf(in PbtStorageTreeKey key, ValueHash256? value)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        if (PbtWriteBatchSet<PbtStorageTreeKey>.PartitionOf(key) == (int)PbtPartition.Storage) _storageBatch.SetLeaf((PbtStorageFullKey)key, value);
-        else SetPbtLeaf((PbtFullKey)key, value);
+        if (PbtWriteBatchSet<PbtStorageTreeKey>.PartitionOf(key) == (int)PbtPartition.Storage) _storageBatch.SetLeaf((PbtStoragePath)key, value);
+        else SetPbtLeaf((PbtPath)key, value);
     }
 
     internal PbtPartitionBatches PrepareLeafChanges()

@@ -35,7 +35,7 @@ public class Eip8297CanonicalTreeTests
         {
             using PbtWriteBatchBuilder<PbtTreeKey> small = new(0);
             using PbtWriteBatchBuilder<PbtStorageTreeKey> wide = new(0);
-            using PbtWriteBatchBuilder<PbtFullKey> fixedLength = new(0);
+            using PbtWriteBatchBuilder<PbtPath> fixedLength = new(0);
             for (int index = 0; index < 64; index++)
             {
                 byte[] key = new byte[34];
@@ -46,24 +46,24 @@ public class Eip8297CanonicalTreeTests
                 ValueHash256? leaf = value is null ? null : new ValueHash256(value);
                 small.Set(new PbtTreeKey(key), new ValueHash256(Value(1)));
                 wide.Set(new PbtStorageTreeKey(key), new ValueHash256(Value(1)));
-                fixedLength.Set(new PbtFullKey(key), new ValueHash256(Value(1)));
+                fixedLength.Set(new PbtPath(key), new ValueHash256(Value(1)));
                 if (zeroDeletes)
                 {
                     small.Set(new PbtTreeKey(key), default);
                     wide.Set(new PbtStorageTreeKey(key), default);
-                    fixedLength.Set(new PbtFullKey(key), default);
+                    fixedLength.Set(new PbtPath(key), default);
                 }
                 else
                 {
                     small.Delete(new PbtTreeKey(key));
                     wide.Delete(new PbtStorageTreeKey(key));
-                    fixedLength.Delete(new PbtFullKey(key));
+                    fixedLength.Delete(new PbtPath(key));
                 }
                 if (leaf is { } nonzeroValue)
                 {
                     small.Set(new PbtTreeKey(key), nonzeroValue);
                     wide.Set(new PbtStorageTreeKey(key), nonzeroValue);
-                    fixedLength.Set(new PbtFullKey(key), nonzeroValue);
+                    fixedLength.Set(new PbtPath(key), nonzeroValue);
                 }
                 if (value is null) oracle.Delete(key);
                 else oracle.Insert(key, value);
@@ -75,8 +75,8 @@ public class Eip8297CanonicalTreeTests
                 ? TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.UpdateRoot(wideStore, wideRoot, PbtWriteBatchSet<PbtStorageTreeKey>.Create(wide.Build()))
                 : TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.UpdateRoot(wideStore, wideRoot, wide.Build());
             fixedRoot = prepared
-                ? TrieUpdater<PbtFullKey, PbtNodePath>.UpdateRoot(fixedStore, fixedRoot, PbtWriteBatchSet<PbtFullKey>.Create(fixedLength.Build()))
-                : TrieUpdater<PbtFullKey, PbtNodePath>.UpdateRoot(fixedStore, fixedRoot, fixedLength.Build());
+                ? TrieUpdater<PbtPath, PbtNodePath>.UpdateRoot(fixedStore, fixedRoot, PbtWriteBatchSet<PbtPath>.Create(fixedLength.Build()))
+                : TrieUpdater<PbtPath, PbtNodePath>.UpdateRoot(fixedStore, fixedRoot, fixedLength.Build());
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(smallRoot, Is.EqualTo(wideRoot), $"round {round}");
@@ -205,13 +205,13 @@ public class Eip8297CanonicalTreeTests
     public void Updater_releases_consumed_lists_on_success_and_failure(int mode, bool fail)
     {
         CountingPbtStore store = new() { ThrowOnApply = fail };
-        using ArrayPoolList<PbtWriteOperation<PbtFullKey>> operations = new(1);
-        operations.Add(PbtWriteOperation<PbtFullKey>.Set(new PbtFullKey(new byte[PbtFullKey.KeyLength]), new ValueHash256(Value(1))));
+        using ArrayPoolList<PbtWriteOperation<PbtPath>> operations = new(1);
+        operations.Add(PbtWriteOperation<PbtPath>.Set(new PbtPath(new byte[PbtPath.KeyLength]), new ValueHash256(Value(1))));
         using ArrayPoolList<int> table = new(17, 17);
         table[0] = 1;
         table[1] = 1;
-        using PbtWriteBatch<PbtFullKey> batch = new(operations, table, mode == 2 ? 2 : 0);
-        using PbtWriteBatchSet<PbtFullKey>? prepared = mode == 1 ? PbtWriteBatchSet<PbtFullKey>.Create(batch) : null;
+        using PbtWriteBatch<PbtPath> batch = new(operations, table, mode == 2 ? 2 : 0);
+        using PbtWriteBatchSet<PbtPath>? prepared = mode == 1 ? PbtWriteBatchSet<PbtPath>.Create(batch) : null;
         Action update = () =>
         {
             if (mode == 2) TrieUpdater.UpdateRoot(store, default, new PbtPartitionBatches { Account = batch }, ParallelUnbalancedWork.DefaultOptions, null);
@@ -856,12 +856,12 @@ public class Eip8297CanonicalTreeTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new PbtStorageTreeKey(new byte[PbtStorageTreeKey.MaxLength + 1]));
         Assert.Throws<ArgumentException>(() => new PbtBitPrefix([0x01], 1));
 
-        Assert.That(PbtStorageFullKey.IsFixedLength, Is.True);
-        Assert.Throws<ArgumentOutOfRangeException>(() => new PbtStorageFullKey(new byte[PbtStorageFullKey.KeyLength - 1]));
-        Assert.Throws<ArgumentOutOfRangeException>(() => _ = (PbtStorageFullKey)Eip8297KeyDerivation.StorageKey(new byte[32], 1));
+        Assert.That(PbtStoragePath.IsFixedLength, Is.True);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new PbtStoragePath(new byte[PbtStoragePath.KeyLength - 1]));
+        Assert.Throws<ArgumentOutOfRangeException>(() => _ = (PbtStoragePath)Eip8297KeyDerivation.StorageKey(new byte[32], 1));
         PbtStorageTreeKey slotKey = Eip8297KeyDerivation.StorageKey(new byte[32], PbtKeyDerivation.HeaderStorageOffset);
-        Assert.That(slotKey.Length, Is.EqualTo(PbtStorageFullKey.KeyLength));
-        Assert.That((PbtStorageTreeKey)(PbtStorageFullKey)slotKey, Is.EqualTo(slotKey));
+        Assert.That(slotKey.Length, Is.EqualTo(PbtStoragePath.KeyLength));
+        Assert.That((PbtStorageTreeKey)(PbtStoragePath)slotKey, Is.EqualTo(slotKey));
 
         using PbtTreeHarness tree = new();
         tree.ApplyBatch([([0x12], Value(1))]);
@@ -1122,11 +1122,11 @@ public class Eip8297CanonicalTreeTests
     {
         byte[] address32 = new byte[32];
         address32[0] = 0xA5;
-        PbtFullKey account = Eip8297KeyDerivation.AccountKey(address32, 0);
+        PbtPath account = Eip8297KeyDerivation.AccountKey(address32, 0);
         PbtStorageTreeKey headerStorage = Eip8297KeyDerivation.StorageKey(address32, new Nethermind.Int256.UInt256(63));
         PbtStorageTreeKey overflowStorage = Eip8297KeyDerivation.StorageKey(address32, new Nethermind.Int256.UInt256(64));
-        PbtFullKey firstGroupCode = Eip8297KeyDerivation.CodeKey(address32, Value(9), 5);
-        PbtFullKey code = Eip8297KeyDerivation.CodeKey(address32, Value(9), 300);
+        PbtPath firstGroupCode = Eip8297KeyDerivation.CodeKey(address32, Value(9), 5);
+        PbtPath code = Eip8297KeyDerivation.CodeKey(address32, Value(9), 300);
         byte[] expectedAddressHash = Hash(address32);
         using (Assert.EnterMultipleScope())
         {
@@ -1321,24 +1321,24 @@ public class Eip8297CanonicalTreeTests
         ValueHash256 preparedRoot;
         if (accumulated)
         {
-            using PbtWriteBatchBuilder<PbtFullKey> account = new(2);
-            using PbtWriteBatchBuilder<PbtFullKey> code = new(2);
-            using PbtWriteBatchBuilder<PbtStorageFullKey> storage = new(2);
+            using PbtWriteBatchBuilder<PbtPath> account = new(2);
+            using PbtWriteBatchBuilder<PbtPath> code = new(2);
+            using PbtWriteBatchBuilder<PbtStoragePath> storage = new(2);
             foreach (PbtWriteOperation<PbtStorageTreeKey> operation in batch.Operations)
             {
                 switch (operation.Key.Bytes[0])
                 {
                     case 0x00:
-                        account.SetLeaf((PbtFullKey)operation.Key, null);
-                        account.SetLeaf((PbtFullKey)operation.Key, operation.Value);
+                        account.SetLeaf((PbtPath)operation.Key, null);
+                        account.SetLeaf((PbtPath)operation.Key, operation.Value);
                         break;
                     case 0x01:
-                        code.SetLeaf((PbtFullKey)operation.Key, null);
-                        code.SetLeaf((PbtFullKey)operation.Key, operation.Value);
+                        code.SetLeaf((PbtPath)operation.Key, null);
+                        code.SetLeaf((PbtPath)operation.Key, operation.Value);
                         break;
                     case 0xFF:
-                        storage.SetLeaf((PbtStorageFullKey)operation.Key, null);
-                        storage.SetLeaf((PbtStorageFullKey)operation.Key, operation.Value);
+                        storage.SetLeaf((PbtStoragePath)operation.Key, null);
+                        storage.SetLeaf((PbtStoragePath)operation.Key, operation.Value);
                         break;
                 }
             }

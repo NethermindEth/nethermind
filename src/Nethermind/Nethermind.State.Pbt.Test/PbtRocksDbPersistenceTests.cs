@@ -104,7 +104,7 @@ public class PbtRocksDbPersistenceTests
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
-        PbtFullKey leaf = PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey);
+        PbtPath leaf = PbtStateKey.Account(TestItem.AddressA, PbtKeyDerivation.BasicDataLeafKey);
         PbtNodePath path = new([], 0);
         ValueHash256 value = TestItem.KeccakA.ValueHash256;
         byte[] node = PbtNodeCodec.EncodeLeaf(leaf, value.Bytes);
