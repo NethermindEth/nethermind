@@ -48,13 +48,13 @@ public static partial class TrieUpdater
     /// <summary>Folds disjoint partitions concurrently before merging their shared ancestors.</summary>
     /// <remarks>
     /// The zones and the touched buckets of every frame wide enough to fan out, merged into runs of at least
-    /// <paramref name="minOperationsPerWorker"/> operations, share <paramref name="foldQuota"/>: a fan-out starts a
-    /// parallel loop only while it has a spare worker and folds serially on the calling thread otherwise, and every
-    /// loop worker charges itself to it for as long as it runs, so a quota of one folds everything serially. Each
-    /// zone's fold time is observed on <paramref name="partitionFoldTime"/> labelled by partition, so an imbalance
-    /// between them is visible. The
-    /// supplied store must support concurrent reads and writes. Failed folds may leave partial writes; the caller
-    /// owns failure isolation and must not reuse that state without recovery.
+    /// <paramref name="minOperationsPerWorker"/> operations, share <paramref name="foldQuota"/>: a fan-out folds its
+    /// parts on the calling thread while no slot is free, and the first slot it takes admits a parallel loop over
+    /// the parts still left, whose workers charge themselves as they start; a quota of one folds everything
+    /// serially. Each zone's fold time is observed on <paramref name="partitionFoldTime"/> labelled by partition, so
+    /// an imbalance between them is visible. The supplied store must support concurrent reads and writes. Failed
+    /// folds may leave partial writes; the caller owns failure isolation and must not reuse that state without
+    /// recovery.
     /// </remarks>
     [SkipLocalsInit]
     internal static ValueHash256 UpdateRoot(
@@ -119,21 +119,32 @@ public static partial class TrieUpdater
                         worker.Current = TakeBoundary(ref sharedReader, sharedWriter, sharedPath, ref zoneFrontiers.AsSpan()[slot], worker.Zone & 15, sourceBuffer).Materialize();
                     }
 
-                    if (workers.Count > 1 && HasSpareWorker(foldQuota))
+                    int nextWorker = 0;
+                    for (; nextWorker < workers.Count - 1 && !foldQuota.TryRequestConcurrencyQuota(); nextWorker++)
+                        workers[nextWorker].Fold();
+                    if (nextWorker < workers.Count - 1)
                     {
                         int callerThreadId = Environment.CurrentManagedThreadId;
-                        Parallel.ForEach(workers,
-                            () => TakeWorkerQuota(foldQuota, callerThreadId),
-                            static (worker, _, tookQuota) =>
-                            {
-                                worker.Fold();
-                                return tookQuota;
-                            },
-                            tookQuota => ReturnWorkerQuota(foldQuota, tookQuota));
+                        int admissionSlotClaimed = 0;
+                        try
+                        {
+                            Parallel.For(nextWorker, workers.Count,
+                                () => TakeWorkerQuota(foldQuota, callerThreadId, ref admissionSlotClaimed),
+                                (index, _, tookQuota) =>
+                                {
+                                    workers[index].Fold();
+                                    return tookQuota;
+                                },
+                                tookQuota => ReturnWorkerQuota(foldQuota, tookQuota));
+                        }
+                        finally
+                        {
+                            ReturnAdmissionSlot(foldQuota, ref admissionSlotClaimed);
+                        }
                     }
-                    else
+                    else if (nextWorker < workers.Count)
                     {
-                        foreach (PartitionFold worker in workers) worker.Fold();
+                        workers[nextWorker].Fold();
                     }
 
                     foreach (PartitionFold worker in workers)
