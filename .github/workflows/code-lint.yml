@@ -86,7 +86,7 @@ jobs:
         run: python -m unittest discover -s scripts/ci -p 'test*.py' -v
 
       - name: Test code review publication guards
-        run: node --test scripts/ci/test-open-code-review.cjs
+        run: node --test scripts/ci/test-open-code-review*.cjs
 
   frame-verify-gas-scripts:
     name: Test frame-verify-gas artifact fetch

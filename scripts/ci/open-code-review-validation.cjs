@@ -78,7 +78,7 @@ function finding(repository, changes, value) {
       value.end_line - value.start_line > 10 || !string(value.content) ||
       !findingSchema.properties.severity.enum.includes(value.severity) ||
       !findingSchema.properties.category.enum.includes(value.category) ||
-      !changes.some(change => change.path === value.path && change.ranges.some(range =>
+      !changes.some(change => change.path === value.path && [...change.ranges, ...change.deletion_ranges].some(range =>
         value.start_line >= range.start && value.start_line <= range.end)) ||
       !repository.hasEvidence({ path: value.path, snapshot: 'head', start_line: value.start_line, end_line: value.end_line })) {
     fail('Finding must cite a read source range anchored in changed code');
@@ -87,7 +87,8 @@ function finding(repository, changes, value) {
   return Object.fromEntries(Object.keys(findingSchema.properties).map(key => [key, value[key]]));
 }
 
-async function runPass({ phase, repository, context, candidates, prompt, ask, usage, budget, deadline, maxRounds = 10 }) {
+async function runPass({ phase, repository, context, candidates, prompt, ask, usage, budget, deadline,
+  maxRounds = 10, maxOutputTokens = 32768 }) {
   const changes = repository.changes();
   const tools = toolsFor(phase);
   const suppliedContext = phase === 'validation' ? { ...context, obligations: undefined } : context;
@@ -96,6 +97,7 @@ async function runPass({ phase, repository, context, candidates, prompt, ask, us
       (phase === 'validation' ? ' Submit only candidate decisions; do not repeat discovery checks.' : '') },
     { role: 'user', content: JSON.stringify({ context: suppliedContext, ...(phase === 'validation' ? { candidates } : {}) }) },
   ];
+  let outputLimitRetries = 0;
   // Two bounded repairs accommodate malformed JSON/citations, including one last evidence read.
   for (let turn = 0; turn < maxRounds + 2; turn++) {
     if (Date.now() >= deadline) fail('Validation time limit reached');
@@ -104,7 +106,7 @@ async function runPass({ phase, repository, context, candidates, prompt, ask, us
     if (turn === maxRounds - 1 || turn === maxRounds + 1) messages.push({ role: 'user', content: 'Submit the review now. Mark unresolved checks/candidates unverified.' });
     // Some reasoning providers reject forced tool_choice; keep their default selection.
     const response = await ask({ messages, tools: turn === maxRounds - 1 || turn === maxRounds + 1
-      ? tools.filter(tool => tool.function.name === 'submit_review') : tools, max_tokens: 16384 },
+      ? tools.filter(tool => tool.function.name === 'submit_review') : tools, max_tokens: maxOutputTokens },
     Math.min(120000, deadline - Date.now()));
     const counted = response.usage;
     if (!Number.isSafeInteger(counted?.prompt_tokens) || !Number.isSafeInteger(counted?.completion_tokens) ||
@@ -115,7 +117,13 @@ async function runPass({ phase, repository, context, candidates, prompt, ask, us
     if (usage.input + usage.output > budget) fail('Validation token budget exhausted');
     const message = response.choices?.[0]?.message;
     const calls = message?.tool_calls;
-    if (response.choices?.[0]?.finish_reason === 'length') fail('Validation response reached its output limit');
+    if (response.choices?.[0]?.finish_reason === 'length') {
+      if (outputLimitRetries++ || turn === maxRounds + 1) fail('Validation response reached its output limit');
+      usage.output_limit_retries = (usage.output_limit_retries || 0) + 1;
+      // A truncated response may contain partial tool calls. Do not execute or replay any of it.
+      messages.push({ role: 'user', content: 'The response was truncated. Retry with concise tool arguments and explanations. Use focused source reads; submit unresolved items as unverified. Do not repeat a long analysis or add a prose summary.' });
+      continue;
+    }
     if (!Array.isArray(calls) || calls.length === 0 || calls.length > 8 ||
         calls.some(call => !string(call.id, 200) || call.type !== 'function' || !string(call.function?.arguments, 100000)) ||
         new Set(calls.map(call => call.id)).size !== calls.length) fail('Validation did not return valid tool calls');
@@ -194,12 +202,14 @@ async function runPass({ phase, repository, context, candidates, prompt, ask, us
 }
 
 async function validate({ root, directory, token = process.env.OCR_LLM_TOKEN,
-  budget = Number(process.env.OCR_VALIDATION_TOKEN_BUDGET || 1000000), ask, duration = 8 * 60000 }) {
+  budget = Number(process.env.OCR_VALIDATION_TOKEN_BUDGET || 1000000),
+  maxOutputTokens = Number(process.env.OCR_VALIDATION_MAX_OUTPUT_TOKENS || 32768), ask, duration = 8 * 60000 }) {
   const usage = { input: 0, output: 0, requests: 0 };
   const report = { schema_version: 'nethermind.ocr-validation/v1', complete: false, usage };
   fs.rmSync(path.join(directory, 'validated-result.json'), { force: true });
   try {
     if (![500000, 1000000, 2000000].includes(budget)) fail('Unsupported validation token budget');
+    if (![8192, 16384, 32768, 65536].includes(maxOutputTokens)) fail('Unsupported validation response token limit');
     const target = read(directory, 'target');
     const context = read(directory, 'context');
     const primary = read(directory, 'result');
@@ -221,7 +231,7 @@ async function validate({ root, directory, token = process.env.OCR_LLM_TOKEN,
     for (const source of context.related) {
       if (repository.read(source).content !== source.content) fail('Initial source evidence does not match captured commit');
     }
-    const common = { repository, context, prompt, usage, budget, deadline: Date.now() + duration,
+    const common = { repository, context, prompt, usage, budget, maxOutputTokens, deadline: Date.now() + duration,
       ask: ask || ((body, timeout) => completion(config, token, body, timeout)) };
     const discovery = await runPass({ ...common, phase: 'discovery' });
     report.checks = discovery.checks;

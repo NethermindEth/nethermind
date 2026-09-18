@@ -211,6 +211,7 @@ jobs:
         env:
           OCR_LLM_TOKEN: ${{ secrets[vars.OCR_API_KEY_SECRET || 'OCR_LITELLM_API_KEY'] }}
           OCR_VALIDATION_TOKEN_BUDGET: ${{ vars.OCR_VALIDATION_TOKEN_BUDGET || '1000000' }}
+          OCR_VALIDATION_MAX_OUTPUT_TOKENS: ${{ vars.OCR_VALIDATION_MAX_OUTPUT_TOKENS || '32768' }}
         run: node scripts/ci/open-code-review-validation.cjs "$GITHUB_WORKSPACE" "$OCR_DIRECTORY"
 
       - name: Validate and publish review

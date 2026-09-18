@@ -158,6 +158,10 @@ async function publish({ github, context, core, directory, enabled, postReview }
           [validation.usage?.input, validation.usage?.output].every(value => Number.isSafeInteger(value) && value >= 0)) {
         report.markdown += '\n\nReported validation tokens before completion failed: ' + validation.usage.input +
           ' input, ' + validation.usage.output + ' output.';
+        const publicReasons = ['Validation response reached its output limit', 'Validation token budget exhausted',
+          'Validation time limit reached', 'Validation request limit reached before a valid submission',
+          'Some assigned checks or candidate findings remain unverified'];
+        if (publicReasons.includes(validation.reason)) report.markdown += '\nValidation stopped: ' + validation.reason + '.';
       }
     } catch { /* Missing validation is already an incomplete outcome. */ }
   }

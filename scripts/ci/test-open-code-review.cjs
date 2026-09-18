@@ -272,6 +272,17 @@ for (const [name, mutate] of Object.entries({
   });
 }
 
+for (const reason of ['Validation response reached its output limit', 'private gateway detail']) {
+  test('incomplete summary only discloses allowlisted validation reasons: ' + reason, async t => {
+    const f = fixture(t);
+    f.validation.mutate = report => Object.assign(report, { complete: false, reason });
+    const report = await f.run();
+    assert.equal(report.complete, false);
+    assert.equal(report.markdown.includes('Validation stopped:'), reason.startsWith('Validation response'));
+    assert.doesNotMatch(report.markdown, /private gateway detail/);
+  });
+}
+
 test('complete zero-finding review accounts for every selected file', t => {
   const f = fixture(t);
   const report = assess(f.result, f.preview, f.target, 0, f.config.model);

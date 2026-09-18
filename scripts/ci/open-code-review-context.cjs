@@ -8,6 +8,9 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const SHA = /^[a-f0-9]{40}$/;
+// Keep this list aligned with the pinned OCR release; project-specific includes are additive.
+const sourceExtensions = new Set([...require('../../.github/open-code-review/source-types.json'),
+  '.csproj', '.props', '.targets', '.sln', '.slnx', '.md']);
 const clip = (value, limit) => String(value || '').slice(0, limit);
 const isTest = file => /(?:^|[./_-])(?:tests?|benchmarks?)(?:[./_-]|$)|(?:Tests?|Benchmarks?)\.[^.]+$/i.test(file);
 
@@ -18,7 +21,7 @@ function sourcePath(file) {
     !/(?:^|\/)(?:\.git|\.env[^/]*|bin|obj|node_modules|secrets?)(?:\/|$)/i.test(file) &&
     !/\.(?:pem|key|pfx|p12|keystore)$/i.test(file) &&
     !/^src\/(?:tests|bench_precompiles)\//.test(file) &&
-    /\.(?:cs|csproj|props|targets|slnx?|js|cjs|mjs|ts|tsx|json|ya?ml|md|sh|py|go|rs)$/i.test(file);
+    sourceExtensions.has(path.posix.extname(file).toLowerCase());
 }
 
 class Repository {
@@ -77,8 +80,8 @@ class Repository {
         /[\x00-\x1f\x7f]/.test(symbol)) throw new Error('Invalid source search');
     const ref = this.ref(snapshot);
     let output;
-    try { output = this.git(['grep', '-n', '-I', '-F', '-e', symbol, ref, '--', ':(glob)**/*.cs',
-      ':(glob)**/*.cjs', ':(glob)**/*.js', ':(glob)**/*.yml', ':(glob)**/*.yaml']); }
+    try { output = this.git(['grep', '-n', '-I', '-F', '-e', symbol, ref, '--',
+      ...[...sourceExtensions].map(extension => ':(icase,glob)**/*' + extension)]); }
     catch (error) { if (error.status === 1) return { matches: [], truncated: false }; throw new Error('Source search failed'); }
     const matches = output.split('\n').flatMap(line => {
       const match = /^(.+):(\d+):(.*)$/.exec(line.slice(ref.length + 1));
@@ -112,14 +115,24 @@ class Repository {
       patchBytes += Buffer.byteLength(patch);
       if (patchBytes > 8 * 1024 * 1024) throw new Error('Changed source exceeds the validation context limit');
       const ranges = [];
+      const deletion_ranges = [];
       let line = 0;
+      let hunkStart = 0;
+      let hunkEnd = -1;
       for (const text of patch.split('\n')) {
-        const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(text);
-        if (hunk) line = Number(hunk[1]);
+        const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(text);
+        if (hunk) {
+          line = hunkStart = Number(hunk[1]);
+          hunkEnd = hunkStart + Number(hunk[2] ?? 1) - 1;
+        }
         else if (line && text.startsWith('+')) { ranges.push({ start: line, end: line }); line++; }
+        else if (line && text.startsWith('-') && hunkEnd >= hunkStart) {
+          // A removed guard has no added line: anchor on surviving code on either side of the gap.
+          deletion_ranges.push({ start: Math.max(hunkStart, line - 1), end: Math.min(line, hunkEnd) });
+        }
         else if (line && text.startsWith(' ')) line++;
       }
-      return { path: file, patch, ranges };
+      return { path: file, patch, ranges, deletion_ranges };
     });
   }
 

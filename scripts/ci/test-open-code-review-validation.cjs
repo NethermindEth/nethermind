@@ -13,7 +13,10 @@ const { Repository, sourcePath, capturePrContext, buildContext, background } = r
 const { completion, runPass, validate, verifyValidation } = require('./open-code-review-validation.cjs');
 const { prepare } = require('./open-code-review.cjs');
 
-function fixture(t) {
+function fixture(t, { file = 'Blockchain/Tree.cs',
+  before = 'class Tree\n{\n    public void Rewind()\n    {\n        BestSuggested = storedTip;\n    }\n}\n',
+  after = 'class Tree\n{\n    public void Rewind()\n    {\n        BestSuggested = rewindTarget;\n    }\n}\n',
+  lines = { start_line: 3, end_line: 6 } } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ocr-validation-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -21,9 +24,9 @@ function fixture(t) {
   git(['config', 'user.name', 'OCR test']);
   git(['config', 'user.email', 'ocr@example.invalid']);
   git(['config', 'commit.gpgsign', 'false']);
-  const file = 'Blockchain/Tree.cs';
   fs.mkdirSync(path.join(root, 'Blockchain'));
-  fs.writeFileSync(path.join(root, file), 'class Tree\n{\n    public void Rewind()\n    {\n        BestSuggested = storedTip;\n    }\n}\n');
+  fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
+  fs.writeFileSync(path.join(root, file), before);
   fs.writeFileSync(path.join(root, 'Blockchain/Tree.Initializer.cs'), 'class Initializer\n{\n    public void Reload()\n    {\n        BestSuggested = storedTip;\n    }\n}\n');
   fs.writeFileSync(path.join(root, 'Blockchain/Tree.Recovery.cs'), 'class Recovery\n{\n    public void Recalculate()\n    {\n        initializer.Reload();\n    }\n}\n');
   fs.writeFileSync(path.join(root, '.env'), 'NEVER_READ=secret');
@@ -31,7 +34,7 @@ function fixture(t) {
   git(['add', '.']);
   git(['commit', '-qm', 'base']);
   const base = git(['rev-parse', 'HEAD']);
-  fs.writeFileSync(path.join(root, file), 'class Tree\n{\n    public void Rewind()\n    {\n        BestSuggested = rewindTarget;\n    }\n}\n');
+  fs.writeFileSync(path.join(root, file), after);
   git(['add', '.']);
   git(['commit', '-qm', 'rewind']);
   const target = { number: 123, head: git(['rev-parse', 'HEAD']), base, merge_base: base };
@@ -52,7 +55,7 @@ function fixture(t) {
   write('target', target); write('context', context); write('result', primary);
   write('preview', { files: [{ path: file, will_review: true }] });
   fs.writeFileSync(path.join(directory, 'exit-code.txt'), '0');
-  const ref = { path: file, snapshot: 'head', start_line: 3, end_line: 6 };
+  const ref = { path: file, snapshot: 'head', ...lines };
   const finding = { path: file, start_line: 5, end_line: 5, severity: 'medium', category: 'bug',
     content: 'Reload restores the discarded tip. Rewind then reload and suggest a fresh block to exercise this path; scenario not executed.' };
   const checks = context.obligations.map(check => ({ id: check.id, status: 'checked', explanation: 'Traced rewind and reload writers.', evidence: [ref] }));
@@ -204,13 +207,25 @@ for (const kind of ['budget', 'missing usage', 'time', 'length', 'unverified', '
     const report = await validate({ ...f, duration: kind === 'time' ? -1 : 60000, ask: async () => {
       called = true;
       if (kind === 'gateway error') throw new Error('private model endpoint token');
-      const result = submit({ checks: f.checks.map(check => ({ ...check, status: 'unverified', evidence: [] })), findings: [] });
+      const result = submit({ checks: kind === 'unverified'
+        ? f.checks.map(check => ({ ...check, status: 'unverified', evidence: [] })) : f.checks, findings: [] });
       if (kind === 'budget') result.usage.prompt_tokens = 1000001;
       if (kind === 'missing usage') delete result.usage;
       if (kind === 'length') result.choices[0].finish_reason = 'length';
       return result;
     } });
     assert.equal(report.complete, false);
+    const reasons = {
+      budget: 'Validation token budget exhausted',
+      'missing usage': 'Validation gateway did not report token usage',
+      time: 'Validation time limit reached',
+      length: 'Validation response reached its output limit',
+      unverified: 'Some assigned checks or candidate findings remain unverified',
+      'primary incomplete': 'Primary OCR review is incomplete; validation was skipped',
+      'wrong context': 'Validation context does not match captured commits',
+      'gateway error': 'Validation could not complete safely',
+    };
+    assert.equal(report.reason, reasons[kind]);
     assert.equal(verifyValidation(f.directory, f.target, f.primary), null);
     assert.equal(fs.existsSync(path.join(f.directory, 'validated-result.json')), false);
     assert.doesNotMatch(report.reason, /private model endpoint token/);
@@ -235,6 +250,75 @@ test('gateway request protects routing fields, preserves options, refuses redire
     error => /HTTP 401/.test(error.message) && !/private/.test(error.message));
   await assert.rejects(completion(config, 'private-token', {}, 1000, async () => { throw new Error('private-token'); }),
     error => !/private/.test(error.message));
+});
+
+for (const [name, before, after, anchor] of [
+  ['middle', 'function use(value) {\n  if (value == null) return;\n  return value.member;\n}\n',
+    'function use(value) {\n  return value.member;\n}\n', 2],
+  ['end', 'perform();\ncleanup();\n', 'perform();\n', 1],
+  ['start', 'initialize();\nperform();\n', 'perform();\n', 1],
+]) {
+  test('deletion-only finding can be confirmed beside removed code: ' + name, async t => {
+    const f = fixture(t, { file: 'example.js', before, after, lines: { start_line: anchor, end_line: anchor } });
+    const refs = [f.ref, { ...f.ref, snapshot: 'base', start_line: 1, end_line: before.trimEnd().split('\n').length }];
+    refs.forEach(ref => f.repository.read(ref));
+    assert.deepEqual(f.repository.changes().find(change => change.path === f.file).ranges, []);
+    const candidate = { id: 'deletion', finding: { ...f.finding, start_line: anchor, end_line: anchor,
+      content: 'Removing the operation breaks the supported caller. The base and head sources establish the missing operation.' } };
+    const result = await runPass({ phase: 'validation', repository: f.repository, context: f.context, candidates: [candidate],
+      prompt: 'trusted', usage: { input: 0, output: 0, requests: 0 }, budget: 1000000, deadline: Date.now() + 10000,
+      ask: async () => submit({ decisions: [{ id: candidate.id, verdict: 'confirmed', explanation: 'The removed operation is required.', evidence: refs }] }) });
+    assert.deepEqual(result.decisions[0].finding, candidate.finding);
+  });
+}
+
+for (const [file, before] of [
+  ['layout.xml', '<layout value="before"/>\n'], ['settings.toml', 'value = "before"\n'],
+  ['update.ps1', 'Write-Output "before"\n'], ['Contract.sol', 'string constant value = "before";\n'],
+]) {
+  test('native source type is searchable, readable and valid for findings: ' + file, async t => {
+    const f = fixture(t, { file, before, after: before.replace('before', 'after'), lines: { start_line: 1, end_line: 1 } });
+    assert.ok(f.repository.search({ symbol: 'after' }).matches.some(hit => hit.path === file));
+    const candidate = { ...f.finding, start_line: 1, end_line: 1 };
+    f.primary.comments.push(candidate);
+    f.write('result', f.primary);
+    const report = await validate({ ...f, ask: async body => {
+      const input = JSON.parse(body.messages[1].content);
+      if (!body.messages.some(message => message.role === 'tool')) return response([['read_source', f.ref]]);
+      return input.candidates ? submit({ decisions: input.candidates.map(item => ({ id: item.id, verdict: 'confirmed',
+        explanation: 'The captured source establishes the changed value.', evidence: [f.ref] })) })
+        : submit({ checks: f.checks, findings: [] });
+    } });
+    assert.equal(report.complete, true, report.reason);
+    assert.deepEqual(verifyValidation(f.directory, f.target, f.primary).result.comments, [candidate]);
+  });
+}
+
+test('truncated response is discarded and one retry preserves accounting and the configured limit', async t => {
+  const f = fixture(t);
+  let requests = 0;
+  const report = await validate({ ...f, maxOutputTokens: 65536, ask: async body => {
+    assert.equal(body.max_tokens, 65536);
+    if (++requests === 1) {
+      const truncated = response([['read_source', { ...f.ref, path: 'never-execute.cs' }]]);
+      truncated.choices[0].finish_reason = 'length';
+      truncated.choices[0].message.reasoning_content = 'TRUNCATED_PRIVATE_TEXT';
+      return truncated;
+    }
+    assert.doesNotMatch(JSON.stringify(body), /never-execute|TRUNCATED_PRIVATE_TEXT/);
+    assert.equal(body.messages.filter(message => message.role === 'tool').length, 0);
+    assert.match(body.messages.at(-1).content, /truncated/);
+    return submit({ checks: f.checks, findings: [] });
+  } });
+  assert.equal(report.complete, true, report.reason);
+  assert.deepEqual(report.usage, { input: 200, output: 40, requests: 2, output_limit_retries: 1 });
+});
+
+test('unsupported response token limit fails before requesting the gateway', async t => {
+  const f = fixture(t);
+  const report = await validate({ ...f, maxOutputTokens: 123, ask: async () => assert.fail('Unexpected request') });
+  assert.equal(report.complete, false);
+  assert.equal(report.reason, 'Unsupported validation response token limit');
 });
 
 test('last request offers only submission without unsupported forced tool selection', async t => {

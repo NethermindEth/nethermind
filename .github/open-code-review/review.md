@@ -11,6 +11,8 @@ consequence, and location in changed code. Verify suspected issues against calle
 and existing tests before reporting them. Keep each finding concise and suggest
 the smallest correction. Do not repeat compiler, formatter, or linter diagnostics.
 Do not invent findings to fill a category.
+Anchor deletion-only defects on the surviving head-side line immediately before
+or after the removed code, rather than an old-file line number.
 
 Stay within the behavior changed by the diff. For changed state or contracts,
 trace callers, other writers, reconstruction/recovery, and the next ordinary

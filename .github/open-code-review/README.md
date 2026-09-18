@@ -41,6 +41,7 @@ read for each run, so changing the model, API base URL, or key needs no code cha
 | `OCR_AUTO_REVIEW` | Variable | Automatic reviews are enabled unless this is `false`. Manual runs remain available. |
 | `OCR_AUTO_TOKEN_BUDGET` | Variable | Soft token budget for automatic and comment-triggered runs: `500000`, `1000000`, `2000000`, `5000000`, or `10000000` (default). |
 | `OCR_VALIDATION_TOKEN_BUDGET` | Variable | Additional soft budget across discovery and candidate validation: `500000`, `1000000` (default), or `2000000`. Applies to all triggers. |
+| `OCR_VALIDATION_MAX_OUTPUT_TOKENS` | Variable | Per-response output allowance for validation, including reasoning where the provider counts it: `8192`, `16384`, `32768` (default), or `65536`. Applies to all triggers. |
 
 Create a dedicated LiteLLM virtual key allowing the selected models, with a spending
 limit and rate limits appropriate for the pilot. Store its value only in the chosen
@@ -112,6 +113,11 @@ per pass plus two bounded repair requests. The job has a 35-minute limit. The de
 cached context count toward these budgets; one in-flight request can exceed a soft
 limit. Actual usage depends on the PR and model. No extra secret is required to
 enable validation with the existing model and gateway.
+Each validation response has a separate 32,768-token output allowance, configurable
+with `OCR_VALIDATION_MAX_OUTPUT_TOKENS`. A truncated response is discarded in full
+and may be retried once per pass within the existing request, time, and aggregate
+token limits. Its tokens still count. Repeated truncation remains incomplete;
+raising the aggregate budget alone does not change this response limit.
 
 Before review, the workflow captures the PR description, labels, bounded human
 discussion, current-head inline comments, and check/status metadata for the exact
@@ -130,10 +136,15 @@ seeing OCR's findings. It can search identifiers, read patches, and read source 
 the captured head or merge base. These tools read regular git blobs, reject secret
 paths and symlinks, and do not execute the working tree. Context collection is
 lexical and bounded; it is not a complete call graph or whole-repository audit.
+The validator's source types come from `source-types.json`, copied from the pinned
+OCR release's `internal/config/allowlist/supported_file_types.json` (Apache-2.0),
+plus the project's MSBuild/solution extensions and Markdown context. Secret-path
+restrictions still take precedence. Search and source reads use the same types.
 
 A fresh validation pass then tries to falsify every candidate from OCR and the
 independent discovery. Confirmed findings need read source citations, a changed-line
-location, a concrete trigger and consequence, and an unexecuted regression scenario.
+location (or a surviving head line immediately beside a deletion), a concrete
+trigger and consequence, and an unexecuted regression scenario.
 The validator accepts or rejects the original candidate text; it cannot introduce
 new claims by rewriting a finding just before publication. Missing cited lines can
 be supplied within a bounded repair, but require another model decision after that
@@ -159,7 +170,7 @@ Before posting, the wrapper checks the reviewed commits, models, selected-file
 coverage, token-budget status, and current PR commits. It also binds validation to
 the primary result, captured source context, and final findings with content hashes.
 Incomplete reviews publish
-an explicit incomplete summary; their findings are not published. Stale runs
+an explicit incomplete summary with allowlisted failure reasons; their findings are not published. Stale runs
 publish nothing; automatic runs also suppress publication if the PR has returned
 to draft. Completed reviews use OCR's upstream publisher for one updated
 summary and deduplicated inline findings. Low-severity and style/documentation
@@ -179,7 +190,7 @@ CI: record accepted findings, false positives, missed defects, cost, and latency
 
 OCR v1.12.5 is pinned by binary SHA-256. The publisher comes from the same release
 commit `189be5b024d3309dd10fdc8cd8ee31b2530c210b` and has its own SHA-256.
-When upgrading, update both pins and run the offline suite plus an actual OCR
+When upgrading, update both pins and `source-types.json`, and run the offline suite plus an actual OCR
 review through LiteLLM. Changes to output schemas must preserve the coverage
 checks.
 
