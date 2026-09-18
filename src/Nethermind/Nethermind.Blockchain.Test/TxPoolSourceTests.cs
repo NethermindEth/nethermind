@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -98,6 +100,25 @@ public class TxPoolSourceTests
         IEnumerable<Transaction> ordered = TxPoolTxSource.Order(buckets, comparer, _ => true, ulong.MaxValue);
         Assert.That(ordered.Take(1), Is.EqualTo(expected.Take(1)));
         Assert.That(ordered, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Producer_comparer_uses_target_blocks_fee_rules([Values(9UL, 10UL)] ulong blockNumber)
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance)
+            {
+                ForkOnBlockNumber = 10,
+                NextForkSpec = London.Instance
+            })
+            .Build();
+        IComparer<Transaction> comparer = container.Resolve<ITransactionComparerProvider>()
+            .GetDefaultProducerComparer(new BlockPreparationContext(100, blockNumber));
+        Transaction x = new() { Type = TxType.EIP1559, GasPrice = 3, DecodedMaxFeePerGas = 103 };
+        Transaction y = new() { Type = TxType.EIP1559, GasPrice = 5, DecodedMaxFeePerGas = 102 };
+
+        Assert.That(Math.Sign(comparer.Compare(x, y)), Is.EqualTo(blockNumber < 10 ? 1 : -1));
     }
 
     // Deliberately below Amsterdam's intrinsic gas requirement for the access list built below.
