@@ -70,7 +70,7 @@ public class TxPoolSourceTests
     }
 
     [Test]
-    public void Ordering_matches_frontier_merge([Values(0, 1, 2, 3, 4, 7, 16, 257)] int senders)
+    public void Ordering_matches_frontier_merge([Values(0, 1, 2, 3, 4, 7, 16, 31, 32, 33, 257)] int senders)
     {
         Dictionary<AddressAsKey, Transaction[]> buckets = [];
         Dictionary<AddressAsKey, Queue<Transaction>> remaining = [];

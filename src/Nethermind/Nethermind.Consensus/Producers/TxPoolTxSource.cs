@@ -492,17 +492,20 @@ namespace Nethermind.Consensus.Producers
             ulong resourceLimit,
             bool enforceSequentialNonces)
         {
-            using ArrayPoolList<(Transaction tx, Transaction[] bucket, int index, ulong resource)> heap = new(pendingTransactions.Count);
+            using ArrayPoolList<(Transaction[] bucket, int index, int heapIndex, ulong resource)> entries = new(pendingTransactions.Count);
             foreach (Transaction[] bucket in pendingTransactions.Values)
             {
-                if (bucket.Length > 0) heap.Add((bucket[0], bucket, 0, 0));
+                if (bucket.Length > 0) entries.Add((bucket, 0, entries.Count, 0));
             }
 
-            int count = heap.Count;
-            for (int i = count / 2 - 1; i >= 0; i--) SiftDown(heap.AsSpan(), heap[i], i, comparer);
+            // Heap slots store indices into stationary sender entries; sifting moves no managed references.
+            int count = entries.Count;
+            for (int i = count / 2 - 1; i >= 0; i--) SiftDown(entries.AsSpan(), count, entries[i].heapIndex, i, comparer);
             while (count > 0)
             {
-                (Transaction candidateTx, Transaction[] bucket, int index, ulong resource) = heap[0];
+                int entryIndex = entries[0].heapIndex;
+                (Transaction[] bucket, int index, _, ulong resource) = entries[entryIndex];
+                Transaction candidateTx = bucket[index];
                 ulong totalResource = resource + resourceSelector(candidateTx);
                 bool accepted = totalResource <= resourceLimit && filter(candidateTx);
                 int nextIndex = index + 1;
@@ -511,13 +514,15 @@ namespace Nethermind.Consensus.Producers
                         || candidateTx.Nonce != ulong.MaxValue
                         && bucket[nextIndex].Nonce == candidateTx.Nonce + 1))
                 {
-                    SiftDown(heap.AsSpan()[..count], (bucket[nextIndex], bucket, nextIndex, totalResource), 0, comparer);
+                    entries.AsSpan()[entryIndex].index = nextIndex;
+                    entries.AsSpan()[entryIndex].resource = totalResource;
+                    SiftDown(entries.AsSpan(), count, entryIndex, 0, comparer);
                 }
                 else
                 {
                     count--;
-                    if (count > 0) SiftDown(heap.AsSpan()[..count], heap[count], 0, comparer);
-                    heap[count] = default;
+                    if (count > 0) SiftDown(entries.AsSpan(), count, entries[count].heapIndex, 0, comparer);
+                    entries.AsSpan()[entryIndex].bucket = null!;
                 }
 
                 if (accepted) yield return (candidateTx, resource);
@@ -525,20 +530,28 @@ namespace Nethermind.Consensus.Producers
         }
 
         private static void SiftDown(
-            Span<(Transaction tx, Transaction[] bucket, int index, ulong resource)> heap,
-            (Transaction tx, Transaction[] bucket, int index, ulong resource) item,
+            Span<(Transaction[] bucket, int index, int heapIndex, ulong resource)> entries,
+            int count,
+            int item,
             int index,
             IComparer<Transaction> comparer)
         {
-            while (index < heap.Length / 2)
+            Transaction tx = entries[item].bucket[entries[item].index];
+            while (index < count / 2)
             {
                 int child = index * 2 + 1;
-                if (child + 1 < heap.Length && comparer.Compare(heap[child + 1].tx, heap[child].tx) < 0) child++;
-                if (comparer.Compare(item.tx, heap[child].tx) <= 0) break;
-                heap[index] = heap[child];
+                if (child + 1 < count && comparer.Compare(GetHeapTransaction(entries, child + 1), GetHeapTransaction(entries, child)) < 0) child++;
+                if (comparer.Compare(tx, GetHeapTransaction(entries, child)) <= 0) break;
+                entries[index].heapIndex = entries[child].heapIndex;
                 index = child;
             }
-            heap[index] = item;
+            entries[index].heapIndex = item;
+        }
+
+        private static Transaction GetHeapTransaction(Span<(Transaction[] bucket, int index, int heapIndex, ulong resource)> entries, int index)
+        {
+            ref (Transaction[] bucket, int index, int heapIndex, ulong resource) entry = ref entries[entries[index].heapIndex];
+            return entry.bucket[entry.index];
         }
 
         public bool SupportsBlobs => _transactionPool.SupportsBlobs;
