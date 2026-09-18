@@ -154,7 +154,8 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
         using var lockRelease = _lock.EnterScope();
 #pragma warning restore IDE0008
 
-        if (_cacheMap.Remove(key, out LruCacheItem ov))
+        // Keep misses free of the dictionary's removal lock while avoiding IDictionary dispatch on hits.
+        if (_cacheMap.ContainsKey(key) && _cacheMap.TryRemove(key, out LruCacheItem ov))
         {
             _count--;
             KeyToOffset[ov.Offset] = default;
