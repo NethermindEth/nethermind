@@ -327,6 +327,38 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(resultWrapper.Data.Reward![0], Is.EqualTo(expectedUInt256));
         }
 
+        [Test]
+        public void GetFeeHistory_Eip7778_RewardPercentilesUsePostRefundReceiptGas()
+        {
+            // EIP-7778: header GasUsed is pre-refund (gross), receipts are post-refund (net).
+            // Rewards weight by receipt gas (fees are paid on post-refund gas), so percentiles
+            // must be relative to the post-refund total, not the header.
+            Transaction[] transactions = new Transaction[]
+            {
+                Build.A.Transaction.WithHash(TestItem.KeccakA).WithMaxFeePerGas(20).WithMaxPriorityFeePerGas(1)
+                    .WithType(TxType.EIP1559).TestObject,
+                Build.A.Transaction.WithHash(TestItem.KeccakB).WithMaxFeePerGas(20).WithMaxPriorityFeePerGas(10)
+                    .WithType(TxType.EIP1559).TestObject,
+            };
+            const ulong preRefundPerTx = 1_000_000;
+            const ulong postRefundPerTx = 100_000;
+            Block headBlock = Build.A.Block.Genesis.WithBaseFeePerGas(3)
+                .WithGasUsed(preRefundPerTx * (ulong)transactions.Length)
+                .WithTransactions(transactions).TestObject;
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            BlockParameter newestBlockParameter = new(0UL);
+            blockTree.FindBlock(newestBlockParameter).Returns(headBlock);
+            IReceiptStorage? receiptStorage = GetTestReceiptStorageForBlockWithGasUsed(headBlock, [postRefundPerTx, postRefundPerTx]);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage);
+
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, [50]);
+
+            // Post-refund total is 200k, so p50 threshold is 100k and the first (cheapest) tx covers it.
+            // The pre-refund header total (2M) would have pushed the threshold to 1M and wrongly
+            // returned the most expensive premium.
+            Assert.That(resultWrapper.Data.Reward!.Count, Is.EqualTo(1));
+            Assert.That(resultWrapper.Data.Reward![0], Is.EqualTo(new UInt256[] { 1 }));
+        }
 
         private static IEnumerable<TestCaseData> GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyOnMultipleCalls_TestCases()
         {

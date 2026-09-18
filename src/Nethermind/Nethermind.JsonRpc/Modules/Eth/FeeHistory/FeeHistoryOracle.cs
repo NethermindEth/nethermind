@@ -75,7 +75,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             double GasUsedRatio,
             double BlobGasUsedRatio,
             Hash256? ParentHash,
-            ulong GasUsed,
             int BlockTransactionsLength,
             List<RewardInfo> RewardsInBlocks);
 
@@ -138,7 +137,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     b.GasUsed / (double)b.GasLimit,
                     blobGasUsedRatio,
                     b.ParentHash,
-                    b.GasUsed,
                     b.Transactions.Length,
                     GetRewardsInBlock(b));
             }
@@ -252,7 +250,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             BlockFeeHistorySearchInfo blockInfo,
             double[] rewardPercentiles) => blockInfo.BlockTransactionsLength == 0
                 ? new ArrayPoolList<UInt256>(rewardPercentiles.Length, rewardPercentiles.Length)
-                : CalculatePercentileValues(blockInfo, rewardPercentiles, blockInfo.RewardsInBlocks);
+                : CalculatePercentileValues(rewardPercentiles, blockInfo.RewardsInBlocks);
 
         private List<RewardInfo> GetRewardsInBlock(Block block)
         {
@@ -289,17 +287,26 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         }
 
         private static ArrayPoolList<UInt256> CalculatePercentileValues(
-            BlockFeeHistorySearchInfo blockInfo,
             double[] rewardPercentiles,
             List<RewardInfo> rewardsInBlock)
         {
+            // EIP-7778: header GasUsed (pre-refund) and receipt totals (post-refund) diverge.
+            // Rewards weight by receipt gas (post-refund, what fees are paid on), so thresholds
+            // must use the same post-refund total, not the header. Summing here keeps both sides
+            // consistent and also fixes the pruned-receipts fallback where weights are GasLimit.
+            ulong totalGasUsed = 0;
+            for (int i = 0; i < rewardsInBlock.Count; i++)
+            {
+                totalGasUsed += rewardsInBlock[i].GasUsed;
+            }
+
             ulong sumGasUsed = rewardsInBlock[0].GasUsed;
             int txIndex = 0;
             ArrayPoolList<UInt256> percentileValues = new(rewardPercentiles.Length);
 
             foreach (double percentile in rewardPercentiles)
             {
-                ulong thresholdGasUsed = (ulong)(blockInfo.GasUsed * percentile / 100);
+                ulong thresholdGasUsed = (ulong)(totalGasUsed * percentile / 100);
                 while (txIndex + 1 < rewardsInBlock.Count && sumGasUsed < thresholdGasUsed)
                 {
                     txIndex++;
