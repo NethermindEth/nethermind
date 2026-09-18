@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 
@@ -23,10 +24,10 @@ public class FrameSignatureForRpc
     /// <remarks>Accepted only as empty or exactly 32 non-zero bytes — an all-zero 32-byte value is rejected
     /// rather than read as a synonym for empty. The arbitrary scheme is held to that same rule although
     /// nothing verifies the value.</remarks>
-    public byte[] Msg { get; set; } = [];
+    public ReadOnlyMemory<byte> Msg { get; set; }
 
     /// <summary>The raw signature bytes, whose layout and required length are fixed by <see cref="Scheme"/>.</summary>
-    public byte[] Signature { get; set; } = [];
+    public ReadOnlyMemory<byte> Signature { get; set; }
 
     [JsonConstructor]
     public FrameSignatureForRpc() { }
@@ -35,8 +36,8 @@ public class FrameSignatureForRpc
     {
         Scheme = signature.Scheme;
         Signer = signature.Signer;
-        Msg = signature.Msg.ToArray();
-        Signature = signature.Signature.ToArray();
+        Msg = signature.Msg;
+        Signature = signature.Signature;
     }
 
     public TxFrameSignature ToSignature() => new(Scheme, Signer, Msg, Signature);

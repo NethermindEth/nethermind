@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -38,7 +39,7 @@ public class FrameForRpc
     public UInt256 Value { get; set; }
 
     /// <summary>The frame's calldata.</summary>
-    public byte[] Data { get; set; } = [];
+    public ReadOnlyMemory<byte> Data { get; set; }
 
     [JsonConstructor]
     public FrameForRpc() { }
@@ -51,7 +52,7 @@ public class FrameForRpc
         ExecutionGasLimit = frame.ExecutionGasLimit;
         StateGasLimit = frame.StateGasLimit;
         Value = frame.Value;
-        Data = frame.Data.ToArray();
+        Data = frame.Data;
     }
 
     /// <summary>Widens the request's raw <c>mode</c>/<c>flags</c> into the domain type.</summary>
