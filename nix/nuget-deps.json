@@ -701,8 +701,8 @@
   },
   {
     "pname": "Nethermind.GmpBindings",
-    "version": "1.0.3",
-    "hash": "sha256-qYE1TkmlbItCszf7XTjvt4mVQncXjoXUBOD7J+nTu5U="
+    "version": "2.0.0",
+    "hash": "sha256-jY+p+Pg3PcZqMBDHG691dvNBNX0K3GuUg7mvFtnmQn8="
   },
   {
     "pname": "Nethermind.Libp2p",
@@ -781,8 +781,8 @@
   },
   {
     "pname": "Nethermind.MclBindings",
-    "version": "1.0.5",
-    "hash": "sha256-0RAzgW0WM+g5dtbig5sgnzbS5h23dX/AlE5YuilUWrg="
+    "version": "2.0.0",
+    "hash": "sha256-mx7Arbb8+XxUSDClBpLYYQOqRpGKtICB/zODuTD4DH4="
   },
   {
     "pname": "Nethermind.Multiformats.Address",

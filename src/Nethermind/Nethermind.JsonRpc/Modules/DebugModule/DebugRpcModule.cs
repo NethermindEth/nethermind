@@ -506,11 +506,8 @@ public class DebugRpcModule(
         return ResultWrapper<object>.Success(configValue);
     }
 
-    public ResultWrapper<bool> debug_resetHead(Hash256 blockHash)
-    {
-        debugBridge.UpdateHeadBlock(blockHash);
-        return ResultWrapper<bool>.Success(true);
-    }
+    public ResultWrapper<bool> debug_resetHead(Hash256 blockHash) =>
+        ResultWrapper<bool>.Success(debugBridge.UpdateHeadBlock(blockHash));
 
     public ResultWrapper<ArrayPoolList<byte>> debug_getRawTransaction(Hash256 transactionHash)
     {

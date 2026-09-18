@@ -142,9 +142,10 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - Workflow file: [`.github/workflows/run-expb-reproducible-benchmarks.yml`](./.github/workflows/run-expb-reproducible-benchmarks.yml)
 - Execution runner: chosen by the `arch` input — `amd64` (default) runs on `reproducible-benchmarks`
   with snapshots under `/mnt/sda`; `arm64` runs on `reproducible-benchmarks-arm` with snapshots under
-  `/data`. The ARM box carries a single snapshot set — Nethermind in the **flat** layout — so it
-  refuses any other client, layout, or an image it would have to build; the amd64 box takes all of
-  them. **Never compare timings across the two boxes.**
+  `/data`. ARM requires flat layout; it supports Nethermind and the Reth Fusaka snapshot at
+  `/data/reth/reth-25490000`, while Geth requires amd64. Reference-client runs are
+  workflow-dispatch Fusaka runs with explicit `docker_images` and `state_layout=flat`; the workflow
+  rejects Nethermind-only flags and environment settings. **Never compare timings across the two boxes.**
 
 ### What the workflow does
 
@@ -160,6 +161,7 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - Runs `expb execute-scenarios` with per-payload metrics and logs.
 - Handles termination gracefully with cleanup grace period.
 - Metrics: one table per payload set with three column groups, each as Master, PR and delta. "Request (k6)" is the per-payload newPayload request time from expb's pipe table (k6's time to first byte today), the figure the consensus client waits for. "Processing" is the client's own block processing time from the SSE data feed (`[payload-server] client_metric` lines) with an MGas/s row derived from it; use it for EVM and state changes. "Request - processing" is the per-payload difference, the request path and GC. A change that moves time between windows shows as opposite deltas in the first two groups and a matching move in the third. Columns without a comparable baseline read n/a; without SSE data only the request group has values.
+- `measurement_source=auto` uses SSE when available; `engine-api` skips SSE and uses K6 request timing, and is forced for other clients.
 - On successful `master` push runs, caches timing aggregates (AVG/MEDIAN/P90-P99/MIN/MAX). On PR runs, posts a comparison comment.
 - The `single-summary` job aggregates across runs and payload sets into `GITHUB_STEP_SUMMARY` (per-run table + mean/best/worst when `run_count > 1`).
 - The `dottrace` input selects a profiling mode — `false` (default), `sampling`, `tracing`, or `timeline` (`true` is a legacy alias for `sampling`) — and passes `--dottrace --dottrace-mode <mode>` to expb. Pick by question: `sampling` for "where does time go" (low overhead, the default choice), `tracing` for exact **call counts** (~4x overhead, so read its counts and distrust its times), `timeline` for waits/locks/GC over time. dotTrace snapshots (`.dtp` + chunk files; `.dtt` for timeline) are zipped and uploaded as artifacts.
