@@ -7,16 +7,13 @@ GUEST_DIR := $(MAKEFILE_DIR)
 BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
 
-# Toolchain image, ISA gates, optimisation/trim flags and the managed closure:
-# shared by all three guests so they cannot drift apart. BIN_DIR must be set
-# before the include - BFLAT_REFS expands it.
-include $(MAKEFILE_DIR)/../zkvm-guest.mk
-# Execution harness. OpenVM publishes no image at all (cargo-openvm is a source
-# install) and `cargo openvm run` only accepts a transpiled .vmexe, so this is
-# our own: NethermindEth/bflat-openvm builds the openvm SDK from the
-# develop-v2.1.0 rv64 line into a harness that transpiles the ELF and executes
-# it (runner/ there, release-runner.yml). Pinned by digest here; OPENVM_RUNNER
-# overrides it with a host binary when iterating locally.
+# BIN_DIR must be set before the include - BFLAT_REFS expands it.
+include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
+# Execution harness. OpenVM publishes no image and `cargo openvm run` only takes
+# a transpiled .vmexe, so this is our own: NethermindEth/bflat-openvm builds the
+# SDK's develop-v2.1.0 rv64 line into a harness that transpiles the ELF and runs
+# it. `main` is still rv32 and rejects a 64-bit ELF, so the line is not a version
+# preference. OPENVM_RUNNER overrides it with a host binary.
 OPENVM_IMAGE ?= nethermindeth/openvm-runner:v2.1.0-rv64@sha256:d8209a5db5d59df6d6f5899b2ce6866f81c30bdc3df952dc78243b8316706baa
 OPENVM_RUNNER ?=
 
@@ -54,20 +51,16 @@ build: dotnet-build
 	mkdir -p $(GUEST_DIR)/bin && \
 		mv -f $(GUEST_DIR)/Program $(GUEST_DIR)/bin/nethermind
 
-# SP1 and OpenVM take the SSZ payload as-is. The shared fixtures are framed for
-# ZisK - an 8-byte little-endian length, the payload, then padding to 8 - so the
-# frame is stripped here rather than in every guest.
-# A slice would clamp silently: a truncated download, or an input that is not
-# framed at all, would yield a short payload and exit 0, and the guest would
-# then fail deep inside SSZ decoding - reported as a broken guest rather than a
-# bad fixture. Check the length instead.
+# This guest takes the SSZ payload as-is; the shared fixtures are framed for ZisK
+# (8-byte little-endian length, payload, padding to 8), so strip the frame here.
+# The length is asserted rather than sliced: a slice would clamp a truncated or
+# unframed file to a short payload and exit 0, and the guest would then fail deep
+# inside SSZ decoding, reading as a broken guest rather than a bad fixture.
 $(GUEST_DIR)/bin/%.raw: $(GUEST_DIR)/bin/%
 	python3 -c "import struct,sys; b=open(sys.argv[1],'rb').read(); n=struct.unpack_from('<Q',b,0)[0]; assert 8+n <= len(b), f'framed length {n} exceeds the {len(b)}-byte file'; open(sys.argv[2],'wb').write(b[8:8+n])" $< $@
 
-# INPUT is checked in the recipe, not as a makefile conditional: a conditional
-# is evaluated while reading the file and would abort `make build` too. Without
-# the check a bare `make run` asks for bin/.raw from bin/, which is a directory,
-# and fails obscurely.
+# Checked in the recipe, not as a conditional: a conditional is evaluated while
+# reading the file and would abort `make build` too.
 run:
 	@[ -n "$(INPUT)" ] || { echo "error: INPUT is not set - make run INPUT=<fixture>.ssz" >&2; exit 1; }
 	@$(MAKE) --no-print-directory $(GUEST_DIR)/bin/$(INPUT).raw

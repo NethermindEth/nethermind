@@ -7,25 +7,17 @@ GUEST_DIR := $(MAKEFILE_DIR)
 BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
 
-# Toolchain image, ISA gates, optimisation/trim flags and the managed closure:
-# shared by all three guests so they cannot drift apart. BIN_DIR must be set
-# before the include - BFLAT_REFS expands it.
-include $(MAKEFILE_DIR)/../zkvm-guest.mk
-# Execution harness. SP1 publishes no image that executes an arbitrary ELF -
-# ghcr.io/succinctlabs/sp1 carries the Rust toolchain for BUILDING guests and
-# nothing that runs one - so this is our own: NethermindEth/bflat-sp1 builds a
-# harness around sp1-sdk v6.5.0 (runner/ there, release-runner.yml) that takes
-# an ELF and an input and prints the cycle count and public values. Pinned by
-# digest here; SP1_RUNNER overrides it with a host binary when iterating
-# locally.
+# BIN_DIR must be set before the include - BFLAT_REFS expands it.
+include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
+# Execution harness. SP1 publishes no image that executes an arbitrary ELF, so
+# this is our own: NethermindEth/bflat-sp1 wraps sp1-sdk v6.5.0 to print the
+# cycle count and public values. SP1_RUNNER overrides it with a host binary.
 SP1_IMAGE ?= nethermindeth/sp1-runner:v6.5.0@sha256:6df3e8ade2d183f7d5a6146d5deba3f76f2531677c84b6d3afef47e579b229b3
-# The native executor maps guest memory through /dev/shm. Docker's default of
-# 64 MB fails, and so does 1g; 4g is the smallest tested value that works on a
-# mainnet block (actual usage is ~2.7 GB). This is a ceiling, not a
-# reservation, so the headroom costs nothing.
-#
-# When it is too small the run produces an EMPTY output and a non-zero exit,
-# which reads exactly like a broken guest. Check this first.
+# The native executor maps guest memory through /dev/shm. Docker's 64 MB default
+# fails and so does 1g; 4g is the smallest tested value that carries a mainnet
+# block (~2.7 GB actual). A ceiling, not a reservation, so headroom is free.
+# Too small produces an EMPTY output and a non-zero exit, which reads exactly
+# like a broken guest - check this first.
 SP1_SHM_SIZE ?= 8g
 SP1_RUNNER ?=
 
@@ -63,20 +55,16 @@ build: dotnet-build
 	mkdir -p $(GUEST_DIR)/bin && \
 		mv -f $(GUEST_DIR)/Program $(GUEST_DIR)/bin/nethermind
 
-# SP1 and OpenVM take the SSZ payload as-is. The shared fixtures are framed for
-# ZisK - an 8-byte little-endian length, the payload, then padding to 8 - so the
-# frame is stripped here rather than in every guest.
-# A slice would clamp silently: a truncated download, or an input that is not
-# framed at all, would yield a short payload and exit 0, and the guest would
-# then fail deep inside SSZ decoding - reported as a broken guest rather than a
-# bad fixture. Check the length instead.
+# This guest takes the SSZ payload as-is; the shared fixtures are framed for ZisK
+# (8-byte little-endian length, payload, padding to 8), so strip the frame here.
+# The length is asserted rather than sliced: a slice would clamp a truncated or
+# unframed file to a short payload and exit 0, and the guest would then fail deep
+# inside SSZ decoding, reading as a broken guest rather than a bad fixture.
 $(GUEST_DIR)/bin/%.raw: $(GUEST_DIR)/bin/%
 	python3 -c "import struct,sys; b=open(sys.argv[1],'rb').read(); n=struct.unpack_from('<Q',b,0)[0]; assert 8+n <= len(b), f'framed length {n} exceeds the {len(b)}-byte file'; open(sys.argv[2],'wb').write(b[8:8+n])" $< $@
 
-# INPUT is checked in the recipe, not as a makefile conditional: a conditional
-# is evaluated while reading the file and would abort `make build` too. Without
-# the check a bare `make run` asks for bin/.raw from bin/, which is a directory,
-# and fails obscurely.
+# Checked in the recipe, not as a conditional: a conditional is evaluated while
+# reading the file and would abort `make build` too.
 run:
 	@[ -n "$(INPUT)" ] || { echo "error: INPUT is not set - make run INPUT=<fixture>.ssz" >&2; exit 1; }
 	@$(MAKE) --no-print-directory $(GUEST_DIR)/bin/$(INPUT).raw

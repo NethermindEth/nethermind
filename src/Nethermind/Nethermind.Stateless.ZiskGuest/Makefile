@@ -7,19 +7,16 @@ GUEST_DIR := $(MAKEFILE_DIR)
 BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
 
-# Toolchain image, ISA gates, optimisation/trim flags and the managed closure:
-# shared by all three guests so they cannot drift apart. BIN_DIR must be set
-# before the include - BFLAT_REFS expands it.
-include $(MAKEFILE_DIR)/../zkvm-guest.mk
+# BIN_DIR must be set before the include - BFLAT_REFS expands it.
+include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 
-# ziskemu, the ZisK emulator.
 ZISK_IMAGE ?= nethermindeth/zisk:1.2.0-alpha@sha256:7b3ea05815cf902f0bceb17458d9fbc36b34043b81370b69e57a18cbd91c2d1c
 
 dotnet-build:
 	dotnet build -c release -p:EnableZkEvm=true $(GUEST_DIR)/Nethermind.Stateless.ZiskGuest.csproj
 
-# ILC embeds every manifest resource of every input assembly and the guest reads none, so resource
-# bytes in the image are dead weight (6.9 MB of chainspecs once rode along) - fail the build instead.
+# ILC embeds every manifest resource of every input assembly and the guest reads
+# none, so they are dead weight (6.9 MB of chainspecs once rode along).
 build: dotnet-build
 	docker run --platform linux/amd64 --rm \
 		-e DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
