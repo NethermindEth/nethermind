@@ -267,17 +267,18 @@ public abstract class TransactionForRpc
                 throw new JsonException("Unknown transaction type");
             }
 
-            if (hasGasPrice)
-            {
-                isDefaulted = true;
-                return typeof(LegacyTransactionForRpc);
-            }
-
-            // Discriminator field is a strong signal — not a default.
+            // Discriminator field is a strong signal — not a default. It wins over gasPrice, otherwise a
+            // legacy-priced request would silently lose its accessList/blobVersionedHashes/authorizationList.
             if (viaDiscriminator is not null)
             {
                 isDefaulted = false;
                 return viaDiscriminator;
+            }
+
+            if (hasGasPrice)
+            {
+                isDefaulted = true;
+                return typeof(LegacyTransactionForRpc);
             }
 
             isDefaulted = true;

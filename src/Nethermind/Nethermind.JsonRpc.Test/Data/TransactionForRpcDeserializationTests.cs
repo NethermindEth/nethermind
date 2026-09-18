@@ -42,8 +42,11 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.EIP1559, """{"type":null}""");
             yield return Make(TxType.EIP1559, """{"additionalField":""}""");
             yield return Make(TxType.EIP1559, """{"MaxFeePerBlobGas":"0x0"}""");
-            yield return Make(TxType.Legacy,
+            yield return Make(TxType.EIP1559,
                 """{"nonce":"0x0","blockHash":null,"blockNumber":null,"transactionIndex":null,"to":null,"value":"0x0","gasPrice":"0x1","gas":"0x0","input":null,"maxPriorityFeePerGas":"0x1"}""");
+            yield return Make(TxType.AccessList, """{"gasPrice":"0x1","accessList":[]}""");
+            yield return Make(TxType.Blob, """{"gasPrice":"0x1","to":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","blobVersionedHashes":["0x01f1872d656b7a820d763e6001728b9b883f829b922089ec6ad7f5f1665470dc"]}""");
+            yield return Make(TxType.SetCode, """{"gasPrice":"0x1","authorizationList":[]}""");
 
             yield return Make(TxType.AccessList, """{"type":null,"accessList":[]}""");
             yield return Make(TxType.AccessList, """{"nonce":"0x0","to":null,"value":"0x0","accessList":[]}""");
@@ -116,6 +119,8 @@ public class TransactionForRpcDeserializationTests
 
             // Discriminator-matched type is not defaulted → preserved
             yield return Make(TxType.AccessList, """{"accessList":[]}""", Istanbul.Instance);
+            yield return Make(TxType.AccessList, """{"gasPrice":"0x1","accessList":[]}""", Istanbul.Instance);
+            yield return Make(TxType.AccessList, """{"gasPrice":"0x1","accessList":[]}""", London.Instance);
             yield return Make(TxType.EIP1559, """{"maxFeePerGas":"0x0"}""", Istanbul.Instance);
 
             // gasPrice → Legacy: defaulted, but downgrade is a no-op so result is Legacy on any spec
