@@ -39,7 +39,7 @@ using Nethermind.Network.Rlpx;
 namespace Nethermind.JsonRpc.Test.Modules
 {
     [Parallelizable(ParallelScope.None)]
-    public class SubscribeModuleTests
+    public partial class SubscribeModuleTests
     {
         private ISubscribeRpcModule _subscribeRpcModule = null!;
         private ILogManager _logManager = null!;
@@ -512,19 +512,136 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void LogsSubscription_with_not_matching_block_on_NewHeadBlock_event()
         {
-            ulong blockNumber = 22222;
+            Filter filter = new() { FromBlock = new BlockParameter(33333) };
+
+            // The out-of-range block is raised first: had it been published, it would be the first result.
+            List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(filter, expectedResults: 1,
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(22222).TestObject),
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(33333).TestObject));
+
+            Assert.That(jsonRpcResults, Has.Count.EqualTo(1));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x8235\""));
+        }
+
+        [Test]
+        public void LogsSubscription_with_null_arguments_publishes_logs_of_a_block_below_the_head()
+        {
+            // The head is already past this block when its event is handled (multi-block branch, or a head advancing
+            // before the asynchronous dispatch); "latest" must not be resolved against it.
+            SetHead(100);
             Filter filter = Substitute.For<Filter>();
 
+            List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(filter, expectedResults: 1,
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject));
+
+            Assert.That(jsonRpcResults, Has.Count.EqualTo(1));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x63\"").And.Contain("\"removed\":false"));
+        }
+
+        [Test]
+        public void LogsSubscription_with_null_arguments_publishes_removed_logs_of_a_reorged_block_below_the_head()
+        {
+            SetHead(100);
+            Filter filter = Substitute.For<Filter>();
+
+            List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(filter, expectedResults: 2,
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).WithExtraData([1]).TestObject, removed: true),
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject));
+
+            Assert.That(jsonRpcResults, Has.Count.EqualTo(2));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"removed\":true"));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[1].Response), Does.Contain("\"removed\":false"));
+        }
+
+        [Test]
+        public void LogsSubscription_with_earliest_fromBlock_does_not_resolve_it()
+        {
+            // "earliest" is the default lower bound of a supplied filter; a missing genesis header must not drop the logs.
+            _blockTree.FindHeader(Arg.Any<BlockParameter>()).Returns((BlockHeader?)null);
+            Filter filter = new() { FromBlock = BlockParameter.Earliest };
+
+            List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(filter, expectedResults: 1,
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject));
+
+            Assert.That(jsonRpcResults, Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public void LogsSubscription_with_blockHash_filter_publishes_only_that_block()
+        {
+            BlockHeader wanted = Build.A.BlockHeader.WithNumber(99).TestObject;
+            BlockHeader sibling = Build.A.BlockHeader.WithNumber(99).WithExtraData([1]).TestObject;
+            BlockParameter blockHash = new(wanted.Hash!);
+            Filter filter = new() { FromBlock = blockHash, ToBlock = blockHash };
+
+            List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(filter, expectedResults: 1,
+                MatchingLogEvent(sibling),
+                MatchingLogEvent(wanted));
+
+            Assert.That(jsonRpcResults, Has.Count.EqualTo(1));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain($"\"blockHash\":\"{wanted.Hash}\""));
+        }
+
+        [Test]
+        public void LogsSubscription_with_one_sided_hash_bound_publishes_from_that_block_onward()
+        {
+            BlockHeader from = Build.A.BlockHeader.WithNumber(100).TestObject;
+            _blockTree.FindHeader(Arg.Is<BlockParameter>(p => p.BlockHash == from.Hash)).Returns(from);
+            Filter filter = new() { FromBlock = new BlockParameter(from.Hash!) };
+
+            List<JsonRpcResult> jsonRpcResults = PublishThroughLogsSubscription(filter, expectedResults: 2,
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(99).TestObject),
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(100).WithExtraData([1]).TestObject),
+                MatchingLogEvent(Build.A.BlockHeader.WithNumber(101).TestObject));
+
+            Assert.That(jsonRpcResults, Has.Count.EqualTo(2));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[0].Response), Does.Contain("\"blockNumber\":\"0x64\""));
+            Assert.That(RpcTest.SerializeResponse(jsonRpcResults[1].Response), Does.Contain("\"blockNumber\":\"0x65\""));
+        }
+
+        private void SetHead(ulong number)
+        {
+            BlockHeader head = Build.A.BlockHeader.WithNumber(number).TestObject;
+            _blockTree.FindHeader(Arg.Any<BlockParameter>()).Returns(head);
+            _blockTree.FindHeader(Arg.Any<BlockParameter>(), true).Returns(head);
+        }
+
+        private static ReceiptsEventArgs MatchingLogEvent(BlockHeader header, bool removed = false)
+        {
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
-            TxReceipt[] txReceipts = { Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntry).TestObject };
-            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+            TxReceipt[] receipts = { Build.A.Receipt.WithBlockNumber(header.Number).WithBlockHash(header.Hash).WithLogs(logEntry).TestObject };
+            return new ReceiptsEventArgs(header, receipts, removed);
+        }
 
-            Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
-            BlockReplacementEventArgs blockEventArgs = new(block);
+        /// <summary>
+        /// Raises the receipts events synchronously and in order, so the subscription's send channel (single reader,
+        /// FIFO) delivers the published ones in the same order: a block that must be skipped is raised before one that
+        /// must be published, and the assertion on the first result is what proves it was skipped.
+        /// </summary>
+        private List<JsonRpcResult> PublishThroughLogsSubscription(Filter filter, int expectedResults, params ReceiptsEventArgs[] events)
+        {
+            IReceiptMonitor receiptMonitor = Substitute.For<IReceiptMonitor>();
+            LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, receiptMonitor, _filterStore, _blockTree, _logManager, filter);
 
-            List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out string _, expectedResults: 0);
+            List<JsonRpcResult> jsonRpcResults = [];
+            SemaphoreSlim received = new(0);
+            logsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
+            {
+                jsonRpcResults.Add(j);
+                received.Release();
+            }));
 
-            Assert.That(jsonRpcResults.Count, Is.EqualTo(0));
+            foreach (ReceiptsEventArgs receiptsEvent in events)
+            {
+                receiptMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEvent);
+            }
+
+            for (int i = 0; i < expectedResults; i++)
+            {
+                received.Wait(TimeSpan.FromSeconds(30));
+            }
+
+            return jsonRpcResults;
         }
 
         [Test]
