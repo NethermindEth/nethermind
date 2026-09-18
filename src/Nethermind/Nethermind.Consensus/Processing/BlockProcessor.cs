@@ -87,24 +87,31 @@ public partial class BlockProcessor(
         bool processed = false;
         try
         {
-            receipts = ProcessBlock(block, blockTracer, options, spec, token);
-            processed = true;
-        }
-        catch (BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException ex) when (_balManager.ParallelExecutionEnabled)
-        {
-            throw new BlockAccessListSequentialRetryException(ex);
-        }
-        catch (BlockAccessListManager.ParallelExecutionException ex) when (
-            _balManager.ParallelExecutionEnabled &&
-            ex.InnerException is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException blockAccessListException)
-        {
-            throw new BlockAccessListSequentialRetryException(blockAccessListException);
+            try
+            {
+                receipts = ProcessBlock(block, blockTracer, options, spec, token);
+                processed = true;
+            }
+            catch (BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException ex) when (_balManager.ParallelExecutionEnabled)
+            {
+                throw new BlockAccessListSequentialRetryException(ex);
+            }
+            catch (BlockAccessListManager.ParallelExecutionException ex) when (
+                _balManager.ParallelExecutionEnabled &&
+                ex.InnerException is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException blockAccessListException)
+            {
+                throw new BlockAccessListSequentialRetryException(blockAccessListException);
+            }
+
+            ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+            _blockTransactionsExecutor.PublishTransactionProcessedEvents();
         }
         finally
         {
+            _blockTransactionsExecutor.ClearTransactionProcessedEvents();
             if (!processed) block.DisposeAccountChanges();
         }
-        ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
             StoreTxReceipts(block, receipts, spec);
