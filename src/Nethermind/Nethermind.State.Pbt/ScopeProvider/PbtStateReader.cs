@@ -3,9 +3,11 @@
 
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Pbt;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
@@ -34,7 +36,8 @@ public class PbtStateReader([KeyFilter(DbNames.Code)] IDb codeDb, IPbtDbManager 
             return;
         }
 
-        EvmWord word = bundle.GetSlot(address, index);
+        HashedKey<PbtStorageTreeKey> runKey = PbtStateKey.StorageRun(address, PbtKeyDerivation.AddressKeyHash(address), index, out int slotIndex);
+        EvmWord word = bundle.GetSlot(runKey, slotIndex);
         value = EvmWordSlot.ToUInt256(in word);
     }
 

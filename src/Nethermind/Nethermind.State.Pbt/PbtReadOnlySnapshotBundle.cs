@@ -8,7 +8,6 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
-using Nethermind.Int256;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
@@ -150,9 +149,6 @@ public sealed class PbtReadOnlySnapshotBundle(
         if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, result is null ? _readAccountPersistenceNullLabel : _readAccountPersistenceLabel);
         return result;
     }
-
-    public EvmWord GetSlot(Address address, in UInt256 slot) =>
-        GetSlot(PbtStateKey.StorageRun(address, PbtKeyDerivation.AddressKeyHash(address), slot, out int index), index);
 
     /// <summary>Reads slot <paramref name="index"/> of the run keyed by <paramref name="runKey"/>; the newest layer holding the run answers.</summary>
     internal EvmWord GetSlot(in HashedKey<PbtStorageTreeKey> runKey, int index)

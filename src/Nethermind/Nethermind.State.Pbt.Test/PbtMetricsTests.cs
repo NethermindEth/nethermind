@@ -146,8 +146,8 @@ public class PbtMetricsTests
         using PbtReadOnlySnapshotBundle bundle = new(snapshots, reader, detailedMetrics);
 
         Account? actualAccount = bundle.GetAccount(TestItem.AddressA);
-        EvmWord actualHeaderSlot = bundle.GetSlot(TestItem.AddressA, 1);
-        EvmWord actualSlot = bundle.GetSlot(TestItem.AddressA, PbtKeyDerivation.HeaderStorageOffset);
+        EvmWord actualHeaderSlot = bundle.GetSlot(SlotRun.RunKey(headerStorageKey), SlotRun.IndexOf(headerStorageKey));
+        EvmWord actualSlot = bundle.GetSlot(SlotRun.RunKey(storageKey), SlotRun.IndexOf(storageKey));
         using RefCountingMemory? actualGroup = bundle.GetNodeGroup(groupKey);
         CodeInfo? actualCode = bundle.GetCode(codeHash);
 
