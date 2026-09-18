@@ -685,7 +685,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public class Options
     {
-        public static Options NoReceipts = new() { StoreReceiptsByDefault = true };
         public static Options Default = new();
 
         public bool StoreReceiptsByDefault { get; set; } = true;
