@@ -53,17 +53,31 @@ public static partial class TrieUpdater
         return runCount;
     }
 
-    /// <summary>Takes up to <paramref name="wanted"/> extra workers from <paramref name="quota"/>; the caller is always one more.</summary>
-    internal static int TakeWorkers(ConcurrencyController quota, int wanted)
+    /// <summary>Whether <paramref name="quota"/> has a spare worker right now, so a parallel loop is worth starting.</summary>
+    /// <remarks>
+    /// Nothing is held: the loop's workers account for themselves through <see cref="TakeWorkerQuota"/> as they
+    /// start, so a frame never reserves more than it runs, at the price of briefly exceeding the budget when
+    /// sibling frames pass the check at the same time.
+    /// </remarks>
+    internal static bool HasSpareWorker(ConcurrencyController quota)
     {
-        int taken = 0;
-        while (taken < wanted && quota.TryRequestConcurrencyQuota()) taken++;
-        return taken;
+        if (!quota.TryRequestConcurrencyQuota()) return false;
+        quota.ReturnConcurrencyQuota();
+        return true;
     }
 
-    internal static void ReturnWorkers(ConcurrencyController quota, int taken)
+    /// <summary>Charges a started loop worker to <paramref name="quota"/>, except the calling thread, which already holds its own slot.</summary>
+    /// <returns>Whether quota was taken, to hand back through <see cref="ReturnWorkerQuota"/>.</returns>
+    internal static bool TakeWorkerQuota(ConcurrencyController quota, int callerThreadId)
     {
-        for (int worker = 0; worker < taken; worker++) quota.ReturnConcurrencyQuota();
+        if (Environment.CurrentManagedThreadId == callerThreadId) return false;
+        quota.TakeConcurrencyQuota();
+        return true;
+    }
+
+    internal static void ReturnWorkerQuota(ConcurrencyController quota, bool taken)
+    {
+        if (taken) quota.ReturnConcurrencyQuota();
     }
 
     internal static int BoundarySlot<TKey>(TKey key, int groupDepth) where TKey : struct, IPbtKey<TKey> => BoundarySlot(key.Bytes, groupDepth);
@@ -290,9 +304,8 @@ internal static partial class TrieUpdater<TKey, TPath>
         int runCount = context.FoldQuota is null || operations.Length < context.MinOperationsPerWorker
             ? 1
             : PlanBucketRuns(partition.Counts, context.MinOperationsPerWorker, runEnds);
-        int extraWorkers = runCount > 1 ? TakeWorkers(context.FoldQuota!, runCount - 1) : 0;
-        if (extraWorkers > 0)
-            FoldBucketsInParallel(context, extraWorkers, ref reader, writer, ref frontier, operations, path, bitDepth, partition, runEnds[..runCount], sourceBuffer);
+        if (runCount > 1 && HasSpareWorker(context.FoldQuota!))
+            FoldBucketsInParallel(context, ref reader, writer, ref frontier, operations, path, bitDepth, partition, runEnds[..runCount], sourceBuffer);
         else
             FoldBuckets(context, ref reader, writer, ref frontier, operations, ref path, bitDepth, partition, sourceBuffer);
 
@@ -320,13 +333,13 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
     }
 
-    /// <summary>Folds the runs of touched buckets on the caller and <paramref name="extraWorkers"/> quota workers, taking the boundaries before and placing the results after.</summary>
+    /// <summary>Folds each run of touched buckets on its own thread, taking the boundaries before and placing the results after.</summary>
     /// <remarks>
     /// Every child opens and publishes its own group, so the parent frame is only read here and each group
-    /// keeps a single writer. Results are materialized copies, so no reader lease crosses threads. The workers
-    /// were already taken from <see cref="FoldContext.FoldQuota"/> and are returned once every run has folded.
+    /// keeps a single writer. Results are materialized copies, so no reader lease crosses threads. Each worker
+    /// charges itself to <see cref="FoldContext.FoldQuota"/> as it starts and returns the charge as it finishes.
     /// </remarks>
-    private static void FoldBucketsInParallel(FoldContext context, int extraWorkers, scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
+    private static void FoldBucketsInParallel(FoldContext context, scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
         scoped ref Frontier frontier, Span<PbtWriteOperation<TKey>> operations, scoped PbtTraversalPath path, int bitDepth, scoped PartitionOutcome partition, ReadOnlySpan<int> runEnds, scoped Span<byte> sourceBuffer)
     {
         BucketFold[] buckets = ArrayPool<BucketFold>.Shared.Rent(partition.Counts.Length);
@@ -345,18 +358,17 @@ internal static partial class TrieUpdater<TKey, TPath>
         TPath groupPath = path.ToPath<TPath>();
         int knownCommonPrefixLength = partition.Plan.KnownCommonPrefixLength;
         bool isSorted = partition.Plan.IsSorted;
-        try
-        {
-            ParallelUnbalancedWork.For(0, runs.Count, new ParallelOptions { MaxDegreeOfParallelism = extraWorkers + 1 }, index =>
+        ConcurrencyController quota = context.FoldQuota!;
+        int callerThreadId = Environment.CurrentManagedThreadId;
+        ParallelUnbalancedWork.For(0, runs.Count, ParallelUnbalancedWork.DefaultOptions,
+            () => TakeWorkerQuota(quota, callerThreadId),
+            (index, tookQuota) =>
             {
                 for (int bucket = index == 0 ? 0 : runs[index - 1]; bucket < runs[index]; bucket++)
                     buckets[bucket].Fold(groupPath, bitDepth, knownCommonPrefixLength, isSorted);
-            });
-        }
-        finally
-        {
-            ReturnWorkers(context.FoldQuota!, extraWorkers);
-        }
+                return tookQuota;
+            },
+            tookQuota => ReturnWorkerQuota(quota, tookQuota));
 
         foreach (ref BucketFold bucket in buckets.AsSpan(0, bucketCount))
         {

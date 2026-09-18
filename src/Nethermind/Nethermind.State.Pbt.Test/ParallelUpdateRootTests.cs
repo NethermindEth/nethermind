@@ -320,7 +320,7 @@ public class ParallelUpdateRootTests
     }
 
     // 20000 keys per zone fan out at depth 8 and, with an 8-operation worker minimum, again at depth 12, so the join
-    // and failure paths cover nested workers. A quota of three is the caller plus the two slots the barrier needs.
+    // and failure paths cover nested workers. A quota of three has the spare worker the zone fan-out is gated on.
     [Test]
     public void Zone_workers_write_disjoint_groups_and_join_before_returning([Values] bool failWorker, [Values(64, 20000)] int keysPerZone)
     {
@@ -366,10 +366,11 @@ public class ParallelUpdateRootTests
         }
     }
 
-    // Reads are the only observable moment of a fold, so the peak number of overlapping reads is a lower bound on
-    // the threads folding at once; it must never exceed the quota, and the quota must be whole again afterwards.
+    // Reads are the only observable moment of a fold, so overlapping reads show threads folding at once: a quota
+    // without a spare worker keeps every frame serial, a quota with one lets the zones overlap, and either way the
+    // quota must be whole again afterwards.
     [Test]
-    public void Fold_never_exceeds_the_quota_and_returns_it([Values(1, 2, 4)] int foldConcurrency)
+    public void Fold_is_serial_without_spare_quota_and_returns_it([Values(1, 2, 4)] int foldConcurrency)
     {
         const int minOperationsPerWorker = 8;
         (byte[] Key, byte[]? Value)[] initial = RandomZoneEntries(new Random(foldConcurrency), 20000);
@@ -378,9 +379,12 @@ public class ParallelUpdateRootTests
         ConcurrencyController foldQuota = new(foldConcurrency);
         ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), foldQuota, minOperationsPerWorker, null);
         sequential.ApplyBatch(initial);
+        (byte[] Key, byte[]? Value)[] changes = Changes(initial);
+        root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), foldQuota, minOperationsPerWorker, null);
+        sequential.ApplyBatch(changes);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(store.MaxOverlappingReads, Is.InRange(1, foldConcurrency));
+            Assert.That(store.MaxOverlappingReads, foldConcurrency == 1 ? Is.EqualTo(1) : Is.GreaterThan(1));
             Assert.That(AvailableWorkers(foldQuota), Is.EqualTo(foldConcurrency - 1));
             Assert.That(root, Is.EqualTo(sequential.RootHash));
             Assert.That(PhysicalRecords(store.Inner), Is.EqualTo(PhysicalRecords(sequential.PhysicalPayloads)));
@@ -389,8 +393,9 @@ public class ParallelUpdateRootTests
 
     private static int AvailableWorkers(ConcurrencyController quota)
     {
-        int taken = TrieUpdater.TakeWorkers(quota, int.MaxValue);
-        TrieUpdater.ReturnWorkers(quota, taken);
+        int taken = 0;
+        while (quota.TryRequestConcurrencyQuota()) taken++;
+        for (int worker = 0; worker < taken; worker++) quota.ReturnConcurrencyQuota();
         return taken;
     }
 

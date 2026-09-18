@@ -48,10 +48,11 @@ public static partial class TrieUpdater
     /// <summary>Folds disjoint partitions concurrently before merging their shared ancestors.</summary>
     /// <remarks>
     /// The zones and the touched buckets of every frame wide enough to fan out, merged into runs of at least
-    /// <paramref name="minOperationsPerWorker"/> operations, share <paramref name="foldQuota"/>: each fan-out takes its
-    /// extra workers from it before starting a parallel loop and folds serially on the calling thread when none is
-    /// left, so a quota of one folds everything serially. Each zone's fold time is observed on
-    /// <paramref name="partitionFoldTime"/> labelled by partition, so an imbalance between them is visible. The
+    /// <paramref name="minOperationsPerWorker"/> operations, share <paramref name="foldQuota"/>: a fan-out starts a
+    /// parallel loop only while it has a spare worker and folds serially on the calling thread otherwise, and every
+    /// loop worker charges itself to it for as long as it runs, so a quota of one folds everything serially. Each
+    /// zone's fold time is observed on <paramref name="partitionFoldTime"/> labelled by partition, so an imbalance
+    /// between them is visible. The
     /// supplied store must support concurrent reads and writes. Failed folds may leave partial writes; the caller
     /// owns failure isolation and must not reuse that state without recovery.
     /// </remarks>
@@ -118,21 +119,21 @@ public static partial class TrieUpdater
                         worker.Current = TakeBoundary(ref sharedReader, sharedWriter, sharedPath, ref zoneFrontiers.AsSpan()[slot], worker.Zone & 15, sourceBuffer).Materialize();
                     }
 
-                    int extraWorkers = TakeWorkers(foldQuota, workers.Count - 1);
-                    if (extraWorkers == 0)
+                    if (workers.Count > 1 && HasSpareWorker(foldQuota))
                     {
-                        foreach (PartitionFold worker in workers) worker.Fold();
+                        int callerThreadId = Environment.CurrentManagedThreadId;
+                        Parallel.ForEach(workers,
+                            () => TakeWorkerQuota(foldQuota, callerThreadId),
+                            static (worker, _, tookQuota) =>
+                            {
+                                worker.Fold();
+                                return tookQuota;
+                            },
+                            tookQuota => ReturnWorkerQuota(foldQuota, tookQuota));
                     }
                     else
                     {
-                        try
-                        {
-                            Parallel.ForEach(workers, new ParallelOptions { MaxDegreeOfParallelism = extraWorkers + 1 }, static worker => worker.Fold());
-                        }
-                        finally
-                        {
-                            ReturnWorkers(foldQuota, extraWorkers);
-                        }
+                        foreach (PartitionFold worker in workers) worker.Fold();
                     }
 
                     foreach (PartitionFold worker in workers)
