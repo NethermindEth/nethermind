@@ -14,7 +14,7 @@ namespace Nethermind.Trie;
 public partial class PatriciaTree
 {
     public static readonly int MinEntriesToParallelizeThreshold =
-        int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_BULKSET_MIN_ENTRIES_PER_WORKER"), out int minEntriesPerWorker) ? minEntriesPerWorker : 128;
+        int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_BULKSET_MIN_ENTRIES_PER_WORKER"), out int minEntriesPerWorker) ? minEntriesPerWorker : 32;
     private const int InPlaceSortThreshold = 32;
     private const int BSearchThreshold = 128;
 
