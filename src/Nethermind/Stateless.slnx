@@ -27,5 +27,7 @@
     <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />
   </Folder>
   <Project Path="Nethermind.Stateless.Executor/Nethermind.Stateless.Executor.csproj" />
+  <Project Path="Nethermind.Stateless.OpenVmGuest/Nethermind.Stateless.OpenVmGuest.csproj" />
+  <Project Path="Nethermind.Stateless.Sp1Guest/Nethermind.Stateless.Sp1Guest.csproj" />
   <Project Path="Nethermind.Stateless.ZiskGuest/Nethermind.Stateless.ZiskGuest.csproj" />
 </Solution>
