@@ -34,7 +34,7 @@ const toolsFor = phase => [
     ? object({ checks: array(object({ id: text, status: enumeration(['checked', 'not_applicable', 'unverified']),
       explanation, evidence: array(evidenceSchema) })), findings: array(candidateSchema) })
     : object({ decisions: array(object({ id: text, verdict: enumeration(['confirmed', 'rejected', 'unverified']),
-      explanation, evidence: array(evidenceSchema), finding: { anyOf: [findingSchema, { type: 'null' }] } })) })],
+      explanation, evidence: array(evidenceSchema) })) })],
 ].map(([name, description, parameters]) => ({ type: 'function', function: { name, description, parameters } }));
 
 class ValidationError extends Error {}
@@ -158,7 +158,9 @@ async function runPass({ phase, repository, context, candidates, prompt, ask, us
               for (const decision of args.decisions) {
                 if (!['confirmed', 'rejected', 'unverified'].includes(decision.verdict) || !string(decision.explanation, 1200)) fail('Invalid candidate decision or explanation exceeds 1200 characters');
                 evidence(repository, decision.evidence, decision.verdict !== 'unverified');
-                if (decision.verdict === 'confirmed') decision.finding = finding(repository, changes, decision.finding);
+                // Judge the candidate as written. A validator rewrite would introduce unreviewed claims.
+                if (decision.verdict === 'confirmed') decision.finding = finding(repository, changes,
+                  candidates.find(candidate => candidate.id === decision.id).finding);
                 else decision.finding = null;
               }
             }
@@ -173,7 +175,16 @@ async function runPass({ phase, repository, context, candidates, prompt, ask, us
         result = { error: error instanceof ValidationError ? error.message : error instanceof SyntaxError
           ? 'Tool arguments must be valid JSON. Escape quotes inside strings and keep explanations brief.'
           : 'Invalid or unavailable source request; use a valid source path, symbol and bounded range.' };
-        if (error.unread) result.unread = error.unread;
+        if (error.unread) {
+          result.unread = error.unread;
+          result.new_source = [];
+          // Serve bounded missing citations, then require a NEW decision after the model sees them.
+          // This never accepts the original submission using evidence it had not yet received.
+          for (const ref of error.unread.slice(0, 4)) {
+            try { result.new_source.push(repository.read(ref)); } catch { /* Unavailable citations remain unresolved. */ }
+          }
+          if (result.new_source.length) result.instruction = 'Review the newly supplied source before resubmitting. Correct or withdraw unsupported statements; unresolved items must be unverified.';
+        }
       }
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
     }

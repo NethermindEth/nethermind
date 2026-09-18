@@ -45,9 +45,12 @@ Preserving stored data and preserving its eligibility for processing are distinc
 contracts; a promise to retain one does not automatically justify restoring the other.
 
 Submit one decision per candidate: confirmed, rejected, or unverified. Confirmation
-needs citations to source you actually read and a concise publishable comment
-anchored on added/modified head lines. Include the trigger, consequence, supporting
-path/line references, and regression scenario in the comment. For duplicate
+needs citations to source you actually read. Judge the candidate as written; do
+not rewrite it or add claims. A finding requiring a new qualification or different
+trigger should be rejected or left unverified. Only the original candidate text
+will be published when confirmed. In discovery, write concise candidate comments
+anchored on added/modified head lines, including the trigger, consequence,
+supporting path/line references, and regression scenario. For duplicate
 findings, confirm only one and reject the others with an explanation. Do not
 disclose model/configuration details or private reasoning in comments. Do not
 invent findings to fill categories. Submit via submit_review when finished.

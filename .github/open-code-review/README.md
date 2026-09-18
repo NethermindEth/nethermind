@@ -134,7 +134,10 @@ lexical and bounded; it is not a complete call graph or whole-repository audit.
 A fresh validation pass then tries to falsify every candidate from OCR and the
 independent discovery. Confirmed findings need read source citations, a changed-line
 location, a concrete trigger and consequence, and an unexecuted regression scenario.
-Only confirmed findings reach the PR publisher. Source citation/range and candidate
+The validator accepts or rejects the original candidate text; it cannot introduce
+new claims by rewriting a finding just before publication. Missing cited lines can
+be supplied within a bounded repair, but require another model decision after that
+source is provided. Only confirmed findings reach the PR publisher. Source citation/range and candidate
 accounting checks are deterministic; whether evidence establishes a defect remains
 a model judgment. Missing evidence, unresolved checks, invalid responses, timeouts,
 and exhausted budgets prevent a completed verdict. Rejected findings stay private.

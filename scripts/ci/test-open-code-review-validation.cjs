@@ -162,14 +162,14 @@ test('independent discovery sees no primary findings; validation reads evidence 
     }
     return submit({ decisions: input.candidates.map((candidate, i) => ({ id: candidate.id,
       verdict: i ? 'confirmed' : 'rejected', explanation: i ? 'Reload path confirms defect.' : 'Unsupported speculation.',
-      evidence: [f.ref], finding: i ? f.finding : null })) });
+      evidence: [f.ref], finding: i ? { ...f.finding, content: 'Unsupported claim added by validator' } : null })) });
   } });
   assert.equal(report.complete, true, report.reason);
   assert.equal(report.discovered, 1);
   assert.equal(report.usage.requests, 4);
   assert.deepEqual(verifyValidation(f.directory, f.target, f.primary).result.comments, [f.finding]);
   const publicResult = fs.readFileSync(path.join(f.directory, 'validated-result.json'), 'utf8');
-  assert.doesNotMatch(publicResult, /chain of thought|Primary speculation|private gateway diagnostic/);
+  assert.doesNotMatch(publicResult, /chain of thought|Primary speculation|private gateway diagnostic|Unsupported claim added by validator/);
 });
 
 for (const kind of ['missing check', 'skipped changed behavior', 'unread citation', 'unchanged line', 'invented candidate ID', 'duplicate candidate ID', 'unsupported rejection']) {
@@ -266,6 +266,24 @@ test('malformed final JSON gets a bounded repair', async t => {
     } });
   assert.equal(requests, 2);
   assert.equal(result.findings.length, 0);
+});
+
+test('unread real citations are supplied as evidence and require a new model submission', async t => {
+  const f = fixture(t);
+  f.repository.served = [];
+  let requests = 0;
+  const report = await runPass({ phase: 'discovery', repository: f.repository, context: { ...f.context, related: [] },
+    prompt: 'trusted', usage: { input: 0, output: 0, requests: 0 }, budget: 1000000,
+    deadline: Date.now() + 10000, maxRounds: 1, ask: async body => {
+      if (++requests === 2) {
+        const result = JSON.parse(body.messages.at(-1).content);
+        assert.match(result.new_source[0].content, /rewindTarget/);
+        assert.match(result.instruction, /before resubmitting/);
+      }
+      return submit({ checks: f.checks, findings: [] });
+    } });
+  assert.equal(requests, 2);
+  assert.equal(report.findings.length, 0);
 });
 
 test('validation model defaults to primary, but a separate model does not inherit incompatible options', t => {
