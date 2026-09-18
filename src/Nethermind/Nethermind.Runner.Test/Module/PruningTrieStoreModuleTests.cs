@@ -63,6 +63,23 @@ public class PruningTrieStoreModuleTests
     }
 
     [Test]
+    public void Declining_is_not_a_warning()
+    {
+        // TestLogger flattens every level into one list, so the level itself needs a substitute.
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        logger.IsInfo.Returns(true);
+
+        PruningTrieStoreModule.ShouldDropPruningTrieState(
+            Config(Flags.Drop | Flags.FlatHasData),
+            () => Persistence(true),
+            new OneLoggerLogManager(new ILogger(logger)));
+
+        logger.DidNotReceive().Warn(Arg.Any<string>());
+        logger.Received().Info(Arg.Any<string>());
+    }
+
+    [Test]
     public void Does_not_touch_the_flat_store_when_the_flag_is_off()
     {
         bool resolved = false;

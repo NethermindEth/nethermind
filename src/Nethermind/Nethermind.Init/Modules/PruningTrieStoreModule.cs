@@ -132,21 +132,21 @@ public class PruningTrieStoreModule : Module
 
         if (!flatDbConfig.Enabled)
         {
-            if (logger.IsWarn) logger.Warn($"Keeping the patricia trie state: {nameof(IFlatDbConfig.DropPruningTrieState)} is set but the flat DB is disabled.");
+            if (logger.IsInfo) logger.Info($"Keeping the patricia trie state: {nameof(IFlatDbConfig.DropPruningTrieState)} is set but the flat DB is disabled.");
             return false;
         }
 
         // The importer and the fallback boundary both read the trie.
         if (flatDbConfig.ImportFromPruningTrieState)
         {
-            if (logger.IsWarn) logger.Warn($"Keeping the patricia trie state: {nameof(IFlatDbConfig.ImportFromPruningTrieState)} is still set. Remove it once the import has completed, then restart to drop the trie.");
+            if (logger.IsInfo) logger.Info($"Keeping the patricia trie state: {nameof(IFlatDbConfig.ImportFromPruningTrieState)} is still set. Remove it once the import has completed, then restart to drop the trie.");
             return false;
         }
 
         using IPersistence.IPersistenceReader reader = flatPersistence().CreateReader();
         if (reader.CurrentState == StateId.PreGenesis)
         {
-            if (logger.IsWarn) logger.Warn("Keeping the patricia trie state: the flat DB is empty, so the node would be left without any state.");
+            if (logger.IsInfo) logger.Info("Keeping the patricia trie state: the flat DB is empty, so the node would be left without any state.");
             return false;
         }
 
