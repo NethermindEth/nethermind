@@ -149,6 +149,45 @@ public class TxPoolSourceTests
         return accessListBuilder.Build();
     }
 
+    [Test]
+    public void Returns_blob_candidates_when_filter_throws()
+    {
+        Transaction first = Build.A.Transaction.WithShardBlobTxTypeAndFields(2, spec: Osaka.Instance).WithNonce(0).TestObject;
+        Transaction second = Build.A.Transaction.WithShardBlobTxTypeAndFields(2, spec: Osaka.Instance).WithNonce(1).TestObject;
+        ITxPool txPool = Substitute.For<ITxPool>();
+        SetPendingForProduction(txPool, blobTransactions: new Dictionary<AddressAsKey, Transaction[]>
+        {
+            [TestItem.AddressA] = [first, second]
+        }, isRevalidated: true);
+        txPool.SupportsBlobs.Returns(true);
+        ITxFilterPipeline filter = Substitute.For<ITxFilterPipeline>();
+        filter.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
+            .Returns(call => ReferenceEquals(call.Arg<Transaction>(), first) ? true : throw new InvalidOperationException());
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(Osaka.Instance))
+            .AddSingleton(txPool)
+            .AddSingleton(filter)
+            .AddSingleton<TxPoolTxSource>()
+            .Build();
+        ITxSource source = container.Resolve<TxPoolTxSource>();
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
+        BlockHeader target = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
+        System.Buffers.ArrayPool<(Transaction, ulong)> pool = System.Buffers.ArrayPool<(Transaction, ulong)>.Shared;
+        (Transaction, ulong)[] expected = pool.Rent(16);
+        pool.Return(expected, clearArray: true);
+
+        Assert.Throws<InvalidOperationException>(() => source.GetTransactions(parent, target, long.MaxValue).ToArray());
+        (Transaction, ulong)[] actual = pool.Rent(16);
+        try
+        {
+            Assert.That(actual, Is.SameAs(expected));
+        }
+        finally
+        {
+            pool.Return(actual, clearArray: true);
+        }
+    }
+
     private static ITxValidator CreateSpecChangeTxValidator(ISpecProvider specProvider) =>
         new SpecChangeTxValidator(specProvider.ChainId);
 

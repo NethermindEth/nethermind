@@ -178,74 +178,82 @@ namespace Nethermind.Consensus.Producers
             }
 
             ArrayPoolList<(Transaction tx, ulong blobChain)>? candidates = null;
-            foreach ((Transaction blobTx, ulong blobChain) in blobTransactions)
+            try
             {
-                ulong txBlobCount = (ulong)blobTx.GetBlobCount();
-                if (txBlobCount > maxBlobs)
+                foreach ((Transaction blobTx, ulong blobChain) in blobTransactions)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, not enough blob space.");
-                    continue;
-                }
-
-                if (feePerBlobGas > blobTx.MaxFeePerBlobGas)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, data gas fee is too low.");
-                    continue;
-                }
-
-                if (validateForkSensitiveState)
-                {
-                    if (blobTx is LightTransaction lightTransaction
-                        && lightTxValidator is not null
-                        && !lightTxValidator.IsWellFormedLight(lightTransaction, spec))
+                    ulong txBlobCount = (ulong)blobTx.GetBlobCount();
+                    if (txBlobCount > maxBlobs)
                     {
+                        if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, not enough blob space.");
                         continue;
                     }
 
-                    if (!TryResolveBlob(blobTx, spec, out Transaction? fullBlobTx)
-                        || !IsForkSensitiveStateValid(fullBlobTx, spec))
+                    if (feePerBlobGas > blobTx.MaxFeePerBlobGas)
                     {
-                        rejectedBlobCount += txBlobCount;
-                        if (rejectedBlobCount > maxRejectedBlobsToConsider)
+                        if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, data gas fee is too low.");
+                        continue;
+                    }
+
+                    if (validateForkSensitiveState)
+                    {
+                        if (blobTx is LightTransaction lightTransaction
+                            && lightTxValidator is not null
+                            && !lightTxValidator.IsWellFormedLight(lightTransaction, spec))
                         {
-                            break;
+                            continue;
                         }
 
-                        continue;
+                        if (!TryResolveBlob(blobTx, spec, out Transaction? fullBlobTx)
+                            || !IsForkSensitiveStateValid(fullBlobTx, spec))
+                        {
+                            rejectedBlobCount += txBlobCount;
+                            if (rejectedBlobCount > maxRejectedBlobsToConsider)
+                            {
+                                break;
+                            }
+
+                            continue;
+                        }
+
+                        if (blobTx.Hash is Hash256 hash)
+                        {
+                            (fullBlobTxs ??= [])[hash] = fullBlobTx;
+                        }
                     }
 
-                    if (blobTx.Hash is Hash256 hash)
+                    consideredBlobCount += txBlobCount;
+                    bool reachedConsiderationLimit = consideredBlobCount > maxBlobsToConsider;
+
+                    if (txBlobCount == 1UL && candidates is null)
                     {
-                        (fullBlobTxs ??= [])[hash] = fullBlobTx;
+                        selectedBlobTxs.Add(blobTx);
+                        if ((ulong)selectedBlobTxs.Count == maxBlobs)
+                        {
+                            // Early exit, have complete set of 1 blob txs with maximal priority fees
+                            // No need to consider other tx.
+                            return GetSelectedFullBlobTransactions();
+                        }
                     }
-                }
-
-                consideredBlobCount += txBlobCount;
-                bool reachedConsiderationLimit = consideredBlobCount > maxBlobsToConsider;
-
-                if (txBlobCount == 1UL && candidates is null)
-                {
-                    selectedBlobTxs.Add(blobTx);
-                    if ((ulong)selectedBlobTxs.Count == maxBlobs)
+                    else
                     {
-                        // Early exit, have complete set of 1 blob txs with maximal priority fees
-                        // No need to consider other tx.
-                        return GetSelectedFullBlobTransactions();
+                        candidates ??= new(16);
+
+                        candidates.Add((blobTx, blobChain));
+                        countOfRemainingBlobs += txBlobCount;
+                    }
+
+                    if (reachedConsiderationLimit)
+                    {
+                        // Reached max blobs to consider, should have enough to fill the block.
+                        break;
                     }
                 }
-                else
-                {
-                    candidates ??= new(16);
-
-                    candidates.Add((blobTx, blobChain));
-                    countOfRemainingBlobs += txBlobCount;
-                }
-
-                if (reachedConsiderationLimit)
-                {
-                    // Reached max blobs to consider, should have enough to fill the block.
-                    break;
-                }
+            }
+            catch
+            {
+                candidates?.Dispose();
+                throw;
             }
 
             // No leftover candidates
