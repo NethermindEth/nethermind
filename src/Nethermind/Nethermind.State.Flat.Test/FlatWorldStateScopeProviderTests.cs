@@ -181,7 +181,7 @@ public class FlatWorldStateScopeProviderTests
                     .Bind<IWorldStateManager, FlatWorldStateManager>()
                     .AddSingleton<IPersistence>(Substitute.For<IPersistence>())
                     .AddSingleton<IFlatStateRootIndex>(Substitute.For<IFlatStateRootIndex>())
-                    .AddSingleton<IStateHeaderProvider>(new BlockTreeStateHeaderProvider(blockTree ?? Substitute.For<IBlockTree>()))
+                    .AddSingleton<IStateHeaderProvider>(new ReorgDepthStateHeaderProvider(blockTree ?? Substitute.For<IBlockTree>()))
                     .AddKeyedSingleton<IDb>(DbNames.Code, new TestMemDb())
                     .AddSingleton<IBlockTree>(blockTree ?? Substitute.For<IBlockTree>())
                     .AddSingleton<ITrieWarmer, NoopTrieWarmer>()

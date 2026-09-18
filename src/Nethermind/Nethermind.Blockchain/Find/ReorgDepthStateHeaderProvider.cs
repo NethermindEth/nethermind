@@ -6,8 +6,16 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Find;
 
-/// <summary>Resolves parent headers and finalized canonical headers from the block tree.</summary>
-public sealed class BlockTreeStateHeaderProvider(IBlockTree blockTree) : IStateHeaderProvider
+/// <summary>
+/// Resolves parent headers and finalized canonical headers from the block tree, treating everything
+/// <see cref="Reorganization.MaxDepth"/> blocks behind the best known block as finalized.
+/// </summary>
+/// <remarks>
+/// A reorg-depth heuristic only. Post-merge the Merge plugin decorates this with
+/// <c>MergeFinalizedStateProvider</c>, which uses the consensus layer's finalized marker and falls back
+/// to this provider until one is available.
+/// </remarks>
+public sealed class ReorgDepthStateHeaderProvider(IBlockTree blockTree) : IStateHeaderProvider
 {
     public ulong FinalizedBlockNumber => blockTree.BestKnownNumber.SaturatingSub(Reorganization.MaxDepth);
 
