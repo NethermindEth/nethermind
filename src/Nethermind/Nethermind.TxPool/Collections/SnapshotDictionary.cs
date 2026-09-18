@@ -5,19 +5,21 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Threading;
 
 namespace Nethermind.TxPool.Collections;
 
 /// <summary>A read-only dictionary over an owned array of unique snapshot entries.</summary>
 /// <remarks>
 /// The caller transfers ownership of the array. A compact open-addressed index leaves entries contiguous for scans.
+/// The index is built on the first keyed lookup so value-only scans need no index allocation.
 /// Its low bits hold one-based entry indices; unused high bits hold hash fingerprints to avoid unnecessary key reads.
 /// </remarks>
 internal sealed class SnapshotDictionary<TKey, TValue> : IDictionary<TKey, TValue>, IReadOnlyDictionary<TKey, TValue> where TKey : notnull
 {
     private const uint HashMultiplier = 2654435769u;
     private readonly KeyValuePair<TKey, TValue>[] _entries;
-    private readonly int[] _index;
+    private int[]? _index;
     private readonly int _shift;
     private readonly KeyCollection _keys;
     private readonly ValueCollection _values;
@@ -38,19 +40,25 @@ internal sealed class SnapshotDictionary<TKey, TValue> : IDictionary<TKey, TValu
         _entries = entries;
         _count = count;
         // At most half full: indices fit in the slot mask and every probe terminates at an empty slot.
-        _index = new int[Math.Max(2, checked((int)BitOperations.RoundUpToPowerOf2((ulong)count * 2)))];
-        int mask = _index.Length - 1;
-        _shift = BitOperations.LeadingZeroCount((uint)mask);
-        for (int i = 0; i < count; i++)
-        {
-            uint hash = unchecked((uint)EqualityComparer<TKey>.Default.GetHashCode(entries[i].Key));
-            int slot = GetSlot(hash);
-            while (_index[slot] != 0) slot = (slot + 1) & mask;
-            _index[slot] = unchecked((int)((hash & ~(uint)mask) | (uint)(i + 1)));
-        }
-
+        int size = Math.Max(2, checked((int)BitOperations.RoundUpToPowerOf2((ulong)count * 2)));
+        _shift = BitOperations.LeadingZeroCount((uint)(size - 1));
         _keys = new(this);
         _values = new(this);
+    }
+
+    private int[] CreateIndex()
+    {
+        int[] index = new int[1 << (32 - _shift)];
+        int mask = index.Length - 1;
+        for (int i = 0; i < _count; i++)
+        {
+            uint hash = unchecked((uint)EqualityComparer<TKey>.Default.GetHashCode(_entries[i].Key));
+            int slot = GetSlot(hash);
+            while (index[slot] != 0) slot = (slot + 1) & mask;
+            index[slot] = unchecked((int)((hash & ~(uint)mask) | (uint)(i + 1)));
+        }
+
+        return Interlocked.CompareExchange(ref _index, index, null) ?? index;
     }
 
     // Multiplication before taking high bits avoids clustering keys with similar low hash bits.
@@ -65,13 +73,14 @@ internal sealed class SnapshotDictionary<TKey, TValue> : IDictionary<TKey, TValu
     public bool TryGetValue(TKey key, out TValue value)
     {
         ArgumentNullException.ThrowIfNull(key);
+        int[] index = Volatile.Read(ref _index) ?? CreateIndex();
         uint hash = unchecked((uint)EqualityComparer<TKey>.Default.GetHashCode(key));
-        int mask = _index.Length - 1, slot = GetSlot(hash);
-        while (_index[slot] != 0)
+        int mask = index.Length - 1, slot = GetSlot(hash);
+        while (index[slot] != 0)
         {
-            if ((((uint)_index[slot] ^ hash) & ~(uint)mask) == 0)
+            if ((((uint)index[slot] ^ hash) & ~(uint)mask) == 0)
             {
-                ref readonly KeyValuePair<TKey, TValue> entry = ref _entries[(_index[slot] & mask) - 1];
+                ref readonly KeyValuePair<TKey, TValue> entry = ref _entries[(index[slot] & mask) - 1];
                 if (EqualityComparer<TKey>.Default.Equals(entry.Key, key))
                 {
                     value = entry.Value;

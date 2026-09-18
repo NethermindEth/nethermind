@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
@@ -202,6 +203,27 @@ namespace Nethermind.TxPool.Test.Collections
             Assert.That(first.MoveNext(), Is.False);
             Assert.That(second.MoveNext(), Is.False);
             Assert.That(first.MoveNext(), Is.False);
+        }
+
+        [Test]
+        public void Snapshot_dictionary_supports_concurrent_first_lookups([Values] bool collisions)
+        {
+            const int count = 257;
+            KeyValuePair<SnapshotKey, object>[] entries = new KeyValuePair<SnapshotKey, object>[count + 1];
+            for (int i = 0; i < count; i++) entries[i] = new(new(i, collisions), new object());
+            SnapshotDictionary<SnapshotKey, object> snapshot = new(entries, count);
+
+            Parallel.For(0, 16, worker =>
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    int index = (i + worker) % count;
+                    Assert.That(snapshot[entries[index].Key], Is.SameAs(entries[index].Value));
+                }
+
+                Assert.That(snapshot.ContainsKey(new(count, collisions)), Is.False);
+                Assert.That(snapshot.Values, Is.EqualTo(entries.Take(count).Select(entry => entry.Value)));
+            });
         }
 
         [Test]
