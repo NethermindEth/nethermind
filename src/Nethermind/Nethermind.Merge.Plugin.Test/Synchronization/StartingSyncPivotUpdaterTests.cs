@@ -89,8 +89,8 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
         private UnsafeStartingSyncPivotUpdater CreateUnsafeUpdater() =>
             new(_blockTree!, _syncPeerPool!, _syncConfig!, _syncProgressResolver!, _blockCacheService!, _beaconSyncStrategy!, LimboLogs.Instance);
 
-        // Real BeaconSync over an empty block cache: the only finalized hash source is the block tree.
-        private StartingSyncPivotUpdater CreateUpdaterWithRealBeaconSync()
+        // Real BeaconSync holding no forkchoice hash of its own: the only finalized hash source is the block tree.
+        private StartingSyncPivotUpdater CreateUpdaterWithRealBeaconSync(Hash256? cachedFinalizedHash = null)
         {
             IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
             poSSwitcher.TransitionFinished.Returns(true);
@@ -98,9 +98,13 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
                 Substitute.For<IBeaconPivot>(),
                 _blockTree!,
                 _syncConfig!,
-                _blockCacheService!,
                 poSSwitcher,
                 LimboLogs.Instance);
+
+            if (cachedFinalizedHash is not null)
+            {
+                beaconSync.SetForkchoiceHashes(cachedFinalizedHash, null);
+            }
 
             return new StartingSyncPivotUpdater(
                 _blockTree!, _syncPeerPool!, _syncConfig!, _syncProgressResolver!, _blockCacheService!, beaconSync, LimboLogs.Instance);
@@ -164,9 +168,7 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization
             Hash256 persistedFinalizedHash = _externalPeerBlockTree!.HeadHash!;
             ulong expectedPivotBlockNumber = _externalPeerBlockTree!.Head!.Number;
             _blockTree!.ForkChoiceUpdated(persistedFinalizedHash, persistedFinalizedHash);
-            _blockCacheService!.FinalizedHash = Keccak.Zero;
-
-            await CreateUpdaterWithRealBeaconSync().EnsureSyncPivot(default);
+            await CreateUpdaterWithRealBeaconSync(Keccak.Zero).EnsureSyncPivot(default);
 
             byte[]? storedData = _metadataDb!.Get(MetadataDbKeys.UpdatedPivotData);
             Assert.That(storedData, Is.Not.Null, "a zero cached finalized hash must not shadow the persisted one");

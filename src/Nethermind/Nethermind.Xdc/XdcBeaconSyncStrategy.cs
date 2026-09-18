@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -25,5 +26,7 @@ public class XdcBeaconSyncStrategy(ISyncConfig syncConfig) : IBeaconSyncStrategy
     public Hash256? GetFinalizedHash() => null;
 
     public Hash256? GetHeadBlockHash() => null;
+
+    public event Action? BeaconSyncStopped { add { } remove { } }
 }
 
