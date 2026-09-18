@@ -42,4 +42,10 @@ internal sealed class MigrationWorldStateManager(
         flat.FlushCache(cancellationToken);
         pbt.FlushCache(cancellationToken);
     }
+
+    public void DropStateNotReachableFrom(BlockHeader head)
+    {
+        flat.DropStateNotReachableFrom(head);
+        pbt.DropStateNotReachableFrom(head);
+    }
 }

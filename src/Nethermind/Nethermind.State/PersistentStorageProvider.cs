@@ -416,12 +416,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             Db.Metrics.IncrementStorageTreeWrites(writes);
     }
 
-    /// <summary>Rejects pooling a contract state whose cells the write journal still holds.</summary>
+    /// <summary>Rejects pooling contract states while storage journal entries remain.</summary>
     /// <remarks>Always on, not a debug assert: release CI never runs debug builds, both callers run once
     /// per block, and the journal gate's safety rests on this ordering.</remarks>
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowJournalNotEmpty()
-        => throw new InvalidOperationException("storage states must not be pooled while the write journal holds their cells");
+        => throw new InvalidOperationException("storage states must not be pooled while storage journal entries remain");
 
     /// <summary>Drops the block's storage changes, returning each contract's state to the pool.</summary>
     /// <remarks>
@@ -432,6 +432,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     public void ClearStorageMap()
     {
         if (_intraBlockCache.Count != 0) ThrowJournalNotEmpty();
+        EndOriginalsRound();
         _storages.ResetAndClear();
         InvalidateStorageMemo();
     }
@@ -449,6 +450,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     internal IWorldStateScopeProvider.IBlockChangeSnapshot DetachBlockChanges()
     {
         if (_intraBlockCache.Count != 0) ThrowJournalNotEmpty();
+        EndOriginalsRound();
         foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
         {
             storage.Value.BlockEndFate = FateOf(storage);
@@ -668,21 +670,25 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     public override void ClearStorage(Address address)
     {
         IWorldStateScopeProvider.IScope currentScope = CurrentScope;
-        if (!HasStorageToClear(address))
+        if (!HasStorageToClear(address, out PerContractState? contractState))
         {
             return;
         }
 
         List<KeyValuePair<StorageCell, UInt256>>? originalValues = null;
-        foreach (KeyValuePair<StorageCell, UInt256> readCell in _originalValues)
+        // Every storage read/write registers the contract before adding originals or journal entries.
+        if (contractState is not null)
         {
-            if (readCell.Key.Address == address)
+            foreach (KeyValuePair<StorageCell, UInt256> readCell in _originalValues)
             {
-                (originalValues ??= []).Add(readCell);
+                if (readCell.Key.Address == address)
+                {
+                    (originalValues ??= []).Add(readCell);
+                }
             }
-        }
 
-        base.ClearStorage(address);
+            base.ClearStorage(address);
+        }
 
         if (originalValues is not null)
         {
@@ -697,7 +703,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         bool? rootUpdate = _toUpdateRoots.TryGetValue(address, out bool currentRootUpdate) ? currentRootUpdate : null;
-        PerContractState contractState = GetOrCreateStorage(address);
+        contractState ??= GetOrCreateStorage(address);
         DefaultableDictionary.ClearSnapshot blockChange = contractState.ClearRevertibly();
         _toUpdateRoots[address] = true;
         if (contractState.TakeAccountWarmHint()) currentScope.HintWarmAccount(new ValueAddress(address.Bytes));
@@ -715,9 +721,12 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// no storage root, reads can still resolve through the scope's pre-block account until account
     /// changes are flushed, so that backend account must also be checked.
     /// </remarks>
-    private bool HasStorageToClear(Address address)
+    /// <param name="address">The account whose storage will be cleared.</param>
+    /// <param name="contractState">The registered contract state, if present. Registration includes every
+    /// address with original values or journal entries, even when no slots are currently cached.</param>
+    private bool HasStorageToClear(Address address, out PerContractState? contractState)
     {
-        if (_storages.ContainsKey(address))
+        if (_storages.TryGetValue(address, out contractState))
         {
             return true;
         }

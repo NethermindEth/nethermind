@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -26,7 +27,7 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
 
-/// <summary>Restarts over RocksDB: both native backends persist on shutdown and the node resumes on what they hold.</summary>
+/// <summary>Restarts over RocksDB: both native backends are flushed before shutdown and the node resumes on what they hold.</summary>
 [TestFixture, NonParallelizable]
 public class MigrationRestartE2ETests
 {
@@ -40,6 +41,7 @@ public class MigrationRestartE2ETests
             {
                 ProcessBranch(harness, ["a1", "a2", "a3"]);
                 Promote(harness, "a3");
+                Persist(harness);
             }
             await using (MigrationLifecycleHarness reopened = await OpenLifecycle(directory, portable))
             {
@@ -52,6 +54,7 @@ public class MigrationRestartE2ETests
                 }
                 ProcessBranch(reopened, ["a4", "a5"]);
                 Promote(reopened, "a5");
+                Persist(reopened);
             }
             await using MigrationLifecycleHarness final = await OpenLifecycle(directory, portable);
             using IPersistence.IPersistenceReader flat = final.Container.Resolve<IPersistence>().CreateReader();
@@ -81,6 +84,7 @@ public class MigrationRestartE2ETests
             {
                 ProcessBranch(flatOnly, ["a1", "a2", "a3"], expectPbt: false);
                 Promote(flatOnly, "a3");
+                Persist(flatOnly);
             }
             await using MigrationLifecycleHarness migrating = await OpenLifecycle(directory, portable: true);
             using (Assert.EnterMultipleScope())
@@ -216,4 +220,8 @@ public class MigrationRestartE2ETests
         Block block = harness.Blocks[name];
         Assert.That(harness.Tree.TryUpdateMainChain(block.Header, true, true), Is.True);
     }
+
+    // A clean shutdown no longer flushes the unfinalized tail, so the persisted state is reached explicitly.
+    private static void Persist(MigrationLifecycleHarness harness) =>
+        harness.Container.Resolve<IWorldStateManager>().FlushCache(CancellationToken.None);
 }

@@ -357,6 +357,15 @@ public class ConfigFilesTests : ConfigFileTestsBase
         });
     }
 
+    // XDPoSChain peers state-sync via GetNodeData, which SyncServer can only answer from
+    // WorldStateManager.HashServer — non-null solely on the patricia backend with hash-keyed nodes.
+    [Test]
+    public void Xdc_configs_can_serve_node_data([Values("xdc.json", "xdc-testnet.json", "xdc_archive.json")] string configWildcard)
+    {
+        Test<IFlatDbConfig, bool>(configWildcard, static c => c.Enabled, false);
+        Test<IInitConfig, INodeStorage.KeyScheme>(configWildcard, static c => c.StateDbKeyScheme, INodeStorage.KeyScheme.Hash);
+    }
+
     // XDC's base fee is a constant equal to the gas price floor its reference client demands, so a transaction paying
     // exactly that floor has no priority fee left. MinGasPriceTxFilter compares the priority fee, so any non-zero
     // Blocks.MinGasPrice makes the block producer skip transactions the reference client both accepts and mines.

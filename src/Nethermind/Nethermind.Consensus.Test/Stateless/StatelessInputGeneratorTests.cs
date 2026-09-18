@@ -34,6 +34,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Stateless.Execution;
 using Nethermind.Stateless.Execution.IO;
 using Nethermind.StatelessInputGen;
 using Nethermind.Trie.Pruning;
@@ -43,6 +44,40 @@ namespace Nethermind.Consensus.Test.Stateless;
 
 public class StatelessInputGeneratorTests
 {
+    [Test]
+    public void Direct_execution_rejects_missing_or_unrelated_parent([Values] bool unrelatedParent)
+    {
+        Block block = Build.A.Block.WithParentBeaconBlockRoot(TestItem.KeccakA).TestObject;
+        using Witness witness = EmptyWitness(unrelatedParent ? [Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes] : []);
+
+        Assert.That(StatelessExecutor.Execute(block, witness, new TestSpecProvider(Osaka.Instance)), Is.False);
+    }
+
+    [Test]
+    public void Direct_execution_rejects_an_invalid_suggested_block()
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent).TestObject;
+        block.Header.TxRoot = TestItem.KeccakA;
+        using Witness witness = EmptyWitness([Rlp.Encode(parent).Bytes]);
+
+        Assert.That(StatelessExecutor.Execute(block, witness, new TestSpecProvider(Osaka.Instance)), Is.False);
+    }
+
+    [Test]
+    public void Malformed_input_returns_failure([Values(0, 2)] int length)
+    {
+        byte[] output = StatelessExecutor.Execute(new byte[length]);
+        StatelessValidationResult.Decode(output, out StatelessValidationResult result);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsSuccess, Is.False);
+            Assert.That(result.SchemaId, Is.Zero);
+            Assert.That(result.NewPayloadRequestRoot, Is.EqualTo(Hash256.Zero));
+        }
+    }
+
     [Test]
     public async Task Raw_block_input_recovers_requests_and_public_keys([Values] bool amsterdam)
     {

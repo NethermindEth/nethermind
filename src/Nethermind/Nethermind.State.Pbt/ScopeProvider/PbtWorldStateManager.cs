@@ -46,4 +46,6 @@ public class PbtWorldStateManager(
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken) => true;
 
     public void FlushCache(CancellationToken cancellationToken) => manager.FlushCache(cancellationToken);
+
+    public void DropStateNotReachableFrom(BlockHeader head) { }
 }

@@ -1428,6 +1428,115 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Clearing_storage_preserves_other_accounts_across_restore_and_commit(
+        [Values] bool readBeforeClear, [Values] bool writeBeforeClear)
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell clearedCell = new(TestItem.AddressA, 1);
+        StorageCell otherCell = new(TestItem.AddressB, 1);
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(TestItem.AddressA, 1);
+            provider.CreateAccount(TestItem.AddressB, 1);
+            provider.Set(clearedCell, (UInt256)7);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock))
+        {
+            provider.Get(otherCell, out _);
+            provider.Set(otherCell, (UInt256)9);
+            if (readBeforeClear) provider.Get(clearedCell, out _);
+            if (writeBeforeClear) provider.Set(clearedCell, (UInt256)8);
+            Snapshot snapshot = provider.TakeSnapshot();
+
+            provider.ClearStorage(TestItem.AddressA);
+            AssertSlots(UInt256.Zero);
+            AssertOtherOriginal();
+            if (!readBeforeClear && !writeBeforeClear)
+            {
+                provider.GetOriginal(clearedCell, out UInt256 original);
+                Assert.That(original, Is.EqualTo(UInt256.Zero));
+            }
+
+            provider.Restore(snapshot);
+            AssertSlots(writeBeforeClear ? (UInt256)8 : (UInt256)7);
+            AssertOtherOriginal();
+
+            provider.ClearStorage(TestItem.AddressA);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(1);
+            baseBlock = Build.A.BlockHeader.WithParent(baseBlock).WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using (provider.BeginScope(baseBlock)) AssertSlots(UInt256.Zero);
+
+        void AssertOtherOriginal()
+        {
+            provider.GetOriginal(otherCell, out UInt256 original);
+            Assert.That(original, Is.EqualTo(UInt256.Zero));
+        }
+
+        void AssertSlots(UInt256 expected)
+        {
+            provider.Get(clearedCell, out UInt256 clearedValue);
+            provider.Get(otherCell, out UInt256 otherValue);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(clearedValue, Is.EqualTo(expected));
+                Assert.That(otherValue, Is.EqualTo((UInt256)9));
+            }
+        }
+    }
+
+    [Test]
+    public void Storage_map_release_rejects_pending_writes_and_ends_the_originals_round([Values] bool detach)
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(TestItem.AddressA, 1);
+        BlockHeader baseBlock;
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(TestItem.AddressA, 1);
+            provider.Set(cell, (UInt256)42);
+            Assert.That(DropMap, Throws.InvalidOperationException);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(provider.StateRoot).TestObject;
+        }
+
+        using IDisposable scope = provider.BeginScope(baseBlock);
+        provider.Get(cell, out _);
+        provider.GetOriginal(cell, out _);
+        Assert.That(DropMap, Throws.Nothing);
+        Assert.That(() => provider.GetOriginal(cell, out _), Throws.InvalidOperationException);
+        provider.Get(cell, out UInt256 value);
+        provider.GetOriginal(cell, out UInt256 original);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(value, Is.EqualTo((UInt256)42));
+            Assert.That(original, Is.EqualTo(value));
+        }
+
+        void DropMap()
+        {
+            if (detach)
+            {
+                using IWorldStateScopeProvider.IBlockChangeSnapshot snapshot = provider._persistentStorageProvider.DetachBlockChanges();
+            }
+            else
+            {
+                provider._persistentStorageProvider.ClearStorageMap();
+            }
+        }
+    }
+
+    [Test]
     public void Clearing_unaccessed_empty_storage_is_a_noop([Values] bool accountExists)
     {
         using Context ctx = new(useFlat);

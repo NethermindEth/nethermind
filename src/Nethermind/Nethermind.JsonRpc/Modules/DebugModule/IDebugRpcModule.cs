@@ -32,7 +32,7 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false);
 
     [JsonRpcMethod(
-        Description = "Updates / resets head block - use only when the node got stuck due to DB / memory corruption (Nethermind specific).",
+        Description = "Moves the head to the given block and drops state kept for other branches; returns false when the block is unknown or cannot be made the head (Nethermind specific).",
         IsSharable = true)]
     ResultWrapper<bool> debug_resetHead(Hash256 blockHash);
 
