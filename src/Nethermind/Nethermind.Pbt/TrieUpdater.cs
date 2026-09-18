@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Numerics;
@@ -313,16 +314,16 @@ internal static partial class TrieUpdater<TKey, TPath>
     private static void FoldBucketsInParallel(FoldContext context, ParallelOptions foldOptions, scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
         scoped ref Frontier frontier, Span<PbtWriteOperation<TKey>> operations, scoped PbtTraversalPath path, int bitDepth, scoped PartitionOutcome partition, ReadOnlySpan<int> runEnds, scoped Span<byte> sourceBuffer)
     {
-        using ArrayPoolList<BucketFold> buckets = new(partition.Counts.Length);
+        BucketFold[] buckets = ArrayPool<BucketFold>.Shared.Rent(partition.Counts.Length);
         using ArrayPoolList<int> runs = new(runEnds);
         int offset = OffsetOf(context.Operations!, operations);
-        int countIndex = 0;
+        int bucketCount = 0;
         for (int mask = partition.UsedMask; mask != 0; mask &= mask - 1)
         {
             int slot = BitOperations.TrailingZeroCount(mask);
-            int count = partition.Counts[countIndex++];
+            int count = partition.Counts[bucketCount];
             OwnedSubtree boundary = TakeBoundary(ref reader, writer, path, ref frontier, slot, sourceBuffer).Materialize();
-            buckets.Add(new BucketFold(slot, offset, count, boundary, context.Metrics is null ? context : context.WithMetrics(new())));
+            buckets[bucketCount++] = new BucketFold(slot, offset, count, boundary, context.Metrics is null ? context : context.WithMetrics(new()));
             offset += count;
         }
 
@@ -335,12 +336,14 @@ internal static partial class TrieUpdater<TKey, TPath>
                 buckets[bucket].Fold(groupPath, bitDepth, knownCommonPrefixLength, isSorted);
         });
 
-        foreach (BucketFold bucket in buckets)
+        foreach (ref BucketFold bucket in buckets.AsSpan(0, bucketCount))
         {
             if (bucket.Context.Metrics is { } bucketMetrics) context.Metrics!.Add(bucketMetrics);
             TraversalSubtree resolved = bucket.Result.Borrow(sourceBuffer);
             SetBoundary(path, ref frontier, bucket.Slot, ref resolved);
         }
+        // The folds hold node encodings; clear so the pool does not keep them alive.
+        ArrayPool<BucketFold>.Shared.Return(buckets, clearArray: true);
     }
 
     private static int OffsetOf(PbtWriteOperation<TKey>[] array, Span<PbtWriteOperation<TKey>> span)
@@ -369,10 +372,10 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal FoldContext WithMetrics(TrieUpdaterMetrics metrics) => new(Store, MemoryProvider, metrics, BucketFoldOptions, Operations, MinOperationsPerWorker);
     }
 
-    private sealed class BucketFold(int slot, int offset, int count, OwnedSubtree current, FoldContext context)
+    private struct BucketFold(int slot, int offset, int count, OwnedSubtree current, FoldContext context)
     {
-        internal int Slot { get; } = slot;
-        internal FoldContext Context { get; } = context;
+        internal readonly int Slot = slot;
+        internal readonly FoldContext Context = context;
         internal OwnedSubtree Result;
 
         [SkipLocalsInit]
