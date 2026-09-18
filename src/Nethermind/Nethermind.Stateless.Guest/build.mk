@@ -7,6 +7,14 @@
 # counts are comparable across targets only if the same closure is built by the
 # same toolchain, and BFLAT_REFS drifting in one guest would break that silently.
 
+# A guest's directory name is also its project name, its csproj and its artifacts
+# directory, so derive it rather than repeat it.
+GUEST_PROJECT := $(notdir $(MAKEFILE_DIR))
+
+# The bindings manifest is named after the libc everywhere except zisk, whose is
+# libziskos; that guest sets GUEST_EXTLIB itself.
+GUEST_EXTLIB ?= lib$(GUEST_LIBC)
+
 # The bflat RISC-V64 compiler and .NET runtime, pinned by digest because :latest
 # moves with every CI run there; the tag records the bflat-riscv64 commit.
 #
@@ -84,3 +92,78 @@ BFLAT_REFS := \
 # A recipe that dies mid-write otherwise leaves partial output that the next run
 # reuses, being newer than its prerequisite.
 .DELETE_ON_ERROR:
+
+# --- Targets shared by every guest ---------------------------------------
+#
+# Parameterised by GUEST_LIBC, which each guest sets before the include, and
+# by GUEST_PROJECT/GUEST_EXTLIB derived above. Note MAKEFILE_DIR here is the
+# GUEST's directory, set by its Makefile; only SHARED_DIR points at this file.
+
+.DEFAULT_GOAL := build
+
+dotnet-build:
+	dotnet build -c release -p:EnableZkEvm=true $(GUEST_DIR)/$(GUEST_PROJECT).csproj
+
+# ILC embeds every manifest resource of every input assembly and the guest reads
+# none, so they are dead weight (6.9 MB of chainspecs once rode along).
+build: dotnet-build
+	docker run --platform linux/amd64 --rm \
+		-e DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
+		-e DOTNET_TYPELOADER_TRACE_INTERFACE_RESOLUTION=0 \
+		-w $(SRC_DIR) \
+		--mount type=bind,source="$(ARTIFACTS_DIR)/$(GUEST_PROJECT)/release",target=$(BIN_DIR) \
+		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
+		$(SHARED_MOUNT) \
+		$(BFLAT_IMAGE) \
+		bflat build --arch riscv64 --os linux --stdlib dotnet --libc $(GUEST_LIBC) \
+		$(OPT_FLAGS) \
+		$(TRIM_FLAGS) \
+		--no-pie \
+		--no-pthread \
+		--no-globalization \
+		--nostdlibrefs \
+		--substitution $(SRC_DIR)/substitutions.xml \
+		$(BFLAT_REFS) \
+		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/$(GUEST_EXTLIB).bflat.manifest \
+		--map $(SRC_DIR)/Program.map.xml \
+		$(ISA_GATES) \
+		$(GUEST_OUT) \
+		$(GUEST_SOURCES)
+	@len=$$(sed -n 's/.*Name="__embedded_resourcedata" Length="\([0-9]*\)".*/\1/p' $(GUEST_DIR)/Program.map.xml); \
+	rm -f $(GUEST_DIR)/Program.map.xml; \
+	if [ -z "$$len" ]; then echo "error: could not read __embedded_resourcedata from the ILC map" >&2; exit 1; fi; \
+	if [ "$$len" != "0" ]; then echo "error: the guest image embeds $$len bytes of manifest resources; the guest reads none, find the assembly that added them" >&2; exit 1; fi; \
+	echo "Resource verification: OK - no manifest resources in the guest image"
+	mkdir -p $(GUEST_DIR)/bin && \
+		mv -f $(GUEST_DIR)/Program $(GUEST_DIR)/bin/nethermind
+
+# SP1 and OpenVM take the SSZ payload as-is; the shared fixtures are framed for
+# ZisK (8-byte little-endian length, payload, padding to 8), so the frame is
+# stripped here. Unused by ZisK, which reads the framed fixture directly.
+# The length is asserted rather than sliced: a slice would clamp a truncated or
+# unframed file to a short payload and exit 0, and the guest would then fail deep
+# inside SSZ decoding, reading as a broken guest rather than a bad fixture.
+$(GUEST_DIR)/bin/%.raw: $(GUEST_DIR)/bin/%
+	python3 -c "import struct,sys; b=open(sys.argv[1],'rb').read(); n=struct.unpack_from('<Q',b,0)[0]; assert 8+n <= len(b), f'framed length {n} exceeds the {len(b)}-byte file'; open(sys.argv[2],'wb').write(b[8:8+n])" $< $@
+
+# Every runner needs INPUT. Checked in the recipe rather than as a conditional:
+# a conditional is evaluated while reading the file and would abort `make build`
+# too.
+REQUIRE_INPUT = [ -n "$(INPUT)" ] || { echo "error: INPUT is not set - make run INPUT=<fixture>.ssz" >&2; exit 1; }
+
+build-run: build run
+
+clean:
+	rm -rf \
+		$(GUEST_DIR)/bin/** \
+		$(GUEST_DIR)/Program \
+		$(GUEST_DIR)/Program.o \
+		$(GUEST_DIR)/Program.map.xml
+	dotnet clean -c release $(MAKEFILE_DIR)/../Stateless.slnx
+
+.PHONY: \
+	build \
+	build-run \
+	dotnet-build \
+	run \
+	clean
