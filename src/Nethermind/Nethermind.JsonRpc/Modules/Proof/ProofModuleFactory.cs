@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using Autofac;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
@@ -34,7 +33,6 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 // Standard read only chain setting
                 .AddModule(validationBlockProcessingModules)
                 .AddScoped<TransactionProcessorAdapterFactory>(CreateTraceAdapter)
-                .AddScoped<IBlockchainProcessor, OneTimeChainProcessor>()
                 .AddScoped<IBlockValidator>(Always.Valid) // Why?
 
                 // Specific for proof rpc

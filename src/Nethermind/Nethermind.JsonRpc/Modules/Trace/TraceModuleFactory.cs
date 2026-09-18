@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using Autofac;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
@@ -27,7 +26,6 @@ public class TraceModuleFactory(
             .AddModule(new TransactionTraceModule(validationBlockProcessingModules))
 
             .AddScoped<TransactionProcessorAdapterFactory>(adapterFactory)
-            .AddScoped<IBlockchainProcessor, OneTimeChainProcessor>()
             .AddScoped<IBlockValidator>(Always.Valid) // Why?
 
             .AddDecorator<IRewardCalculator, MergeRpcRewardCalculator>(); // TODO: Check, what if this is pre merge?
