@@ -59,16 +59,23 @@ function prepare(root, output, environment = process.env) {
   };
   fs.writeFileSync(path.join(output, 'rules.json'), JSON.stringify(config, null, 2) + '\n');
   fs.writeFileSync(path.join(output, 'config.json'), JSON.stringify(runtime, null, 2) + '\n');
+  const validation = configure(JSON.parse(read('.github/open-code-review/config.json')), {
+    ...environment,
+    OCR_MODEL: environment.OCR_VALIDATION_MODEL?.trim() || environment.OCR_MODEL,
+    OCR_EXTRA_BODY: environment.OCR_VALIDATION_EXTRA_BODY?.trim() ||
+      (environment.OCR_VALIDATION_MODEL?.trim() ? '{}' : environment.OCR_EXTRA_BODY),
+  });
+  fs.writeFileSync(path.join(output, 'validation-config.json'), JSON.stringify(validation, null, 2) + '\n');
 }
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
-function assess(result, preview, target, exitCode, expectedModel) {
+function assess(result, preview, target, exitCode, expectedModel, additionalReasons = []) {
   const manifest = result.manifest;
   const coverage = manifest?.coverage;
-  const reasons = [];
+  const reasons = [...additionalReasons];
   if (exitCode !== 0) reasons.push('OCR exited with code ' + exitCode);
   if (manifest?.schema_version !== 'ocr.run-manifest/v1') reasons.push('missing or unsupported coverage manifest');
   if (manifest?.input?.resolved_head !== target.head) reasons.push('reviewed head does not match the requested commit');
@@ -130,7 +137,33 @@ async function publish({ github, context, core, directory, enabled, postReview }
   let result = {};
   try { result = readJson(path.join(directory, 'result.json')); } catch { /* Report an incomplete run below. */ }
   const exitCode = Number(fs.readFileSync(path.join(directory, 'exit-code.txt'), 'utf8').trim());
-  const report = assess(result, preview, target, exitCode, config.model);
+  const { verifyValidation } = require('./open-code-review-validation.cjs');
+  const validated = verifyValidation(directory, target, result);
+  const report = assess(validated?.result || result, preview, target, exitCode, config.model,
+    validated ? [] : ['independent source validation is missing, incomplete, or does not match this review']);
+  if (validated) {
+    const { report: validation, context: evidence } = validated;
+    report.markdown += '\n\nIndependent source checks: ' + validation.checks.filter(check => check.status === 'checked').length +
+      ' checked, ' + validation.checks.filter(check => check.status === 'not_applicable').length + ' not applicable.' +
+      '\nCandidate validation: ' + validation.decisions.filter(decision => decision.verdict === 'confirmed').length +
+      ' confirmed, ' + validation.decisions.filter(decision => decision.verdict === 'rejected').length +
+      ' rejected; ' + validation.discovered + ' candidates from independent discovery.' +
+      '\nAdditional validation tokens: ' + validation.usage.input + ' input, ' + validation.usage.output + ' output.' +
+      '\nSource checks are bounded and model-assessed; they are not proof of correctness.';
+    if (evidence.truncated) report.markdown += '\nInitial source context was truncated; additional reads were available to the reviewer.';
+  }
+  let pr;
+  try { pr = readJson(path.join(directory, 'pr-context.json')); } catch { /* Disclosure below. */ }
+  if (pr?.head === target.head && pr?.base === target.base && Array.isArray(pr.checks) && Array.isArray(pr.statuses)) {
+    const states = [...pr.checks.map(check => check.status !== 'completed' ? 'pending' : check.conclusion), ...pr.statuses.map(status => status.state)];
+    const passed = states.filter(state => state === 'success').length;
+    const failed = states.filter(state => ['failure', 'error', 'timed_out', 'action_required', 'startup_failure'].includes(state)).length;
+    const pending = states.filter(state => ['pending', 'queued', 'in_progress', 'waiting'].includes(state)).length;
+    report.markdown += '\n\nCI snapshot at captured head: ' + passed + ' successful, ' + failed + ' failed, ' + pending +
+      ' pending, ' + (states.length - passed - failed - pending) + ' other/neutral/skipped checks.' +
+      (pr.unavailable?.length ? ' Some CI or discussion context was unavailable.' : '') +
+      ' This is a bounded snapshot taken at review start; it does not establish which regression scenarios ran.';
+  } else report.markdown += '\n\nCI status at the captured head was unavailable.';
   const runUrl = context.serverUrl + '/' + context.repo.owner + '/' + context.repo.repo +
     '/actions/runs/' + context.runId;
   report.markdown += '\n\n[Review run and artifacts](' + runUrl + ')';
@@ -182,7 +215,7 @@ async function publish({ github, context, core, directory, enabled, postReview }
         ...core,
         setOutput: (key, value) => { posting[key] = value; core.setOutput(key, value); },
       }, fs, prNumber: target.number,
-      resultPath: path.join(directory, 'result.json'),
+      resultPath: path.join(directory, 'validated-result.json'),
       stderrPath: path.join(directory, 'stderr.log'),
       stickySummary: true, incremental: true, routeSeverityBelow: 'low',
       routeCategories: 'style,documentation', resolveOutdated: 'false',

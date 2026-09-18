@@ -36,10 +36,13 @@ read for each run, so changing the model, API base URL, or key needs no code cha
 | `OCR_LITELLM_API_KEY` | Secret | API key used when no alternative secret name is configured. |
 | `OCR_API_KEY_SECRET` | Variable | Optional name of another Actions secret containing the key. Defaults to `OCR_LITELLM_API_KEY`. |
 | `OCR_EXTRA_BODY` | Secret | Optional JSON object of model-specific request options. Defaults to `{}`. |
+| `OCR_VALIDATION_MODEL` | Secret | Optional model for independent discovery and candidate validation. Defaults to `OCR_MODEL`. |
+| `OCR_VALIDATION_EXTRA_BODY` | Secret | Optional request options for validation. Defaults to primary options when reusing the primary model, or `{}` when selecting another model. |
 | `OCR_AUTO_REVIEW` | Variable | Automatic reviews are enabled unless this is `false`. Manual runs remain available. |
 | `OCR_AUTO_TOKEN_BUDGET` | Variable | Soft token budget for automatic and comment-triggered runs: `500000`, `1000000`, `2000000`, `5000000`, or `10000000` (default). |
+| `OCR_VALIDATION_TOKEN_BUDGET` | Variable | Additional soft budget across discovery and candidate validation: `500000`, `1000000` (default), or `2000000`. Applies to all triggers. |
 
-Create a dedicated LiteLLM virtual key allowing the selected model, with a spending
+Create a dedicated LiteLLM virtual key allowing the selected models, with a spending
 limit and rate limits appropriate for the pilot. Store its value only in the chosen
 Actions secret. Rotate it by updating that secret; `OCR_API_KEY_SECRET` holds the
 secret's name, never the key itself. The runner must reach the configured endpoint,
@@ -102,10 +105,38 @@ the latter also exhausted 2,000,000. The pilot uses a single pass with instructi
 to limit context reads to concrete hypotheses about changed behavior. Cached input
 counts toward the limit. Treat budget-exhausted runs as incomplete when comparing
 review quality.
-The single-pass trial on PR #13535 completed both files in 2m56s with 1,010,251
-total tokens (925,440 cached input tokens) and no tool errors. This checks the
-integration; it is not a review-quality benchmark or a billed-cost measurement.
-The review process has an 18-minute limit; the job has a 25-minute limit.
+The primary OCR process has an 18-minute limit. Independent discovery and validation
+share an additional eight-minute limit and token budget, with at most ten requests
+per pass. The job has a 35-minute limit. The default total allowance is approximately
+11 million tokens: 10 million for OCR and one million for validation. Repeated and
+cached context count toward these budgets; one in-flight request can exceed a soft
+limit. Actual usage depends on the PR and model. No extra secret is required to
+enable validation with the existing model and gateway.
+
+Before review, the workflow captures the PR description, labels, bounded human
+discussion, current-head inline comments, and check/status metadata for the exact
+head commit. Comments are evidence, never instructions. Failed API reads are
+recorded as unavailable. CI metadata is captured at review start; it can still be
+pending and does not establish which particular regression scenarios executed.
+
+The trusted context collector searches changed identifiers for other writers,
+callers, and initialization/recovery code outside the diff. It passes those source
+locations and PR intent to OCR. Once OCR completes its selected files, an independent
+review receives bounded diff/source excerpts and risk-specific checks, without
+seeing OCR's findings. It can search identifiers, read patches, and read source at
+the captured head or merge base. These tools read regular git blobs, reject secret
+paths and symlinks, and do not execute the working tree. Context collection is
+lexical and bounded; it is not a complete call graph or whole-repository audit.
+
+A fresh validation pass then tries to falsify every candidate from OCR and the
+independent discovery. Confirmed findings need read source citations, a changed-line
+location, a concrete trigger and consequence, and an unexecuted regression scenario.
+Only confirmed findings reach the PR publisher. Source citation/range and candidate
+accounting checks are deterministic; whether evidence establishes a defect remains
+a model judgment. Missing evidence, unresolved checks, invalid responses, timeouts,
+and exhausted budgets prevent a completed verdict. Rejected findings stay private.
+If discovery and OCR both find nothing, the source checks must still complete; there
+are no candidates requiring a separate falsification pass.
 
 `scripts/ci/open-code-review.cjs` generates rules from the trusted
 `.agents/rules/` files on each run, so the ArrayPool.Shared exception and other
@@ -118,8 +149,10 @@ the public summary discloses exclusions. Vendored test suites under
 `src/tests` and `src/bench_precompiles` are excluded.
 
 Each run captures its effective configuration on the runner and validates against that model.
-Before posting, the wrapper checks the reviewed commits, model, selected-file
-coverage, token-budget status, and current PR commits. Incomplete reviews publish
+Before posting, the wrapper checks the reviewed commits, models, selected-file
+coverage, token-budget status, and current PR commits. It also binds validation to
+the primary result, captured source context, and final findings with content hashes.
+Incomplete reviews publish
 an explicit incomplete summary; their findings are not published. Stale runs
 publish nothing; automatic runs also suppress publication if the PR has returned
 to draft. Completed reviews use OCR's upstream publisher for one updated
@@ -129,7 +162,8 @@ posting failures retain a warning. The bot does not approve PRs or resolve discu
 Keep `Advisory AI review` out of required branch-protection checks.
 
 Artifacts expire after 14 days and contain only the public `summary.md`: reviewed
-commit, coverage, exclusions, finding count, token usage, elapsed time, and run link.
+commit, coverage, exclusions, finding count, validation counts and usage, bounded CI
+status counts, primary elapsed time, and run link.
 Runtime configuration, the model identifier, raw OCR output, selection preview,
 and stderr are not uploaded. Configuration and raw evidence exist only on the
 ephemeral runner; debug a failed review locally when those details are needed.
@@ -147,6 +181,6 @@ For local configuration generation, export `OCR_MODEL` and `OCR_API_BASE_URL` fi
 also export `OCR_EXTRA_BODY` if the model needs it.
 
 ```sh
-node --test scripts/ci/test-open-code-review.cjs
+node --test scripts/ci/test-open-code-review.cjs scripts/ci/test-open-code-review-validation.cjs
 node scripts/ci/open-code-review.cjs prepare . /tmp/nethermind-review-rules
 ```

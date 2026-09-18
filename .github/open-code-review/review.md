@@ -8,9 +8,12 @@ and existing tests before reporting them. Keep each finding concise and suggest
 the smallest correction. Do not repeat compiler, formatter, or linter diagnostics.
 Do not invent findings to fill a category.
 
-Stay within the behavior changed by the diff. Read related files only to confirm
-or falsify a concrete suspected defect; do not survey entire subsystems or chase
-pre-existing problems. Once those hypotheses are resolved, finish the review.
+Stay within the behavior changed by the diff. For changed state or contracts,
+trace callers, other writers, reconstruction/recovery, and the next ordinary
+operation before concluding. Use the supplied PR intent and related-source
+locations to guide these reads. Then read related files to confirm or falsify
+concrete suspected defects; do not survey entire subsystems or chase pre-existing
+problems. Once those hypotheses are resolved, finish the review.
 Do not keep searching merely because you have found no defect.
 
 Check consensus changes for the active fork, gas accounting, state and receipt
