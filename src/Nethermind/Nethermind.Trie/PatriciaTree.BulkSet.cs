@@ -200,8 +200,8 @@ public partial class PatriciaTree
         bool hasRemove = false;
         int nonNullChildCount = 0;
 
-        Span<int> runEnds = stackalloc int[TrieNode.BranchesCount];
-        int runCount = 1;
+        // Exclusive end nibble of each parallel run; null when this branch sets serially.
+        ArrayPoolList<int>? runs = null;
         if (!Core.Cpu.RuntimeInformation.IsSingleProcessor && entries.Length >= MinEntriesToParallelizeThreshold && !flags.HasFlag(Flags.DoNotParallelize))
         {
             Span<int> counts = stackalloc int[TrieNode.BranchesCount];
@@ -211,12 +211,14 @@ public partial class PatriciaTree
                 int next = mask & (mask - 1);
                 counts[nib] = (next != 0 ? indexes[BitOperations.TrailingZeroCount(next)] : entries.Length) - indexes[nib];
             }
-            runCount = PlanBucketRuns(counts, MinEntriesToParallelizeThreshold, runEnds);
+            Span<int> runEnds = stackalloc int[TrieNode.BranchesCount];
+            int runCount = PlanBucketRuns(counts, MinEntriesToParallelizeThreshold, runEnds);
+            if (runCount > 1) runs = new(runEnds[..runCount]);
         }
 
-        if (runCount > 1)
+        if (runs is not null)
         {
-            using ArrayPoolList<int> runs = new(runEnds[..runCount]);
+            using ArrayPoolList<int> ownedRuns = runs;
             using ArrayPoolList<(
                 int startIdx,
                 int count,
@@ -246,7 +248,7 @@ public partial class PatriciaTree
                 jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
             }
 
-            Parallel.For(0, runCount, ParallelUnbalancedWork.DefaultOptions,
+            Parallel.For(0, runs.Count, ParallelUnbalancedWork.DefaultOptions,
                 GetTraverseStack,
                 (runIndex, _, workerTraverseStack) =>
                 {
