@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Buffers;
@@ -131,7 +132,7 @@ public class ParallelUpdateRootTests
             (byte[] Key, byte[]? Value)[] writes = new (byte[], byte[]?)[mutations.Length];
             for (int index = 0; index < mutations.Length; index++)
                 writes[index] = (mutations[index].Key, zeroDeletes && mutations[index].Value is null ? new byte[32] : mutations[index].Value);
-            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(writes), PbtTreeHarness.FoldQuota(), TrieUpdater.DefaultFoldMinOperationsPerWorker, null);
+            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(writes), PbtTreeHarness.FoldQuota(), FoldFanOut.Default, null);
             sequential.ApplyBatch(mutations);
             foreach ((byte[] key, byte[]? value) in mutations)
             {
@@ -144,7 +145,7 @@ public class ParallelUpdateRootTests
                 Assert.That(root, Is.EqualTo(sequential.RootHash));
                 Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
                 Assert.That(PhysicalRecords(store), Is.EqualTo(PhysicalRecords(sequential.PhysicalPayloads)));
-                Assert.That(TrieUpdater.UpdateRoot(reopened, root, PreparePartitions(writes), PbtTreeHarness.FoldQuota(), TrieUpdater.DefaultFoldMinOperationsPerWorker, null), Is.EqualTo(root));
+                Assert.That(TrieUpdater.UpdateRoot(reopened, root, PreparePartitions(writes), PbtTreeHarness.FoldQuota(), FoldFanOut.Default, null), Is.EqualTo(root));
                 Assert.That(PhysicalRecords(reopened), Is.EqualTo(PhysicalRecords(store)));
             }
         }
@@ -179,7 +180,7 @@ public class ParallelUpdateRootTests
             if (parallel)
             {
                 using PbtPartitionBatches partitions = PreparePartitions([.. writes]);
-                root = TrieUpdater.UpdateRoot(target, root, partitions, PbtTreeHarness.FoldQuota(), TrieUpdater.DefaultFoldMinOperationsPerWorker, null);
+                root = TrieUpdater.UpdateRoot(target, root, partitions, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, null);
             }
             else
             {
@@ -249,7 +250,7 @@ public class ParallelUpdateRootTests
         void ApplyAndCompare(PbtNodeGroupStore target, (byte[] Key, byte[]? Value)[] changes)
         {
             using PbtPartitionBatches partitions = PreparePartitions(changes);
-            root = TrieUpdater.UpdateRoot(target, root, partitions, PbtTreeHarness.FoldQuota(), TrieUpdater.DefaultFoldMinOperationsPerWorker, null);
+            root = TrieUpdater.UpdateRoot(target, root, partitions, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, null);
             sequential.ApplyBatch(changes);
             foreach ((byte[] key, byte[]? value) in changes)
             {
@@ -279,12 +280,44 @@ public class ParallelUpdateRootTests
         Assert.That(runEnds.AsSpan(0, runCount).ToArray(), Is.EqualTo(expectedRunEnds));
     }
 
+    [TestCase(0, FoldFanOut.DefaultMinOperationsPerWorker)]
+    [TestCase(FoldFanOut.DefaultLargeSubtreeBytes - 1, FoldFanOut.DefaultMinOperationsPerWorker)]
+    [TestCase(FoldFanOut.DefaultLargeSubtreeBytes, FoldFanOut.DefaultLargeSubtreeMinOperationsPerWorker)]
+    public void Worker_minimum_drops_from_the_large_subtree_size(long subtreeBytes, int expectedMinimum) =>
+        Assert.That(FoldFanOut.Default.MinOperationsFor(subtreeBytes), Is.EqualTo(expectedMinimum));
+
+    // One populated zone keeps the zone fan-out out of the picture, so any second thread is a bucket worker. Below the
+    // large-subtree size a 40-operation frame folds on the calling thread alone; above it the same 40 operations form
+    // two runs of the large-subtree minimum, and the store's barrier at the bucket groups proves both workers fold at once.
+    [TestCase(64, false)]
+    [TestCase(20000, true)]
+    public void Bucket_fan_out_follows_the_stored_subtree_size(int keys, bool expectParallel)
+    {
+        (byte[] Key, byte[]? Value)[] initial = RandomZoneEntries(new Random(keys), keys).Where(entry => entry.Key[0] == 0x01).ToArray();
+        (byte[] Key, byte[]? Value)[] changes = initial.Take(40).Select((entry, index) => (entry.Key, (byte[]?)Value((byte)(index + 1)))).ToArray();
+        using BucketWorkerStore store = new();
+        using PbtTreeHarness sequential = new();
+        ConcurrencyController foldQuota = new(2);
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), foldQuota, FoldFanOut.Default, null);
+        sequential.ApplyBatch(initial);
+        store.Observe(coordinate: expectParallel);
+        root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), foldQuota, FoldFanOut.Default, null);
+        sequential.ApplyBatch(changes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.ReadThreads, expectParallel ? Is.GreaterThan(1) : Is.EqualTo(1));
+            Assert.That(root, Is.EqualTo(sequential.RootHash));
+            Assert.That(PhysicalRecords(store.Inner), Is.EqualTo(PhysicalRecords(sequential.PhysicalPayloads)));
+            Assert.That(AvailableWorkers(foldQuota), Is.EqualTo(1));
+        }
+    }
+
     // Zones with at least two worker minimums of operations fold their buckets on worker threads, each worker taking a
     // run of consecutive buckets; the single-batch harness is the serial oracle for both the root and the
     // byte-identical group payloads. 4096 changes are ~85 per depth-8 bucket, so a minimum of 64 gives every bucket
     // its own worker and 200 merges three buckets per worker.
-    [TestCase(8297, 64, 40, 100, 0, TrieUpdater.DefaultFoldMinOperationsPerWorker)]
-    [TestCase(9341, 64, 40, 100, 0, TrieUpdater.DefaultFoldMinOperationsPerWorker)]
+    [TestCase(8297, 64, 40, 100, 0, FoldFanOut.DefaultMinOperationsPerWorker)]
+    [TestCase(9341, 64, 40, 100, 0, FoldFanOut.DefaultMinOperationsPerWorker)]
     [TestCase(8297, 4096, 4, 4096, 0, 64)]
     [TestCase(8297, 4096, 4, 4096, 0, 200)]
     [TestCase(8297, 4096, 4, 4096, 1, 200)]
@@ -296,6 +329,7 @@ public class ParallelUpdateRootTests
         EipReferenceTree oracle = new();
         (byte[] Key, byte[]? Value)[] entries = RandomZoneEntries(random, keysPerZone);
         ConcurrencyController foldQuota = new(foldConcurrency > 0 ? foldConcurrency : Environment.ProcessorCount);
+        FoldFanOut fanOut = PbtTreeHarness.FanOut(minOperationsPerWorker);
         ValueHash256 root = default;
         for (int round = 0; round < rounds; round++)
         {
@@ -308,7 +342,7 @@ public class ParallelUpdateRootTests
                 if (value is null) oracle.Delete(key);
                 else oracle.Insert(key, value);
             }
-            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), foldQuota, minOperationsPerWorker, null);
+            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), foldQuota, fanOut, null);
             sequential.ApplyBatch(changes);
             using (Assert.EnterMultipleScope())
             {
@@ -325,13 +359,13 @@ public class ParallelUpdateRootTests
     [Test]
     public void Zone_workers_write_disjoint_groups_and_join_before_returning([Values] bool failWorker, [Values(64, 20000)] int keysPerZone)
     {
-        const int minOperationsPerWorker = 8;
+        FoldFanOut fanOut = PbtTreeHarness.FanOut(8);
         const int foldConcurrency = 3;
         (byte[] Key, byte[]? Value)[] initial = RandomZoneEntries(new Random(keysPerZone), keysPerZone);
         using CoordinatedStore store = new();
         using PbtTreeHarness sequential = new();
         ConcurrencyController foldQuota = new(foldConcurrency);
-        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), foldQuota, minOperationsPerWorker, null);
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), foldQuota, fanOut, null);
         sequential.ApplyBatch(initial);
         string[] initialRecords = PhysicalRecords(store.Inner);
         (byte[] Key, byte[]? Value)[] changes = Changes(initial);
@@ -341,7 +375,7 @@ public class ParallelUpdateRootTests
         store.Writes = 0;
         if (failWorker)
         {
-            Assert.Throws<AggregateException>(() => TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, minOperationsPerWorker, null));
+            Assert.Throws<AggregateException>(() => TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, fanOut, null));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(store.Writes, Is.GreaterThan(0), "partial writes belong to the caller on failure");
@@ -353,7 +387,7 @@ public class ParallelUpdateRootTests
             Assert.That(store.DuplicateWrites, Is.False, "each group has one owner");
             return;
         }
-        ValueHash256 result = TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, minOperationsPerWorker, null);
+        ValueHash256 result = TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, fanOut, null);
         sequential.ApplyBatch(changes);
         using (Assert.EnterMultipleScope())
         {
@@ -363,7 +397,7 @@ public class ParallelUpdateRootTests
             Assert.That(store.ActiveReads, Is.Zero);
             Assert.That(store.DuplicateWrites, Is.False, "each group has one owner");
             Assert.That(AvailableWorkers(foldQuota), Is.EqualTo(foldConcurrency - 1), "completed folds return their quota");
-            Assert.Throws<InvalidOperationException>(() => TrieUpdater.UpdateRoot(store, result, prepared, foldQuota, minOperationsPerWorker, null));
+            Assert.Throws<InvalidOperationException>(() => TrieUpdater.UpdateRoot(store, result, prepared, foldQuota, fanOut, null));
         }
     }
 
@@ -373,15 +407,15 @@ public class ParallelUpdateRootTests
     [Test]
     public void Fold_is_serial_without_spare_quota_and_returns_it([Values(1, 2, 4)] int foldConcurrency)
     {
-        const int minOperationsPerWorker = 8;
+        FoldFanOut fanOut = PbtTreeHarness.FanOut(8);
         (byte[] Key, byte[]? Value)[] initial = RandomZoneEntries(new Random(foldConcurrency), 20000);
         using OverlapCountingStore store = new();
         using PbtTreeHarness sequential = new();
         ConcurrencyController foldQuota = new(foldConcurrency);
-        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), foldQuota, minOperationsPerWorker, null);
+        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), foldQuota, fanOut, null);
         sequential.ApplyBatch(initial);
         (byte[] Key, byte[]? Value)[] changes = Changes(initial);
-        root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), foldQuota, minOperationsPerWorker, null);
+        root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), foldQuota, fanOut, null);
         sequential.ApplyBatch(changes);
         using (Assert.EnterMultipleScope())
         {
@@ -441,7 +475,7 @@ public class ParallelUpdateRootTests
             if (parallel)
             {
                 using PbtPartitionBatches partitions = PreparePartitions(changes);
-                root = TrieUpdater.UpdateRoot(store, root, partitions, PbtTreeHarness.FoldQuota(), TrieUpdater.DefaultFoldMinOperationsPerWorker, null);
+                root = TrieUpdater.UpdateRoot(store, root, partitions, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, null);
             }
             else
             {
@@ -629,6 +663,57 @@ public class ParallelUpdateRootTests
             Inner.SetNodeGroup(groupKey, hash, payload);
 
         public void Dispose() => Inner.Dispose();
+    }
+
+    /// <summary>Counts the threads reading once observed; coordinating, the first two hold their first bucket-group read until both arrive.</summary>
+    /// <remarks>Only reads below the zone frame take part, so the calling thread's reads before the fan-out cannot block on a worker that never starts.</remarks>
+    private sealed class BucketWorkerStore : IPbtStore, IDisposable
+    {
+        private const int BucketGroupBitDepth = 12;
+        private readonly Barrier _barrier = new(2);
+        private readonly HashSet<int> _readThreads = [];
+        private readonly HashSet<int> _bucketReadThreads = [];
+        private bool _observing;
+        private bool _coordinate;
+        internal PbtNodeGroupStore Inner { get; } = new();
+
+        internal int ReadThreads
+        {
+            get { lock (_readThreads) return _readThreads.Count; }
+        }
+
+        internal void Observe(bool coordinate)
+        {
+            _observing = true;
+            _coordinate = coordinate;
+        }
+
+        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash)
+        {
+            if (_observing)
+            {
+                bool firstBucketRead;
+                int arrived;
+                lock (_readThreads)
+                {
+                    _readThreads.Add(Environment.CurrentManagedThreadId);
+                    firstBucketRead = groupKey.BitDepth >= BucketGroupBitDepth && _bucketReadThreads.Add(Environment.CurrentManagedThreadId);
+                    arrived = _bucketReadThreads.Count;
+                }
+                if (_coordinate && firstBucketRead && arrived <= 2 && !_barrier.SignalAndWait(TimeSpan.FromSeconds(30)))
+                    throw new TimeoutException("A second bucket worker never read a group.");
+            }
+            return Inner.GetNodeGroup(groupKey, hash);
+        }
+
+        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 hash, RefCountingMemory? payload) =>
+            Inner.SetNodeGroup(groupKey, hash, payload);
+
+        public void Dispose()
+        {
+            _barrier.Dispose();
+            Inner.Dispose();
+        }
     }
 
     private static PbtTreeHarness Apply(params (byte[] Key, byte[]? Value)[][] batches)

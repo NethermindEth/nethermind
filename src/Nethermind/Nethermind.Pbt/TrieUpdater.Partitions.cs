@@ -47,8 +47,8 @@ public static partial class TrieUpdater
 
     /// <summary>Folds disjoint partitions concurrently before merging their shared ancestors.</summary>
     /// <remarks>
-    /// The zones and the touched buckets of every frame wide enough to fan out, merged into runs of at least
-    /// <paramref name="minOperationsPerWorker"/> operations, share <paramref name="foldQuota"/>: a fan-out folds its
+    /// The zones and the touched buckets of every frame wide enough to fan out, merged into runs of at least the
+    /// minimum <paramref name="fanOut"/> gives for the frame's subtree size, share <paramref name="foldQuota"/>: a fan-out folds its
     /// parts on the calling thread while no slot is free, and the first slot it takes admits a parallel loop over
     /// the parts still left, whose workers charge themselves as they start; a quota of one folds everything
     /// serially. Each zone's fold time is observed on <paramref name="partitionFoldTime"/> labelled by partition, so
@@ -62,7 +62,7 @@ public static partial class TrieUpdater
         in ValueHash256 currentRoot,
         PbtPartitionBatches changes,
         ConcurrencyController foldQuota,
-        int minOperationsPerWorker,
+        FoldFanOut fanOut,
         IMetricObserver? partitionFoldTime,
         TrieUpdaterMetrics? metrics = null,
         IRefCountingMemoryProvider? memoryProvider = null)
@@ -202,7 +202,7 @@ public static partial class TrieUpdater
                 if (batch is null) return;
                 ArgumentOutOfRangeException.ThrowIfNotEqual(batch.ShardNibbleIndex, 2);
                 batch.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table);
-                PartitionFold<TKey, TPath> worker = new(store, zone, operations, table, metrics is not null, memoryProvider, foldQuota, minOperationsPerWorker, partitionFoldTime, foldLabel);
+                PartitionFold<TKey, TPath> worker = new(store, zone, operations, table, metrics is not null, memoryProvider, foldQuota, fanOut, partitionFoldTime, foldLabel);
                 if (operations.Count != 0) workers.Add(worker);
                 else worker.Dispose();
             }
@@ -226,7 +226,7 @@ public static partial class TrieUpdater
 
     private sealed class PartitionFold<TKey, TPath>(IPbtStore store, byte zone,
         ArrayPoolList<PbtWriteOperation<TKey>> operations, ArrayPoolList<int> table,
-        bool collectMetrics, IRefCountingMemoryProvider memoryProvider, ConcurrencyController foldQuota, int minOperationsPerWorker,
+        bool collectMetrics, IRefCountingMemoryProvider memoryProvider, ConcurrencyController foldQuota, FoldFanOut fanOut,
         IMetricObserver? foldTime, StringLabel foldLabel) : PartitionFold(zone, collectMetrics)
         where TKey : struct, IPbtKey<TKey>
         where TPath : struct, IPbtNodePath<TPath>
@@ -248,7 +248,7 @@ public static partial class TrieUpdater
                 TrieUpdater<TKey, TPath>.TraversalSubtree current = ownedCurrent.Borrow(sourceBuffer);
                 TrieUpdater<TKey, TPath>.OwnedSubtree result = default;
                 TrieUpdater<TKey, TPath>.FoldContext context = new(store, memoryProvider, Metrics,
-                    foldQuota, operations.UnsafeGetInternalArray(), minOperationsPerWorker);
+                    foldQuota, operations.UnsafeGetInternalArray(), fanOut);
                 long absentDescendantBytes = TrieUpdater<TKey, TPath>.AbsentDescendantBytes(store, current, operations.AsSpan(), 8, Metrics);
                 // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
                 result = TrieUpdater<TKey, TPath>.FoldBoundary(context, ref reader, writer, current,

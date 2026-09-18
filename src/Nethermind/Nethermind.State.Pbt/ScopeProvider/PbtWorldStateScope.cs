@@ -24,7 +24,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private readonly ILogger _logger;
     private readonly PbtResourcePool.Usage _usage;
     private readonly ConcurrencyController _foldQuota;
-    private readonly int _foldMinOperationsPerWorker;
+    private readonly FoldFanOut _foldFanOut;
     private readonly IPbtCommitTarget _commitTarget;
     private readonly IPbtChildHeaderSource _childHeaders;
     private readonly bool _isReadOnly;
@@ -60,7 +60,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     {
         _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<PbtWorldStateScope>();
         _foldQuota = new ConcurrencyController(config.FoldConcurrency > 0 ? config.FoldConcurrency : Environment.ProcessorCount);
-        _foldMinOperationsPerWorker = config.FoldMinOperationsPerWorker;
+        _foldFanOut = new(config.FoldMinOperationsPerWorker, config.FoldLargeSubtreeBytes, config.FoldLargeSubtreeMinOperationsPerWorker);
         _usage = usage;
         _currentStateId = currentStateId;
         _currentHeader = currentHeader;
@@ -160,7 +160,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             Metrics.PbtPrepareLeafChangesTime.Observe(Stopwatch.GetTimestamp() - start);
             LastFoldMutationCount = Bundle.PendingMutationCount;
             long updaterStart = Stopwatch.GetTimestamp();
-            _treeRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(Bundle), _treeRoot, changes, _foldQuota, _foldMinOperationsPerWorker, Metrics.PbtPartitionFoldTime);
+            _treeRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(Bundle), _treeRoot, changes, _foldQuota, _foldFanOut, Metrics.PbtPartitionFoldTime);
             Metrics.PbtTrieUpdaterTime.Observe(Stopwatch.GetTimestamp() - updaterStart);
             Bundle.CompleteLeafChanges();
         }

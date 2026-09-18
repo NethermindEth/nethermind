@@ -79,6 +79,13 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     /// <summary>The stored payload's subtree size minus its own length, or zero when nothing was loaded.</summary>
     internal readonly long DescendantBytes => _subtreeBytes - PayloadLength;
 
+    /// <summary>The stored payload's subtree size, loading the group; zero when nothing is stored.</summary>
+    internal long SubtreeBytes(scoped in PbtTraversalPath path)
+    {
+        EnsureLoaded(path);
+        return _subtreeBytes;
+    }
+
     internal ReadOnlyMemory<byte> GetEncoding(scoped in PbtTraversalPath path, int position)
     {
         EnsureLoaded(path);

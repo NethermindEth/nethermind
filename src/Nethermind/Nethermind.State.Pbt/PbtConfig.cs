@@ -28,7 +28,9 @@ public class PbtConfig : IPbtConfig
     public bool MirrorFlat { get; set; }
     public bool ImportFromPreimageFlat { get; set; }
     public int FoldConcurrency { get; set; }
-    public int FoldMinOperationsPerWorker { get; set; } = TrieUpdater.DefaultFoldMinOperationsPerWorker;
+    public int FoldMinOperationsPerWorker { get; set; } = FoldFanOut.DefaultMinOperationsPerWorker;
+    public long FoldLargeSubtreeBytes { get; set; } = FoldFanOut.DefaultLargeSubtreeBytes;
+    public int FoldLargeSubtreeMinOperationsPerWorker { get; set; } = FoldFanOut.DefaultLargeSubtreeMinOperationsPerWorker;
     public int ImportStorageReadConcurrency { get; set; }
     public int ImportWindowSize { get; set; }
     public bool ScanTree { get; set; }

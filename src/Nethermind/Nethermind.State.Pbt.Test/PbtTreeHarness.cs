@@ -22,6 +22,9 @@ internal sealed class PbtTreeHarness : IDisposable
     /// <summary>A fresh processor-count fold quota, so concurrently running fixtures never starve each other.</summary>
     public static ConcurrencyController FoldQuota() => new(Environment.ProcessorCount);
 
+    /// <summary>A fan-out with one worker minimum whatever the subtree size.</summary>
+    public static FoldFanOut FanOut(int minOperationsPerWorker) => new(minOperationsPerWorker, long.MaxValue, minOperationsPerWorker);
+
     public ValueHash256 RootHash { get; private set; }
 
     public IReadOnlyList<PbtNodeRecord> Nodes => _store.EnumerateRecords();

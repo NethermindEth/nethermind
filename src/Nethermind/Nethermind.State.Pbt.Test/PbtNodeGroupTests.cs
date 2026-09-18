@@ -1108,14 +1108,14 @@ public class PbtNodeGroupTests
         if (split)
         {
             using PbtPartitionBatches initialBatch = PbtStoreTestExtensions.PreparePartitions(initial);
-            root = TrieUpdater.UpdateRoot(store, default, initialBatch, PbtTreeHarness.FoldQuota(), TrieUpdater.DefaultFoldMinOperationsPerWorker, null);
+            root = TrieUpdater.UpdateRoot(store, default, initialBatch, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, null);
             expected.ApplyBatch(initial);
         }
         TrieUpdaterMetrics metrics = new();
         if (partitioned)
         {
             using PbtPartitionBatches batch = PbtStoreTestExtensions.PreparePartitions(changes);
-            root = TrieUpdater.UpdateRoot(store, root, batch, PbtTreeHarness.FoldQuota(), TrieUpdater.DefaultFoldMinOperationsPerWorker, null, metrics);
+            root = TrieUpdater.UpdateRoot(store, root, batch, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, null, metrics);
         }
         else
         {
@@ -1665,7 +1665,7 @@ public class PbtNodeGroupTests
             if (parallel)
             {
                 using PbtPartitionBatches partitions = PbtStoreTestExtensions.PreparePartitions(changes);
-                root = TrieUpdater.UpdateRoot(store, root, partitions, PbtTreeHarness.FoldQuota(), TrieUpdater.DefaultFoldMinOperationsPerWorker, null, metrics);
+                root = TrieUpdater.UpdateRoot(store, root, partitions, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, null, metrics);
             }
             else
             {
@@ -1752,7 +1752,7 @@ public class PbtNodeGroupTests
         if (parallel)
         {
             using PbtPartitionBatches partitions = PbtStoreTestExtensions.PreparePartitions(changes);
-            actualRoot = TrieUpdater.UpdateRoot(store, root, partitions, PbtTreeHarness.FoldQuota(), TrieUpdater.DefaultFoldMinOperationsPerWorker, null);
+            actualRoot = TrieUpdater.UpdateRoot(store, root, partitions, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, null);
         }
         else actualRoot = TrieUpdater<PbtTreeKey, PbtNodePath>.UpdateRoot(store, root, batch.Build());
 
