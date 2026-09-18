@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using Autofac;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
