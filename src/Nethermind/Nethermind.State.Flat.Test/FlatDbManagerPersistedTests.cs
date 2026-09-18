@@ -14,7 +14,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
-using Nethermind.Trie.Pruning;
 using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
