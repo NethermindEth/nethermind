@@ -15,7 +15,6 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Threading;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -126,7 +125,7 @@ public class ImportPbtFromPreimageFlatTests
         bundle.SetAccount(TestItem.AddressE, new Account(2, 0));
         bundle.SetAccount(TestItem.AddressB, null);
         using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
-        ValueHash256 remainingRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(bundle), reader.CurrentRoot, changes, ParallelUnbalancedWork.DefaultOptions, TrieUpdater.DefaultFoldMinOperationsPerWorker, null);
+        ValueHash256 remainingRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(bundle), reader.CurrentRoot, changes, PbtTreeHarness.FoldQuota(), TrieUpdater.DefaultFoldMinOperationsPerWorker, null);
         bundle.CompleteLeafChanges();
         model.Clear();
         PbtReferenceModel.SetAccount(model, TestItem.AddressA, 1, 100);

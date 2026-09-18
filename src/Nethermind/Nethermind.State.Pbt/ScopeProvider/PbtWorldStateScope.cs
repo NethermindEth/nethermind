@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -22,7 +23,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private readonly long _scopeId = Interlocked.Increment(ref _nextScopeId);
     private readonly ILogger _logger;
     private readonly PbtResourcePool.Usage _usage;
-    private readonly ParallelOptions _foldOptions;
+    private readonly ConcurrencyController _foldQuota;
     private readonly int _foldMinOperationsPerWorker;
     private readonly IPbtCommitTarget _commitTarget;
     private readonly IPbtChildHeaderSource _childHeaders;
@@ -58,7 +59,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         ILogManager? logManager = null)
     {
         _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<PbtWorldStateScope>();
-        _foldOptions = new ParallelOptions { MaxDegreeOfParallelism = config.FoldConcurrency > 0 ? config.FoldConcurrency : Environment.ProcessorCount };
+        _foldQuota = new ConcurrencyController(config.FoldConcurrency > 0 ? config.FoldConcurrency : Environment.ProcessorCount);
         _foldMinOperationsPerWorker = config.FoldMinOperationsPerWorker;
         _usage = usage;
         _currentStateId = currentStateId;
@@ -159,7 +160,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             Metrics.PbtPrepareLeafChangesTime.Observe(Stopwatch.GetTimestamp() - start);
             LastFoldMutationCount = Bundle.PendingMutationCount;
             long updaterStart = Stopwatch.GetTimestamp();
-            _treeRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(Bundle), _treeRoot, changes, _foldOptions, _foldMinOperationsPerWorker, Metrics.PbtPartitionFoldTime);
+            _treeRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(Bundle), _treeRoot, changes, _foldQuota, _foldMinOperationsPerWorker, Metrics.PbtPartitionFoldTime);
             Metrics.PbtTrieUpdaterTime.Observe(Stopwatch.GetTimestamp() - updaterStart);
             Bundle.CompleteLeafChanges();
         }

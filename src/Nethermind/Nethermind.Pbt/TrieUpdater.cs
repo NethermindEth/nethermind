@@ -53,6 +53,19 @@ public static partial class TrieUpdater
         return runCount;
     }
 
+    /// <summary>Takes up to <paramref name="wanted"/> extra workers from <paramref name="quota"/>; the caller is always one more.</summary>
+    internal static int TakeWorkers(ConcurrencyController quota, int wanted)
+    {
+        int taken = 0;
+        while (taken < wanted && quota.TryRequestConcurrencyQuota()) taken++;
+        return taken;
+    }
+
+    internal static void ReturnWorkers(ConcurrencyController quota, int taken)
+    {
+        for (int worker = 0; worker < taken; worker++) quota.ReturnConcurrencyQuota();
+    }
+
     internal static int BoundarySlot<TKey>(TKey key, int groupDepth) where TKey : struct, IPbtKey<TKey> => BoundarySlot(key.Bytes, groupDepth);
 
     internal static int BoundarySlot(ReadOnlySpan<byte> key, int groupDepth)
@@ -274,11 +287,12 @@ internal static partial class TrieUpdater<TKey, TPath>
         Span<byte> sourceBuffer = stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)];
 
         Span<int> runEnds = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
-        int runCount = context.BucketFoldOptions is null || operations.Length < context.MinOperationsPerWorker
+        int runCount = context.FoldQuota is null || operations.Length < context.MinOperationsPerWorker
             ? 1
             : PlanBucketRuns(partition.Counts, context.MinOperationsPerWorker, runEnds);
-        if (runCount > 1)
-            FoldBucketsInParallel(context, context.BucketFoldOptions!, ref reader, writer, ref frontier, operations, path, bitDepth, partition, runEnds[..runCount], sourceBuffer);
+        int extraWorkers = runCount > 1 ? TakeWorkers(context.FoldQuota!, runCount - 1) : 0;
+        if (extraWorkers > 0)
+            FoldBucketsInParallel(context, extraWorkers, ref reader, writer, ref frontier, operations, path, bitDepth, partition, runEnds[..runCount], sourceBuffer);
         else
             FoldBuckets(context, ref reader, writer, ref frontier, operations, ref path, bitDepth, partition, sourceBuffer);
 
@@ -306,12 +320,13 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
     }
 
-    /// <summary>Folds each run of touched buckets on its own thread, taking the boundaries before and placing the results after.</summary>
+    /// <summary>Folds the runs of touched buckets on the caller and <paramref name="extraWorkers"/> quota workers, taking the boundaries before and placing the results after.</summary>
     /// <remarks>
     /// Every child opens and publishes its own group, so the parent frame is only read here and each group
-    /// keeps a single writer. Results are materialized copies, so no reader lease crosses threads.
+    /// keeps a single writer. Results are materialized copies, so no reader lease crosses threads. The workers
+    /// were already taken from <see cref="FoldContext.FoldQuota"/> and are returned once every run has folded.
     /// </remarks>
-    private static void FoldBucketsInParallel(FoldContext context, ParallelOptions foldOptions, scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
+    private static void FoldBucketsInParallel(FoldContext context, int extraWorkers, scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
         scoped ref Frontier frontier, Span<PbtWriteOperation<TKey>> operations, scoped PbtTraversalPath path, int bitDepth, scoped PartitionOutcome partition, ReadOnlySpan<int> runEnds, scoped Span<byte> sourceBuffer)
     {
         BucketFold[] buckets = ArrayPool<BucketFold>.Shared.Rent(partition.Counts.Length);
@@ -330,11 +345,18 @@ internal static partial class TrieUpdater<TKey, TPath>
         TPath groupPath = path.ToPath<TPath>();
         int knownCommonPrefixLength = partition.Plan.KnownCommonPrefixLength;
         bool isSorted = partition.Plan.IsSorted;
-        ParallelUnbalancedWork.For(0, runs.Count, foldOptions, index =>
+        try
         {
-            for (int bucket = index == 0 ? 0 : runs[index - 1]; bucket < runs[index]; bucket++)
-                buckets[bucket].Fold(groupPath, bitDepth, knownCommonPrefixLength, isSorted);
-        });
+            ParallelUnbalancedWork.For(0, runs.Count, new ParallelOptions { MaxDegreeOfParallelism = extraWorkers + 1 }, index =>
+            {
+                for (int bucket = index == 0 ? 0 : runs[index - 1]; bucket < runs[index]; bucket++)
+                    buckets[bucket].Fold(groupPath, bitDepth, knownCommonPrefixLength, isSorted);
+            });
+        }
+        finally
+        {
+            ReturnWorkers(context.FoldQuota!, extraWorkers);
+        }
 
         foreach (ref BucketFold bucket in buckets.AsSpan(0, bucketCount))
         {
@@ -355,21 +377,22 @@ internal static partial class TrieUpdater<TKey, TPath>
 
     /// <summary>Per-fold state shared by every frame of one root update.</summary>
     /// <remarks>
-    /// <see cref="BucketFoldOptions"/> and <see cref="Operations"/> are set only when wide frames fold their buckets
-    /// concurrently; the latter is the backing array of every operation range, so a bucket can rebuild its span on another thread,
+    /// <see cref="FoldQuota"/> and <see cref="Operations"/> are set only when wide frames may fold their buckets
+    /// concurrently; the former is the budget every nested frame takes its extra workers from before fanning out, the latter
+    /// is the backing array of every operation range, so a bucket can rebuild its span on another thread,
     /// and <see cref="MinOperationsPerWorker"/> is how many operations each concurrent run of buckets holds at least.
     /// <see cref="Metrics"/> is not thread-safe, so each concurrent bucket folds under <see cref="WithMetrics"/> and is merged afterwards.
     /// </remarks>
-    internal sealed class FoldContext(IPbtStore store, IRefCountingMemoryProvider memoryProvider, TrieUpdaterMetrics? metrics, ParallelOptions? bucketFoldOptions, PbtWriteOperation<TKey>[]? operations, int minOperationsPerWorker)
+    internal sealed class FoldContext(IPbtStore store, IRefCountingMemoryProvider memoryProvider, TrieUpdaterMetrics? metrics, ConcurrencyController? foldQuota, PbtWriteOperation<TKey>[]? operations, int minOperationsPerWorker)
     {
         internal IPbtStore Store { get; } = store;
         internal IRefCountingMemoryProvider MemoryProvider { get; } = memoryProvider;
         internal TrieUpdaterMetrics? Metrics { get; } = metrics;
-        internal ParallelOptions? BucketFoldOptions { get; } = bucketFoldOptions;
+        internal ConcurrencyController? FoldQuota { get; } = foldQuota;
         internal PbtWriteOperation<TKey>[]? Operations { get; } = operations;
         internal int MinOperationsPerWorker { get; } = minOperationsPerWorker;
 
-        internal FoldContext WithMetrics(TrieUpdaterMetrics metrics) => new(Store, MemoryProvider, metrics, BucketFoldOptions, Operations, MinOperationsPerWorker);
+        internal FoldContext WithMetrics(TrieUpdaterMetrics metrics) => new(Store, MemoryProvider, metrics, FoldQuota, Operations, MinOperationsPerWorker);
     }
 
     private struct BucketFold(int slot, int offset, int count, OwnedSubtree current, FoldContext context)

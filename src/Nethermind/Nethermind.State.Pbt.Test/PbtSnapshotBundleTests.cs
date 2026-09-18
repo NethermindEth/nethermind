@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Threading;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Pbt;
@@ -1317,7 +1316,7 @@ public class PbtSnapshotBundleTests
         bundle.SetCode(other.CodeHash.ValueHash256, new CodeInfo(otherBytes));
         bundle.SetAccount(TestItem.AddressB, other);
         CountingStore store = new(bundle) { FailedZone = failedZone };
-        Assert.Throws<AggregateException>(() => TrieUpdater.UpdateRoot(store, root, bundle.PrepareLeafChanges(), ParallelUnbalancedWork.DefaultOptions, TrieUpdater.DefaultFoldMinOperationsPerWorker, null));
+        Assert.Throws<AggregateException>(() => TrieUpdater.UpdateRoot(store, root, bundle.PrepareLeafChanges(), PbtTreeHarness.FoldQuota(), TrieUpdater.DefaultFoldMinOperationsPerWorker, null));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.TreeRoot, Is.EqualTo(root));
@@ -1333,7 +1332,7 @@ public class PbtSnapshotBundleTests
         PbtPartitionBatches changes = bundle.PrepareLeafChanges();
         try
         {
-            ValueHash256 updated = TrieUpdater.UpdateRoot(new PbtSnapshotStore(bundle), root, changes, ParallelUnbalancedWork.DefaultOptions, TrieUpdater.DefaultFoldMinOperationsPerWorker, null);
+            ValueHash256 updated = TrieUpdater.UpdateRoot(new PbtSnapshotStore(bundle), root, changes, PbtTreeHarness.FoldQuota(), TrieUpdater.DefaultFoldMinOperationsPerWorker, null);
             bundle.CompleteLeafChanges();
             return updated;
         }

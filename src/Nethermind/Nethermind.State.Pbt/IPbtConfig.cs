@@ -73,7 +73,7 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Rebuild the PBT state from an existing preimage-flat state database, then exit. Requires a fully synced FlatLayout.PreimageFlat 'flat' database (and the 'code' database) in the data directory.", DefaultValue = "false")]
     bool ImportFromPreimageFlat { get; set; }
 
-    [ConfigItem(Description = "Number of parallel workers folding the key zones and their wide buckets when computing the tree root. 0 uses the processor count; 1 folds serially.", DefaultValue = "0")]
+    [ConfigItem(Description = "Maximum number of threads, including the calling one, folding the key zones and their wide buckets at once when computing the tree root. 0 uses the processor count; 1 folds serially.", DefaultValue = "0")]
     int FoldConcurrency { get; set; }
 
     [ConfigItem(Description = "Minimum number of leaf operations per worker when a wide tree frame splits its buckets across workers: consecutive buckets are merged until they reach it, and a frame that cannot fill two workers folds serially. 0 gives every touched bucket its own worker.", DefaultValue = "256")]
