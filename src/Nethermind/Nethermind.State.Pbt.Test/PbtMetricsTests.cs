@@ -152,6 +152,7 @@ public class PbtMetricsTests
 
         string tier = snapshotHit ? "snapshot" : scenario == "missing" ? "persistence_null" : "persistence";
         string codeTier = deleted ? "persistence" : tier;
+        string groupTier = deleted ? "snapshot_null" : tier;
         bool empty = deleted || scenario == "missing";
         using (Assert.EnterMultipleScope())
         {
@@ -161,7 +162,7 @@ public class PbtMetricsTests
             Assert.That(actualGroup, Is.SameAs(empty ? null : payload));
             Assert.That(actualCode, Is.SameAs(scenario == "missing" ? null : code));
             Assert.That(_readOnlyBundleTime.Labels, Is.EqualTo(detailedMetrics
-                ? new[] { $"account_{tier}", $"storage_header_{tier}", $"storage_{tier}", $"node_group_{partition}_{tier}", $"code_{codeTier}" }
+                ? new[] { $"account_{tier}", $"storage_header_{tier}", $"storage_{tier}", $"node_group_{partition}_{groupTier}", $"code_{codeTier}" }
                 : []));
             Assert.That(_readOnlyBundleTime.Observations, Has.Count.EqualTo(detailedMetrics ? 5 : 0));
             Assert.That(_readOnlyBundleTime.Observations, Is.All.GreaterThanOrEqualTo(0));

@@ -28,6 +28,7 @@ public sealed class PbtReadOnlySnapshotBundle(
     private static readonly StringLabel[] _readStoragePersistenceLabels = [new("storage_persistence"), new("storage_header_persistence")];
     private static readonly StringLabel[] _readStoragePersistenceNullLabels = [new("storage_persistence_null"), new("storage_header_persistence_null")];
     private static readonly StringLabel[] _readNodeGroupSnapshotLabels = [new("node_group_account_snapshot"), new("node_group_code_snapshot"), new("node_group_storage_snapshot")];
+    private static readonly StringLabel[] _readNodeGroupSnapshotNullLabels = [new("node_group_account_snapshot_null"), new("node_group_code_snapshot_null"), new("node_group_storage_snapshot_null")];
     private static readonly StringLabel[] _readNodeGroupPersistenceLabels = [new("node_group_account_persistence"), new("node_group_code_persistence"), new("node_group_storage_persistence")];
     private static readonly StringLabel[] _readNodeGroupPersistenceNullLabels = [new("node_group_account_persistence_null"), new("node_group_code_persistence_null"), new("node_group_storage_persistence_null")];
     private static readonly StringLabel _readCodeSnapshotLabel = new("code_snapshot");
@@ -62,7 +63,7 @@ public sealed class PbtReadOnlySnapshotBundle(
         {
             if (snapshots[index].Content.TryGetNodeGroup(groupKey, out RefCountingMemory? payload))
             {
-                if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readNodeGroupSnapshotLabels[GetNodeGroupPartition(groupKey)]);
+                if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, (payload is null ? _readNodeGroupSnapshotNullLabels : _readNodeGroupSnapshotLabels)[GetNodeGroupPartition(groupKey)]);
                 return payload;
             }
         }
