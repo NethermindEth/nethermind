@@ -74,7 +74,7 @@ public class SlotRunTests
     [TestCase(4, 0x02)]
     [TestCase(7, 0x03)]
     [TestCase(16, 0x04)]
-    public void Persisted_row_is_type_mask_and_whole_words_and_reads_back_by_slot(int count, byte type)
+    public void Persisted_row_is_type_mask_and_whole_words(int count, byte type)
     {
         ISlotRun run = Build(count, out ushort mask);
         byte[] encoded = new byte[SlotRunCodec.MaxEncodedLength];
@@ -88,10 +88,9 @@ public class SlotRunTests
             Assert.That(row, Is.EqualTo(expected));
             Assert.That(decoded, Is.TypeOf(run.GetType()));
             Assert.That(Enumerable.Range(0, SlotRun.Width).Select(decoded.Get), Is.EqualTo(Enumerable.Range(0, SlotRun.Width).Select(run.Get)));
-            Assert.That(Enumerable.Range(0, SlotRun.Width).Select(index => SlotRunCodec.ReadSlot(row, index)), Is.EqualTo(Enumerable.Range(0, SlotRun.Width).Select(run.Get)));
             Assert.That(() => SlotRunCodec.Encode(SlotRun.Empty, encoded), Throws.ArgumentException);
             Assert.That(() => SlotRunCodec.Decode(row[..^1]), Throws.TypeOf<System.IO.InvalidDataException>());
-            Assert.That(() => SlotRunCodec.ReadSlot(Bytes.Concat(0x05, row[1..]), 0), Throws.TypeOf<System.IO.InvalidDataException>());
+            Assert.That(() => SlotRunCodec.Decode(Bytes.Concat(0x05, row[1..])), Throws.TypeOf<System.IO.InvalidDataException>());
         }
         SlotRun.Return(decoded);
         SlotRun.Return(run);

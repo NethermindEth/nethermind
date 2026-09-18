@@ -1483,8 +1483,7 @@ public class PbtSnapshotBundleTests
         public StateId CurrentState => StateId.PreGenesis;
         public ValueHash256 CurrentRoot { get; set; }
         public Account? GetAccount(in ValueHash256 addressHash) => null;
-        public EvmWord GetSlot(in PbtStorageTreeKey requested) => requested == key && value is { } word ? EvmWordSlot.FromStripped(word.Bytes) : default;
-        public ISlotRun RentSlotRun(in PbtStorageTreeKey runKey)
+        public ISlotRun GetSlotRun(in PbtStorageTreeKey runKey)
         {
             PbtStorageTreeKey wanted = runKey;
             ISlotRun run = SlotRun.Empty;

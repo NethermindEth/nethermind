@@ -210,21 +210,7 @@ public class PbtRocksDbPersistence(
             }
         }
 
-        public EvmWord GetSlot(in PbtStorageTreeKey key)
-        {
-            Span<byte> persistedKey = stackalloc byte[PbtStorageTreeKey.MaxLength];
-            ReadOnlySpan<byte> value = _storages.GetSpan(PbtStorageKeyLayout.Encode(SlotRun.RunKey(key), persistedKey));
-            try
-            {
-                return value.IsNull() ? default : SlotRunCodec.ReadSlot(value, SlotRun.IndexOf(key));
-            }
-            finally
-            {
-                _storages.DangerousReleaseMemory(value);
-            }
-        }
-
-        public ISlotRun RentSlotRun(in PbtStorageTreeKey runKey)
+        public ISlotRun GetSlotRun(in PbtStorageTreeKey runKey)
         {
             if (!SlotRun.IsRunKey(runKey)) throw new ArgumentException("A run key is required.", nameof(runKey));
             Span<byte> persistedKey = stackalloc byte[PbtStorageTreeKey.MaxLength];

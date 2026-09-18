@@ -40,13 +40,6 @@ internal static class SlotRunCodec
         return SlotRun.Create(mask, valuesByIndex);
     }
 
-    /// <summary>Reads one slot without materializing the run.</summary>
-    public static EvmWord ReadSlot(ReadOnlySpan<byte> encoded, int index)
-    {
-        ushort mask = ReadMask(encoded);
-        return (mask & (1 << index)) == 0 ? default : ValueAt(encoded, BitOperations.PopCount((uint)(mask & ((1 << index) - 1))));
-    }
-
     private static EvmWord ValueAt(ReadOnlySpan<byte> encoded, int rank) =>
         EvmWordSlot.FromStripped(encoded.Slice(HeaderLength + rank * ValueHash256.MemorySize, ValueHash256.MemorySize));
 

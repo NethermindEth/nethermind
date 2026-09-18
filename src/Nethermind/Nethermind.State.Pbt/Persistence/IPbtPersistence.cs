@@ -26,9 +26,8 @@ public interface IPbtPersistence
         ValueHash256 CurrentRoot { get; }
 
         Account? GetAccount(in ValueHash256 addressHash);
-        EvmWord GetSlot(in PbtStorageTreeKey key);
         /// <summary>Gets a caller-owned copy of the persisted run keyed by <paramref name="runKey"/> (a <see cref="SlotRun.RunKey"/>); <see cref="SlotRun.Empty"/> when absent.</summary>
-        ISlotRun RentSlotRun(in PbtStorageTreeKey runKey);
+        ISlotRun GetSlotRun(in PbtStorageTreeKey runKey);
         CodeInfo? GetCode(in ValueHash256 codeHash);
         /// <summary>Gets a caller-owned iterator over persisted accounts.</summary>
         IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts();

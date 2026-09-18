@@ -112,11 +112,12 @@ public class PbtMetricsTests
         CodeInfo code = new(Bytes.FromHexString("6001"));
         using RefCountingMemory payload = PooledRefCountingMemoryProvider.Instance.Rent(1);
         IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
+        reader.GetSlotRun(Arg.Any<PbtStorageTreeKey>()).Returns(SlotRun.Empty);
         if (scenario != "missing")
         {
             reader.GetAccount(addressHash).Returns(account);
-            reader.GetSlot(headerStorageKey).Returns(slot);
-            reader.GetSlot(storageKey).Returns(slot);
+            reader.GetSlotRun(SlotRun.RunKey(headerStorageKey)).Returns(_ => SlotRun.Empty.With(SlotRun.IndexOf(headerStorageKey), slot));
+            reader.GetSlotRun(SlotRun.RunKey(storageKey)).Returns(_ => SlotRun.Empty.With(SlotRun.IndexOf(storageKey), slot));
             reader.GetCode(codeHash).Returns(code);
             reader.GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>()).Returns(_ => { payload.AcquireLease(); return payload; });
         }

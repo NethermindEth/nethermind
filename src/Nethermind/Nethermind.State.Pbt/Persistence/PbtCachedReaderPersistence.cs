@@ -126,8 +126,7 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         public StateId CurrentState => inner.CurrentState;
         public ValueHash256 CurrentRoot => inner.CurrentRoot;
         public Account? GetAccount(in ValueHash256 addressHash) => inner.GetAccount(addressHash);
-        public EvmWord GetSlot(in PbtStorageTreeKey key) => inner.GetSlot(key);
-        public ISlotRun RentSlotRun(in PbtStorageTreeKey runKey) => inner.RentSlotRun(runKey);
+        public ISlotRun GetSlotRun(in PbtStorageTreeKey runKey) => inner.GetSlotRun(runKey);
         public CodeInfo? GetCode(in ValueHash256 codeHash) => inner.GetCode(codeHash);
         public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => inner.EnumerateAccounts();
         public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressHash = null) => inner.EnumerateStorage(addressHash);

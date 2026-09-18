@@ -178,12 +178,12 @@ public sealed class PbtSnapshotBundle(
     public EvmWord GetSlot(Address address, in ValueHash256 addressHash, in UInt256 slot)
     {
         HashedKey<PbtStorageTreeKey> runKey = PbtStateKey.StorageRun(address, addressHash, slot, out int index);
-        if (WriteBuffer.TryGetSlot(runKey, index, out EvmWord value)) return value;
+        if (WriteBuffer.TryGetSlotRun(runKey, out ISlotRun? run)) return run.Get(index);
         if (WriteBuffer.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return default;
         for (int layer = snapshots.Count - 1; layer >= 0; layer--)
         {
             PbtSnapshotContent content = snapshots[layer].Content;
-            if (content.TryGetSlot(runKey, index, out value)) return value;
+            if (content.TryGetSlotRun(runKey, out run)) return run.Get(index);
             if (content.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return default;
         }
         return readOnlyBundle.GetSlot(runKey, index);
@@ -266,7 +266,7 @@ public sealed class PbtSnapshotBundle(
         int index = SlotRun.IndexOf(key);
         lock (_runLocks[(uint)runKey.GetHashCode() % RunLockStripes])
         {
-            if (WriteBuffer.Storages.TryGetValue(runKey, out ISlotRun? held))
+            if (WriteBuffer.TryGetSlotRun(runKey, out ISlotRun? held))
             {
                 WriteBuffer.SetRun(runKey, held.With(index, value));
                 return;
@@ -291,7 +291,7 @@ public sealed class PbtSnapshotBundle(
         for (int layer = snapshots.Count - 1; layer >= 0; layer--)
         {
             PbtSnapshotContent content = snapshots[layer].Content;
-            if (content.Storages.TryGetValue(runKey, out ISlotRun? run)) return run;
+            if (content.TryGetSlotRun(runKey, out ISlotRun? run)) return run;
             if (content.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return SlotRun.Empty;
         }
         return null;

@@ -197,7 +197,6 @@ public class ImportPbtFromPreimageFlat(
 
         void CopyPartitions()
         {
-            SlotRunAccumulator runs = new();
             int partition;
             while ((partition = Interlocked.Increment(ref nextPartition)) < partitionCount)
             {
@@ -207,7 +206,7 @@ public class ImportPbtFromPreimageFlat(
                 using (FlatPersistence.IPersistenceReader reader = flatSource.CreateReader())
                 using (CopyBatch batch = new(pbtPersistence, CopyBatchSize))
                 {
-                    CopyAccounts(reader, batch, runs, start, end, ref accounts, ref slots, cancellationToken);
+                    CopyAccounts(reader, batch, start, end, ref accounts, ref slots, cancellationToken);
                     batch.Commit();
                 }
 
@@ -282,7 +281,6 @@ public class ImportPbtFromPreimageFlat(
     private void CopyAccounts(
         FlatPersistence.IPersistenceReader reader,
         CopyBatch batch,
-        SlotRunAccumulator runs,
         ValueHash256 start,
         ValueHash256 end,
         ref long accounts,
@@ -304,7 +302,7 @@ public class ImportPbtFromPreimageFlat(
                 ? codeDb.Get(account.CodeHash.Bytes) ?? throw new InvalidDataException($"Missing bytecode for {address} (code hash {account.CodeHash}) in the code database.")
                 : null;
 
-            if (account.HasStorage) CopySlots(reader, batch, runs, accountKey, address, ref slots, cancellationToken);
+            if (account.HasStorage) CopySlots(reader, batch, accountKey, address, ref slots, cancellationToken);
 
             batch.NextWrite().SetAccount(PbtKeyDerivation.AddressKeyHash(address), account);
             if (code is not null) batch.NextWrite().SetCode(account.CodeHash.ValueHash256, new CodeInfo(code));
@@ -321,17 +319,18 @@ public class ImportPbtFromPreimageFlat(
     }
 
     /// <summary>Lays out one account's slots, taking them from the source reader's own storage iterator.</summary>
-    /// <remarks>Ascending slots let the key deriver reuse one address hash and one suffix hash per 256-slot run.</remarks>
+    /// <remarks>Ascending slots let the key deriver reuse one address hash and one suffix hash per 256-slot run, and complete each slot run before the next one starts.</remarks>
     private static void CopySlots(
         FlatPersistence.IPersistenceReader reader,
         CopyBatch batch,
-        SlotRunAccumulator runs,
         in ValueHash256 accountKey,
         Address address,
         ref long slots,
         CancellationToken cancellationToken)
     {
         long pendingSlots = 0;
+        PbtStorageTreeKey runKey = default;
+        ISlotRun run = SlotRun.Empty;
         using FlatPersistence.IFlatIterator slotIterator = reader.CreateStorageIterator(accountKey, default, ValueKeccak.MaxValue);
         while (slotIterator.MoveNext())
         {
@@ -340,7 +339,16 @@ public class ImportPbtFromPreimageFlat(
             // In preimage mode, the key is the raw 32-byte big-endian slot.
             UInt256 slot = new(slotIterator.CurrentKey.Bytes, isBigEndian: true);
             EvmWord value = EvmWordSlot.FromStripped(slotIterator.CurrentValue);
-            runs.Add(PbtStateKey.Storage(address, slot), value);
+            PbtStorageTreeKey key = PbtStateKey.Storage(address, slot);
+            PbtStorageTreeKey slotRunKey = SlotRun.RunKey(key);
+            if (slotRunKey != runKey)
+            {
+                Flush();
+                runKey = slotRunKey;
+            }
+            ISlotRun previous = run;
+            run = run.With(SlotRun.IndexOf(key), value);
+            SlotRun.Return(previous);
 
             if (++pendingSlots >= ProgressPublishInterval)
             {
@@ -349,8 +357,16 @@ public class ImportPbtFromPreimageFlat(
             }
         }
 
-        runs.FlushTo(batch.NextWrite);
+        Flush();
         Interlocked.Add(ref slots, pendingSlots);
+
+        void Flush()
+        {
+            if (run.Count == 0) return;
+            batch.NextWrite().SetSlotRun(runKey, run);
+            SlotRun.Return(run);
+            run = SlotRun.Empty;
+        }
     }
 
     private sealed class CopyBatch(PbtRocksDbPersistence persistence, int maxWrites) : IDisposable

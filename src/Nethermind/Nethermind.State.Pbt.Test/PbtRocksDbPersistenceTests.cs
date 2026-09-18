@@ -214,9 +214,18 @@ public class PbtRocksDbPersistenceTests
         StateId third = new(3, TestItem.KeccakC.ValueHash256);
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default, WriteFlags.None))
         {
-            SlotRunAccumulator runs = new();
-            for (uint slot = 0; slot <= 20; slot++) runs.Add(Key(slot), value);
-            runs.FlushTo(() => batch);
+            foreach (uint start in new[] { 0u, 16u })
+            {
+                ISlotRun run = SlotRun.Empty;
+                for (uint slot = start; slot <= Math.Min(start + 15, 20); slot++)
+                {
+                    ISlotRun previous = run;
+                    run = run.With(SlotRun.IndexOf(Key(slot)), value);
+                    SlotRun.Return(previous);
+                }
+                batch.SetSlotRun(SlotRun.RunKey(Key(start)), run);
+                SlotRun.Return(run);
+            }
             batch.Commit();
         }
         byte[][] populatedRows = db.GetColumnDb(PbtColumns.Storages).GetAllKeys().ToArray();
@@ -233,7 +242,7 @@ public class PbtRocksDbPersistenceTests
             batch.Commit();
         }
         using IPbtPersistence.IReader deleted = persistence.CreateReader();
-        ISlotRun tail = populated.RentSlotRun(SlotRun.RunKey(Key(16)));
+        ISlotRun tail = populated.GetSlotRun(SlotRun.RunKey(Key(16)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -241,9 +250,8 @@ public class PbtRocksDbPersistenceTests
             Assert.That(Enumerable.Range(0, 22).Select(slot => populated.GetSlot(Key((uint)slot))), Is.EqualTo(Enumerable.Range(0, 22).Select(slot => slot <= 20 ? value : default)));
             Assert.That(populated.EnumerateStorage(addressHash).Drain().Select(slot => slot.Key), Is.EqualTo(Enumerable.Range(0, 21).Select(slot => Key((uint)slot))));
             Assert.That(tail.Mask, Is.EqualTo(0x1F));
-            Assert.That(populated.RentSlotRun(SlotRun.RunKey(Key(32))), Is.SameAs(SlotRun.Empty));
-            Assert.That(() => populated.RentSlotRun(Key(3)), Throws.ArgumentException);
-            Assert.That(() => new SlotRunAccumulator().FlushTo(() => throw new InvalidOperationException()), Throws.Nothing);
+            Assert.That(populated.GetSlotRun(SlotRun.RunKey(Key(32))), Is.SameAs(SlotRun.Empty));
+            Assert.That(() => populated.GetSlotRun(Key(3)), Throws.ArgumentException);
             Assert.That(new[] { replaced.GetSlot(Key(0)), replaced.GetSlot(Key(3)), replaced.GetSlot(Key(16)) }, Is.EqualTo(new[] { default, value, value }));
             Assert.That(replaced.EnumerateStorage(addressHash).Drain(), Has.Count.EqualTo(6));
             Assert.That(deleted.GetSlot(Key(3)), Is.EqualTo(default(EvmWord)));

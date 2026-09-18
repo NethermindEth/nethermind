@@ -77,7 +77,8 @@ internal sealed class PbtAnchorPublication(
 
             using (LogicalBatch batch = new(target))
             {
-                SlotRunAccumulator runs = new();
+                // The image lists an account's slots in hash order, so its runs complete only once the account ends.
+                Dictionary<PbtStorageTreeKey, ISlotRun> runs = [];
                 Address? slotsAddress = null;
                 image.Replay((address, account, code) =>
                 {
@@ -85,12 +86,26 @@ internal sealed class PbtAnchorPublication(
                     if (code.Length != 0) batch.Next().SetCode(account.CodeHash.ValueHash256, new CodeInfo(code));
                 }, (address, slot, value) =>
                 {
-                    if (address != slotsAddress) runs.FlushTo(batch.Next);
+                    if (address != slotsAddress) FlushRuns();
                     slotsAddress = address;
-                    runs.Add(PbtStateKey.Storage(address, slot), EvmWordSlot.FromStripped(value.Bytes));
+                    PbtStorageTreeKey key = PbtStateKey.Storage(address, slot);
+                    PbtStorageTreeKey runKey = SlotRun.RunKey(key);
+                    ISlotRun previous = runs.TryGetValue(runKey, out ISlotRun? held) ? held : SlotRun.Empty;
+                    runs[runKey] = previous.With(SlotRun.IndexOf(key), EvmWordSlot.FromStripped(value.Bytes));
+                    SlotRun.Return(previous);
                 }, cancellationToken);
-                runs.FlushTo(batch.Next);
+                FlushRuns();
                 batch.Commit();
+
+                void FlushRuns()
+                {
+                    foreach ((PbtStorageTreeKey runKey, ISlotRun run) in runs)
+                    {
+                        batch.Next().SetSlotRun(runKey, run);
+                        SlotRun.Return(run);
+                    }
+                    runs.Clear();
+                }
             }
 
             copiedSnapshot.Position = 0;

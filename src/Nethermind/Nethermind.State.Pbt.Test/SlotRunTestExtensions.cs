@@ -19,9 +19,21 @@ internal static class SlotRunTestExtensions
         SlotRun.Return(run);
     }
 
+    public static EvmWord GetSlot(this IPbtPersistence.IReader reader, in PbtStorageTreeKey slotKey)
+    {
+        ISlotRun run = reader.GetSlotRun(SlotRun.RunKey(slotKey));
+        EvmWord value = run.Get(SlotRun.IndexOf(slotKey));
+        SlotRun.Return(run);
+        return value;
+    }
+
     /// <summary>Whether the layer holds the slot's run; <paramref name="value"/> is zero for a held but absent slot.</summary>
-    public static bool TryGetSlot(this PbtSnapshotContent content, in PbtStorageTreeKey slotKey, out EvmWord value) =>
-        content.TryGetSlot(SlotRun.RunKey(slotKey), SlotRun.IndexOf(slotKey), out value);
+    public static bool TryGetSlot(this PbtSnapshotContent content, in PbtStorageTreeKey slotKey, out EvmWord value)
+    {
+        bool held = content.TryGetSlotRun(SlotRun.RunKey(slotKey), out ISlotRun? run);
+        value = run?.Get(SlotRun.IndexOf(slotKey)) ?? default;
+        return held;
+    }
 
     public static EvmWord GetSlot(this PbtSnapshotContent content, in PbtStorageTreeKey slotKey)
     {
@@ -33,7 +45,7 @@ internal static class SlotRunTestExtensions
     public static void SetSlot(this PbtSnapshotContent content, in PbtStorageTreeKey slotKey, in EvmWord value)
     {
         HashedKey<PbtStorageTreeKey> runKey = SlotRun.RunKey(slotKey);
-        ISlotRun current = content.Storages.TryGetValue(runKey, out ISlotRun? held) ? held : SlotRun.Empty;
+        ISlotRun current = content.TryGetSlotRun(runKey, out ISlotRun? held) ? held : SlotRun.Empty;
         content.SetRun(runKey, current.With(SlotRun.IndexOf(slotKey), value));
     }
 

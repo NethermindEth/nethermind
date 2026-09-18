@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Evm.CodeAnalysis;
@@ -34,17 +35,8 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         SelfDestructedStorageAddresses[addressHash] = true;
     }
 
-    /// <summary>Whether this layer holds the run of <paramref name="runKey"/>; a held run answers for all of its slots.</summary>
-    internal bool TryGetSlot(in HashedKey<PbtStorageTreeKey> runKey, int index, out EvmWord value)
-    {
-        if (Storages.TryGetValue(runKey, out ISlotRun? run))
-        {
-            value = run.Get(index);
-            return true;
-        }
-        value = default;
-        return false;
-    }
+    /// <summary>Whether this layer holds the run of <paramref name="runKey"/>, borrowed; a held run answers for all of its slots.</summary>
+    internal bool TryGetSlotRun(in HashedKey<PbtStorageTreeKey> runKey, [NotNullWhen(true)] out ISlotRun? run) => Storages.TryGetValue(runKey, out run);
 
     /// <summary>Takes ownership of <paramref name="run"/> and returns the run it replaces to its pool.</summary>
     /// <remarks>Replacements of one run require caller serialization; a run being read must not be replaced.</remarks>
