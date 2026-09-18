@@ -83,11 +83,11 @@ internal sealed class PbtTrieWarmupSession(
 
     public bool WarmUpStateTrie(Address address, int jobSequenceId)
     {
-        PbtStorageFullKey key = (PbtStorageFullKey)PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey);
+        PbtTreeKey key = (PbtTreeKey)PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey);
         return WarmUpPath(key, jobSequenceId);
     }
 
-    private bool WarmUpPath(in PbtStorageFullKey key, int jobSequenceId)
+    private bool WarmUpPath(in PbtTreeKey key, int jobSequenceId)
     {
         if (!TryEnterOperation(jobSequenceId)) return false;
         try

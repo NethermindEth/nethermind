@@ -23,10 +23,10 @@ internal sealed class PbtTreeHarness : IDisposable
 
     public ValueHash256 ApplyBatch(IEnumerable<(byte[] Key, byte[]? Value)> writes, TrieUpdaterMetrics? metrics = null)
     {
-        using PbtWriteBatchBuilder<PbtStorageFullKey> batch = new(0);
+        using PbtWriteBatchBuilder<PbtTreeKey> batch = new(0);
         foreach ((byte[] key, byte[]? value) in writes)
         {
-            PbtStorageFullKey fullKey = new(key);
+            PbtTreeKey fullKey = new(key);
             if (value is null) batch.Delete(fullKey);
             else batch.Set(fullKey, new ValueHash256(value));
         }
@@ -69,21 +69,21 @@ internal static class PbtStoreTestExtensions
     internal static RefCountingMemory? GetNodeGroup<TPath>(this IPbtStore store, TPath groupKey, in ValueHash256 groupHash)
         where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageFullKey.MaxLength], groupKey);
+        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtTreeKey.MaxLength], groupKey);
         return store.GetNodeGroup(cursor, groupHash);
     }
 
     internal static void SetNodeGroup<TPath>(this IPbtStore store, TPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
         where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageFullKey.MaxLength], groupKey);
+        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtTreeKey.MaxLength], groupKey);
         store.SetNodeGroup(cursor, groupHash, payload);
     }
 
     internal static PbtNodeGroupReader ReadGroup<TPath>(TPath groupKey, ReadOnlySpan<byte> payload)
         where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageFullKey.MaxLength], groupKey);
+        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtTreeKey.MaxLength], groupKey);
         return new PbtNodeGroupReader(cursor, payload);
     }
 

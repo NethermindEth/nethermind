@@ -12,7 +12,7 @@ namespace Nethermind.Benchmarks.State;
 public class PbtNodePathBenchmark
 {
     private byte[] _bytes;
-    private PbtStorageFullKey _key;
+    private PbtTreeKey _key;
     private PbtStorageNodePath _path;
 
     [Params(0, 1, 8, 64, 272, 524, 528)]
@@ -23,7 +23,7 @@ public class PbtNodePathBenchmark
     {
         byte[] keyBytes = new byte[66];
         new Random(8297).NextBytes(keyBytes);
-        _key = new PbtStorageFullKey(keyBytes);
+        _key = new PbtTreeKey(keyBytes);
         _path = PbtStorageNodePath.FromKey(_key, BitDepth);
         _bytes = new byte[(BitDepth + 7) >> 3];
         _path.CopyBitsTo(0, _bytes, 0, BitDepth);
@@ -57,7 +57,7 @@ public class PbtNodePathAppendBenchmark
     {
         byte[] keyBytes = new byte[66];
         new Random(8297).NextBytes(keyBytes);
-        PbtStorageFullKey key = new(keyBytes);
+        PbtTreeKey key = new(keyBytes);
         int pathDepth = Math.Min(7, ResultBitDepth - 1);
         _path = PbtStorageNodePath.FromKey(key, pathDepth);
         PbtBitPrefix prefix = PbtBitPrefix.FromKey(key, pathDepth, ResultBitDepth - pathDepth - 1);

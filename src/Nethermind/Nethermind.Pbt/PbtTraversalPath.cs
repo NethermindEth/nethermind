@@ -17,7 +17,7 @@ public ref struct PbtTraversalPath
     /// <exception cref="ArgumentOutOfRangeException">The buffer exceeds the maximum storage key length.</exception>
     public PbtTraversalPath(Span<byte> buffer)
     {
-        if (buffer.Length > PbtStorageFullKey.MaxLength) throw new ArgumentOutOfRangeException(nameof(buffer));
+        if (buffer.Length > PbtTreeKey.MaxLength) throw new ArgumentOutOfRangeException(nameof(buffer));
         buffer.Clear();
         _buffer = buffer;
         BitDepth = 0;

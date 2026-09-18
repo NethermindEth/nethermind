@@ -23,10 +23,10 @@ internal static class PbtNodeGroupKey
     private const int TrailerLength = 1;
     private const byte ByteAlignedTrailer = 0;
     private const byte NibbleAlignedTrailer = 1;
-    internal const int MaxLength = PbtStorageFullKey.MaxLength + TrailerLength;
+    internal const int MaxLength = PbtTreeKey.MaxLength + TrailerLength;
 
     private static int PathLength(PbtColumns column) =>
-        column == PbtColumns.StorageNodeGroups ? PbtStorageFullKey.MaxLength : PbtFullKey.MaxLength;
+        column == PbtColumns.StorageNodeGroups ? PbtTreeKey.MaxLength : PbtFullKey.MaxLength;
 
     internal static ReadOnlySpan<byte> Encode<TPath>(PbtNodeGroupKeyLayout layout, PbtColumns column, TPath groupKey, Span<byte> destination)
         where TPath : struct, IPbtNodePath<TPath> => layout switch
@@ -57,7 +57,7 @@ internal static class PbtNodeGroupKey
     private static PbtStorageNodePath DecodePadded(ReadOnlySpan<byte> key)
     {
         int capacity = key.Length - TrailerLength;
-        if (capacity is not (PbtFullKey.MaxLength or PbtStorageFullKey.MaxLength))
+        if (capacity is not (PbtFullKey.MaxLength or PbtTreeKey.MaxLength))
             throw new InvalidDataException("Invalid persisted PBT node-group key length.");
         int depth = key[^1] * PbtFourLevelGroupGeometry.LevelsPerGroup;
         // The root group lives under its own metadata key, never in a node-group column.
@@ -84,7 +84,7 @@ internal static class PbtNodeGroupKey
     private static PbtStorageNodePath DecodeVariable(ReadOnlySpan<byte> key)
     {
         // The root group lives under its own metadata key, never in a node-group column.
-        if (key.Length < 1 + TrailerLength || key.Length - TrailerLength > PbtStorageFullKey.MaxLength)
+        if (key.Length < 1 + TrailerLength || key.Length - TrailerLength > PbtTreeKey.MaxLength)
             throw new InvalidDataException("Invalid persisted PBT node-group key length.");
         int bitsInLastByte = key[^1] switch
         {

@@ -6,18 +6,23 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Pbt;
 
-/// <summary>An immutable complete storage-capable EIP-8297 tree key.</summary>
-/// <remarks>Keys larger than 66 bytes are unsupported. The default value is not a valid complete key.</remarks>
+/// <summary>An immutable complete EIP-8297 storage-zone key: zone byte, address hash, tree-index hash and slot byte.</summary>
+/// <remarks>
+/// Every key is exactly <see cref="KeyLength"/> bytes, so <see cref="TrieUpdater"/> skips its variable-length
+/// terminal handling. Header slots derive account-zone keys instead; see <see cref="PbtTreeKey"/> for those.
+/// </remarks>
 public readonly struct PbtStorageFullKey : IPbtKey<PbtStorageFullKey>
 {
-    public const int MaxLength = 66;
+    public const int KeyLength = Eip8297KeyDerivation.StorageKeyLength;
     /// <inheritdoc/>
-    public static int Capacity => MaxLength;
+    public static bool IsFixedLength => true;
+    /// <inheritdoc/>
+    public static int Capacity => KeyLength;
     /// <inheritdoc/>
     public static PbtStorageFullKey Create(ReadOnlySpan<byte> bytes) => new(bytes);
     private readonly KeyBytes _bytes;
 
-    [InlineArray(MaxLength)]
+    [InlineArray(KeyLength)]
     private struct KeyBytes
     {
         private byte _element0;
@@ -25,30 +30,24 @@ public readonly struct PbtStorageFullKey : IPbtKey<PbtStorageFullKey>
 
     public PbtStorageFullKey(ReadOnlySpan<byte> bytes)
     {
-        if (bytes.Length is < 1 or > MaxLength)
-        {
-            throw new ArgumentOutOfRangeException(nameof(bytes), $"Key length must be between 1 and {MaxLength} bytes.");
-        }
-
+        ArgumentOutOfRangeException.ThrowIfNotEqual(bytes.Length, KeyLength, nameof(bytes));
         bytes.CopyTo(_bytes);
-        Length = bytes.Length;
     }
 
+    /// <summary>Narrows a key, rejecting any length other than <see cref="KeyLength"/>.</summary>
+    public static explicit operator PbtStorageFullKey(in PbtTreeKey key) => new(key.Bytes);
+
     /// <summary>Widens a key without changing its bytes.</summary>
-    public static explicit operator PbtStorageFullKey(in PbtFullKey key) => key.Length == 0 ? default : new(key.Bytes);
+    public static explicit operator PbtTreeKey(in PbtStorageFullKey key) => new(key.Bytes);
 
-    /// <summary>Narrows a key, rejecting keys longer than 34 bytes.</summary>
-    public static explicit operator PbtFullKey(in PbtStorageFullKey key) => key.Length == 0 ? default : new(key.Bytes);
-
-    public int Length { get; }
-    public int BitLength => Length * 8;
+    public int Length => KeyLength;
+    public int BitLength => KeyLength * 8;
     [UnscopedRef]
-    public ReadOnlySpan<byte> Bytes => _bytes[..Length];
+    public ReadOnlySpan<byte> Bytes => _bytes;
 
     public int GetBit(int bitIndex) => PbtKeyOperations.GetBit(Bytes, bitIndex);
 
-    public bool IsPrefixOf(in PbtStorageFullKey other) =>
-        Length <= other.Length && other.Bytes[..Length].SequenceEqual(Bytes);
+    public bool IsPrefixOf(in PbtStorageFullKey other) => Equals(other);
 
     public int FirstDifferingBit(in PbtStorageFullKey other, int startBit = 0) =>
         PbtKeyOperations.FirstDifferingBit(Bytes, other.Bytes, startBit);

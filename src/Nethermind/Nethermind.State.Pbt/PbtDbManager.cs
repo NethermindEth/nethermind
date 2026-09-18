@@ -333,10 +333,10 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
         public ValueHash256 CurrentRoot => default;
         public Account? GetAccount(in ValueHash256 addressHash) => null;
-        public EvmWord GetSlot(in PbtStorageFullKey key) => default;
+        public EvmWord GetSlot(in PbtTreeKey key) => default;
         public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
         public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => new PbtIterator<KeyValuePair<ValueHash256, Account>>(((IEnumerable<KeyValuePair<ValueHash256, Account>>)[]).GetEnumerator());
-        public IPbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(PbtStorageFullKey? prefix = null) => new PbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>>(((IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>>)[]).GetEnumerator());
+        public IPbtIterator<KeyValuePair<PbtTreeKey, EvmWord>> EnumerateStorage(PbtTreeKey? prefix = null) => new PbtIterator<KeyValuePair<PbtTreeKey, EvmWord>>(((IEnumerable<KeyValuePair<PbtTreeKey, EvmWord>>)[]).GetEnumerator());
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
         {
             if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupKey.BitDepth))

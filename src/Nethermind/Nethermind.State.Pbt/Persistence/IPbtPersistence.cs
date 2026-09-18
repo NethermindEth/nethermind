@@ -26,12 +26,12 @@ public interface IPbtPersistence
         ValueHash256 CurrentRoot { get; }
 
         Account? GetAccount(in ValueHash256 addressHash);
-        EvmWord GetSlot(in PbtStorageFullKey key);
+        EvmWord GetSlot(in PbtTreeKey key);
         CodeInfo? GetCode(in ValueHash256 codeHash);
         /// <summary>Gets a caller-owned iterator over persisted accounts.</summary>
         IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts();
         /// <summary>Gets a caller-owned iterator over persisted storage matching the optional prefix.</summary>
-        IPbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(PbtStorageFullKey? prefix = null);
+        IPbtIterator<KeyValuePair<PbtTreeKey, EvmWord>> EnumerateStorage(PbtTreeKey? prefix = null);
 
         /// <summary>Gets a caller-owned lease for the complete group identified by <paramref name="groupKey"/>.</summary>
         /// <remarks>
@@ -55,7 +55,7 @@ public interface IPbtPersistence
     public interface IWriteBatch : IDisposable
     {
         void SetAccount(in ValueHash256 addressHash, Account? account);
-        void SetSlot(in PbtStorageFullKey key, in EvmWord value);
+        void SetSlot(in PbtTreeKey key, in EvmWord value);
         void SetCode(in ValueHash256 codeHash, CodeInfo code);
         void ClearStorage(in ValueHash256 addressHash);
         /// <summary>Stages a complete group replacement, or deletes the group when the payload is null.</summary>

@@ -183,11 +183,11 @@ public class ParallelUpdateRootTests
             }
             else
             {
-                using PbtWriteBatchBuilder<PbtStorageFullKey> builder = new(0);
+                using PbtWriteBatchBuilder<PbtTreeKey> builder = new(0);
                 foreach ((byte[] key, byte[]? value) in writes)
                 {
-                    if (value is null) builder.Delete(new PbtStorageFullKey(key));
-                    else builder.Set(new PbtStorageFullKey(key), new ValueHash256(value));
+                    if (value is null) builder.Delete(new PbtTreeKey(key));
+                    else builder.Set(new PbtTreeKey(key), new ValueHash256(value));
                 }
                 root = TrieUpdater.UpdateRoot(target, root, builder.Build());
             }
@@ -388,11 +388,11 @@ public class ParallelUpdateRootTests
             }
             else
             {
-                using PbtWriteBatchBuilder<PbtStorageFullKey> builder = new(0);
+                using PbtWriteBatchBuilder<PbtTreeKey> builder = new(0);
                 foreach ((byte[] key, byte[]? value) in changes)
                 {
-                    if (value is null) builder.Delete(new PbtStorageFullKey(key));
-                    else builder.Set(new PbtStorageFullKey(key), new ValueHash256(value));
+                    if (value is null) builder.Delete(new PbtTreeKey(key));
+                    else builder.Set(new PbtTreeKey(key), new ValueHash256(value));
                 }
                 root = TrieUpdater.UpdateRoot(store, root, builder.Build());
             }
@@ -556,9 +556,9 @@ public class ParallelUpdateRootTests
         (byte[] Key, byte[]? Value)[] entries)
     {
         using PbtNodeGroupStore store = new();
-        using PbtWriteBatchBuilder<PbtStorageFullKey> batch = new(0);
+        using PbtWriteBatchBuilder<PbtTreeKey> batch = new(0);
         foreach ((byte[] key, byte[]? value) in entries)
-            batch.Set(new PbtStorageFullKey(key), new ValueHash256(value!));
+            batch.Set(new PbtTreeKey(key), new ValueHash256(value!));
         TrieUpdaterMetrics metrics = new();
         ValueHash256 root = TrieUpdater.UpdateRoot(store, default, batch.Build(), metrics);
         return (root, metrics);

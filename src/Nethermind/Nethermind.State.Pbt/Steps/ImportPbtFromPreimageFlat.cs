@@ -581,7 +581,7 @@ public class ImportPbtFromPreimageFlat(
                 foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressHash, account, code))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    await sink.Add(new RebuildEntry((PbtStorageFullKey)key, value));
+                    await sink.Add(new RebuildEntry((PbtTreeKey)key, value));
                 }
             }
             buffered.Clear();
@@ -603,7 +603,7 @@ public class ImportPbtFromPreimageFlat(
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     EvmWord slot = PbtRocksDbPersistence.DecodeSlot(view.CurrentValue);
-                    buffered.Add(new(new PbtStorageFullKey(view.CurrentKey), new ValueHash256(EvmWordSlot.AsReadOnlySpan(in slot))));
+                    buffered.Add(new(new PbtTreeKey(view.CurrentKey), new ValueHash256(EvmWordSlot.AsReadOnlySpan(in slot))));
                 }
                 if (buffered.Count == EntryChunkSize) resumeFrom = AfterKey(view.CurrentKey);
             }
@@ -656,7 +656,7 @@ public class ImportPbtFromPreimageFlat(
 
     private static byte[] PastEveryKey()
     {
-        byte[] key = new byte[PbtStorageFullKey.MaxLength + 1];
+        byte[] key = new byte[PbtTreeKey.MaxLength + 1];
         key.AsSpan().Fill(0xFF);
         return key;
     }

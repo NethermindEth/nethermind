@@ -13,10 +13,10 @@ namespace Nethermind.Benchmarks.State;
 public class PbtFullKeyBenchmark
 {
     private byte[] _bytes;
-    private PbtStorageFullKey _key;
-    private PbtStorageFullKey _equalKey;
-    private PbtStorageFullKey _differentKey;
-    private Dictionary<PbtStorageFullKey, int> _dictionary;
+    private PbtTreeKey _key;
+    private PbtTreeKey _equalKey;
+    private PbtTreeKey _differentKey;
+    private Dictionary<PbtTreeKey, int> _dictionary;
 
     [Params(1, 34, 66)]
     public int ByteLength { get; set; }
@@ -26,16 +26,16 @@ public class PbtFullKeyBenchmark
     {
         _bytes = new byte[ByteLength];
         new Random(8297).NextBytes(_bytes);
-        _key = new PbtStorageFullKey(_bytes);
-        _equalKey = new PbtStorageFullKey(_bytes);
+        _key = new PbtTreeKey(_bytes);
+        _equalKey = new PbtTreeKey(_bytes);
         byte[] differentBytes = (byte[])_bytes.Clone();
         differentBytes[^1] ^= 1;
-        _differentKey = new PbtStorageFullKey(differentBytes);
-        _dictionary = new Dictionary<PbtStorageFullKey, int> { [_key] = 42 };
+        _differentKey = new PbtTreeKey(differentBytes);
+        _dictionary = new Dictionary<PbtTreeKey, int> { [_key] = 42 };
     }
 
     [Benchmark]
-    public PbtStorageFullKey Construct() => new(_bytes);
+    public PbtTreeKey Construct() => new(_bytes);
 
     [Benchmark]
     public bool EqualKeys() => _key.Equals(_equalKey);
@@ -70,12 +70,12 @@ public class PbtFullKeyDerivationBenchmark
     public PbtFullKey Account() => Eip8297KeyDerivation.AccountKey(_address, 0);
 
     [Benchmark]
-    public PbtStorageFullKey Storage() => Eip8297KeyDerivation.StorageKey(_address, _slot);
+    public PbtTreeKey Storage() => Eip8297KeyDerivation.StorageKey(_address, _slot);
 }
 
 [MemoryDiagnoser]
 [GenericTypeArguments(typeof(PbtFullKey))]
-[GenericTypeArguments(typeof(PbtStorageFullKey))]
+[GenericTypeArguments(typeof(PbtTreeKey))]
 public class PbtWriteBatchMemoryBenchmark<TKey> where TKey : struct, IPbtKey<TKey>
 {
     private TKey[] _keys;

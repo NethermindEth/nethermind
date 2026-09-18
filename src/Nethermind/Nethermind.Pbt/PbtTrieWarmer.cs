@@ -17,7 +17,7 @@ internal static class PbtTrieWarmer
 
         PbtStorageNodePath path = new([], 0);
         ValueHash256 groupHash = root;
-        Span<byte> groupPathBuffer = stackalloc byte[PbtStorageFullKey.MaxLength];
+        Span<byte> groupPathBuffer = stackalloc byte[PbtTreeKey.MaxLength];
         while (true)
         {
             PbtNodeGroupLocation<PbtStorageNodePath> location = PbtFourLevelGroupGeometry.Locate(path);

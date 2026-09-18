@@ -23,7 +23,7 @@ internal static class PbtStateKey
     public static PbtFullKey Code(in ValueHash256 addressHash, in ValueHash256 codeHash, int chunkId) =>
         Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunkId);
 
-    public static PbtStorageFullKey Storage(Address address, in UInt256 slot)
+    public static PbtTreeKey Storage(Address address, in UInt256 slot)
     {
         Span<byte> address32 = stackalloc byte[32];
         Address32(address, address32);
@@ -31,7 +31,7 @@ internal static class PbtStateKey
     }
 
     /// <summary><see cref="Storage(Address, in UInt256)"/> reusing a precomputed <see cref="PbtKeyDerivation.AddressKeyHash"/>.</summary>
-    public static PbtStorageFullKey Storage(Address address, in ValueHash256 addressHash, in UInt256 slot)
+    public static PbtTreeKey Storage(Address address, in ValueHash256 addressHash, in UInt256 slot)
     {
         Span<byte> address32 = stackalloc byte[32];
         Address32(address, address32);
@@ -41,13 +41,13 @@ internal static class PbtStateKey
     public static PbtFullKey Code(Address address, in ValueHash256 codeHash, int chunkId) =>
         Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunkId);
 
-    public static PbtStorageFullKey StoragePrefix(Address address)
+    public static PbtTreeKey StoragePrefix(Address address)
     {
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
         Span<byte> prefix = stackalloc byte[33];
         prefix[0] = Eip8297KeyDerivation.StorageZone;
         addressHash.Bytes.CopyTo(prefix[1..]);
-        return new PbtStorageFullKey(prefix);
+        return new PbtTreeKey(prefix);
     }
 
     private static void Address32(Address address, Span<byte> address32)
