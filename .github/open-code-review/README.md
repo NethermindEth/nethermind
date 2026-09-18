@@ -36,10 +36,14 @@ read for each run, so changing the model, API base URL, or key needs no code cha
 | `OCR_LITELLM_API_KEY` | Secret | API key used when no alternative secret name is configured. |
 | `OCR_API_KEY_SECRET` | Variable | Optional name of another Actions secret containing the key. Defaults to `OCR_LITELLM_API_KEY`. |
 | `OCR_EXTRA_BODY` | Secret | Optional JSON object of model-specific request options. Defaults to `{}`. |
+| `OCR_VALIDATION_MODEL` | Secret | Optional model for independent discovery and candidate validation. Defaults to `OCR_MODEL`. |
+| `OCR_VALIDATION_EXTRA_BODY` | Secret | Optional request options for validation. Defaults to primary options when reusing the primary model, or `{}` when selecting another model. |
 | `OCR_AUTO_REVIEW` | Variable | Automatic reviews are enabled unless this is `false`. Manual runs remain available. |
-| `OCR_AUTO_TOKEN_BUDGET` | Variable | Soft token budget for automatic runs: `500000`, `1000000`, or `2000000` (default). |
+| `OCR_AUTO_TOKEN_BUDGET` | Variable | Soft token budget for automatic and comment-triggered runs: `500000`, `1000000`, `2000000`, `5000000`, or `10000000` (default). |
+| `OCR_VALIDATION_TOKEN_BUDGET` | Variable | Additional soft budget across discovery and candidate validation: `500000`, `1000000` (default), or `2000000`. Applies to all triggers. |
+| `OCR_VALIDATION_MAX_OUTPUT_TOKENS` | Variable | Per-response output allowance for validation, including reasoning where the provider counts it: `8192`, `16384`, `32768` (default), or `65536`. Applies to all triggers. |
 
-Create a dedicated LiteLLM virtual key allowing the selected model, with a spending
+Create a dedicated LiteLLM virtual key allowing the selected models, with a spending
 limit and rate limits appropriate for the pilot. Store its value only in the chosen
 Actions secret. Rotate it by updating that secret; `OCR_API_KEY_SECRET` holds the
 secret's name, never the key itself. The runner must reach the configured endpoint,
@@ -91,32 +95,82 @@ the dedicated key's budget; enforce spending and rate limits in LiteLLM.
 Configuration uses OCR's native LiteLLM provider with the selected model and endpoint.
 The pinned OCR tool loop preserves reasoning across tool calls and uses provider
 default tool selection. The initial limits are two concurrent review tasks,
-low OCR effort (one review pass), a 64,000-token prompt ceiling per group, and a 2,000,000-token
+low OCR effort (one review pass), a 64,000-token prompt ceiling per group, and a 10,000,000-token
 aggregate budget. OCR's aggregate budget is soft: active requests and final
 submission rounds can exceed it. Enforce the spending ceiling in LiteLLM.
-Set `OCR_AUTO_TOKEN_BUDGET` to lower the limit for automatic reviews. The dispatch
-form selects the budget for manual runs.
+Set `OCR_AUTO_TOKEN_BUDGET` to override the default for automatic and comment-triggered
+reviews. Existing repository overrides continue to apply. The dispatch form selects
+the budget for manual runs and defaults to 10,000,000 tokens.
 Local trials with medium effort on PRs #13478 and #13535 exhausted 500,000 tokens;
 the latter also exhausted 2,000,000. The pilot uses a single pass with instructions
 to limit context reads to concrete hypotheses about changed behavior. Cached input
 counts toward the limit. Treat budget-exhausted runs as incomplete when comparing
 review quality.
-The single-pass trial on PR #13535 completed both files in 2m56s with 1,010,251
-total tokens (925,440 cached input tokens) and no tool errors. This checks the
-integration; it is not a review-quality benchmark or a billed-cost measurement.
-The review process has an 18-minute limit; the job has a 25-minute limit.
+The primary OCR process has an 18-minute limit. Independent discovery and validation
+share an additional eight-minute limit and token budget, with at most ten requests
+per pass plus two bounded repair requests. The job has a 35-minute limit. The default total allowance is approximately
+11 million tokens: 10 million for OCR and one million for validation. Repeated and
+cached context count toward these budgets; one in-flight request can exceed a soft
+limit. Actual usage depends on the PR and model. No extra secret is required to
+enable validation with the existing model and gateway.
+Each validation response has a separate 32,768-token output allowance, configurable
+with `OCR_VALIDATION_MAX_OUTPUT_TOKENS`. A truncated response is discarded in full
+and may be retried once per pass within the existing request, time, and aggregate
+token limits. Its tokens still count. Repeated truncation remains incomplete;
+raising the aggregate budget alone does not change this response limit.
+
+Before review, the workflow captures the PR description, labels, bounded human
+discussion, current-head inline comments, and check/status metadata for the exact
+head commit. Comments are evidence, never instructions. Failed API reads are
+recorded as unavailable. CI metadata is captured at review start; it can still be
+pending and does not establish which particular regression scenarios executed.
+
+The trusted context collector searches changed identifiers for other writers,
+callers, and initialization/recovery code outside the diff. For other C# writers it
+also locates the enclosing method and its callers, so a reconstruction method's
+in-process use is visible alongside its initialization use. This is a lexical
+navigation hint, not a compiler-verified call graph. It passes those source
+locations and PR intent to OCR. Once OCR completes its selected files, an independent
+review receives bounded diff/source excerpts and risk-specific checks, without
+seeing OCR's findings. It can search identifiers, read patches, and read source at
+the captured head or merge base. These tools read regular git blobs, reject secret
+paths and symlinks, and do not execute the working tree. Context collection is
+lexical and bounded; it is not a complete call graph or whole-repository audit.
+The validator's source types come from `source-types.json`, copied from the pinned
+OCR release's `internal/config/allowlist/supported_file_types.json` (Apache-2.0),
+plus the project's MSBuild/solution extensions and Markdown context. Secret-path
+restrictions still take precedence. Search and source reads use the same types.
+
+A fresh validation pass then tries to falsify every candidate from OCR and the
+independent discovery. Confirmed findings need read source citations, a changed-line
+location (or a surviving head line immediately beside a deletion), a concrete
+trigger and consequence, and an unexecuted regression scenario.
+The validator accepts or rejects the original candidate text; it cannot introduce
+new claims by rewriting a finding just before publication. Missing cited lines can
+be supplied within a bounded repair, but require another model decision after that
+source is provided. Only confirmed findings reach the PR publisher. Source citation/range and candidate
+accounting checks are deterministic; whether evidence establishes a defect remains
+a model judgment. Missing evidence, unresolved checks, invalid responses, timeouts,
+and exhausted budgets prevent a completed verdict. Rejected findings stay private.
+If discovery and OCR both find nothing, the source checks must still complete; there
+are no candidates requiring a separate falsification pass.
 
 `scripts/ci/open-code-review.cjs` generates rules from the trusted
 `.agents/rules/` files on each run, so the ArrayPool.Shared exception and other
 project guidance stay current. C# tests and MSBuild/solution files are included.
+OCR reads test code but does not build the PR or execute tests. The summary
+states this explicitly: completing every
+selected file is a coverage check, not evidence that every defect was found.
 OCR still excludes binary, deleted, secret, unsupported, and oversized files;
 the public summary discloses exclusions. Vendored test suites under
 `src/tests` and `src/bench_precompiles` are excluded.
 
 Each run captures its effective configuration on the runner and validates against that model.
-Before posting, the wrapper checks the reviewed commits, model, selected-file
-coverage, token-budget status, and current PR commits. Incomplete reviews publish
-an explicit incomplete summary; their findings are not published. Stale runs
+Before posting, the wrapper checks the reviewed commits, models, selected-file
+coverage, token-budget status, and current PR commits. It also binds validation to
+the primary result, captured source context, and final findings with content hashes.
+Incomplete reviews publish
+an explicit incomplete summary with allowlisted failure reasons; their findings are not published. Stale runs
 publish nothing; automatic runs also suppress publication if the PR has returned
 to draft. Completed reviews use OCR's upstream publisher for one updated
 summary and deduplicated inline findings. Low-severity and style/documentation
@@ -125,7 +179,8 @@ posting failures retain a warning. The bot does not approve PRs or resolve discu
 Keep `Advisory AI review` out of required branch-protection checks.
 
 Artifacts expire after 14 days and contain only the public `summary.md`: reviewed
-commit, coverage, exclusions, finding count, token usage, elapsed time, and run link.
+commit, coverage, exclusions, finding count, validation counts and usage, bounded CI
+status counts, primary elapsed time, and run link.
 Runtime configuration, the model identifier, raw OCR output, selection preview,
 and stderr are not uploaded. Configuration and raw evidence exist only on the
 ephemeral runner; debug a failed review locally when those details are needed.
@@ -135,7 +190,7 @@ CI: record accepted findings, false positives, missed defects, cost, and latency
 
 OCR v1.12.5 is pinned by binary SHA-256. The publisher comes from the same release
 commit `189be5b024d3309dd10fdc8cd8ee31b2530c210b` and has its own SHA-256.
-When upgrading, update both pins and run the offline suite plus an actual OCR
+When upgrading, update both pins and `source-types.json`, and run the offline suite plus an actual OCR
 review through LiteLLM. Changes to output schemas must preserve the coverage
 checks.
 
@@ -143,6 +198,6 @@ For local configuration generation, export `OCR_MODEL` and `OCR_API_BASE_URL` fi
 also export `OCR_EXTRA_BODY` if the model needs it.
 
 ```sh
-node --test scripts/ci/test-open-code-review.cjs
+node --test scripts/ci/test-open-code-review.cjs scripts/ci/test-open-code-review-validation.cjs
 node scripts/ci/open-code-review.cjs prepare . /tmp/nethermind-review-rules
 ```

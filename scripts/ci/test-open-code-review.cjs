@@ -10,6 +10,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { test } = require('node:test');
 const { configure, assess, prepare, publish } = require('./open-code-review.cjs');
+const { hash } = require('./open-code-review-validation.cjs');
 const defaults = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../.github/open-code-review/config.json')));
 const settings = { OCR_MODEL: 'test-model', OCR_API_BASE_URL: 'https://gateway.example/v1' };
 
@@ -205,6 +206,7 @@ function fixture(t) {
   const calls = [];
   const current = { state: 'open', head: { sha: target.head }, base: { sha: target.base } };
   const comments = [];
+  const validation = { enabled: true, mutate: () => {} };
   const github = {
     rest: {
       pulls: { get: async () => { calls.push('read PR'); return { data: current }; } },
@@ -232,10 +234,53 @@ function fixture(t) {
     write('config', config);
     write('preview', preview);
     write('result', result);
+    if (validation.enabled) {
+      const evidence = { head: target.head, base: target.merge_base, pr: { head: target.head, base: target.base }, obligations: [], related: [] };
+      const report = { schema_version: 'nethermind.ocr-validation/v1', complete: true, head: target.head,
+        base: target.merge_base, model: config.model, primary_hash: hash(result), context_hash: hash(evidence),
+        result_hash: hash(result), checks: [], decisions: [], discovered: 0, usage: { input: 10, output: 20 } };
+      write('context', evidence);
+      write('validated-result', result);
+      write('validation-config', config);
+      validation.mutate(report);
+      write('validation', report);
+    }
     fs.writeFileSync(path.join(directory, 'exit-code.txt'), String(exitCode));
     return publish({ github, context, core, directory, enabled, postReview });
   };
-  return { directory, target, config, result, preview, calls, current, comments, outputs, run };
+  return { directory, target, config, result, preview, calls, current, comments, outputs, validation, run };
+}
+
+for (const [name, mutate] of Object.entries({
+  missing: f => { f.validation.enabled = false; },
+  incomplete: f => { f.validation.mutate = report => { report.complete = false; }; },
+  'wrong source context': f => { f.validation.mutate = report => { report.context_hash = 'stale'; }; },
+  'different primary result': f => { f.validation.mutate = report => { report.primary_hash = 'stale'; }; },
+  'different validated findings': f => { f.validation.mutate = report => { report.result_hash = 'stale'; }; },
+  'wrong validation model': f => { f.validation.mutate = report => { report.model = 'stale'; }; },
+  'wrong validation head': f => { f.validation.mutate = report => { report.head = 'd'.repeat(40); }; },
+  'unverified check': f => { f.validation.mutate = report => { report.checks = [{ status: 'unverified' }]; }; },
+  'unverified finding': f => { f.validation.mutate = report => { report.decisions = [{ verdict: 'unverified' }]; }; },
+})) {
+  test(name + ' validation cannot publish a successful primary review', async t => {
+    const f = fixture(t);
+    mutate(f);
+    const report = await f.run();
+    assert.equal(report.complete, false);
+    assert.ok(!f.calls.includes('post review'));
+    assert.match(f.calls.find(call => call.create).create.body, /INCOMPLETE/);
+  });
+}
+
+for (const reason of ['Validation response reached its output limit', 'private gateway detail']) {
+  test('incomplete summary only discloses allowlisted validation reasons: ' + reason, async t => {
+    const f = fixture(t);
+    f.validation.mutate = report => Object.assign(report, { complete: false, reason });
+    const report = await f.run();
+    assert.equal(report.complete, false);
+    assert.equal(report.markdown.includes('Validation stopped:'), reason.startsWith('Validation response'));
+    assert.doesNotMatch(report.markdown, /private gateway detail/);
+  });
 }
 
 test('complete zero-finding review accounts for every selected file', t => {
@@ -470,7 +515,10 @@ for (const [budget, secret, cliExit, expectedExit] of [
   ['500000', 'test-token', 0, 0],
   ['1000000', 'test-token', 1, 0],
   ['2000000', 'test-token', 124, 0],
+  ['5000000', 'test-token', 0, 0],
+  ['10000000', 'test-token', 0, 0],
   ['0', 'test-token', 0, 1],
+  ['10000001', 'test-token', 0, 1],
   ['500000', '', 0, 1],
 ]) {
   test('workflow captures CLI outcome with budget=' + budget + ', CLI exit=' + cliExit +
