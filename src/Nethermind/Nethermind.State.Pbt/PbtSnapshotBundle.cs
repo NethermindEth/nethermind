@@ -32,7 +32,10 @@ public sealed class PbtSnapshotBundle(
     // Read-through memo of bytecode served by the read-only base; never snapshot content, so it is not persisted.
     private readonly ConcurrentDictionary<ValueHash256, CodeInfo> _codeMemo = new();
     private PbtTransientResource _transientResource = resourcePool.GetCachedResource(usage);
-    // Storage commits may write one run from several threads; a stripe serializes the read-modify-replace of a run.
+    // Storage commits may write one run from several threads. Replacing a run is a read-modify-replace of a
+    // pooled instance across three dictionary operations, so the dictionary's own atomicity cannot keep two
+    // writers from starting at the same run and losing a slot, and a CAS retry is unsafe because a returned
+    // instance can be re-rented and stored under the same key (ABA). A stripe per run serializes the writers.
     private const int RunLockStripes = 64;
     private readonly Lock[] _runLocks = CreateRunLocks();
     private bool _isDisposed;
