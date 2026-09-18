@@ -159,6 +159,8 @@ namespace Nethermind.State
             _persistentStorageProvider.Reset(resetBlockChanges);
             _transientStorageProvider.Reset(resetBlockChanges);
         }
+        public void DiscardCachedAccounts(Func<Address, bool> covered) => _stateProvider.DiscardCachedAccounts(covered);
+
         public void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default)
         {
             if (accessList?.IsEmpty == false)

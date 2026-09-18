@@ -256,6 +256,40 @@ public class BlockProcessorTests
         }
     }
 
+    [TestCase("callTracer")]
+    [TestCase("prestateTracer")]
+    public async Task TransactionTraceBoundary_WhenThePrefixWroteAnAccountTheBlockOpenedOn_ReadsThePrefixValue(string tracerName)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        Address opened = Eip2935Constants.BlockHashHistoryAddress;
+        byte[] stop = [0x00];
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds, builder => builder.WithGenesisPostProcessor((_, state) =>
+        {
+            // Code makes it a contract, which is what turns the block's opening system call into a write against it: the
+            // account is then recorded by the block before the first transaction runs, which is the shape being covered.
+            state.CreateAccount(opened, 0);
+            state.InsertCode(opened, stop, spec);
+        }));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain, opened);
+        Hash256 target = block.Transactions[2].Hash!;
+        GethTraceOptions traceOptions = new() { TxHash = target, Tracer = tracerName };
+        IndexThroughTheCapture(chain, index, block, parent, spec);
+
+        string expected = ReplayThroughTraceEnvironment(chain, parent, block, target, traceOptions, seeds: null, out int replayed);
+        string actual = ReplayThroughTraceEnvironment(chain, parent, block, target, traceOptions, seeds, out int seeded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(replayed, Is.EqualTo(3), "the unbounded replay is the oracle");
+            Assert.That(seeded, Is.EqualTo(1), "with the prefix seeded, only the target executes");
+            Assert.That(actual, Is.EqualTo(expected), "the balance the prefix left must win over what the opening system call recorded for the same account");
+        }
+    }
+
     [Test]
     public async Task TransactionTraceBoundary_WhenTheSeedIsRefused_ReplaysThePrefix()
     {

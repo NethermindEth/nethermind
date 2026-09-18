@@ -896,6 +896,26 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     internal Account? GetPureRead(Address address) => GetState(address);
 
+    /// <summary>Forgets what the block recorded for the accounts <paramref name="covered"/> claims, so the next read of
+    /// one resolves through the scope again.
+    /// <para>A block's own opening work - the beacon root and blockhash system calls - is executed and committed before
+    /// its transactions, and what it wrote is answered from this record rather than from the scope. A trace that stands
+    /// in for a prefix of the block installs that prefix underneath, where this record hides it: the committed value is
+    /// in the scope, so dropping the record is what lets the prefix be seen over it.</para></summary>
+    internal void DiscardCachedAccounts(Func<Address, bool> covered)
+    {
+        if (_blockChanges.Count == 0) return;
+
+        List<AddressAsKey>? discard = null;
+        foreach (AddressAsKey key in _blockChanges.Keys)
+        {
+            if (covered(key.Value)) (discard ??= []).Add(key);
+        }
+
+        if (discard is null) return;
+        foreach (AddressAsKey key in discard) _blockChanges.Remove(key);
+    }
+
     private Account? GetState(Address address)
     {
         AddressAsKey addressAsKey = address;

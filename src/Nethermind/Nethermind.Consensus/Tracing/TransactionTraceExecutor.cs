@@ -40,7 +40,15 @@ public sealed class TransactionTraceExecutor(
         if (boundary.Seeds is { } seeds && readOverlay is not null && !balManager.Enabled)
         {
             int target = boundary.IndexOf(block);
-            if (target > 0 && seeds.TrySeed(block, target, readOverlay)) first = target;
+            if (target > 0 && seeds.TrySeed(block, target, readOverlay) && readOverlay.Current is { } overlay)
+            {
+                // The block's opening system calls ran and were committed before this point, and what they wrote is
+                // answered from the block's own record rather than from the scope the overlay sits in. An account the
+                // prefix also wrote would be read as the system call left it. The committed values are in the scope,
+                // so forgetting the record for those accounts is what puts the prefix back on top of them.
+                state.DiscardCachedAccounts(address => overlay.TryGetAccount(address, null, out _));
+                first = target;
+            }
         }
 
         try
