@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 
@@ -16,6 +17,9 @@ namespace Nethermind.State.Pbt.Test;
 internal sealed class PbtTreeHarness : IDisposable
 {
     private PbtNodeGroupStore _store = new();
+
+    /// <summary>A fresh processor-count fold quota, so concurrently running fixtures never starve each other.</summary>
+    public static ConcurrencyController FoldQuota() => new(Environment.ProcessorCount);
 
     public ValueHash256 RootHash { get; private set; }
 

@@ -7,9 +7,9 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Metric;
+using Nethermind.Core.Threading;
 using static Nethermind.Pbt.TrieUpdater;
 using static Nethermind.Pbt.TrieUpdater<Nethermind.Pbt.PbtStorageTreeKey, Nethermind.Pbt.PbtStorageNodePath>;
 
@@ -47,19 +47,21 @@ public static partial class TrieUpdater
 
     /// <summary>Folds disjoint partitions concurrently before merging their shared ancestors.</summary>
     /// <remarks>
-    /// The zones fold under <paramref name="foldOptions"/>, and so do the touched buckets of every frame wide enough
-    /// to fan out, merged into runs of at least <paramref name="minOperationsPerWorker"/> operations; a degree of one
-    /// folds everything serially. Each zone's fold time is observed on
-    /// <paramref name="partitionFoldTime"/> labelled by partition, so an imbalance between them is visible. The
-    /// supplied store must support concurrent reads and writes. Failed folds may leave partial writes; the caller
-    /// owns failure isolation and must not reuse that state without recovery.
+    /// The zones and the touched buckets of every frame wide enough to fan out, merged into runs of at least
+    /// <paramref name="minOperationsPerWorker"/> operations, share <paramref name="foldQuota"/>: a fan-out folds its
+    /// parts on the calling thread while no slot is free, and the first slot it takes admits a parallel loop over
+    /// the parts still left, whose workers charge themselves as they start; a quota of one folds everything
+    /// serially. Each zone's fold time is observed on <paramref name="partitionFoldTime"/> labelled by partition, so
+    /// an imbalance between them is visible. The supplied store must support concurrent reads and writes. Failed
+    /// folds may leave partial writes; the caller owns failure isolation and must not reuse that state without
+    /// recovery.
     /// </remarks>
     [SkipLocalsInit]
     internal static ValueHash256 UpdateRoot(
         IPbtStore store,
         in ValueHash256 currentRoot,
         PbtPartitionBatches changes,
-        ParallelOptions foldOptions,
+        ConcurrencyController foldQuota,
         int minOperationsPerWorker,
         IMetricObserver? partitionFoldTime,
         TrieUpdaterMetrics? metrics = null,
@@ -67,7 +69,7 @@ public static partial class TrieUpdater
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(changes);
-        ArgumentNullException.ThrowIfNull(foldOptions);
+        ArgumentNullException.ThrowIfNull(foldQuota);
         using ArrayPoolList<PartitionFold> workers = new(3);
         using ArrayPoolListRef<GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>> sharedReaders = new(16, 16);
         using ArrayPoolListRef<PbtNodeGroupWriter<PbtStorageNodePath>?> sharedWriters = new(16, 16);
@@ -117,7 +119,33 @@ public static partial class TrieUpdater
                         worker.Current = TakeBoundary(ref sharedReader, sharedWriter, sharedPath, ref zoneFrontiers.AsSpan()[slot], worker.Zone & 15, sourceBuffer).Materialize();
                     }
 
-                    Parallel.ForEach(workers, foldOptions, static worker => worker.Fold());
+                    int nextWorker = 0;
+                    for (; nextWorker < workers.Count - 1 && !foldQuota.TryRequestConcurrencyQuota(); nextWorker++)
+                        workers[nextWorker].Fold();
+                    if (nextWorker < workers.Count - 1)
+                    {
+                        int callerThreadId = Environment.CurrentManagedThreadId;
+                        int admissionSlotClaimed = 0;
+                        try
+                        {
+                            Parallel.For(nextWorker, workers.Count,
+                                () => TakeWorkerQuota(foldQuota, callerThreadId, ref admissionSlotClaimed),
+                                (index, _, tookQuota) =>
+                                {
+                                    workers[index].Fold();
+                                    return tookQuota;
+                                },
+                                tookQuota => ReturnWorkerQuota(foldQuota, tookQuota));
+                        }
+                        finally
+                        {
+                            ReturnAdmissionSlot(foldQuota, ref admissionSlotClaimed);
+                        }
+                    }
+                    else if (nextWorker < workers.Count)
+                    {
+                        workers[nextWorker].Fold();
+                    }
 
                     foreach (PartitionFold worker in workers)
                     {
@@ -163,7 +191,7 @@ public static partial class TrieUpdater
                 if (batch is null) return;
                 ArgumentOutOfRangeException.ThrowIfNotEqual(batch.ShardNibbleIndex, 2);
                 batch.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table);
-                PartitionFold<TKey, TPath> worker = new(store, zone, operations, table, metrics is not null, memoryProvider, foldOptions, minOperationsPerWorker, partitionFoldTime, foldLabel);
+                PartitionFold<TKey, TPath> worker = new(store, zone, operations, table, metrics is not null, memoryProvider, foldQuota, minOperationsPerWorker, partitionFoldTime, foldLabel);
                 if (operations.Count != 0) workers.Add(worker);
                 else worker.Dispose();
             }
@@ -184,7 +212,7 @@ public static partial class TrieUpdater
 
     private sealed class PartitionFold<TKey, TPath>(IPbtStore store, byte zone,
         ArrayPoolList<PbtWriteOperation<TKey>> operations, ArrayPoolList<int> table,
-        bool collectMetrics, IRefCountingMemoryProvider memoryProvider, ParallelOptions foldOptions, int minOperationsPerWorker,
+        bool collectMetrics, IRefCountingMemoryProvider memoryProvider, ConcurrencyController foldQuota, int minOperationsPerWorker,
         IMetricObserver? foldTime, StringLabel foldLabel) : PartitionFold(zone, collectMetrics)
         where TKey : struct, IPbtKey<TKey>
         where TPath : struct, IPbtNodePath<TPath>
@@ -205,9 +233,8 @@ public static partial class TrieUpdater
                 TrieUpdater<TKey, TPath>.OwnedSubtree ownedCurrent = TrieUpdater<TKey, TPath>.OwnedSubtree.TakeFrom<PbtStorageTreeKey, PbtStorageNodePath>(ref Current);
                 TrieUpdater<TKey, TPath>.TraversalSubtree current = ownedCurrent.Borrow(sourceBuffer);
                 TrieUpdater<TKey, TPath>.OwnedSubtree result = default;
-                bool foldBucketsInParallel = foldOptions.MaxDegreeOfParallelism != 1 && !RuntimeInformation.IsSingleProcessor;
                 TrieUpdater<TKey, TPath>.FoldContext context = new(store, memoryProvider, Metrics,
-                    foldBucketsInParallel ? foldOptions : null, foldBucketsInParallel ? operations.UnsafeGetInternalArray() : null, minOperationsPerWorker);
+                    foldQuota, operations.UnsafeGetInternalArray(), minOperationsPerWorker);
                 // Consume the producer's nibble bounds before filtering deletes or comparing deeper key prefixes.
                 result = TrieUpdater<TKey, TPath>.FoldBoundary(context, ref reader, writer, current,
                     operations.AsSpan(), ref path, 8, new(table.AsSpan(), 8, false));
