@@ -101,11 +101,26 @@ public partial class BlockAccessListManager
     {
         if (!spec.IsEip8037Enabled) return;
 
-        Eip8037BlockGasInclusionCheck.Outcome outcome = Eip8037BlockGasInclusionCheck.Validate(
-            block.Header.GasLimit,
-            cumulativeExecution,
-            cumulativeState,
-            tx.GasLimit);
+        Eip8037BlockGasInclusionCheck.Outcome outcome;
+        if (Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(tx, spec, out ulong executionReservation, out ulong stateReservation))
+        {
+            outcome = Eip8037BlockGasInclusionCheck.Validate(
+                block.Header.GasLimit,
+                cumulativeExecution,
+                cumulativeState,
+                executionReservation,
+                stateReservation);
+        }
+        else
+        {
+            // Defensive: a decoded block carries its frames, so an unpriceable transaction cannot reach
+            // here. The scalar limit sums both dimensions, so were it reached it would only over-reject.
+            outcome = Eip8037BlockGasInclusionCheck.Validate(
+                block.Header.GasLimit,
+                cumulativeExecution,
+                cumulativeState,
+                tx.GasLimit);
+        }
 
         if (outcome != Eip8037BlockGasInclusionCheck.Outcome.Ok)
         {

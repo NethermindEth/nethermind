@@ -63,7 +63,7 @@ public class Eth72ProtocolHandler(
     IForkInfo forkInfo,
     ILogManager logManager,
     ITxPoolConfig txPoolConfig,
-    ISpecProvider specProvider,
+    IChainHeadSpecProvider specProvider,
     IBlobCustodyTracker blobCustodyTracker,
     ISparseBlobPoolPeerRegistry sparseBlobPoolPeerRegistry,
     ITxGossipPolicy? transactionsGossipPolicy = null)
@@ -419,18 +419,20 @@ public class Eth72ProtocolHandler(
         int toRequestCount = 0;
         ArrayPoolList<Hash256>? hashesToRequest = null;
 
+        // Resolved on the first type-6 byte, so a batch without one does no head lookup.
+        bool? frameTxsEnabled = null;
+
         for (int i = 0; i < msg.Hashes.Length; i++)
         {
             Hash256 hash = msg.Hashes[i];
             TxType txType = (TxType)msg.Types[i];
             int txSize = msg.Sizes[i];
-            if (!CanRequestPooledTransaction(txType) || txSize <= 0)
+            if (!CanRequestPooledTransaction(txType, ref frameTxsEnabled) || txSize <= 0)
             {
                 continue;
             }
 
-            long maxTxSize = txType.SupportsBlobs() ? _configuredMaxBlobTxSize : _configuredMaxTxSize;
-            if (txSize > maxTxSize)
+            if (txSize > MaxAnnouncedSize(txType))
             {
                 continue;
             }
@@ -545,10 +547,41 @@ public class Eth72ProtocolHandler(
 
     protected override bool CanServePooledTransaction(Transaction tx) => true;
 
-    // eth/72 strips blob payloads from pooled transaction responses, so they are served from
-    // the sidecar-free record instead of materializing blobs from persistent storage.
+    /// <summary>Whether <paramref name="tx"/> carries blobs that this protocol version cannot fetch separately.</summary>
+    /// <remarks><see cref="Transaction.SupportsBlobs"/> is type-3 only, so it does not answer this for a
+    /// type-6 frame transaction, which carries blobs by presence rather than by type.</remarks>
+    private static bool IsBlobCarryingFrameTransaction(Transaction tx) => tx.Type is TxType.FrameTx && tx.CarriesBlobs;
+
+    // eth/72 strips type-3 blob payloads from pooled transaction responses, so those are served from
+    // the sidecar-free record; a blob-carrying type-6 is served whole, as below.
     protected override bool TryGetPooledTransactionToServe(Hash256 hash, [NotNullWhen(true)] out Transaction? tx)
-        => _txPool.TryGetPendingTransactionWithoutBlobs(hash, out tx);
+    {
+        if (!_txPool.TryGetPendingTransactionWithoutBlobs(hash, out tx))
+        {
+            return false;
+        }
+
+        // A type-6 is announced at its full network size and never joins the type-3 cell protocol, so the
+        // requester can neither size-match nor refill the elided record: its sidecar must travel with it.
+        if (!IsBlobCarryingFrameTransaction(tx))
+        {
+            return true;
+        }
+
+        // Deliberately re-reads the row the call above already resolved: a serve answers this node's own
+        // announcement, so both reads hit the blob pool's caches unless BlobCacheSize has churned past the hash.
+        if (_txPool.TryGetPendingTransaction(hash, out tx)
+            && tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
+            && wrapper.HasFullBlobs())
+        {
+            return true;
+        }
+
+        // Admission requires whole proof material, so an incomplete sidecar here means the pool lost it
+        // between announcement and request; the hash is dropped and the peer sees an unanswered request.
+        if (Logger.IsTrace) Logger.Trace($"{Node:c} dropping frame tx {hash} from a pooled transactions response: its sidecar is no longer complete.");
+        return false;
+    }
 
     /// <inheritdoc/>
     public override void HandleMessage(PooledTransactionRequestMessage message)
@@ -822,6 +855,10 @@ public class Eth72ProtocolHandler(
         try
         {
             bool isTrace = Logger.IsTrace;
+
+            // Resolved on the first type-6 transaction, so a batch without one does no head lookup.
+            bool? frameTxsEnabled = null;
+
             while (currentIdx < transactionsSpan.Length)
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -842,7 +879,7 @@ public class Eth72ProtocolHandler(
                 }
 
                 Transaction tx = transactionsSpan[currentIdx];
-                if (!ValidateAnnouncedPooledTransaction(tx))
+                if (!ValidateAnnouncedPooledTransaction(tx, ref frameTxsEnabled))
                 {
                     throw new SubprotocolException("invalid pooled tx type or size");
                 }
@@ -1662,9 +1699,9 @@ public class Eth72ProtocolHandler(
         }
     }
 
-    private bool ValidateAnnouncedPooledTransaction(Transaction tx)
+    private bool ValidateAnnouncedPooledTransaction(Transaction tx, ref bool? frameTxsEnabled)
     {
-        if (!CanRequestPooledTransaction(tx.Type))
+        if (!CanRequestPooledTransaction(tx.Type, ref frameTxsEnabled))
         {
             return false;
         }
@@ -1677,7 +1714,9 @@ public class Eth72ProtocolHandler(
 
         if (!tx.Type.SupportsBlobs())
         {
-            return true;
+            // A type-6 sidecar is verified here because it arrives whole; the sparse cell protocol that
+            // defers type-3 verification to a later Cells response does not cover it.
+            return !IsBlobCarryingFrameTransaction(tx) || ValidateFullPooledBlobSidecar(tx);
         }
 
         return tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
@@ -1687,6 +1726,32 @@ public class Eth72ProtocolHandler(
                 ProofVersion.V1 => ValidateSparsePooledBlobTransaction(tx),
                 _ => false
             };
+    }
+
+    /// <summary>Verifies a sidecar that arrived complete, as a blob-carrying type-6 always must.</summary>
+    /// <remarks>Unlike the type-3 validators this is version-generic, because the proof count per blob
+    /// differs between wrapper versions and only the wrapper's own proofs manager knows it.</remarks>
+    private static bool ValidateFullPooledBlobSidecar(Transaction tx)
+    {
+        if (tx.NetworkWrapper is not ShardBlobNetworkWrapper { Version: ProofVersion.V0 or ProofVersion.V1 } wrapper
+            || !wrapper.HasFullBlobs()
+            || tx.BlobVersionedHashes is not { Length: > 0 } blobVersionedHashes
+            || wrapper.Commitments.Length != blobVersionedHashes.Length)
+        {
+            return false;
+        }
+
+        return ValidateLengthsAndHashes(wrapper, blobVersionedHashes);
+    }
+
+    /// <summary>Checks a sidecar's proof material against the transaction's versioned hashes.</summary>
+    /// <remarks>Dispatched on the wrapper's own version, so the per-version length rules (one proof per blob
+    /// under V0, one per cell under V1) stay with the proofs manager rather than the caller's guard.</remarks>
+    private static bool ValidateLengthsAndHashes(ShardBlobNetworkWrapper wrapper, byte[][] blobVersionedHashes)
+    {
+        IBlobProofsManager proofsVerifier = IBlobProofsManager.For(wrapper.Version);
+        return proofsVerifier.ValidateLengths(wrapper)
+            && proofsVerifier.ValidateHashes(wrapper, blobVersionedHashes);
     }
 
     private static bool ValidatePooledBlobTransactionV0(Transaction tx, ShardBlobNetworkWrapper wrapper)
@@ -1735,9 +1800,7 @@ public class Eth72ProtocolHandler(
             return false;
         }
 
-        IBlobProofsManager proofsVerifier = IBlobProofsManager.For(wrapper.Version);
-        return proofsVerifier.ValidateLengths(wrapper)
-            && proofsVerifier.ValidateHashes(wrapper, blobVersionedHashes);
+        return ValidateLengthsAndHashes(wrapper, blobVersionedHashes);
     }
 
     private bool CanRequestCellsNow(Hash256 hash, BlobCellMask requestMask)

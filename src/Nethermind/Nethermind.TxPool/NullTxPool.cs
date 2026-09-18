@@ -56,6 +56,8 @@ namespace Nethermind.TxPool
 
         public bool RemoveTransaction(Hash256? hash) => false;
 
+        public bool EvictTransaction(Transaction tx) => false;
+
         public Transaction? GetBestTx() => null;
 
         public IEnumerable<Transaction> GetBestTxOfEachSender() => Array.Empty<Transaction>();

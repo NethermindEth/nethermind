@@ -1884,6 +1884,50 @@ public partial class EthRpcModuleTests
     }
 
 
+    /// <summary>The block-level gas breakdown is diagnostic and outside execution-apis, so a receipt carrying it
+    /// must still serialize to the standard shape in the eth_ namespace.</summary>
+    [Test]
+    public async Task Eth_receipts_omit_the_block_gas_breakdown()
+    {
+        using Context ctx = await Context.Create();
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+
+        Block block = Build.A.Block.WithNumber(1).WithTimestamp(10)
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
+            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
+            .TestObject;
+
+        TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.WithLogs([]).TestObject;
+        receipt.BlockGasUsed = 10;
+        receipt.ExecutionGasUsed = 11;
+        receipt.StorageGasUsed = 12;
+
+        blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
+        receiptFinder.Get(Arg.Any<Block>()).Returns([receipt]);
+        receiptFinder.Get(Arg.Any<Hash256>()).Returns([receipt]);
+        blockchainBridge.GetTxReceiptInfo(Arg.Any<Hash256>()).Returns((receipt, 10UL, new(UInt256.One), 0));
+
+        ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).WithBlockchainBridge(blockchainBridge).Build();
+
+        using JsonDocument single = JsonDocument.Parse(await ctx.Test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString()));
+        using JsonDocument batch = JsonDocument.Parse(await ctx.Test.TestEthRpc("eth_getBlockReceipts", "latest"));
+
+        JsonElement[] receipts = [single.RootElement.GetProperty("result"), batch.RootElement.GetProperty("result")[0]];
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (JsonElement element in receipts)
+            {
+                Assert.That(element.GetProperty("gasUsed").GetString(), Is.EqualTo("0x64"), "the standard field still reports the receipt's own gas");
+                Assert.That(element.TryGetProperty("blockGasUsed", out _), Is.False);
+                Assert.That(element.TryGetProperty("executionGasUsed", out _), Is.False);
+                Assert.That(element.TryGetProperty("storageGasUsed", out _), Is.False);
+            }
+        }
+    }
+
     [Test]
     public async Task Eth_get_transaction_receipt_when_block_has_few_receipts()
     {
