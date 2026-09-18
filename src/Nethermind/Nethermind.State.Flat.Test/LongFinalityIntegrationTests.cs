@@ -495,7 +495,9 @@ public class LongFinalityIntegrationTests
         FlatDbConfig config = new()
         {
             CompactSize = 4,
-            MinReorgDepth = 2,
+            // Not a subject here: a non-zero floor would hold the fold until the head is that far above
+            // the boundary, which is exercised in PersistenceManagerTests instead.
+            MinReorgDepth = 0,
             MaxInMemoryBaseSnapshotCount = 100000,
             LongFinalityMaxReorgDepth = 90000,
             EnableLongFinality = true

@@ -311,10 +311,9 @@ public class Eth72ProtocolHandler(
             return base.ShouldNotifyTransactionCore(tx);
         }
 
-        // Light entries persisted before the consensus-size field was added cannot produce a
-        // spec-compliant eth/72 size announcement.
-        // Such transactions keep propagating via eth/68-71 sessions until they churn out.
-        if (tx is LightTransaction lightTx && lightTx.GetConsensusEncodingSize() == 0)
+        // Light entries persisted before the versioned consensus-size field cannot derive a safe eth/72
+        // announcement size. They keep propagating via eth/68-71 sessions until they churn out.
+        if (tx is LightTransaction lightTx && lightTx.GetElidedNetworkEncodingSize() == 0)
         {
             return false;
         }
@@ -1840,21 +1839,14 @@ public class Eth72ProtocolHandler(
             return tx.GetLength();
         }
 
-        int consensusEncodingSize = tx is LightTransaction lightTx
-            ? lightTx.GetConsensusEncodingSize()
-            : tx.GetLength(shouldCountBlobs: false);
-        if (consensusEncodingSize <= 0)
-        {
-            return 0;
-        }
-
-        return tx.NetworkWrapper is ShardBlobNetworkWrapper
-            || tx is LightTransaction { ProofVersion: not null, BlobVersionedHashes.Length: > 0 }
-            ? consensusEncodingSize
-            : 0;
+        // eth/72 peers size-check the blob-elided bytes served in PooledTransactions and geth disconnects for
+        // larger mismatches. The current devp2p text still says consensus encoding; its correction is tracked at
+        // https://github.com/ethereum/devp2p/pull/281
+        return tx.GetElidedNetworkEncodingSize();
     }
 
-    // Devp2p specifies consensus size, while sparse-v2 geth announces its elided wrapper estimate.
+    // Stay lenient on receive: peers still announcing the bare consensus size (or the geth wrapper estimate)
+    // are accepted rather than disconnected, so a mixed-version network keeps propagating blob txs.
     // https://github.com/healthykim/go-ethereum/blob/fdce1ff22f2c2bde0e6a8d1921168f4b7036781f/eth/protocols/eth/broadcast.go#L140-L143
     protected override bool MatchesAnnouncedTransactionSize(Transaction tx, int announcedSize)
         => MatchesAnnouncedSize(tx, announcedSize)

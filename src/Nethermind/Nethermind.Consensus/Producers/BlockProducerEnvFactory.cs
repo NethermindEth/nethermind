@@ -3,7 +3,6 @@
 
 using Autofac;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.State;
@@ -18,8 +17,7 @@ namespace Nethermind.Consensus.Producers
     {
         protected override ContainerBuilder ConfigureBuilder(ContainerBuilder builder) =>
             base.ConfigureBuilder(builder)
-                .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance)
-                .AddScoped(BlockchainProcessor.Options.NoReceipts);
+                .AddScoped<IReceiptStorage>(NullReceiptStorage.Instance);
 
         protected override IWorldStateScopeProvider CreateWorldState() => WorldStateManager.CreateResettableWorldState();
     }

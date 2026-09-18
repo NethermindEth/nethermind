@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -28,7 +27,7 @@ public class GenesisLoaderTests
     private IWorldState _worldState;
     private IDisposable _scopeDisposable;
     private IWorldStateManager _worldStateManager;
-    private IBlockchainProcessor _blockchainProcessor;
+    private IBlockProcessingQueue _blockchainProcessor;
 
     [SetUp]
     public void Setup()
@@ -48,15 +47,11 @@ public class GenesisLoaderTests
 
         _worldStateManager = Substitute.For<IWorldStateManager>();
 
-        _blockchainProcessor = Substitute.For<IBlockchainProcessor>();
+        _blockchainProcessor = Substitute.For<IBlockProcessingQueue>();
     }
 
     [TearDown]
-    public async Task TearDown()
-    {
-        _scopeDisposable.Dispose();
-        await _blockchainProcessor.DisposeAsync();
-    }
+    public void TearDown() => _scopeDisposable.Dispose();
 
     private GenesisLoader CreateLoader(TimeSpan timeout)
     {
@@ -107,7 +102,7 @@ public class GenesisLoaderTests
         {
             _blockchainProcessor.InvalidBlock += Raise.EventWith(
                 _blockchainProcessor,
-                new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = _genesisBlock });
+                new IBlockProcessingQueue.InvalidBlockEventArgs { InvalidBlock = _genesisBlock });
         });
 
         GenesisLoader loader = CreateLoader(TimeSpan.FromSeconds(10));

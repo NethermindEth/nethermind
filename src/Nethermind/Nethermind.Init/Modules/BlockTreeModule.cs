@@ -72,6 +72,8 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
                 return config;
             });
 
+        builder.AddSingleton<IRpcLogFinder, RangeLimitedLogFinder>();
+
         if (logIndexConfig.Enabled)
         {
             builder

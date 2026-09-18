@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Threading;
 
 namespace Nethermind.Serialization.Rlp;
 
 /// <summary>Decodes a list of EIP-2718 <c>TransactionType || TransactionPayload</c> entries.</summary>
-public static class TxsDecoder
+public static partial class TxsDecoder
 {
     private const int ParallelDecodeThreshold = 32;
 
@@ -18,25 +16,33 @@ public static class TxsDecoder
     /// shorter than <paramref name="txData"/> and never carries an error. Otherwise the first bad entry
     /// fails the whole call.
     /// </param>
-    /// <remarks>Long lists decode in parallel and fall back to the serial pass on any failure, so the
+    /// <remarks>Copies calldata and delayed-hash bytes so decoded transactions do not borrow the input.
+    /// Long lists decode in parallel and fall back to the serial pass on any failure, so the
     /// reported error is always the one a single-threaded decode would have produced.</remarks>
-    public static TransactionDecodingResult DecodeTxs(byte[][] txData, bool skipErrors)
+    public static TransactionDecodingResult DecodeTxs(byte[][] txData, bool skipErrors) => DecodeTxs(txData, skipErrors, borrowMemory: false);
+
+    /// <summary>Decodes transactions borrowing the input buffers.</summary>
+    /// <remarks>Calldata and delayed-hash bytes alias the caller's arrays, which must remain unmodified
+    /// for the lifetime of the decoded transactions. Use <see cref="DecodeTxs(byte[][], bool)"/> when copying is required.</remarks>
+    internal static TransactionDecodingResult DecodeTxsBorrowingBuffers(byte[][] txData, bool skipErrors) => DecodeTxs(txData, skipErrors, borrowMemory: true);
+
+    private static TransactionDecodingResult DecodeTxs(byte[][] txData, bool skipErrors, bool borrowMemory)
     {
         IRlpDecoder<Transaction>? rlpDecoder = Rlp.GetDecoder<Transaction>();
         if (rlpDecoder is null) return new TransactionDecodingResult($"{nameof(Transaction)} decoder is not registered");
 
         return txData.Length < ParallelDecodeThreshold
-            ? DecodeSequential(txData, rlpDecoder, skipErrors)
-            : DecodeParallel(txData, rlpDecoder, skipErrors);
+            ? DecodeSequential(txData, rlpDecoder, skipErrors, borrowMemory)
+            : DecodeParallel(txData, rlpDecoder, skipErrors, borrowMemory);
     }
 
-    private static Transaction DecodeTransaction(IRlpDecoder<Transaction> rlpDecoder, byte[] rlp)
+    private static Transaction DecodeTransaction(IRlpDecoder<Transaction> rlpDecoder, byte[] rlp, bool borrowMemory)
     {
-        RlpReader ctx = new(rlp);
+        RlpReader ctx = borrowMemory ? new(rlp.AsMemory()) : new(rlp);
         return rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
     }
 
-    private static TransactionDecodingResult DecodeSequential(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors)
+    private static TransactionDecodingResult DecodeSequential(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors, bool borrowMemory)
     {
         Transaction[] transactions = new Transaction[txData.Length];
         int added = 0;
@@ -44,7 +50,7 @@ public static class TxsDecoder
         {
             try
             {
-                transactions[added] = DecodeTransaction(rlpDecoder, txData[i]);
+                transactions[added] = DecodeTransaction(rlpDecoder, txData[i], borrowMemory);
                 added++;
             }
             catch (RlpException e)
@@ -66,43 +72,6 @@ public static class TxsDecoder
 
         return new TransactionDecodingResult(transactions);
     }
-
-#if ZK_EVM
-    // Zisk stateless guest builds with --no-pthread; parallelism is unavailable, so always decode sequentially.
-    private static TransactionDecodingResult DecodeParallel(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors) =>
-        DecodeSequential(txData, rlpDecoder, skipErrors);
-#else
-    private static TransactionDecodingResult DecodeParallel(byte[][] txData, IRlpDecoder<Transaction> rlpDecoder, bool skipErrors)
-    {
-        Transaction[] decoded = new Transaction[txData.Length];
-        bool[] failed = new bool[1];
-
-        ParallelUnbalancedWork.For(
-            0,
-            txData.Length,
-            ParallelUnbalancedWork.DefaultOptions,
-            (rlpDecoder, txData, decoded, failed),
-            static (i, state) =>
-            {
-                try
-                {
-                    state.decoded[i] = DecodeTransaction(state.rlpDecoder, state.txData[i]);
-                }
-                catch
-                {
-                    // Defer to the serial fallback, which reproduces the exact single-threaded error
-                    // behavior (first invalid index, exception surface) and applies skipErrors.
-                    Volatile.Write(ref state.failed[0], true);
-                }
-
-                return state;
-            });
-
-        return Volatile.Read(ref failed[0])
-            ? DecodeSequential(txData, rlpDecoder, skipErrors)
-            : new TransactionDecodingResult(decoded);
-    }
-#endif
 }
 
 /// <summary>Outcome of <see cref="TxsDecoder.DecodeTxs"/>: <see cref="Error"/> is non-null exactly when

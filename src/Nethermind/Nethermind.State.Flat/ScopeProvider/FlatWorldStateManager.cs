@@ -69,5 +69,7 @@ public class FlatWorldStateManager(
 
     public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);
 
+    public void DropStateNotReachableFrom(BlockHeader head) => flatDbManager.DropStateNotReachableFrom(new StateId(head));
+
     public void Dispose() => _mainWorldState.Dispose();
 }

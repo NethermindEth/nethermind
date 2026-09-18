@@ -70,4 +70,8 @@ public class WorldStateManager : IWorldStateManager
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken) => _blockingVerifyTrie.VerifyTrie(stateAtBlock, cancellationToken);
 
     public void FlushCache(CancellationToken cancellationToken) => _trieStore.PersistCache(cancellationToken);
+
+    /// <inheritdoc />
+    /// <remarks>No-op: the trie store keeps no per-branch bookkeeping to prune; its dirty cache is bounded by memory.</remarks>
+    public void DropStateNotReachableFrom(BlockHeader head) { }
 }
