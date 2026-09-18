@@ -1664,10 +1664,11 @@ namespace Nethermind.TxPool
         public PendingTransactionsView GetPendingForProduction(BlockHeader targetBlock, bool filterToReadyTx, UInt256 baseFee)
         {
             long forkStateVersion = Volatile.Read(ref _forkStateVersion);
-            IDictionary<AddressAsKey, Transaction[]> transactions = filterToReadyTx
-                ? GetPendingTransactionsBySender(true, baseFee)
-                : GetPendingTransactionsBySender();
-            IDictionary<AddressAsKey, Transaction[]> blobTransactions = GetPendingLightBlobTransactionsBySender(filterToReadyTx, baseFee);
+            Predicate<(AddressAsKey key, Transaction first)>? filter = filterToReadyTx
+                ? data => data.first.CanPayBaseFee(baseFee) && data.first.Nonce == _accounts.GetNonce(data.key)
+                : null;
+            IDictionary<AddressAsKey, Transaction[]> transactions = _transactions.GetProductionSnapshot(filter);
+            IDictionary<AddressAsKey, Transaction[]> blobTransactions = _blobTransactions.GetProductionSnapshot(filter);
 
             return new(transactions, blobTransactions, IsRevalidatedFor(targetBlock, forkStateVersion));
         }

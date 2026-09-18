@@ -507,62 +507,28 @@ namespace Nethermind.Consensus.Producers
             ulong resourceLimit,
             bool enforceSequentialNonces)
         {
-            using ArrayPoolList<IEnumerator<Transaction>> bySenderEnumerators = pendingTransactions
-                .Select<KeyValuePair<AddressAsKey, Transaction[]>, IEnumerable<Transaction>>(static g => g.Value)
-                .Select(static g => g.GetEnumerator())
-                .ToPooledList(pendingTransactions.Count);
-
-            try
+            PriorityQueue<(Transaction[] bucket, int index, ulong resource), Transaction> transactions = new(pendingTransactions.Count, comparer);
+            foreach (Transaction[] bucket in pendingTransactions.Values)
             {
-                DictionarySortedSet<Transaction, (IEnumerator<Transaction>, ulong)> transactions = SortEnumerators(bySenderEnumerators, comparer);
-
-                while (transactions.Count > 0)
-                {
-                    (Transaction candidateTx, (IEnumerator<Transaction> enumerator, ulong resourceChain)) = transactions.Min;
-
-                    transactions.Remove(candidateTx);
-
-                    ulong totalResource = resourceChain + resourceSelector(candidateTx);
-                    if (totalResource > resourceLimit)
-                        continue;
-
-                    if (!filter(candidateTx))
-                        continue;
-
-                    if (enumerator.MoveNext()
-                        && (!enforceSequentialNonces
-                            || candidateTx.Nonce != ulong.MaxValue
-                            && enumerator.Current!.Nonce == candidateTx.Nonce + 1))
-                    {
-                        transactions.Add(enumerator.Current!, (enumerator, totalResource));
-                    }
-
-                    yield return (candidateTx, resourceChain);
-                }
-            }
-            finally
-            {
-                foreach (IEnumerator<Transaction> t in bySenderEnumerators.AsSpan())
-                {
-                    t.Dispose();
-                }
-            }
-        }
-
-        private static DictionarySortedSet<Transaction, (IEnumerator<Transaction>, ulong)> SortEnumerators(ArrayPoolList<IEnumerator<Transaction>> bySenderEnumerators, IComparer<Transaction> comparerWithIdentity)
-        {
-            DictionarySortedSet<Transaction, (IEnumerator<Transaction>, ulong)> transactions = new(comparerWithIdentity);
-
-            foreach (IEnumerator<Transaction> enumerator in bySenderEnumerators.AsSpan())
-            {
-                if (enumerator.MoveNext())
-                {
-                    Transaction current = enumerator.Current!;
-                    transactions.Add(current, (enumerator, 0));
-                }
+                if (bucket.Length > 0) transactions.Enqueue((bucket, 0, 0), bucket[0]);
             }
 
-            return transactions;
+            while (transactions.TryDequeue(out (Transaction[] bucket, int index, ulong resource) cursor, out Transaction? candidateTx))
+            {
+                ulong totalResource = cursor.resource + resourceSelector(candidateTx);
+                if (totalResource > resourceLimit || !filter(candidateTx)) continue;
+
+                int nextIndex = cursor.index + 1;
+                if (nextIndex < cursor.bucket.Length
+                    && (!enforceSequentialNonces
+                        || candidateTx.Nonce != ulong.MaxValue
+                        && cursor.bucket[nextIndex].Nonce == candidateTx.Nonce + 1))
+                {
+                    transactions.Enqueue((cursor.bucket, nextIndex, totalResource), cursor.bucket[nextIndex]);
+                }
+
+                yield return (candidateTx, cursor.resource);
+            }
         }
 
         public bool SupportsBlobs => _transactionPool.SupportsBlobs;

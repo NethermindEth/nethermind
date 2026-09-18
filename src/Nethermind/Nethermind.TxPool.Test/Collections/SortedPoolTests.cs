@@ -49,6 +49,82 @@ namespace Nethermind.TxPool.Test.Collections
         }
 
         [Test]
+        public void Production_snapshot_reuses_only_unchanged_buckets()
+        {
+            Transaction first = _transactions[1];
+            Transaction other = _transactions[2];
+            InsertSnapshotTransaction(first);
+            InsertSnapshotTransaction(other);
+            Dictionary<AddressAsKey, Transaction[]> before = _sortedPool.GetProductionSnapshot();
+            Dictionary<AddressAsKey, Transaction[]> unchanged = _sortedPool.GetProductionSnapshot();
+            Assert.That(unchanged[first.SenderAddress!], Is.SameAs(before[first.SenderAddress!]));
+
+            Transaction next = Build.A.Transaction.WithSenderAddress(first.SenderAddress!).WithNonce(1).WithGasPrice(10).TestObject;
+            InsertSnapshotTransaction(next);
+            Dictionary<AddressAsKey, Transaction[]> added = _sortedPool.GetProductionSnapshot();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(added[first.SenderAddress!], Is.EqualTo(new[] { first, next }));
+                Assert.That(before[first.SenderAddress!], Is.EqualTo(new[] { first }));
+                Assert.That(added[other.SenderAddress!], Is.SameAs(before[other.SenderAddress!]));
+            }
+
+            _sortedPool.TryRemove(first.Hash!);
+            Assert.That(_sortedPool.GetProductionSnapshot()[first.SenderAddress!], Is.EqualTo(new[] { next }));
+            _sortedPool.TryRemove(next.Hash!);
+            Assert.That(_sortedPool.GetProductionSnapshot().ContainsKey(first.SenderAddress!), Is.False);
+            InsertSnapshotTransaction(first);
+            Assert.That(_sortedPool.GetProductionSnapshot()[first.SenderAddress!], Is.EqualTo(new[] { first }));
+        }
+
+        [Test]
+        public void Production_snapshot_observes_replacements_and_rechecks_filter()
+        {
+            Transaction first = _transactions[1];
+            InsertSnapshotTransaction(first);
+            Dictionary<AddressAsKey, Transaction[]> before = _sortedPool.GetProductionSnapshot();
+            Transaction replacement = Build.A.Transaction.WithSenderAddress(first.SenderAddress!).WithGasPrice(100).TestObject;
+            InsertSnapshotTransaction(replacement);
+            Assert.That(_sortedPool.GetProductionSnapshot()[first.SenderAddress!], Is.EqualTo(new[] { replacement }));
+            Assert.That(_sortedPool.GetProductionSnapshot(_ => false), Is.Empty);
+            Assert.That(_sortedPool.GetProductionSnapshot(_ => true)[first.SenderAddress!], Is.EqualTo(new[] { replacement }));
+            Assert.That(before[first.SenderAddress!], Is.EqualTo(new[] { first }));
+        }
+
+        [Test]
+        public void Public_bucket_snapshots_do_not_expose_cached_arrays()
+        {
+            Transaction first = _transactions[1];
+            InsertSnapshotTransaction(first);
+            Transaction[] cached = _sortedPool.GetProductionSnapshot()[first.SenderAddress!];
+            _sortedPool.GetBucketSnapshot()[first.SenderAddress!][0] = _transactions[2];
+            _sortedPool.GetBucketSnapshot(first.SenderAddress!)[0] = _transactions[2];
+            Assert.That(_sortedPool.GetProductionSnapshot()[first.SenderAddress!], Is.SameAs(cached).And.EqualTo(new[] { first }));
+        }
+
+        [Test]
+        public void Production_snapshot_discards_evicted_buckets()
+        {
+            for (int i = 1; i <= Capacity; i++) InsertSnapshotTransaction(_transactions[i]);
+            Dictionary<AddressAsKey, Transaction[]> before = _sortedPool.GetProductionSnapshot();
+            InsertSnapshotTransaction(_transactions[Capacity + 1]);
+            Dictionary<AddressAsKey, Transaction[]> after = _sortedPool.GetProductionSnapshot();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(after.Count, Is.EqualTo(Capacity));
+                Assert.That(after.ContainsKey(_transactions[1].SenderAddress!), Is.False);
+                Assert.That(after[_transactions[Capacity + 1].SenderAddress!], Is.EqualTo(new[] { _transactions[Capacity + 1] }));
+                Assert.That(before.ContainsKey(_transactions[1].SenderAddress!), Is.True);
+            }
+        }
+
+        private void InsertSnapshotTransaction(Transaction transaction)
+        {
+            transaction.Hash = transaction.CalculateHash();
+            Assert.That(_sortedPool.TryInsert(transaction.Hash!, transaction), Is.True);
+        }
+
+        [Test]
         public void Beyond_capacity()
         {
             for (int i = 0; i < _transactions.Length; i++)

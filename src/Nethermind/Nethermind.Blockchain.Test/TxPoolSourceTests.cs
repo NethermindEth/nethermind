@@ -31,6 +31,42 @@ namespace Nethermind.Consensus.Producers.Test;
 [Parallelizable(ParallelScope.All)]
 public class TxPoolSourceTests
 {
+    [Test]
+    public void Ordering_preserves_sender_chains_and_stops_at_rejected_transaction([Values] bool rejectByFilter)
+    {
+        Transaction a0 = Build.A.Transaction.WithNonce(0).WithGasPrice(10).WithGasLimit(21_000).TestObject;
+        Transaction a1 = Build.A.Transaction.WithNonce(1).WithGasPrice(30).WithGasLimit(21_000).TestObject;
+        Transaction a2 = Build.A.Transaction.WithNonce(2).WithGasPrice(40).WithGasLimit(21_000).TestObject;
+        Transaction b0 = Build.A.Transaction.WithNonce(0).WithGasPrice(20).WithGasLimit(21_000).TestObject;
+        Dictionary<AddressAsKey, Transaction[]> buckets = new()
+        {
+            [TestItem.AddressA] = [a0, a1, a2],
+            [TestItem.AddressB] = [b0],
+            [TestItem.AddressC] = []
+        };
+        IComparer<Transaction> comparer = Comparer<Transaction>.Create((x, y) => y.GasPrice.CompareTo(x.GasPrice));
+
+        Transaction[] selected = TxPoolTxSource.Order(buckets, comparer,
+            tx => !rejectByFilter || tx != a1, rejectByFilter ? 100_000UL : 21_000UL).ToArray();
+
+        Assert.That(selected, Is.EqualTo(new[] { b0, a0 }));
+    }
+
+    [Test]
+    public void Ordering_reconsiders_each_senders_next_transaction()
+    {
+        Transaction a0 = Build.A.Transaction.WithNonce(0).WithGasPrice(10).TestObject;
+        Transaction a1 = Build.A.Transaction.WithNonce(1).WithGasPrice(30).TestObject;
+        Transaction b0 = Build.A.Transaction.WithNonce(0).WithGasPrice(20).TestObject;
+        Dictionary<AddressAsKey, Transaction[]> buckets = new()
+        {
+            [TestItem.AddressA] = [a0, a1],
+            [TestItem.AddressB] = [b0]
+        };
+        IComparer<Transaction> comparer = Comparer<Transaction>.Create((x, y) => y.GasPrice.CompareTo(x.GasPrice));
+        Assert.That(TxPoolTxSource.Order(buckets, comparer, _ => true, ulong.MaxValue), Is.EqualTo(new[] { b0, a0, a1 }));
+    }
+
     // Deliberately below Amsterdam's intrinsic gas requirement for the access list built below.
     private const ulong UnderGassedTransactionGasLimit = 42_400;
 

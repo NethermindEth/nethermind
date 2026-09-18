@@ -46,6 +46,7 @@ namespace Nethermind.TxPool.Collections
         protected readonly DictionarySortedSet<TValue, TKey> _worstSortedValues;
         protected KeyValuePair<TValue, TKey>? _worstValue = null;
         private TValue[]? _snapshot;
+        private readonly Dictionary<TGroupKey, TValue[]> _productionSnapshots = [];
 
         /// <summary>
         /// Constructor
@@ -136,6 +137,13 @@ namespace Nethermind.TxPool.Collections
         /// Gets all items in groups in supplied comparer order in groups.
         /// </summary>
         public Dictionary<TGroupKey, TValue[]> GetBucketSnapshot(Predicate<(TGroupKey key, TValue first)>? where = null)
+            => GetBucketSnapshot(where, reuseBuckets: false);
+
+        /// <summary>Gets a production snapshot whose bucket arrays must not be modified by callers.</summary>
+        internal Dictionary<TGroupKey, TValue[]> GetProductionSnapshot(Predicate<(TGroupKey key, TValue first)>? where = null)
+            => GetBucketSnapshot(where, reuseBuckets: true);
+
+        private Dictionary<TGroupKey, TValue[]> GetBucketSnapshot(Predicate<(TGroupKey key, TValue first)>? where, bool reuseBuckets)
         {
             using McsLock.Disposable lockRelease = Lock.Acquire();
 
@@ -147,7 +155,13 @@ namespace Nethermind.TxPool.Collections
                     continue;
                 }
 
-                snapshots[key] = CopyBucketToArray(bucket);
+                if (!reuseBuckets || !_productionSnapshots.TryGetValue(key, out TValue[]? snapshot))
+                {
+                    snapshot = CopyBucketToArray(bucket);
+                    if (reuseBuckets) _productionSnapshots[key] = snapshot;
+                }
+
+                snapshots[key] = snapshot;
             }
 
             return snapshots;
@@ -300,6 +314,7 @@ namespace Nethermind.TxPool.Collections
                 TValue? last = bucketSet.Max;
                 if (bucketSet.Remove(value))
                 {
+                    _productionSnapshots.Remove(groupMapping);
                     if (bucketSet.Count == 0)
                     {
                         _buckets.Remove(groupMapping);
@@ -487,6 +502,7 @@ namespace Nethermind.TxPool.Collections
             TValue? last = bucket.Max;
             if (bucket.Add(value))
             {
+                _productionSnapshots.Remove(groupKey);
                 _cacheMap[key] = value;
                 UpdateIsFull();
                 UpdateSortedValues(bucket, last);
