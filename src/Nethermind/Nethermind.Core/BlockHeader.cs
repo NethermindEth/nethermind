@@ -153,6 +153,10 @@ public class BlockHeader
     public virtual BlockHeader CreateSimulatedChild(ulong timestamp)
     {
         Hash256? requestsHash = RequestsHash;
+        // The simulated child executes in the latest known slot context: like RequestsHash,
+        // the slot is inherited from the parent because the EL cannot derive the CL-assigned
+        // slot of a block that does not exist yet.
+        ulong? slotNumber = SlotNumber;
         return new BlockHeader(
             Hash!,
             Keccak.OfAnEmptySequenceRlp,
@@ -162,7 +166,8 @@ public class BlockHeader
             GasLimit,
             timestamp,
             [],
-            requestsHash: requestsHash)
+            requestsHash: requestsHash,
+            slotNumber: slotNumber)
         {
             MixHash = Hash256.Zero,
         };

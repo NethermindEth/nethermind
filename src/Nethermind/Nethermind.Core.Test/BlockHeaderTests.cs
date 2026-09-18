@@ -157,7 +157,9 @@ public class BlockHeaderTests
             Assert.That(child.BlobGasUsed, Is.Null);
             Assert.That(child.ExcessBlobGas, Is.Null);
             Assert.That(child.ParentBeaconBlockRoot, Is.Null);
-            Assert.That(child.SlotNumber, Is.Null);
+            // The EL cannot derive the CL-assigned slot of a block that does not exist yet,
+            // so simulation inherits the latest known slot like RequestsHash above.
+            Assert.That(child.SlotNumber, Is.EqualTo(3));
         });
     }
 
