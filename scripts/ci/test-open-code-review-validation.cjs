@@ -25,6 +25,7 @@ function fixture(t) {
   fs.mkdirSync(path.join(root, 'Blockchain'));
   fs.writeFileSync(path.join(root, file), 'class Tree\n{\n    public void Rewind()\n    {\n        BestSuggested = storedTip;\n    }\n}\n');
   fs.writeFileSync(path.join(root, 'Blockchain/Tree.Initializer.cs'), 'class Initializer\n{\n    public void Reload()\n    {\n        BestSuggested = storedTip;\n    }\n}\n');
+  fs.writeFileSync(path.join(root, 'Blockchain/Tree.Recovery.cs'), 'class Recovery\n{\n    public void Recalculate()\n    {\n        initializer.Reload();\n    }\n}\n');
   fs.writeFileSync(path.join(root, '.env'), 'NEVER_READ=secret');
   fs.symlinkSync('/etc/passwd', path.join(root, 'linked.cs'));
   git(['add', '.']);
@@ -66,6 +67,7 @@ const submit = args => response([['submit_review', args]]);
 test('context surfaces recovery writers outside the diff and reads immutable snapshots', t => {
   const f = fixture(t);
   assert.ok(f.context.related.some(source => source.path === 'Blockchain/Tree.Initializer.cs' && source.symbol === 'BestSuggested'));
+  assert.ok(f.context.related.some(source => source.path === 'Blockchain/Tree.Recovery.cs' && source.symbol === 'BestSuggested writer/caller: Reload'));
   assert.ok(f.context.obligations.some(check => check.id === 'state_lifecycle'));
   assert.match(f.repository.read(f.ref).content, /rewindTarget/);
   assert.match(f.repository.read({ ...f.ref, snapshot: 'base' }).content, /storedTip/);
@@ -230,6 +232,25 @@ test('last request offers only submission without unsupported forced tool select
       return submit({ checks: f.checks, findings: [] });
     } });
   assert.equal(report.findings.length, 0);
+});
+
+test('malformed final JSON gets a bounded submission-only repair', async t => {
+  const f = fixture(t);
+  let requests = 0;
+  const result = await runPass({ phase: 'discovery', repository: f.repository, context: f.context,
+    prompt: 'trusted', usage: { input: 0, output: 0, requests: 0 }, budget: 1000000,
+    deadline: Date.now() + 10000, maxRounds: 1, ask: async body => {
+      assert.deepEqual(body.tools.map(tool => tool.function.name), ['submit_review']);
+      if (++requests === 1) {
+        const malformed = submit({});
+        malformed.choices[0].message.tool_calls[0].function.arguments = '{"checks": "unescaped "quote"}';
+        return malformed;
+      }
+      assert.match(body.messages.at(-1).content, /valid JSON/);
+      return submit({ checks: f.checks, findings: [] });
+    } });
+  assert.equal(requests, 2);
+  assert.equal(result.findings.length, 0);
 });
 
 test('validation model defaults to primary, but a separate model does not inherit incompatible options', t => {

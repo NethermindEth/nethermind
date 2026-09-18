@@ -107,7 +107,7 @@ counts toward the limit. Treat budget-exhausted runs as incomplete when comparin
 review quality.
 The primary OCR process has an 18-minute limit. Independent discovery and validation
 share an additional eight-minute limit and token budget, with at most ten requests
-per pass. The job has a 35-minute limit. The default total allowance is approximately
+per pass plus two submission-only repairs. The job has a 35-minute limit. The default total allowance is approximately
 11 million tokens: 10 million for OCR and one million for validation. Repeated and
 cached context count toward these budgets; one in-flight request can exceed a soft
 limit. Actual usage depends on the PR and model. No extra secret is required to
@@ -120,7 +120,10 @@ recorded as unavailable. CI metadata is captured at review start; it can still b
 pending and does not establish which particular regression scenarios executed.
 
 The trusted context collector searches changed identifiers for other writers,
-callers, and initialization/recovery code outside the diff. It passes those source
+callers, and initialization/recovery code outside the diff. For other C# writers it
+also locates the enclosing method and its callers, so a reconstruction method's
+in-process use is visible alongside its initialization use. This is a lexical
+navigation hint, not a compiler-verified call graph. It passes those source
 locations and PR intent to OCR. Once OCR completes its selected files, an independent
 review receives bounded diff/source excerpts and risk-specific checks, without
 seeing OCR's findings. It can search identifiers, read patches, and read source at

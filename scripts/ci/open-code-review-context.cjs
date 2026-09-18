@@ -94,6 +94,13 @@ class Repository {
     return { matches: matches.slice(0, 40), truncated: matches.length > 40 };
   }
 
+  enclosingMethod(file, line) {
+    if (!file.endsWith('.cs')) return null;
+    const before = this.content(file).split('\n').slice(0, line).join('\n');
+    const methods = [...before.matchAll(/^\s+(?:public|private|internal|protected)\s+(?:(?:static|virtual|override|async|sealed|partial)\s+)*[\w<>?\[\],.]+\s+(\w+)\s*\(/gm)];
+    return methods.at(-1)?.[1] || null;
+  }
+
   changes() {
     const files = this.git(['diff', '--no-ext-diff', '--no-textconv', '--no-renames',
       '--name-only', '-z', this.target.merge_base, this.target.head, '--']).split('\0').filter(Boolean);
@@ -177,20 +184,36 @@ function buildContext(repository, pr = {}) {
   const related = [];
   const seen = new Set();
   let relatedSize = 0;
+  const addSource = (hit, symbol) => {
+    const key = hit.path + ':' + Math.floor(hit.line / 30);
+    if (seen.has(key) || relatedSize >= 28000) return false;
+    seen.add(key);
+    const source = repository.read({ path: hit.path, start_line: Math.max(1, hit.line - 12), end_line: hit.line + 18 });
+    relatedSize += source.content.length;
+    related.push({ ...source, symbol });
+    return true;
+  };
+  const expandedMethods = new Set();
   for (const symbol of [...symbols].slice(0, 12)) {
     for (const hit of repository.search({ symbol }).matches.filter(hit => !isTest(hit.path)).slice(0, 4)) {
-      const key = hit.path + ':' + Math.floor(hit.line / 30);
-      if (seen.has(key) || relatedSize >= 28000) continue;
-      seen.add(key);
-      const source = repository.read({ path: hit.path, start_line: Math.max(1, hit.line - 12), end_line: hit.line + 18 });
-      relatedSize += source.content.length;
-      related.push({ ...source, symbol });
+      if (!addSource(hit, symbol)) continue;
+      // A writer's callers distinguish startup-only reconstruction from an ordinary reload path.
+      if (stateSymbols.has(symbol) && !production.some(change => change.path === hit.path) &&
+          new RegExp('\\b' + symbol + '\\s*(?:\\?\\?=|=(?!=))').test(hit.text)) {
+        const method = repository.enclosingMethod(hit.path, hit.line);
+        if (!method || expandedMethods.has(method) || expandedMethods.size >= 4) continue;
+        expandedMethods.add(method);
+        for (const caller of repository.search({ symbol: method }).matches.filter(hit => !isTest(hit.path)).slice(0, 4)) {
+          addSource(caller, symbol + ' writer/caller: ' + method);
+        }
+      }
     }
   }
   const paths = production.map(change => change.path).join('\n');
   const obligations = [{ id: 'changed_behavior', description: 'Check the changed contract through callers and the next operation. Check tests against real execution modes, not only mocks or test names.' }];
   for (const symbol of [...stateSymbols].slice(0, 4)) {
-    const locations = related.filter(source => source.symbol === symbol).map(source => source.path + ':' + source.start_line);
+    const locations = related.filter(source => source.symbol === symbol || source.symbol.startsWith(symbol + ' writer/caller:'))
+      .map(source => source.path + ':' + source.start_line);
     if (locations.length) obligations.push({ id: 'state_writer_' + symbol,
       description: 'Compare changed writes to ' + symbol + ' with other writers at ' + locations.join(', ') +
         '. Trace reconstruction/recalculation and the next ordinary consumer. Can retained data undo the change? Explain the supported sequence or why no such sequence exists.' });

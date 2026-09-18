@@ -19,7 +19,7 @@ to distinguish a regression from a pre-existing issue. Stay focused on this diff
 do not attempt an unbounded subsystem audit.
 
 For each assigned check, record checked, not_applicable, or unverified, with a
-concrete explanation and source citations. "Checked" means the listed paths were
+brief explanation (at most 1200 characters) and source citations. "Checked" means the listed paths were
 inspected, not that the subsystem is proven correct. Read the cited source through
 read_source, or cite a supplied related-source excerpt. Search results and diffs
 alone are navigation, not sufficient evidence. Use unverified when necessary;

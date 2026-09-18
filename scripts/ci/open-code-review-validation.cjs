@@ -14,6 +14,7 @@ const write = (directory, name, value) => fs.writeFileSync(path.join(directory, 
 const string = (value, max = 5000) => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
 const object = properties => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
 const text = { type: 'string' };
+const explanation = { type: 'string', maxLength: 1200, description: 'Brief evidence-based explanation, at most 1200 characters. Do not include private reasoning.' };
 const integer = { type: 'integer' };
 const array = items => ({ type: 'array', items });
 const enumeration = values => ({ type: 'string', enum: values });
@@ -31,9 +32,9 @@ const toolsFor = phase => [
     object({ path: text, offset: integer })],
   ['submit_review', 'Finish this pass. All checks or candidate IDs must be accounted for exactly once.', phase === 'discovery'
     ? object({ checks: array(object({ id: text, status: enumeration(['checked', 'not_applicable', 'unverified']),
-      explanation: text, evidence: array(evidenceSchema) })), findings: array(candidateSchema) })
+      explanation, evidence: array(evidenceSchema) })), findings: array(candidateSchema) })
     : object({ decisions: array(object({ id: text, verdict: enumeration(['confirmed', 'rejected', 'unverified']),
-      explanation: text, evidence: array(evidenceSchema), finding: { anyOf: [findingSchema, { type: 'null' }] } })) })],
+      explanation, evidence: array(evidenceSchema), finding: { anyOf: [findingSchema, { type: 'null' }] } })) })],
 ].map(([name, description, parameters]) => ({ type: 'function', function: { name, description, parameters } }));
 
 class ValidationError extends Error {}
@@ -89,13 +90,14 @@ async function runPass({ phase, repository, context, candidates, prompt, ask, us
     { role: 'system', content: prompt + '\nCurrent phase: ' + phase + '. You have at most ' + maxRounds + ' requests; batch independent source reads (up to eight tools per request). Reserve the last request for submit_review.' },
     { role: 'user', content: JSON.stringify({ context, ...(phase === 'validation' ? { candidates } : {}) }) },
   ];
-  for (let turn = 0; turn < maxRounds; turn++) {
+  // Two final submission-only repairs accommodate malformed JSON/citations without another investigation loop.
+  for (let turn = 0; turn < maxRounds + 2; turn++) {
     if (Date.now() >= deadline) fail('Validation time limit reached');
     if (usage.input + usage.output >= budget) fail('Validation token budget exhausted');
     if (turn === maxRounds - 3) messages.push({ role: 'user', content: 'Three requests remain. Finish the assigned checks and prepare submit_review. Use unverified for unresolved checks; do not silently omit them.' });
     if (turn === maxRounds - 1) messages.push({ role: 'user', content: 'This is the final request. Submit the review now. Mark unresolved checks/candidates unverified.' });
     // Some reasoning providers reject forced tool_choice; keep their default selection.
-    const response = await ask({ messages, tools: turn === maxRounds - 1
+    const response = await ask({ messages, tools: turn >= maxRounds - 1
       ? tools.filter(tool => tool.function.name === 'submit_review') : tools, max_tokens: 16384 },
     Math.min(120000, deadline - Date.now()));
     const counted = response.usage;
@@ -136,7 +138,7 @@ async function runPass({ phase, repository, context, candidates, prompt, ask, us
                   JSON.stringify(args.checks.map(check => check.id).sort()) !==
                   JSON.stringify(context.obligations.map(check => check.id).sort())) fail('Discovery did not account for every assigned check');
               for (const check of args.checks) {
-                if (!['checked', 'not_applicable', 'unverified'].includes(check.status) || !string(check.explanation)) fail('Invalid discovery check');
+                if (!['checked', 'not_applicable', 'unverified'].includes(check.status) || !string(check.explanation, 1200)) fail('Invalid discovery check or explanation exceeds 1200 characters');
                 if (check.id === 'changed_behavior' && check.status === 'not_applicable') fail('Changed behavior must be investigated');
                 evidence(repository, check.evidence, check.status !== 'unverified');
               }
@@ -148,7 +150,7 @@ async function runPass({ phase, repository, context, candidates, prompt, ask, us
               if (!Array.isArray(args.decisions) || JSON.stringify(args.decisions.map(decision => decision.id).sort()) !==
                   JSON.stringify(candidates.map(candidate => candidate.id).sort())) fail('Validation did not account for every candidate');
               for (const decision of args.decisions) {
-                if (!['confirmed', 'rejected', 'unverified'].includes(decision.verdict) || !string(decision.explanation)) fail('Invalid candidate decision');
+                if (!['confirmed', 'rejected', 'unverified'].includes(decision.verdict) || !string(decision.explanation, 1200)) fail('Invalid candidate decision or explanation exceeds 1200 characters');
                 evidence(repository, decision.evidence, decision.verdict !== 'unverified');
                 if (decision.verdict === 'confirmed') decision.finding = finding(repository, changes, decision.finding);
                 else decision.finding = null;
@@ -162,7 +164,9 @@ async function runPass({ phase, repository, context, candidates, prompt, ask, us
         }
       } catch (error) {
         // Submission errors are safe constants. Filesystem, git and JSON errors are not.
-        result = { error: error instanceof ValidationError ? error.message : 'Invalid or unavailable source request; use a valid source path, symbol and bounded range.' };
+        result = { error: error instanceof ValidationError ? error.message : error instanceof SyntaxError
+          ? 'Tool arguments must be valid JSON. Escape quotes inside strings and keep explanations brief.'
+          : 'Invalid or unavailable source request; use a valid source path, symbol and bounded range.' };
       }
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
     }
