@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Blockchain;
@@ -162,7 +163,20 @@ public sealed class MempoolStatePrewarmer : IDisposable
             transactions.Add((tx, -1));
         }
 
-        if (warmedPerSender.Count == 0) warmedPerSender.EnsureCapacity(bySender.Count);
+        return SelectGroupedDelta(transactions.AsSpan(), bySender, warmedPerSender);
+    }
+
+    /// <remarks>Kept out of line to reduce the stack frame of the transaction-grouping loop.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static Transaction[] SelectGroupedDelta(ReadOnlySpan<(Transaction tx, int next)> transactions,
+        Dictionary<AddressAsKey, (int first, int last, int count)> bySender, Dictionary<AddressAsKey, int> warmedPerSender)
+    {
+        if (warmedPerSender.Count == 0)
+        {
+            Transaction[] initialDelta = SelectInitialDelta(transactions, bySender, warmedPerSender);
+            bySender.Clear();
+            return initialDelta;
+        }
         using ArrayPoolListRef<Transaction> delta = new(0);
         foreach (KeyValuePair<AddressAsKey, (int first, int last, int count)> senderGroup in bySender)
         {
@@ -175,6 +189,23 @@ public sealed class MempoolStatePrewarmer : IDisposable
 
         bySender.Clear();
         return delta.ToArray();
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static Transaction[] SelectInitialDelta(ReadOnlySpan<(Transaction tx, int next)> transactions,
+        Dictionary<AddressAsKey, (int first, int last, int count)> bySender, Dictionary<AddressAsKey, int> warmedPerSender)
+    {
+        // A fresh pass selects every group, so the final array size is already known.
+        warmedPerSender.EnsureCapacity(bySender.Count);
+        Transaction[] delta = transactions.Length == 0 ? [] : new Transaction[transactions.Length];
+        int position = 0;
+        foreach (KeyValuePair<AddressAsKey, (int first, int last, int count)> senderGroup in bySender)
+        {
+            for (int index = senderGroup.Value.first; index >= 0; index = transactions[index].next)
+                delta[position++] = transactions[index].tx;
+            warmedPerSender.Add(senderGroup.Key, senderGroup.Value.count);
+        }
+        return delta;
     }
 
     public void Dispose()

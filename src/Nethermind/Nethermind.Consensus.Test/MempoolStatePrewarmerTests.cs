@@ -29,18 +29,23 @@ namespace Nethermind.Consensus.Test;
 public class MempoolStatePrewarmerTests
 {
     [Test]
-    public void SelectDelta_WhenEmpty_ReturnsEmpty()
+    public void SelectDelta_WhenEmpty_ReturnsEmpty([Values] bool missingSender)
     {
-        Transaction[] delta = MempoolStatePrewarmer.SelectDelta([], []);
+        Transaction[] delta = MempoolStatePrewarmer.SelectDelta(missingSender ? [new Transaction()] : [], []);
 
         Assert.That(delta, Is.Empty, "an empty selection yields no transactions to warm");
     }
 
     [Test]
-    public void SelectDelta_FirstPass_SelectsEverySender()
+    public void SelectDelta_FirstPass_SelectsEverySender([Values] bool reused)
     {
         Transaction[] ordered = [.. BuildSenderTxs(TestItem.PrivateKeyA, 3), .. BuildSenderTxs(TestItem.PrivateKeyB, 2)];
         Dictionary<AddressAsKey, int> warmedPerSender = [];
+        if (reused)
+        {
+            MempoolStatePrewarmer.SelectDelta(ordered, warmedPerSender);
+            warmedPerSender.Clear();
+        }
 
         Transaction[] delta = MempoolStatePrewarmer.SelectDelta(ordered, warmedPerSender);
 
