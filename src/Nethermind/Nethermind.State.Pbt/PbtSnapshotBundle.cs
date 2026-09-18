@@ -178,15 +178,20 @@ public sealed class PbtSnapshotBundle(
     public EvmWord GetSlot(Address address, in ValueHash256 addressHash, in UInt256 slot)
     {
         HashedKey<PbtStorageTreeKey> runKey = PbtStateKey.StorageRun(address, addressHash, slot, out int index);
-        if (WriteBuffer.TryGetSlotRun(runKey, out ISlotRun? run)) return run.Get(index);
-        if (WriteBuffer.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return default;
-        for (int layer = snapshots.Count - 1; layer >= 0; layer--)
+        return BufferRun(runKey, addressHash).Get(index);
+    }
+
+    /// <summary>The run as the write buffer holds it, borrowed; the first touch of a run buffers it as currently visible.</summary>
+    private ISlotRun BufferRun(in HashedKey<PbtStorageTreeKey> runKey, in ValueHash256 addressHash)
+    {
+        if (WriteBuffer.TryGetSlotRun(runKey, out ISlotRun? run)) return run;
+        lock (_runLocks[(uint)runKey.GetHashCode() % RunLockStripes])
         {
-            PbtSnapshotContent content = snapshots[layer].Content;
-            if (content.TryGetSlotRun(runKey, out run)) return run.Get(index);
-            if (content.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return default;
+            if (WriteBuffer.TryGetSlotRun(runKey, out run)) return run;
+            run = FindLocalRun(runKey, addressHash)?.Clone() ?? readOnlyBundle.RentRun(runKey, addressHash);
+            WriteBuffer.SetRun(runKey, run);
+            return run;
         }
-        return readOnlyBundle.GetSlot(runKey, index);
     }
 
     public void SetAccount(Address address, Account? account)
@@ -263,28 +268,14 @@ public sealed class PbtSnapshotBundle(
         PbtStorageTreeKey key = PbtStateKey.Storage(address, slot);
         SetPbtLeaf(key, EvmWordSlot.IsZero(value) ? null : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value)));
         HashedKey<PbtStorageTreeKey> runKey = SlotRun.RunKey(key);
-        int index = SlotRun.IndexOf(key);
+        ValueHash256 addressHash = PbtFlatState.StorageAddress(key);
         lock (_runLocks[(uint)runKey.GetHashCode() % RunLockStripes])
         {
-            if (WriteBuffer.TryGetSlotRun(runKey, out ISlotRun? held))
-            {
-                WriteBuffer.SetRun(runKey, held.With(index, value));
-                return;
-            }
-            // The write buffer holds whole runs: the first write to a run starts from the run as currently visible.
-            ValueHash256 addressHash = PbtFlatState.StorageAddress(key);
-            if (FindLocalRun(runKey, addressHash) is { } local)
-            {
-                WriteBuffer.SetRun(runKey, local.With(index, value));
-                return;
-            }
-            ISlotRun rented = readOnlyBundle.RentRun(runKey, addressHash);
-            WriteBuffer.SetRun(runKey, rented.With(index, value));
-            SlotRun.Return(rented);
+            WriteBuffer.SetRun(runKey, BufferRun(runKey, addressHash).With(SlotRun.IndexOf(key), value));
         }
     }
 
-    /// <summary>The run as the write buffer and local snapshots see it, borrowed; null when they say nothing about it.</summary>
+    /// <summary>The run as the local snapshots see it, borrowed; null when they say nothing about it.</summary>
     private ISlotRun? FindLocalRun(in HashedKey<PbtStorageTreeKey> runKey, in ValueHash256 addressHash)
     {
         if (WriteBuffer.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return SlotRun.Empty;

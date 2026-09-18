@@ -1058,7 +1058,7 @@ public class PbtSnapshotBundleTests
             Assert.That(bundle.GetSlot(TestItem.AddressA, slot), Is.EqualTo(expected));
             Assert.That(bundle.GetSlot(TestItem.AddressB, slot), Is.EqualTo(original));
             Assert.That(newer.Content.SelfDestructedStorageAddresses.ContainsKey(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA)), Is.True);
-            Assert.That(newer.Content.TryGetSlot(PbtStateKey.Storage(TestItem.AddressA, slot), out _), Is.EqualTo(!clearLast));
+            Assert.That(newer.Content.GetSlot(PbtStateKey.Storage(TestItem.AddressA, slot)), Is.EqualTo(expected));
             Assert.That(older.Content.GetSlot(PbtStateKey.Storage(TestItem.AddressA, slot)), Is.EqualTo(original));
         }
     }
