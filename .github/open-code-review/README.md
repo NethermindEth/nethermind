@@ -37,7 +37,7 @@ read for each run, so changing the model, API base URL, or key needs no code cha
 | `OCR_API_KEY_SECRET` | Variable | Optional name of another Actions secret containing the key. Defaults to `OCR_LITELLM_API_KEY`. |
 | `OCR_EXTRA_BODY` | Secret | Optional JSON object of model-specific request options. Defaults to `{}`. |
 | `OCR_AUTO_REVIEW` | Variable | Automatic reviews are enabled unless this is `false`. Manual runs remain available. |
-| `OCR_AUTO_TOKEN_BUDGET` | Variable | Soft token budget for automatic runs: `500000`, `1000000`, or `2000000` (default). |
+| `OCR_AUTO_TOKEN_BUDGET` | Variable | Soft token budget for automatic and comment-triggered runs: `500000`, `1000000`, `2000000`, `5000000`, or `10000000` (default). |
 
 Create a dedicated LiteLLM virtual key allowing the selected model, with a spending
 limit and rate limits appropriate for the pilot. Store its value only in the chosen
@@ -91,11 +91,12 @@ the dedicated key's budget; enforce spending and rate limits in LiteLLM.
 Configuration uses OCR's native LiteLLM provider with the selected model and endpoint.
 The pinned OCR tool loop preserves reasoning across tool calls and uses provider
 default tool selection. The initial limits are two concurrent review tasks,
-low OCR effort (one review pass), a 64,000-token prompt ceiling per group, and a 2,000,000-token
+low OCR effort (one review pass), a 64,000-token prompt ceiling per group, and a 10,000,000-token
 aggregate budget. OCR's aggregate budget is soft: active requests and final
 submission rounds can exceed it. Enforce the spending ceiling in LiteLLM.
-Set `OCR_AUTO_TOKEN_BUDGET` to lower the limit for automatic reviews. The dispatch
-form selects the budget for manual runs.
+Set `OCR_AUTO_TOKEN_BUDGET` to override the default for automatic and comment-triggered
+reviews. Existing repository overrides continue to apply. The dispatch form selects
+the budget for manual runs and defaults to 10,000,000 tokens.
 Local trials with medium effort on PRs #13478 and #13535 exhausted 500,000 tokens;
 the latter also exhausted 2,000,000. The pilot uses a single pass with instructions
 to limit context reads to concrete hypotheses about changed behavior. Cached input

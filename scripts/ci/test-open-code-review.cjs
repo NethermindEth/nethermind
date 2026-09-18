@@ -470,7 +470,10 @@ for (const [budget, secret, cliExit, expectedExit] of [
   ['500000', 'test-token', 0, 0],
   ['1000000', 'test-token', 1, 0],
   ['2000000', 'test-token', 124, 0],
+  ['5000000', 'test-token', 0, 0],
+  ['10000000', 'test-token', 0, 0],
   ['0', 'test-token', 0, 1],
+  ['10000001', 'test-token', 0, 1],
   ['500000', '', 0, 1],
 ]) {
   test('workflow captures CLI outcome with budget=' + budget + ', CLI exit=' + cliExit +

@@ -18,11 +18,13 @@ on:
       token_budget:
         description: Soft aggregate token limit, including repeated context
         type: choice
-        default: '2000000'
+        default: '10000000'
         options:
           - '500000'
           - '1000000'
           - '2000000'
+          - '5000000'
+          - '10000000'
 
 permissions:
   contents: read
@@ -170,14 +172,14 @@ jobs:
         env:
           OCR_LLM_TOKEN: ${{ secrets[vars.OCR_API_KEY_SECRET || 'OCR_LITELLM_API_KEY'] }}
           HEAD_SHA: ${{ steps.target.outputs.head }}
-          REVIEW_TOKEN_BUDGET: ${{ inputs.token_budget || vars.OCR_AUTO_TOKEN_BUDGET || '2000000' }}
+          REVIEW_TOKEN_BUDGET: ${{ inputs.token_budget || vars.OCR_AUTO_TOKEN_BUDGET || '10000000' }}
         run: |
           if [[ -z "$OCR_LLM_TOKEN" ]]; then
             echo "::error::Set the Actions secret selected by OCR_API_KEY_SECRET (default OCR_LITELLM_API_KEY)."
             exit 1
           fi
           case "$REVIEW_TOKEN_BUDGET" in
-            500000|1000000|2000000) ;;
+            500000|1000000|2000000|5000000|10000000) ;;
             *) echo "::error::Unsupported token budget"; exit 1 ;;
           esac
           ARGS=(--from "$REVIEW_MERGE_BASE" --to "$HEAD_SHA"
