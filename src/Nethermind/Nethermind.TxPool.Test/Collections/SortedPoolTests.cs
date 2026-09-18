@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
@@ -55,13 +56,13 @@ namespace Nethermind.TxPool.Test.Collections
             Transaction other = _transactions[2];
             InsertSnapshotTransaction(first);
             InsertSnapshotTransaction(other);
-            Dictionary<AddressAsKey, Transaction[]> before = _sortedPool.GetProductionSnapshot();
-            Dictionary<AddressAsKey, Transaction[]> unchanged = _sortedPool.GetProductionSnapshot();
+            IDictionary<AddressAsKey, Transaction[]> before = _sortedPool.GetProductionSnapshot();
+            IDictionary<AddressAsKey, Transaction[]> unchanged = _sortedPool.GetProductionSnapshot();
             Assert.That(unchanged, Is.SameAs(before));
 
             Transaction next = Build.A.Transaction.WithSenderAddress(first.SenderAddress!).WithNonce(1).WithGasPrice(10).TestObject;
             InsertSnapshotTransaction(next);
-            Dictionary<AddressAsKey, Transaction[]> added = _sortedPool.GetProductionSnapshot();
+            IDictionary<AddressAsKey, Transaction[]> added = _sortedPool.GetProductionSnapshot();
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(added[first.SenderAddress!], Is.EqualTo(new[] { first, next }));
@@ -82,7 +83,7 @@ namespace Nethermind.TxPool.Test.Collections
         {
             Transaction first = _transactions[1];
             InsertSnapshotTransaction(first);
-            Dictionary<AddressAsKey, Transaction[]> before = _sortedPool.GetProductionSnapshot();
+            IDictionary<AddressAsKey, Transaction[]> before = _sortedPool.GetProductionSnapshot();
             Transaction replacement = Build.A.Transaction.WithSenderAddress(first.SenderAddress!).WithGasPrice(100).TestObject;
             InsertSnapshotTransaction(replacement);
             Assert.That(_sortedPool.GetProductionSnapshot()[first.SenderAddress!], Is.EqualTo(new[] { replacement }));
@@ -106,9 +107,9 @@ namespace Nethermind.TxPool.Test.Collections
         public void Production_snapshot_discards_evicted_buckets()
         {
             for (int i = 1; i <= Capacity; i++) InsertSnapshotTransaction(_transactions[i]);
-            Dictionary<AddressAsKey, Transaction[]> before = _sortedPool.GetProductionSnapshot();
+            IDictionary<AddressAsKey, Transaction[]> before = _sortedPool.GetProductionSnapshot();
             InsertSnapshotTransaction(_transactions[Capacity + 1]);
-            Dictionary<AddressAsKey, Transaction[]> after = _sortedPool.GetProductionSnapshot();
+            IDictionary<AddressAsKey, Transaction[]> after = _sortedPool.GetProductionSnapshot();
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(after.Count, Is.EqualTo(Capacity));
@@ -116,6 +117,57 @@ namespace Nethermind.TxPool.Test.Collections
                 Assert.That(after[_transactions[Capacity + 1].SenderAddress!], Is.EqualTo(new[] { _transactions[Capacity + 1] }));
                 Assert.That(before.ContainsKey(_transactions[1].SenderAddress!), Is.True);
             }
+        }
+
+        [Test]
+        public void Snapshot_dictionary_preserves_read_only_contract(
+            [Values(0, 1, 2, 31, 32, 33, 255, 256, 257, 2000)] int count,
+            [Values] bool collisions)
+        {
+            KeyValuePair<SnapshotKey, object>[] entries = new KeyValuePair<SnapshotKey, object>[count + 1];
+            for (int i = 0; i < count; i++) entries[i] = new(new(i, collisions), new object());
+            KeyValuePair<SnapshotKey, object> unused = new(new(-1, collisions), new object());
+            entries[count] = unused;
+            SnapshotDictionary<SnapshotKey, object> snapshot = new(entries, count);
+            IReadOnlyDictionary<SnapshotKey, object> readOnly = snapshot;
+            KeyValuePair<SnapshotKey, object>[] copy = new KeyValuePair<SnapshotKey, object>[count + 2];
+            copy[0] = copy[^1] = unused;
+            snapshot.CopyTo(copy, 1);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(snapshot.Count, Is.EqualTo(count));
+                Assert.That(snapshot.IsReadOnly, Is.True);
+                Assert.That(snapshot.ToArray(), Is.EqualTo(entries.Take(count)));
+                Assert.That(readOnly.Keys, Is.EqualTo(entries.Take(count).Select(entry => entry.Key)));
+                Assert.That(readOnly.Values, Is.EqualTo(entries.Take(count).Select(entry => entry.Value)));
+                Assert.That(copy.Skip(1).Take(count), Is.EqualTo(entries.Take(count)));
+                Assert.That(copy[0], Is.EqualTo(unused));
+                Assert.That(copy[^1], Is.EqualTo(unused));
+                Assert.That(snapshot.ContainsKey(unused.Key), Is.False);
+                Assert.That(snapshot.Values.Contains(unused.Value), Is.False);
+                Assert.That(() => snapshot[unused.Key], Throws.TypeOf<KeyNotFoundException>());
+                Assert.That(() => snapshot.Add(unused), Throws.TypeOf<NotSupportedException>());
+                Assert.That(() => snapshot.Remove(unused.Key), Throws.TypeOf<NotSupportedException>());
+                Assert.That(() => snapshot.Clear(), Throws.TypeOf<NotSupportedException>());
+                Assert.That(() => snapshot.Keys.Clear(), Throws.TypeOf<NotSupportedException>());
+                Assert.That(() => snapshot.Values.Clear(), Throws.TypeOf<NotSupportedException>());
+            }
+
+            for (int i = 0; i < count; i++)
+            {
+                Assert.That(snapshot.TryGetValue(new(i, collisions), out object value), Is.True);
+                Assert.That(value, Is.SameAs(entries[i].Value));
+            }
+        }
+
+        [Test]
+        public void Snapshot_dictionary_rejects_invalid_count([Values(-1, 1, int.MaxValue)] int count)
+            => Assert.That(() => new SnapshotDictionary<int, int>([], count), Throws.TypeOf<ArgumentOutOfRangeException>());
+
+        private readonly record struct SnapshotKey(int Value, bool Collisions)
+        {
+            public override int GetHashCode() => Collisions ? 7 : HashCode.Combine(Value);
         }
 
         private void InsertSnapshotTransaction(Transaction transaction)

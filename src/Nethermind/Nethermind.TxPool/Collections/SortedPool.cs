@@ -46,7 +46,7 @@ namespace Nethermind.TxPool.Collections
         protected readonly DictionarySortedSet<TValue, TKey> _worstSortedValues;
         protected KeyValuePair<TValue, TKey>? _worstValue = null;
         private TValue[]? _snapshot;
-        private Dictionary<TGroupKey, TValue[]>? _productionSnapshot;
+        private SnapshotDictionary<TGroupKey, TValue[]>? _productionSnapshot;
 
         /// <summary>
         /// Constructor
@@ -137,40 +137,37 @@ namespace Nethermind.TxPool.Collections
         /// Gets all items in groups in supplied comparer order in groups.
         /// </summary>
         public Dictionary<TGroupKey, TValue[]> GetBucketSnapshot(Predicate<(TGroupKey key, TValue first)>? where = null)
-            => GetBucketSnapshot(where, reuseBuckets: false);
-
-        /// <summary>Gets a production snapshot whose dictionary and bucket arrays must not be modified by callers.</summary>
-        internal Dictionary<TGroupKey, TValue[]> GetProductionSnapshot(Predicate<(TGroupKey key, TValue first)>? where = null)
         {
             using McsLock.Disposable lockRelease = Lock.Acquire();
-            if (where is null && _productionSnapshot is not null) return _productionSnapshot;
-            Dictionary<TGroupKey, TValue[]> snapshot = GetBucketSnapshotNonLocked(where, reuseBuckets: true);
-            if (where is null) _productionSnapshot = snapshot;
-            return snapshot;
-        }
-
-        private Dictionary<TGroupKey, TValue[]> GetBucketSnapshot(Predicate<(TGroupKey key, TValue first)>? where, bool reuseBuckets)
-        {
-            using McsLock.Disposable lockRelease = Lock.Acquire();
-            return GetBucketSnapshotNonLocked(where, reuseBuckets);
-        }
-
-        private Dictionary<TGroupKey, TValue[]> GetBucketSnapshotNonLocked(Predicate<(TGroupKey key, TValue first)>? where, bool reuseBuckets)
-        {
             Dictionary<TGroupKey, TValue[]> snapshots = new(_buckets.Count);
             foreach ((TGroupKey key, EnhancedSortedSet<TValue> bucket) in _buckets)
             {
-                if (where is not null && (bucket.Count == 0 || !where.Invoke((key, bucket.Min!))))
-                {
-                    continue;
-                }
+                if (where is not null && (bucket.Count == 0 || !where((key, bucket.Min!)))) continue;
+                snapshots[key] = CopyBucketToArray(bucket);
+            }
+            return snapshots;
+        }
 
-                snapshots[key] = reuseBuckets && bucket is SnapshotBucket cached
+        /// <summary>Gets a production snapshot whose bucket arrays must not be modified by callers.</summary>
+        internal IDictionary<TGroupKey, TValue[]> GetProductionSnapshot(Predicate<(TGroupKey key, TValue first)>? where = null)
+        {
+            using McsLock.Disposable lockRelease = Lock.Acquire();
+            if (where is null && _productionSnapshot is not null) return _productionSnapshot;
+
+            KeyValuePair<TGroupKey, TValue[]>[] entries = new KeyValuePair<TGroupKey, TValue[]>[_buckets.Count];
+            int count = 0;
+            foreach ((TGroupKey key, EnhancedSortedSet<TValue> bucket) in _buckets)
+            {
+                if (where is not null && (bucket.Count == 0 || !where((key, bucket.Min!)))) continue;
+                TValue[] values = bucket is SnapshotBucket cached
                     ? cached.Snapshot ??= CopyBucketToArray(bucket)
                     : CopyBucketToArray(bucket);
+                entries[count++] = new(key, values);
             }
 
-            return snapshots;
+            SnapshotDictionary<TGroupKey, TValue[]> snapshot = new(entries, count);
+            if (where is null) _productionSnapshot = snapshot;
+            return snapshot;
         }
 
         /// <summary>
