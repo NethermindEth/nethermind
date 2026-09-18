@@ -572,6 +572,9 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// across both tiers. Crossing into the persisted tier is required so a canonical in-memory state
     /// whose ancestry descends through a converted snapshot is not mistaken for an orphan.
     /// </remarks>
+    /// <inheritdoc />
+    public bool Reaches(in StateId from, in StateId target) => CanReachState(from, target);
+
     private bool CanReachState(in StateId from, in StateId target)
     {
         if (from == target) return true;

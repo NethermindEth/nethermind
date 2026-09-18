@@ -1298,6 +1298,26 @@ public class PersistenceManagerTests
             "an off-chain committed state must not stop the synced chain from persisting");
     }
 
+    // The shutdown flush drains and prunes both tiers, so a seed it cannot assemble from costs the whole
+    // in-memory tier - and the history capture that would have run over it.
+    [Test]
+    public void FlushToPersistence_WhenTheLastCommittedStateIsOffChain_PersistsTheChainThatReachesThePersistedState()
+    {
+        StateId first = CreateStateId(16);
+        StateId second = CreateStateId(32);
+        _ = CreateSnapshot(Block0, first);
+        _ = CreateSnapshot(first, second);
+        StateId offChainParent = CreateStateId(100_000, rootByte: 0xAA);
+        StateId offChain = CreateStateId(100_001, rootByte: 0xBB);
+        _ = CreateSnapshot(offChainParent, offChain);
+        _snapshotRepository.SetLastCommittedStateId(offChain);
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        StateId flushed = _persistenceManager.FlushToPersistence(CancellationToken.None);
+
+        Assert.That(flushed, Is.EqualTo(second), "the flush must drain the chain that reaches the persisted state");
+    }
+
     // FlushToPersistence prunes both tiers as it drains, so a flush without capture would leave the flushed
     // range permanently absent from history on every shutdown.
     [Test]
