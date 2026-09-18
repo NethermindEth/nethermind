@@ -67,6 +67,39 @@ public class TxPoolSourceTests
         Assert.That(TxPoolTxSource.Order(buckets, comparer, _ => true, ulong.MaxValue), Is.EqualTo(new[] { b0, a0, a1 }));
     }
 
+    [Test]
+    public void Ordering_matches_frontier_merge([Values(0, 1, 2, 3, 4, 7, 16, 257)] int senders)
+    {
+        Dictionary<AddressAsKey, Transaction[]> buckets = [];
+        Dictionary<AddressAsKey, Queue<Transaction>> remaining = [];
+        for (int sender = 0; sender < senders; sender++)
+        {
+            Address address = Address.FromNumber((UInt256)(sender + 1));
+            Transaction[] transactions = Enumerable.Range(0, sender % 5)
+                .Select(nonce => new Transaction
+                {
+                    SenderAddress = address,
+                    Nonce = (ulong)nonce,
+                    GasPrice = (UInt256)(nonce * senders + sender + 1),
+                    GasLimit = 21_000
+                }).ToArray();
+            buckets.Add(address, transactions);
+            remaining.Add(address, new Queue<Transaction>(transactions));
+        }
+
+        List<Transaction> expected = [];
+        while (remaining.Values.Any(queue => queue.Count != 0))
+        {
+            Transaction next = remaining.Values.Where(queue => queue.Count != 0).Select(queue => queue.Peek()).MaxBy(tx => tx.GasPrice)!;
+            remaining[next.SenderAddress!].Dequeue();
+            expected.Add(next);
+        }
+        IComparer<Transaction> comparer = Comparer<Transaction>.Create((x, y) => y.GasPrice.CompareTo(x.GasPrice));
+        IEnumerable<Transaction> ordered = TxPoolTxSource.Order(buckets, comparer, _ => true, ulong.MaxValue);
+        Assert.That(ordered.Take(1), Is.EqualTo(expected.Take(1)));
+        Assert.That(ordered, Is.EqualTo(expected));
+    }
+
     // Deliberately below Amsterdam's intrinsic gas requirement for the access list built below.
     private const ulong UnderGassedTransactionGasLimit = 42_400;
 

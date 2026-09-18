@@ -507,37 +507,53 @@ namespace Nethermind.Consensus.Producers
             ulong resourceLimit,
             bool enforceSequentialNonces)
         {
-            PriorityQueue<(Transaction[] bucket, int index, ulong resource), Transaction> transactions = new(pendingTransactions.Count, comparer);
+            using ArrayPoolList<(Transaction tx, Transaction[] bucket, int index, ulong resource)> heap = new(pendingTransactions.Count);
             foreach (Transaction[] bucket in pendingTransactions.Values)
             {
-                if (bucket.Length > 0) transactions.Enqueue((bucket, 0, 0), bucket[0]);
+                if (bucket.Length > 0) heap.Add((bucket[0], bucket, 0, 0));
             }
 
-            while (transactions.TryPeek(out (Transaction[] bucket, int index, ulong resource) cursor, out Transaction? candidateTx))
+            int count = heap.Count;
+            for (int i = count / 2 - 1; i >= 0; i--) SiftDown(heap.AsSpan(), heap[i], i, comparer);
+            while (count > 0)
             {
-                ulong totalResource = cursor.resource + resourceSelector(candidateTx);
-                if (totalResource > resourceLimit || !filter(candidateTx))
-                {
-                    transactions.Dequeue();
-                    continue;
-                }
-
-                int nextIndex = cursor.index + 1;
-                if (nextIndex < cursor.bucket.Length
+                (Transaction candidateTx, Transaction[] bucket, int index, ulong resource) = heap[0];
+                ulong totalResource = resource + resourceSelector(candidateTx);
+                bool accepted = totalResource <= resourceLimit && filter(candidateTx);
+                int nextIndex = index + 1;
+                if (accepted && nextIndex < bucket.Length
                     && (!enforceSequentialNonces
                         || candidateTx.Nonce != ulong.MaxValue
-                        && cursor.bucket[nextIndex].Nonce == candidateTx.Nonce + 1))
+                        && bucket[nextIndex].Nonce == candidateTx.Nonce + 1))
                 {
-                    transactions.DequeueEnqueue((cursor.bucket, nextIndex, totalResource), cursor.bucket[nextIndex]);
+                    SiftDown(heap.AsSpan()[..count], (bucket[nextIndex], bucket, nextIndex, totalResource), 0, comparer);
                 }
-
                 else
                 {
-                    transactions.Dequeue();
+                    count--;
+                    if (count > 0) SiftDown(heap.AsSpan()[..count], heap[count], 0, comparer);
+                    heap[count] = default;
                 }
 
-                yield return (candidateTx, cursor.resource);
+                if (accepted) yield return (candidateTx, resource);
             }
+        }
+
+        private static void SiftDown(
+            Span<(Transaction tx, Transaction[] bucket, int index, ulong resource)> heap,
+            (Transaction tx, Transaction[] bucket, int index, ulong resource) item,
+            int index,
+            IComparer<Transaction> comparer)
+        {
+            while (index < heap.Length / 2)
+            {
+                int child = index * 2 + 1;
+                if (child + 1 < heap.Length && comparer.Compare(heap[child + 1].tx, heap[child].tx) < 0) child++;
+                if (comparer.Compare(item.tx, heap[child].tx) <= 0) break;
+                heap[index] = heap[child];
+                index = child;
+            }
+            heap[index] = item;
         }
 
         public bool SupportsBlobs => _transactionPool.SupportsBlobs;
