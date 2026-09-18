@@ -92,6 +92,8 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default)
         => State.WarmUp(accessList, cancellationToken);
 
+    public void DiscardCachedAccounts(Func<Address, bool> covered) => State.DiscardCachedAccounts(covered);
+
     public void WarmUp(Address address)
         => State.WarmUp(address);
 
