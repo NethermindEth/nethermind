@@ -31,6 +31,17 @@ using static Nethermind.Core.Threading.ProcessingThread;
 
 namespace Nethermind.Consensus.Processing;
 
+/// <summary>
+/// The main block processing pipeline: queues suggested blocks, recovers their data and processes them on the
+/// main world state.
+/// </summary>
+/// <remarks>
+/// This is for main block processing only and is registered solely in the main processing context. It carries
+/// a lot of main-specific logic (processing queue and thread, head updates, invalid block handling, stats,
+/// diagnostic dumps), so other environments should use another implementation such as
+/// <see cref="OneTimeChainProcessor"/> or <see cref="MainStateBlockBuildingChainProcessor"/>, or call
+/// <see cref="IBranchProcessor"/> directly.
+/// </remarks>
 public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue, IBlockProcessingPauseControl
 {
     public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
