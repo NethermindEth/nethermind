@@ -30,7 +30,7 @@ public enum PbtColumns
     /// <summary>Whole accounts keyed by the PBT address hash.</summary>
     Accounts,
 
-    /// <summary>Storage words keyed by their complete EIP-8297 storage key.</summary>
+    /// <summary>Storage words keyed by the address hash, zone and remaining bytes of their EIP-8297 storage key.</summary>
     Storages,
 
     /// <summary>Whole bytecode keyed by its code hash.</summary>

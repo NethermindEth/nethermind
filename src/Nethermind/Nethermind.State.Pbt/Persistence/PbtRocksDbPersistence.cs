@@ -220,7 +220,8 @@ public class PbtRocksDbPersistence(
 
         public EvmWord GetSlot(in PbtStorageTreeKey key)
         {
-            ReadOnlySpan<byte> value = _storages.GetSpan(key.Bytes);
+            Span<byte> persistedKey = stackalloc byte[PbtStorageTreeKey.MaxLength];
+            ReadOnlySpan<byte> value = _storages.GetSpan(PbtStorageKeyLayout.Encode(key, persistedKey));
             try
             {
                 return value.IsNull() ? default : DecodeSlot(value);
@@ -257,17 +258,17 @@ public class PbtRocksDbPersistence(
                 yield return new(new ValueHash256(view.CurrentKey), DecodeAccount(view.CurrentValue));
         }
 
-        public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(PbtStorageTreeKey? prefix = null) =>
-            new PbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>>(EnumerateStorageCore(prefix));
+        public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressHash = null) =>
+            new PbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>>(EnumerateStorageCore(addressHash));
 
-        private IEnumerator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorageCore(PbtStorageTreeKey? prefix)
+        private IEnumerator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorageCore(ValueHash256? addressHash)
         {
             ISortedKeyValueStore storage = (ISortedKeyValueStore)_storages;
             Span<byte> upper = stackalloc byte[PbtStorageTreeKey.MaxLength + 1];
-            using ISortedView view = storage.GetViewBetween(prefix is null ? [] : prefix.Value.Bytes,
-                PrefixUpperBound(prefix is null ? [] : prefix.Value.Bytes, upper));
+            ReadOnlySpan<byte> prefix = addressHash is null ? [] : addressHash.Value.Bytes;
+            using ISortedView view = storage.GetViewBetween(prefix, PrefixUpperBound(prefix, upper));
             while (view.MoveNext())
-                yield return new(new PbtStorageTreeKey(view.CurrentKey), DecodeSlot(view.CurrentValue));
+                yield return new(PbtStorageKeyLayout.Decode(view.CurrentKey), DecodeSlot(view.CurrentValue));
         }
 
         private static Account DecodeAccount(ReadOnlySpan<byte> value)
@@ -360,12 +361,14 @@ public class PbtRocksDbPersistence(
         {
             if (!IsStorageKey(key.Bytes)) throw new ArgumentException("A complete storage key is required.", nameof(key));
             IWriteBatch storage = _batch.GetColumnBatch(PbtColumns.Storages);
-            if (EvmWordSlot.IsZero(value)) storage.Set(key.Bytes, null, flags);
+            Span<byte> persistedKey = stackalloc byte[PbtStorageTreeKey.MaxLength];
+            ReadOnlySpan<byte> encodedKey = PbtStorageKeyLayout.Encode(key, persistedKey);
+            if (EvmWordSlot.IsZero(value)) storage.Set(encodedKey, null, flags);
             else
             {
                 Span<byte> encoded = stackalloc byte[ValueHash256.MemorySize + 1];
                 int length = Rlp.Encode(EvmWordSlot.AsReadOnlySpan(in value).WithoutLeadingZeros(), encoded);
-                storage.PutSpan(key.Bytes, encoded[..length], flags);
+                storage.PutSpan(encodedKey, encoded[..length], flags);
             }
             ValueHash256 addressHash = new(key.Bytes.Slice(1, ValueHash256.MemorySize));
             if (!_stagedStorageKeys.TryGetValue(addressHash, out HashSet<PbtStorageTreeKey>? keys))
@@ -380,19 +383,17 @@ public class PbtRocksDbPersistence(
         {
             IWriteBatch storage = _batch.GetColumnBatch(PbtColumns.Storages);
             ISortedKeyValueStore persisted = (ISortedKeyValueStore)db.GetColumnDb(PbtColumns.Storages);
-            Span<byte> prefix = stackalloc byte[1 + ValueHash256.MemorySize];
-            addressHash.Bytes.CopyTo(prefix[1..]);
             Span<byte> upper = stackalloc byte[PbtStorageTreeKey.MaxLength + 1];
-            ReadOnlySpan<byte> zones = [Eip8297KeyDerivation.AccountZone, Eip8297KeyDerivation.StorageZone];
-            foreach (byte zone in zones)
+            using (ISortedView view = persisted.GetViewBetween(addressHash.Bytes, PrefixUpperBound(addressHash.Bytes, upper)))
             {
-                prefix[0] = zone;
-                using ISortedView view = persisted.GetViewBetween(prefix, PrefixUpperBound(prefix, upper));
                 while (view.MoveNext()) storage.Set(view.CurrentKey, null, flags);
             }
             // The database view does not include earlier writes in this batch.
             if (_stagedStorageKeys.Remove(addressHash, out HashSet<PbtStorageTreeKey>? keys))
-                foreach (PbtStorageTreeKey key in keys) storage.Set(key.Bytes, null, flags);
+            {
+                Span<byte> persistedKey = stackalloc byte[PbtStorageTreeKey.MaxLength];
+                foreach (PbtStorageTreeKey key in keys) storage.Set(PbtStorageKeyLayout.Encode(key, persistedKey), null, flags);
+            }
         }
 
         private static bool IsStorageKey(ReadOnlySpan<byte> key) =>

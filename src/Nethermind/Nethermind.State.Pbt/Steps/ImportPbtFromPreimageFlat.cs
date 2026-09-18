@@ -426,7 +426,7 @@ public class ImportPbtFromPreimageFlat(
             int partitionCount = (int)Math.Min((long)workerCount * PartitionsPerWorker, PartitionPrefixSpace);
             int nextPartition = -1;
             ScanProgress scanProgress = new(partitionCount);
-            string[] partitionNames = ["accounts/code", "header storage", "overflow storage"];
+            string[] partitionNames = ["accounts/code", "storage"];
             ProgressLogger[] progressLoggers = new ProgressLogger[partitionNames.Length];
             for (int zone = 0; zone < progressLoggers.Length; zone++)
             {
@@ -472,11 +472,11 @@ public class ImportPbtFromPreimageFlat(
                     {
                         using EntrySink sink = new(entries.Writer, EntryChunkSize, cts.Token);
                         int partition;
-                        while ((partition = Interlocked.Increment(ref nextPartition)) < partitionCount * 3)
+                        while ((partition = Interlocked.Increment(ref nextPartition)) < partitionCount * 2)
                         {
                             cts.Token.ThrowIfCancellationRequested();
                             int zone = partition / partitionCount;
-                            (byte[] start, byte[] end) = ScanBounds(partition % partitionCount, partitionCount, zone);
+                            (byte[] start, byte[] end) = ScanBounds(partition % partitionCount, partitionCount);
                             if (zone == 0) await EmitAccounts(start, end, sink, scanProgress, partition, cts.Token);
                             else await EmitStorage(start, end, sink, scanProgress, partition, cts.Token);
                             scanProgress.Complete(partition);
@@ -512,14 +512,13 @@ public class ImportPbtFromPreimageFlat(
     {
         // A 48-bit address prefix retains sub-partition precision, with an exact exclusive 2^256 endpoint.
         public const ulong Keyspace = 1UL << 48;
-        private readonly long[] _scanned = new long[partitionCount * 3];
+        private readonly long[] _scanned = new long[partitionCount * 2];
 
         private long Boundary(int partition) => (long)partition * PartitionPrefixSpace / partitionCount << 32;
 
         public void Publish(int partition, ReadOnlySpan<byte> key)
         {
-            int offset = partition < partitionCount ? 0 : 1;
-            long position = (long)(BinaryPrimitives.ReadUInt64BigEndian(key[offset..]) >> 16);
+            long position = (long)(BinaryPrimitives.ReadUInt64BigEndian(key) >> 16);
             Volatile.Write(ref _scanned[partition], position - Boundary(partition % partitionCount));
         }
 
@@ -535,17 +534,14 @@ public class ImportPbtFromPreimageFlat(
         }
     }
 
-    private static (byte[] Start, byte[] End) ScanBounds(int partition, int partitionCount, int zone)
+    private static (byte[] Start, byte[] End) ScanBounds(int partition, int partitionCount)
     {
-        int prefixOffset = zone == 0 ? 0 : 1;
-        byte[] start = new byte[prefixOffset + sizeof(ushort)];
-        if (zone != 0) start[0] = zone == 1 ? Eip8297KeyDerivation.AccountZone : Eip8297KeyDerivation.StorageZone;
-        BinaryPrimitives.WriteUInt16BigEndian(start.AsSpan(prefixOffset), (ushort)((long)partition * PartitionPrefixSpace / partitionCount));
-        if (partition == partitionCount - 1)
-            return (start, zone == 1 ? [Eip8297KeyDerivation.CodeZone] : PastEveryKey());
+        byte[] start = new byte[sizeof(ushort)];
+        BinaryPrimitives.WriteUInt16BigEndian(start, (ushort)((long)partition * PartitionPrefixSpace / partitionCount));
+        if (partition == partitionCount - 1) return (start, PastEveryKey());
 
-        byte[] end = (byte[])start.Clone();
-        BinaryPrimitives.WriteUInt16BigEndian(end.AsSpan(prefixOffset), (ushort)((long)(partition + 1) * PartitionPrefixSpace / partitionCount));
+        byte[] end = new byte[sizeof(ushort)];
+        BinaryPrimitives.WriteUInt16BigEndian(end, (ushort)((long)(partition + 1) * PartitionPrefixSpace / partitionCount));
         return (start, end);
     }
 
@@ -608,7 +604,7 @@ public class ImportPbtFromPreimageFlat(
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     EvmWord slot = PbtRocksDbPersistence.DecodeSlot(view.CurrentValue);
-                    buffered.Add(new(new PbtStorageTreeKey(view.CurrentKey), new ValueHash256(EvmWordSlot.AsReadOnlySpan(in slot))));
+                    buffered.Add(new(PbtStorageKeyLayout.Decode(view.CurrentKey), new ValueHash256(EvmWordSlot.AsReadOnlySpan(in slot))));
                 }
                 if (buffered.Count == EntryChunkSize) resumeFrom = AfterKey(view.CurrentKey);
             }

@@ -98,7 +98,7 @@ public class ImportPbtFromPreimageFlatTests
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
         Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)), "the state is keyed by the source's header root");
         Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "with the folded tree's own root recorded beside it");
-        foreach (string partitionName in new[] { "accounts/code", "header storage", "overflow storage" })
+        foreach (string partitionName in new[] { "accounts/code", "storage" })
         {
             logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {partitionName}: 0.00 % ")));
             logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {partitionName}: 100.00 % ")));
@@ -132,7 +132,7 @@ public class ImportPbtFromPreimageFlatTests
 
     [Test]
     public async Task Phase_two_progress_tracks_scanned_paths_before_partition_completion(
-        [Values(0, 1, 2)] int zone,
+        [Values(0, 1)] int zone,
         [Values(0, 15)] int partition,
         [Values(1, 2)] int pages)
     {
@@ -149,18 +149,15 @@ public class ImportPbtFromPreimageFlatTests
         ILogManager logs = Substitute.For<ILogManager>();
         ILogger progressLogger = new(logger);
         logs.GetClassLogger<ProgressLogger>().Returns(progressLogger);
-        int prefixOffset = zone == 0 ? 0 : 1;
         PbtColumns column = zone == 0 ? PbtColumns.Accounts : PbtColumns.Storages;
-        byte zoneByte = zone == 2 ? (byte)0xFF : (byte)0;
         db.AfterCopy = () =>
         {
             for (int page = 1; page <= 2; page++)
             {
-                byte[] key = new byte[zone == 0 ? 32 : zone == 1 ? 34 : 66];
-                if (zone != 0) key[0] = zoneByte;
-                key[prefixOffset] = (byte)(partition * 16 + page * 4);
-                key[prefixOffset + 1] = 3;
-                key[prefixOffset + 2] = 0xFF;
+                byte[] key = new byte[zone == 0 ? 32 : 34];
+                key[0] = (byte)(partition * 16 + page * 4);
+                key[1] = 3;
+                key[2] = 0xFF;
                 if (zone != 0) key[^1] = PbtKeyDerivation.HeaderStorageOffset;
                 byte[] value = zone == 0
                     ? Nethermind.Serialization.Rlp.Rlp.Encode(new Account(1, 100)).Bytes
@@ -171,8 +168,7 @@ public class ImportPbtFromPreimageFlatTests
         int resumedPages = 0;
         db.ViewOpened = (scannedColumn, start, _) =>
         {
-            if (scannedColumn == column && start.Length > prefixOffset + 2 &&
-                (zone == 0 || start[0] == zoneByte) && ++resumedPages == pages)
+            if (scannedColumn == column && start.Length > 2 && ++resumedPages == pages)
                 cancellation.Cancel();
         };
         RecordingExitSource exit = new();
@@ -180,7 +176,7 @@ public class ImportPbtFromPreimageFlatTests
 
         await step.Execute(cancellation.Token).WaitAsync(TimeSpan.FromSeconds(30));
 
-        string zoneName = zone switch { 0 => "accounts/code", 1 => "header storage", _ => "overflow storage" };
+        string zoneName = zone == 0 ? "accounts/code" : "storage";
         double scanned = (partition * 16 + pages * 4 + 3 / 256.0 + 0xFF / 65536.0) / 256;
         string percentage = scanned.ToString("P2", System.Globalization.CultureInfo.InvariantCulture);
         using (Assert.EnterMultipleScope())
@@ -476,7 +472,7 @@ public class ImportPbtFromPreimageFlatTests
             {
                 byte[] storage = new byte[zone == Eip8297KeyDerivation.AccountZone ? 34 : 66];
                 Array.Fill(storage, prefix);
-                storage[0] = zone;
+                storage[32] = zone;
                 if (zone == Eip8297KeyDerivation.AccountZone) storage[^1] = PbtKeyDerivation.HeaderStorageOffset;
                 Add(PbtColumns.Storages, storage, TestItem.KeccakA.Bytes.ToArray());
             }
@@ -841,13 +837,12 @@ public class ImportPbtFromPreimageFlatTests
         {
             if (column == PbtColumns.Accounts && Interlocked.Increment(ref gatedViews) <= workers)
                 Assert.That(overlap.SignalAndWait(TimeSpan.FromSeconds(20)), Is.True, "configured workers must enter separate range views concurrently");
-            int prefixOffset = column == PbtColumns.Accounts ? 0 : 1;
             Assert.That(start.AsSpan().SequenceCompareTo(end), Is.LessThan(0));
-            Assert.That(start.Length, Is.EqualTo(prefixOffset + 2).Or.EqualTo(column == PbtColumns.Accounts ? 33 : start[0] == 0 ? 35 : 67), "views begin at a partition boundary or immediately after the last complete key");
-            if (start.Length == prefixOffset + 2)
+            Assert.That(start.Length, Is.EqualTo(2).Or.EqualTo(column == PbtColumns.Accounts ? 33 : start.Length > 32 && start[32] == Eip8297KeyDerivation.AccountZone ? 35 : 67), "views begin at a partition boundary or immediately after the last complete key");
+            if (start.Length == 2)
             {
                 Interlocked.Increment(ref partitionViews);
-                int prefix = BinaryPrimitives.ReadUInt16BigEndian(start.AsSpan(prefixOffset));
+                int prefix = BinaryPrimitives.ReadUInt16BigEndian(start);
                 Assert.That(prefix, Is.EqualTo((long)((prefix * partitionCount + 65535) / 65536) * 65536 / partitionCount));
             }
         };
@@ -882,7 +877,7 @@ public class ImportPbtFromPreimageFlatTests
                         if (zone == 0xFF) storageKey.AsSpan(33).Fill(0xFF);
                         ValueHash256 value = TestItem.KeccakA.ValueHash256;
                         staging.SetSlot(new PbtStorageTreeKey(storageKey), EvmWordSlot.FromStripped(value.Bytes));
-                        expectedRows.Add($"{PbtColumns.Storages}:{Convert.ToHexString(storageKey)}");
+                        expectedRows.Add($"{PbtColumns.Storages}:{Convert.ToHexString(PbtStorageKeyLayout.Encode(new PbtStorageTreeKey(storageKey), new byte[PbtStorageTreeKey.MaxLength]))}");
                         model[Convert.ToHexString(storageKey)] = value.Bytes.ToArray();
                     }
                 }
@@ -907,7 +902,7 @@ public class ImportPbtFromPreimageFlatTests
             Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
             Assert.That(actualRows, Is.EquivalentTo(expectedRows));
             Assert.That(pbtDb.ActiveViews, Is.Zero);
-            Assert.That(partitionViews, Is.EqualTo(partitionCount * 3), "accounts and both storage zones each use disjoint partitions");
+            Assert.That(partitionViews, Is.EqualTo(partitionCount * 2), "accounts and storage each use disjoint partitions");
             Assert.That(pbtDb.GroupCommits, Is.GreaterThan(1));
         }
         pbtDb.Recording = false;

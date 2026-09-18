@@ -61,7 +61,7 @@ public class PbtSnapshotBundleTests
         PbtStorageTreeKey other = PbtStateKey.Storage(TestItem.AddressB, 1);
         EvmWord original = EvmWordSlot.FromStripped(Value(1));
         EvmWord replacement = EvmWordSlot.FromStripped(Value(2));
-        SortedDictionary<PbtStorageTreeKey, EvmWord> persisted = new() { [deleted] = original, [rewritten] = original, [cleared] = original, [other] = original };
+        SortedDictionary<PbtStorageTreeKey, EvmWord> persisted = new(PbtStorageKeyLayout.Comparer) { [deleted] = original, [rewritten] = original, [cleared] = original, [other] = original };
         Reader reader = new(default, null) { Storage = persisted };
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent content = new();
@@ -72,7 +72,7 @@ public class PbtSnapshotBundleTests
         using PbtSnapshotBundle bundle = new(snapshots, new PbtReadOnlySnapshotBundle(new(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing);
         bundle.SetSlot(TestItem.AddressA, 1, default);
         bundle.SetSlot(TestItem.AddressA, 1000, replacement);
-        SortedDictionary<PbtStorageTreeKey, EvmWord> expected = new() { [rewritten] = replacement };
+        SortedDictionary<PbtStorageTreeKey, EvmWord> expected = new(PbtStorageKeyLayout.Comparer) { [rewritten] = replacement };
         if (!filtered) expected[other] = original;
         Assert.That(bundle.EnumerateStorage(filtered ? addressHash : (ValueHash256?)null), Is.EqualTo(expected));
     }
@@ -1456,14 +1456,14 @@ public class PbtSnapshotBundleTests
             return Codes.GetValueOrDefault(codeHash);
         }
         public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => new PbtIterator<KeyValuePair<ValueHash256, Account>>(Track(Accounts));
-        public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(PbtStorageTreeKey? prefix = null) =>
-            new PbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>>(Track(EnumerateStorageCore(prefix)));
+        public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressHash = null) =>
+            new PbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>>(Track(EnumerateStorageCore(addressHash)));
 
-        private IEnumerable<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorageCore(PbtStorageTreeKey? prefix)
+        private IEnumerable<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorageCore(ValueHash256? addressHash)
         {
             foreach (KeyValuePair<PbtStorageTreeKey, EvmWord> slot in Storage)
-                if (prefix is null || prefix.Value.IsPrefixOf(slot.Key)) yield return slot;
-            if (value is { } word && (prefix is null || prefix.Value.IsPrefixOf(key)))
+                if (addressHash is null || PbtFlatState.StorageAddress(slot.Key) == addressHash.Value) yield return slot;
+            if (value is { } word && (addressHash is null || PbtFlatState.StorageAddress(key) == addressHash.Value))
                 yield return new(key, EvmWordSlot.FromStripped(word.Bytes));
         }
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>

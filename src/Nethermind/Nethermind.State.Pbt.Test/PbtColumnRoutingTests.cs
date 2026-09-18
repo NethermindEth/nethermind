@@ -51,7 +51,7 @@ public class PbtColumnRoutingTests
             Assert.That(reader.GetSlot(storageKey), Is.EqualTo(slot));
             Assert.That(reader.GetCode(value), Is.EqualTo(code));
             Assert.That(db.GetColumnDb(PbtColumns.Accounts).Get(addressHash.Bytes), Is.Not.Null);
-            Assert.That(db.GetColumnDb(PbtColumns.Storages).Get(storageKey.Bytes), Is.Not.Null);
+            Assert.That(db.GetColumnDb(PbtColumns.Storages).Get(PbtStorageKeyLayout.Encode(storageKey, new byte[PbtStorageTreeKey.MaxLength])), Is.Not.Null);
             Assert.That(db.GetColumnDb(PbtColumns.Codes).Get(value.Bytes), Is.EqualTo(code.Code.ToArray()));
             Assert.That(db.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
             Assert.That(persistedGroup!.GetSpan().ToArray(), Is.EqualTo(group!.GetSpan().ToArray()));

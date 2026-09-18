@@ -10,6 +10,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Pbt;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.ScopeProvider;
 
 namespace Nethermind.State.Pbt;
@@ -117,7 +118,7 @@ public sealed class PbtSnapshotBundle(
     internal IEnumerable<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressFilter = null)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        SortedDictionary<PbtStorageTreeKey, EvmWord> changes = [];
+        SortedDictionary<PbtStorageTreeKey, EvmWord> changes = new(PbtStorageKeyLayout.Comparer);
         HashSet<ValueHash256> clearedAddresses = [];
         foreach (PbtSnapshot snapshot in snapshots) ApplyChanges(snapshot.Content);
         ApplyChanges(WriteBuffer);
@@ -125,7 +126,7 @@ public sealed class PbtSnapshotBundle(
         bool hasChange = changed.MoveNext();
         foreach (KeyValuePair<PbtStorageTreeKey, EvmWord> persisted in readOnlyBundle.EnumerateStorage(addressFilter))
         {
-            while (hasChange && changed.Current.Key.CompareTo(persisted.Key) < 0)
+            while (hasChange && PbtStorageKeyLayout.Comparer.Compare(changed.Current.Key, persisted.Key) < 0)
             {
                 if (!EvmWordSlot.IsZero(changed.Current.Value)) yield return changed.Current;
                 hasChange = changed.MoveNext();

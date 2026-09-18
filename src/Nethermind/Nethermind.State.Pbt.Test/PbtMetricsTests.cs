@@ -103,7 +103,8 @@ public class PbtMetricsTests
     {
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
         ValueHash256 codeHash = TestItem.KeccakA.ValueHash256;
-        PbtStorageTreeKey storageKey = PbtStateKey.Storage(TestItem.AddressA, 1);
+        PbtStorageTreeKey headerStorageKey = PbtStateKey.Storage(TestItem.AddressA, 1);
+        PbtStorageTreeKey storageKey = PbtStateKey.Storage(TestItem.AddressA, PbtKeyDerivation.HeaderStorageOffset);
         PbtNodePath groupKey = new(Bytes.FromHexString(groupPath.PadRight((groupPath.Length + 1) / 2 * 2, '0')), groupPath.Length * 4);
         string partition = groupPath switch { "01" => "code", "f" or "ff" => "storage", _ => "account" };
         Account account = new(1, 100);
@@ -114,6 +115,7 @@ public class PbtMetricsTests
         if (scenario != "missing")
         {
             reader.GetAccount(addressHash).Returns(account);
+            reader.GetSlot(headerStorageKey).Returns(slot);
             reader.GetSlot(storageKey).Returns(slot);
             reader.GetCode(codeHash).Returns(code);
             reader.GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>()).Returns(_ => { payload.AcquireLease(); return payload; });
@@ -126,7 +128,11 @@ public class PbtMetricsTests
         {
             content.Accounts[addressHash] = deleted ? null : account;
             if (scenario == "selfdestruct") content.ClearStorage(addressHash);
-            else content.Storages[storageKey] = deleted ? default : slot;
+            else
+            {
+                content.Storages[headerStorageKey] = deleted ? default : slot;
+                content.Storages[storageKey] = deleted ? default : slot;
+            }
             if (!deleted) payload.AcquireLease();
             content.NodeGroups[groupKey.ToPath<PbtStorageNodePath>()] = deleted ? null : payload;
             if (!deleted) content.Codes[codeHash] = code;
@@ -139,7 +145,8 @@ public class PbtMetricsTests
         using PbtReadOnlySnapshotBundle bundle = new(snapshots, reader, detailedMetrics);
 
         Account? actualAccount = bundle.GetAccount(TestItem.AddressA);
-        EvmWord actualSlot = bundle.GetSlot(TestItem.AddressA, 1);
+        EvmWord actualHeaderSlot = bundle.GetSlot(TestItem.AddressA, 1);
+        EvmWord actualSlot = bundle.GetSlot(TestItem.AddressA, PbtKeyDerivation.HeaderStorageOffset);
         using RefCountingMemory? actualGroup = bundle.GetNodeGroup(groupKey);
         CodeInfo? actualCode = bundle.GetCode(codeHash);
 
@@ -149,13 +156,14 @@ public class PbtMetricsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actualAccount, Is.EqualTo(empty ? null : account));
+            Assert.That(actualHeaderSlot, Is.EqualTo(empty ? default : slot));
             Assert.That(actualSlot, Is.EqualTo(empty ? default : slot));
             Assert.That(actualGroup, Is.SameAs(empty ? null : payload));
             Assert.That(actualCode, Is.SameAs(scenario == "missing" ? null : code));
             Assert.That(_readOnlyBundleTime.Labels, Is.EqualTo(detailedMetrics
-                ? new[] { $"account_{tier}", $"storage_{tier}", $"node_group_{partition}_{tier}", $"code_{codeTier}" }
+                ? new[] { $"account_{tier}", $"storage_header_{tier}", $"storage_{tier}", $"node_group_{partition}_{tier}", $"code_{codeTier}" }
                 : []));
-            Assert.That(_readOnlyBundleTime.Observations, Has.Count.EqualTo(detailedMetrics ? 4 : 0));
+            Assert.That(_readOnlyBundleTime.Observations, Has.Count.EqualTo(detailedMetrics ? 5 : 0));
             Assert.That(_readOnlyBundleTime.Observations, Is.All.GreaterThanOrEqualTo(0));
         }
     }

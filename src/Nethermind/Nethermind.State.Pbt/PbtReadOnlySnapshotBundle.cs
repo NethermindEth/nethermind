@@ -24,9 +24,9 @@ public sealed class PbtReadOnlySnapshotBundle(
     private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");
     private static readonly StringLabel _readAccountPersistenceLabel = new("account_persistence");
     private static readonly StringLabel _readAccountPersistenceNullLabel = new("account_persistence_null");
-    private static readonly StringLabel _readStorageSnapshotLabel = new("storage_snapshot");
-    private static readonly StringLabel _readStoragePersistenceLabel = new("storage_persistence");
-    private static readonly StringLabel _readStoragePersistenceNullLabel = new("storage_persistence_null");
+    private static readonly StringLabel[] _readStorageSnapshotLabels = [new("storage_snapshot"), new("storage_header_snapshot")];
+    private static readonly StringLabel[] _readStoragePersistenceLabels = [new("storage_persistence"), new("storage_header_persistence")];
+    private static readonly StringLabel[] _readStoragePersistenceNullLabels = [new("storage_persistence_null"), new("storage_header_persistence_null")];
     private static readonly StringLabel[] _readNodeGroupSnapshotLabels = [new("node_group_account_snapshot"), new("node_group_code_snapshot"), new("node_group_storage_snapshot")];
     private static readonly StringLabel[] _readNodeGroupPersistenceLabels = [new("node_group_account_persistence"), new("node_group_code_persistence"), new("node_group_storage_persistence")];
     private static readonly StringLabel[] _readNodeGroupPersistenceNullLabels = [new("node_group_account_persistence_null"), new("node_group_code_persistence_null"), new("node_group_storage_persistence_null")];
@@ -108,7 +108,7 @@ public sealed class PbtReadOnlySnapshotBundle(
                 yield return slot;
             yield break;
         }
-        SortedDictionary<PbtStorageTreeKey, EvmWord> visible = [];
+        SortedDictionary<PbtStorageTreeKey, EvmWord> visible = new(PbtStorageKeyLayout.Comparer);
         foreach ((PbtStorageTreeKey key, EvmWord value) in EnumeratePersistedStorage(addressFilter)) visible[key] = value;
         foreach (PbtSnapshot snapshot in snapshots) PbtFlatState.ApplyStorage(visible, snapshot.Content, addressFilter);
         foreach ((PbtStorageTreeKey key, EvmWord value) in visible)
@@ -117,22 +117,8 @@ public sealed class PbtReadOnlySnapshotBundle(
 
     private IEnumerable<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumeratePersistedStorage(ValueHash256? addressFilter)
     {
-        if (addressFilter is null)
-        {
-            using IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> storage = reader.EnumerateStorage();
-            while (storage.MoveNext()) yield return storage.Current;
-        }
-        else
-        {
-            byte[] prefix = new byte[1 + ValueHash256.MemorySize];
-            addressFilter.Value.Bytes.CopyTo(prefix.AsSpan(1));
-            foreach (byte zone in new[] { Eip8297KeyDerivation.AccountZone, Eip8297KeyDerivation.StorageZone })
-            {
-                prefix[0] = zone;
-                using IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> storage = reader.EnumerateStorage(new PbtStorageTreeKey(prefix));
-                while (storage.MoveNext()) yield return storage.Current;
-            }
-        }
+        using IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> storage = reader.EnumerateStorage(addressFilter);
+        while (storage.MoveNext()) yield return storage.Current;
     }
 
     internal IEnumerable<KeyValuePair<PbtStorageTreeKey, ValueHash256>> EnumerateLeaves() =>
@@ -170,6 +156,7 @@ public sealed class PbtReadOnlySnapshotBundle(
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        int labelIndex = key.Key.Bytes[0] == Eip8297KeyDerivation.AccountZone ? 1 : 0;
         ValueHash256 addressHash = PbtFlatState.StorageAddress(key.Key);
         for (int index = snapshots.Count - 1; index >= 0; index--)
         {
@@ -177,13 +164,13 @@ public sealed class PbtReadOnlySnapshotBundle(
             if (content.Storages.TryGetValue(key, out EvmWord value)
                 || content.SelfDestructedStorageAddresses.ContainsKey(addressHash))
             {
-                if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabel);
+                if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabels[labelIndex]);
                 return value;
             }
         }
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         EvmWord result = reader.GetSlot(key.Key);
-        if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, EvmWordSlot.IsZero(result) ? _readStoragePersistenceNullLabel : _readStoragePersistenceLabel);
+        if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, (EvmWordSlot.IsZero(result) ? _readStoragePersistenceNullLabels : _readStoragePersistenceLabels)[labelIndex]);
         return result;
     }
 

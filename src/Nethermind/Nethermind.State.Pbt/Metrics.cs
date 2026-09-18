@@ -5,6 +5,7 @@ using System.ComponentModel;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Metric;
+using Nethermind.Pbt;
 using NonBlocking;
 
 namespace Nethermind.State.Pbt;
@@ -85,6 +86,7 @@ public static class Metrics
     /// One observation per point read of an account, storage slot, node group, or code.
     /// Snapshot hits include tombstones and cleared storage. Persistence timings exclude the preceding
     /// unsuccessful snapshot walk and distinguish missing values (null or zero storage).
+    /// Storage reads of header-embedded slots (below <see cref="PbtKeyDerivation.HeaderStorageOffset"/>) report as <c>storage_header_*</c>.
     /// </remarks>
     [DetailedMetric]
     [Description("Time of a read through the pbt read-only snapshot bundle, by read type, node-group partition, tier and result (Stopwatch ticks)")]

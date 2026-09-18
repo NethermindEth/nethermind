@@ -184,11 +184,10 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         }
 
         List<byte[]> bounds = [[]];
-        if (column == PbtColumns.Storages || IsNodeGroupColumn(column))
+        if (IsNodeGroupColumn(column))
         {
             ReadOnlySpan<byte> zones = column switch
             {
-                PbtColumns.Storages => [Eip8297KeyDerivation.AccountZone, Eip8297KeyDerivation.StorageZone],
                 PbtColumns.AccountNodeGroups => [Eip8297KeyDerivation.AccountZone],
                 PbtColumns.CodeNodeGroups => [Eip8297KeyDerivation.CodeZone],
                 _ => [Eip8297KeyDerivation.StorageZone],

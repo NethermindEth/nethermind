@@ -129,7 +129,7 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         public EvmWord GetSlot(in PbtStorageTreeKey key) => inner.GetSlot(key);
         public CodeInfo? GetCode(in ValueHash256 codeHash) => inner.GetCode(codeHash);
         public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => inner.EnumerateAccounts();
-        public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(PbtStorageTreeKey? prefix = null) => inner.EnumerateStorage(prefix);
+        public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressHash = null) => inner.EnumerateStorage(addressHash);
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => inner.GetNodeGroup(groupKey);
         public IPbtIterator<PbtStorageNodePath> EnumerateNodeGroupKeys() => inner.EnumerateNodeGroupKeys();
         public bool TryLease() => TryAcquireLease();

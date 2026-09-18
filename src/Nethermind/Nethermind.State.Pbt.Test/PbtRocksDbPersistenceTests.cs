@@ -136,7 +136,7 @@ public class PbtRocksDbPersistenceTests
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         foreach (PbtColumns column in FastEnum.GetValues<PbtColumns>())
             db.GetColumnDb(column)[new byte[] { 1 }] = [2];
-        db.GetColumnDb(PbtColumns.Metadata)[SchemaEpochKey] = Epoch(14);
+        db.GetColumnDb(PbtColumns.Metadata)[SchemaEpochKey] = Epoch(15);
         Dictionary<PbtColumns, KeyValuePair<byte[], byte[]>[]> before = [];
         foreach (PbtColumns column in FastEnum.GetValues<PbtColumns>())
             before[column] = db.GetColumnDb(column).GetAll(ordered: true).ToArray();
@@ -196,7 +196,48 @@ public class PbtRocksDbPersistenceTests
             Assert.That(reader.GetSlot(otherAddressKey), Is.EqualTo(original));
             Assert.That(olderReader.GetSlot(persistedKey), Is.EqualTo(original));
             Assert.That(reader.EnumerateStorage().Drain(), Has.Exactly(2).Items);
-            Assert.That(reader.EnumerateStorage(new PbtStorageTreeKey(persistedKey.Bytes[..33])).Drain().Single().Value, Is.EqualTo(replacement));
+            Assert.That(reader.EnumerateStorage(addressHash).Drain().Single().Value, Is.EqualTo(replacement));
+        }
+    }
+
+    [Test]
+    public void Storage_rows_are_keyed_address_first_so_one_account_is_one_range([Values(1u, 64u)] uint otherAddressSlot)
+    {
+        using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
+        PbtRocksDbPersistence persistence = new(db, new PbtConfig());
+        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
+        PbtStorageTreeKey headerKey = PbtStateKey.Storage(TestItem.AddressA, 1);
+        PbtStorageTreeKey overflowKey = PbtStateKey.Storage(TestItem.AddressA, PbtKeyDerivation.HeaderStorageOffset);
+        PbtStorageTreeKey otherAddressKey = PbtStateKey.Storage(TestItem.AddressB, otherAddressSlot);
+        EvmWord value = EvmWordSlot.FromStripped(Bytes.FromHexString("0x1234"));
+        StateId first = new(1, TestItem.KeccakA.ValueHash256);
+        StateId second = new(2, TestItem.KeccakB.ValueHash256);
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default, WriteFlags.None))
+        {
+            batch.SetSlot(headerKey, value);
+            batch.SetSlot(overflowKey, value);
+            batch.SetSlot(otherAddressKey, value);
+            batch.Commit();
+        }
+        using IPbtPersistence.IReader populated = persistence.CreateReader();
+        using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(first, second, default, WriteFlags.None))
+        {
+            batch.ClearStorage(addressHash);
+            batch.Commit();
+        }
+        using IPbtPersistence.IReader cleared = persistence.CreateReader();
+
+        static byte[] Persisted(in PbtStorageTreeKey key) => PbtStorageKeyLayout.Encode(key, new byte[PbtStorageTreeKey.MaxLength]).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Persisted(headerKey), Is.EqualTo(Bytes.Concat(addressHash.Bytes, [Eip8297KeyDerivation.AccountZone], headerKey.Bytes[33..])));
+            Assert.That(Persisted(overflowKey), Is.EqualTo(Bytes.Concat(addressHash.Bytes, [Eip8297KeyDerivation.StorageZone], overflowKey.Bytes[33..])));
+            Assert.That(PbtStorageKeyLayout.Decode(Persisted(headerKey)), Is.EqualTo(headerKey));
+            Assert.That(PbtStorageKeyLayout.Decode(Persisted(overflowKey)), Is.EqualTo(overflowKey));
+            Assert.That(populated.EnumerateStorage(addressHash).Drain().Select(slot => slot.Key), Is.EqualTo(new[] { headerKey, overflowKey }));
+            Assert.That(populated.EnumerateStorage().Drain().Select(slot => slot.Key), Is.EquivalentTo(new[] { headerKey, overflowKey, otherAddressKey }));
+            Assert.That(cleared.EnumerateStorage().Drain().Select(slot => slot.Key), Is.EqualTo(new[] { otherAddressKey }));
+            Assert.That(db.GetColumnDb(PbtColumns.Storages).GetAllKeys(), Is.EquivalentTo(new[] { Persisted(otherAddressKey) }));
         }
     }
 

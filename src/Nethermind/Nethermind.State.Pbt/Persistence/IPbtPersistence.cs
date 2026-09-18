@@ -30,8 +30,8 @@ public interface IPbtPersistence
         CodeInfo? GetCode(in ValueHash256 codeHash);
         /// <summary>Gets a caller-owned iterator over persisted accounts.</summary>
         IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts();
-        /// <summary>Gets a caller-owned iterator over persisted storage matching the optional prefix.</summary>
-        IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(PbtStorageTreeKey? prefix = null);
+        /// <summary>Gets a caller-owned iterator over persisted storage, optionally limited to one account, in <see cref="PbtStorageKeyLayout.Comparer"/> order.</summary>
+        IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressHash = null);
 
         /// <summary>Gets a caller-owned lease for the complete group identified by <paramref name="groupKey"/>.</summary>
         /// <remarks>
