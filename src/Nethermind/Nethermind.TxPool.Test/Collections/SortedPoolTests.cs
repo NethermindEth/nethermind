@@ -154,11 +154,24 @@ namespace Nethermind.TxPool.Test.Collections
                 Assert.That(() => snapshot.Values.Clear(), Throws.TypeOf<NotSupportedException>());
             }
 
+            using IEnumerator<object> first = snapshot.Values.GetEnumerator();
+            using IEnumerator<object> second = snapshot.Values.GetEnumerator();
             for (int i = 0; i < count; i++)
             {
                 Assert.That(snapshot.TryGetValue(new(i, collisions), out object value), Is.True);
-                Assert.That(value, Is.SameAs(entries[i].Value));
+                Assert.That(first.MoveNext(), Is.True);
+                Assert.That(second.MoveNext(), Is.True);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(value, Is.SameAs(entries[i].Value));
+                    Assert.That(first.Current, Is.SameAs(value));
+                    Assert.That(second.Current, Is.SameAs(value));
+                }
             }
+
+            Assert.That(first.MoveNext(), Is.False);
+            Assert.That(second.MoveNext(), Is.False);
+            Assert.That(first.MoveNext(), Is.False);
         }
 
         [Test]

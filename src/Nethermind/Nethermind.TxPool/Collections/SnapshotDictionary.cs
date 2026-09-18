@@ -140,9 +140,25 @@ internal sealed class SnapshotDictionary<TKey, TValue> : IDictionary<TKey, TValu
             return false;
         }
 
-        public override IEnumerator<TValue> GetEnumerator()
+        public override IEnumerator<TValue> GetEnumerator() => new ValueEnumerator(Map);
+
+        private sealed class ValueEnumerator(SnapshotDictionary<TKey, TValue> map) : IEnumerator<TValue>
         {
-            for (int i = 0; i < Map._count; i++) yield return Map._entries[i].Value;
+            private int _position = -1;
+            public TValue Current => (uint)_position < (uint)map._count ? map._entries[_position].Value : default!;
+            object? IEnumerator.Current => Current;
+            public bool MoveNext()
+            {
+                if (_position < map._count - 1)
+                {
+                    _position++;
+                    return true;
+                }
+                _position = map._count;
+                return false;
+            }
+            public void Dispose() => _position = map._count;
+            public void Reset() => throw new NotSupportedException();
         }
     }
 }
