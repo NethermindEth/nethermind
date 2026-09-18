@@ -27,7 +27,7 @@ public sealed class PbtNodeGroupStore(IRefCountingMemoryProvider? memoryProvider
         PbtNodeGroupStore store = new(memoryProvider ?? PooledRefCountingMemoryProvider.Instance);
         try
         {
-            Span<byte> pathBuffer = stackalloc byte[PbtTreeKey.MaxLength];
+            Span<byte> pathBuffer = stackalloc byte[PbtStorageTreeKey.MaxLength];
             foreach (PbtPhysicalPayload payload in payloads)
             {
                 PbtStorageNodePath groupKey = payload.Key;

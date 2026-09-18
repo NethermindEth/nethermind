@@ -116,7 +116,7 @@ public class ParallelUpdateRootTests
         ApplyAndCompare(Changes(entries));
         // Code-only work leaves Account's shared ancestor and the entire Storage zone intact.
         ApplyAndCompare(ZoneEntries(2, compressed)[..1]);
-        byte[] insertedKey = Bytes.FromHexString("01ABCD");
+        byte[] insertedKey = PbtStoreTestExtensions.ZoneKey("01ABCD");
         ApplyAndCompare([(insertedKey, null)]);
         ApplyAndCompare([(insertedKey, Value(0xA5))]);
         ApplyAndCompare([(insertedKey, null)]);
@@ -183,11 +183,11 @@ public class ParallelUpdateRootTests
             }
             else
             {
-                using PbtWriteBatchBuilder<PbtTreeKey> builder = new(0);
+                using PbtWriteBatchBuilder<PbtStorageTreeKey> builder = new(0);
                 foreach ((byte[] key, byte[]? value) in writes)
                 {
-                    if (value is null) builder.Delete(new PbtTreeKey(key));
-                    else builder.Set(new PbtTreeKey(key), new ValueHash256(value));
+                    if (value is null) builder.Delete(new PbtStorageTreeKey(key));
+                    else builder.Set(new PbtStorageTreeKey(key), new ValueHash256(value));
                 }
                 root = TrieUpdater.UpdateRoot(target, root, builder.Build());
             }
@@ -388,11 +388,11 @@ public class ParallelUpdateRootTests
             }
             else
             {
-                using PbtWriteBatchBuilder<PbtTreeKey> builder = new(0);
+                using PbtWriteBatchBuilder<PbtStorageTreeKey> builder = new(0);
                 foreach ((byte[] key, byte[]? value) in changes)
                 {
-                    if (value is null) builder.Delete(new PbtTreeKey(key));
-                    else builder.Set(new PbtTreeKey(key), new ValueHash256(value));
+                    if (value is null) builder.Delete(new PbtStorageTreeKey(key));
+                    else builder.Set(new PbtStorageTreeKey(key), new ValueHash256(value));
                 }
                 root = TrieUpdater.UpdateRoot(store, root, builder.Build());
             }
@@ -556,9 +556,9 @@ public class ParallelUpdateRootTests
         (byte[] Key, byte[]? Value)[] entries)
     {
         using PbtNodeGroupStore store = new();
-        using PbtWriteBatchBuilder<PbtTreeKey> batch = new(0);
+        using PbtWriteBatchBuilder<PbtStorageTreeKey> batch = new(0);
         foreach ((byte[] key, byte[]? value) in entries)
-            batch.Set(new PbtTreeKey(key), new ValueHash256(value!));
+            batch.Set(new PbtStorageTreeKey(key), new ValueHash256(value!));
         TrieUpdaterMetrics metrics = new();
         ValueHash256 root = TrieUpdater.UpdateRoot(store, default, batch.Build(), metrics);
         return (root, metrics);

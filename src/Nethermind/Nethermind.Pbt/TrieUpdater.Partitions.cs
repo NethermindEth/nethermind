@@ -11,7 +11,7 @@ using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Metric;
 using static Nethermind.Pbt.TrieUpdater;
-using static Nethermind.Pbt.TrieUpdater<Nethermind.Pbt.PbtTreeKey, Nethermind.Pbt.PbtStorageNodePath>;
+using static Nethermind.Pbt.TrieUpdater<Nethermind.Pbt.PbtStorageTreeKey, Nethermind.Pbt.PbtStorageNodePath>;
 
 namespace Nethermind.Pbt;
 
@@ -26,24 +26,24 @@ public static partial class TrieUpdater
         TrieUpdater<PbtFullKey, PbtNodePath>.UpdateRoot(store, currentRoot, changes);
 
     /// <summary>Applies a storage-capable key batch to a complete tree.</summary>
-    public static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch<PbtTreeKey> changes) =>
-        TrieUpdater<PbtTreeKey, PbtStorageNodePath>.UpdateRoot(store, currentRoot, changes);
+    public static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch<PbtStorageTreeKey> changes) =>
+        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.UpdateRoot(store, currentRoot, changes);
 
     internal static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch<PbtFullKey> changes,
         TrieUpdaterMetrics? metrics, IRefCountingMemoryProvider? memoryProvider = null) =>
         TrieUpdater<PbtFullKey, PbtNodePath>.UpdateRoot(store, currentRoot, changes, metrics, memoryProvider);
 
-    internal static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch<PbtTreeKey> changes,
+    internal static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatch<PbtStorageTreeKey> changes,
         TrieUpdaterMetrics? metrics, IRefCountingMemoryProvider? memoryProvider = null) =>
-        TrieUpdater<PbtTreeKey, PbtStorageNodePath>.UpdateRoot(store, currentRoot, changes, metrics, memoryProvider);
+        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.UpdateRoot(store, currentRoot, changes, metrics, memoryProvider);
 
     internal static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatchSet<PbtFullKey> changes,
         TrieUpdaterMetrics? metrics = null, IRefCountingMemoryProvider? memoryProvider = null) =>
         TrieUpdater<PbtFullKey, PbtNodePath>.UpdateRoot(store, currentRoot, changes, metrics, memoryProvider);
 
-    internal static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatchSet<PbtTreeKey> changes,
+    internal static ValueHash256 UpdateRoot(IPbtStore store, in ValueHash256 currentRoot, PbtWriteBatchSet<PbtStorageTreeKey> changes,
         TrieUpdaterMetrics? metrics = null, IRefCountingMemoryProvider? memoryProvider = null) =>
-        TrieUpdater<PbtTreeKey, PbtStorageNodePath>.UpdateRoot(store, currentRoot, changes, metrics, memoryProvider);
+        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.UpdateRoot(store, currentRoot, changes, metrics, memoryProvider);
 
     /// <summary>Folds disjoint partitions concurrently before merging their shared ancestors.</summary>
     /// <remarks>
@@ -67,9 +67,9 @@ public static partial class TrieUpdater
         ArgumentNullException.ThrowIfNull(changes);
         ArgumentNullException.ThrowIfNull(foldOptions);
         using ArrayPoolList<PartitionFold> workers = new(3);
-        using ArrayPoolListRef<GroupFrameReader<PbtTreeKey, PbtStorageNodePath>> sharedReaders = new(16, 16);
+        using ArrayPoolListRef<GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>> sharedReaders = new(16, 16);
         using ArrayPoolListRef<PbtNodeGroupWriter<PbtStorageNodePath>?> sharedWriters = new(16, 16);
-        using (new GroupFrameReader<PbtTreeKey, PbtStorageNodePath>.Scope(sharedReaders.AsSpan()))
+        using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(sharedReaders.AsSpan()))
         {
             memoryProvider ??= PooledRefCountingMemoryProvider.Instance;
             using ArrayPoolListRef<Frontier> zoneFrontiers = new(16, 16);
@@ -83,13 +83,13 @@ public static partial class TrieUpdater
                 AddWorker<PbtStorageFullKey, PbtStorageNodePath>(changes.Storage, Eip8297KeyDerivation.StorageZone, _storageFoldLabel);
                 if (workers.Count == 0) return currentRoot;
 
-                GroupFrameReader<PbtTreeKey, PbtStorageNodePath> rootReader = new(store, 0, currentRoot, metrics);
-                using (new GroupFrameReader<PbtTreeKey, PbtStorageNodePath>.Scope(ref rootReader))
+                GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> rootReader = new(store, 0, currentRoot, metrics);
+                using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref rootReader))
                 {
                     using PbtNodeGroupWriter<PbtStorageNodePath> rootWriter = new(0, memoryProvider);
                     PbtTraversalPath rootPath = new(Span<byte>.Empty);
                     Span<byte> sharedPathBuffer = stackalloc byte[1];
-                    Span<byte> sourceBuffer = stackalloc byte[PbtTreeKey.MaxLength];
+                    Span<byte> sourceBuffer = stackalloc byte[PbtStorageTreeKey.MaxLength];
                     int touchedRootMask = 0;
                     foreach (PartitionFold worker in workers)
                     {
@@ -103,7 +103,7 @@ public static partial class TrieUpdater
                         int slot = worker.Zone >> 4;
                         PbtTraversalPath sharedPath = new(sharedPathBuffer);
                         sharedPath.AppendMut(slot);
-                        ref GroupFrameReader<PbtTreeKey, PbtStorageNodePath> sharedReader = ref sharedReaders.AsSpan()[slot];
+                        ref GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> sharedReader = ref sharedReaders.AsSpan()[slot];
                         if (sharedWriters[slot] is not { } sharedWriter)
                         {
                             TraversalSubtree boundary = TakeBoundary(ref rootReader, rootWriter, rootPath, ref rootFrontier, slot, sourceBuffer);
@@ -131,7 +131,7 @@ public static partial class TrieUpdater
                         if (sharedWriters[slot] is not { } sharedWriter) continue;
                         PbtTraversalPath sharedPath = new(sharedPathBuffer);
                         sharedPath.AppendMut(slot);
-                        ref GroupFrameReader<PbtTreeKey, PbtStorageNodePath> sharedReader = ref sharedReaders.AsSpan()[slot];
+                        ref GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> sharedReader = ref sharedReaders.AsSpan()[slot];
                         TraversalSubtree composed = Compose(ref sharedReader, sharedWriter, sharedPath, metrics, ref zoneFrontiers.AsSpan()[slot], sourceBuffer);
                         ValueHash256 groupHash = composed.Hash(4, metrics);
                         SetBoundary(rootPath, ref rootFrontier, slot, ref composed);
@@ -195,12 +195,12 @@ public static partial class TrieUpdater
             PbtTraversalPath path = new(pathBuffer);
             path.AppendMut(Zone >> 4);
             path.AppendMut(Zone & 15);
-            Span<byte> sourceBuffer = stackalloc byte[PbtTreeKey.MaxLength];
+            Span<byte> sourceBuffer = stackalloc byte[PbtStorageTreeKey.MaxLength];
             GroupFrameReader<TKey, TPath> reader = new(store, 8, Current.Borrow(sourceBuffer).Hash(8, Metrics), Metrics);
             using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
             {
                 using PbtNodeGroupWriter<TPath> writer = new(8, memoryProvider);
-                TrieUpdater<TKey, TPath>.OwnedSubtree ownedCurrent = TrieUpdater<TKey, TPath>.OwnedSubtree.TakeFrom<PbtTreeKey, PbtStorageNodePath>(ref Current);
+                TrieUpdater<TKey, TPath>.OwnedSubtree ownedCurrent = TrieUpdater<TKey, TPath>.OwnedSubtree.TakeFrom<PbtStorageTreeKey, PbtStorageNodePath>(ref Current);
                 TrieUpdater<TKey, TPath>.TraversalSubtree current = ownedCurrent.Borrow(sourceBuffer);
                 TrieUpdater<TKey, TPath>.OwnedSubtree result = default;
                 bool foldBucketsInParallel = foldOptions.MaxDegreeOfParallelism != 1 && !RuntimeInformation.IsSingleProcessor;

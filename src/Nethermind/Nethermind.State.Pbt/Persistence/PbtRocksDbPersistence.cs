@@ -178,7 +178,7 @@ public class PbtRocksDbPersistence(
         {
             if (++upper[i] != 0) return upper[..(i + 1)];
         }
-        Span<byte> maximum = destination[..(PbtTreeKey.MaxLength + 1)];
+        Span<byte> maximum = destination[..(PbtStorageTreeKey.MaxLength + 1)];
         maximum.Fill(byte.MaxValue);
         return maximum;
     }
@@ -219,7 +219,7 @@ public class PbtRocksDbPersistence(
             }
         }
 
-        public EvmWord GetSlot(in PbtTreeKey key)
+        public EvmWord GetSlot(in PbtStorageTreeKey key)
         {
             ReadOnlySpan<byte> value = _storages.GetSpan(key.Bytes);
             try
@@ -258,17 +258,17 @@ public class PbtRocksDbPersistence(
                 yield return new(new ValueHash256(view.CurrentKey), DecodeAccount(view.CurrentValue));
         }
 
-        public IPbtIterator<KeyValuePair<PbtTreeKey, EvmWord>> EnumerateStorage(PbtTreeKey? prefix = null) =>
-            new PbtIterator<KeyValuePair<PbtTreeKey, EvmWord>>(EnumerateStorageCore(prefix));
+        public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(PbtStorageTreeKey? prefix = null) =>
+            new PbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>>(EnumerateStorageCore(prefix));
 
-        private IEnumerator<KeyValuePair<PbtTreeKey, EvmWord>> EnumerateStorageCore(PbtTreeKey? prefix)
+        private IEnumerator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorageCore(PbtStorageTreeKey? prefix)
         {
             ISortedKeyValueStore storage = (ISortedKeyValueStore)_storages;
-            Span<byte> upper = stackalloc byte[PbtTreeKey.MaxLength + 1];
+            Span<byte> upper = stackalloc byte[PbtStorageTreeKey.MaxLength + 1];
             using ISortedView view = storage.GetViewBetween(prefix is null ? [] : prefix.Value.Bytes,
                 PrefixUpperBound(prefix is null ? [] : prefix.Value.Bytes, upper));
             while (view.MoveNext())
-                yield return new(new PbtTreeKey(view.CurrentKey), DecodeSlot(view.CurrentValue));
+                yield return new(new PbtStorageTreeKey(view.CurrentKey), DecodeSlot(view.CurrentValue));
         }
 
         private static Account DecodeAccount(ReadOnlySpan<byte> value)
@@ -352,7 +352,7 @@ public class PbtRocksDbPersistence(
     {
         private readonly IColumnsWriteBatch<PbtColumns> _batch = db.StartWriteBatch();
 
-        private readonly Dictionary<ValueHash256, HashSet<PbtTreeKey>> _stagedStorageKeys = [];
+        private readonly Dictionary<ValueHash256, HashSet<PbtStorageTreeKey>> _stagedStorageKeys = [];
 
         public void SetAccount(in ValueHash256 addressHash, Account? account)
         {
@@ -365,7 +365,7 @@ public class PbtRocksDbPersistence(
             }
         }
 
-        public void SetSlot(in PbtTreeKey key, in EvmWord value)
+        public void SetSlot(in PbtStorageTreeKey key, in EvmWord value)
         {
             if (!IsStorageKey(key.Bytes)) throw new ArgumentException("A complete storage key is required.", nameof(key));
             IWriteBatch storage = _batch.GetColumnBatch(PbtColumns.Storages);
@@ -377,7 +377,7 @@ public class PbtRocksDbPersistence(
                 storage.PutSpan(key.Bytes, encoded[..length], flags);
             }
             ValueHash256 addressHash = new(key.Bytes.Slice(1, ValueHash256.MemorySize));
-            if (!_stagedStorageKeys.TryGetValue(addressHash, out HashSet<PbtTreeKey>? keys))
+            if (!_stagedStorageKeys.TryGetValue(addressHash, out HashSet<PbtStorageTreeKey>? keys))
                 _stagedStorageKeys[addressHash] = keys = [];
             keys.Add(key);
         }
@@ -391,7 +391,7 @@ public class PbtRocksDbPersistence(
             ISortedKeyValueStore persisted = (ISortedKeyValueStore)db.GetColumnDb(PbtColumns.Storages);
             Span<byte> prefix = stackalloc byte[1 + ValueHash256.MemorySize];
             addressHash.Bytes.CopyTo(prefix[1..]);
-            Span<byte> upper = stackalloc byte[PbtTreeKey.MaxLength + 1];
+            Span<byte> upper = stackalloc byte[PbtStorageTreeKey.MaxLength + 1];
             ReadOnlySpan<byte> zones = [Eip8297KeyDerivation.AccountZone, Eip8297KeyDerivation.StorageZone];
             foreach (byte zone in zones)
             {
@@ -400,8 +400,8 @@ public class PbtRocksDbPersistence(
                 while (view.MoveNext()) storage.Set(view.CurrentKey, null, flags);
             }
             // The database view does not include earlier writes in this batch.
-            if (_stagedStorageKeys.Remove(addressHash, out HashSet<PbtTreeKey>? keys))
-                foreach (PbtTreeKey key in keys) storage.Set(key.Bytes, null, flags);
+            if (_stagedStorageKeys.Remove(addressHash, out HashSet<PbtStorageTreeKey>? keys))
+                foreach (PbtStorageTreeKey key in keys) storage.Set(key.Bytes, null, flags);
         }
 
         private static bool IsStorageKey(ReadOnlySpan<byte> key) =>

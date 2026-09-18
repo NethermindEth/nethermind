@@ -74,7 +74,7 @@ public class PbtPortableCodecTests
             key[0] = zone;
             byte[] value = new byte[32];
             random.NextBytes(value);
-            entries[index] = new(new PbtTreeKey(key), new ValueHash256(value));
+            entries[index] = new(new PbtStorageTreeKey(key), new ValueHash256(value));
             oracle.Insert(key, value);
         }
         Array.Sort(entries, (left, right) => left.Key.CompareTo(right.Key));
@@ -97,7 +97,7 @@ public class PbtPortableCodecTests
         key[0] = zone;
         byte[] value = new byte[32];
         value[32 - valueLength] = firstValue;
-        RebuildEntry entry = new(new PbtTreeKey(key), new ValueHash256(value));
+        RebuildEntry entry = new(new PbtStorageTreeKey(key), new ValueHash256(value));
         using MemoryStream stream = new();
         PbtSnapshotCodec.Write(stream, default, 1, [entry]);
         stream.Position = 0;
@@ -188,7 +188,7 @@ public class PbtPortableCodecTests
     [Test]
     public void Writers_validate_counts_order_zero_and_cancellation([Values("count", "duplicate", "zero", "cancel")] string failure)
     {
-        RebuildEntry entry = new(new PbtTreeKey(new byte[34]), new ValueHash256(Bytes.FromHexString("0x" + new string('0', 63) + "1")));
+        RebuildEntry entry = new(new PbtStorageTreeKey(new byte[34]), new ValueHash256(Bytes.FromHexString("0x" + new string('0', 63) + "1")));
         using MemoryStream destination = new();
         IEnumerable<RebuildEntry> entries = failure switch { "duplicate" => [entry, entry], "zero" => [entry with { Leaf = default }], _ => [entry] };
         CancellationToken token = new(failure == "cancel");

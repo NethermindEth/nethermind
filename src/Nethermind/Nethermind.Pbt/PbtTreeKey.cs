@@ -2,26 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 
 namespace Nethermind.Pbt;
 
-/// <summary>An immutable complete EIP-8297 tree key of any zone and length.</summary>
-/// <remarks>Keys larger than 66 bytes are unsupported. The default value is not a valid complete key. Storage-zone keys of the fixed 66-byte layout are also represented by <see cref="PbtStorageFullKey"/>.</remarks>
+/// <summary>An immutable account- or code-zone tree key of any length up to <see cref="PbtFullKey.KeyLength"/>.</summary>
+/// <remarks>Backed by a zero-padded <see cref="PbtFullKey"/> plus its logical length. The default value is not a valid complete key.</remarks>
 public readonly struct PbtTreeKey : IPbtKey<PbtTreeKey>
 {
-    public const int MaxLength = 66;
+    public const int MaxLength = PbtFullKey.KeyLength;
     /// <inheritdoc/>
     public static int Capacity => MaxLength;
     /// <inheritdoc/>
     public static PbtTreeKey Create(ReadOnlySpan<byte> bytes) => new(bytes);
-    private readonly KeyBytes _bytes;
-
-    [InlineArray(MaxLength)]
-    private struct KeyBytes
-    {
-        private byte _element0;
-    }
+    private readonly PbtFullKey _key;
 
     public PbtTreeKey(ReadOnlySpan<byte> bytes)
     {
@@ -30,20 +23,27 @@ public readonly struct PbtTreeKey : IPbtKey<PbtTreeKey>
             throw new ArgumentOutOfRangeException(nameof(bytes), $"Key length must be between 1 and {MaxLength} bytes.");
         }
 
-        bytes.CopyTo(_bytes);
+        _key = PbtFullKey.ZeroPad(bytes);
         Length = bytes.Length;
     }
 
-    /// <summary>Widens a key without changing its bytes.</summary>
-    public static explicit operator PbtTreeKey(in PbtFullKey key) => key.Length == 0 ? default : new(key.Bytes);
+    private PbtTreeKey(in PbtFullKey key)
+    {
+        _key = key;
+        Length = PbtFullKey.KeyLength;
+    }
 
-    /// <summary>Narrows a key, rejecting keys longer than 34 bytes.</summary>
-    public static explicit operator PbtFullKey(in PbtTreeKey key) => key.Length == 0 ? default : new(key.Bytes);
+    /// <summary>Widens a key without changing its bytes.</summary>
+    public static explicit operator PbtTreeKey(in PbtFullKey key) => new(key);
+
+    /// <summary>Narrows a key, rejecting any length other than <see cref="PbtFullKey.KeyLength"/>.</summary>
+    public static explicit operator PbtFullKey(in PbtTreeKey key) =>
+        key.Length == PbtFullKey.KeyLength ? key._key : throw new ArgumentOutOfRangeException(nameof(key));
 
     public int Length { get; }
     public int BitLength => Length * 8;
     [UnscopedRef]
-    public ReadOnlySpan<byte> Bytes => _bytes[..Length];
+    public ReadOnlySpan<byte> Bytes => _key.Bytes[..Length];
 
     public int GetBit(int bitIndex) => PbtKeyOperations.GetBit(Bytes, bitIndex);
 

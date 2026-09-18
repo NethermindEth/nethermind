@@ -6,18 +6,23 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Pbt;
 
-/// <summary>An immutable complete EIP-8297 tree key.</summary>
-/// <remarks>Keys larger than 34 bytes are unsupported. The default value is not a valid complete key.</remarks>
+/// <summary>An immutable complete EIP-8297 account- or code-zone key: zone byte, 32-byte hash and sub-index byte.</summary>
+/// <remarks>
+/// Every key is exactly <see cref="KeyLength"/> bytes, so <see cref="TrieUpdater"/> skips its variable-length
+/// terminal handling. Shorter account-zone paths are represented by <see cref="PbtTreeKey"/>.
+/// </remarks>
 public readonly struct PbtFullKey : IPbtKey<PbtFullKey>
 {
-    public const int MaxLength = 34;
+    public const int KeyLength = Eip8297KeyDerivation.AccountKeyLength;
     /// <inheritdoc/>
-    public static int Capacity => MaxLength;
+    public static bool IsFixedLength => true;
+    /// <inheritdoc/>
+    public static int Capacity => KeyLength;
     /// <inheritdoc/>
     public static PbtFullKey Create(ReadOnlySpan<byte> bytes) => new(bytes);
     private readonly KeyBytes _bytes;
 
-    [InlineArray(MaxLength)]
+    [InlineArray(KeyLength)]
     private struct KeyBytes
     {
         private byte _element0;
@@ -25,24 +30,27 @@ public readonly struct PbtFullKey : IPbtKey<PbtFullKey>
 
     public PbtFullKey(ReadOnlySpan<byte> bytes)
     {
-        if (bytes.Length is < 1 or > MaxLength)
-        {
-            throw new ArgumentOutOfRangeException(nameof(bytes), $"Key length must be between 1 and {MaxLength} bytes.");
-        }
-
+        ArgumentOutOfRangeException.ThrowIfNotEqual(bytes.Length, KeyLength, nameof(bytes));
         bytes.CopyTo(_bytes);
-        Length = bytes.Length;
     }
 
-    public int Length { get; }
-    public int BitLength => Length * 8;
+    /// <summary>Creates a key from a prefix of at most <see cref="KeyLength"/> bytes, leaving the tail zero.</summary>
+    internal static PbtFullKey ZeroPad(ReadOnlySpan<byte> prefix)
+    {
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(prefix.Length, KeyLength, nameof(prefix));
+        Span<byte> padded = stackalloc byte[KeyLength];
+        prefix.CopyTo(padded);
+        return new(padded);
+    }
+
+    public int Length => KeyLength;
+    public int BitLength => KeyLength * 8;
     [UnscopedRef]
-    public ReadOnlySpan<byte> Bytes => _bytes[..Length];
+    public ReadOnlySpan<byte> Bytes => _bytes;
 
     public int GetBit(int bitIndex) => PbtKeyOperations.GetBit(Bytes, bitIndex);
 
-    public bool IsPrefixOf(in PbtFullKey other) =>
-        Length <= other.Length && other.Bytes[..Length].SequenceEqual(Bytes);
+    public bool IsPrefixOf(in PbtFullKey other) => Equals(other);
 
     public int FirstDifferingBit(in PbtFullKey other, int startBit = 0) =>
         PbtKeyOperations.FirstDifferingBit(Bytes, other.Bytes, startBit);

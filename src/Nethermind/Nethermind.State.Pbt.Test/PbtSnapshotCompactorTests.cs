@@ -31,7 +31,7 @@ public class PbtSnapshotCompactorTests
         where TPath : struct, IPbtNodePath<TPath>
         where TAlternatePath : struct, IPbtNodePath<TAlternatePath>
     {
-        PbtTreeKey key = PbtStateKey.Storage(TestItem.AddressA, 64);
+        PbtStorageTreeKey key = PbtStateKey.Storage(TestItem.AddressA, 64);
         TrackingMemoryProvider memoryProvider = new();
         PbtSnapshotContent older = new();
         PbtSnapshotContent newer = new();
@@ -86,7 +86,7 @@ public class PbtSnapshotCompactorTests
 
         RefCountingMemory CreateStorageLeafGroup(ValueHash256 value)
         {
-            PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtTreeKey.MaxLength], groupKey);
+            PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageTreeKey.MaxLength], groupKey);
             using PbtNodeGroupWriter<TPath> writer = new(groupKey.BitDepth, memoryProvider);
             writer.Write(path, PbtFourLevelGroupGeometry.RootPosition, PbtNodeCodec.EncodeLeaf(key, value.Bytes));
             return writer.Detach()!;
@@ -100,9 +100,9 @@ public class PbtSnapshotCompactorTests
     public void Compact_preserves_clear_ordering_and_whole_typed_values(uint slot, bool clearLast)
     {
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
-        PbtTreeKey key = PbtStateKey.Storage(TestItem.AddressA, slot);
-        PbtTreeKey otherSlot = PbtStateKey.Storage(TestItem.AddressA, slot + 1);
-        PbtTreeKey otherAddress = PbtStateKey.Storage(TestItem.AddressB, slot);
+        PbtStorageTreeKey key = PbtStateKey.Storage(TestItem.AddressA, slot);
+        PbtStorageTreeKey otherSlot = PbtStateKey.Storage(TestItem.AddressA, slot + 1);
+        PbtStorageTreeKey otherAddress = PbtStateKey.Storage(TestItem.AddressB, slot);
         EvmWord original = EvmWordSlot.FromStripped(Bytes.FromHexString("01"));
         EvmWord replacement = EvmWordSlot.FromStripped(Bytes.FromHexString("02"));
         CodeInfo code = new(Bytes.FromHexString("6001600055"));

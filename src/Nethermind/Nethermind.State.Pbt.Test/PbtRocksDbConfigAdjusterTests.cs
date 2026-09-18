@@ -157,7 +157,7 @@ public class PbtRocksDbConfigAdjusterTests
         ValueHash256 treeRoot = TestItem.KeccakD.ValueHash256;
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
         Account account = new(7, 9, TestItem.KeccakB, TestItem.KeccakC);
-        PbtTreeKey storageKey = PbtStateKey.Storage(TestItem.AddressA, 64);
+        PbtStorageTreeKey storageKey = PbtStateKey.Storage(TestItem.AddressA, 64);
         EvmWord slot = EvmWordSlot.FromStripped(TestItem.KeccakD.Bytes);
         CodeInfo code = new(TestItem.KeccakA.Bytes.ToArray());
 

@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 
@@ -23,10 +24,10 @@ internal sealed class PbtTreeHarness : IDisposable
 
     public ValueHash256 ApplyBatch(IEnumerable<(byte[] Key, byte[]? Value)> writes, TrieUpdaterMetrics? metrics = null)
     {
-        using PbtWriteBatchBuilder<PbtTreeKey> batch = new(0);
+        using PbtWriteBatchBuilder<PbtStorageTreeKey> batch = new(0);
         foreach ((byte[] key, byte[]? value) in writes)
         {
-            PbtTreeKey fullKey = new(key);
+            PbtStorageTreeKey fullKey = new(key);
             if (value is null) batch.Delete(fullKey);
             else batch.Set(fullKey, new ValueHash256(value));
         }
@@ -69,21 +70,21 @@ internal static class PbtStoreTestExtensions
     internal static RefCountingMemory? GetNodeGroup<TPath>(this IPbtStore store, TPath groupKey, in ValueHash256 groupHash)
         where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtTreeKey.MaxLength], groupKey);
+        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageTreeKey.MaxLength], groupKey);
         return store.GetNodeGroup(cursor, groupHash);
     }
 
     internal static void SetNodeGroup<TPath>(this IPbtStore store, TPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
         where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtTreeKey.MaxLength], groupKey);
+        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageTreeKey.MaxLength], groupKey);
         store.SetNodeGroup(cursor, groupHash, payload);
     }
 
     internal static PbtNodeGroupReader ReadGroup<TPath>(TPath groupKey, ReadOnlySpan<byte> payload)
         where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtTreeKey.MaxLength], groupKey);
+        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageTreeKey.MaxLength], groupKey);
         return new PbtNodeGroupReader(cursor, payload);
     }
 
@@ -156,6 +157,15 @@ internal static class PbtStoreTestExtensions
         column == PbtColumns.Metadata
             ? PbtRocksDbPersistence.RootNodeGroupKey.ToArray()
             : PbtNodeGroupKey.Encode(layout, column, path, new byte[PbtNodeGroupKey.MaxLength]).ToArray();
+
+    /// <summary>Zero-pads a zone prefix to the fixed <see cref="PbtStorageFullKey"/> or <see cref="PbtFullKey"/> length the partition fold requires.</summary>
+    internal static byte[] ZoneKey(string hexPrefix)
+    {
+        byte[] prefix = Bytes.FromHexString(hexPrefix);
+        byte[] key = new byte[prefix[0] == Eip8297KeyDerivation.StorageZone ? PbtStorageFullKey.KeyLength : PbtFullKey.KeyLength];
+        prefix.CopyTo(key, 0);
+        return key;
+    }
 
     internal static PbtPartitionBatches PreparePartitions(IEnumerable<(byte[] Key, byte[]? Value)> changes)
     {

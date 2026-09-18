@@ -112,11 +112,11 @@ public class PbtImageVerifierTests
         Address writer = new("0x1000000000000000000000000000000000000001");
         Address authority = new("0x2b5ad5c4795c026514f8317c7a215e218dccd6cf");
         Address history = new("0x0000f90827f1c53a10cb7a02335b175320002935");
-        PbtTreeKey basic = (PbtTreeKey)PbtStateKey.Account(writer, 0);
-        PbtTreeKey hash = (PbtTreeKey)PbtStateKey.Account(writer, 1);
-        PbtTreeKey chunk = (PbtTreeKey)PbtStateKey.Code(writer, ValueKeccak.Compute(Bytes.FromHexString("60003560005500")), 0);
-        PbtTreeKey delegation = (PbtTreeKey)PbtStateKey.Account(authority, 2);
-        PbtTreeKey storageKey = PbtStateKey.Storage(history, UInt256.Zero);
+        PbtStorageTreeKey basic = (PbtStorageTreeKey)PbtStateKey.Account(writer, 0);
+        PbtStorageTreeKey hash = (PbtStorageTreeKey)PbtStateKey.Account(writer, 1);
+        PbtStorageTreeKey chunk = (PbtStorageTreeKey)PbtStateKey.Code(writer, ValueKeccak.Compute(Bytes.FromHexString("60003560005500")), 0);
+        PbtStorageTreeKey delegation = (PbtStorageTreeKey)PbtStateKey.Account(authority, 2);
+        PbtStorageTreeKey storageKey = PbtStateKey.Storage(history, UInt256.Zero);
         switch (corruption)
         {
             case "code": Mutate(chunk, 1); break;
@@ -134,9 +134,9 @@ public class PbtImageVerifierTests
             case "missing-code": Remove(chunk); break;
             case "delegation-prefix": Mutate(delegation, 0); break;
             case "delegation-padding": Mutate(delegation, 31); break;
-            case "delegation-size": Mutate((PbtTreeKey)PbtStateKey.Account(authority, 0), 7); break;
-            case "delegation-code-hash": leaves.Add(new((PbtTreeKey)PbtStateKey.Account(authority, 1), Keccak.OfAnEmptyString.ValueHash256)); break;
-            case "orphan": leaves.Add(new((PbtTreeKey)PbtStateKey.Account(Address.Zero, 3), Keccak.OfAnEmptyString.ValueHash256)); break;
+            case "delegation-size": Mutate((PbtStorageTreeKey)PbtStateKey.Account(authority, 0), 7); break;
+            case "delegation-code-hash": leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(authority, 1), Keccak.OfAnEmptyString.ValueHash256)); break;
+            case "orphan": leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(Address.Zero, 3), Keccak.OfAnEmptyString.ValueHash256)); break;
             case "missing-account-preimage": accounts.RemoveAt(accounts.FindIndex(account => account.Address == writer)); break;
             case "missing-slot-preimage": ChangeSlot(remove: true); break;
             case "wrong-slot-preimage": ChangeSlot(remove: false); break;
@@ -164,7 +164,7 @@ public class PbtImageVerifierTests
             Assert.That(snapshot.CanRead && preimages.CanRead, Is.True);
         }
 
-        void Mutate(PbtTreeKey key, int offset)
+        void Mutate(PbtStorageTreeKey key, int offset)
         {
             int index = leaves.FindIndex(entry => entry.Key.Equals(key));
             Assert.That(index, Is.GreaterThanOrEqualTo(0), corruption);
@@ -173,7 +173,7 @@ public class PbtImageVerifierTests
             leaves[index] = new(key, new ValueHash256(bytes));
         }
 
-        void Remove(PbtTreeKey key) => Assert.That(leaves.RemoveAll(entry => entry.Key.Equals(key)), Is.EqualTo(1));
+        void Remove(PbtStorageTreeKey key) => Assert.That(leaves.RemoveAll(entry => entry.Key.Equals(key)), Is.EqualTo(1));
 
         void ChangeSlot(bool remove)
         {

@@ -148,7 +148,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
 
     private static void ScanGroup<TPath>(TPath groupPath, ReadOnlySpan<byte> value, PbtScanReport.NodeGroupStats stats) where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtTraversalPath traversalPath = PbtTraversalPath.FromPath(stackalloc byte[PbtTreeKey.MaxLength], groupPath);
+        PbtTraversalPath traversalPath = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageTreeKey.MaxLength], groupPath);
         PbtNodeGroupReader reader = new(traversalPath, value);
         stats.GroupsByDepth[groupPath.BitDepth]++;
         stats.PayloadBytesByDepth[groupPath.BitDepth] += value.Length;
@@ -211,7 +211,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
                 bounds.Add(boundary);
             }
         }
-        byte[] upper = new byte[5 + PbtTreeKey.MaxLength];
+        byte[] upper = new byte[5 + PbtStorageTreeKey.MaxLength];
         Array.Fill(upper, byte.MaxValue);
         bounds.Add(upper);
         return bounds.ToArray();

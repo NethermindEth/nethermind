@@ -25,7 +25,7 @@ internal static class PbtTestLeaves
     {
         foreach ((PbtFullKey key, ValueHash256 leaf) in PbtFlatState.AccountLeaves(
             PbtKeyDerivation.AddressKeyHash(address), account, code is { Length: > 0 } ? new CodeInfo(code) : null))
-            into.Add(new RebuildEntry((PbtTreeKey)key, leaf));
+            into.Add(new RebuildEntry((PbtStorageTreeKey)key, leaf));
     }
 
     public static void AddSlot(List<RebuildEntry> into, Address address, in UInt256 slot, in UInt256 value) =>

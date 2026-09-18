@@ -335,7 +335,7 @@ public readonly ref struct PbtNodeGroupReader
     [System.Diagnostics.Conditional("DEBUG")]
     internal static void ValidateLeafPath<TPath>(TPath groupKey, int position, ReadOnlySpan<byte> encoding) where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtTreeKey.MaxLength], groupKey);
+        PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageTreeKey.MaxLength], groupKey);
         ValidateLeafPath(path, position, encoding);
     }
 

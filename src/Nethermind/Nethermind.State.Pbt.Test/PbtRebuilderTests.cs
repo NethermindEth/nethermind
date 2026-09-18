@@ -113,11 +113,11 @@ public class PbtRebuilderTests
         using PbtNodeGroupStore incrementalStore = new();
         ValueHash256 incrementalRoot = default;
         using IPbtPersistence.IReader reader = target.CreateReader();
-        foreach ((PbtTreeKey key, ValueHash256 value) in leaves)
+        foreach ((PbtStorageTreeKey key, ValueHash256 value) in leaves)
         {
-            using PbtWriteBatchBuilder<PbtTreeKey> incrementalChange = new(0);
+            using PbtWriteBatchBuilder<PbtStorageTreeKey> incrementalChange = new(0);
             incrementalChange.Set(key, value);
-            using PbtWriteBatch<PbtTreeKey> preparedChange = incrementalChange.Build();
+            using PbtWriteBatch<PbtStorageTreeKey> preparedChange = incrementalChange.Build();
             incrementalRoot = TrieUpdater.UpdateRoot(incrementalStore, incrementalRoot, preparedChange);
         }
 
@@ -270,16 +270,16 @@ public class PbtRebuilderTests
         {
             for (int index = 0; index < 2; index++)
             {
-                PbtTreeKey key = (PbtTreeKey)PbtStateKey.Code(TestItem.AddressA,
+                PbtStorageTreeKey key = (PbtStorageTreeKey)PbtStateKey.Code(TestItem.AddressA,
                     TestItem.KeccakB.ValueHash256, PbtKeyDerivation.StemSubtreeWidth + index);
                 ArrayPoolList<RebuildEntry> chunk = new(windowSize);
                 for (int repeat = 0; repeat < windowSize; repeat++) chunk.Add(new(key, TestItem.KeccakC.ValueHash256));
                 await channel.Writer.WriteAsync(chunk);
                 await source.Drained[index].Task.WaitAsync(TimeSpan.FromSeconds(10));
 
-                using PbtWriteBatchBuilder<PbtTreeKey> changes = new(0);
+                using PbtWriteBatchBuilder<PbtStorageTreeKey> changes = new(0);
                 changes.Set(key, TestItem.KeccakC.ValueHash256);
-                using PbtWriteBatch<PbtTreeKey> prepared = changes.Build();
+                using PbtWriteBatch<PbtStorageTreeKey> prepared = changes.Build();
                 expectedRoot = TrieUpdater.UpdateRoot(expectedStore, expectedRoot, prepared);
                 using IPbtPersistence.IReader reader = target.CreateReader();
                 using (Assert.EnterMultipleScope())
@@ -317,7 +317,7 @@ public class PbtRebuilderTests
         using CancellationTokenSource cancellation = new();
         Task<ValueHash256> rebuilding = new PbtRebuilder(target, LimboLogs.Instance)
             .Rebuild(source, new StateId(7, TestItem.KeccakA.ValueHash256), cancellation.Token, 1);
-        ArrayPoolList<RebuildEntry> chunk = new(1) { new((PbtTreeKey)PbtStateKey.Account(TestItem.AddressA, 0), TestItem.KeccakB.ValueHash256) };
+        ArrayPoolList<RebuildEntry> chunk = new(1) { new((PbtStorageTreeKey)PbtStateKey.Account(TestItem.AddressA, 0), TestItem.KeccakB.ValueHash256) };
         try
         {
             await channel.Writer.WriteAsync(chunk);

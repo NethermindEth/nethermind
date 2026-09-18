@@ -103,7 +103,7 @@ public class PbtMetricsTests
     {
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
         ValueHash256 codeHash = TestItem.KeccakA.ValueHash256;
-        PbtTreeKey storageKey = PbtStateKey.Storage(TestItem.AddressA, 1);
+        PbtStorageTreeKey storageKey = PbtStateKey.Storage(TestItem.AddressA, 1);
         PbtNodePath groupKey = new(Bytes.FromHexString(groupPath.PadRight((groupPath.Length + 1) / 2 * 2, '0')), groupPath.Length * 4);
         string partition = groupPath switch { "01" => "code", "f" or "ff" => "storage", _ => "account" };
         Account account = new(1, 100);

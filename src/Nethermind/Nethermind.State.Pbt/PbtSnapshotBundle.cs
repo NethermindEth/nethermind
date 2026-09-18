@@ -57,10 +57,10 @@ public sealed class PbtSnapshotBundle(
         else throw new ArgumentException("A canonical account or code key is required.", nameof(key));
     }
 
-    private void SetPbtLeaf(in PbtTreeKey key, ValueHash256? value)
+    private void SetPbtLeaf(in PbtStorageTreeKey key, ValueHash256? value)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        if (PbtWriteBatchSet<PbtTreeKey>.PartitionOf(key) == (int)PbtPartition.Storage) _storageBatch.SetLeaf((PbtStorageFullKey)key, value);
+        if (PbtWriteBatchSet<PbtStorageTreeKey>.PartitionOf(key) == (int)PbtPartition.Storage) _storageBatch.SetLeaf((PbtStorageFullKey)key, value);
         else SetPbtLeaf((PbtFullKey)key, value);
     }
 
@@ -122,16 +122,16 @@ public sealed class PbtSnapshotBundle(
         return readOnlyBundle.GetCodeReference(codeHash);
     }
 
-    internal IEnumerable<KeyValuePair<PbtTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressFilter = null)
+    internal IEnumerable<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressFilter = null)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        SortedDictionary<PbtTreeKey, EvmWord> changes = [];
+        SortedDictionary<PbtStorageTreeKey, EvmWord> changes = [];
         HashSet<ValueHash256> clearedAddresses = [];
         foreach (PbtSnapshot snapshot in snapshots) ApplyChanges(snapshot.Content);
         ApplyChanges(WriteBuffer);
-        using IEnumerator<KeyValuePair<PbtTreeKey, EvmWord>> changed = changes.GetEnumerator();
+        using IEnumerator<KeyValuePair<PbtStorageTreeKey, EvmWord>> changed = changes.GetEnumerator();
         bool hasChange = changed.MoveNext();
-        foreach (KeyValuePair<PbtTreeKey, EvmWord> persisted in readOnlyBundle.EnumerateStorage(addressFilter))
+        foreach (KeyValuePair<PbtStorageTreeKey, EvmWord> persisted in readOnlyBundle.EnumerateStorage(addressFilter))
         {
             while (hasChange && changed.Current.Key.CompareTo(persisted.Key) < 0)
             {
@@ -174,7 +174,7 @@ public sealed class PbtSnapshotBundle(
     /// <inheritdoc cref="GetSlot(Address, in UInt256)"/>
     public EvmWord GetSlot(Address address, in ValueHash256 addressHash, in UInt256 slot)
     {
-        HashedKey<PbtTreeKey> key = PbtStateKey.Storage(address, addressHash, slot);
+        HashedKey<PbtStorageTreeKey> key = PbtStateKey.Storage(address, addressHash, slot);
         if (WriteBuffer.Storages.TryGetValue(key, out EvmWord value)) return value;
         if (WriteBuffer.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return default;
         for (int index = snapshots.Count - 1; index >= 0; index--)
@@ -279,7 +279,7 @@ public sealed class PbtSnapshotBundle(
 
     public void SetSlot(Address address, in UInt256 slot, in EvmWord value)
     {
-        PbtTreeKey key = PbtStateKey.Storage(address, slot);
+        PbtStorageTreeKey key = PbtStateKey.Storage(address, slot);
         SetPbtLeaf(key, EvmWordSlot.IsZero(value) ? null : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value)));
         WriteBuffer.Storages[key] = value;
     }
@@ -287,7 +287,7 @@ public sealed class PbtSnapshotBundle(
     public void SelfDestruct(Address address)
     {
         ValueHash256 hash = PbtKeyDerivation.AddressKeyHash(address);
-        foreach ((PbtTreeKey key, _) in EnumerateStorage(hash)) SetPbtLeaf(key, null);
+        foreach ((PbtStorageTreeKey key, _) in EnumerateStorage(hash)) SetPbtLeaf(key, null);
         WriteBuffer.ClearStorage(hash);
     }
 

@@ -7,4 +7,4 @@ using Nethermind.Pbt;
 namespace Nethermind.State.Pbt;
 
 /// <summary>One complete-key leaf record to include in a rebuilt EIP-8297 tree.</summary>
-public readonly record struct RebuildEntry(PbtTreeKey Key, ValueHash256 Leaf);
+public readonly record struct RebuildEntry(PbtStorageTreeKey Key, ValueHash256 Leaf);

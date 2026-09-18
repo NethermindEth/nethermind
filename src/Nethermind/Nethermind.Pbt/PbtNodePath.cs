@@ -7,17 +7,17 @@ namespace Nethermind.Pbt;
 /// <remarks>Paths are limited to 272 bits.</remarks>
 public readonly struct PbtNodePath : IPbtNodePath<PbtNodePath>, IEquatable<PbtNodePath>, IComparable<PbtNodePath>
 {
-    private readonly PbtFullKey _path;
+    private readonly PbtTreeKey _path;
 
     /// <inheritdoc/>
-    public static int MaxBitDepth => PbtFullKey.MaxLength * 8;
+    public static int MaxBitDepth => PbtTreeKey.MaxLength * 8;
     /// <inheritdoc/>
     public static PbtNodePath Create(ReadOnlySpan<byte> path, int bitDepth) => new(path, bitDepth);
 
     public PbtNodePath(ReadOnlySpan<byte> path, int bitDepth)
     {
         PbtNodePathOperations.Validate(path, bitDepth, MaxBitDepth);
-        _path = path.IsEmpty ? default : new PbtFullKey(path);
+        _path = path.IsEmpty ? default : new PbtTreeKey(path);
         BitDepth = bitDepth;
     }
 
@@ -48,7 +48,7 @@ public readonly struct PbtNodePath : IPbtNodePath<PbtNodePath>, IEquatable<PbtNo
     public bool MatchesPrefix<TOther>(TOther other, int bitCount) where TOther : struct, IPbtNodePath<TOther> =>
         PbtNodePathOperations.MatchesPrefix(this, other, bitCount);
 
-    internal static PbtNodePath FromKey(PbtFullKey key, int bitDepth) => PbtNodePathOperations.FromKey<PbtNodePath>(key.Bytes, bitDepth);
+    internal static PbtNodePath FromKey(in PbtTreeKey key, int bitDepth) => PbtNodePathOperations.FromKey<PbtNodePath>(key.Bytes, bitDepth);
 
     /// <inheritdoc/>
     public PbtNodePath Append(CompressedPrefix prefix, int direction) =>

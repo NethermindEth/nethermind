@@ -133,14 +133,14 @@ public class PbtResourcePoolTests
     [TestCase(true)]
     public void Returned_shards_are_empty_and_not_shared_with_the_previous_builder(bool dispose)
     {
-        using PbtWriteBatchBuilder<PbtTreeKey> original = new(0);
-        PbtTreeKey key = new(Bytes.FromHexString("1234"));
+        using PbtWriteBatchBuilder<PbtStorageTreeKey> original = new(0);
+        PbtStorageTreeKey key = new(Bytes.FromHexString("1234"));
         original.Set(key, TestItem.KeccakA.ValueHash256);
         if (dispose) original.Dispose();
         else original.Reset();
 
-        using PbtWriteBatchBuilder<PbtTreeKey> replacement = new(0);
-        PbtTreeKey replacementKey = new(Bytes.FromHexString("1235"));
+        using PbtWriteBatchBuilder<PbtStorageTreeKey> replacement = new(0);
+        PbtStorageTreeKey replacementKey = new(Bytes.FromHexString("1235"));
         replacement.Set(replacementKey, TestItem.KeccakB.ValueHash256);
         original.Reset();
         original.Dispose();
@@ -150,11 +150,11 @@ public class PbtResourcePoolTests
         {
             Assert.That(original.Leaves, Is.EquivalentTo(new[]
             {
-                new KeyValuePair<PbtTreeKey, ValueHash256?>(key, TestItem.KeccakC.ValueHash256)
+                new KeyValuePair<PbtStorageTreeKey, ValueHash256?>(key, TestItem.KeccakC.ValueHash256)
             }));
             Assert.That(replacement.Leaves, Is.EquivalentTo(new[]
             {
-                new KeyValuePair<PbtTreeKey, ValueHash256?>(replacementKey, TestItem.KeccakB.ValueHash256)
+                new KeyValuePair<PbtStorageTreeKey, ValueHash256?>(replacementKey, TestItem.KeccakB.ValueHash256)
             }));
         }
     }

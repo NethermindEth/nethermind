@@ -21,7 +21,7 @@ internal static class PbtSnapshotCodec
 
     public static IEnumerable<RebuildEntry> ReadLeaves(Stream source, ulong count, CancellationToken cancellationToken = default)
     {
-        PbtTreeKey previous = default;
+        PbtStorageTreeKey previous = default;
         byte[] buffer = new byte[102];
         for (ulong index = 0; index < count; index++)
         {
@@ -52,7 +52,7 @@ internal static class PbtSnapshotCodec
         BinaryPrimitives.WriteUInt64BigEndian(header[32..], count);
         destination.Write(header);
         Span<byte> record = stackalloc byte[104];
-        PbtTreeKey previous = default;
+        PbtStorageTreeKey previous = default;
         ulong written = 0;
         foreach (RebuildEntry entry in leaves)
         {
@@ -93,7 +93,7 @@ internal static class PbtSnapshotCodec
         Span<byte> padded = stackalloc byte[32];
         padded.Clear();
         value.CopyTo(padded[(32 - value.Length)..]);
-        return new(new PbtTreeKey(key), new ValueHash256(padded));
+        return new(new PbtStorageTreeKey(key), new ValueHash256(padded));
     }
 
     private static ReadOnlySpan<byte> ReadString(ref ReadOnlySpan<byte> payload)
@@ -113,7 +113,7 @@ internal static class PbtSnapshotCodec
         return result;
     }
 
-    private static void Validate(RebuildEntry entry, in PbtTreeKey previous)
+    private static void Validate(RebuildEntry entry, in PbtStorageTreeKey previous)
     {
         ValidateKey(entry.Key.Bytes);
         if (entry.Leaf == default || (previous.Length != 0 && previous.CompareTo(entry.Key) >= 0))

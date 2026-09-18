@@ -43,7 +43,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
         ArgumentOutOfRangeException.ThrowIfNegative(windowSize);
         if (windowSize == 0) windowSize = DefaultWindowSize;
 
-        using PbtWriteBatchBuilder<PbtTreeKey> changes = new(0);
+        using PbtWriteBatchBuilder<PbtStorageTreeKey> changes = new(0);
         Dictionary<ValueHash256, ulong> codeReferences = [];
         ValueHash256 root = default;
         int windowCount = 0;
@@ -94,7 +94,7 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
             cancellationToken.ThrowIfCancellationRequested();
             using (IPbtPersistence.IReader reader = target.CreateReader())
             using (IPbtPersistence.IWriteBatch stagingBatch = target.CreateStagingWriteBatch(stagingWriteFlags))
-            using (PbtWriteBatch<PbtTreeKey> prepared = changes.Build())
+            using (PbtWriteBatch<PbtStorageTreeKey> prepared = changes.Build())
             {
                 root = TrieUpdater.UpdateRoot(new WindowStore(reader, stagingBatch, cancellationToken), root, prepared);
                 foreach ((ValueHash256 codeHash, ulong count) in codeReferences)

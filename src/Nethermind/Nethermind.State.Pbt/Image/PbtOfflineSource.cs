@@ -58,7 +58,7 @@ internal static class PbtOfflineSource
                     code = new CodeInfo(bytes);
                 }
                 foreach ((PbtFullKey key, ValueHash256 value) in PbtFlatState.AccountLeaves(PbtKeyDerivation.AddressKeyHash(address), account, code))
-                    AddLeaf((PbtTreeKey)key, value);
+                    AddLeaf((PbtStorageTreeKey)key, value);
                 ValueHash256 addressHash = ValueKeccak.Compute(address.Bytes);
                 uint count = 0;
                 using (FlatPersistence.IFlatIterator slots = source.CreateStorageIterator(accountKey, default, ValueKeccak.MaxValue))
@@ -109,7 +109,7 @@ internal static class PbtOfflineSource
                 }
             }
 
-            void AddLeaf(in PbtTreeKey key, ValueHash256 value)
+            void AddLeaf(in PbtStorageTreeKey key, ValueHash256 value)
             {
                 byte[] record = new byte[99];
                 key.Bytes.CopyTo(record);
@@ -123,7 +123,7 @@ internal static class PbtOfflineSource
                 RebuildEntry? previous = null;
                 foreach (byte[] record in leaves.Read())
                 {
-                    RebuildEntry entry = new(new PbtTreeKey(record.AsSpan(0, record[66])), new ValueHash256(record.AsSpan(67)));
+                    RebuildEntry entry = new(new PbtStorageTreeKey(record.AsSpan(0, record[66])), new ValueHash256(record.AsSpan(67)));
                     if (previous is { } prior && prior.Key == entry.Key)
                     {
                         if (prior.Leaf != entry.Leaf) throw new InvalidDataException("Conflicting source leaves.");

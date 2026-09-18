@@ -403,7 +403,7 @@ public class ImportPbtFromPreimageFlatTests
         using (IPbtPersistence.IWriteBatch staging = pbtTarget.CreateStagingWriteBatch(WriteFlags.None))
         {
             staging.SetAccount(PbtKeyDerivation.AddressKeyHash(TestItem.AddressC), new Account(1, 2));
-            PbtFullKey staleNodeKey = new([0x80]);
+            PbtTreeKey staleNodeKey = new([0x80]);
             PbtNodePath groupKey = new([], 0);
             using PbtNodeGroupStore staleNodes = new();
             staleNodes.SetNode(groupKey, PbtNodeCodec.EncodeLeaf(staleNodeKey, TestItem.KeccakA.Bytes));
@@ -411,7 +411,7 @@ public class ImportPbtFromPreimageFlatTests
             staging.SetNodeGroup(groupKey, payload);
             staging.Commit();
         }
-        byte[] maximumLengthKey = new byte[PbtTreeKey.MaxLength];
+        byte[] maximumLengthKey = new byte[PbtStorageTreeKey.MaxLength];
         maximumLengthKey.AsSpan().Fill(0xFF);
         pbtDb.GetColumnDb(PbtColumns.Storages)[maximumLengthKey] = TestItem.KeccakA.Bytes.ToArray();
 
@@ -511,11 +511,11 @@ public class ImportPbtFromPreimageFlatTests
             if (depth % 8 != 0) pathBytes[^1] &= 0xF0;
             PbtStorageNodePath group = PbtStorageNodePath.Create(pathBytes, depth);
             PbtStorageNodePath node = depth == 0 ? group : PbtFourLevelGroupGeometry.PathOf(group, 0);
-            byte[] keyBytes = new byte[PbtTreeKey.MaxLength];
+            byte[] keyBytes = new byte[PbtStorageTreeKey.MaxLength];
             node.CopyBitsTo(0, keyBytes, 0, node.BitDepth);
             byte[] encoding = depth == 0
                 ? PbtNodeCodec.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256)
-                : PbtNodeCodec.EncodeLeaf(new PbtTreeKey(keyBytes), TestItem.KeccakA.Bytes);
+                : PbtNodeCodec.EncodeLeaf(new PbtStorageTreeKey(keyBytes), TestItem.KeccakA.Bytes);
             BufferWriter writer = new(new byte[1024]);
             PbtNodeGroupCodec.Encode(ref writer, group, new[] { new PbtNodeRecord(node, encoding) });
             Add(column, group.ToStorageKey(column, PbtNodeGroupKeyLayout.Padded), writer.WrittenSpan.ToArray());
@@ -887,7 +887,7 @@ public class ImportPbtFromPreimageFlatTests
                         storageKey[^1] = zone == 0 ? (byte)64 : (byte)0xFF;
                         if (zone == 0xFF) storageKey.AsSpan(33).Fill(0xFF);
                         ValueHash256 value = TestItem.KeccakA.ValueHash256;
-                        staging.SetSlot(new PbtTreeKey(storageKey), EvmWordSlot.FromStripped(value.Bytes));
+                        staging.SetSlot(new PbtStorageTreeKey(storageKey), EvmWordSlot.FromStripped(value.Bytes));
                         expectedRows.Add($"{PbtColumns.Storages}:{Convert.ToHexString(storageKey)}");
                         model[Convert.ToHexString(storageKey)] = value.Bytes.ToArray();
                     }

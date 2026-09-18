@@ -9,7 +9,7 @@ namespace Nethermind.Pbt;
 /// <summary>An immutable complete EIP-8297 storage-zone key: zone byte, address hash, tree-index hash and slot byte.</summary>
 /// <remarks>
 /// Every key is exactly <see cref="KeyLength"/> bytes, so <see cref="TrieUpdater"/> skips its variable-length
-/// terminal handling. Header slots derive account-zone keys instead; see <see cref="PbtTreeKey"/> for those.
+/// terminal handling. Header slots derive account-zone keys instead; see <see cref="PbtStorageTreeKey"/> for those.
 /// </remarks>
 public readonly struct PbtStorageFullKey : IPbtKey<PbtStorageFullKey>
 {
@@ -35,10 +35,10 @@ public readonly struct PbtStorageFullKey : IPbtKey<PbtStorageFullKey>
     }
 
     /// <summary>Narrows a key, rejecting any length other than <see cref="KeyLength"/>.</summary>
-    public static explicit operator PbtStorageFullKey(in PbtTreeKey key) => new(key.Bytes);
+    public static explicit operator PbtStorageFullKey(in PbtStorageTreeKey key) => new(key.Bytes);
 
     /// <summary>Widens a key without changing its bytes.</summary>
-    public static explicit operator PbtTreeKey(in PbtStorageFullKey key) => new(key.Bytes);
+    public static explicit operator PbtStorageTreeKey(in PbtStorageFullKey key) => new(key.Bytes);
 
     public int Length => KeyLength;
     public int BitLength => KeyLength * 8;
