@@ -12,6 +12,19 @@ Dependabot-triggered runs are skipped because GitHub
 [restricts their credentials](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-on-actions).
 Maintainers can still dispatch reviews for those PRs.
 
+To request a review from the PR conversation, add a new comment containing only
+`/ocr review` or `ocr review`. The command accepts either case and surrounding
+whitespace. GitHub checks the comment author's current write, maintain, or admin
+access to this repository before starting a review; organization membership alone
+does not grant access to the command. Bots, regular issues, inline review comments,
+edited comments, and commands with extra arguments are ignored.
+
+Accepted commands receive an 👀 reaction and publish the review summary and inline
+findings to the PR. They work on open draft and fork PRs, and remain available when
+`OCR_AUTO_REVIEW=false`. Comment-triggered runs use the default branch's workflow
+and review rules. The command becomes available after this workflow is merged into
+the default branch. Unauthorized comments cannot cancel an active review.
+
 Configure it under **Settings → Secrets and variables → Actions** in the repository,
 or use organization settings made available to this repository. These settings are
 read for each run, so changing the model, API base URL, or key needs no code change or PR.
@@ -60,7 +73,7 @@ gh workflow run open-code-review.yml --repo NethermindEth/nethermind \
 ```
 
 Manual dispatch produces artifacts and a workflow summary by default. Set
-`publish=true` to publish findings to the PR; automatic runs always publish.
+`publish=true` to publish findings to the PR; automatic and comment-triggered runs always publish.
 GitHub requires the workflow to exist on the default
 branch before dispatching it; a new workflow cannot be exercised in Actions
 solely by pushing this feature branch.
