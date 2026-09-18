@@ -16,8 +16,8 @@ internal static class PbtImageRootCalculator
         using IEnumerator<RebuildEntry> enumerator = entries.GetEnumerator();
         if (!enumerator.MoveNext()) return default;
 
-        Frame[] frames = new Frame[PbtStorageFullKey.MaxLength * 8];
-        Span<byte> preimage = stackalloc byte[3 + PbtStorageFullKey.MaxLength + 64];
+        Frame[] frames = new Frame[PbtTreeKey.MaxLength * 8];
+        Span<byte> preimage = stackalloc byte[3 + PbtTreeKey.MaxLength + 64];
         int frameCount = 0;
         RebuildEntry previous = enumerator.Current;
         ValueHash256 current = HashLeaf(previous, preimage);
@@ -52,7 +52,7 @@ internal static class PbtImageRootCalculator
         return Blake3Hash.Hash(preimage[..(1 + entry.Key.Length + 32)]);
     }
 
-    private static void Fold(int nextSplit, in PbtStorageFullKey key, ReadOnlySpan<Frame> frames,
+    private static void Fold(int nextSplit, in PbtTreeKey key, ReadOnlySpan<Frame> frames,
         ref int frameCount, ref ValueHash256 current, Span<byte> preimage)
     {
         // EIP-8297 prefixes start after the parent split. The next key reveals that parent

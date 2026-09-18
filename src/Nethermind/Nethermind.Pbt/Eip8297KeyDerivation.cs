@@ -31,7 +31,7 @@ public static class Eip8297KeyDerivation
         return new PbtFullKey(key);
     }
 
-    public static PbtStorageFullKey StorageKey(ReadOnlySpan<byte> address32, in UInt256 slot)
+    public static PbtTreeKey StorageKey(ReadOnlySpan<byte> address32, in UInt256 slot)
     {
         Validate32(address32, nameof(address32));
         return StorageKey(address32, Blake3Hash.Hash(address32), slot);
@@ -41,12 +41,12 @@ public static class Eip8297KeyDerivation
     /// <see cref="StorageKey(ReadOnlySpan{byte}, in UInt256)"/> reusing a precomputed address hash, so a run of
     /// slots for one address pays only the per-tree-index suffix hash.
     /// </summary>
-    public static PbtStorageFullKey StorageKey(ReadOnlySpan<byte> address32, in ValueHash256 addressHash, in UInt256 slot)
+    public static PbtTreeKey StorageKey(ReadOnlySpan<byte> address32, in ValueHash256 addressHash, in UInt256 slot)
     {
         Validate32(address32, nameof(address32));
         if (slot < PbtKeyDerivation.HeaderStorageOffset)
         {
-            return (PbtStorageFullKey)AccountKey(addressHash, (byte)(PbtKeyDerivation.HeaderStorageOffset + slot.u0));
+            return (PbtTreeKey)AccountKey(addressHash, (byte)(PbtKeyDerivation.HeaderStorageOffset + slot.u0));
         }
 
         UInt256 treeIndex = slot >> 8;
@@ -59,7 +59,7 @@ public static class Eip8297KeyDerivation
         addressHash.Bytes.CopyTo(key[1..]);
         suffixHash.Bytes.CopyTo(key[33..]);
         key[^1] = (byte)slot.u0;
-        return new PbtStorageFullKey(key);
+        return new PbtTreeKey(key);
     }
 
     public static PbtFullKey CodeKey(ReadOnlySpan<byte> address32, ReadOnlySpan<byte> codeHash32, int chunkId) =>

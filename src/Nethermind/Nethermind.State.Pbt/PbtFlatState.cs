@@ -41,7 +41,7 @@ internal static class PbtFlatState
         }
     }
 
-    internal static IEnumerable<KeyValuePair<PbtStorageFullKey, ValueHash256>> EnumerateLeaves(IPbtPersistence.IReader reader)
+    internal static IEnumerable<KeyValuePair<PbtTreeKey, ValueHash256>> EnumerateLeaves(IPbtPersistence.IReader reader)
     {
         return EnumerateLeaves(Accounts(), Storage(), hash => reader.GetCode(hash));
 
@@ -51,41 +51,41 @@ internal static class PbtFlatState
             while (accounts.MoveNext()) yield return accounts.Current;
         }
 
-        IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> Storage()
+        IEnumerable<KeyValuePair<PbtTreeKey, EvmWord>> Storage()
         {
-            using IPbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>> storage = reader.EnumerateStorage();
+            using IPbtIterator<KeyValuePair<PbtTreeKey, EvmWord>> storage = reader.EnumerateStorage();
             while (storage.MoveNext()) yield return storage.Current;
         }
     }
 
-    internal static IEnumerable<KeyValuePair<PbtStorageFullKey, ValueHash256>> EnumerateLeaves(
+    internal static IEnumerable<KeyValuePair<PbtTreeKey, ValueHash256>> EnumerateLeaves(
         IEnumerable<KeyValuePair<ValueHash256, Account>> accounts,
-        IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> storages,
+        IEnumerable<KeyValuePair<PbtTreeKey, EvmWord>> storages,
         Func<ValueHash256, CodeInfo?> getCode)
     {
-        SortedDictionary<PbtStorageFullKey, ValueHash256> leaves = [];
+        SortedDictionary<PbtTreeKey, ValueHash256> leaves = [];
         HashSet<ValueHash256> emittedCode = [];
         foreach ((ValueHash256 addressHash, Account account) in accounts)
             foreach ((PbtFullKey key, ValueHash256 value) in AccountLeaves(addressHash, account, account.HasCode ? getCode(account.CodeHash.ValueHash256) : null, emittedCode.Add(account.CodeHash.ValueHash256)))
-                leaves[(PbtStorageFullKey)key] = value;
-        foreach ((PbtStorageFullKey key, EvmWord value) in storages)
+                leaves[(PbtTreeKey)key] = value;
+        foreach ((PbtTreeKey key, EvmWord value) in storages)
             if (!EvmWordSlot.IsZero(value)) leaves[key] = new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value));
         return leaves;
     }
 
-    internal static ValueHash256 StorageAddress(in PbtStorageFullKey key) => new(key.Bytes.Slice(1, ValueHash256.MemorySize));
+    internal static ValueHash256 StorageAddress(in PbtTreeKey key) => new(key.Bytes.Slice(1, ValueHash256.MemorySize));
 
-    internal static void ApplyStorage(IDictionary<PbtStorageFullKey, EvmWord> visible, PbtSnapshotContent content, ValueHash256? addressFilter = null)
+    internal static void ApplyStorage(IDictionary<PbtTreeKey, EvmWord> visible, PbtSnapshotContent content, ValueHash256? addressFilter = null)
     {
         foreach ((ValueHash256 addressHash, _) in content.SelfDestructedStorageAddresses)
         {
             if (addressFilter is not null && addressHash != addressFilter.Value) continue;
-            using ArrayPoolListRef<PbtStorageFullKey> removed = new(0);
-            foreach (PbtStorageFullKey key in visible.Keys)
+            using ArrayPoolListRef<PbtTreeKey> removed = new(0);
+            foreach (PbtTreeKey key in visible.Keys)
                 if (StorageAddress(key) == addressHash) removed.Add(key);
-            foreach (PbtStorageFullKey key in removed) visible.Remove(key);
+            foreach (PbtTreeKey key in removed) visible.Remove(key);
         }
-        foreach ((HashedKey<PbtStorageFullKey> key, EvmWord value) in content.Storages)
+        foreach ((HashedKey<PbtTreeKey> key, EvmWord value) in content.Storages)
             if (addressFilter is null || StorageAddress(key) == addressFilter.Value) visible[key] = value;
     }
 }

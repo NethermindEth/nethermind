@@ -164,9 +164,9 @@ public class PbtRocksDbPersistenceTests
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
-        PbtStorageFullKey persistedKey = PbtStateKey.Storage(TestItem.AddressA, (UInt256)(uint)slotNumber);
-        PbtStorageFullKey stagedKey = PbtStateKey.Storage(TestItem.AddressA, (UInt256)(uint)(slotNumber + 1));
-        PbtStorageFullKey otherAddressKey = PbtStateKey.Storage(TestItem.AddressB, (UInt256)(uint)slotNumber);
+        PbtTreeKey persistedKey = PbtStateKey.Storage(TestItem.AddressA, (UInt256)(uint)slotNumber);
+        PbtTreeKey stagedKey = PbtStateKey.Storage(TestItem.AddressA, (UInt256)(uint)(slotNumber + 1));
+        PbtTreeKey otherAddressKey = PbtStateKey.Storage(TestItem.AddressB, (UInt256)(uint)slotNumber);
         EvmWord original = EvmWordSlot.FromStripped(Bytes.FromHexString("0x1234"));
         EvmWord replacement = EvmWordSlot.FromStripped(Bytes.FromHexString("0x5678"));
         StateId first = new(1, TestItem.KeccakA.ValueHash256);
@@ -196,7 +196,7 @@ public class PbtRocksDbPersistenceTests
             Assert.That(reader.GetSlot(otherAddressKey), Is.EqualTo(original));
             Assert.That(olderReader.GetSlot(persistedKey), Is.EqualTo(original));
             Assert.That(reader.EnumerateStorage().Drain(), Has.Exactly(2).Items);
-            Assert.That(reader.EnumerateStorage(new PbtStorageFullKey(persistedKey.Bytes[..33])).Drain().Single().Value, Is.EqualTo(replacement));
+            Assert.That(reader.EnumerateStorage(new PbtTreeKey(persistedKey.Bytes[..33])).Drain().Single().Value, Is.EqualTo(replacement));
         }
     }
 
@@ -207,7 +207,7 @@ public class PbtRocksDbPersistenceTests
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig());
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
-        PbtStorageFullKey storageKey = PbtStateKey.Storage(TestItem.AddressA, 0);
+        PbtTreeKey storageKey = PbtStateKey.Storage(TestItem.AddressA, 0);
         CodeInfo code = new(Bytes.FromHexString("0x6001600255"));
         ValueHash256 codeHash = Keccak.Compute(code.CodeSpan).ValueHash256;
         EvmWord slot = EvmWordSlot.FromStripped(Bytes.FromHexString("0xabcd"));
@@ -467,11 +467,11 @@ public class PbtRocksDbPersistenceTests
             }
             using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(persisted);
             Assert.That(reopened.EnumerateRecords().Count, Is.EqualTo(tree.Nodes.Count));
-            using PbtWriteBatchBuilder<PbtStorageFullKey> mutations = new(0);
+            using PbtWriteBatchBuilder<PbtTreeKey> mutations = new(0);
             byte[] deletedKey = Bytes.FromHexString("00");
             byte[] replacedKey = Bytes.FromHexString("08");
-            mutations.Delete(new PbtStorageFullKey(deletedKey));
-            mutations.Set(new PbtStorageFullKey(replacedKey), new ValueHash256(Value(99)));
+            mutations.Delete(new PbtTreeKey(deletedKey));
+            mutations.Set(new PbtTreeKey(replacedKey), new ValueHash256(Value(99)));
             oracle.Delete(deletedKey);
             oracle.Insert(replacedKey, Value(99));
             ValueHash256 updatedRoot = TrieUpdater.UpdateRoot(reopened, reader.CurrentRoot, mutations.Build());

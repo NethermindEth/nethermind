@@ -121,27 +121,27 @@ public sealed class PbtReadOnlySnapshotBundle(
             if (account is not null) yield return new(hash, account);
     }
 
-    internal IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumerateStorage(ValueHash256? addressFilter = null)
+    internal IEnumerable<KeyValuePair<PbtTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressFilter = null)
     {
         GuardDispose();
         if (snapshots.Count == 0)
         {
-            foreach (KeyValuePair<PbtStorageFullKey, EvmWord> slot in EnumeratePersistedStorage(addressFilter))
+            foreach (KeyValuePair<PbtTreeKey, EvmWord> slot in EnumeratePersistedStorage(addressFilter))
                 yield return slot;
             yield break;
         }
-        SortedDictionary<PbtStorageFullKey, EvmWord> visible = [];
-        foreach ((PbtStorageFullKey key, EvmWord value) in EnumeratePersistedStorage(addressFilter)) visible[key] = value;
+        SortedDictionary<PbtTreeKey, EvmWord> visible = [];
+        foreach ((PbtTreeKey key, EvmWord value) in EnumeratePersistedStorage(addressFilter)) visible[key] = value;
         foreach (PbtSnapshot snapshot in snapshots) PbtFlatState.ApplyStorage(visible, snapshot.Content, addressFilter);
-        foreach ((PbtStorageFullKey key, EvmWord value) in visible)
+        foreach ((PbtTreeKey key, EvmWord value) in visible)
             if (!EvmWordSlot.IsZero(value)) yield return new(key, value);
     }
 
-    private IEnumerable<KeyValuePair<PbtStorageFullKey, EvmWord>> EnumeratePersistedStorage(ValueHash256? addressFilter)
+    private IEnumerable<KeyValuePair<PbtTreeKey, EvmWord>> EnumeratePersistedStorage(ValueHash256? addressFilter)
     {
         if (addressFilter is null)
         {
-            using IPbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>> storage = reader.EnumerateStorage();
+            using IPbtIterator<KeyValuePair<PbtTreeKey, EvmWord>> storage = reader.EnumerateStorage();
             while (storage.MoveNext()) yield return storage.Current;
         }
         else
@@ -151,18 +151,18 @@ public sealed class PbtReadOnlySnapshotBundle(
             foreach (byte zone in new[] { Eip8297KeyDerivation.AccountZone, Eip8297KeyDerivation.StorageZone })
             {
                 prefix[0] = zone;
-                using IPbtIterator<KeyValuePair<PbtStorageFullKey, EvmWord>> storage = reader.EnumerateStorage(new PbtStorageFullKey(prefix));
+                using IPbtIterator<KeyValuePair<PbtTreeKey, EvmWord>> storage = reader.EnumerateStorage(new PbtTreeKey(prefix));
                 while (storage.MoveNext()) yield return storage.Current;
             }
         }
     }
 
-    internal IEnumerable<KeyValuePair<PbtStorageFullKey, ValueHash256>> EnumerateLeaves() =>
+    internal IEnumerable<KeyValuePair<PbtTreeKey, ValueHash256>> EnumerateLeaves() =>
         PbtFlatState.EnumerateLeaves(EnumerateAccounts(), EnumerateStorage(), hash => GetCode(hash));
 
-    internal IEnumerable<KeyValuePair<PbtStorageFullKey, ValueHash256>> EnumerateLeaves(PbtStorageFullKey prefix)
+    internal IEnumerable<KeyValuePair<PbtTreeKey, ValueHash256>> EnumerateLeaves(PbtTreeKey prefix)
     {
-        foreach (KeyValuePair<PbtStorageFullKey, ValueHash256> leaf in EnumerateLeaves())
+        foreach (KeyValuePair<PbtTreeKey, ValueHash256> leaf in EnumerateLeaves())
             if (prefix.IsPrefixOf(leaf.Key)) yield return leaf;
     }
 
@@ -188,7 +188,7 @@ public sealed class PbtReadOnlySnapshotBundle(
 
     public EvmWord GetSlot(Address address, in UInt256 slot) => GetSlot(PbtStateKey.Storage(address, slot));
 
-    internal EvmWord GetSlot(in HashedKey<PbtStorageFullKey> key)
+    internal EvmWord GetSlot(in HashedKey<PbtTreeKey> key)
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;

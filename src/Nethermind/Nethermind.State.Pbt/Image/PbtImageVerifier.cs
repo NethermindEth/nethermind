@@ -49,7 +49,7 @@ internal static class PbtImageVerifier
                     while (reader.ReadAccount(out Address? address, out uint slots, cancellationToken))
                     {
                         Address accountAddress = address!;
-                        ValueHash256 basic = leaves.Required((PbtStorageFullKey)PbtStateKey.Account(accountAddress, 0));
+                        ValueHash256 basic = leaves.Required((PbtTreeKey)PbtStateKey.Account(accountAddress, 0));
                         if (basic.Bytes[..4].IndexOfAnyExcept((byte)0) >= 0)
                             throw new InvalidDataException("Nonzero basic-data version or reserved bytes.");
                         PbtKeyDerivation.UnpackBasicData(basic.Bytes, out ulong nonce, out UInt256 balance);
@@ -110,8 +110,8 @@ internal static class PbtImageVerifier
 
     private static byte[] ReadCode(Address address, int size, LeafSpool leaves, CancellationToken cancellationToken)
     {
-        PbtStorageFullKey hashKey = (PbtStorageFullKey)PbtStateKey.Account(address, 1);
-        PbtStorageFullKey delegationKey = (PbtStorageFullKey)PbtStateKey.Account(address, 2);
+        PbtTreeKey hashKey = (PbtTreeKey)PbtStateKey.Account(address, 1);
+        PbtTreeKey delegationKey = (PbtTreeKey)PbtStateKey.Account(address, 2);
         if (leaves.TryRead(delegationKey, out ValueHash256 delegation))
         {
             if (size != 23 || delegation.Bytes[23..].IndexOfAnyExcept((byte)0) >= 0 ||
@@ -125,7 +125,7 @@ internal static class PbtImageVerifier
         for (int chunk = 0; chunk < chunks; chunk++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (leaves.TryRead((PbtStorageFullKey)PbtStateKey.Code(address, codeHash, chunk), out ValueHash256 value))
+            if (leaves.TryRead((PbtTreeKey)PbtStateKey.Code(address, codeHash, chunk), out ValueHash256 value))
                 value.Bytes.Slice(1, Math.Min(31, size - chunk * 31)).CopyTo(code.AsSpan(chunk * 31));
         }
         if (ValueKeccak.Compute(code) != codeHash || Eip7702Constants.IsDelegatedCode(code))
@@ -135,7 +135,7 @@ internal static class PbtImageVerifier
         {
             cancellationToken.ThrowIfCancellationRequested();
             ValueHash256 expected = new(encodedChunks.AsSpan(chunk * 32, 32));
-            bool present = leaves.TryRead((PbtStorageFullKey)PbtStateKey.Code(address, codeHash, chunk), out ValueHash256 actual);
+            bool present = leaves.TryRead((PbtTreeKey)PbtStateKey.Code(address, codeHash, chunk), out ValueHash256 actual);
             if (actual != expected || present != (expected != default))
                 throw new InvalidDataException("Noncanonical code chunk or PUSHDATA count.");
         }
@@ -160,7 +160,7 @@ internal static class PbtImageVerifier
             _count++;
         }
 
-        public bool TryRead(in PbtStorageFullKey key, out ValueHash256 value)
+        public bool TryRead(in PbtTreeKey key, out ValueHash256 value)
         {
             Span<byte> record = stackalloc byte[RecordSize];
             long low = 0, high = _count - 1;
@@ -184,7 +184,7 @@ internal static class PbtImageVerifier
             return false;
         }
 
-        public ValueHash256 Required(in PbtStorageFullKey key) => TryRead(key, out ValueHash256 value)
+        public ValueHash256 Required(in PbtTreeKey key) => TryRead(key, out ValueHash256 value)
             ? value : throw new InvalidDataException("Preimage or required account field has no snapshot leaf.");
 
         public IEnumerable<RebuildEntry> Enumerate(CancellationToken cancellationToken)
@@ -195,7 +195,7 @@ internal static class PbtImageVerifier
                 cancellationToken.ThrowIfCancellationRequested();
                 _stream.Position = checked(index * RecordSize);
                 _stream.ReadExactly(record);
-                yield return new(new PbtStorageFullKey(record.AsSpan(1, record[0])), new ValueHash256(record.AsSpan(67, 32)));
+                yield return new(new PbtTreeKey(record.AsSpan(1, record[0])), new ValueHash256(record.AsSpan(67, 32)));
             }
         }
 

@@ -21,7 +21,7 @@ internal static class PbtNodeCodec
         if (encoding[0] == LeafTag)
         {
             int keyLength = BinaryPrimitives.ReadUInt16BigEndian(encoding[1..]);
-            if (keyLength is < 1 or > PbtStorageFullKey.MaxLength)
+            if (keyLength is < 1 or > PbtTreeKey.MaxLength)
                 throw new InvalidDataException("Invalid PBT leaf key length.");
             int encodedLength = checked(3 + keyLength + 32);
             if (encoding.Length != encodedLength) throw new InvalidDataException("Invalid PBT leaf encoding length.");
