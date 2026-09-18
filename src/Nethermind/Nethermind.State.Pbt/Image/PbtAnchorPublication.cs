@@ -30,6 +30,10 @@ internal sealed class PbtAnchorPublication(
     ILogManager logManager)
 {
     private static readonly byte[] _provenanceKey = "migrationPreparedAnchor"u8.ToArray();
+    private const int BatchSize = 4096;
+
+    /// <summary>How many of one account's slot runs staging buffers before spilling them to the target.</summary>
+    internal int MaxBufferedRuns { get; init; } = 4096;
     private readonly ILogger _logger = logManager.GetClassLogger<PbtAnchorPublication>();
 
     public async Task<ValueHash256> Publish(Stream snapshot, Stream preimages, PbtArtifactIdentity identity,
@@ -77,16 +81,27 @@ internal sealed class PbtAnchorPublication(
 
             using (LogicalBatch batch = new(target))
             {
-                // The image lists an account's slots in hash order, so its runs complete only once the account ends.
+                // The image lists an account's slots in hash order, so a run completes only once the account ends. A
+                // bounded buffer spills a large account's runs early and merges its later slots into the staged rows.
                 Dictionary<PbtStorageTreeKey, ISlotRun> runs = [];
                 Address? slotsAddress = null;
+                bool spilled = false;
                 image.Replay((address, account, code) =>
                 {
                     batch.Next().SetAccount(PbtKeyDerivation.AddressKeyHash(address), account);
                     if (code.Length != 0) batch.Next().SetCode(account.CodeHash.ValueHash256, new CodeInfo(code));
                 }, (address, slot, value) =>
                 {
-                    if (address != slotsAddress) FlushRuns();
+                    if (address != slotsAddress)
+                    {
+                        FlushRuns();
+                        spilled = false;
+                    }
+                    else if (runs.Count == MaxBufferedRuns)
+                    {
+                        FlushRuns();
+                        spilled = true;
+                    }
                     slotsAddress = address;
                     PbtStorageTreeKey key = PbtStateKey.Storage(address, slot);
                     PbtStorageTreeKey runKey = SlotRun.RunKey(key);
@@ -99,10 +114,14 @@ internal sealed class PbtAnchorPublication(
 
                 void FlushRuns()
                 {
+                    if (runs.Count == 0) return;
+                    if (spilled) batch.Flush();
+                    using IPbtPersistence.IReader? staged = spilled ? target.CreateReader() : null;
                     foreach ((PbtStorageTreeKey runKey, ISlotRun run) in runs)
                     {
-                        batch.Next().SetSlotRun(runKey, run);
-                        SlotRun.Return(run);
+                        ISlotRun whole = staged is null ? run : MergeInto(staged.GetSlotRun(runKey), run);
+                        batch.Next().SetSlotRun(runKey, whole);
+                        SlotRun.Return(whole);
                     }
                     runs.Clear();
                 }
@@ -206,15 +225,39 @@ internal sealed class PbtAnchorPublication(
         }
     }
 
+    /// <summary>Consumes both runs and returns the owned union, <paramref name="later"/>'s slots winning.</summary>
+    private static ISlotRun MergeInto(ISlotRun earlier, ISlotRun later)
+    {
+        ISlotRun merged = earlier;
+        for (int index = 0; index < SlotRun.Width; index++)
+        {
+            if ((later.Mask & (1 << index)) == 0) continue;
+            ISlotRun next = merged.With(index, later.Get(index));
+            SlotRun.Return(merged);
+            merged = next;
+        }
+        SlotRun.Return(later);
+        return merged;
+    }
+
     private sealed class LogicalBatch(PbtRocksDbPersistence target) : IDisposable
     {
         private IPbtPersistence.IWriteBatch? _batch;
         private int _count;
         public IPbtPersistence.IWriteBatch Next()
         {
-            if (_count == 4096) { Commit(); _batch!.Dispose(); _batch = null; _count = 0; }
+            if (_count == BatchSize) Flush();
             _count++;
             return _batch ??= target.CreateStagingWriteBatch(WriteFlags.None);
+        }
+        /// <summary>Commits the staged writes so a reader created afterwards sees them.</summary>
+        public void Flush()
+        {
+            if (_batch is null) return;
+            Commit();
+            _batch.Dispose();
+            _batch = null;
+            _count = 0;
         }
         public void Commit() => _batch?.Commit();
         public void Dispose() => _batch?.Dispose();

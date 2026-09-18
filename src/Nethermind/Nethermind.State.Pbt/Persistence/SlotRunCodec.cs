@@ -3,32 +3,19 @@
 
 using System.Buffers.Binary;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Pbt.Persistence;
 
 /// <summary>
-/// The persisted <see cref="PbtColumns.Storages"/> row of one <see cref="ISlotRun"/>:
+/// Decodes the persisted <see cref="PbtColumns.Storages"/> row of one <see cref="ISlotRun"/>:
 /// <c>[type][mask u16 LE][32-byte value × popcount(mask), ascending slot]</c>, where the type byte is the
-/// log2 of the capacity that wrote it. An empty run is a row deletion and is never encoded.
+/// log2 of the capacity that wrote it (see <see cref="ISlotRun.Encode"/>). An empty run is a row deletion and is never encoded.
 /// </summary>
 internal static class SlotRunCodec
 {
-    private const int HeaderLength = 1 + sizeof(ushort);
+    internal const int HeaderLength = 1 + sizeof(ushort);
     private const byte MaxType = 4;
-    public const int MaxEncodedLength = HeaderLength + SlotRun.Width * ValueHash256.MemorySize;
-
-    public static int Encode(ISlotRun run, Span<byte> destination)
-    {
-        if (run.Count == 0) throw new ArgumentException("An empty run is persisted as a row deletion.", nameof(run));
-        PackedSlotRun packed = (PackedSlotRun)run;
-        destination[0] = (byte)BitOperations.Log2((uint)packed.Capacity);
-        BinaryPrimitives.WriteUInt16LittleEndian(destination[1..], packed.Mask);
-        ReadOnlySpan<byte> values = MemoryMarshal.AsBytes(packed.PackedValues);
-        values.CopyTo(destination[HeaderLength..]);
-        return HeaderLength + values.Length;
-    }
 
     public static ISlotRun Decode(ReadOnlySpan<byte> encoded)
     {

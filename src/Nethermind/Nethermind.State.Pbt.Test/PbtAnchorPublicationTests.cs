@@ -130,9 +130,9 @@ public class PbtAnchorPublicationTests
 
     [Test]
     public async Task Portable_image_publishes_native_state_and_matching_restart_takes_the_fast_path(
-        [Values("anchor", "a1", "a2", "a3", "a4", "a5")] string name)
+        [Values("anchor", "a1", "a2", "a3", "a4", "a5")] string name, [Values(4096, 1)] int maxBufferedRuns)
     {
-        using Harness harness = new(name);
+        using Harness harness = new(name) { MaxBufferedRuns = maxBufferedRuns };
         ValueHash256 root = await harness.Publish();
         AssertPublishedState(harness, root, name);
         harness.Reopen();
@@ -395,8 +395,12 @@ public class PbtAnchorPublicationTests
         public readonly PbtImageAnchor Anchor;
         public PbtArtifactIdentity Identity;
         public Func<bool> IsAnchorCurrent = () => true;
+        public int MaxBufferedRuns { get; init; } = 4096;
         public PbtTestContext Pbt { get; private set; } = null!;
-        public PbtAnchorPublication Publication { get; private set; } = null!;
+        private PbtAnchorPublication? _publication;
+        // Created on first use so the initializer's MaxBufferedRuns applies.
+        public PbtAnchorPublication Publication => _publication ??=
+            new PbtAnchorPublication(new PbtRocksDbPersistence(Target, new PbtConfig()), Target, Pbt.Persistence, Pbt.Manager, Pbt.Coordinator, new PbtConfig(), LimboLogs.Instance) { MaxBufferedRuns = MaxBufferedRuns };
         private readonly string _name;
 
         public Harness(string name)
@@ -422,7 +426,7 @@ public class PbtAnchorPublicationTests
         private void Open()
         {
             Pbt = new PbtTestContext(Target);
-            Publication = new PbtAnchorPublication(new PbtRocksDbPersistence(Target, new PbtConfig()), Target, Pbt.Persistence, Pbt.Manager, Pbt.Coordinator, new PbtConfig(), LimboLogs.Instance);
+            _publication = null;
         }
 
         public async Task<ValueHash256> Publish(CancellationToken cancellationToken = default)

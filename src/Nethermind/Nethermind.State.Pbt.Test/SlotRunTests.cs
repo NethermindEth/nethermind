@@ -77,9 +77,8 @@ public class SlotRunTests
     public void Persisted_row_is_type_mask_and_whole_words(int count, byte type)
     {
         ISlotRun run = Build(count, out ushort mask);
-        byte[] encoded = new byte[SlotRunCodec.MaxEncodedLength];
-        int length = SlotRunCodec.Encode(run, encoded);
-        byte[] row = encoded[..length];
+        byte[] row = new byte[run.EncodedLength];
+        run.Encode(row);
         byte[] expected = Bytes.Concat(new byte[] { type, (byte)mask, (byte)(mask >> 8) },
             Bytes.Concat(Enumerable.Range(0, SlotRun.Width).Where(index => (mask & (1 << index)) != 0).Select(WordBytes).ToArray()));
         ISlotRun decoded = SlotRunCodec.Decode(row);
@@ -88,7 +87,8 @@ public class SlotRunTests
             Assert.That(row, Is.EqualTo(expected));
             Assert.That(decoded, Is.TypeOf(run.GetType()));
             Assert.That(Enumerable.Range(0, SlotRun.Width).Select(decoded.Get), Is.EqualTo(Enumerable.Range(0, SlotRun.Width).Select(run.Get)));
-            Assert.That(() => SlotRunCodec.Encode(SlotRun.Empty, encoded), Throws.ArgumentException);
+            Assert.That(SlotRun.Empty.EncodedLength, Is.EqualTo(3));
+            Assert.That(() => SlotRun.Empty.Encode(new byte[3]), Throws.InvalidOperationException);
             Assert.That(() => SlotRunCodec.Decode(row[..^1]), Throws.TypeOf<System.IO.InvalidDataException>());
             Assert.That(() => SlotRunCodec.Decode(Bytes.Concat(0x05, row[1..])), Throws.TypeOf<System.IO.InvalidDataException>());
         }

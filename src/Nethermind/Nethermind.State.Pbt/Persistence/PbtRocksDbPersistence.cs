@@ -365,8 +365,9 @@ public class PbtRocksDbPersistence(
             if (run.Count == 0) storage.Set(encodedKey, null, flags);
             else
             {
-                Span<byte> encoded = stackalloc byte[SlotRunCodec.MaxEncodedLength];
-                storage.PutSpan(encodedKey, encoded[..SlotRunCodec.Encode(run, encoded)], flags);
+                Span<byte> encoded = stackalloc byte[run.EncodedLength];
+                run.Encode(encoded);
+                storage.PutSpan(encodedKey, encoded, flags);
             }
             ValueHash256 addressHash = new(runKey.Bytes.Slice(1, ValueHash256.MemorySize));
             if (!_stagedStorageKeys.TryGetValue(addressHash, out HashSet<PbtStorageTreeKey>? keys))
