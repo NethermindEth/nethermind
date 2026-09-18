@@ -18,6 +18,10 @@ internal sealed class MidBlockOverlay
 
     public ulong Block { get; private set; }
 
+    /// <summary>The block whose rows were folded, by hash. A height is not an identity: capture can replace the rows
+    /// of a height with a sibling's, and a prefix folded from the one is not a prefix of the other.</summary>
+    public ValueHash256 Hash { get; private set; }
+
     /// <summary>The first transaction this overlay does not yet include.</summary>
     public ushort Folded { get; private set; }
 
@@ -29,12 +33,15 @@ internal sealed class MidBlockOverlay
 
     internal Dictionary<StorageCell, StorageWrite>.Enumerator Writes => _storage.GetEnumerator();
 
-    public void Reset(ulong block)
+    public void Reset(ulong block) => Reset(block, default);
+
+    public void Reset(ulong block, in ValueHash256 hash)
     {
         _accounts.Clear();
         _storage.Clear();
         _storageAccounts.Clear();
         Block = block;
+        Hash = hash;
         Folded = 0;
     }
 

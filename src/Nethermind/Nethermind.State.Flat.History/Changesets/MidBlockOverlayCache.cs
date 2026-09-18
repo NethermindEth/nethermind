@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Flat.History.Changesets;
 
@@ -22,13 +23,16 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
 
     /// <summary>The cache lock covers only the slot bookkeeping; the fold, which reads the column, runs outside it
     /// on an overlay nobody else can see mid-fold, so a cold block being folded never holds up a trace of another.</summary>
-    public bool TryRent(ulong block, ushort beforeTransaction, out Lease lease)
+    public bool TryRent(ulong block, in ValueHash256 hash, ushort beforeTransaction, out Lease lease)
     {
         MidBlockOverlay overlay;
         lock (_lock)
         {
             MidBlockOverlay? cached = _overlays.Get(block);
-            bool shareable = cached is not null && !cached.Extending && cached.Folded <= beforeTransaction && (cached.Folded == beforeTransaction || cached.Pins == 0);
+            // The hash, not the height: the rows of a height can be replaced by a sibling's between two rents, and a
+            // prefix folded from the one it replaced is not a prefix of this block at all.
+            bool shareable = cached is not null && cached.Hash == hash && !cached.Extending
+                && cached.Folded <= beforeTransaction && (cached.Folded == beforeTransaction || cached.Pins == 0);
             if (shareable)
             {
                 overlay = cached!;
@@ -36,7 +40,7 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
             else
             {
                 overlay = new MidBlockOverlay();
-                overlay.Reset(block);
+                overlay.Reset(block, hash);
                 _overlays.Set(block, overlay);
             }
 
@@ -85,7 +89,7 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
                 // Discarding what it holds keeps the next rent at that boundary a refusal, rather than a prefix that
                 // already contains the target. The pin is this thread's: an overlay is only extended when it was
                 // selected with none.
-                overlay.Reset(overlay.Block);
+                overlay.Reset(overlay.Block, overlay.Hash);
                 overlay.Extending = false;
                 overlay.Pins--;
             }

@@ -74,7 +74,7 @@ public sealed class TransactionChangesetIndex
         return Covers(block)
             && _store.TryGetBlockHash(block, out ValueHash256 indexed)
             && indexed == blockHash
-            && _overlays.TryRent(block, beforeTransaction, out lease);
+            && _overlays.TryRent(block, in indexed, beforeTransaction, out lease);
     }
 
     /// <summary>One block's rows, written into a batch of their own. The caller claims coverage only once
