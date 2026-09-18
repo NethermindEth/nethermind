@@ -110,9 +110,9 @@ jobs:
 
       - name: Prepare trusted review rules
         env:
-          OCR_MODEL: ${{ vars.OCR_MODEL }}
-          OCR_API_BASE_URL: ${{ vars.OCR_API_BASE_URL }}
-          OCR_EXTRA_BODY: ${{ vars.OCR_EXTRA_BODY }}
+          OCR_MODEL: ${{ secrets.OCR_MODEL }}
+          OCR_API_BASE_URL: ${{ secrets.OCR_API_BASE_URL }}
+          OCR_EXTRA_BODY: ${{ secrets.OCR_EXTRA_BODY }}
         run: |
           node scripts/ci/open-code-review.cjs prepare "$GITHUB_WORKSPACE" "$OCR_DIRECTORY"
           mkdir -p "$HOME/.opencodereview"
@@ -138,11 +138,12 @@ jobs:
             --rule "$OCR_DIRECTORY/rules.json" --effort low --concurrency 2
             --max-tokens 64000 --max-tokens-budget "$REVIEW_TOKEN_BUDGET" --timeout 10
             --format json --audience agent)
-          "$OCR_DIRECTORY/ocr" review "${ARGS[@]}" --preview > "$OCR_DIRECTORY/preview.json"
+          "$OCR_DIRECTORY/ocr" review "${ARGS[@]}" --preview \
+            > "$OCR_DIRECTORY/preview.json" 2> "$OCR_DIRECTORY/stderr.log"
           set +e
           timeout --signal=TERM --kill-after=15s 18m \
             "$OCR_DIRECTORY/ocr" review "${ARGS[@]}" \
-            > "$OCR_DIRECTORY/result.json" 2> "$OCR_DIRECTORY/stderr.log"
+            > "$OCR_DIRECTORY/result.json" 2>> "$OCR_DIRECTORY/stderr.log"
           OCR_EXIT_CODE=$?
           set -e
           echo "$OCR_EXIT_CODE" > "$OCR_DIRECTORY/exit-code.txt"
@@ -162,19 +163,12 @@ jobs:
               enabled: process.env.PUBLISH_REVIEW === 'true', postReview: runPostReviewComments,
             });
 
-      - name: Retain review evidence
+      - name: Retain public review summary
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: code-review-${{ env.PR_NUMBER }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ env.OCR_DIRECTORY }}/target.json
-            ${{ env.OCR_DIRECTORY }}/config.json
-            ${{ env.OCR_DIRECTORY }}/preview.json
-            ${{ env.OCR_DIRECTORY }}/result.json
-            ${{ env.OCR_DIRECTORY }}/stderr.log
-            ${{ env.OCR_DIRECTORY }}/exit-code.txt
-            ${{ env.OCR_DIRECTORY }}/summary.md
+          path: ${{ env.OCR_DIRECTORY }}/summary.md
           retention-days: 14
 
       - name: Mark incomplete or stale review

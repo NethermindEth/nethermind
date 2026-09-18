@@ -132,13 +132,14 @@ test('complete zero-finding review accounts for every selected file', t => {
   assert.match(report.markdown, /100 input, 20 output/);
 });
 
-test('publication validates and reports an alternate model from the captured configuration', async t => {
+test('publication validates the captured model without disclosing it in the public summary', async t => {
   const f = fixture(t);
   f.config.model = 'another/model';
   f.result.manifest.execution.model = f.config.model;
   const report = await f.run();
   assert.equal(report.complete, true);
-  assert.match(report.markdown, /with `another\/model`/);
+  assert.ok(!report.markdown.includes(f.config.model));
+  assert.ok(!fs.readFileSync(path.join(f.directory, 'summary.md'), 'utf8').includes(f.config.model));
   assert.ok(f.calls.includes('post review'));
 });
 
@@ -242,6 +243,35 @@ test('upstream summary lookup cannot select a human comment with the bot marker'
   });
 });
 
+for (const operation of ['createComment', 'updateComment']) {
+  test(operation + ' distinguishes policy routing from an inline posting failure', async t => {
+    const f = fixture(t);
+    const routed = 'Routed to summary (severity low · category maintainability)';
+    const failure = '⚠️ GitHub could not post this as an inline comment: HTTP 422';
+    await f.run(true, 0, async args => {
+      await args.github.rest.issues[operation]({ body:
+        '<!-- ocr-summary -->\n⚠️ GitHub could not post this as an inline comment: ' + routed + '\n\n' + failure });
+      args.core.setOutput('summary_comment_url', 'https://github.com/example');
+    });
+    const posted = f.calls.find(call => call.create || call.update);
+    const body = (posted.create || posted.update).body;
+    assert.ok(body.includes('ℹ️ ' + routed + '.'));
+    assert.ok(!body.includes('inline comment: ' + routed));
+    assert.ok(body.includes(failure));
+  });
+}
+
+test('workflow uploads only the public summary and loads runtime settings from secrets', () => {
+  const workflow = fs.readFileSync(path.resolve(__dirname, '../../.github/workflows/open-code-review.yml'), 'utf8');
+  const artifact = workflow.split('      - name: Retain public review summary\n')[1].split('\n      - name:')[0];
+  assert.match(artifact, /path: \$\{\{ env\.OCR_DIRECTORY \}\}\/summary\.md\n/);
+  assert.doesNotMatch(artifact, /config\.json|result\.json|stderr\.log|preview\.json|target\.json|exit-code\.txt/);
+  for (const name of ['OCR_MODEL', 'OCR_API_BASE_URL', 'OCR_EXTRA_BODY']) {
+    assert.ok(workflow.includes('${{ secrets.' + name + ' }}'));
+    assert.ok(!workflow.includes('vars.' + name));
+  }
+});
+
 for (const failure of ['missing summary', 'failed inline']) {
   test('publication failure: ' + failure, async t => {
     const f = fixture(t);
@@ -317,7 +347,7 @@ for (const name of ['OCR_MODEL', 'OCR_API_BASE_URL']) {
       env: { ...process.env, ...settings, [name]: '', OCR_EXTRA_BODY: '' },
     });
     assert.notEqual(ran.status, 0);
-    assert.match(ran.stderr, new RegExp('Set the required ' + name + ' Actions variable'));
+    assert.match(ran.stderr, new RegExp('Set the required ' + name + ' Actions secret'));
     assert.ok(!fs.existsSync(path.join(f.directory, 'config.json')));
   });
 }
