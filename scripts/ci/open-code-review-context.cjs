@@ -124,10 +124,17 @@ class Repository {
   }
 
   hasEvidence(ref) {
-    return ref && Number.isSafeInteger(ref.start_line) && Number.isSafeInteger(ref.end_line) &&
-      ref.start_line > 0 && ref.end_line >= ref.start_line &&
-      this.served.some(read => read.path === ref.path && read.snapshot === ref.snapshot &&
-        read.start_line <= ref.start_line && read.end_line >= ref.end_line);
+    if (!ref || !Number.isSafeInteger(ref.start_line) || !Number.isSafeInteger(ref.end_line) ||
+        ref.start_line < 1 || ref.end_line < ref.start_line) return false;
+    let covered = ref.start_line - 1;
+    const ranges = this.served.filter(read => read.path === ref.path && read.snapshot === ref.snapshot)
+      .sort((a, b) => a.start_line - b.start_line);
+    for (const read of ranges) {
+      if (read.start_line > covered + 1) break;
+      covered = Math.max(covered, read.end_line);
+      if (covered >= ref.end_line) return true;
+    }
+    return false;
   }
 }
 

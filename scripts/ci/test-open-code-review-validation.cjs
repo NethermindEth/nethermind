@@ -101,6 +101,20 @@ test('source tools reject traversal, secrets, symlinks, invalid snapshots and un
   assert.equal(f.repository.read({ ...f.ref, end_line: 10000 }).end_line, 8);
 });
 
+test('citations can span adjacent excerpts, but cannot bridge unread lines or snapshots', t => {
+  const f = fixture(t);
+  f.repository.served = [];
+  f.repository.read({ ...f.ref, end_line: 4 });
+  f.repository.read({ ...f.ref, start_line: 5 });
+  assert.equal(f.repository.hasEvidence(f.ref), true);
+  f.repository.served = [];
+  f.repository.read({ ...f.ref, end_line: 4 });
+  f.repository.read({ ...f.ref, start_line: 6 });
+  assert.equal(f.repository.hasEvidence(f.ref), false);
+  f.repository.read({ ...f.ref, snapshot: 'base' });
+  assert.equal(f.repository.hasEvidence(f.ref), false);
+});
+
 test('PR evidence is bounded, excludes bot commentary and binds checks to the captured head', async () => {
   const head = 'a'.repeat(40);
   const github = { rest: {
