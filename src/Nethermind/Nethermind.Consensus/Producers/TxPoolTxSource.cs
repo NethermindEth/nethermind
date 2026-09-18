@@ -5,7 +5,6 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
@@ -479,21 +478,41 @@ namespace Nethermind.Consensus.Producers
             Order(pendingTransactions, comparer, filter, gasLimit);
 
         private static IEnumerable<(Transaction tx, ulong blobChain)> GetOrderedBlobTransactions(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong maxBlobs = 0ul) =>
-            OrderCore(pendingTransactions, comparer, static tx => (ulong)tx.GetBlobCount(), filter, maxBlobs, enforceSequentialNonces: true);
+            OrderCore<(Transaction tx, ulong resource), BlobOrdering>(pendingTransactions, comparer, filter, maxBlobs);
 
         protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
         internal static IEnumerable<Transaction> Order(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit) =>
-            OrderCore(pendingTransactions, comparer, static tx => tx.BlockGasUsed, filter, gasLimit, enforceSequentialNonces: false).Select(static tx => tx.tx);
+            OrderCore<Transaction, TransactionOrdering>(pendingTransactions, comparer, filter, gasLimit);
 
-        private static IEnumerable<(Transaction tx, ulong resource)> OrderCore(
+        private interface IOrdering<TResult>
+        {
+            static abstract TResult Select(Transaction transaction, ulong resource);
+            static abstract ulong GetResource(Transaction transaction);
+            static abstract bool EnforceSequentialNonces { get; }
+        }
+
+        private readonly struct TransactionOrdering : IOrdering<Transaction>
+        {
+            public static Transaction Select(Transaction transaction, ulong resource) => transaction;
+            public static ulong GetResource(Transaction transaction) => transaction.BlockGasUsed;
+            public static bool EnforceSequentialNonces => false;
+        }
+
+        private readonly struct BlobOrdering : IOrdering<(Transaction, ulong)>
+        {
+            public static (Transaction, ulong) Select(Transaction transaction, ulong resource) => (transaction, resource);
+            public static ulong GetResource(Transaction transaction) => (ulong)transaction.GetBlobCount();
+            public static bool EnforceSequentialNonces => true;
+        }
+
+        private static IEnumerable<TResult> OrderCore<TResult, TOrdering>(
             IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions,
             IComparer<Transaction> comparer,
-            Func<Transaction, ulong> resourceSelector,
             Func<Transaction, bool> filter,
-            ulong resourceLimit,
-            bool enforceSequentialNonces)
+            ulong resourceLimit)
+            where TOrdering : struct, IOrdering<TResult>
         {
             using ArrayPoolList<(Transaction[] bucket, int index, int heapIndex, ulong resource)> entries = new(pendingTransactions.Count);
             foreach (Transaction[] bucket in pendingTransactions.Values)
@@ -509,11 +528,11 @@ namespace Nethermind.Consensus.Producers
                 int entryIndex = entries[0].heapIndex;
                 (Transaction[] bucket, int index, _, ulong resource) = entries[entryIndex];
                 Transaction candidateTx = bucket[index];
-                ulong totalResource = resource + resourceSelector(candidateTx);
+                ulong totalResource = resource + TOrdering.GetResource(candidateTx);
                 bool accepted = totalResource <= resourceLimit && filter(candidateTx);
                 int nextIndex = index + 1;
                 if (accepted && nextIndex < bucket.Length
-                    && (!enforceSequentialNonces
+                    && (!TOrdering.EnforceSequentialNonces
                         || candidateTx.Nonce != ulong.MaxValue
                         && bucket[nextIndex].Nonce == candidateTx.Nonce + 1))
                 {
@@ -528,7 +547,7 @@ namespace Nethermind.Consensus.Producers
                     entries.AsSpan()[entryIndex].bucket = null!;
                 }
 
-                if (accepted) yield return (candidateTx, resource);
+                if (accepted) yield return TOrdering.Select(candidateTx, resource);
             }
         }
 
