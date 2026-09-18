@@ -1,0 +1,184 @@
+name: AI Code Review
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to review
+        type: string
+        required: true
+      publish:
+        description: Publish the review summary and inline findings to the PR
+        type: boolean
+        default: false
+      token_budget:
+        description: Soft aggregate token limit, including repeated context
+        type: choice
+        default: '2000000'
+        options:
+          - '500000'
+          - '1000000'
+          - '2000000'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: open-code-review-${{ github.repository_id }}-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Advisory AI review
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (vars.OCR_AUTO_REVIEW != 'false' && !github.event.pull_request.draft &&
+       github.actor != 'dependabot[bot]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Set review directory
+        run: echo "OCR_DIRECTORY=$RUNNER_TEMP/open-code-review" >> "$GITHUB_ENV"
+
+      - name: Check out trusted workflow revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # For pull_request_target, github.sha is trusted repository code, never the PR head.
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Capture PR commits
+        id: target
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            if (!/^[1-9][0-9]*$/.test(process.env.PR_NUMBER)) throw new Error('Invalid PR number');
+            const number = Number(process.env.PR_NUMBER);
+            if (!Number.isSafeInteger(number)) throw new Error('Invalid PR number');
+            const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: number });
+            if (pr.state !== 'open') throw new Error('The PR must be open');
+            for (const sha of [pr.base.sha, pr.head.sha]) {
+              if (!/^[a-f0-9]{40}$/.test(sha)) throw new Error('Invalid commit SHA');
+            }
+            fs.mkdirSync(process.env.OCR_DIRECTORY, { recursive: true });
+            fs.writeFileSync(path.join(process.env.OCR_DIRECTORY, 'target.json'),
+              JSON.stringify({ number, base: pr.base.sha, head: pr.head.sha,
+                automatic: context.eventName === 'pull_request_target' }));
+            core.setOutput('base', pr.base.sha);
+            core.setOutput('head', pr.head.sha);
+
+      - name: Fetch review objects
+        env:
+          BASE_SHA: ${{ steps.target.outputs.base }}
+          HEAD_SHA: ${{ steps.target.outputs.head }}
+        run: |
+          git fetch --no-tags origin "$BASE_SHA" "refs/pull/$PR_NUMBER/head"
+          git cat-file -e "$HEAD_SHA^{commit}"
+          REVIEW_MERGE_BASE=$(git merge-base "$BASE_SHA" "$HEAD_SHA")
+          export REVIEW_MERGE_BASE
+          node -e '
+            const fs = require("node:fs");
+            const file = process.env.OCR_DIRECTORY + "/target.json";
+            const target = JSON.parse(fs.readFileSync(file));
+            target.merge_base = process.env.REVIEW_MERGE_BASE;
+            fs.writeFileSync(file, JSON.stringify(target));
+          '
+          echo "REVIEW_MERGE_BASE=$REVIEW_MERGE_BASE" >> "$GITHUB_ENV"
+
+      - name: Install pinned Open Code Review
+        run: |
+          curl --fail --silent --show-error --location \
+            https://github.com/alibaba/open-code-review/releases/download/v1.12.5/opencodereview-linux-amd64 \
+            --output "$OCR_DIRECTORY/ocr"
+          curl --fail --silent --show-error --location \
+            https://raw.githubusercontent.com/alibaba/open-code-review/189be5b024d3309dd10fdc8cd8ee31b2530c210b/scripts/github-actions/post-review-comments.js \
+            --output "$OCR_DIRECTORY/post-review-comments.cjs"
+          cd "$OCR_DIRECTORY"
+          echo 'a9c29355f4b540b809e0b032a3299b7acfc9fb7fbfdf84ef5673c8457e518f9b  ocr' | sha256sum --check
+          echo '8879cb716728a056d8aec80bdf0e8e0bd684f18ae964aa6ab90e476133f811de  post-review-comments.cjs' | sha256sum --check
+          chmod +x ocr
+
+      - name: Prepare trusted review rules
+        env:
+          OCR_MODEL: ${{ vars.OCR_MODEL }}
+          OCR_API_BASE_URL: ${{ vars.OCR_API_BASE_URL }}
+          OCR_EXTRA_BODY: ${{ vars.OCR_EXTRA_BODY }}
+        run: |
+          node scripts/ci/open-code-review.cjs prepare "$GITHUB_WORKSPACE" "$OCR_DIRECTORY"
+          mkdir -p "$HOME/.opencodereview"
+          cp "$OCR_DIRECTORY/config.json" "$HOME/.opencodereview/config.json"
+
+      - name: Review captured range
+        id: review
+        timeout-minutes: 20
+        env:
+          OCR_LLM_TOKEN: ${{ secrets[vars.OCR_API_KEY_SECRET || 'OCR_LITELLM_API_KEY'] }}
+          HEAD_SHA: ${{ steps.target.outputs.head }}
+          REVIEW_TOKEN_BUDGET: ${{ inputs.token_budget || vars.OCR_AUTO_TOKEN_BUDGET || '2000000' }}
+        run: |
+          if [[ -z "$OCR_LLM_TOKEN" ]]; then
+            echo "::error::Set the Actions secret selected by OCR_API_KEY_SECRET (default OCR_LITELLM_API_KEY)."
+            exit 1
+          fi
+          case "$REVIEW_TOKEN_BUDGET" in
+            500000|1000000|2000000) ;;
+            *) echo "::error::Unsupported token budget"; exit 1 ;;
+          esac
+          ARGS=(--from "$REVIEW_MERGE_BASE" --to "$HEAD_SHA"
+            --rule "$OCR_DIRECTORY/rules.json" --effort low --concurrency 2
+            --max-tokens 64000 --max-tokens-budget "$REVIEW_TOKEN_BUDGET" --timeout 10
+            --format json --audience agent)
+          "$OCR_DIRECTORY/ocr" review "${ARGS[@]}" --preview > "$OCR_DIRECTORY/preview.json"
+          set +e
+          timeout --signal=TERM --kill-after=15s 18m \
+            "$OCR_DIRECTORY/ocr" review "${ARGS[@]}" \
+            > "$OCR_DIRECTORY/result.json" 2> "$OCR_DIRECTORY/stderr.log"
+          OCR_EXIT_CODE=$?
+          set -e
+          echo "$OCR_EXIT_CODE" > "$OCR_DIRECTORY/exit-code.txt"
+
+      - name: Validate and publish review
+        id: report
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PUBLISH_REVIEW: ${{ github.event_name == 'pull_request_target' || inputs.publish }}
+        with:
+          script: |
+            const path = require('node:path');
+            const { publish } = require(path.join(process.env.GITHUB_WORKSPACE, 'scripts/ci/open-code-review.cjs'));
+            const { runPostReviewComments } = require(path.join(process.env.OCR_DIRECTORY, 'post-review-comments.cjs'));
+            await publish({
+              github, context, core, directory: process.env.OCR_DIRECTORY,
+              enabled: process.env.PUBLISH_REVIEW === 'true', postReview: runPostReviewComments,
+            });
+
+      - name: Retain review evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: code-review-${{ env.PR_NUMBER }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.OCR_DIRECTORY }}/target.json
+            ${{ env.OCR_DIRECTORY }}/config.json
+            ${{ env.OCR_DIRECTORY }}/preview.json
+            ${{ env.OCR_DIRECTORY }}/result.json
+            ${{ env.OCR_DIRECTORY }}/stderr.log
+            ${{ env.OCR_DIRECTORY }}/exit-code.txt
+            ${{ env.OCR_DIRECTORY }}/summary.md
+          retention-days: 14
+
+      - name: Mark incomplete or stale review
+        if: steps.report.outputs.complete != 'true' || steps.report.outputs.stale == 'true'
+        run: |
+          echo "::error::Review unavailable, incomplete, or stale. See the run summary and artifacts."
+          exit 1
