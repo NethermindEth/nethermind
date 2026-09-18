@@ -461,7 +461,9 @@ public static class FrameTxValidation
     /// The number of leading frames forming a validation prefix EIP-8141 recognizes for the public
     /// mempool, or <c>null</c> when the layout matches none of them.
     /// </summary>
-    private static int? RecognizedPrefixLength(TxFrame[] frames, Address? sender)
+    /// <remarks>The four layouts are also the shapes EIP-8369 Profile 2 admits, and the count spans the
+    /// optional expiry-verifier and deploy frames that <see cref="ApprovalSearchStart"/> steps over.</remarks>
+    public static int? RecognizedPrefixLength(TxFrame[] frames, Address? sender)
     {
         int next = ApprovalSearchStart(frames);
 

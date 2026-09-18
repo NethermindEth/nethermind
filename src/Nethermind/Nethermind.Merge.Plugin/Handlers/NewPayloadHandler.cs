@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -56,6 +57,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IStateReader _stateReader;
     private readonly ISpecProvider _specProvider;
     private readonly ITxValidator _txValidator;
+    private readonly ulong _focilProfile2MaxVerifyGas;
     private readonly RecoverSignatures _senderRecovery;
     private readonly ILogger _logger;
     private readonly LruCache<Hash256AsKey, CachedPayloadResult>? _latestBlocks;
@@ -85,6 +87,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IEthereumEcdsa ecdsa,
         ISpecProvider specProvider,
         ITxValidator txValidator,
+        IBlocksConfig blocksConfig,
         ILogManager logManager)
     {
         _payloadPreparationService = payloadPreparationService;
@@ -100,6 +103,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _stateReader = stateReader;
         _specProvider = specProvider;
         _txValidator = txValidator;
+        _focilProfile2MaxVerifyGas = blocksConfig.FocilProfile2MaxVerifyGas;
         _senderRecovery = new RecoverSignatures(ecdsa, specProvider, logManager);
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
@@ -355,7 +359,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _senderRecovery.RecoverData(block.InclusionListTransactions!, spec, skipErrors: true);
 
         ValidationResult result = InclusionListValidator.IsSatisfied(
-            block, new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header), spec, _txValidator)
+            block, new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header), spec, _txValidator, _focilProfile2MaxVerifyGas)
             ? ValidationResult.Valid
             : ValidationResult.InclusionListUnsatisfied;
 
