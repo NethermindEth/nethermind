@@ -1,0 +1,619 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.0.0",
+  "kernel": "standard-mainnet-amsterdam-call-create-selfdestruct-operational",
+  "closedVm": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E",
+  "gasPolicy": "Nethermind.Evm.GasPolicy.EthereumGasPolicy",
+  "fork": "Nethermind.Specs.Forks.Amsterdam",
+  "standardBuildSelector": "Directory.Build.targets: EnableZkEvm != true selects *.std.cs and excludes *.zkevm.cs",
+  "schedule": {
+    "callBase": 0,
+    "callValue": 11300,
+    "callStipend": 2300,
+    "warmAccess": 100,
+    "coldAccess": 3000,
+    "createAccess": 12000,
+    "initCodeWord": 2,
+    "create2HashWord": 6,
+    "accountWrite": 9000,
+    "selfDestructBase": 5000,
+    "newAccountState": 183600,
+    "createState": 183600,
+    "codeDepositExecutionPerWord": 6,
+    "codeDepositStatePerByte": 1530,
+    "memoryLinear": 3,
+    "memoryQuadraticDivisor": 512,
+    "maxMemorySize": 2147483616,
+    "maxInitCodeSize": 131072,
+    "maxCodeSize": 24576,
+    "maxCallDepth": 1024,
+    "stackLimit": 1024,
+    "uInt256Modulus": "115792089237316195423570985008687907853269984665640564039457584007913129639936"
+  },
+  "activation": {
+    "eip150": true,
+    "eip158": true,
+    "eip2929": true,
+    "eip3860": true,
+    "eip6780": true,
+    "eip7702": true,
+    "eip7708": true,
+    "eip8037": true,
+    "eip8038": true,
+    "eip8246": true
+  },
+  "outerFailure": {
+    "clearExecutionGasOnOutOfGas": true,
+    "restoreJournalsOnChildFailure": true,
+    "burnChildExecutionOnException": true,
+    "returnChildExecutionOnRevert": true,
+    "pushResultBeforeResume": true,
+    "reportResultAfterPush": true
+  },
+  "dispatchTables": [
+    {
+      "name": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag"
+    },
+    {
+      "name": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag"
+    },
+    {
+      "name": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag"
+    },
+    {
+      "name": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag"
+    }
+  ],
+  "opcodes": [
+    {
+      "name": "call",
+      "instruction": "CALL",
+      "opcodeByte": 241,
+      "family": "call",
+      "handlerBody": "CallOpcode\u003CEvmInstructions.OpCall,TTracingInst,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E",
+      "handlerTarget": "EvmInstructions.InstructionCall\u003CEthereumGasPolicy,EvmInstructions.OpCall,TTracingInst,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E",
+      "stackInputs": 7,
+      "stackOutputs": 1,
+      "terminates": false,
+      "ownsPreChildTraceEnd": false,
+      "semantics": {
+        "operation": "call",
+        "valueRule": "explicit",
+        "targetRule": "codeSource",
+        "resultRule": "successBool"
+      },
+      "effectOrder": [
+        "traceStart",
+        "advancePcAndCount",
+        "popRequestedGas",
+        "popCodeSource",
+        "normalizeCodeSourceLow160",
+        "popValue",
+        "popInputOffsetLengthAndOutputOffsetLength",
+        "rejectStaticValue",
+        "chargeValue",
+        "chargeCallBase",
+        "expandAndChargeInputMemory",
+        "expandAndChargeOutputMemory",
+        "warmAndChargeCodeSource",
+        "discoverDelegation",
+        "warmAndChargeDelegatedTarget",
+        "classifyDeadTarget",
+        "chargeNewAccountState",
+        "reserveEip150Execution",
+        "addStipend",
+        "checkDepthAndBalance",
+        "handleEarlyZeroOrRoute",
+        "stageChildOrInlineResult",
+        "closeOrSuspend",
+        "resumeMerge",
+        "pushResultBeforeResumeTrace"
+      ]
+    },
+    {
+      "name": "callcode",
+      "instruction": "CALLCODE",
+      "opcodeByte": 242,
+      "family": "call",
+      "handlerBody": "CallOpcode\u003CEvmInstructions.OpCallCode,TTracingInst,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E",
+      "handlerTarget": "EvmInstructions.InstructionCall\u003CEthereumGasPolicy,EvmInstructions.OpCallCode,TTracingInst,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E",
+      "stackInputs": 7,
+      "stackOutputs": 1,
+      "terminates": false,
+      "ownsPreChildTraceEnd": false,
+      "semantics": {
+        "operation": "callcode",
+        "valueRule": "explicit",
+        "targetRule": "executingAccount",
+        "resultRule": "successBool"
+      },
+      "effectOrder": [
+        "traceStart",
+        "advancePcAndCount",
+        "popRequestedGas",
+        "popCodeSource",
+        "normalizeCodeSourceLow160",
+        "popValue",
+        "popInputOffsetLengthAndOutputOffsetLength",
+        "allowStaticCallcodeValue",
+        "chargeValue",
+        "chargeCallBase",
+        "expandAndChargeInputMemory",
+        "expandAndChargeOutputMemory",
+        "warmAndChargeCodeSource",
+        "discoverDelegation",
+        "warmAndChargeDelegatedTarget",
+        "skipDeadSelfTargetCharge",
+        "reserveEip150Execution",
+        "addStipend",
+        "checkDepthAndBalance",
+        "handleEarlyZeroOrRoute",
+        "stageChild",
+        "closeOrSuspend",
+        "resumeMerge",
+        "pushResultBeforeResumeTrace"
+      ]
+    },
+    {
+      "name": "delegatecall",
+      "instruction": "DELEGATECALL",
+      "opcodeByte": 244,
+      "family": "call",
+      "handlerBody": "CallOpcode\u003CEvmInstructions.OpDelegateCall,TTracingInst,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E",
+      "handlerTarget": "EvmInstructions.InstructionCall\u003CEthereumGasPolicy,EvmInstructions.OpDelegateCall,TTracingInst,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E",
+      "stackInputs": 6,
+      "stackOutputs": 1,
+      "terminates": false,
+      "ownsPreChildTraceEnd": false,
+      "semantics": {
+        "operation": "delegatecall",
+        "valueRule": "environment",
+        "targetRule": "executingAccount",
+        "resultRule": "successBool"
+      },
+      "effectOrder": [
+        "traceStart",
+        "advancePcAndCount",
+        "popRequestedGas",
+        "popCodeSource",
+        "normalizeCodeSourceLow160",
+        "deriveEnvironmentValue",
+        "popInputOffsetLengthAndOutputOffsetLength",
+        "chargeCallBase",
+        "expandAndChargeInputMemory",
+        "expandAndChargeOutputMemory",
+        "warmAndChargeCodeSource",
+        "discoverDelegation",
+        "warmAndChargeDelegatedTarget",
+        "reserveEip150Execution",
+        "checkDepth",
+        "handleEarlyZeroOrRoute",
+        "stageChild",
+        "closeOrSuspend",
+        "resumeMerge",
+        "pushResultBeforeResumeTrace"
+      ]
+    },
+    {
+      "name": "staticcall",
+      "instruction": "STATICCALL",
+      "opcodeByte": 250,
+      "family": "call",
+      "handlerBody": "CallOpcode\u003CEvmInstructions.OpStaticCall,TTracingInst,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E",
+      "handlerTarget": "EvmInstructions.InstructionCall\u003CEthereumGasPolicy,EvmInstructions.OpStaticCall,TTracingInst,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E",
+      "stackInputs": 6,
+      "stackOutputs": 1,
+      "terminates": false,
+      "ownsPreChildTraceEnd": false,
+      "semantics": {
+        "operation": "staticcall",
+        "valueRule": "zero",
+        "targetRule": "codeSource",
+        "resultRule": "successBool"
+      },
+      "effectOrder": [
+        "traceStart",
+        "advancePcAndCount",
+        "popRequestedGas",
+        "popCodeSource",
+        "normalizeCodeSourceLow160",
+        "deriveZeroValue",
+        "popInputOffsetLengthAndOutputOffsetLength",
+        "chargeCallBase",
+        "expandAndChargeInputMemory",
+        "expandAndChargeOutputMemory",
+        "warmAndChargeCodeSource",
+        "discoverDelegation",
+        "warmAndChargeDelegatedTarget",
+        "reserveEip150Execution",
+        "checkDepth",
+        "handleEarlyZeroOrRoute",
+        "requireNoInstructionOrActionTrace",
+        "excludeRipemd160DirectPrecompile",
+        "boundReturnedGasToReservation",
+        "tryStandardInlinePrecompile",
+        "stageChildOtherwise",
+        "closeOrSuspend",
+        "resumeMerge",
+        "pushResultBeforeResumeTrace"
+      ]
+    },
+    {
+      "name": "create",
+      "instruction": "CREATE",
+      "opcodeByte": 240,
+      "family": "create",
+      "handlerBody": "CreateOpcode\u003CEvmInstructions.OpCreate,TTracingInst,OnFlag,EvmInstructions.CreateSpec\u003COnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E",
+      "handlerTarget": "EvmInstructions.InstructionCreate\u003CEthereumGasPolicy,EvmInstructions.OpCreate,TTracingInst,OnFlag,EvmInstructions.CreateSpec\u003COnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E",
+      "stackInputs": 3,
+      "stackOutputs": 1,
+      "terminates": false,
+      "ownsPreChildTraceEnd": true,
+      "semantics": {
+        "operation": "create",
+        "valueRule": "explicit",
+        "targetRule": "derivedCreate",
+        "resultRule": "createdAddress"
+      },
+      "effectOrder": [
+        "traceStart",
+        "advancePcAndCount",
+        "rejectStatic",
+        "popValueOffsetLength",
+        "checkInitCodeLimit",
+        "checkedCeilingWords",
+        "chargeCreateAccessAndInitWords",
+        "expandAndChargeInitMemory",
+        "checkDepth",
+        "loadExactOwnedInitCode",
+        "checkBalance",
+        "checkNonce",
+        "deriveAddressOracle",
+        "warmDestination",
+        "classifyPhysicalLogicalCollision",
+        "chargeCreateState",
+        "traceFinishBeforeReservation",
+        "reserveEip150AllExecution",
+        "incrementCreatorNonce",
+        "snapshotWorld",
+        "analyzeInitCode",
+        "collisionBurnAndRefillOrStageChild",
+        "skipGenericCreateTraceClosure",
+        "resumeRefundChildGas",
+        "chargeParentDepositExecution",
+        "chargeParentDepositState",
+        "commitChild",
+        "repayStateSpill",
+        "pushAddressBeforeResumeTrace"
+      ]
+    },
+    {
+      "name": "create2",
+      "instruction": "CREATE2",
+      "opcodeByte": 245,
+      "family": "create",
+      "handlerBody": "CreateOpcode\u003CEvmInstructions.OpCreate2,TTracingInst,OnFlag,EvmInstructions.CreateSpec\u003COnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E",
+      "handlerTarget": "EvmInstructions.InstructionCreate\u003CEthereumGasPolicy,EvmInstructions.OpCreate2,TTracingInst,OnFlag,EvmInstructions.CreateSpec\u003COnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E",
+      "stackInputs": 4,
+      "stackOutputs": 1,
+      "terminates": false,
+      "ownsPreChildTraceEnd": true,
+      "semantics": {
+        "operation": "create2",
+        "valueRule": "explicit",
+        "targetRule": "derivedCreate2",
+        "resultRule": "createdAddress"
+      },
+      "effectOrder": [
+        "traceStart",
+        "advancePcAndCount",
+        "rejectStatic",
+        "popValueOffsetLength",
+        "popSalt",
+        "checkInitCodeLimit",
+        "checkedCeilingWords",
+        "chargeCreateAccessInitAndHashWords",
+        "expandAndChargeInitMemory",
+        "checkDepth",
+        "loadExactOwnedInitCode",
+        "checkBalance",
+        "checkNonce",
+        "deriveAddressHashOracle",
+        "warmDestination",
+        "classifyPhysicalLogicalCollision",
+        "chargeCreateState",
+        "traceFinishBeforeReservation",
+        "reserveEip150AllExecution",
+        "incrementCreatorNonce",
+        "snapshotWorld",
+        "analyzeInitCode",
+        "collisionBurnAndRefillOrStageChild",
+        "skipGenericCreateTraceClosure",
+        "resumeRefundChildGas",
+        "chargeParentDepositExecution",
+        "chargeParentDepositState",
+        "commitChild",
+        "repayStateSpill",
+        "pushAddressBeforeResumeTrace"
+      ]
+    },
+    {
+      "name": "selfdestruct",
+      "instruction": "SELFDESTRUCT",
+      "opcodeByte": 255,
+      "family": "selfdestruct",
+      "handlerBody": "SelfDestructOpcode\u003COnFlag,OnFlag,EvmInstructions.SelfDestructSpec\u003CEvmInstructions.AccessSpec\u003COnFlag,Eip8038On\u003E,OnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E",
+      "handlerTarget": "EvmInstructions.InstructionSelfDestruct\u003CEthereumGasPolicy,OnFlag,OnFlag,EvmInstructions.SelfDestructSpec\u003CEvmInstructions.AccessSpec\u003COnFlag,Eip8038On\u003E,OnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E",
+      "stackInputs": 1,
+      "stackOutputs": 0,
+      "terminates": true,
+      "ownsPreChildTraceEnd": false,
+      "semantics": {
+        "operation": "selfdestruct",
+        "valueRule": "none",
+        "targetRule": "beneficiary",
+        "resultRule": "stop"
+      },
+      "effectOrder": [
+        "traceStart",
+        "advancePcAndCount",
+        "rejectStatic",
+        "chargeSelfDestructBase",
+        "popBeneficiary",
+        "normalizeBeneficiaryLow160",
+        "warmAndChargeBeneficiary",
+        "markDestroyIfCreatedThisTransaction",
+        "readBalance",
+        "traceAction",
+        "classifyBeneficiary",
+        "chargeAccountWrite",
+        "chargeNewAccountState",
+        "createOrCreditBeneficiary",
+        "applySelfTargetException",
+        "appendSelfDestructLog",
+        "debitSource",
+        "terminalStop",
+        "outerTerminalTraceClosure"
+      ]
+    }
+  ],
+  "specializations": [
+    {
+      "opcode": "call",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCallOpcode\u003CEvmInstructions.OpCall,OffFlag,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "call",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCallOpcode\u003CEvmInstructions.OpCall,OffFlag,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "call",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCallOpcode\u003CEvmInstructions.OpCall,OnFlag,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "call",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCallOpcode\u003CEvmInstructions.OpCall,OnFlag,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "callcode",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCallOpcode\u003CEvmInstructions.OpCallCode,OffFlag,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "callcode",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCallOpcode\u003CEvmInstructions.OpCallCode,OffFlag,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "callcode",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCallOpcode\u003CEvmInstructions.OpCallCode,OnFlag,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "callcode",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCallOpcode\u003CEvmInstructions.OpCallCode,OnFlag,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "delegatecall",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCallOpcode\u003CEvmInstructions.OpDelegateCall,OffFlag,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "delegatecall",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCallOpcode\u003CEvmInstructions.OpDelegateCall,OffFlag,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "delegatecall",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCallOpcode\u003CEvmInstructions.OpDelegateCall,OnFlag,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "delegatecall",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCallOpcode\u003CEvmInstructions.OpDelegateCall,OnFlag,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "staticcall",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCallOpcode\u003CEvmInstructions.OpStaticCall,OffFlag,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "staticcall",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCallOpcode\u003CEvmInstructions.OpStaticCall,OffFlag,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "staticcall",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCallOpcode\u003CEvmInstructions.OpStaticCall,OnFlag,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "staticcall",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCallOpcode\u003CEvmInstructions.OpStaticCall,OnFlag,OnFlag,OnFlag,EvmInstructions.CallSpec\u003COnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "create",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCreateOpcode\u003CEvmInstructions.OpCreate,OffFlag,OnFlag,EvmInstructions.CreateSpec\u003COnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "create",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCreateOpcode\u003CEvmInstructions.OpCreate,OffFlag,OnFlag,EvmInstructions.CreateSpec\u003COnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "create",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCreateOpcode\u003CEvmInstructions.OpCreate,OnFlag,OnFlag,EvmInstructions.CreateSpec\u003COnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "create",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCreateOpcode\u003CEvmInstructions.OpCreate,OnFlag,OnFlag,EvmInstructions.CreateSpec\u003COnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "create2",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCreateOpcode\u003CEvmInstructions.OpCreate2,OffFlag,OnFlag,EvmInstructions.CreateSpec\u003COnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "create2",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCreateOpcode\u003CEvmInstructions.OpCreate2,OffFlag,OnFlag,EvmInstructions.CreateSpec\u003COnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "create2",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCreateOpcode\u003CEvmInstructions.OpCreate2,OnFlag,OnFlag,EvmInstructions.CreateSpec\u003COnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "create2",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCreateOpcode\u003CEvmInstructions.OpCreate2,OnFlag,OnFlag,EvmInstructions.CreateSpec\u003COnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "selfdestruct",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CSelfDestructOpcode\u003COnFlag,OnFlag,EvmInstructions.SelfDestructSpec\u003CEvmInstructions.AccessSpec\u003COnFlag,Eip8038On\u003E,OnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OffFlag,OffFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "selfdestruct",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CSelfDestructOpcode\u003COnFlag,OnFlag,EvmInstructions.SelfDestructSpec\u003CEvmInstructions.AccessSpec\u003COnFlag,Eip8038On\u003E,OnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OffFlag,OnFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "selfdestruct",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CSelfDestructOpcode\u003COnFlag,OnFlag,EvmInstructions.SelfDestructSpec\u003CEvmInstructions.AccessSpec\u003COnFlag,Eip8038On\u003E,OnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OnFlag,OffFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "selfdestruct",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CSelfDestructOpcode\u003COnFlag,OnFlag,EvmInstructions.SelfDestructSpec\u003CEvmInstructions.AccessSpec\u003COnFlag,Eip8038On\u003E,OnFlag,OnFlag,OnFlag,OnFlag,Eip8038On\u003E\u003E,OnFlag,OnFlag,OffFlag\u003E"
+    }
+  ],
+  "forkLineage": [
+    "Olympic",
+    "Frontier",
+    "Homestead",
+    "Dao",
+    "TangerineWhistle",
+    "SpuriousDragon",
+    "Byzantium",
+    "Constantinople",
+    "ConstantinopleFix",
+    "Istanbul",
+    "MuirGlacier",
+    "Berlin",
+    "London",
+    "ArrowGlacier",
+    "GrayGlacier",
+    "Paris",
+    "Shanghai",
+    "Cancun",
+    "Prague",
+    "Osaka",
+    "BPO1",
+    "BPO2",
+    "Amsterdam"
+  ],
+  "openExtractionObligations": [
+    "CREATE and CREATE2 address derivation, RLP, init-code hashing, and Keccak are explicit oracles; no cryptographic implementation equivalence is claimed.",
+    "Delegation discovery, code-cache behavior, runtime-code validation, precompile execution, and arbitrary child-frame execution are explicit oracle inputs.",
+    "The generated trace projection claims event kind, order, and ownership only; capability-dependent stack, memory, return-data, and action payload equivalence remains open.",
+    "World-state and journal tokens assume the admitted IWorldState, StackAccessTracker, VmState, and code-repository adapters implement the represented reads, snapshots, restores, merges, and writes.",
+    "Roslyn exact-syntax admission does not prove C# compilation, CLR/JIT/AOT execution, function-pointer tail calls, unsafe stack layout, pooled allocation, native code, or hardware behavior.",
+    "Tracing callbacks are assumed total and non-throwing; cancellation delivery, metrics counters, transaction and block composition, trie/database persistence, and zkEVM sources remain outside this slice."
+  ]
+}

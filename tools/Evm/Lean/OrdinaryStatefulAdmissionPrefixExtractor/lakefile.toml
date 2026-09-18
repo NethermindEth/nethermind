@@ -1,0 +1,7 @@
+name = "OrdinaryStatefulAdmissionPrefixExtractor"
+version = "0.1.0"
+defaultTargets = ["OrdinaryStatefulAdmissionPrefixExtractor.Refinement.OrdinaryStatefulAdmissionPrefix"]
+
+[[lean_lib]]
+name = "OrdinaryStatefulAdmissionPrefixExtractor"
+srcDir = ".."

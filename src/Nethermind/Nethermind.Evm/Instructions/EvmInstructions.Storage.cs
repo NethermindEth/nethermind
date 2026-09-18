@@ -99,13 +99,17 @@ public static partial class EvmInstructions
         // Pop the 32-byte value from the stack.
         if (!stack.PopWord256(out Span<byte> bytes)) goto StackUnderflow;
 
+        bool isTracingOpLevelStorage = vm.IsTracingOpLevelStorage;
+        byte[] currentValue = isTracingOpLevelStorage
+            ? vm.WorldState.GetTransientState(in storageCell).ToArray()
+            : [];
+
         // Store either the actual value (if non-zero) or a predefined zero constant.
         vm.WorldState.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
 
-        // If storage tracing is enabled, retrieve the current stored value and log the operation.
-        if (vm.IsTracingOpLevelStorage)
+        // If storage tracing is enabled, log the operation with the value from before the write.
+        if (isTracingOpLevelStorage)
         {
-            ReadOnlySpan<byte> currentValue = vm.WorldState.GetTransientState(in storageCell);
             vm.TxTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
         }
 
@@ -495,7 +499,40 @@ public static partial class EvmInstructions
         // Retrieve the refund value associated with clearing storage.
         long sClearRefunds = (long)gasCosts.SClearRefund;
 
-        if (newSameAsCurrent)
+        if (Eip8038.IsActive && TEip8037.IsActive)
+        {
+            if (newSameAsCurrent)
+            {
+                if (!TGasPolicy.TryConsumeNetMeteredSStoreGas<Eip8038>(ref gas, spec))
+                    goto OutOfGas;
+            }
+            else
+            {
+                ReadOnlySpan<byte> originalValue = vm.WorldState.GetOriginal(in storageCell);
+                bool originalIsZero = originalValue.IsZero();
+                SStorePricingInput input = new(
+                    originalIsZero,
+                    currentIsZero,
+                    newIsZero,
+                    Bytes.AreEqual(originalValue, currentValue),
+                    false,
+                    Bytes.AreEqual(originalValue, bytes));
+                SStorePostAccessPricingSchedule schedule = new(
+                    Eip8038Constants.StorageWrite,
+                    sClearRefunds,
+                    TGasPolicy.GetStorageSetStateCost());
+                SStorePostAccessPricingResult pricing = SStorePricingKernel.PriceAfterAccess(input, schedule);
+                if (!TGasPolicy.TryConsumeStateAndExecutionGas(ref gas, pricing.StateGasCharge, pricing.ExecutionWriteGas))
+                    goto OutOfGas;
+
+                ApplySStoreRefund(vm, vmState, pricing.StorageClearRefund);
+                ApplySStoreRefund(vm, vmState, pricing.StorageClearRefundReversal);
+                if (pricing.StateGasRefund != 0)
+                    vm.CreditStateGasRefund<TEip8037>(ref gas, pricing.StateGasRefund);
+                ApplySStoreRefund(vm, vmState, pricing.RestoreOriginalRefund);
+            }
+        }
+        else if (newSameAsCurrent)
         {
             if (!TGasPolicy.TryConsumeNetMeteredSStoreGas<Eip8038>(ref gas, spec))
                 goto OutOfGas;
@@ -603,6 +640,18 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ApplySStoreRefund<TGasPolicy>(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> vmState, long refund)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        if (refund == 0)
+            return;
+
+        vmState.Refund = unchecked(vmState.Refund + refund);
+        if (vm.IsTracingRefunds)
+            vm.TxTracer.ReportRefund(refund);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

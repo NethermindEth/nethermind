@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 3,
+  "extractorVersion": "1.2.0",
+  "compilerVersion": "5.6.0.0",
+  "languageVersion": "14.0",
+  "root": "Nethermind.Evm.ExtendedStackDecoderKernel",
+  "methodSignature": "Nethermind.Evm.ExtendedStackPairDecode Nethermind.Evm.ExtendedStackDecoderKernel.DecodePair(byte immediate)",
+  "rootSignatures": [
+    "Nethermind.Evm.ExtendedStackPairDecode Nethermind.Evm.ExtendedStackDecoderKernel.DecodePair(byte immediate)",
+    "Nethermind.Evm.ExtendedStackSingleDecode Nethermind.Evm.ExtendedStackDecoderKernel.DecodeSingle(byte immediate)"
+  ],
+  "source": {
+    "path": "src/Nethermind/Nethermind.Evm/Instructions/ExtendedStackDecoderKernel.cs",
+    "sha256": "3a7bb91ec7ff267e2cb4aaa4de4c8ea03279cc1d7a9fdf4dff57e34a80b963ce"
+  },
+  "artifact": {
+    "path": "ExtendedStackDecoderKernel.ir.json",
+    "sha256": "bf68d7954e47ab150b9acfb3c567f00cca9820e637714257052250503b1f6ebc"
+  },
+  "leanArtifact": {
+    "path": "tools/Evm/Lean/Eip803x/Generated/ExtendedStackDecoderKernel.lean",
+    "sha256": "661fbcb115c423896ebb1eaf35005ae4f548981049d3491244280683c93b6334"
+  },
+  "extractedMethods": [
+    "Nethermind.Evm.ExtendedStackPairDecode Nethermind.Evm.ExtendedStackDecoderKernel.DecodePair(byte immediate)",
+    "Nethermind.Evm.ExtendedStackSingleDecode Nethermind.Evm.ExtendedStackDecoderKernel.DecodeSingle(byte immediate)"
+  ],
+  "supportingSources": [
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Bitwise.cs",
+      "sha256": "50dabd327c137ae8b4cb1bdeca89039c487d7a95f4fb1aed266dbd31ea4ed509"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Call.cs",
+      "sha256": "cfc87832eb304f8f8dccfb27b6b89605f6c74e88522f02b13c775834d14948a5"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Call.std.cs",
+      "sha256": "42954af1ac17ea3a973d9ca57a01432637bd92ebc98857838ddafa8e7aef93d6"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.CodeCopy.cs",
+      "sha256": "fd948f4f4ab64699c496e320019ff69d7dd58b0a33e906a5579c46240605c104"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.ControlFlow.cs",
+      "sha256": "282ba75f60c1ddd03fd51460b0e3273c0113430d02faee3abff991fe5f920c6c"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Create.cs",
+      "sha256": "23927529d13488932ec47b57972ab7084566a28deae83805d69a1fe977576719"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Crypto.cs",
+      "sha256": "c86a9c3219b12b5838cf6a8d4ca973bc9d101926a859cf88b8a7b544c6787c94"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Environment.cs",
+      "sha256": "1174827863b40d80b974c361815a3ab5de0d37e184049c977ddf1716180d09f9"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Math1Param.cs",
+      "sha256": "e12cf862c766846a61203f9e2eafab1c8de3d14325db3c012ef239b176996b87"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Math2Param.cs",
+      "sha256": "49bdb1954d92ee90e9a705f0f92d0be5b5f52d8b7fbb0be6cd09d8f80e97db71"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Math3Param.cs",
+      "sha256": "bf24c4d7fd63bcbf3da9c2d0669f1c3a713bb253d51021f57383891bddb201f5"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Shifts.cs",
+      "sha256": "c5d43d9f71582743b8f518734759c0f3d1be0097799aaaf1e874e6cba3658774"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Spec.cs",
+      "sha256": "2aee227767f2adf6d04f02a2d2d3ada8028d84dac60192678630b6af9212ae97"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Stack.cs",
+      "sha256": "e44274b07b1a130045664718fad215e2a3dfd247f06421863573196d4c58f531"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Storage.cs",
+      "sha256": "0101effa0c71c4a602021f18de7075e047974b75b37b9d672364499db0bf390d"
+    }
+  ]
+}

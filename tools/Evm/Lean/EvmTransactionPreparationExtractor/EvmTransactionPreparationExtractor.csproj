@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Nethermind.Evm.Lean.EvmTransactionPreparationExtractor</AssemblyName>
+    <RootNamespace>Nethermind.Evm.Lean.EvmTransactionPreparationExtractor</RootNamespace>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Test/**/*.cs" />
+    <Compile Remove="Admission/VirtualMachineStaticsAdapter.cs" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Admission/ProductionClosure.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Nethermind.Evm.Lean.EvmTransactionPreparationExtractor.Test</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

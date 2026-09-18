@@ -998,6 +998,68 @@ public class BlockProcessorTests
     }
 
     [Test]
+    public void IncrementalValidation_publishes_canonical_receipt_indices_and_cumulative_gas()
+    {
+        BlockAccessListManager balManager = CreateAmsterdamBalManager();
+        Transaction firstTx = Build.A.Transaction
+            .WithHash(TestItem.KeccakA)
+            .WithGasLimit(50_000)
+            .TestObject;
+        Transaction secondTx = Build.A.Transaction
+            .WithHash(TestItem.KeccakB)
+            .WithGasLimit(50_000)
+            .WithNonce(1)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(100_000)
+            .WithTransactions(firstTx, secondTx)
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
+
+        PrepareSetup(balManager, block, Amsterdam.Instance);
+
+        ulong[] gasUsed = [20_000, 20_000];
+        BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[2];
+        for (int i = 0; i < receiptsTracers.Length; i++)
+        {
+            BlockReceiptsTracer tracer = new(parallel: true);
+            tracer.ResetForParallelTx(block, NullBlockTracer.Instance);
+            tracer.StartNewTxTrace(block.Transactions[i]);
+            tracer.MarkAsSuccess(Address.Zero, gasUsed[i], [], []);
+            tracer.EndTxTrace();
+            receiptsTracers[i] = tracer;
+        }
+
+        List<(int EventIndex, int ReceiptIndex, ulong ReceiptGasUsedTotal, ulong HeaderGasUsed)> published = [];
+        BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler handler =
+            Substitute.For<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>();
+        handler.OnTransactionProcessed(Arg.Do<TxProcessedEventArgs>(args => published.Add((
+            args.Index,
+            args.TxReceipt.Index,
+            args.TxReceipt.GasUsedTotal,
+            args.BlockHeader.GasUsed))));
+
+        GasValidationResultSlot[] gasResults = BuildGasResults(block,
+            (21_000, 0, null),
+            (22_000, 0, null));
+
+        balManager.IncrementalValidation(
+            block,
+            gasResults,
+            receiptsTracers,
+            handler,
+            CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(published, Has.Count.EqualTo(2));
+            Assert.That(published[0], Is.EqualTo((0, 0, 20_000ul, 21_000ul)));
+            Assert.That(published[1], Is.EqualTo((1, 1, 40_000ul, 43_000ul)));
+        }
+    }
+
+    [Test]
     public void IncrementalValidation_surfaces_worker_exception_before_gas_accounting()
     {
         // tx0's worker rejected the tx (e.g. signature/nonce/balance check inside ProcessTransaction
@@ -1236,6 +1298,104 @@ public class BlockProcessorTests
         foreach ((int txIndex, uint balIndex) in balIndexes)
         {
             Assert.That(balIndex, Is.EqualTo((uint)(txIndex + 1)));
+        }
+    }
+
+    [Test]
+    public void Parallel_validation_harvests_canonical_receipt_indices_after_validation_failure()
+    {
+        const int txCount = 2;
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit(txCount * 50_000)
+            .WithTransactions(CreateParallelValidationTransactions(txCount))
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
+
+        using RecordingTransactionProcessorAdapter transactionProcessor = new();
+        ParallelTestBlockAccessListManager balManager = new(transactionProcessor)
+        {
+            IncrementalValidationAction = (failedBlock, gasResults) =>
+            {
+                for (int i = 0; i < failedBlock.Transactions.Length; i++)
+                {
+                    _ = gasResults[i].GetResult();
+                }
+
+                throw new InvalidBlockException(failedBlock, "validation failure");
+            }
+        };
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
+            Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            balManager,
+            LimboLogs.Instance);
+        BlockReceiptsTracer outerReceiptsTracer = new();
+
+        Assert.Throws<InvalidBlockException>(() => executor.ProcessTransactions(
+            block,
+            ProcessingOptions.None,
+            outerReceiptsTracer,
+            CancellationToken.None));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outerReceiptsTracer.TxReceipts.Length, Is.EqualTo(txCount));
+            Assert.That(outerReceiptsTracer.TxReceipts[0].Index, Is.Zero);
+            Assert.That(outerReceiptsTracer.TxReceipts[0].GasUsedTotal, Is.EqualTo(21_000));
+            Assert.That(outerReceiptsTracer.TxReceipts[1].Index, Is.EqualTo(1));
+            Assert.That(outerReceiptsTracer.TxReceipts[1].GasUsedTotal, Is.EqualTo(42_000));
+        }
+    }
+
+    [Test]
+    public void Bal_sequential_validation_publishes_transaction_processed_events()
+    {
+        const int txCount = 2;
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+        Block block = BuildParallelValidationBlock(txCount);
+        ConcurrentBag<(int TxIndex, uint BalIndex)> balIndexes = [];
+        ParallelTestBlockAccessListManager balManager = new(
+            balIndex => new BalIndexRecordingTransactionProcessorAdapter(balIndex.GetValueOrDefault(), balIndexes))
+        {
+            ParallelExecutionEnabled = false
+        };
+        List<(int EventIndex, int ReceiptIndex, ulong ReceiptGasUsedTotal, ulong HeaderGasUsed)> published = [];
+        BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler handler =
+            Substitute.For<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>();
+        handler.OnTransactionProcessed(Arg.Do<TxProcessedEventArgs>(args => published.Add((
+            args.Index,
+            args.TxReceipt.Index,
+            args.TxReceipt.GasUsedTotal,
+            args.BlockHeader.GasUsed))));
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
+            Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            balManager,
+            LimboLogs.Instance,
+            handler);
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+
+        TxReceipt[] receipts = executor.ProcessTransactions(
+            block,
+            ProcessingOptions.None,
+            receiptsTracer,
+            CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipts, Has.Length.EqualTo(txCount));
+            Assert.That(published, Has.Count.EqualTo(txCount));
+            Assert.That(published[0], Is.EqualTo((0, 0, 21_000ul, 21_000ul)));
+            Assert.That(published[1], Is.EqualTo((1, 1, 42_001ul, 42_001ul)));
         }
     }
 
@@ -1595,7 +1755,7 @@ public class BlockProcessorTests
 
         public GeneratedBlockAccessList GeneratedBlockAccessList { get; set; } = new();
         public bool Enabled => true;
-        public bool ParallelExecutionEnabled => true;
+        public bool ParallelExecutionEnabled { get; init; } = true;
         public bool BatchReadEnabled => false;
         public bool ForceConstructGeneratedBlockAccessList { get; set; }
 

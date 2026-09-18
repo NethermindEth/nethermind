@@ -133,10 +133,21 @@ public partial class BlockAccessListManager(
             && Enabled
             && blocksConfig.ParallelExecution
             && !options.ContainsFlag(ProcessingOptions.ForceSequentialBlockAccessList)
+            && !options.ContainsFlag(ProcessingOptions.ReadOnlyChain)
             && !_isBuilding
             && suggestedBlock.BlockAccessList is not null
             && stateProvider.IsInScope
             && _hasParentReaderPool;
+
+        // A wire BAL cannot express EIP-161 deletion of a legacy empty leaf, so replay it against
+        // the mutable state instead of retaining that leaf through parallel state application.
+        if (ParallelExecutionEnabled
+            && spec.IsEip8037Enabled
+            && suggestedBlock.BlockAccessList is { } suggestedBlockAccessList
+            && HasEmptyAccountLeaf(stateProvider, suggestedBlockAccessList))
+        {
+            ParallelExecutionEnabled = false;
+        }
 
         // BAL-driven read warming: mirrors BlockCachePreWarmer.IsBalReadWarmingEnabled so
         // HintBal honours the same opt-in config as the prewarmer path.
@@ -168,6 +179,19 @@ public partial class BlockAccessListManager(
         }
 
         _balWarmupTask = StartBalReadWarmup(suggestedBlock);
+    }
+
+    private static bool HasEmptyAccountLeaf(IWorldState stateProvider, ReadOnlyBlockAccessList suggestedBlockAccessList)
+    {
+        foreach (ReadOnlyAccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
+        {
+            if (stateProvider.HasEmptyAccountLeaf(accountChanges.Address))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // Only the parallel executor drains the hint; sequential execution contends with the warming reads.

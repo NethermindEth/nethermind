@@ -1,0 +1,19 @@
+standard-mainnet build: src/Nethermind/Directory.Build.targets
+closed VM: Nethermind.Evm.VirtualMachine<Nethermind.Evm.GasPolicy.EthereumGasPolicy>
+fork: Nethermind.Specs.Forks.Amsterdam
+opcodes: 37 39 3e 51 52 53 59 5a 5e
+tables: OffFlag/OffFlag OffFlag/OnFlag OnFlag/OffFlag OnFlag/OnFlag
+closed roots: 36
+full-source identities: 57
+raw source identities: 3
+exact syntax admissions: 60
+RETURNDATACOPY gate: ReturnDataOpcodesEnabled => IReleaseSpec.IsEip211Enabled, activated by Byzantium
+MCOPY gate: MCopyIncluded => IReleaseSpec.IsEip5656Enabled, activated by Cancun
+copy operand decoding: EvmStack.ReadUInt256FromSlot => EvmWordExtensions.ByteSwap => Bytes.Bswap64 fallback
+memory cap: 2147483616
+memory cost: 3 * words + words * words / 512
+copy cost: 3 + 3 * words
+MSIZE/GAS fixed cost: 2
+MLOAD/MSTORE/MSTORE8 fixed cost: 3
+trace callbacks: operation memory bytes and operation memory size are distinct; MLOAD push is 32 bytes; MSIZE/GAS pushes are 8 bytes
+outer failure closure: OOG clears execution gas; finish precedes error; fault PC decrements the post-dispatch PC

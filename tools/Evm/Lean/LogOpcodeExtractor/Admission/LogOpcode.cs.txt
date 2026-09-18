@@ -1,0 +1,13 @@
+using System.Runtime.CompilerServices;
+
+namespace Nethermind.Evm;
+
+public partial class VirtualMachine<TGasPolicy>
+{
+    [SkipLocalsInit]
+    private readonly struct LogOpcode<TOpCount> : IOpcodeBody where TOpCount : struct, EvmInstructions.IOpCount
+    {
+        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
+            EvmInstructions.InstructionLog<TGasPolicy, TOpCount>(ref stack, ref gas, vm);
+    }
+}

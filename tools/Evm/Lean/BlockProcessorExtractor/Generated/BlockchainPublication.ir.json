@@ -1,0 +1,1847 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.0.0",
+  "name": "BlockchainPublication",
+  "acceptanceState": "source-admitted",
+  "sourceClosureSha256": "24d85c0b6c0a42dc1c950ff8056e0f87f81103b9c59c61ebfb14dfc5118b80e6",
+  "sources": [
+    {
+      "path": "src/Nethermind/Nethermind.Blockchain/IBlockTree.cs",
+      "sha256": "fd4713254e7cfbf079f2edec9fc45e8ddfc4eacff858722e7f8992b5d0afb274"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Blockchain/Receipts/IReceiptStorage.cs",
+      "sha256": "bccf3716b8bc0be5112cfba522ce58d2b51a6865a0bed20563b090bee62e1328"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+      "sha256": "d520090e2adde45bced4b6af6f9add35ea77ed288060d09fdf05cae3b28bdf56"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "sha256": "e2db419219184150c979cd6a081c83ba758c5024a15f996b510806bd1303deda"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.std.cs",
+      "sha256": "7ec6d0f975f36958f83b002ca53404620427a756cab70a037c0988ed75567ed4"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockRef.cs",
+      "sha256": "ede22b15471c363d7713f5daf3fcbe0ba959c49c1ce5cc0ddfbe10faeb9d7a7e"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "sha256": "fc76d8d4dcf30093fb2e52262e8cd90d71493c2dc3ce04a1f314dd8f24f3a8cb"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessingCompletedEventArgs.cs",
+      "sha256": "f0d3fbeac9c35f442d301d2044d903988cdfb726c2f486f5a29b288fc67d283b"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "sha256": "451ad7a9cbb283351519623dcf358e7d3efdb69db2a0e5a452614cbe1d3dc369"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/IBlockProcessingQueue.cs",
+      "sha256": "b37a8491ac796a72eb38d51b43354e4c77c656a487a68cd82d065aedf58ecfd4"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/IBlockProcessor.cs",
+      "sha256": "df79a2a24ca0ad79918cf10bce5b9d74cb4ad1b7542185b41076a0f3758a940e"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/IBlockchainProcessor.cs",
+      "sha256": "60818b4b3cab75c49a588e3ef61861708553a9b8c9595f5b529974d1bfd92f38"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/IBranchProcessor.cs",
+      "sha256": "fc9ecd1b27f22c9b0861615e6c4f0c24f9430ae759e9c040c9e989d9249a0b20"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/ProcessingOptions.cs",
+      "sha256": "145c5bec2a5e70e01dc448a887cd17bb1b81277605a487e437971882a5b0421a"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Validators/BlockValidator.cs",
+      "sha256": "7cc7b515c3001ba4f36ea16b74216f84216556c95d87585a192979e8c4f195d6"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Validators/IBlockValidator.cs",
+      "sha256": "38cb507befc9695e522b16260b713b0b7b84efa226b857f7e5f410be0fd4e4c3"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Block.cs",
+      "sha256": "3cdd12ca52b00b6eefea372be868649653ac57043194aa081d41064d0ed749aa"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/BlockHeader.cs",
+      "sha256": "f354ddd2d45afc8774739ac46a10535b915871ce4ad11d996d0ab972cf9e7349"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Collections/ArrayPoolList.cs",
+      "sha256": "4d88f251cc668907ec51ba06d342efdc278417eb628c7634d2957d1359e32b67"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Crypto/Hash256.cs",
+      "sha256": "ce570ece3b5cd5b8abf9d99491c03340fe32e235a6ad15c65b98e6dbddab18f1"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Exceptions/InvalidBlockException.cs",
+      "sha256": "2098b8a970bd64d589d556a773eb0312a4681f8978f1a991f55af249b3f1aa56"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Extensions/CancellationTokenExtensions.cs",
+      "sha256": "7811bd704199aaae97c164a54b25f77a1613f716fe298c2baa2b4ac78d3d4fe0"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "sha256": "2dec74bcc5748a1850d1bed1e8fe0221aed8c904bf2ba0c0827e76e603a71f18"
+    }
+  ],
+  "dependencies": [
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/NormalFiniteBranchCompletion.ir.json",
+      "sha256": "ebccc9751bc3f65dc577ad78e9202497b9eeb38d410ec43c0c5d8808e7a15816"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/NormalFiniteBranchCompletion.lean",
+      "sha256": "71fb06de4352ff82041687051bf3fa72968fbd351a88068ced427f9011ba7638"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/NormalFiniteBranchCompletion.source-manifest.json",
+      "sha256": "5de2e5fe4d00d76f944806b5bf0044226011ead1f3a1a11ee99c80653dc01463"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/Specification/NormalFiniteBranchCompletion.lean",
+      "sha256": "2ea98609d967ae08b0dbabd7b07f8c88e843390656f9d63f93201639538b70e3"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/Refinement/NormalFiniteBranchCompletion.lean",
+      "sha256": "ac3db637cac571bdd46aef6a169cb0a10c77e7d88dd78f4b893c13432fc51680"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/NormalFiniteBranchCompletion.lean.template",
+      "sha256": "59cb5fb71abb2a73506ff8e05b810b5cdcf2cf3437a17101fe7e7a80b10c29d6"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/OuterBlockExtractor.cs",
+      "sha256": "14582b7692b50ba60316a4a1d2cb7d71fb9c11e313da5fe1bb4c9eca4a59ca30"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json",
+      "sha256": "1f73a3800a957dd02d9d7b06b3b955c81bb92fd9eb8d2831920905394bfc1d5c"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/BlockchainPublication.lean.template",
+      "sha256": "9393df254adfd7a8dde3e4dbfe36c3644620071a21aff0493f9e9303fb72460c"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/Specification/BlockchainPublication.lean",
+      "sha256": "de62a6ae86e2767c216364690b0fee3b72f4cf4708e082f038d480c0defd36ca"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/Refinement/BlockchainPublication.lean",
+      "sha256": "7b5889b8999635bfdeec1b72f8a4d38dd1130b5c45bd5156e3f54460d06f88f4"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/Vectors/OuterBlockVectors.lean",
+      "sha256": "050019b7f5170df8317511d7d7bcbcbfe9a579b84185edefde9e39153236cbb6"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/EXPORTED_OUTER_THEOREMS.txt",
+      "sha256": "3c9edadabfd4127e2a5192828a496ae890b3dc72f3c600ab839a576fc545a27c"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/PUBLICATION_CENSUS_PINS.json",
+      "sha256": "9c7f0ea5ce6bdb7ab8a9a13f8232bb84d895de13026b98d67ca3161762acffc5"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/Verify-OuterAxioms.ps1",
+      "sha256": "cc292e73e9f12f3e03af008f454d16ccf5719d94355c166efb3283e20673e933"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/Verify-Outer.ps1",
+      "sha256": "a56ec6ac907384e9394fceb74d50231d9256d5920af66d797d402ac9d4bdc514"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/Verify-OuterMutationGates.ps1",
+      "sha256": "c2ca68b638d6e94bf9be03b784e54c08d4d91b87c730cc8a9993d734bd53af69"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/Schema/blockchain-publication.ir.schema.json",
+      "sha256": "29bc661c17134861dc966d43a43771b8a993c12555de3fb138c81405fb364211"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/Schema/blockchain-publication.source-manifest.schema.json",
+      "sha256": "fc9702745509a88575ef5498fcf1ae14dc931de244a4d1530b6a736255b7f774"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/PUBLICATION_PROMOTION_PINS.json",
+      "sha256": "22081373a44550a262d5648bb21fd938f279a3cfbc47f1a91992509c28f13be8"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/Admission/BlockchainOuter.cs.txt",
+      "sha256": "fc76d8d4dcf30093fb2e52262e8cd90d71493c2dc3ce04a1f314dd8f24f3a8cb"
+    }
+  ],
+  "sites": [
+    {
+      "id": "finite.empty",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BranchProcessor.Process(None:global::Nethermind.Core.BlockHeader,None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken):global::Nethermind.Core.Block[]:instance",
+      "target": "global::System.Collections.Generic.IReadOnlyCollection\u003Cglobal::Nethermind.Core.Block\u003E.Count:int|suggestedBlocks:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E",
+      "syntax": "if(suggestedBlocks.Count==0)return[];",
+      "position": 1841,
+      "cfgBlocks": [
+        1,
+        2
+      ],
+      "guards": [],
+      "reads": [
+        "suggestedBlocks"
+      ],
+      "writes": []
+    },
+    {
+      "id": "finite.count",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BranchProcessor.Process(None:global::Nethermind.Core.BlockHeader,None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken):global::Nethermind.Core.Block[]:instance",
+      "target": "blocksCount:int|global::System.Collections.Generic.IReadOnlyCollection\u003Cglobal::Nethermind.Core.Block\u003E.Count:int|suggestedBlocks:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E",
+      "syntax": "blocksCount=suggestedBlocks.Count",
+      "position": 4473,
+      "cfgBlocks": [
+        12
+      ],
+      "guards": [],
+      "reads": [
+        "suggestedBlocks"
+      ],
+      "writes": [
+        "blocksCount"
+      ]
+    },
+    {
+      "id": "finite.allocate",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BranchProcessor.Process(None:global::Nethermind.Core.BlockHeader,None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken):global::Nethermind.Core.Block[]:instance",
+      "target": "blocksCount:int|processedBlocks:global::Nethermind.Core.Block[]",
+      "syntax": "processedBlocks=newBlock[blocksCount]",
+      "position": 4530,
+      "cfgBlocks": [
+        12
+      ],
+      "guards": [],
+      "reads": [
+        "blocksCount"
+      ],
+      "writes": [
+        "processedBlocks"
+      ]
+    },
+    {
+      "id": "finite.zeroPrefix",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BranchProcessor.Process(None:global::Nethermind.Core.BlockHeader,None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken):global::Nethermind.Core.Block[]:instance",
+      "target": "processedBlocksCount:int",
+      "syntax": "processedBlocksCount=0",
+      "position": 3035,
+      "cfgBlocks": [
+        8
+      ],
+      "guards": [],
+      "reads": [],
+      "writes": [
+        "processedBlocksCount"
+      ]
+    },
+    {
+      "id": "finite.originalList",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BranchProcessor.Process(None:global::Nethermind.Core.BlockHeader,None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken):global::Nethermind.Core.Block[]:instance",
+      "target": "blocksProcessingEventArgs:global::Nethermind.Consensus.Processing.BlocksProcessingEventArgs|global::Nethermind.Consensus.Processing.BlocksProcessingEventArgs..ctor(None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E):void:instance|suggestedBlocks:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E",
+      "syntax": "blocksProcessingEventArgs=newBlocksProcessingEventArgs(suggestedBlocks);",
+      "position": 3980,
+      "cfgBlocks": [
+        9
+      ],
+      "guards": [],
+      "reads": [
+        "suggestedBlocks"
+      ],
+      "writes": [
+        "blocksProcessingEventArgs"
+      ]
+    },
+    {
+      "id": "finite.index",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BranchProcessor.Process(None:global::Nethermind.Core.BlockHeader,None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken):global::Nethermind.Core.Block[]:instance",
+      "target": "i:int",
+      "syntax": "i=0",
+      "position": 4594,
+      "cfgBlocks": [
+        13
+      ],
+      "guards": [],
+      "reads": [
+        "backgroundCancellation",
+        "blockOptions",
+        "blockProcessor",
+        "blockTracer",
+        "blockhashProvider",
+        "blocksCount",
+        "checkInclusionList",
+        "i",
+        "inclusionListSatisfactionChecker",
+        "inclusionListSatisfied",
+        "isCommitPoint",
+        "isFirstInBatch",
+        "isLastInBatch",
+        "isNotAtTheEdge",
+        "notReadOnly",
+        "options",
+        "preBlockBaseBlock",
+        "preWarmTask",
+        "prefetchBlockhash",
+        "previousBranchStateRoot",
+        "processedBlock",
+        "processedBlocks",
+        "receipts",
+        "retryOptions",
+        "spec",
+        "specProvider",
+        "stateProvider",
+        "suggestedBlock",
+        "suggestedBlocks",
+        "this",
+        "token",
+        "worldStateCloser"
+      ],
+      "writes": [
+        "backgroundCancellation",
+        "blockOptions",
+        "i",
+        "inclusionListSatisfied",
+        "isCommitPoint",
+        "isFirstInBatch",
+        "isLastInBatch",
+        "isNotAtTheEdge",
+        "preBlockBaseBlock",
+        "preWarmTask",
+        "prefetchBlockhash",
+        "previousBranchStateRoot",
+        "processedBlock",
+        "processedBlocksCount",
+        "receipts",
+        "retryOptions",
+        "spec",
+        "suggestedBlock",
+        "worldStateCloser"
+      ]
+    },
+    {
+      "id": "finite.guard",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BranchProcessor.Process(None:global::Nethermind.Core.BlockHeader,None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken):global::Nethermind.Core.Block[]:instance",
+      "target": "blocksCount:int|i:int",
+      "syntax": "i\u003CblocksCount",
+      "position": 4601,
+      "cfgBlocks": [
+        14
+      ],
+      "guards": [],
+      "reads": [
+        "backgroundCancellation",
+        "blockOptions",
+        "blockProcessor",
+        "blockTracer",
+        "blockhashProvider",
+        "blocksCount",
+        "checkInclusionList",
+        "i",
+        "inclusionListSatisfactionChecker",
+        "inclusionListSatisfied",
+        "isCommitPoint",
+        "isFirstInBatch",
+        "isLastInBatch",
+        "isNotAtTheEdge",
+        "notReadOnly",
+        "options",
+        "preBlockBaseBlock",
+        "preWarmTask",
+        "prefetchBlockhash",
+        "previousBranchStateRoot",
+        "processedBlock",
+        "processedBlocks",
+        "receipts",
+        "retryOptions",
+        "spec",
+        "specProvider",
+        "stateProvider",
+        "suggestedBlock",
+        "suggestedBlocks",
+        "this",
+        "token",
+        "worldStateCloser"
+      ],
+      "writes": [
+        "backgroundCancellation",
+        "blockOptions",
+        "i",
+        "inclusionListSatisfied",
+        "isCommitPoint",
+        "isFirstInBatch",
+        "isLastInBatch",
+        "isNotAtTheEdge",
+        "preBlockBaseBlock",
+        "preWarmTask",
+        "prefetchBlockhash",
+        "previousBranchStateRoot",
+        "processedBlock",
+        "processedBlocksCount",
+        "receipts",
+        "retryOptions",
+        "spec",
+        "suggestedBlock",
+        "worldStateCloser"
+      ]
+    },
+    {
+      "id": "finite.increment",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BranchProcessor.Process(None:global::Nethermind.Core.BlockHeader,None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken):global::Nethermind.Core.Block[]:instance",
+      "target": "i:int",
+      "syntax": "i\u002B\u002B",
+      "position": 4618,
+      "cfgBlocks": [
+        69
+      ],
+      "guards": [],
+      "reads": [
+        "backgroundCancellation",
+        "blockOptions",
+        "blockProcessor",
+        "blockTracer",
+        "blockhashProvider",
+        "blocksCount",
+        "checkInclusionList",
+        "i",
+        "inclusionListSatisfactionChecker",
+        "inclusionListSatisfied",
+        "isCommitPoint",
+        "isFirstInBatch",
+        "isLastInBatch",
+        "isNotAtTheEdge",
+        "notReadOnly",
+        "options",
+        "preBlockBaseBlock",
+        "preWarmTask",
+        "prefetchBlockhash",
+        "previousBranchStateRoot",
+        "processedBlock",
+        "processedBlocks",
+        "receipts",
+        "retryOptions",
+        "spec",
+        "specProvider",
+        "stateProvider",
+        "suggestedBlock",
+        "suggestedBlocks",
+        "this",
+        "token",
+        "worldStateCloser"
+      ],
+      "writes": [
+        "backgroundCancellation",
+        "blockOptions",
+        "i",
+        "inclusionListSatisfied",
+        "isCommitPoint",
+        "isFirstInBatch",
+        "isLastInBatch",
+        "isNotAtTheEdge",
+        "preBlockBaseBlock",
+        "preWarmTask",
+        "prefetchBlockhash",
+        "previousBranchStateRoot",
+        "processedBlock",
+        "processedBlocksCount",
+        "receipts",
+        "retryOptions",
+        "spec",
+        "suggestedBlock",
+        "worldStateCloser"
+      ]
+    },
+    {
+      "id": "finite.suggested",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BranchProcessor.Process(None:global::Nethermind.Core.BlockHeader,None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken):global::Nethermind.Core.Block[]:instance",
+      "target": "global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E.Item:global::Nethermind.Core.Block|i:int|suggestedBlock:global::Nethermind.Core.Block|suggestedBlocks:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E",
+      "syntax": "suggestedBlock=suggestedBlocks[i];",
+      "position": 4690,
+      "cfgBlocks": [
+        15
+      ],
+      "guards": [],
+      "reads": [
+        "i",
+        "suggestedBlocks"
+      ],
+      "writes": [
+        "suggestedBlock"
+      ]
+    },
+    {
+      "id": "finite.refresh",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BranchProcessor.Process(None:global::Nethermind.Core.BlockHeader,None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken):global::Nethermind.Core.Block[]:instance",
+      "target": "global::Nethermind.Core.Block.Header:global::Nethermind.Core.BlockHeader|global::Nethermind.Core.Specs.SpecProviderExtensions.extension(global::Nethermind.Core.Specs.ISpecProvider).GetSpec(None:global::Nethermind.Core.BlockHeader):global::Nethermind.Core.Specs.IReleaseSpec:instance|i:int|spec:global::Nethermind.Core.Specs.IReleaseSpec|specProvider:global::Nethermind.Core.Specs.ISpecProvider|suggestedBlock:global::Nethermind.Core.Block",
+      "syntax": "if(i\u003E0){spec=specProvider.GetSpec(suggestedBlock.Header);}",
+      "position": 4743,
+      "cfgBlocks": [
+        15,
+        16
+      ],
+      "guards": [],
+      "reads": [
+        "i",
+        "specProvider",
+        "suggestedBlock"
+      ],
+      "writes": [
+        "spec"
+      ]
+    },
+    {
+      "id": "finite.cancellation",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BranchProcessor.Process(None:global::Nethermind.Core.BlockHeader,None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken):global::Nethermind.Core.Block[]:instance",
+      "target": "backgroundCancellation:global::System.Threading.CancellationTokenSource|global::System.Threading.CancellationTokenSource..ctor():void:instance",
+      "syntax": "backgroundCancellation??=newCancellationTokenSource();",
+      "position": 5094,
+      "cfgBlocks": [
+        17,
+        18,
+        19
+      ],
+      "guards": [],
+      "reads": [
+        "backgroundCancellation"
+      ],
+      "writes": [
+        "backgroundCancellation"
+      ]
+    },
+    {
+      "id": "finite.prewarm",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BranchProcessor.Process(None:global::Nethermind.Core.BlockHeader,None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken):global::Nethermind.Core.Block[]:instance",
+      "target": "backgroundCancellation:global::System.Threading.CancellationTokenSource|global::Nethermind.Consensus.Processing.BranchProcessor.PreWarmTransactions(None:global::Nethermind.Core.Block,None:global::Nethermind.Core.BlockHeader,None:global::Nethermind.Core.Specs.IReleaseSpec,None:global::System.Threading.CancellationToken):global::System.Threading.Tasks.Task:instance|global::System.Threading.CancellationTokenSource.Token:global::System.Threading.CancellationToken|preBlockBaseBlock:global::Nethermind.Core.BlockHeader|preWarmTask:global::System.Threading.Tasks.Task|spec:global::Nethermind.Core.Specs.IReleaseSpec|suggestedBlock:global::Nethermind.Core.Block",
+      "syntax": "preWarmTask??=PreWarmTransactions(suggestedBlock,preBlockBaseBlock,spec,backgroundCancellation.Token);",
+      "position": 5168,
+      "cfgBlocks": [
+        20,
+        21,
+        22
+      ],
+      "guards": [],
+      "reads": [
+        "backgroundCancellation",
+        "preBlockBaseBlock",
+        "preWarmTask",
+        "spec",
+        "suggestedBlock",
+        "this"
+      ],
+      "writes": [
+        "preWarmTask"
+      ]
+    },
+    {
+      "id": "finite.prefetch",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BranchProcessor.Process(None:global::Nethermind.Core.BlockHeader,None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken):global::Nethermind.Core.Block[]:instance",
+      "target": "backgroundCancellation:global::System.Threading.CancellationTokenSource|blockhashProvider:global::Nethermind.Evm.IBlockhashProvider|global::Nethermind.Core.Block.Header:global::Nethermind.Core.BlockHeader|global::Nethermind.Evm.IBlockhashProvider.Prefetch(None:global::Nethermind.Core.BlockHeader,None:global::System.Threading.CancellationToken):global::System.Threading.Tasks.Task:instance|global::System.Threading.CancellationTokenSource.Token:global::System.Threading.CancellationToken|prefetchBlockhash:global::System.Threading.Tasks.Task|suggestedBlock:global::Nethermind.Core.Block",
+      "syntax": "prefetchBlockhash??=blockhashProvider.Prefetch(suggestedBlock.Header,backgroundCancellation.Token);",
+      "position": 5292,
+      "cfgBlocks": [
+        23,
+        24,
+        25
+      ],
+      "guards": [],
+      "reads": [
+        "backgroundCancellation",
+        "blockhashProvider",
+        "prefetchBlockhash",
+        "suggestedBlock"
+      ],
+      "writes": [
+        "prefetchBlockhash"
+      ]
+    },
+    {
+      "id": "finite.options",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BranchProcessor.Process(None:global::Nethermind.Core.BlockHeader,None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken):global::Nethermind.Core.Block[]:instance",
+      "target": "blockOptions:global::Nethermind.Consensus.Processing.ProcessingOptions|blockTracer:global::Nethermind.Evm.Tracing.IBlockTracer|global::Nethermind.Blockchain.Tracing.NullBlockTracer.Instance:global::Nethermind.Blockchain.Tracing.NullBlockTracer|global::Nethermind.Consensus.Processing.ProcessingOptions.ForceSequentialBlockAccessList:global::Nethermind.Consensus.Processing.ProcessingOptions|options:global::Nethermind.Consensus.Processing.ProcessingOptions",
+      "syntax": "blockOptions=blockTracer==NullBlockTracer.Instance?options:options|ProcessingOptions.ForceSequentialBlockAccessList",
+      "position": 5817,
+      "cfgBlocks": [
+        33,
+        34,
+        35,
+        36
+      ],
+      "guards": [],
+      "reads": [
+        "blockTracer",
+        "options"
+      ],
+      "writes": [
+        "blockOptions"
+      ]
+    },
+    {
+      "id": "finite.call",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BranchProcessor.Process(None:global::Nethermind.Core.BlockHeader,None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken):global::Nethermind.Core.Block[]:instance",
+      "target": "blockOptions:global::Nethermind.Consensus.Processing.ProcessingOptions|blockProcessor:global::Nethermind.Consensus.Processing.IBlockProcessor|blockTracer:global::Nethermind.Evm.Tracing.IBlockTracer|global::Nethermind.Consensus.Processing.IBlockProcessor.ProcessOne(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::Nethermind.Core.Specs.IReleaseSpec,None:global::System.Threading.CancellationToken):(global::Nethermind.Core.Block Block, global::Nethermind.Core.TxReceipt[] Receipts):instance|spec:global::Nethermind.Core.Specs.IReleaseSpec|suggestedBlock:global::Nethermind.Core.Block|token:global::System.Threading.CancellationToken",
+      "syntax": "blockProcessor.ProcessOne(suggestedBlock,blockOptions,blockTracer,spec,token)",
+      "position": 6147,
+      "cfgBlocks": [
+        37
+      ],
+      "guards": [],
+      "reads": [
+        "blockOptions",
+        "blockProcessor",
+        "blockTracer",
+        "spec",
+        "suggestedBlock",
+        "token"
+      ],
+      "writes": [
+        "processedBlock",
+        "receipts"
+      ]
+    },
+    {
+      "id": "finite.return",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BranchProcessor.Process(None:global::Nethermind.Core.BlockHeader,None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken):global::Nethermind.Core.Block[]:instance",
+      "target": "processedBlocks:global::Nethermind.Core.Block[]",
+      "syntax": "returnprocessedBlocks;",
+      "position": 10009,
+      "cfgBlocks": [
+        70
+      ],
+      "guards": [],
+      "reads": [
+        "processedBlocks"
+      ],
+      "writes": []
+    },
+    {
+      "id": "wrapper.call",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessBranch(In:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block[]:instance",
+      "target": "global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch.BaseBlock:global::Nethermind.Core.BlockHeader|global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch.BlocksToProcess:global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.Block\u003E|global::Nethermind.Consensus.Processing.BlockchainProcessor._branchProcessor:global::Nethermind.Consensus.Processing.IBranchProcessor|global::Nethermind.Consensus.Processing.IBranchProcessor.Process(None:global::Nethermind.Core.BlockHeader,None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken):global::Nethermind.Core.Block[]:instance|options:global::Nethermind.Consensus.Processing.ProcessingOptions|processingBranch:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch|token:global::System.Threading.CancellationToken|tracer:global::Nethermind.Evm.Tracing.IBlockTracer",
+      "syntax": "_branchProcessor.Process(processingBranch.BaseBlock,processingBranch.BlocksToProcess,options,tracer,token)",
+      "position": 24740,
+      "cfgBlocks": [
+        2
+      ],
+      "guards": [],
+      "reads": [
+        "options",
+        "processingBranch",
+        "this",
+        "token",
+        "tracer"
+      ],
+      "writes": [
+        "processedBlocks"
+      ]
+    },
+    {
+      "id": "wrapper.error",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessBranch(In:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block[]:instance",
+      "target": "error:string",
+      "syntax": "error=null;",
+      "position": 24945,
+      "cfgBlocks": [
+        2
+      ],
+      "guards": [],
+      "reads": [],
+      "writes": [
+        "error"
+      ]
+    },
+    {
+      "id": "invalid.hash",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessBranch(In:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block[]:instance",
+      "target": "ex:global::Nethermind.Core.Exceptions.InvalidBlockException|global::Nethermind.Core.BlockHeader.Hash:global::Nethermind.Core.Crypto.Hash256|global::Nethermind.Core.Exceptions.InvalidBlockException.InvalidBlock:global::Nethermind.Core.BlockHeader|invalidBlockHash:global::Nethermind.Core.Crypto.Hash256",
+      "syntax": "invalidBlockHash=ex.InvalidBlock.Hash;",
+      "position": 25128,
+      "cfgBlocks": [
+        6
+      ],
+      "guards": [],
+      "reads": [
+        "ex"
+      ],
+      "writes": [
+        "invalidBlockHash"
+      ]
+    },
+    {
+      "id": "invalid.error",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessBranch(In:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block[]:instance",
+      "target": "error:string|ex:global::Nethermind.Core.Exceptions.InvalidBlockException|global::System.Exception.Message:string",
+      "syntax": "error=ex.Message;",
+      "position": 25181,
+      "cfgBlocks": [
+        6
+      ],
+      "guards": [],
+      "reads": [
+        "ex"
+      ],
+      "writes": [
+        "error"
+      ]
+    },
+    {
+      "id": "invalid.first",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessBranch(In:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block[]:instance",
+      "target": "global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch.BlocksToProcess:global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.Block\u003E|global::System.Linq.Enumerable.FirstOrDefault(None:global::System.Collections.Generic.IEnumerable\u003Cglobal::Nethermind.Core.Block\u003E,None:global::System.Func\u003Cglobal::Nethermind.Core.Block, bool\u003E):global::Nethermind.Core.Block:static|processingBranch:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch",
+      "syntax": "processingBranch.BlocksToProcess.FirstOrDefault(b=\u003Eb.Hash==invalidBlockHash)",
+      "position": 25235,
+      "cfgBlocks": [
+        6
+      ],
+      "guards": [],
+      "reads": [
+        "b",
+        "invalidBlockHash",
+        "processingBranch"
+      ],
+      "writes": [
+        "b",
+        "invalidBlock"
+      ]
+    },
+    {
+      "id": "invalid.nullResult",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessBranch(In:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block[]:instance",
+      "target": "processedBlocks:global::Nethermind.Core.Block[]",
+      "syntax": "processedBlocks=null;",
+      "position": 26605,
+      "cfgBlocks": [
+        13
+      ],
+      "guards": [],
+      "reads": [],
+      "writes": [
+        "processedBlocks"
+      ]
+    },
+    {
+      "id": "invalid.deleteGuard",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessBranch(In:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block[]:instance",
+      "target": "global::Nethermind.Consensus.Processing.ProcessingOptions.ReadOnlyChain:global::Nethermind.Consensus.Processing.ProcessingOptions|global::Nethermind.Consensus.Processing.ProcessingOptionsExtensions.ContainsFlag(None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Consensus.Processing.ProcessingOptions):bool:static|invalidBlockHash:global::Nethermind.Core.Crypto.Hash256|options:global::Nethermind.Consensus.Processing.ProcessingOptions",
+      "syntax": "invalidBlockHashisnotnull\u0026\u0026!options.ContainsFlag(ProcessingOptions.ReadOnlyChain)",
+      "position": 26681,
+      "cfgBlocks": [
+        14,
+        15
+      ],
+      "guards": [
+        "false:invalidBlockHashisnotnull\u0026\u0026!options.ContainsFlag(ProcessingOptions.ReadOnlyChain)"
+      ],
+      "reads": [
+        "invalidBlockHash",
+        "options",
+        "processingBranch"
+      ],
+      "writes": []
+    },
+    {
+      "id": "invalid.deleteCall",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessBranch(In:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block[]:instance",
+      "target": "global::Nethermind.Consensus.Processing.BlockchainProcessor.DeleteInvalidBlocks(In:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch,None:global::Nethermind.Core.Crypto.Hash256):void:instance|invalidBlockHash:global::Nethermind.Core.Crypto.Hash256|processingBranch:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch",
+      "syntax": "DeleteInvalidBlocks(inprocessingBranch,invalidBlockHash);",
+      "position": 26799,
+      "cfgBlocks": [
+        16
+      ],
+      "guards": [
+        "true:invalidBlockHashisnotnull\u0026\u0026!options.ContainsFlag(ProcessingOptions.ReadOnlyChain)"
+      ],
+      "reads": [
+        "invalidBlockHash",
+        "processingBranch"
+      ],
+      "writes": []
+    },
+    {
+      "id": "invalid.deleteEach",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.DeleteInvalidBlocks(In:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch,None:global::Nethermind.Core.Crypto.Hash256):void:instance",
+      "target": "global::Nethermind.Blockchain.IBlockTree.DeleteInvalidBlock(None:global::Nethermind.Core.Block):void:instance|global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch.BlocksToProcess:global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.Block\u003E|global::Nethermind.Consensus.Processing.BlockchainProcessor._blockTree:global::Nethermind.Blockchain.IBlockTree|global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.Block\u003E.Item:global::Nethermind.Core.Block|i:int|processingBranch:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch",
+      "syntax": "_blockTree.DeleteInvalidBlock(processingBranch.BlocksToProcess[i]);",
+      "position": 24238,
+      "cfgBlocks": [
+        4
+      ],
+      "guards": [
+        "true:processingBranch.BlocksToProcess[i].Hash==invalidBlockHash"
+      ],
+      "reads": [
+        "i",
+        "processingBranch",
+        "this"
+      ],
+      "writes": []
+    },
+    {
+      "id": "wrapper.return",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessBranch(In:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block[]:instance",
+      "target": "processedBlocks:global::Nethermind.Core.Block[]",
+      "syntax": "returnprocessedBlocks;",
+      "position": 26892,
+      "cfgBlocks": [
+        18
+      ],
+      "guards": [],
+      "reads": [
+        "processedBlocks"
+      ],
+      "writes": []
+    },
+    {
+      "id": "outer.error",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.Process(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block:instance",
+      "target": "error:string",
+      "syntax": "error=null;",
+      "position": 18626,
+      "cfgBlocks": [
+        1
+      ],
+      "guards": [],
+      "reads": [],
+      "writes": [
+        "error"
+      ]
+    },
+    {
+      "id": "outer.simpleChecks",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.Process(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block:instance",
+      "target": "global::Nethermind.Consensus.Processing.BlockchainProcessor.RunSimpleChecksAheadOfProcessing(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions):bool:instance|options:global::Nethermind.Consensus.Processing.ProcessingOptions|suggestedBlock:global::Nethermind.Core.Block",
+      "syntax": "!RunSimpleChecksAheadOfProcessing(suggestedBlock,options)",
+      "position": 18652,
+      "cfgBlocks": [
+        1
+      ],
+      "guards": [
+        "false:!RunSimpleChecksAheadOfProcessing(suggestedBlock,options)"
+      ],
+      "reads": [
+        "options",
+        "suggestedBlock",
+        "this"
+      ],
+      "writes": []
+    },
+    {
+      "id": "outer.shouldProcess",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.Process(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block:instance",
+      "target": "global::Nethermind.Blockchain.IBlockTree.IsBetterThanHead(None:global::Nethermind.Core.BlockHeader):bool:instance|global::Nethermind.Consensus.Processing.BlockchainProcessor._blockTree:global::Nethermind.Blockchain.IBlockTree|global::Nethermind.Consensus.Processing.ProcessingOptions.ForceProcessing:global::Nethermind.Consensus.Processing.ProcessingOptions|global::Nethermind.Consensus.Processing.ProcessingOptionsExtensions.ContainsFlag(None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Consensus.Processing.ProcessingOptions):bool:static|global::Nethermind.Core.Block.Header:global::Nethermind.Core.BlockHeader|global::Nethermind.Core.Block.IsGenesis:bool|options:global::Nethermind.Consensus.Processing.ProcessingOptions|shouldProcess:bool|suggestedBlock:global::Nethermind.Core.Block",
+      "syntax": "shouldProcess=suggestedBlock.IsGenesis||_blockTree.IsBetterThanHead(suggestedBlock.Header)||options.ContainsFlag(ProcessingOptions.ForceProcessing)",
+      "position": 18984,
+      "cfgBlocks": [
+        9,
+        10,
+        11,
+        12,
+        13
+      ],
+      "guards": [],
+      "reads": [
+        "options",
+        "suggestedBlock",
+        "this"
+      ],
+      "writes": [
+        "shouldProcess"
+      ]
+    },
+    {
+      "id": "outer.readOnly",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.Process(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block:instance",
+      "target": "global::Nethermind.Consensus.Processing.ProcessingOptions.ReadOnlyChain:global::Nethermind.Consensus.Processing.ProcessingOptions|global::Nethermind.Consensus.Processing.ProcessingOptionsExtensions.ContainsFlag(None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Consensus.Processing.ProcessingOptions):bool:static|options:global::Nethermind.Consensus.Processing.ProcessingOptions|readonlyChain:bool",
+      "syntax": "readonlyChain=options.ContainsFlag(ProcessingOptions.ReadOnlyChain)",
+      "position": 19551,
+      "cfgBlocks": [
+        28
+      ],
+      "guards": [],
+      "reads": [
+        "options"
+      ],
+      "writes": [
+        "readonlyChain"
+      ]
+    },
+    {
+      "id": "outer.branch",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.Process(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block:instance",
+      "target": "global::Nethermind.Consensus.Processing.BlockchainProcessor.PrepareProcessingBranch(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions):global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch:instance|global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch.Dispose():void:instance|options:global::Nethermind.Consensus.Processing.ProcessingOptions|processingBranch:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch|suggestedBlock:global::Nethermind.Core.Block",
+      "syntax": "usingProcessingBranchprocessingBranch=PrepareProcessingBranch(suggestedBlock,options);",
+      "position": 19687,
+      "cfgBlocks": [
+        30,
+        59
+      ],
+      "guards": [],
+      "reads": [
+        "options",
+        "suggestedBlock",
+        "this"
+      ],
+      "writes": [
+        "processingBranch"
+      ]
+    },
+    {
+      "id": "outer.prepare",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.Process(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block:instance",
+      "target": "global::Nethermind.Consensus.Processing.BlockchainProcessor.PrepareBlocksToProcess(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch):void:instance|options:global::Nethermind.Consensus.Processing.ProcessingOptions|processingBranch:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch|suggestedBlock:global::Nethermind.Core.Block",
+      "syntax": "PrepareBlocksToProcess(suggestedBlock,options,processingBranch);",
+      "position": 19787,
+      "cfgBlocks": [
+        31
+      ],
+      "guards": [],
+      "reads": [
+        "options",
+        "processingBranch",
+        "suggestedBlock",
+        "this"
+      ],
+      "writes": []
+    },
+    {
+      "id": "outer.wrapper",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.Process(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block:instance",
+      "target": "error:string|global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessBranch(In:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block[]:instance|options:global::Nethermind.Consensus.Processing.ProcessingOptions|processingBranch:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch|token:global::System.Threading.CancellationToken|tracer:global::Nethermind.Evm.Tracing.IBlockTracer",
+      "syntax": "ProcessBranch(processingBranch,options,tracer,token,outerror)",
+      "position": 19920,
+      "cfgBlocks": [
+        31
+      ],
+      "guards": [],
+      "reads": [
+        "options",
+        "processingBranch",
+        "this",
+        "token",
+        "tracer"
+      ],
+      "writes": [
+        "error",
+        "processedBlocks"
+      ]
+    },
+    {
+      "id": "outer.stop",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.Process(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block:instance",
+      "target": "global::Nethermind.Consensus.Processing.BlockchainProcessor._stopwatch:global::System.Diagnostics.Stopwatch|global::System.Diagnostics.Stopwatch.Stop():void:instance",
+      "syntax": "_stopwatch.Stop();",
+      "position": 19996,
+      "cfgBlocks": [
+        31
+      ],
+      "guards": [],
+      "reads": [
+        "this"
+      ],
+      "writes": []
+    },
+    {
+      "id": "outer.null",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.Process(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block:instance",
+      "target": "processedBlocks:global::Nethermind.Core.Block[]",
+      "syntax": "if(processedBlocksisnull){returnnull;}",
+      "position": 20023,
+      "cfgBlocks": [
+        31,
+        32
+      ],
+      "guards": [],
+      "reads": [
+        "processedBlocks"
+      ],
+      "writes": []
+    },
+    {
+      "id": "outer.nonempty",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.Process(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block:instance",
+      "target": "global::System.Array.Length:int|processedBlocks:global::Nethermind.Core.Block[]",
+      "syntax": "processedBlocks.Length\u003E0",
+      "position": 20147,
+      "cfgBlocks": [
+        33
+      ],
+      "guards": [
+        "false:processedBlocks.Length\u003E0"
+      ],
+      "reads": [
+        "lastProcessed",
+        "processedBlocks",
+        "suggestedBlock",
+        "this"
+      ],
+      "writes": [
+        "lastProcessed"
+      ]
+    },
+    {
+      "id": "outer.last",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.Process(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block:instance",
+      "target": "lastProcessed:global::Nethermind.Core.Block|processedBlocks:global::Nethermind.Core.Block[]",
+      "syntax": "lastProcessed=processedBlocks[^1];",
+      "position": 20197,
+      "cfgBlocks": [
+        34
+      ],
+      "guards": [
+        "true:processedBlocks.Length\u003E0"
+      ],
+      "reads": [
+        "processedBlocks"
+      ],
+      "writes": [
+        "lastProcessed"
+      ]
+    },
+    {
+      "id": "outer.difficulty",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.Process(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block:instance",
+      "target": "global::Nethermind.Core.Block.Header:global::Nethermind.Core.BlockHeader|global::Nethermind.Core.Block.TotalDifficulty:global::Nethermind.Int256.UInt256?|global::Nethermind.Core.BlockHeader.TotalDifficulty:global::Nethermind.Int256.UInt256?|lastProcessed:global::Nethermind.Core.Block|suggestedBlock:global::Nethermind.Core.Block",
+      "syntax": "lastProcessed.Header.TotalDifficulty=suggestedBlock.TotalDifficulty;",
+      "position": 20378,
+      "cfgBlocks": [
+        36
+      ],
+      "guards": [
+        "true:processedBlocks.Length\u003E0"
+      ],
+      "reads": [
+        "lastProcessed",
+        "suggestedBlock"
+      ],
+      "writes": []
+    },
+    {
+      "id": "outer.stats",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.Process(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block:instance",
+      "target": "blockProcessingTimeInMicrosecs:long|global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch.BaseBlock:global::Nethermind.Core.BlockHeader|global::Nethermind.Consensus.Processing.BlockchainProcessor._stats:global::Nethermind.Consensus.Processing.IProcessingStats|global::Nethermind.Consensus.Processing.IProcessingStats.UpdateStats(None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E,None:global::Nethermind.Core.BlockHeader,None:long):void:instance|processedBlocks:global::Nethermind.Core.Block[]|processingBranch:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch",
+      "syntax": "_stats.UpdateStats(processedBlocks,processingBranch.BaseBlock,blockProcessingTimeInMicrosecs);",
+      "position": 21163,
+      "cfgBlocks": [
+        45
+      ],
+      "guards": [
+        "true:!readonlyChain"
+      ],
+      "reads": [
+        "blockProcessingTimeInMicrosecs",
+        "processedBlocks",
+        "processingBranch",
+        "this"
+      ],
+      "writes": []
+    },
+    {
+      "id": "outer.headGuard",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.Process(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block:instance",
+      "target": "global::Nethermind.Consensus.Processing.ProcessingOptions.DoNotUpdateHead:global::Nethermind.Consensus.Processing.ProcessingOptions|global::Nethermind.Consensus.Processing.ProcessingOptionsExtensions.ContainsFlag(None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Consensus.Processing.ProcessingOptions):bool:static|options:global::Nethermind.Consensus.Processing.ProcessingOptions|updateHead:bool",
+      "syntax": "updateHead=!options.ContainsFlag(ProcessingOptions.DoNotUpdateHead)",
+      "position": 21284,
+      "cfgBlocks": [
+        46
+      ],
+      "guards": [],
+      "reads": [
+        "options"
+      ],
+      "writes": [
+        "updateHead"
+      ]
+    },
+    {
+      "id": "outer.head",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.Process(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block:instance",
+      "target": "global::Nethermind.Blockchain.IBlockTree.TryUpdateMainChain(None:global::Nethermind.Core.BlockHeader,None:bool,None:bool,None:global::System.ReadOnlySpan\u003Cglobal::Nethermind.Core.Block\u003E):bool:instance|global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch.Blocks:global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.Block\u003E|global::Nethermind.Consensus.Processing.BlockchainProcessor._blockTree:global::Nethermind.Blockchain.IBlockTree|global::Nethermind.Core.Block.Header:global::Nethermind.Core.BlockHeader|global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.Block\u003E.AsSpan():global::System.Span\u003Cglobal::Nethermind.Core.Block\u003E:instance|processingBranch:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch|suggestedBlock:global::Nethermind.Core.Block",
+      "syntax": "_blockTree.TryUpdateMainChain(suggestedBlock.Header,wereProcessed:true,preloadedBlocks:processingBranch.Blocks.AsSpan())",
+      "position": 21739,
+      "cfgBlocks": [
+        49
+      ],
+      "guards": [
+        "false:!_blockTree.TryUpdateMainChain(suggestedBlock.Header,wereProcessed:true,preloadedBlocks:processingBranch.Blocks.AsSpan())\u0026\u0026_logger.IsWarn",
+        "true:updateHead"
+      ],
+      "reads": [
+        "processingBranch",
+        "suggestedBlock",
+        "this"
+      ],
+      "writes": []
+    },
+    {
+      "id": "outer.markGuard",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.Process(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block:instance",
+      "target": "global::Nethermind.Consensus.Processing.ProcessingOptions.MarkAsProcessed:global::Nethermind.Consensus.Processing.ProcessingOptions|options:global::Nethermind.Consensus.Processing.ProcessingOptions",
+      "syntax": "(options\u0026ProcessingOptions.MarkAsProcessed)==ProcessingOptions.MarkAsProcessed",
+      "position": 22051,
+      "cfgBlocks": [
+        52
+      ],
+      "guards": [
+        "false:(options\u0026ProcessingOptions.MarkAsProcessed)==ProcessingOptions.MarkAsProcessed"
+      ],
+      "reads": [
+        "lastProcessed",
+        "options",
+        "processedBlocks",
+        "processingBranch",
+        "this"
+      ],
+      "writes": []
+    },
+    {
+      "id": "outer.mark",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.Process(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block:instance",
+      "target": "global::Nethermind.Blockchain.IBlockTree.MarkChainAsProcessed(None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E):void:instance|global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch.Blocks:global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.Block\u003E|global::Nethermind.Consensus.Processing.BlockchainProcessor._blockTree:global::Nethermind.Blockchain.IBlockTree|processingBranch:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch",
+      "syntax": "_blockTree.MarkChainAsProcessed(processingBranch.Blocks);",
+      "position": 22292,
+      "cfgBlocks": [
+        55
+      ],
+      "guards": [
+        "true:(options\u0026ProcessingOptions.MarkAsProcessed)==ProcessingOptions.MarkAsProcessed"
+      ],
+      "reads": [
+        "processingBranch",
+        "this"
+      ],
+      "writes": []
+    },
+    {
+      "id": "outer.metrics",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.Process(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block:instance",
+      "target": "global::Nethermind.Blockchain.IBlockTree.BestKnownNumber:ulong|global::Nethermind.Blockchain.Metrics.BestKnownBlockNumber:ulong|global::Nethermind.Consensus.Processing.BlockchainProcessor._blockTree:global::Nethermind.Blockchain.IBlockTree",
+      "syntax": "Metrics.BestKnownBlockNumber=_blockTree.BestKnownNumber;",
+      "position": 22411,
+      "cfgBlocks": [
+        57
+      ],
+      "guards": [
+        "true:!readonlyChain"
+      ],
+      "reads": [
+        "this"
+      ],
+      "writes": []
+    },
+    {
+      "id": "outer.return",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.Process(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block:instance",
+      "target": "lastProcessed:global::Nethermind.Core.Block",
+      "syntax": "returnlastProcessed;",
+      "position": 22489,
+      "cfgBlocks": [
+        58
+      ],
+      "guards": [],
+      "reads": [
+        "lastProcessed"
+      ],
+      "writes": []
+    },
+    {
+      "id": "outer.dispose",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch.Dispose():void:instance",
+      "target": "global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch.Blocks:global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.Block\u003E|global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch.BlocksToProcess:global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.Block\u003E|global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.Block\u003E.Dispose():void:instance",
+      "syntax": "{Blocks.Dispose();BlocksToProcess.Dispose();}",
+      "position": 38647,
+      "cfgBlocks": [
+        1
+      ],
+      "guards": [],
+      "reads": [
+        "this"
+      ],
+      "writes": []
+    },
+    {
+      "id": "prepare.forceClear",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.PrepareBlocksToProcess(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch):void:instance",
+      "target": "global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch.Blocks:global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.Block\u003E|global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.Block\u003E.Clear():void:instance|processingBranch:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch",
+      "syntax": "processingBranch.Blocks.Clear();",
+      "position": 27225,
+      "cfgBlocks": [
+        2
+      ],
+      "guards": [
+        "true:options.ContainsFlag(ProcessingOptions.ForceProcessing)"
+      ],
+      "reads": [
+        "processingBranch"
+      ],
+      "writes": []
+    },
+    {
+      "id": "prepare.forceAdd",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.PrepareBlocksToProcess(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch):void:instance",
+      "target": "blocksToProcess:global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.Block\u003E|global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.Block\u003E.Add(None:global::Nethermind.Core.Block):void:instance|suggestedBlock:global::Nethermind.Core.Block",
+      "syntax": "blocksToProcess.Add(suggestedBlock);",
+      "position": 27391,
+      "cfgBlocks": [
+        2
+      ],
+      "guards": [
+        "true:options.ContainsFlag(ProcessingOptions.ForceProcessing)"
+      ],
+      "reads": [
+        "blocksToProcess",
+        "suggestedBlock"
+      ],
+      "writes": []
+    },
+    {
+      "id": "prepare.inputs",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.PrepareBlocksToProcess(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch):void:instance",
+      "target": "blocksToProcess:global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.Block\u003E|global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch.BlocksToProcess:global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.Block\u003E|processingBranch:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch",
+      "syntax": "blocksToProcess=processingBranch.BlocksToProcess",
+      "position": 27082,
+      "cfgBlocks": [
+        1
+      ],
+      "guards": [],
+      "reads": [
+        "processingBranch"
+      ],
+      "writes": [
+        "blocksToProcess"
+      ]
+    },
+    {
+      "id": "prepare.copy",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.PrepareBlocksToProcess(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch):void:instance",
+      "target": "block:global::Nethermind.Core.Block|blocksToProcess:global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.Block\u003E|global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.Block\u003E.Add(None:global::Nethermind.Core.Block):void:instance",
+      "syntax": "blocksToProcess.Add(block);",
+      "position": 27897,
+      "cfgBlocks": [
+        9
+      ],
+      "guards": [
+        "false:options.ContainsFlag(ProcessingOptions.ForceProcessing)"
+      ],
+      "reads": [
+        "block",
+        "blocksToProcess"
+      ],
+      "writes": []
+    },
+    {
+      "id": "prepare.nonempty",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.PrepareBlocksToProcess(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch):void:instance",
+      "target": "blocksToProcess:global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.Block\u003E|firstBlock:global::Nethermind.Core.Block|global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.Block\u003E.Item:global::Nethermind.Core.Block",
+      "syntax": "firstBlock=blocksToProcess[0]",
+      "position": 27958,
+      "cfgBlocks": [
+        11
+      ],
+      "guards": [
+        "false:options.ContainsFlag(ProcessingOptions.ForceProcessing)"
+      ],
+      "reads": [
+        "blocksToProcess"
+      ],
+      "writes": [
+        "firstBlock"
+      ]
+    }
+  ],
+  "controlFlows": [
+    {
+      "owner": "global::Nethermind.Consensus.Processing.BranchProcessor.Process(None:global::Nethermind.Core.BlockHeader,None:global::System.Collections.Generic.IReadOnlyList\u003Cglobal::Nethermind.Core.Block\u003E,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken):global::Nethermind.Core.Block[]:instance",
+      "blocks": [
+        "0:Entry:True:Root",
+        "1:Block:True:LocalLifetime",
+        "2:Block:True:LocalLifetime",
+        "3:Block:True:LocalLifetime",
+        "4:Block:True:LocalLifetime",
+        "5:Block:True:LocalLifetime",
+        "6:Block:True:LocalLifetime",
+        "7:Block:True:LocalLifetime",
+        "8:Block:True:LocalLifetime",
+        "9:Block:True:Try",
+        "10:Block:True:LocalLifetime",
+        "11:Block:True:LocalLifetime",
+        "12:Block:True:Try",
+        "13:Block:True:LocalLifetime",
+        "14:Block:True:LocalLifetime",
+        "15:Block:True:LocalLifetime",
+        "16:Block:True:LocalLifetime",
+        "17:Block:True:LocalLifetime",
+        "18:Block:True:LocalLifetime",
+        "19:Block:True:LocalLifetime",
+        "20:Block:True:LocalLifetime",
+        "21:Block:True:LocalLifetime",
+        "22:Block:True:LocalLifetime",
+        "23:Block:True:LocalLifetime",
+        "24:Block:True:LocalLifetime",
+        "25:Block:True:LocalLifetime",
+        "26:Block:True:LocalLifetime",
+        "27:Block:True:LocalLifetime",
+        "28:Block:True:LocalLifetime",
+        "29:Block:True:LocalLifetime",
+        "30:Block:True:LocalLifetime",
+        "31:Block:True:LocalLifetime",
+        "32:Block:True:LocalLifetime",
+        "33:Block:True:LocalLifetime",
+        "34:Block:True:LocalLifetime",
+        "35:Block:True:LocalLifetime",
+        "36:Block:True:LocalLifetime",
+        "37:Block:True:Try",
+        "38:Block:True:Filter",
+        "39:Block:True:Filter",
+        "40:Block:True:Filter",
+        "41:Block:True:Catch",
+        "42:Block:True:LocalLifetime",
+        "43:Block:True:LocalLifetime",
+        "44:Block:True:LocalLifetime",
+        "45:Block:True:LocalLifetime",
+        "46:Block:True:LocalLifetime",
+        "47:Block:True:LocalLifetime",
+        "48:Block:True:LocalLifetime",
+        "49:Block:True:LocalLifetime",
+        "50:Block:True:LocalLifetime",
+        "51:Block:True:LocalLifetime",
+        "52:Block:True:LocalLifetime",
+        "53:Block:True:LocalLifetime",
+        "54:Block:True:LocalLifetime",
+        "55:Block:True:LocalLifetime",
+        "56:Block:True:LocalLifetime",
+        "57:Block:True:LocalLifetime",
+        "58:Block:True:LocalLifetime",
+        "59:Block:True:LocalLifetime",
+        "60:Block:True:LocalLifetime",
+        "61:Block:True:LocalLifetime",
+        "62:Block:True:LocalLifetime",
+        "63:Block:True:LocalLifetime",
+        "64:Block:True:LocalLifetime",
+        "65:Block:True:LocalLifetime",
+        "66:Block:True:LocalLifetime",
+        "67:Block:True:LocalLifetime",
+        "68:Block:True:LocalLifetime",
+        "69:Block:True:LocalLifetime",
+        "70:Block:True:Try",
+        "71:Block:True:Catch",
+        "72:Block:True:Catch",
+        "73:Block:True:Catch",
+        "74:Block:True:Try",
+        "75:Block:True:LocalLifetime",
+        "76:Block:True:LocalLifetime",
+        "77:Block:True:Finally",
+        "78:Block:True:LocalLifetime",
+        "79:Block:True:LocalLifetime",
+        "80:Block:True:Finally",
+        "81:Block:True:Finally",
+        "82:Exit:True:Root"
+      ],
+      "edges": [
+        "0\u003E1:Regular:None",
+        "1\u003E2:Regular:WhenFalse",
+        "1\u003E3:Regular:WhenFalse",
+        "2\u003E82:Return:None",
+        "3\u003E4:Regular:WhenFalse",
+        "3\u003E7:Regular:WhenFalse",
+        "4\u003E5:Regular:WhenFalse",
+        "4\u003E6:Regular:WhenFalse",
+        "5\u003E8:Regular:WhenFalse",
+        "5\u003E6:Regular:WhenFalse",
+        "6\u003E:Throw:None",
+        "7\u003E8:Regular:None",
+        "8\u003E9:Regular:None",
+        "9\u003E10:Regular:None",
+        "10\u003E11:Regular:WhenTrue",
+        "10\u003E12:Regular:WhenTrue",
+        "11\u003E12:Regular:None",
+        "12\u003E13:Regular:None",
+        "13\u003E14:Regular:None",
+        "14\u003E15:Regular:WhenFalse",
+        "14\u003E70:Regular:WhenFalse",
+        "15\u003E16:Regular:WhenFalse",
+        "15\u003E17:Regular:WhenFalse",
+        "16\u003E17:Regular:None",
+        "17\u003E18:Regular:None",
+        "18\u003E20:Regular:WhenTrue",
+        "18\u003E19:Regular:WhenTrue",
+        "19\u003E20:Regular:None",
+        "20\u003E21:Regular:None",
+        "21\u003E23:Regular:WhenTrue",
+        "21\u003E22:Regular:WhenTrue",
+        "22\u003E23:Regular:None",
+        "23\u003E24:Regular:None",
+        "24\u003E26:Regular:WhenTrue",
+        "24\u003E25:Regular:WhenTrue",
+        "25\u003E26:Regular:None",
+        "26\u003E27:Regular:WhenFalse",
+        "26\u003E30:Regular:WhenFalse",
+        "27\u003E28:Regular:WhenFalse",
+        "27\u003E30:Regular:WhenFalse",
+        "28\u003E29:Regular:WhenFalse",
+        "28\u003E30:Regular:WhenFalse",
+        "29\u003E30:Regular:None",
+        "30\u003E31:Regular:WhenFalse",
+        "30\u003E33:Regular:WhenFalse",
+        "31\u003E32:Regular:WhenTrue",
+        "31\u003E33:Regular:WhenTrue",
+        "32\u003E33:Regular:None",
+        "33\u003E34:Regular:WhenFalse",
+        "33\u003E35:Regular:WhenFalse",
+        "34\u003E36:Regular:None",
+        "35\u003E36:Regular:None",
+        "36\u003E37:Regular:None",
+        "37\u003E42:Regular:None",
+        "38\u003E39:Regular:WhenFalse",
+        "38\u003E40:Regular:WhenFalse",
+        "39\u003E40:Regular:WhenFalse",
+        "39\u003E41:Regular:WhenFalse",
+        "40\u003E:StructuredExceptionHandling:None",
+        "41\u003E42:Regular:None",
+        "42\u003E43:Regular:None",
+        "43\u003E44:Regular:WhenFalse",
+        "43\u003E45:Regular:WhenFalse",
+        "44\u003E46:Regular:None",
+        "45\u003E46:Regular:None",
+        "46\u003E47:Regular:None",
+        "47\u003E48:Regular:WhenFalse",
+        "47\u003E50:Regular:WhenFalse",
+        "48\u003E49:Regular:WhenTrue",
+        "48\u003E50:Regular:WhenTrue",
+        "49\u003E50:Regular:None",
+        "50\u003E51:Regular:None",
+        "51\u003E52:Regular:WhenTrue",
+        "51\u003E53:Regular:WhenTrue",
+        "52\u003E54:Regular:None",
+        "53\u003E54:Regular:None",
+        "54\u003E55:Regular:None",
+        "55\u003E56:Regular:WhenFalse",
+        "55\u003E57:Regular:WhenFalse",
+        "56\u003E58:Regular:None",
+        "57\u003E58:Regular:None",
+        "58\u003E59:Regular:None",
+        "59\u003E60:Regular:WhenFalse",
+        "59\u003E67:Regular:WhenFalse",
+        "60\u003E61:Regular:WhenFalse",
+        "60\u003E67:Regular:WhenFalse",
+        "61\u003E62:Regular:WhenFalse",
+        "61\u003E63:Regular:WhenFalse",
+        "62\u003E63:Regular:None",
+        "63\u003E64:Regular:None",
+        "64\u003E65:Regular:WhenTrue",
+        "64\u003E66:Regular:WhenTrue",
+        "65\u003E66:Regular:None",
+        "66\u003E67:Regular:None",
+        "67\u003E68:Regular:WhenFalse",
+        "67\u003E69:Regular:WhenFalse",
+        "68\u003E69:Regular:None",
+        "69\u003E14:Regular:None",
+        "70\u003E82:Return:None",
+        "71\u003E72:Regular:WhenFalse",
+        "71\u003E73:Regular:WhenFalse",
+        "72\u003E73:Regular:None",
+        "73\u003E:Rethrow:None",
+        "74\u003E75:Regular:None",
+        "75\u003E76:Regular:WhenTrue",
+        "75\u003E81:Regular:WhenTrue",
+        "76\u003E81:Regular:None",
+        "77\u003E78:Regular:WhenFalse",
+        "77\u003E80:Regular:WhenFalse",
+        "78\u003E79:Regular:WhenTrue",
+        "78\u003E80:Regular:WhenTrue",
+        "79\u003E80:Regular:None",
+        "80\u003E:StructuredExceptionHandling:None",
+        "81\u003E:StructuredExceptionHandling:None"
+      ]
+    },
+    {
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessBranch(In:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block[]:instance",
+      "blocks": [
+        "0:Entry:True:Root",
+        "1:Block:True:LocalLifetime",
+        "2:Block:True:Try",
+        "3:Block:True:Catch",
+        "4:Block:True:LocalLifetime",
+        "5:Block:True:LocalLifetime",
+        "6:Block:True:LocalLifetime",
+        "7:Block:True:LocalLifetime",
+        "8:Block:True:LocalLifetime",
+        "9:Block:True:LocalLifetime",
+        "10:Block:True:LocalLifetime",
+        "11:Block:True:LocalLifetime",
+        "12:Block:True:LocalLifetime",
+        "13:Block:True:LocalLifetime",
+        "14:Block:True:Finally",
+        "15:Block:True:Finally",
+        "16:Block:True:Finally",
+        "17:Block:True:Finally",
+        "18:Block:True:LocalLifetime",
+        "19:Exit:True:Root"
+      ],
+      "edges": [
+        "0\u003E1:Regular:None",
+        "1\u003E2:Regular:None",
+        "2\u003E18:Regular:None",
+        "3\u003E4:Regular:None",
+        "4\u003E5:Regular:WhenFalse",
+        "4\u003E6:Regular:WhenFalse",
+        "5\u003E6:Regular:None",
+        "6\u003E7:Regular:WhenFalse",
+        "6\u003E13:Regular:WhenFalse",
+        "7\u003E8:Regular:WhenFalse",
+        "7\u003E9:Regular:WhenFalse",
+        "8\u003E9:Regular:None",
+        "9\u003E10:Regular:WhenTrue",
+        "9\u003E11:Regular:WhenTrue",
+        "10\u003E11:Regular:None",
+        "11\u003E12:Regular:None",
+        "12\u003E13:Regular:None",
+        "13\u003E18:Regular:None",
+        "14\u003E15:Regular:WhenFalse",
+        "14\u003E17:Regular:WhenFalse",
+        "15\u003E16:Regular:WhenTrue",
+        "15\u003E17:Regular:WhenTrue",
+        "16\u003E17:Regular:None",
+        "17\u003E:StructuredExceptionHandling:None",
+        "18\u003E19:Return:None"
+      ]
+    },
+    {
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.Process(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Evm.Tracing.IBlockTracer,None:global::System.Threading.CancellationToken,Out:string):global::Nethermind.Core.Block:instance",
+      "blocks": [
+        "0:Entry:True:Root",
+        "1:Block:True:LocalLifetime",
+        "2:Block:True:LocalLifetime",
+        "3:Block:True:LocalLifetime",
+        "4:Block:True:LocalLifetime",
+        "5:Block:True:LocalLifetime",
+        "6:Block:True:LocalLifetime",
+        "7:Block:True:LocalLifetime",
+        "8:Block:True:LocalLifetime",
+        "9:Block:True:LocalLifetime",
+        "10:Block:True:LocalLifetime",
+        "11:Block:True:LocalLifetime",
+        "12:Block:True:LocalLifetime",
+        "13:Block:True:LocalLifetime",
+        "14:Block:True:LocalLifetime",
+        "15:Block:True:LocalLifetime",
+        "16:Block:True:LocalLifetime",
+        "17:Block:True:LocalLifetime",
+        "18:Block:True:LocalLifetime",
+        "19:Block:True:LocalLifetime",
+        "20:Block:True:LocalLifetime",
+        "21:Block:True:LocalLifetime",
+        "22:Block:True:LocalLifetime",
+        "23:Block:True:LocalLifetime",
+        "24:Block:True:LocalLifetime",
+        "25:Block:True:LocalLifetime",
+        "26:Block:True:LocalLifetime",
+        "27:Block:True:LocalLifetime",
+        "28:Block:True:LocalLifetime",
+        "29:Block:True:LocalLifetime",
+        "30:Block:True:LocalLifetime",
+        "31:Block:True:Try",
+        "32:Block:True:Try",
+        "33:Block:True:Try",
+        "34:Block:True:Try",
+        "35:Block:True:Try",
+        "36:Block:True:Try",
+        "37:Block:True:Try",
+        "38:Block:True:Try",
+        "39:Block:True:Try",
+        "40:Block:True:LocalLifetime",
+        "41:Block:True:LocalLifetime",
+        "42:Block:True:LocalLifetime",
+        "43:Block:True:LocalLifetime",
+        "44:Block:True:LocalLifetime",
+        "45:Block:True:LocalLifetime",
+        "46:Block:True:Try",
+        "47:Block:True:Try",
+        "48:Block:True:Try",
+        "49:Block:True:Try",
+        "50:Block:True:Try",
+        "51:Block:True:Try",
+        "52:Block:True:Try",
+        "53:Block:True:Try",
+        "54:Block:True:Try",
+        "55:Block:True:Try",
+        "56:Block:True:Try",
+        "57:Block:True:Try",
+        "58:Block:True:Try",
+        "59:Block:True:Finally",
+        "60:Exit:True:Root"
+      ],
+      "edges": [
+        "0\u003E1:Regular:None",
+        "1\u003E2:Regular:WhenTrue",
+        "1\u003E3:Regular:WhenTrue",
+        "2\u003E60:Return:None",
+        "3\u003E4:Regular:WhenTrue",
+        "3\u003E5:Regular:WhenTrue",
+        "4\u003E6:Regular:None",
+        "5\u003E6:Regular:None",
+        "6\u003E7:Regular:None",
+        "7\u003E8:Regular:WhenFalse",
+        "7\u003E9:Regular:WhenFalse",
+        "8\u003E9:Regular:None",
+        "9\u003E10:Regular:WhenTrue",
+        "9\u003E12:Regular:WhenTrue",
+        "10\u003E11:Regular:WhenTrue",
+        "10\u003E12:Regular:WhenTrue",
+        "11\u003E13:Regular:None",
+        "12\u003E13:Regular:None",
+        "13\u003E14:Regular:None",
+        "14\u003E15:Regular:WhenTrue",
+        "14\u003E28:Regular:WhenTrue",
+        "15\u003E16:Regular:WhenFalse",
+        "15\u003E27:Regular:WhenFalse",
+        "16\u003E17:Regular:None",
+        "17\u003E18:Regular:WhenTrue",
+        "17\u003E21:Regular:WhenTrue",
+        "18\u003E19:Regular:None",
+        "19\u003E20:Regular:WhenTrue",
+        "19\u003E21:Regular:WhenTrue",
+        "20\u003E22:Regular:None",
+        "21\u003E22:Regular:None",
+        "22\u003E23:Regular:None",
+        "23\u003E24:Regular:WhenTrue",
+        "23\u003E25:Regular:WhenTrue",
+        "24\u003E26:Regular:None",
+        "25\u003E26:Regular:None",
+        "26\u003E27:Regular:None",
+        "27\u003E60:Return:None",
+        "28\u003E29:Regular:WhenTrue",
+        "28\u003E30:Regular:WhenTrue",
+        "29\u003E30:Regular:None",
+        "30\u003E31:Regular:None",
+        "31\u003E32:Regular:WhenFalse",
+        "31\u003E33:Regular:WhenFalse",
+        "32\u003E60:Return:None",
+        "33\u003E34:Regular:WhenFalse",
+        "33\u003E37:Regular:WhenFalse",
+        "34\u003E35:Regular:WhenFalse",
+        "34\u003E36:Regular:WhenFalse",
+        "35\u003E36:Regular:None",
+        "36\u003E39:Regular:None",
+        "37\u003E38:Regular:WhenFalse",
+        "37\u003E39:Regular:WhenFalse",
+        "38\u003E39:Regular:None",
+        "39\u003E40:Regular:WhenTrue",
+        "39\u003E46:Regular:WhenTrue",
+        "40\u003E41:Regular:None",
+        "41\u003E42:Regular:WhenFalse",
+        "41\u003E43:Regular:WhenFalse",
+        "42\u003E44:Regular:None",
+        "43\u003E44:Regular:None",
+        "44\u003E45:Regular:None",
+        "45\u003E46:Regular:None",
+        "46\u003E47:Regular:WhenFalse",
+        "46\u003E52:Regular:WhenFalse",
+        "47\u003E48:Regular:WhenFalse",
+        "47\u003E49:Regular:WhenFalse",
+        "48\u003E49:Regular:None",
+        "49\u003E50:Regular:WhenTrue",
+        "49\u003E52:Regular:WhenTrue",
+        "50\u003E51:Regular:WhenFalse",
+        "50\u003E52:Regular:WhenFalse",
+        "51\u003E52:Regular:None",
+        "52\u003E53:Regular:WhenFalse",
+        "52\u003E56:Regular:WhenFalse",
+        "53\u003E54:Regular:WhenFalse",
+        "53\u003E55:Regular:WhenFalse",
+        "54\u003E55:Regular:None",
+        "55\u003E56:Regular:None",
+        "56\u003E57:Regular:WhenTrue",
+        "56\u003E58:Regular:WhenTrue",
+        "57\u003E58:Regular:None",
+        "58\u003E60:Return:None",
+        "59\u003E:StructuredExceptionHandling:None"
+      ]
+    },
+    {
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch.Dispose():void:instance",
+      "blocks": [
+        "0:Entry:True:Root",
+        "1:Block:True:Root",
+        "2:Exit:True:Root"
+      ],
+      "edges": [
+        "0\u003E1:Regular:None",
+        "1\u003E2:Regular:None"
+      ]
+    },
+    {
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.PrepareBlocksToProcess(None:global::Nethermind.Core.Block,None:global::Nethermind.Consensus.Processing.ProcessingOptions,None:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch):void:instance",
+      "blocks": [
+        "0:Entry:True:Root",
+        "1:Block:True:LocalLifetime",
+        "2:Block:True:LocalLifetime",
+        "3:Block:True:LocalLifetime",
+        "4:Block:True:Try",
+        "5:Block:True:LocalLifetime",
+        "6:Block:True:LocalLifetime",
+        "7:Block:True:LocalLifetime",
+        "8:Block:True:LocalLifetime",
+        "9:Block:True:LocalLifetime",
+        "10:Block:True:Finally",
+        "11:Block:True:LocalLifetime",
+        "12:Block:True:LocalLifetime",
+        "13:Block:True:LocalLifetime",
+        "14:Block:True:LocalLifetime",
+        "15:Block:True:LocalLifetime",
+        "16:Block:True:LocalLifetime",
+        "17:Block:True:LocalLifetime",
+        "18:Block:True:LocalLifetime",
+        "19:Block:True:LocalLifetime",
+        "20:Block:True:LocalLifetime",
+        "21:Block:True:LocalLifetime",
+        "22:Exit:True:Root"
+      ],
+      "edges": [
+        "0\u003E1:Regular:None",
+        "1\u003E2:Regular:WhenFalse",
+        "1\u003E3:Regular:WhenFalse",
+        "2\u003E17:Regular:None",
+        "3\u003E4:Regular:None",
+        "4\u003E5:Regular:WhenFalse",
+        "4\u003E11:Regular:WhenFalse",
+        "5\u003E6:Regular:WhenFalse",
+        "5\u003E9:Regular:WhenFalse",
+        "6\u003E7:Regular:WhenFalse",
+        "6\u003E9:Regular:WhenFalse",
+        "7\u003E8:Regular:WhenFalse",
+        "7\u003E9:Regular:WhenFalse",
+        "8\u003E9:Regular:None",
+        "9\u003E4:Regular:None",
+        "10\u003E:StructuredExceptionHandling:None",
+        "11\u003E12:Regular:WhenTrue",
+        "11\u003E17:Regular:WhenTrue",
+        "12\u003E14:Regular:WhenTrue",
+        "12\u003E13:Regular:WhenTrue",
+        "13\u003E:Throw:None",
+        "14\u003E15:Regular:None",
+        "15\u003E16:Regular:WhenTrue",
+        "15\u003E17:Regular:WhenTrue",
+        "16\u003E17:Regular:None",
+        "17\u003E18:Regular:WhenFalse",
+        "17\u003E19:Regular:WhenFalse",
+        "18\u003E19:Regular:None",
+        "19\u003E20:Regular:None",
+        "20\u003E21:Regular:WhenFalse",
+        "20\u003E22:Regular:WhenFalse",
+        "21\u003E20:Regular:None"
+      ]
+    },
+    {
+      "owner": "global::Nethermind.Consensus.Processing.BlockchainProcessor.DeleteInvalidBlocks(In:global::Nethermind.Consensus.Processing.BlockchainProcessor.ProcessingBranch,None:global::Nethermind.Core.Crypto.Hash256):void:instance",
+      "blocks": [
+        "0:Entry:True:Root",
+        "1:Block:True:LocalLifetime",
+        "2:Block:True:LocalLifetime",
+        "3:Block:True:LocalLifetime",
+        "4:Block:True:LocalLifetime",
+        "5:Block:True:LocalLifetime",
+        "6:Block:True:LocalLifetime",
+        "7:Exit:True:Root"
+      ],
+      "edges": [
+        "0\u003E1:Regular:None",
+        "1\u003E2:Regular:None",
+        "2\u003E3:Regular:WhenFalse",
+        "2\u003E7:Regular:WhenFalse",
+        "3\u003E4:Regular:WhenFalse",
+        "3\u003E6:Regular:WhenFalse",
+        "4\u003E5:Regular:WhenFalse",
+        "4\u003E6:Regular:WhenFalse",
+        "5\u003E6:Regular:None",
+        "6\u003E2:Regular:None"
+      ]
+    }
+  ],
+  "operations": [
+    "stop",
+    "difficulty",
+    "stats",
+    "head",
+    "mark",
+    "metrics",
+    "prepareReturn",
+    "disposeBlocks",
+    "disposeInputs",
+    "return"
+  ],
+  "loopIncrement": 1,
+  "readOnlyMask": 65,
+  "doNotUpdateHeadMask": 64,
+  "markProcessedMask": 128,
+  "exclusions": [
+    "Normal owned nonempty sequential loop after preloop setup; branch selection and acquisition remain entry obligations",
+    "No BAL retry, parallel equivalence, externally owned genesis, transaction or world-state finite composition",
+    "Invalid and skipped classifications are boundary contracts, not proofs that the accepted finite runner throws",
+    "No callback interference, asynchronous queue/recovery, completed cache continuations, prefetch or transaction hashes",
+    "Tree calls are observations, not head-change, canonicality, trie, persistence, rollback, restart or crash guarantees"
+  ]
+}

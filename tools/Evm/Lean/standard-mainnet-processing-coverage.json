@@ -1,0 +1,2146 @@
+{
+  "schemaVersion": 1,
+  "claim": "standard-mainnet-processing-reachability-and-order-inventory",
+  "scope": "reachability-and-order-inventory-only",
+  "target": {
+    "chain": "mainnet",
+    "release": "Amsterdam",
+    "activation": "synthetic timestamp 0 / block 0",
+    "eip7778Enabled": true,
+    "nethermindCommit": "b2478235e71e6a7ec2a509aa0155e25d5fdfff80"
+  },
+  "entryPoints": {
+    "di": {
+      "registrations": [
+        {
+          "service": "ITransactionProcessor",
+          "implementation": "EthereumTransactionProcessor",
+          "lifetime": "scoped",
+          "kind": "service",
+          "source": {
+            "id": "di-transaction",
+            "symbol": "BlockProcessingModule.Load",
+            "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+            "line": 59,
+            "text": ".AddScoped\u003CITransactionProcessor, EthereumTransactionProcessor\u003E()"
+          }
+        },
+        {
+          "service": "IBlockProcessor",
+          "implementation": "BlockProcessor",
+          "lifetime": "scoped",
+          "kind": "service",
+          "source": {
+            "id": "di-block",
+            "symbol": "BlockProcessingModule.Load",
+            "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+            "line": 73,
+            "text": ".AddScoped\u003CIBlockProcessor, BlockProcessor\u003E()"
+          }
+        },
+        {
+          "service": "ITransactionProcessorAdapter",
+          "implementation": "ExecuteTransactionProcessorAdapter via TransactionProcessorAdapterFactory",
+          "lifetime": "scoped",
+          "kind": "factory",
+          "source": {
+            "id": "di-adapter-factory",
+            "symbol": "BlockProcessingModule.Load",
+            "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+            "line": 81,
+            "text": ".AddScoped\u003CITransactionProcessorAdapter, ITransactionProcessor, TransactionProcessorAdapterFactory\u003E("
+          }
+        },
+        {
+          "service": "IMainProcessingContext",
+          "implementation": "MainProcessingContext",
+          "lifetime": "singleton",
+          "kind": "service",
+          "source": {
+            "id": "di-main-context",
+            "symbol": "BlockProcessingModule.Load",
+            "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+            "line": 100,
+            "text": ".AddSingleton\u003CIMainProcessingContext, MainProcessingContext\u003E()"
+          }
+        },
+        {
+          "service": "IBlockTransactionsExecutor",
+          "implementation": "BlockValidationTransactionsExecutor",
+          "lifetime": "scoped",
+          "kind": "service",
+          "source": {
+            "id": "sequential-executor-registration",
+            "symbol": "BlockProcessingModule.StandardBlockValidationModule",
+            "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+            "line": 162,
+            "text": ".AddScoped\u003CIBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor\u003E()"
+          }
+        },
+        {
+          "service": "IBlockTransactionsExecutor",
+          "implementation": "ParallelBlockValidationTransactionsExecutor",
+          "lifetime": "scoped decorator",
+          "kind": "decorator",
+          "source": {
+            "id": "parallel-executor-registration",
+            "symbol": "BlockProcessingModule.StandardBlockValidationModule",
+            "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+            "line": 163,
+            "text": ".AddDecorator\u003CIBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.ParallelBlockValidationTransactionsExecutor\u003E();"
+          }
+        },
+        {
+          "service": "IBlockAccessListManager",
+          "implementation": "BlockAccessListManager",
+          "lifetime": "scoped",
+          "kind": "service",
+          "source": {
+            "id": "parallel-bal-manager",
+            "symbol": "BlockProcessingModule.Load",
+            "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+            "line": 84,
+            "text": ".AddScoped\u003CIBlockAccessListManager, BlockAccessListManager\u003E()"
+          }
+        }
+      ],
+      "registrationAnchors": [
+        {
+          "id": "di-transaction",
+          "symbol": "BlockProcessingModule.Load",
+          "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+          "line": 59,
+          "text": ".AddScoped\u003CITransactionProcessor, EthereumTransactionProcessor\u003E()"
+        },
+        {
+          "id": "di-block",
+          "symbol": "BlockProcessingModule.Load",
+          "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+          "line": 73,
+          "text": ".AddScoped\u003CIBlockProcessor, BlockProcessor\u003E()"
+        },
+        {
+          "id": "di-adapter-factory",
+          "symbol": "BlockProcessingModule.Load",
+          "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+          "line": 81,
+          "text": ".AddScoped\u003CITransactionProcessorAdapter, ITransactionProcessor, TransactionProcessorAdapterFactory\u003E("
+        },
+        {
+          "id": "di-main-context",
+          "symbol": "BlockProcessingModule.Load",
+          "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+          "line": 100,
+          "text": ".AddSingleton\u003CIMainProcessingContext, MainProcessingContext\u003E()"
+        },
+        {
+          "id": "sequential-executor-registration",
+          "symbol": "BlockProcessingModule.StandardBlockValidationModule",
+          "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+          "line": 162,
+          "text": ".AddScoped\u003CIBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor\u003E()"
+        },
+        {
+          "id": "parallel-executor-registration",
+          "symbol": "BlockProcessingModule.StandardBlockValidationModule",
+          "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+          "line": 163,
+          "text": ".AddDecorator\u003CIBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.ParallelBlockValidationTransactionsExecutor\u003E();"
+        },
+        {
+          "id": "parallel-bal-manager",
+          "symbol": "BlockProcessingModule.Load",
+          "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+          "line": 84,
+          "text": ".AddScoped\u003CIBlockAccessListManager, BlockAccessListManager\u003E()"
+        }
+      ]
+    },
+    "mainProcessingContextBlockProcessor": {
+      "name": "MainProcessingContext.BlockProcessor",
+      "source": {
+        "id": "main-context-block-processor",
+        "symbol": "MainProcessingContext.BlockProcessor",
+        "path": "src/Nethermind/Nethermind.Init/Modules/MainProcessingContext.cs",
+        "line": 102,
+        "text": "public IBlockProcessor BlockProcessor =\u003E _components.BlockProcessor;"
+      },
+      "semanticReflectionResolved": true
+    },
+    "blockEntrypoint": {
+      "name": "BlockProcessor.ProcessOne",
+      "source": {
+        "id": "block-entrypoint",
+        "symbol": "BlockProcessor.ProcessOne",
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "line": 76,
+        "text": "public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)"
+      },
+      "semanticReflectionResolved": true
+    },
+    "transactionEntrypoint": {
+      "name": "ITransactionProcessor.Execute",
+      "source": {
+        "id": "transaction-entrypoint",
+        "symbol": "ITransactionProcessorExtensions.Execute",
+        "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ITransactionProcessor.cs",
+        "line": 34,
+        "text": "public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)"
+      },
+      "semanticReflectionResolved": true
+    },
+    "diRegistrationsAnchored": true,
+    "sequentialEntrypointAnchored": true
+  },
+  "transaction": {
+    "phases": [
+      {
+        "order": 1,
+        "name": "validation",
+        "description": "Intrinsic, static, gas-limit, and transaction-shape validation before execution.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "TransactionProcessorBase.Process",
+            "sources": [
+              {
+                "id": "process",
+                "symbol": "TransactionProcessorBase.Process",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 158,
+                "text": "public TransactionResult Process("
+              }
+            ]
+          },
+          {
+            "order": 2,
+            "name": "TransactionProcessorBase.ExecuteCore",
+            "sources": [
+              {
+                "id": "execute-core",
+                "symbol": "TransactionProcessorBase.ExecuteCore",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 186,
+                "text": "private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)"
+              }
+            ]
+          },
+          {
+            "order": 3,
+            "name": "TransactionProcessorBase.RecoverSenderBeforeIntrinsicGas",
+            "sources": [
+              {
+                "id": "recover-sender-before-intrinsic",
+                "symbol": "TransactionProcessorBase.RecoverSenderBeforeIntrinsicGas",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 204,
+                "text": "RecoverSenderBeforeIntrinsicGas(tx, spec);"
+              }
+            ]
+          },
+          {
+            "order": 4,
+            "name": "TransactionProcessorBase.CalculateIntrinsicGas",
+            "sources": [
+              {
+                "id": "calculate-intrinsic-gas",
+                "symbol": "TransactionProcessorBase.CalculateIntrinsicGas",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 205,
+                "text": "IntrinsicGas\u003CTGasPolicy\u003E intrinsicGas = CalculateIntrinsicGas(tx, spec, header.GasLimit);"
+              }
+            ]
+          },
+          {
+            "order": 5,
+            "name": "TransactionProcessorBase.ValidateStatic",
+            "sources": [
+              {
+                "id": "validate-static",
+                "symbol": "TransactionProcessorBase.ValidateStatic",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 232,
+                "text": "if (!(result = ValidateStatic(tx, header, spec, opts, in intrinsicGas))) return result;"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 2,
+        "name": "sender-auth-recovery",
+        "description": "Signer recovery, EIP-7702 authorization processing, sender checks, gas reservation, and nonce update.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "TransactionProcessorBase.CalculateEffectiveGasPrice",
+            "sources": [
+              {
+                "id": "effective-gas-price",
+                "symbol": "TransactionProcessorBase.CalculateEffectiveGasPrice",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 234,
+                "text": "UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);"
+              }
+            ]
+          },
+          {
+            "order": 2,
+            "name": "TransactionProcessorBase.RecoverSenderIfNeeded",
+            "sources": [
+              {
+                "id": "recover-sender",
+                "symbol": "TransactionProcessorBase.RecoverSenderIfNeeded",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 238,
+                "text": "bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);"
+              }
+            ]
+          },
+          {
+            "order": 3,
+            "name": "TransactionProcessorBase.ValidateSender",
+            "sources": [
+              {
+                "id": "validate-sender",
+                "symbol": "TransactionProcessorBase.ValidateSender",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 240,
+                "text": "if (!(result = ValidateSender(tx, header, spec, tracer, opts)) ||"
+              }
+            ]
+          },
+          {
+            "order": 4,
+            "name": "TransactionProcessorBase.BuyGas",
+            "sources": [
+              {
+                "id": "buy-gas",
+                "symbol": "TransactionProcessorBase.BuyGas",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 241,
+                "text": "!(result = BuyGas(tx, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)) ||"
+              }
+            ]
+          },
+          {
+            "order": 5,
+            "name": "TransactionProcessorBase.IncrementNonce",
+            "sources": [
+              {
+                "id": "increment-nonce",
+                "symbol": "TransactionProcessorBase.IncrementNonce",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 242,
+                "text": "!(result = IncrementNonce(tx, header, spec, tracer, opts)))"
+              }
+            ]
+          },
+          {
+            "order": 6,
+            "name": "TransactionProcessorBase.ProcessDelegations",
+            "sources": [
+              {
+                "id": "authorization-processing",
+                "symbol": "TransactionProcessorBase.ProcessDelegations",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 332,
+                "text": "if (!ProcessDelegations(tx, spec, accessTracker, ref gasAvailable, ref executionIntrinsicGasStandard, out delegationRefunds))"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 3,
+        "name": "pre-execution",
+        "description": "Fast-path selection, pre-execution state preparation, and execution-environment construction.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "TransactionProcessorBase.PrepareSimpleTransferFastPath",
+            "sources": [
+              {
+                "id": "prepare-simple-transfer",
+                "symbol": "TransactionProcessorBase.PrepareSimpleTransferFastPath",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 251,
+                "text": "Address? simpleTransferRecipient = PrepareSimpleTransferFastPath(tx, spec, out CodeInfo? preloadedCodeInfo, out Address? preloadedDelegationAddress);"
+              }
+            ]
+          },
+          {
+            "order": 2,
+            "name": "IWorldState.Commit",
+            "sources": [
+              {
+                "id": "commit-before-execution",
+                "symbol": "IWorldState.Commit",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 254,
+                "text": "if (commitBeforeExecution) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);"
+              }
+            ]
+          },
+          {
+            "order": 3,
+            "name": "TransactionProcessorBase.CalculateAvailableGas",
+            "sources": [
+              {
+                "id": "calculate-available-gas",
+                "symbol": "TransactionProcessorBase.CalculateAvailableGas",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 256,
+                "text": "if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;"
+              }
+            ]
+          },
+          {
+            "order": 4,
+            "name": "TransactionProcessorBase.BuildExecutionEnvironment",
+            "sources": [
+              {
+                "id": "execution-environment",
+                "symbol": "TransactionProcessorBase.BuildExecutionEnvironment",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 346,
+                "text": "if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, preloadedCodeInfo, preloadedDelegationAddress, loadRecipient, ref gasAvailable, ref topFrameOutOfGas, out ExecutionEnvironment e))) return result;"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 4,
+        "name": "simple-transfer-vm",
+        "description": "The no-code value-transfer path or the EVM transaction/frame path.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "TransactionProcessorBase.ExecuteSimpleTransfer",
+            "sources": [
+              {
+                "id": "simple-transfer-dispatch",
+                "symbol": "TransactionProcessorBase.ExecuteSimpleTransfer",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 260,
+                "text": "return ExecuteSimpleTransfer(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, simpleTransferRecipient, in intrinsicGas, gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment, in blobBaseFee);"
+              }
+            ]
+          },
+          {
+            "order": 2,
+            "name": "TransactionProcessorBase.ExecuteEvmTransaction",
+            "sources": [
+              {
+                "id": "evm-dispatch",
+                "symbol": "TransactionProcessorBase.ExecuteEvmTransaction",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 263,
+                "text": "return ExecuteEvmTransaction(tx, header, spec, tracer, opts, restore, commit, deleteCallerAccount, in intrinsicGas, gasAvailable, in opcodeGasPrice, in premiumPerGas, in senderReservedGasPayment, in blobBaseFee, preloadedCodeInfo, preloadedDelegationAddress);"
+              }
+            ]
+          },
+          {
+            "order": 3,
+            "name": "TransactionProcessorBase.ExecuteEvmCall",
+            "sources": [
+              {
+                "id": "vm-call",
+                "symbol": "TransactionProcessorBase.ExecuteEvmCall",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 375,
+                "text": "ExecuteEvmCall\u003COffFlag\u003E(tx, header, spec, tracer, opts, delegationRefunds, executionIntrinsicGas, postIntrinsicStateReservoir, accessTracker, gasAvailable, env, topFrameOutOfGas, out TransactionSubstate substate, out GasConsumed spentGas) :"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 5,
+        "name": "snapshots-rollback",
+        "description": "Top-level and preparation snapshots, CREATE admission, collision/revert/exception restoration, and commit/restore mode cleanup.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "TransactionProcessorBase.ExecuteEvmTransaction",
+            "sources": [
+              {
+                "id": "preparation-snapshot",
+                "symbol": "TransactionProcessorBase.ExecuteEvmTransaction",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 328,
+                "text": "preExecutionSnapshot = WorldState.TakeSnapshot();"
+              }
+            ]
+          },
+          {
+            "order": 2,
+            "name": "TransactionProcessorBase.ExecuteEvmTransaction",
+            "sources": [
+              {
+                "id": "preparation-restore",
+                "symbol": "TransactionProcessorBase.ExecuteEvmTransaction",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 364,
+                "text": "WorldState.Restore(preExecutionSnapshot);"
+              }
+            ]
+          },
+          {
+            "order": 3,
+            "name": "TransactionProcessorBase.ExecuteEvmCall",
+            "sources": [
+              {
+                "id": "top-level-snapshot",
+                "symbol": "TransactionProcessorBase.ExecuteEvmCall",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 1345,
+                "text": "Snapshot snapshot = WorldState.TakeSnapshot();"
+              }
+            ]
+          },
+          {
+            "order": 4,
+            "name": "TransactionProcessorBase.ExecuteEvmCall",
+            "sources": [
+              {
+                "id": "create-destination-classification",
+                "symbol": "TransactionProcessorBase.ExecuteEvmCall",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 1363,
+                "text": "bool deploymentPrepared = PrepareDeployment("
+              }
+            ]
+          },
+          {
+            "order": 5,
+            "name": "TransactionProcessorBase.ExecuteEvmCall",
+            "sources": [
+              {
+                "id": "create-state-gas-charge",
+                "symbol": "TransactionProcessorBase.ExecuteEvmCall",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 1369,
+                "text": "if (!TGasPolicy.TryConsumeCreateStateGas(ref gasAvailable))"
+              }
+            ]
+          },
+          {
+            "order": 6,
+            "name": "TransactionProcessorBase.ExecuteEvmCall",
+            "sources": [
+              {
+                "id": "create-state-gas-restore",
+                "symbol": "TransactionProcessorBase.ExecuteEvmCall",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 1373,
+                "text": "WorldState.Restore(snapshot);"
+              }
+            ]
+          },
+          {
+            "order": 7,
+            "name": "TransactionProcessorBase.ExecuteEvmCall",
+            "sources": [
+              {
+                "id": "create-collision-check",
+                "symbol": "TransactionProcessorBase.ExecuteEvmCall",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 1382,
+                "text": "if (!deploymentPrepared)"
+              }
+            ]
+          },
+          {
+            "order": 8,
+            "name": "TransactionProcessorBase.ExecuteEvmCall",
+            "sources": [
+              {
+                "id": "collision-restore",
+                "symbol": "TransactionProcessorBase.ExecuteEvmCall",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 1385,
+                "text": "WorldState.Restore(snapshot);"
+              }
+            ]
+          },
+          {
+            "order": 9,
+            "name": "TransactionProcessorBase.ExecuteEvmCall",
+            "sources": [
+              {
+                "id": "create-pay-value",
+                "symbol": "TransactionProcessorBase.ExecuteEvmCall",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 1401,
+                "text": "PayValue(tx, spec, opts);"
+              }
+            ]
+          },
+          {
+            "order": 10,
+            "name": "TransactionProcessorBase.ExecuteEvmCall",
+            "sources": [
+              {
+                "id": "execution-restore",
+                "symbol": "TransactionProcessorBase.ExecuteEvmCall",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 1434,
+                "text": "WorldState.Restore(snapshot);"
+              }
+            ]
+          },
+          {
+            "order": 11,
+            "name": "TransactionProcessorBase.ExecuteEvmCall",
+            "sources": [
+              {
+                "id": "deployment-restore",
+                "symbol": "TransactionProcessorBase.ExecuteEvmCall",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 1502,
+                "text": "WorldState.Restore(snapshot);"
+              }
+            ]
+          },
+          {
+            "order": 12,
+            "name": "TransactionProcessorBase.FinalizeTransaction",
+            "sources": [
+              {
+                "id": "finalize-restore-reset",
+                "symbol": "TransactionProcessorBase.FinalizeTransaction",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 645,
+                "text": "WorldState.Reset(resetBlockChanges: false);"
+              }
+            ]
+          },
+          {
+            "order": 13,
+            "name": "TransactionProcessorBase.FinalizeTransaction",
+            "sources": [
+              {
+                "id": "finalize-commit",
+                "symbol": "TransactionProcessorBase.FinalizeTransaction",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 664,
+                "text": "WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitRoots: !spec.IsEip658Enabled);"
+              }
+            ]
+          },
+          {
+            "order": 14,
+            "name": "TransactionProcessorBase.FinalizeTransaction",
+            "sources": [
+              {
+                "id": "finalize-reset-transient",
+                "symbol": "TransactionProcessorBase.FinalizeTransaction",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 668,
+                "text": "WorldState.ResetTransient();"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 6,
+        "name": "fee-refund-receipt-settlement",
+        "description": "Refund and multidimensional block-gas accounting, fee settlement, final state commit/restore, and receipt tracing.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "TransactionProcessorAdapterExtensions.ProcessTransaction",
+            "sources": [
+              {
+                "id": "receipt-start",
+                "symbol": "TransactionProcessorAdapterExtensions.ProcessTransaction",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/TransactionProcessorAdapterExtensions.cs",
+                "line": 25,
+                "text": "using ITxTracer tracer = receiptsTracer.StartNewTxTrace(currentTx);"
+              }
+            ]
+          },
+          {
+            "order": 2,
+            "name": "TransactionProcessorBase.Refund",
+            "sources": [
+              {
+                "id": "simple-transfer-refund",
+                "symbol": "TransactionProcessorBase.Refund",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 514,
+                "text": "GasConsumed spentGas = Refund(tx, header, spec, opts, in substate, in gasAvailable, in opcodeGasPrice, codeInsertRefunds: 0, in floorGas, in standardGas, postIntrinsicStateReservoir);"
+              }
+            ]
+          },
+          {
+            "order": 3,
+            "name": "TransactionProcessorBase.Refund",
+            "sources": [
+              {
+                "id": "evm-refund",
+                "symbol": "TransactionProcessorBase.Refund",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 1483,
+                "text": "gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, (ulong)delegationRefunds, gas.FloorGas, gas.Standard, postIntrinsicStateReservoir, topLevelCreateStateGasCharged);"
+              }
+            ]
+          },
+          {
+            "order": 4,
+            "name": "TransactionProcessorBase.Refund",
+            "sources": [
+              {
+                "id": "pay-refund-call-failed-halt",
+                "symbol": "TransactionProcessorBase.Refund",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 1650,
+                "text": "PayRefund(tx, (tx.GasLimit - spentGas) * gasPrice, spec);"
+              }
+            ]
+          },
+          {
+            "order": 5,
+            "name": "TransactionProcessorBase.Refund",
+            "sources": [
+              {
+                "id": "pay-refund-call",
+                "symbol": "TransactionProcessorBase.Refund",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 1822,
+                "text": "PayRefund(tx, (tx.GasLimit - settlement.SpentGas) * gasPrice, spec);"
+              }
+            ]
+          },
+          {
+            "order": 6,
+            "name": "TransactionProcessorBase.UpdateHeaderGasUsedAndPayFees",
+            "sources": [
+              {
+                "id": "simple-update-header-and-fees",
+                "symbol": "TransactionProcessorBase.UpdateHeaderGasUsedAndPayFees",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 523,
+                "text": "UpdateHeaderGasUsedAndPayFees(tx, header, spec, tracer, opts, in substate, in spentGas, premiumPerGas, in opcodeGasPrice, blobBaseFee, statusCode);"
+              }
+            ]
+          },
+          {
+            "order": 7,
+            "name": "TransactionProcessorBase.UpdateHeaderGasUsedAndPayFees",
+            "sources": [
+              {
+                "id": "update-header-and-fees",
+                "symbol": "TransactionProcessorBase.UpdateHeaderGasUsedAndPayFees",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 378,
+                "text": "UpdateHeaderGasUsedAndPayFees(tx, header, spec, tracer, opts, in substate, in spentGas, premiumPerGas, in opcodeGasPrice, blobBaseFee, statusCode);"
+              }
+            ]
+          },
+          {
+            "order": 8,
+            "name": "TransactionProcessorBase.UpdateHeaderGasUsedAndPayFees",
+            "sources": [
+              {
+                "id": "pay-fees-call",
+                "symbol": "TransactionProcessorBase.UpdateHeaderGasUsedAndPayFees",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 614,
+                "text": "PayFees(tx, header, spec, tracer, in substate, spentGas.SpentGas, premiumPerGas, in effectiveGasPrice, blobBaseFee, statusCode);"
+              }
+            ]
+          },
+          {
+            "order": 9,
+            "name": "TransactionProcessorBase.FinalizeTransaction",
+            "sources": [
+              {
+                "id": "simple-finalize",
+                "symbol": "TransactionProcessorBase.FinalizeTransaction",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 524,
+                "text": "return FinalizeTransaction(tx, spec, tracer, opts, restore, commit, deleteCallerAccount, in senderReservedGasPayment, recipient, in substate, spentGas, statusCode);"
+              }
+            ]
+          },
+          {
+            "order": 10,
+            "name": "TransactionProcessorBase.FinalizeTransaction",
+            "sources": [
+              {
+                "id": "finalize-transaction",
+                "symbol": "TransactionProcessorBase.FinalizeTransaction",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 424,
+                "text": "return FinalizeTransaction(tx, spec, tracer, opts, restore, commit, deleteCallerAccount, in senderReservedGasPayment, env.ExecutingAccount, in substate, spentGas, statusCode);"
+              }
+            ]
+          },
+          {
+            "order": 11,
+            "name": "TransactionProcessorBase.PayFees",
+            "sources": [
+              {
+                "id": "pay-fees",
+                "symbol": "TransactionProcessorBase.PayFees",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 1710,
+                "text": "protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 effectiveGasPrice, in UInt256 blobBaseFee, int statusCode)"
+              }
+            ]
+          },
+          {
+            "order": 12,
+            "name": "TransactionProcessorBase.PayRefund",
+            "sources": [
+              {
+                "id": "pay-refund",
+                "symbol": "TransactionProcessorBase.PayRefund",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+                "line": 1845,
+                "text": "protected virtual void PayRefund(Transaction tx, UInt256 refundAmount, IReleaseSpec spec)"
+              }
+            ]
+          },
+          {
+            "order": 13,
+            "name": "TransactionProcessorAdapterExtensions.ProcessTransaction",
+            "sources": [
+              {
+                "id": "receipt-end",
+                "symbol": "TransactionProcessorAdapterExtensions.ProcessTransaction",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/TransactionProcessorAdapterExtensions.cs",
+                "line": 27,
+                "text": "receiptsTracer.EndTxTrace();"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "phaseCount": 6,
+    "stepCount": 45,
+    "phaseOrderValidated": true
+  },
+  "block": {
+    "phases": [
+      {
+        "order": 1,
+        "name": "suggested-block validation",
+        "description": "Pre-processing checks on the suggested block before branch execution.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "BlockchainProcessor.Process",
+            "sources": [
+              {
+                "id": "suggested-checks",
+                "symbol": "BlockchainProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+                "line": 482,
+                "text": "if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 2,
+        "name": "synchronous branch selection and preparation",
+        "description": "The synchronous BlockchainProcessor path decides whether work should run and prepares the selected branch before its blocks are preprocessed.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "BlockchainProcessor.Process",
+            "sources": [
+              {
+                "id": "blockchain-should-process",
+                "symbol": "BlockchainProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+                "line": 491,
+                "text": "suggestedBlock.IsGenesis"
+              }
+            ]
+          },
+          {
+            "order": 2,
+            "name": "BlockchainProcessor.Process",
+            "sources": [
+              {
+                "id": "blockchain-prepare-branch",
+                "symbol": "BlockchainProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+                "line": 504,
+                "text": "using ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);"
+              }
+            ]
+          },
+          {
+            "order": 3,
+            "name": "BlockchainProcessor.Process",
+            "sources": [
+              {
+                "id": "blockchain-prepare-blocks",
+                "symbol": "BlockchainProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+                "line": 505,
+                "text": "PrepareBlocksToProcess(suggestedBlock, options, processingBranch);"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 3,
+        "name": "sender and EIP-7702 authority recovery",
+        "description": "PrepareBlocksToProcess invokes the registered block preprocessor for every block selected for synchronous branch execution.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "BlockchainProcessor.Preprocess",
+            "sources": [
+              {
+                "id": "preprocess",
+                "symbol": "BlockchainProcessor.Preprocess",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+                "line": 122,
+                "text": "for (int i = 0; i \u003C _preprocessorSteps.Count; i\u002B\u002B)"
+              }
+            ]
+          },
+          {
+            "order": 2,
+            "name": "BlockchainProcessor.PrepareBlocksToProcess",
+            "sources": [
+              {
+                "id": "preprocess-selected-block",
+                "symbol": "BlockchainProcessor.PrepareBlocksToProcess",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+                "line": 704,
+                "text": "Preprocess(blocksToProcess[i]);"
+              }
+            ]
+          },
+          {
+            "order": 3,
+            "name": "RecoverSignatures.RecoverData",
+            "sources": [
+              {
+                "id": "recover-data",
+                "symbol": "RecoverSignatures.RecoverData",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/RecoverSignatures.cs",
+                "line": 28,
+                "text": "public void RecoverData(Block block)"
+              }
+            ]
+          },
+          {
+            "order": 4,
+            "name": "BlockProcessingModule.Load",
+            "sources": [
+              {
+                "id": "di-recover-signatures",
+                "symbol": "BlockProcessingModule.Load",
+                "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+                "line": 55,
+                "text": ".AddFirst\u003CIBlockPreprocessorStep, RecoverSignatures\u003E()"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 4,
+        "name": "open world-state scope at parent root",
+        "description": "Branch processing opens the world-state scope rooted at the branch parent.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "BranchProcessor.Process",
+            "sources": [
+              {
+                "id": "begin-scope",
+                "symbol": "BranchProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+                "line": 72,
+                "text": "worldStateCloser = stateProvider.BeginScope(baseBlock);"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 5,
+        "name": "DAO transition when applicable",
+        "description": "The standard block processor applies the DAO irregular state transition when the fork block matches.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "BlockProcessor.ProcessOne",
+            "sources": [
+              {
+                "id": "bal-prepare",
+                "symbol": "BlockProcessor.ProcessOne",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 80,
+                "text": "_balManager.PrepareForProcessing(suggestedBlock, spec, options);"
+              }
+            ]
+          },
+          {
+            "order": 2,
+            "name": "BlockProcessor.ProcessOne",
+            "sources": [
+              {
+                "id": "dao-call",
+                "symbol": "BlockProcessor.ProcessOne",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 84,
+                "text": "ApplyDaoTransition(suggestedBlock);"
+              }
+            ]
+          },
+          {
+            "order": 3,
+            "name": "BlockProcessor.ProcessOne",
+            "sources": [
+              {
+                "id": "block-preparation",
+                "symbol": "BlockProcessor.ProcessOne",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 85,
+                "text": "Block block = PrepareBlockForProcessing(suggestedBlock);"
+              }
+            ]
+          },
+          {
+            "order": 4,
+            "name": "BlockProcessor.ApplyDaoTransition",
+            "sources": [
+              {
+                "id": "dao-implementation",
+                "symbol": "BlockProcessor.ApplyDaoTransition",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.std.cs",
+                "line": 23,
+                "text": "private partial void ApplyDaoTransition(Block block)"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 6,
+        "name": "beacon-root system call",
+        "description": "Pre-transaction system state transition for the parent beacon block root.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "BlockProcessor.ProcessBlock",
+            "sources": [
+              {
+                "id": "block-trace-start",
+                "symbol": "BlockProcessor.ProcessBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 156,
+                "text": "ReceiptsTracer.StartNewBlockTrace(block);"
+              }
+            ]
+          },
+          {
+            "order": 2,
+            "name": "BlockProcessor.ProcessBlock",
+            "sources": [
+              {
+                "id": "executor-context",
+                "symbol": "BlockProcessor.ProcessBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 158,
+                "text": "_blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header, spec));"
+              }
+            ]
+          },
+          {
+            "order": 3,
+            "name": "BlockProcessor.ProcessBlock",
+            "sources": [
+              {
+                "id": "bal-setup",
+                "symbol": "BlockProcessor.ProcessBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 160,
+                "text": "_balManager.Setup(block);"
+              }
+            ]
+          },
+          {
+            "order": 4,
+            "name": "BlockProcessor.ProcessBlock",
+            "sources": [
+              {
+                "id": "beacon-root",
+                "symbol": "BlockProcessor.ProcessBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 162,
+                "text": "_systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);"
+              }
+            ]
+          },
+          {
+            "order": 5,
+            "name": "BlockProcessor.ProcessBlock",
+            "sources": [
+              {
+                "id": "blockhash-state",
+                "symbol": "BlockProcessor.ProcessBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 163,
+                "text": "_systemContractHandler.ApplyBlockhashStateChanges(header, spec);"
+              }
+            ]
+          },
+          {
+            "order": 6,
+            "name": "BlockProcessor.ProcessBlock",
+            "sources": [
+              {
+                "id": "pre-system-commit",
+                "symbol": "BlockProcessor.ProcessBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 164,
+                "text": "CommitState(spec);"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 7,
+        "name": "historical blockhash state change",
+        "description": "Pre-transaction historical blockhash state transition.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "BlockProcessor.ProcessBlock",
+            "sources": [
+              {
+                "id": "blockhash-state-phase",
+                "symbol": "BlockProcessor.ProcessBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 163,
+                "text": "_systemContractHandler.ApplyBlockhashStateChanges(header, spec);"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 8,
+        "name": "user transaction fold",
+        "description": "The registered executor folds transactions through the sequential adapter path; the BAL decorator may select a separate parallel path.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "BlockProcessor.ProcessBlock",
+            "sources": [
+              {
+                "id": "executor-dispatch",
+                "symbol": "BlockProcessor.ProcessBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 166,
+                "text": "TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);"
+              }
+            ]
+          },
+          {
+            "order": 2,
+            "name": "BlockValidationTransactionsExecutor.ProcessTransactions",
+            "sources": [
+              {
+                "id": "sequential-loop",
+                "symbol": "BlockValidationTransactionsExecutor.ProcessTransactions",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+                "line": 45,
+                "text": "for (int i = 0; i \u003C block.Transactions.Length; i\u002B\u002B)"
+              }
+            ]
+          },
+          {
+            "order": 3,
+            "name": "BlockValidationTransactionsExecutor.ProcessTransaction",
+            "sources": [
+              {
+                "id": "sequential-transaction",
+                "symbol": "BlockValidationTransactionsExecutor.ProcessTransaction",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+                "line": 73,
+                "text": "result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, _stateProvider);"
+              }
+            ]
+          },
+          {
+            "order": 4,
+            "name": "ExecuteTransactionProcessorAdapter.Execute",
+            "sources": [
+              {
+                "id": "adapter-execute",
+                "symbol": "ExecuteTransactionProcessorAdapter.Execute",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ExecuteTransactionProcessorAdapter.cs",
+                "line": 13,
+                "text": "transactionProcessor.Execute(transaction, txTracer);"
+              }
+            ]
+          },
+          {
+            "order": 5,
+            "name": "BlockProcessor.ProcessBlock",
+            "sources": [
+              {
+                "id": "transactions-executed",
+                "symbol": "BlockProcessor.ProcessBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 170,
+                "text": "TransactionsExecuted?.Invoke();"
+              }
+            ]
+          },
+          {
+            "order": 6,
+            "name": "BlockProcessor.ProcessBlock",
+            "sources": [
+              {
+                "id": "post-transaction-commit",
+                "symbol": "BlockProcessor.ProcessBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 172,
+                "text": "CommitState(spec);"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 9,
+        "name": "blob gas and receipt root and bloom",
+        "description": "Post-transaction blob accounting and receipt/bloom derivation.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "BlockProcessor.ProcessBlock",
+            "sources": [
+              {
+                "id": "blob-gas",
+                "symbol": "BlockProcessor.ProcessBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 176,
+                "text": "header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);"
+              }
+            ]
+          },
+          {
+            "order": 2,
+            "name": "BlockProcessor.ProcessBlock",
+            "sources": [
+              {
+                "id": "background-receipts",
+                "symbol": "BlockProcessor.ProcessBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 182,
+                "text": "bloomsAndReceiptsRootTask = Task.Run(() =\u003E"
+              }
+            ]
+          },
+          {
+            "order": 3,
+            "name": "BlockProcessor.CalculateBlooms",
+            "sources": [
+              {
+                "id": "calculate-blooms",
+                "symbol": "BlockProcessor.CalculateBlooms",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 184,
+                "text": "CalculateBlooms(receipts);"
+              }
+            ]
+          },
+          {
+            "order": 4,
+            "name": "BlockProcessor.ProcessBlock",
+            "sources": [
+              {
+                "id": "receipt-root",
+                "symbol": "BlockProcessor.ProcessBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 191,
+                "text": "header.ReceiptsRoot = CalculateReceiptsRoot(receipts, spec, block);"
+              }
+            ]
+          },
+          {
+            "order": 5,
+            "name": "BlockReceiptsTracer.UpdateCumulativeGasTracking",
+            "sources": [
+              {
+                "id": "receipt-gas-accumulate",
+                "symbol": "BlockReceiptsTracer.UpdateCumulativeGasTracking",
+                "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+                "line": 87,
+                "text": "BlockReceiptGasAccountingResult accounting = BlockReceiptGasAccountingKernel.Accumulate("
+              }
+            ]
+          },
+          {
+            "order": 6,
+            "name": "BlockReceiptsTracer.UpdateCumulativeGasTracking",
+            "sources": [
+              {
+                "id": "receipt-gas-header",
+                "symbol": "BlockReceiptsTracer.UpdateCumulativeGasTracking",
+                "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+                "line": 99,
+                "text": "Block.Header.GasUsed = accounting.HeaderGasUsed;"
+              }
+            ]
+          },
+          {
+            "order": 7,
+            "name": "BlockReceiptsTracer.Restore",
+            "sources": [
+              {
+                "id": "receipt-gas-restore",
+                "symbol": "BlockReceiptsTracer.Restore",
+                "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+                "line": 315,
+                "text": "BlockReceiptGasAccountingResult accounting = BlockReceiptGasAccountingKernel.FromTotals("
+              }
+            ]
+          },
+          {
+            "order": 8,
+            "name": "BlockReceiptsTracer.Restore",
+            "sources": [
+              {
+                "id": "receipt-gas-restore-header",
+                "symbol": "BlockReceiptsTracer.Restore",
+                "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+                "line": 319,
+                "text": "Block.Header.GasUsed = accounting.HeaderGasUsed;"
+              }
+            ]
+          },
+          {
+            "order": 9,
+            "name": "BlockReceiptGasAccountingKernel.Accumulate",
+            "sources": [
+              {
+                "id": "receipt-gas-kernel",
+                "symbol": "BlockReceiptGasAccountingKernel.Accumulate",
+                "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptGasAccountingKernel.cs",
+                "line": 24,
+                "text": "public static BlockReceiptGasAccountingResult Accumulate("
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 10,
+        "name": "rewards",
+        "description": "Block rewards are applied after transaction execution and receipt derivation.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "BlockProcessor.ProcessBlock",
+            "sources": [
+              {
+                "id": "miner-rewards",
+                "symbol": "BlockProcessor.ProcessBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 196,
+                "text": "ApplyMinerRewards(block, blockTracer, spec);"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 11,
+        "name": "withdrawals",
+        "description": "Consensus withdrawals are processed after rewards.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "BlockProcessor.ProcessBlock",
+            "sources": [
+              {
+                "id": "withdrawals",
+                "symbol": "BlockProcessor.ProcessBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 197,
+                "text": "_systemContractHandler.ProcessWithdrawals(block, spec);"
+              }
+            ]
+          },
+          {
+            "order": 2,
+            "name": "BlockProcessor.ProcessBlock",
+            "sources": [
+              {
+                "id": "withdrawal-commit",
+                "symbol": "BlockProcessor.ProcessBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 201,
+                "text": "CommitState(spec);"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 12,
+        "name": "execution requests and system calls",
+        "description": "Execution requests and their system-call state transitions are applied after withdrawals.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "BlockProcessor.ProcessBlock",
+            "sources": [
+              {
+                "id": "execution-requests",
+                "symbol": "BlockProcessor.ProcessBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 203,
+                "text": "_systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);"
+              }
+            ]
+          },
+          {
+            "order": 2,
+            "name": "SystemTransactionProcessor.Execute",
+            "sources": [
+              {
+                "id": "system-processor",
+                "symbol": "SystemTransactionProcessor.Execute",
+                "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionProcessor.cs",
+                "line": 55,
+                "text": "protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)"
+              }
+            ]
+          },
+          {
+            "order": 3,
+            "name": "BlockProcessor.ProcessBlock",
+            "sources": [
+              {
+                "id": "end-block-trace",
+                "symbol": "BlockProcessor.ProcessBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 205,
+                "text": "ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: bloomsAndReceiptsRootTask is null);"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 13,
+        "name": "storage and state roots",
+        "description": "The final state/storage commit is followed by state-root calculation for the processed header.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "BlockProcessor.CommitStateAndStorageRoots",
+            "sources": [
+              {
+                "id": "commit-roots",
+                "symbol": "BlockProcessor.CommitStateAndStorageRoots",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 207,
+                "text": "CommitStateAndStorageRoots(spec);"
+              }
+            ]
+          },
+          {
+            "order": 2,
+            "name": "WorldState.Commit",
+            "sources": [
+              {
+                "id": "eip161-reap-empty-accounts",
+                "symbol": "WorldState.Commit",
+                "path": "src/Nethermind/Nethermind.State/WorldState.cs",
+                "line": 379,
+                "text": "ReapEmptyAccounts();"
+              }
+            ]
+          },
+          {
+            "order": 3,
+            "name": "WorldState.Commit",
+            "sources": [
+              {
+                "id": "persistent-storage-commit",
+                "symbol": "WorldState.Commit",
+                "path": "src/Nethermind/Nethermind.State/WorldState.cs",
+                "line": 381,
+                "text": "_persistentStorageProvider.Commit(tracer);"
+              }
+            ]
+          },
+          {
+            "order": 4,
+            "name": "BlockProcessor.ProcessBlock",
+            "sources": [
+              {
+                "id": "account-changes",
+                "symbol": "BlockProcessor.ProcessBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 211,
+                "text": "SetAccountChanges(block);"
+              }
+            ]
+          },
+          {
+            "order": 5,
+            "name": "BlockProcessor.ComputeStateRoot",
+            "sources": [
+              {
+                "id": "state-root",
+                "symbol": "BlockProcessor.ComputeStateRoot",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 216,
+                "text": "ComputeStateRoot(header);"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 14,
+        "name": "block access list",
+        "description": "The generated block access list is finalized after state and header-derived roots.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "BlockProcessor.ProcessBlock",
+            "sources": [
+              {
+                "id": "set-bal",
+                "symbol": "BlockProcessor.ProcessBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 224,
+                "text": "_balManager.SetBlockAccessList(block);"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 15,
+        "name": "processed-header validation",
+        "description": "The processed header and receipts are checked against the unchanged suggested header.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "BlockProcessor.ProcessOne",
+            "sources": [
+              {
+                "id": "process-failure-cleanup",
+                "symbol": "BlockProcessor.ProcessOne",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 105,
+                "text": "if (!processed) block.DisposeAccountChanges();"
+              }
+            ]
+          },
+          {
+            "order": 2,
+            "name": "BlockProcessor.ProcessOne",
+            "sources": [
+              {
+                "id": "processed-validation-call",
+                "symbol": "BlockProcessor.ProcessOne",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 107,
+                "text": "ValidateProcessedBlock(suggestedBlock, options, block, receipts);"
+              }
+            ]
+          },
+          {
+            "order": 3,
+            "name": "BlockProcessor.ValidateProcessedBlock",
+            "sources": [
+              {
+                "id": "processed-validation-failure",
+                "symbol": "BlockProcessor.ValidateProcessedBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 122,
+                "text": "throw new InvalidBlockException(suggestedBlock, error);"
+              }
+            ]
+          },
+          {
+            "order": 4,
+            "name": "BlockValidator.ValidateProcessedBlock",
+            "sources": [
+              {
+                "id": "processed-validation",
+                "symbol": "BlockValidator.ValidateProcessedBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Validators/BlockValidator.cs",
+                "line": 160,
+                "text": "public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)"
+              }
+            ]
+          },
+          {
+            "order": 5,
+            "name": "BlockProcessor.ProcessOne",
+            "sources": [
+              {
+                "id": "store-tx-receipts",
+                "symbol": "BlockProcessor.ProcessOne",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+                "line": 110,
+                "text": "StoreTxReceipts(block, receipts, spec);"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 16,
+        "name": "CommitTree invocation",
+        "description": "Production CommitTree call boundary after block processing and validation; this inventory does not prove durable database persistence.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "BranchProcessor.Process",
+            "sources": [
+              {
+                "id": "branch-block-entrypoint",
+                "symbol": "BranchProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+                "line": 138,
+                "text": "(processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, blockOptions, blockTracer, spec, token);"
+              }
+            ]
+          },
+          {
+            "order": 2,
+            "name": "BranchProcessor.Process",
+            "sources": [
+              {
+                "id": "sequential-retry-catch",
+                "symbol": "BranchProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+                "line": 140,
+                "text": "catch (BlockProcessor.BlockAccessListSequentialRetryException) when ("
+              }
+            ]
+          },
+          {
+            "order": 3,
+            "name": "BranchProcessor.Process",
+            "sources": [
+              {
+                "id": "retry-discard-scope",
+                "symbol": "BranchProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+                "line": 149,
+                "text": "worldStateCloser.Dispose();"
+              }
+            ]
+          },
+          {
+            "order": 4,
+            "name": "BranchProcessor.Process",
+            "sources": [
+              {
+                "id": "retry-parent-scope",
+                "symbol": "BranchProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+                "line": 150,
+                "text": "worldStateCloser = stateProvider.BeginScope(preBlockBaseBlock);"
+              }
+            ]
+          },
+          {
+            "order": 5,
+            "name": "BranchProcessor.Process",
+            "sources": [
+              {
+                "id": "retry-block-entrypoint",
+                "symbol": "BranchProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+                "line": 152,
+                "text": "(processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, retryOptions, blockTracer, spec, token);"
+              }
+            ]
+          },
+          {
+            "order": 6,
+            "name": "BranchProcessor.Process",
+            "sources": [
+              {
+                "id": "inclusion-signal-start",
+                "symbol": "BranchProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+                "line": 162,
+                "text": "bool inclusionListSatisfied = !checkInclusionList"
+              }
+            ]
+          },
+          {
+            "order": 7,
+            "name": "BranchProcessor.Process",
+            "sources": [
+              {
+                "id": "inclusion-signal-query",
+                "symbol": "BranchProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+                "line": 163,
+                "text": "|| inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, stateProvider);"
+              }
+            ]
+          },
+          {
+            "order": 8,
+            "name": "BranchProcessor.Process",
+            "sources": [
+              {
+                "id": "processed-inclusion-signal",
+                "symbol": "BranchProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+                "line": 164,
+                "text": "processedBlock.IsInclusionListSatisfied = inclusionListSatisfied;"
+              }
+            ]
+          },
+          {
+            "order": 9,
+            "name": "BranchProcessor.Process",
+            "sources": [
+              {
+                "id": "suggested-inclusion-signal",
+                "symbol": "BranchProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+                "line": 165,
+                "text": "suggestedBlock.IsInclusionListSatisfied = inclusionListSatisfied;"
+              }
+            ]
+          },
+          {
+            "order": 10,
+            "name": "BranchProcessor.Process",
+            "sources": [
+              {
+                "id": "successful-prewarm-queue",
+                "symbol": "BranchProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+                "line": 167,
+                "text": "QueueClearCaches(preWarmTask);"
+              }
+            ]
+          },
+          {
+            "order": 11,
+            "name": "BranchProcessor.Process",
+            "sources": [
+              {
+                "id": "successful-prewarm-wait",
+                "symbol": "BranchProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+                "line": 169,
+                "text": "WaitAndClear(ref preWarmTask);"
+              }
+            ]
+          },
+          {
+            "order": 12,
+            "name": "BranchProcessor.Process",
+            "sources": [
+              {
+                "id": "pre-commit-call",
+                "symbol": "BranchProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+                "line": 172,
+                "text": "PreCommitBlock(suggestedBlock.Header);"
+              }
+            ]
+          },
+          {
+            "order": 13,
+            "name": "BranchProcessor.Process",
+            "sources": [
+              {
+                "id": "successful-prefix-count",
+                "symbol": "BranchProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+                "line": 173,
+                "text": "processedBlocksCount = i \u002B 1;"
+              }
+            ]
+          },
+          {
+            "order": 14,
+            "name": "BranchProcessor.Process",
+            "sources": [
+              {
+                "id": "periodic-scope-dispose",
+                "symbol": "BranchProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+                "line": 190,
+                "text": "worldStateCloser?.Dispose();"
+              }
+            ]
+          },
+          {
+            "order": 15,
+            "name": "BranchProcessor.Process",
+            "sources": [
+              {
+                "id": "periodic-scope-reopen",
+                "symbol": "BranchProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+                "line": 191,
+                "text": "worldStateCloser = stateProvider.BeginScope(previousBranchStateRoot);"
+              }
+            ]
+          },
+          {
+            "order": 16,
+            "name": "BranchProcessor.Process",
+            "sources": [
+              {
+                "id": "successful-block-reset",
+                "symbol": "BranchProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+                "line": 197,
+                "text": "stateProvider.Reset();"
+              }
+            ]
+          },
+          {
+            "order": 17,
+            "name": "BranchProcessor.Process",
+            "sources": [
+              {
+                "id": "branch-failure-catch",
+                "symbol": "BranchProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+                "line": 211,
+                "text": "catch (Exception ex) // try to restore at all cost"
+              }
+            ]
+          },
+          {
+            "order": 18,
+            "name": "BranchProcessor.Process",
+            "sources": [
+              {
+                "id": "final-scope-dispose",
+                "symbol": "BranchProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+                "line": 225,
+                "text": "worldStateCloser?.Dispose();"
+              }
+            ]
+          },
+          {
+            "order": 19,
+            "name": "BranchProcessor.PreCommitBlock",
+            "sources": [
+              {
+                "id": "commit-tree",
+                "symbol": "BranchProcessor.PreCommitBlock",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+                "line": 46,
+                "text": "stateProvider.CommitTree(block.Number);"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "order": 17,
+        "name": "synchronous result classification and head/processed-chain finalization",
+        "description": "BlockchainProcessor classifies an invalid branch result and, after success, propagates total difficulty and conditionally updates and marks the main chain.",
+        "steps": [
+          {
+            "order": 1,
+            "name": "BlockchainProcessor.Process",
+            "sources": [
+              {
+                "id": "blockchain-process-branch",
+                "symbol": "BlockchainProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+                "line": 508,
+                "text": "Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, token, out error);"
+              }
+            ]
+          },
+          {
+            "order": 2,
+            "name": "BlockchainProcessor.ProcessBranch",
+            "sources": [
+              {
+                "id": "blockchain-invalid-catch",
+                "symbol": "BlockchainProcessor.ProcessBranch",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+                "line": 615,
+                "text": "catch (InvalidBlockException ex)"
+              }
+            ]
+          },
+          {
+            "order": 3,
+            "name": "BlockchainProcessor.ProcessBranch",
+            "sources": [
+              {
+                "id": "blockchain-delete-invalid",
+                "symbol": "BlockchainProcessor.ProcessBranch",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+                "line": 659,
+                "text": "DeleteInvalidBlocks(in processingBranch, invalidBlockHash);"
+              }
+            ]
+          },
+          {
+            "order": 4,
+            "name": "BlockchainProcessor.Process",
+            "sources": [
+              {
+                "id": "blockchain-total-difficulty",
+                "symbol": "BlockchainProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+                "line": 520,
+                "text": "lastProcessed.Header.TotalDifficulty = suggestedBlock.TotalDifficulty;"
+              }
+            ]
+          },
+          {
+            "order": 5,
+            "name": "BlockchainProcessor.Process",
+            "sources": [
+              {
+                "id": "blockchain-update-main-chain",
+                "symbol": "BlockchainProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+                "line": 543,
+                "text": "if (!_blockTree.TryUpdateMainChain(suggestedBlock.Header, wereProcessed: true, preloadedBlocks: processingBranch.Blocks.AsSpan()) \u0026\u0026 _logger.IsWarn)"
+              }
+            ]
+          },
+          {
+            "order": 6,
+            "name": "BlockchainProcessor.Process",
+            "sources": [
+              {
+                "id": "blockchain-mark-processed",
+                "symbol": "BlockchainProcessor.Process",
+                "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+                "line": 550,
+                "text": "_blockTree.MarkChainAsProcessed(processingBranch.Blocks);"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "requiredManifestOrder": [
+      "suggested-block validation",
+      "synchronous branch selection and preparation",
+      "sender and EIP-7702 authority recovery",
+      "open world-state scope at parent root",
+      "DAO transition when applicable",
+      "beacon-root system call",
+      "historical blockhash state change",
+      "user transaction fold",
+      "blob gas and receipt root and bloom",
+      "rewards",
+      "withdrawals",
+      "execution requests and system calls",
+      "storage and state roots",
+      "block access list",
+      "processed-header validation",
+      "CommitTree invocation",
+      "synchronous result classification and head/processed-chain finalization"
+    ],
+    "phaseCount": 17,
+    "requiredManifestOrderValidated": true,
+    "processOneOrderValidated": true,
+    "processBlockOrderValidated": true,
+    "commitTreeAnchored": true,
+    "branchOrderValidated": true,
+    "sequentialRetryAnchored": true,
+    "successfulPrefixAnchored": true,
+    "inclusionSignalAnchored": true,
+    "scopeLifecycleAnchored": true
+  },
+  "executionModes": {
+    "parallel": {
+      "name": "registered-parallel-bal",
+      "implementation": "BlockProcessor.ParallelBlockValidationTransactionsExecutor",
+      "selection": "selected when ExecutionFlags.ParallelExecution \u0026\u0026 !block.IsGenesis \u0026\u0026 balManager.ParallelExecutionEnabled; otherwise the decorator delegates to the sequential inner executor",
+      "sources": [
+        {
+          "id": "parallel-executor-registration",
+          "symbol": "BlockProcessingModule.StandardBlockValidationModule",
+          "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+          "line": 163,
+          "text": ".AddDecorator\u003CIBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.ParallelBlockValidationTransactionsExecutor\u003E();"
+        },
+        {
+          "id": "parallel-type",
+          "symbol": "ParallelBlockValidationTransactionsExecutor",
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.ParallelBlockValidationTransactionsExecutor.cs",
+          "line": 25,
+          "text": "public class ParallelBlockValidationTransactionsExecutor("
+        },
+        {
+          "id": "parallel-bal-gate",
+          "symbol": "ParallelBlockValidationTransactionsExecutor.ProcessTransactions",
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.ParallelBlockValidationTransactionsExecutor.cs",
+          "line": 50,
+          "text": "if (!balManager.Enabled)"
+        },
+        {
+          "id": "parallel-selection",
+          "symbol": "ParallelBlockValidationTransactionsExecutor.ProcessTransactions",
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.ParallelBlockValidationTransactionsExecutor.cs",
+          "line": 58,
+          "text": "TxReceipt[] receipts = ExecutionFlags.ParallelExecution \u0026\u0026 !block.IsGenesis \u0026\u0026 balManager.ParallelExecutionEnabled"
+        },
+        {
+          "id": "parallel-worker",
+          "symbol": "ParallelBlockValidationTransactionsExecutor.ProcessTransactions",
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.ParallelBlockValidationTransactionsExecutor.cs",
+          "line": 59,
+          "text": "? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token)"
+        },
+        {
+          "id": "parallel-bal-manager",
+          "symbol": "BlockProcessingModule.Load",
+          "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+          "line": 84,
+          "text": ".AddScoped\u003CIBlockAccessListManager, BlockAccessListManager\u003E()"
+        }
+      ],
+      "semanticReflectionResolved": true,
+      "equivalence": "unproved"
+    },
+    "parallelBalPathRegistered": true,
+    "parallelEquivalenceProved": false
+  },
+  "counts": {
+    "transactionPhases": 6,
+    "transactionSteps": 45,
+    "blockPhases": 17,
+    "sourceFiles": 19,
+    "reflectedMethods": 35
+  },
+  "sources": [
+    {
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptGasAccountingKernel.cs",
+      "sha256": "0882c798e6ffb2243735a9ec0cec5d442b20d51277feeba95e5b68ecfaf89e32"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+      "sha256": "d4504f54b50dd43e2ab5bc7172ce2cf9e48453fcede990e5e667e743146262ff"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+      "sha256": "d520090e2adde45bced4b6af6f9add35ea77ed288060d09fdf05cae3b28bdf56"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.ParallelBlockValidationTransactionsExecutor.cs",
+      "sha256": "e8177dd7a2fd42d0fb1046012a9f18fc3e92a07265702b05203f20e12eba7090"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "sha256": "e2db419219184150c979cd6a081c83ba758c5024a15f996b510806bd1303deda"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.std.cs",
+      "sha256": "7ec6d0f975f36958f83b002ca53404620427a756cab70a037c0988ed75567ed4"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "sha256": "fc76d8d4dcf30093fb2e52262e8cd90d71493c2dc3ce04a1f314dd8f24f3a8cb"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "sha256": "451ad7a9cbb283351519623dcf358e7d3efdb69db2a0e5a452614cbe1d3dc369"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/RecoverSignatures.cs",
+      "sha256": "2f5bcca998b17cdbf1677c5e6c472db805bc453ddf8e190e60eb200987f9faf7"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/TransactionProcessorAdapterExtensions.cs",
+      "sha256": "910820a7e8bba91c30b052f5818707c46d625a2fbf12727e2aa869512120aa9e"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Validators/BlockValidator.cs",
+      "sha256": "7cc7b515c3001ba4f36ea16b74216f84216556c95d87585a192979e8c4f195d6"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ExecuteTransactionProcessorAdapter.cs",
+      "sha256": "fe303008683a0eef964e9a346d6ae0e21e2fe419970c45ee0df6ab480cd86883"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ITransactionProcessor.cs",
+      "sha256": "3cae1430ba38d54f9867b714efdc823f9db126b1bbf0e45eae59439701459e95"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionProcessor.cs",
+      "sha256": "10c7370e5f6d5ca25e4cd0801967083f97f432e211314dc40126a18fbea48a95"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+      "sha256": "0374c6f35a9a23361f37b41162ac281ca83b09846ab4295d5a592db6315c99cc"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+      "sha256": "fce65ce5bb523c56fc8aa6ee0e4d092c940a5a90b174c820ffe262eeb5241c60"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Init/Modules/MainProcessingContext.cs",
+      "sha256": "96b29adbb41f56083c9ea473b16ff32c41133788ff6763416b9d333615313f18"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "sha256": "2dec74bcc5748a1850d1bed1e8fe0221aed8c904bf2ba0c0827e76e603a71f18"
+    },
+    {
+      "path": "tools/Evm/Lean/verification-manifest.json",
+      "sha256": "b4a1c086591ecb14845005c008093c0d61ed60e4d303fdfbc6de07394625988d"
+    }
+  ],
+  "checks": {
+    "diRegistrationsAnchored": true,
+    "sequentialEntrypointAnchored": true,
+    "transactionPhaseOrderValidated": true,
+    "requiredManifestBlockOrderValidated": true,
+    "processOneOrderValidated": true,
+    "processBlockOrderValidated": true,
+    "commitTreeAnchored": true,
+    "branchOrderValidated": true,
+    "sequentialRetryAnchored": true,
+    "successfulPrefixAnchored": true,
+    "inclusionSignalAnchored": true,
+    "scopeLifecycleAnchored": true,
+    "parallelBalPathRegistered": true,
+    "parallelEquivalenceProved": false
+  },
+  "limitations": [
+    "This artifact is a source-anchored reachability and order inventory, not a semantic or formal proof of transaction or block processing.",
+    "The standard-mainnet target follows the pinned Amsterdam configuration at synthetic timestamp 0 / block 0; it is not a claim about currently scheduled live-mainnet activation.",
+    "The sequential route is anchored through the production DI registrations and the BAL decorator fallback. Plugin replacements and use-case-specific child scopes are outside this standard registration inventory.",
+    "The registered parallel/BAL executor is identified separately, but equivalence to the sequential block relation is intentionally unproved.",
+    "The CommitTree phase is an invocation anchor at the production call boundary; trie/database durability is not proved.",
+    "EVM opcode/frame/precompile semantics, cryptographic recovery correctness, trie/database durability, CLR/JIT behavior, and state-root implementation correctness remain outside this gate."
+  ]
+}

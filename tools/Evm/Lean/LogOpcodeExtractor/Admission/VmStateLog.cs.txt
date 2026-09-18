@@ -1,0 +1,9 @@
+namespace Nethermind.Evm;
+
+public class VmState<TGasPolicy>
+{
+    public bool IsStatic { get; private set; }
+    public ref readonly StackAccessTracker AccessTracker => ref _accessTracker;
+    public ExecutionEnvironment Env => _env!;
+    public ref EvmPooledMemory Memory => ref _memory;
+}

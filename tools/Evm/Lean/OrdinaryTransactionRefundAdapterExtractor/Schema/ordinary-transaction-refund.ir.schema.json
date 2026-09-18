@@ -1,0 +1,5103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Source-admitted standard Ethereum refund adapter",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "extractorVersion",
+    "acceptanceState",
+    "sourceClosureSha256",
+    "dependencies",
+    "admission"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "extractorVersion": {
+      "const": "1.0.0"
+    },
+    "acceptanceState": {
+      "const": "source-admitted"
+    },
+    "sourceClosureSha256": {
+      "$ref": "#/$defs/hash"
+    },
+    "dependencies": {
+      "$ref": "#/$defs/dependencyRoster"
+    },
+    "admission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "admission",
+        "constants",
+        "plan"
+      ],
+      "properties": {
+        "admission": {
+          "$ref": "#/$defs/compilerAdmission"
+        },
+        "constants": {
+          "$ref": "#/$defs/constants"
+        },
+        "plan": {
+          "$ref": "#/$defs/plan"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "parameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "ordinal",
+        "type",
+        "refKind"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ordinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "refKind": {
+          "enum": [
+            "None",
+            "In",
+            "Out",
+            "Ref",
+            "RefReadOnlyParameter"
+          ]
+        }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "type",
+        "implicit",
+        "symbol",
+        "operator",
+        "constant",
+        "argumentKind",
+        "parameterOrdinal",
+        "refKind",
+        "conversion",
+        "children"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string"
+        },
+        "implicit": {
+          "type": "boolean"
+        },
+        "symbol": {
+          "type": "string"
+        },
+        "operator": {
+          "type": "string"
+        },
+        "constant": {
+          "type": "string"
+        },
+        "argumentKind": {
+          "type": "string"
+        },
+        "parameterOrdinal": {
+          "type": "integer",
+          "minimum": -1
+        },
+        "refKind": {
+          "type": "string"
+        },
+        "conversion": {
+          "type": "string"
+        },
+        "children": {
+          "type": "array",
+          "minItems": 0,
+          "items": {
+            "$ref": "#/$defs/operation"
+          }
+        }
+      }
+    },
+    "member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identity",
+        "body"
+      ],
+      "properties": {
+        "identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "symbol",
+            "methodKind",
+            "returnType",
+            "parameters",
+            "path",
+            "start",
+            "length",
+            "syntaxSha256"
+          ],
+          "properties": {
+            "symbol": {
+              "type": "string",
+              "minLength": 1
+            },
+            "methodKind": {
+              "const": "Ordinary"
+            },
+            "returnType": {
+              "type": "string",
+              "minLength": 1
+            },
+            "parameters": {
+              "type": "array",
+              "minItems": 0,
+              "items": {
+                "$ref": "#/$defs/parameter"
+              }
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "start": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "length": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "syntaxSha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        "body": {
+          "$ref": "#/$defs/operation"
+        }
+      }
+    },
+    "expression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "type",
+        "value",
+        "arguments"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "variable",
+            "literal",
+            "projection",
+            "convert",
+            "not",
+            "and",
+            "or",
+            "equal",
+            "notEqual",
+            "less",
+            "lessEqual",
+            "greater",
+            "greaterEqual",
+            "add",
+            "subtract",
+            "multiply",
+            "divide",
+            "conditional",
+            "min",
+            "max",
+            "preRefundGas",
+            "shouldRefundGas",
+            "shouldValidateGas",
+            "claimableRefund",
+            "saturatingSubtract"
+          ]
+        },
+        "type": {
+          "enum": [
+            "bool",
+            "uInt64",
+            "int64",
+            "int32",
+            "int128",
+            "uInt256",
+            "gas",
+            "input",
+            "constants",
+            "consumed"
+          ]
+        },
+        "value": {
+          "type": "string"
+        },
+        "arguments": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/expression"
+          }
+        }
+      }
+    },
+    "constants": {
+      "const": {
+        "executionCap": 16777216,
+        "createStateCost": 183600,
+        "newAccountCost": 25000,
+        "perAuthorizationCost": 12500,
+        "legacyRefundQuotient": 2,
+        "eip3529RefundQuotient": 5
+      }
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expressions",
+        "haltStages"
+      ],
+      "properties": {
+        "expressions": {
+          "type": "array",
+          "minItems": 50,
+          "maxItems": 50,
+          "prefixItems": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "preRefund.difference"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "preRefund.range"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "preRefund.result"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "initial.reservoir"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "halt.refundedIntrinsic"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "halt.stateFloor"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "code.zeroCount"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "code.enabled"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "code.amount"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "payment.validate"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "payment.should"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "refund.createGuard"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "refund.createAmount"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "refund.haltGuard"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "refund.preRefund"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "refund.stateUsed"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "refund.quotient"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "settlement.0"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "settlement.1"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "settlement.2"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "settlement.3"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "settlement.4"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "settlement.5"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "settlement.6"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "settlement.7"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "settlement.8"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "settlement.9"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "settlement.10"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "settlement.11"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "settlement.12"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "consumed.0"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "consumed.1"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "consumed.2"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "consumed.3"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "consumed.4"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "consumed.5"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "halt.preRefund"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "halt.claimed"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "halt.spent"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "halt.paymentGuard"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "halt.consumed.0"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "halt.consumed.1"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "halt.consumed.2"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "halt.consumed.3"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "halt.consumed.4"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "halt.consumed.5"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "reset.StateReservoir"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "reset.StateGasUsed"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "reset.StateGasSpill"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "role",
+                "owner",
+                "canonicalSyntax",
+                "operation",
+                "expression"
+              ],
+              "properties": {
+                "role": {
+                  "const": "clear.Value"
+                },
+                "owner": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "canonicalSyntax": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "operation": {
+                  "$ref": "#/$defs/operation"
+                },
+                "expression": {
+                  "$ref": "#/$defs/expression"
+                }
+              }
+            }
+          ],
+          "items": false
+        },
+        "haltStages": {
+          "const": [
+            "refundState",
+            "resetState",
+            "clearExecution"
+          ]
+        }
+      }
+    },
+    "compilerAdmission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assemblyName",
+        "languageVersion",
+        "defineConstants",
+        "referenceInventorySha256",
+        "references",
+        "sources",
+        "members"
+      ],
+      "properties": {
+        "assemblyName": {
+          "const": "Nethermind.Evm"
+        },
+        "languageVersion": {
+          "const": "14.0"
+        },
+        "defineConstants": {
+          "const": [
+            "TRACE",
+            "RELEASE",
+            "NET",
+            "NET10_0",
+            "NETCOREAPP",
+            "NET5_0_OR_GREATER",
+            "NET6_0_OR_GREATER",
+            "NET7_0_OR_GREATER",
+            "NET8_0_OR_GREATER",
+            "NET9_0_OR_GREATER",
+            "NET10_0_OR_GREATER",
+            "NETCOREAPP1_0_OR_GREATER",
+            "NETCOREAPP1_1_OR_GREATER",
+            "NETCOREAPP2_0_OR_GREATER",
+            "NETCOREAPP2_1_OR_GREATER",
+            "NETCOREAPP2_2_OR_GREATER",
+            "NETCOREAPP3_0_OR_GREATER",
+            "NETCOREAPP3_1_OR_GREATER"
+          ]
+        },
+        "referenceInventorySha256": {
+          "const": "751d3ffff1427c2d751c8baaa023220cc847d88c839ec41792800f1c9fe57796"
+        },
+        "references": {
+          "$ref": "#/$defs/references"
+        },
+        "sources": {
+          "$ref": "#/$defs/sources"
+        },
+        "members": {
+          "type": "array",
+          "minItems": 26,
+          "maxItems": 26,
+          "items": {
+            "$ref": "#/$defs/member"
+          }
+        }
+      }
+    },
+    "sources": {
+      "const": [
+        {
+          "path": "Directory.Build.props",
+          "role": "selection-or-projection",
+          "sha256": "597c468a790b1f0b0b92ad18bcd5fa943d7b62fa2e8c181f56db080cdcbf1812"
+        },
+        {
+          "path": "Directory.Build.targets",
+          "role": "selection-or-projection",
+          "sha256": "cb41efa7d75b48d919d1acf5e2e67cd9445838b95847d11b8a97860a2f3961df"
+        },
+        {
+          "path": "src/Nethermind/artifacts/obj/Nethermind.Evm/release/Nethermind.Evm.GlobalUsings.g.cs",
+          "role": "compiler-generated",
+          "sha256": "b76397ea9c4e94f6bb10590d774fcc38c4c64977318a81b30322d62b71863cd1"
+        },
+        {
+          "path": "src/Nethermind/Directory.Build.props",
+          "role": "selection-or-projection",
+          "sha256": "ad544425af1b0ec60334511abf79896a77843088457ef81b98a06b56d13e4e3c"
+        },
+        {
+          "path": "src/Nethermind/Directory.Build.targets",
+          "role": "selection-or-projection",
+          "sha256": "0598cebaef1df41102a18a3f9ace810bed1e4e64b8471d055724b4a394dccec6"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Eip7702Constants.cs",
+          "role": "selection-or-projection",
+          "sha256": "d4faf8a117484a7cdbe05c75e4c05f039039c290404fb10282bab8f601772499"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Eip7825Constants.cs",
+          "role": "selection-or-projection",
+          "sha256": "5f79dcccbab06167bb591814318957e4ffcf6c8d4c760a069f10cae0a7bc48da"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/GasCostOf.cs",
+          "role": "selection-or-projection",
+          "sha256": "10f1f1a29e7bf10a8220422a6f7571af60df4f05ad4075268e3b26559a73c6f5"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Transaction.cs",
+          "role": "selection-or-projection",
+          "sha256": "3fdf94805739c6ccdfa8b4617c5d4cfa6bee9e9565f16d667b22106c434d6596"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Transaction.std.cs",
+          "role": "selection-or-projection",
+          "sha256": "b08ebdcf7fb167cf028488d393037278e9dc33b8f2c927f96440ea28572530d9"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/AccountOverride.cs",
+          "role": "compiler-support",
+          "sha256": "d81ca468761e668cccbda4c4942e4f408f7aba7c5361c55fd6fee7af365d4ccf"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/BlobGasCalculator.cs",
+          "role": "compiler-support",
+          "sha256": "082f53dda7202af0dd9e63b523a8628a5f84780710e68d83276983a26c36ec68"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/BlockExecutionContext.cs",
+          "role": "compiler-support",
+          "sha256": "cf1fe40026055a51233f9832f7b8ba7ce8ee381405f36074ce8d7b957b169792"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/BlockOverride.cs",
+          "role": "compiler-support",
+          "sha256": "b470b1fdaff9da5bb36a5217ba309afa2f81c552e1babba774ad4e814a7841b2"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/BlockOverrideExtensions.cs",
+          "role": "compiler-support",
+          "sha256": "6d25461a59f655a4cfd74ea87d68895bea45dfdcd02405b62feb415cbdeface2"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/BytecodeBuilder.cs",
+          "role": "compiler-support",
+          "sha256": "6f832072ad765dddd6e598aa8d1e948a73cb244d9440c3d19509a6eed4834436"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/CacheCodeInfoRepository.cs",
+          "role": "compiler-support",
+          "sha256": "498e32be24e098f1540273f9780e548b52fbbbbc8cb55fbf7b8335eb7743d0f3"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/CodeAnalysis/CodeInfo.cs",
+          "role": "compiler-support",
+          "sha256": "41e5e0316853f5970b5f868a6a47e24105dcb6eeb9be9608378482d74bcbd254"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/CodeAnalysis/CodeInfoFactory.cs",
+          "role": "compiler-support",
+          "sha256": "ef71341adb0d8d5691392359e7e2b0a1c1b483edf8963f205877a89b39ab7c7c"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/CodeAnalysis/JumpDestinationAnalyzer.cs",
+          "role": "compiler-support",
+          "sha256": "7347218843f5e110c943753763cf6a962c5bde347d59c2e025dda30b8633a751"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/CodeAnalysis/JumpDestinationAnalyzer.std.cs",
+          "role": "compiler-support",
+          "sha256": "7a90ac0ea3718878fd1d6a36bb5ec7a8ff23a4c2e4629ce660e9b96e6f95c0f2"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/CodeDepositHandler.cs",
+          "role": "compiler-support",
+          "sha256": "72248ff72f65f545d723bc75e3703ccc05333b165944d95905f310294be3cfc7"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/CodeInfoRepository.cs",
+          "role": "compiler-support",
+          "sha256": "76734fad45dd415deaf016b1b9ce6670580042e09f5493253b06c7a9c9f622b7"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/ContractAddress.cs",
+          "role": "compiler-support",
+          "sha256": "d21b1b6b2965a7b38bf51c6c2b11133e4308031e30e1a74eacf258665cb618b3"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/DispatchFlags.std.cs",
+          "role": "compiler-support",
+          "sha256": "99c58367e5b90fa5904484f6e2fbf10745a54f6cd7d07275810c27028ad0eb2b"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Eip8038Flag.cs",
+          "role": "compiler-support",
+          "sha256": "414749009fddc3f5f227746155dad28b15b6bc2adbc45b6d5797a87a593305da"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/EvmException.cs",
+          "role": "compiler-support",
+          "sha256": "8c503bfbe0c60c41597e64c96b5d823dc98b934b4511730217eceaaf13837450"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/EvmExceptionExtensions.cs",
+          "role": "compiler-support",
+          "sha256": "b878117cc51475cde321293dab3d50f24b279368848c86c704662fbd2c6027ac"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/EvmFrameMemory.cs",
+          "role": "compiler-support",
+          "sha256": "4bef331a3b36589c51e0560b3b288cacf2c85e582deb79f9c2f25284ccb56507"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/EvmObjectPool.std.cs",
+          "role": "compiler-support",
+          "sha256": "e38caf1904887b647b11b63bfe241c184958796b9fc3f1446c456a9373daadd8"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+          "role": "compiler-support",
+          "sha256": "853f8f9b46e5deef1c655442694dfbb1f862de80d0ecdbee2d66e7282f974e84"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/EvmStack.cs",
+          "role": "compiler-support",
+          "sha256": "561520be4f0fe1d533ddea9cfea7ff48edb2745b1f3adf1b45c24e6c0bed02ad"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/EvmStack.std.cs",
+          "role": "compiler-support",
+          "sha256": "01a1b26ce105fa69fff94b8df171dcf11b85fe5462318a3ff9da3889ff41577e"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/EvmStackOverflowException.cs",
+          "role": "compiler-support",
+          "sha256": "916124eccd44f0789905b5acdcde66398eeefff8279807157e51d9631ef28ba0"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/EvmStackUnderflowException.cs",
+          "role": "compiler-support",
+          "sha256": "51248da06386f679827c0bbd279345c9881cc6e2ca3c6450031a1fb04f2d6d76"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/ExecutionEnvironment.cs",
+          "role": "compiler-support",
+          "sha256": "c076225b688b1e04ed83cddc90a2ddbda69862333dc927945eb32d376e43e1db"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/ExecutionEnvironmentExtensions.cs",
+          "role": "compiler-support",
+          "sha256": "a520ff36435c0b5c518f1292778013357922c44e955387532b45dae55ee5afd1"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/ExecutionMetricsCounters.cs",
+          "role": "compiler-support",
+          "sha256": "5be92cec0649ceb96fb5f2f167db3986e0d0b55316ed13d94dc407c704aba7a5"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/ExecutionType.cs",
+          "role": "compiler-support",
+          "sha256": "b6689c7c928182f6d115ca57cc8ac45bb9312359a026704f2eec77b921028013"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/AccountAccessKind.cs",
+          "role": "compiler-support",
+          "sha256": "a61bc07a6ca4077bf47206799304c8335a901d22bba5e77b3403c92a52eb5462"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/AccountAccessPricingKernel.cs",
+          "role": "compiler-support",
+          "sha256": "1988faefb55bb65bf4e915e77e99966f43b88675dec47689e04378bde4f31c92"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/Eip8037BlockGasInclusionCheck.cs",
+          "role": "semantic",
+          "sha256": "79e4c84096c72bd0241553f114f08973279eb841cfa469f944566fb9490afe4e"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+          "role": "semantic",
+          "sha256": "3c31ba40c24a78bf11243b38859168350f02934806124e913da0560bc1a4350f"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/IGasCost.cs",
+          "role": "compiler-support",
+          "sha256": "16289cdc2f777a76fda3ad8ff4ce4275c30513aee04c9cf42d314cc6e1ec48c0"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/IGasPolicy.cs",
+          "role": "semantic",
+          "sha256": "b4d26db87723243514f2f6b8a5e48d1176139105c3b012ad0f3956e59afc98a8"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/PrecompileGasPricingKernel.cs",
+          "role": "compiler-support",
+          "sha256": "dd23b8bd461a13c75ec203b1dbe853a885f61640edf4d47287c1dadd0d9ff576"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/SStorePricingKernel.cs",
+          "role": "compiler-support",
+          "sha256": "6eb99aee5247c9d5d7c35659c41628d758b672923d0fc5ec76e7d5cb9a30a125"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasChargeKernel.cs",
+          "role": "compiler-support",
+          "sha256": "ec3276958cbc6b0255fadedf15dbe49691195aa95570b332937f8d1703b103fd"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasTransitionAdapterKernel.cs",
+          "role": "semantic",
+          "sha256": "ca16429e4cb1b728619b7fa0113b2302ca75600b0a32d9345e38721c7c2d7368"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasTransitionKernel.cs",
+          "role": "semantic",
+          "sha256": "4a31dc76fb8284a8ea5994de9a63810abe0fd7efbe6add4aa8b3d6cb564a75cc"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/TransactionGasInitializationKernel.cs",
+          "role": "compiler-support",
+          "sha256": "65ab0742596ea7ebf49d2c79601eae00152d8d039ac8e417076bf63123be1e82"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/IBlockhashProvider.cs",
+          "role": "compiler-support",
+          "sha256": "39b392db0a8804b1a2e2afd02614549a46b1241159cc797a83e4edd61fe9537d"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/ICodeCache.cs",
+          "role": "compiler-support",
+          "sha256": "3a4451bb3dc9051e79a80427df4298af3c2fe14fc6ccc1ab09fd6c6dbde4a4a5"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/ICodeInfoRepository.cs",
+          "role": "compiler-support",
+          "sha256": "e0669f612f31fe4a353a60896f40325e493e1ff925a92614ad73f49bf1435015"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instruction.cs",
+          "role": "compiler-support",
+          "sha256": "6895d06277ac4f9369d7bdc748976576bf384f6f3a5a348a2e4fd3767a46a030"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmCalculations.cs",
+          "role": "compiler-support",
+          "sha256": "1912ef2add71990f29ab0cb7ef1de745b44f76bd201d4ac76c3032d5f60dc244"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Bitwise.cs",
+          "role": "compiler-support",
+          "sha256": "50dabd327c137ae8b4cb1bdeca89039c487d7a95f4fb1aed266dbd31ea4ed509"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Call.cs",
+          "role": "compiler-support",
+          "sha256": "cfc87832eb304f8f8dccfb27b6b89605f6c74e88522f02b13c775834d14948a5"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Call.std.cs",
+          "role": "compiler-support",
+          "sha256": "42954af1ac17ea3a973d9ca57a01432637bd92ebc98857838ddafa8e7aef93d6"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.CodeCopy.cs",
+          "role": "compiler-support",
+          "sha256": "fd948f4f4ab64699c496e320019ff69d7dd58b0a33e906a5579c46240605c104"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.ControlFlow.cs",
+          "role": "compiler-support",
+          "sha256": "282ba75f60c1ddd03fd51460b0e3273c0113430d02faee3abff991fe5f920c6c"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Create.cs",
+          "role": "compiler-support",
+          "sha256": "23927529d13488932ec47b57972ab7084566a28deae83805d69a1fe977576719"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Crypto.cs",
+          "role": "compiler-support",
+          "sha256": "c86a9c3219b12b5838cf6a8d4ca973bc9d101926a859cf88b8a7b544c6787c94"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Environment.cs",
+          "role": "compiler-support",
+          "sha256": "1174827863b40d80b974c361815a3ab5de0d37e184049c977ddf1716180d09f9"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Math1Param.cs",
+          "role": "compiler-support",
+          "sha256": "e12cf862c766846a61203f9e2eafab1c8de3d14325db3c012ef239b176996b87"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Math2Param.cs",
+          "role": "compiler-support",
+          "sha256": "49bdb1954d92ee90e9a705f0f92d0be5b5f52d8b7fbb0be6cd09d8f80e97db71"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Math3Param.cs",
+          "role": "compiler-support",
+          "sha256": "bf24c4d7fd63bcbf3da9c2d0669f1c3a713bb253d51021f57383891bddb201f5"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Shifts.cs",
+          "role": "compiler-support",
+          "sha256": "c5d43d9f71582743b8f518734759c0f3d1be0097799aaaf1e874e6cba3658774"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Spec.cs",
+          "role": "compiler-support",
+          "sha256": "2aee227767f2adf6d04f02a2d2d3ada8028d84dac60192678630b6af9212ae97"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Stack.cs",
+          "role": "compiler-support",
+          "sha256": "e44274b07b1a130045664718fad215e2a3dfd247f06421863573196d4c58f531"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Storage.cs",
+          "role": "compiler-support",
+          "sha256": "0101effa0c71c4a602021f18de7075e047974b75b37b9d672364499db0bf390d"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/ExtendedStackDecoderKernel.cs",
+          "role": "compiler-support",
+          "sha256": "3a7bb91ec7ff267e2cb4aaa4de4c8ea03279cc1d7a9fdf4dff57e34a80b963ce"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/StorageAccessType.cs",
+          "role": "compiler-support",
+          "sha256": "74e886f06c42aaaf70498a45e11dc1f3a04b2406a6f788063df0b9a54f221e12"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/IntrinsicGasCalculator.cs",
+          "role": "compiler-support",
+          "sha256": "886772dce848f566ba97a112a9b12b9f535a2d951dace63647136ababd822909"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/IOverridableCodeInfoRepository.cs",
+          "role": "compiler-support",
+          "sha256": "ac422f3c34fdf61816465def5602a82976ce845349d38b7155aa2d957481e9cf"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/IPrecompileProvider.cs",
+          "role": "compiler-support",
+          "sha256": "b75187a431b4ae89f48a212cf680025593bd28aa208f41653d9507a11283596b"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/IVirtualMachine.cs",
+          "role": "compiler-support",
+          "sha256": "330da5f31bd7aca4f4212a42c912c33cf0ac5b3def0689b7f9985cd6510aa56d"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/MemoryAllowance.cs",
+          "role": "compiler-support",
+          "sha256": "34fd2aea2a82a1382002e9b97228b46a7fc099152b12b2dc008498d4b9d143a3"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Metrics.cs",
+          "role": "compiler-support",
+          "sha256": "f056b9138021c4875f5a16893b243aac12f535c71ae88281987094fb6bcc2b90"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Metrics.std.cs",
+          "role": "compiler-support",
+          "sha256": "e36b3f0f33db29043d820db99cf0577a3c7010bf1b93193ebeb92e954a54300e"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Nethermind.Evm.csproj",
+          "role": "selection-or-projection",
+          "sha256": "6170fea1cb0363f603e599d057164e2db26f22309cb1f3ecdcac7ea84fc92eec"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/NoopCodeCache.cs",
+          "role": "compiler-support",
+          "sha256": "df4b2d08b09e26657eae8c033d09205552cbe46c5a4580decca0b516259e5012"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/OpcodeResult.cs",
+          "role": "compiler-support",
+          "sha256": "b7a3344ad10991ac6710620a7ff6de8242a210aead41028ac0c354f81f8571f3"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/OutOfGasException.cs",
+          "role": "compiler-support",
+          "sha256": "6c8fdabccf23afe536d4841c5e40ca4511149684eddbcb569613f3747b23e297"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/PoppedAddressCache.cs",
+          "role": "compiler-support",
+          "sha256": "c659d08a7683d78e4ea8b7dd91ffd0bc0f53b13f32e6a5042e120d3fe06e1e7b"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/PrecompileExecutionFailureException.cs",
+          "role": "compiler-support",
+          "sha256": "4624e0cc4c99721a68434b2b7b916008f699041d0309748064e85d16893a8e20"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Precompiles/IPrecompile.cs",
+          "role": "compiler-support",
+          "sha256": "601e075c3f89ebdeab2a30e684cdd654cb129fc2bea78ab93097a2915d0f2191"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Prepare.cs",
+          "role": "compiler-support",
+          "sha256": "c1470efdafb5803ebb53d3113e60d30e9c9954592c77a54346d224f91ad5a1e8"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/ReadOnlyMemoryExtensions.cs",
+          "role": "compiler-support",
+          "sha256": "d5dec0389767197fffde80a3aa86e139b38722a5d9343519ef1235e1fdac1bf9"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/RecentRootStore.cs",
+          "role": "compiler-support",
+          "sha256": "54c04edafb6a338cb82941a0a907c1ad7609faff965b3d4ed7fe0392f4d6b253"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/RefundHelper.cs",
+          "role": "semantic",
+          "sha256": "5ed45f3f67513b53e0c090e90cf6a41026ab7e4ea35343cdcbe4da65d431874e"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/ReleaseSpecExtensions.cs",
+          "role": "compiler-support",
+          "sha256": "f840174612cdb8fc48ae8adfb9b0af7bfb97cbb2c077e6d7a16c20249dae92a7"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/SpecFlags.std.cs",
+          "role": "compiler-support",
+          "sha256": "653891cfe2289e874dcdd98c9401b3b319637d5241fd9a4d6cd7ef1c146ee5a8"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs",
+          "role": "compiler-support",
+          "sha256": "ed5cdfdfe2ebf4d8c9f651572927efe7bdb5c75107db63a40577c5ec3ec2882f"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/StackPool.cs",
+          "role": "compiler-support",
+          "sha256": "4fa29adf34149fc192f9fc13140b8c8bdc3a8fa7b0f0b2aec94717670d6131c4"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/StackPool.std.cs",
+          "role": "compiler-support",
+          "sha256": "62042951d6b5cf767cce1a1929dbf82ce26127b8884c784ab6708320f418c8f2"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/IBlockAccessListSource.cs",
+          "role": "compiler-support",
+          "sha256": "189016dfde474c27c6bd61340f5239361226e8bd8c2456d83e3b0df46ef197ec"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/IReadOnlyStateProvider.cs",
+          "role": "compiler-support",
+          "sha256": "2bab0038c33735b330e25f6300384450835c092a5ff137935a1fd6c5ab58be68"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/IReadOnlyStateProviderExtensions.cs",
+          "role": "compiler-support",
+          "sha256": "5110f3112fda1748bbf76e55117393a284f9564c33c7caee2bc5cd2b978d9f6a"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/IWorldState.cs",
+          "role": "compiler-support",
+          "sha256": "0680ebc7168472645d93df58d2b3240508c177361815c85cceb09cf960f189c7"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/IWorldStateScopeProvider.cs",
+          "role": "compiler-support",
+          "sha256": "8c68c7561effd7e00f11985d36464d7ec97e8cd4e20b68ea48a66ccfd3702c86"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/LocalMetrics.cs",
+          "role": "compiler-support",
+          "sha256": "c646617c6bfeb451d38c9a74c42d3e45da684f731068d96931e9b286d73a3f3c"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/PreBlockCaches.cs",
+          "role": "compiler-support",
+          "sha256": "659417fcac588957cd5fda4a472d65c95b846d254a72094a2ad522f4dd3234bc"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/PrecompileCaches.cs",
+          "role": "compiler-support",
+          "sha256": "6a30dc79f7930ec1297ab9dbd81ed22b3f5ae7bc5cb9877ca342979226233524"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/PrewarmerState.cs",
+          "role": "compiler-support",
+          "sha256": "9847276d5f466066a52f4f88365170c1ed4bf31bf8b2803cbdbf4f92b029d2c3"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/Snapshot.cs",
+          "role": "compiler-support",
+          "sha256": "47625d60a8315bbc3afd26eca85780b0ab894d7401d913cbec00ed89b51f46c8"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/WorldStateExtensions.cs",
+          "role": "compiler-support",
+          "sha256": "4c0a66d1de95b4340bc9a190f6bef29b6e4068ebffa19ebe9cce3f789131fc62"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/StateOverridesExtensions.cs",
+          "role": "compiler-support",
+          "sha256": "c15ca881ac2c49b0ee843d79823dd8d3c21d2ba2f52b34dd9e707a3c306e4fbc"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/StaticCodeCache.cs",
+          "role": "compiler-support",
+          "sha256": "e7e3b892ae7624ef27ccef5c76f2946b8d50f4d8bd9261edca73c4524522e828"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/StatusCode.cs",
+          "role": "compiler-support",
+          "sha256": "e896f55406c9fc1ce99199d80bea69b87fa8891c23afef59712b87cadb971190"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/CancellationBlockTracer.cs",
+          "role": "compiler-support",
+          "sha256": "fa3c90421ec0a047c00536828e9b1fddfe90d5c69b6a36e43ff416ac31d7366f"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/CancellationTxTracer.cs",
+          "role": "compiler-support",
+          "sha256": "ccda2ccda79e804bf778c57498a24887b358e4c69f623ec2b3a6ca4d82ecd359"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/CompositeTxTracer.cs",
+          "role": "compiler-support",
+          "sha256": "999e2fefdd6db614b15e82dddeb2b931100aa1fb8b59825bf788d6682ef40698"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/FeesTracer.cs",
+          "role": "compiler-support",
+          "sha256": "be3365c0dc9feefc390ce076ab56050ea1105790741189e851e3c8032f08146d"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/IBlockTracer.cs",
+          "role": "compiler-support",
+          "sha256": "6e6f14e4b8d1ba044e4ef5523ca2bdeb73284bf6e3863909d35daa5d43a156ac"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/ITxTracer.cs",
+          "role": "compiler-support",
+          "sha256": "9f2550f8c3407f494452386699040feab8aa597437b1cd4180d038d9fd0a9169"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/ITxTracerWrapper.cs",
+          "role": "compiler-support",
+          "sha256": "b892bed034c5c14dd50837b69f1fe7dd47bc325421545fb1d8ab859e95ece36d"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/NullTxTracer.cs",
+          "role": "compiler-support",
+          "sha256": "fc5da81812866c5f0814729a14ed8cb2d7c669b7179e41cdc3d6f2ceaa7ba224"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/State/IStateTracer.cs",
+          "role": "compiler-support",
+          "sha256": "4b75958ac4d921126364d9ddbbf3c1fce9490ec046a3bb43f2b5a673c53dddc2"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/State/IStorageTracer.cs",
+          "role": "compiler-support",
+          "sha256": "d0ba6ca8c1a2c99fa6b3c5ff6d8ff6d6db84340d090a5d50816ba7f1b2077be0"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/State/IWorldStateTracer.cs",
+          "role": "compiler-support",
+          "sha256": "d4e95b993245b751fc97f71f3d47bc93bc477d79662ed17755e426d49e76335f"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/State/NullStateTracer.cs",
+          "role": "compiler-support",
+          "sha256": "dde2127d6fd6bc4f8b9a2009517be1e3c1eeae8ed63351c14551ccfb01590eab"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/TraceMemory.cs",
+          "role": "compiler-support",
+          "sha256": "0e8bda869acd599a94a8cd6a9a79a7ff457c4acf1534a0c7f4ebd39939b8fca6"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/TracerExtensions.cs",
+          "role": "compiler-support",
+          "sha256": "4704eb408436ecb82614bbf1db26f11fcfcfa65ef613146e37a31f7e30a8d662"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/TraceStack.cs",
+          "role": "compiler-support",
+          "sha256": "a2e06210112f3a47bca6f95e4b3a89433c78f4d39b5ec4cbafe485f21191acb8"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/TxTracer.cs",
+          "role": "compiler-support",
+          "sha256": "02cead9095a0cd5da4879bef2299dca35d3d4bbef2835d30448f03ef3f9e3d2d"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionExtensions.cs",
+          "role": "compiler-support",
+          "sha256": "c168c6d86ef5449123d2ee6ece097510e69e4c3a133ea57cf2730c841449c9b3"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/BuildUpTransactionProcessorAdapter.cs",
+          "role": "compiler-support",
+          "sha256": "11439d91578dc70334c69bf4df3913596c719ef831f6d494e395e260c460071d"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ChangeableTransactionProcessorAdapter.cs",
+          "role": "compiler-support",
+          "sha256": "4aa849b2584f2b7ff9cafc04006a3172ca75955d5f4d20f57dd7b994b245abe0"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ExecuteTransactionProcessorAdapter.cs",
+          "role": "compiler-support",
+          "sha256": "fe303008683a0eef964e9a346d6ae0e21e2fe419970c45ee0df6ab480cd86883"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ExecutionOptions.cs",
+          "role": "semantic",
+          "sha256": "014a2598e1def284b7b98dc97185b6dbbc45ca04be4ab159e330a0675ac24f10"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/GasConsumed.cs",
+          "role": "semantic",
+          "sha256": "1dc4e78d5a17056dcb00d496136a32a899245f3a7b3e5a9eef74c4760ef68686"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ITransactionProcessor.cs",
+          "role": "compiler-support",
+          "sha256": "3cae1430ba38d54f9867b714efdc823f9db126b1bbf0e45eae59439701459e95"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ITransactionProcessorAdapter.cs",
+          "role": "compiler-support",
+          "sha256": "0b777370dee8da9a6519b26d4446eae11962f61ad09f82d91e931ce9a65b16f9"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ITransactionProcessorFactory.cs",
+          "role": "compiler-support",
+          "sha256": "c02f25408dce7d378533fb85803906ca18e3dc7d1d884400669a3ac201591a7b"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/KeyedNonceManager.cs",
+          "role": "compiler-support",
+          "sha256": "49634ffafb158bd1c2827e7b8f3ba9c40c087eab8b5ca1b0963e858ff4440220"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionProcessor.cs",
+          "role": "compiler-support",
+          "sha256": "10c7370e5f6d5ca25e4cd0801967083f97f432e211314dc40126a18fbea48a95"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionRoutingKernel.cs",
+          "role": "compiler-support",
+          "sha256": "b884bb49ad7c109b907f4dfcac56a5eb13283d964310d45eb9ca85177ff5e5c1"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TraceTransactionProcessorAdapter.cs",
+          "role": "compiler-support",
+          "sha256": "ce271cae93b7689408446f0253780c7d6e72281cb78874f002a2c431c006678f"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+          "role": "semantic",
+          "sha256": "0374c6f35a9a23361f37b41162ac281ca83b09846ab4295d5a592db6315c99cc"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessorAdapterFactory.cs",
+          "role": "compiler-support",
+          "sha256": "1912fa7722b5d0dcd8f5a081b4b6b68fbe86d594838d7d2093fa8a38430e8bc2"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionSettlementKernel.cs",
+          "role": "semantic",
+          "sha256": "37add297aaaf07a4260b45c05c5f866a48f92eef2ac6fb16ef2bfd96103f8c44"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionSubstate.cs",
+          "role": "semantic",
+          "sha256": "1312a5f1a9990976670914fcc0a6ad2c77dd92d768d92fd91b28f27fefe66a00"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransferLog.cs",
+          "role": "compiler-support",
+          "sha256": "4449d807777bf8eb49e4e1a7355c37998ca57c1bf7cea2542461028879aba315"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TxExecutionContext.cs",
+          "role": "compiler-support",
+          "sha256": "b1dea501cdf6577967aa3a73ba4ca1b77dc96fedb3d5bbb3c0ca8dd14c65c4b0"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.CallResult.cs",
+          "role": "compiler-support",
+          "sha256": "d21bebbb4caea938c42d369083d922f6e18d01eb797b1c534fb1541c242ca073"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+          "role": "compiler-support",
+          "sha256": "45edba3691e09185e749485785990662ddea1af849bc6e4564f92b68a5137a6b"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+          "role": "compiler-support",
+          "sha256": "4f36bb20057caec9c85bcd3621372563f4d47ba36a9cbf01be267af4e379bca1"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.ExecutionHandlers.cs",
+          "role": "compiler-support",
+          "sha256": "62714bd459a38cc13e7b7bd2d5cfc7bc2ffdcb50743eeb565fdc2ee2966e286a"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+          "role": "compiler-support",
+          "sha256": "5148dd594e40ebb976179b1048f233914f54acc8d033d358cf3e2e7594e112b6"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.std.cs",
+          "role": "compiler-support",
+          "sha256": "357fbd35369424a379c8c29338f491627512d40a12199d7a3d9aac44c87ca92a"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.warmup.cs",
+          "role": "compiler-support",
+          "sha256": "73d9888b6f3aa62dd9d206e1d69608f9d643b61e8c874b91a9e3432d28c7672c"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/VmState.cs",
+          "role": "compiler-support",
+          "sha256": "7b7b6ddb753118b426d14976a3fe8e79f808320d6a09ea9cace9df19197f9f23"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/VmStateStack.cs",
+          "role": "compiler-support",
+          "sha256": "dd0591223138a1604e423466eee4489c05aa52f6d0a7d20426dad7aea3664515"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+          "role": "selection-or-projection",
+          "sha256": "fce65ce5bb523c56fc8aa6ee0e4d092c940a5a90b174c820ffe262eeb5241c60"
+        },
+        {
+          "path": "src/Nethermind/artifacts/obj/Nethermind.Evm/release/Nethermind.Evm.AssemblyInfo.cs",
+          "role": "compiler-generated",
+          "sha256": "1b09e0a9a99a509f7d03a928cc5c2d010b58d81ba1fc8d7bf68f7f08c5f8c52a"
+        },
+        {
+          "path": "src/Nethermind/artifacts/obj/Nethermind.Evm/release/.NETCoreApp,Version=v10.0.AssemblyAttributes.cs",
+          "role": "compiler-generated",
+          "sha256": "93d67476196ebfc80d1d7d8844b91146cfd678d105f5ce635eb900ca40610c9b"
+        }
+      ]
+    },
+    "dependencyRoster": {
+      "type": "array",
+      "minItems": 52,
+      "maxItems": 52,
+      "prefixItems": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/OrdinaryTransactionRefundAdapterExtractor.csproj"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Models.cs"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/CompilerReferences.cs"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/SourceAdmission.cs"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/OperationLowering.cs"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/RefundMachine.cs"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/RefundPlanBuilder.cs"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/LeanEmitter.cs"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Artifacts.cs"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Program.cs"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/RefundKernel.lean.template"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Admission/SOURCE_PINS.json"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Admission/REVIEWED_SYNTAX.json"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Admission/COMPILER_REFERENCE_PINS.json"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/UPSTREAM_PINS.json"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Specification/OrdinaryTransactionRefund.lean"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Refinement/OrdinaryTransactionRefund.lean"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Vectors/OrdinaryTransactionRefundVectors.lean"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Schema/ordinary-transaction-refund.ir.schema.json"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Schema/ordinary-transaction-refund.source-manifest.schema.json"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Verify.ps1"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Verify-Axioms.ps1"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Verify-MutationGates.ps1"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/EXPORTED_THEOREMS.txt"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/lean-toolchain"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/lakefile.toml"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Test/OrdinaryTransactionRefundAdapterExtractor.Test.csproj"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Test/RefundMachineTests.cs"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Test/AdmissionTests.cs"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Test/ArtifactTests.cs"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Gas.lean"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Schedule.lean"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Production.lean"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/TransactionGas.lean"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/TransactionSettlement.lean"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Generated/TransactionSettlementKernel.lean"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Generated/StateGasTransitionKernel.lean"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Generated/StateGasTransitionAdapterKernel.lean"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Refinement/TransactionSettlement.lean"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Refinement/StateGasTransition.lean"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Refinement/StateGasTransitionAdapter.lean"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Refinement/StateGasTransitionAdapterKernel.lean"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/TransactionSettlementVectors.lean"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/StateGasTransitionVectors.lean"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/StateGasTransitionAdapterVectors.lean"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Extractor/Generated/TransactionSettlementKernel.ir.json"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Extractor/Generated/TransactionSettlementKernel.source-manifest.json"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Extractor/Generated/StateGasTransitionKernel.ir.json"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Extractor/Generated/StateGasTransitionKernel.source-manifest.json"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Extractor/Generated/StateGasTransitionAdapterKernel.ir.json"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Extractor/Generated/StateGasTransitionAdapterKernel.source-manifest.json"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Core/Extensions/UInt64Extensions.cs"
+            },
+            "sha256": {
+              "$ref": "#/$defs/hash"
+            }
+          }
+        }
+      ],
+      "items": false
+    },
+    "references": {
+      "const": [
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/Microsoft.CSharp.dll",
+          "assemblyName": "Microsoft.CSharp",
+          "sha256": "ae0ecd8f42ea3efacc2612ade56f29feea9a123fce9faa455126ec9f4a4540cf",
+          "mvid": "4e2c1613-00fd-4579-ac2b-c07cfe88ca54",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/Microsoft.VisualBasic.Core.dll",
+          "assemblyName": "Microsoft.VisualBasic.Core",
+          "sha256": "7a7e44d7ac1f870e0b7d8f3f7598cca79e35cab12e77c58ed46e9b6b3c78bcfb",
+          "mvid": "6213f2a6-cdbb-421e-bec2-1417fa9b52f6",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/Microsoft.VisualBasic.dll",
+          "assemblyName": "Microsoft.VisualBasic",
+          "sha256": "e192508adde6a758138a5a8e28998dccb64e7f45eaf30d8ab3564f87749028b1",
+          "mvid": "2ba33129-ab75-46e0-a400-a54c8f059632",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/Microsoft.Win32.Primitives.dll",
+          "assemblyName": "Microsoft.Win32.Primitives",
+          "sha256": "ab197dec717c52f5a72c8f2366c33e2fc5149bfa7cf49acd59bbfb563defcd05",
+          "mvid": "12e3cc07-e502-4186-b9ba-70070aa8f091",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/Microsoft.Win32.Registry.dll",
+          "assemblyName": "Microsoft.Win32.Registry",
+          "sha256": "e8eb7f780b9ceca6dae35e74a11fa85e26a1b8b4a7edd5237cccc6b63b4e4b7a",
+          "mvid": "6de75083-e90a-4018-b99d-ba8dffebe98a",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.AppContext.dll",
+          "assemblyName": "System.AppContext",
+          "sha256": "d9dd9fa44e019f27172d6b2662e2b6038f48c270912ac8aae53d4d909da7e9be",
+          "mvid": "6a084f0e-dcb4-47a9-926c-570472dd627e",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Buffers.dll",
+          "assemblyName": "System.Buffers",
+          "sha256": "a1a35f5524e2f831d08ca55f702fbddcb8c6dfecd264f0f563d81a1c8b8280bd",
+          "mvid": "da086818-0830-48a0-af06-49324a3d715c",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Collections.Concurrent.dll",
+          "assemblyName": "System.Collections.Concurrent",
+          "sha256": "27b446a401163baa325f9cd82f787dfd32d0e205011093e0ab3057e5da609555",
+          "mvid": "18f4d1f6-6a41-4632-912f-b685d2d9d26f",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Collections.Immutable.dll",
+          "assemblyName": "System.Collections.Immutable",
+          "sha256": "d4145735395753187965a6f0a8bf6bb6f301563c4d4080249614b8487b0604ac",
+          "mvid": "416eb78e-dc6c-4672-b9ad-1c8e368297ee",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Collections.NonGeneric.dll",
+          "assemblyName": "System.Collections.NonGeneric",
+          "sha256": "99adf08652a16e5af30797b98742851b94604aa44bab677ddc38c7826bd529a5",
+          "mvid": "adbccb13-0c31-48ef-b712-f1b1fd1a24d9",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Collections.Specialized.dll",
+          "assemblyName": "System.Collections.Specialized",
+          "sha256": "17ef2b9433a1f1e9fc956786067f8d60672437d3feb76af84175f2b3bee4ded1",
+          "mvid": "41964b46-d7f6-49a8-b9d4-ff1b28e75148",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Collections.dll",
+          "assemblyName": "System.Collections",
+          "sha256": "130fcdd915c3ff8d8279fefd9a198b784d37693f4c1e96d1f2cff3edc96b638d",
+          "mvid": "506e2495-9959-487e-bd2a-513d544da7af",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.ComponentModel.Annotations.dll",
+          "assemblyName": "System.ComponentModel.Annotations",
+          "sha256": "43c467051feafaa27144cc672836f38108377439245833fc8d99de97d3667c37",
+          "mvid": "3ec25ee4-ed0e-4fde-ad87-9bf7aac2a76c",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.ComponentModel.DataAnnotations.dll",
+          "assemblyName": "System.ComponentModel.DataAnnotations",
+          "sha256": "d40e8c7062e6b9ce11ba83eab3d26be0eec8066b99970ea88b8e87fb75f411bd",
+          "mvid": "b36856bc-8299-4668-969a-8c49b9711da0",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.ComponentModel.EventBasedAsync.dll",
+          "assemblyName": "System.ComponentModel.EventBasedAsync",
+          "sha256": "b96d6d2f159ee5e192b2406a0ec993c8ad470a847f2e7acd2aa92cbc0a4c6a58",
+          "mvid": "dc53d1e3-147d-45c7-8b22-76467599953f",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.ComponentModel.Primitives.dll",
+          "assemblyName": "System.ComponentModel.Primitives",
+          "sha256": "09a575c38bd010f3131704e9294941ff9740a0ba70be0fd6ab8fa54c44dbfca7",
+          "mvid": "1acdb028-b59d-4afa-8aac-b413fd4c9976",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.ComponentModel.TypeConverter.dll",
+          "assemblyName": "System.ComponentModel.TypeConverter",
+          "sha256": "98a3e34140052c828ab7bdb81040421616fa4e6356c27f7970df141ef5681b42",
+          "mvid": "24343496-0f90-4473-8dc8-f28299a8af94",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.ComponentModel.dll",
+          "assemblyName": "System.ComponentModel",
+          "sha256": "8811e7cc4288c435f54b0350afbffcbb13f77618cf9c0d3436cad89a83d29b23",
+          "mvid": "887cd981-8a2f-4b8a-a65b-0f8f68ca5c6f",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Configuration.dll",
+          "assemblyName": "System.Configuration",
+          "sha256": "3952a72e1f18774f16952b46c20e80ed2bc601a06eca01f33fa924c738022a9c",
+          "mvid": "d0a53643-16c7-4b29-85a1-8c7d66b1d7b2",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Console.dll",
+          "assemblyName": "System.Console",
+          "sha256": "783e5ea6d049218ec30316598654e031415f0d1ec6ce6932c2d1a9cbd97a77e0",
+          "mvid": "0610af0a-6da9-41c4-aead-daaf5eb7cf5d",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Core.dll",
+          "assemblyName": "System.Core",
+          "sha256": "ac23faf1b37fa49f1b117baad951a65609e799a6e669a6df06d3552677e0c086",
+          "mvid": "d5e9ef21-98ed-41a1-808d-ca301b53f9f9",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Data.Common.dll",
+          "assemblyName": "System.Data.Common",
+          "sha256": "e563226dce5e8d2f1ecf24b13a37d8948e42208d7b93bc9812475074382f2303",
+          "mvid": "2a30cb39-8185-44e9-ad93-629b6ce26632",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Data.DataSetExtensions.dll",
+          "assemblyName": "System.Data.DataSetExtensions",
+          "sha256": "aeeae0755c8c7f6747765cdf82fa43182e320e97f2035e3a0a19f21905e6c113",
+          "mvid": "d90ea48b-0b1c-4327-88cc-b35a2d271cc4",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Data.dll",
+          "assemblyName": "System.Data",
+          "sha256": "8bee1d4675fee975b5454e7407827aa3c6d4a2e53b9efb40be5409ac50900edb",
+          "mvid": "00df1870-a12e-4efc-87a0-b965b0313328",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Diagnostics.Contracts.dll",
+          "assemblyName": "System.Diagnostics.Contracts",
+          "sha256": "4366ccd79a875fb64e38813a81bdf2f61915b4c838cb74572d87919c2e7dee41",
+          "mvid": "a3b492ff-fa9e-4d3f-9472-2c6ce8b9573b",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Diagnostics.Debug.dll",
+          "assemblyName": "System.Diagnostics.Debug",
+          "sha256": "8b160ffe7518588bf64e13c01c6dcb2ef504d64f38bbf0f198d31e7b698db92c",
+          "mvid": "dae841f1-5a59-4553-930f-5037b7fcf815",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Diagnostics.DiagnosticSource.dll",
+          "assemblyName": "System.Diagnostics.DiagnosticSource",
+          "sha256": "6caa24c3fe3819a6f78aedb0e8f718a6bd83eab4d9a786c609a228e330557bb0",
+          "mvid": "47f6a4f2-aa6a-43c0-accb-a203f7605c91",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Diagnostics.FileVersionInfo.dll",
+          "assemblyName": "System.Diagnostics.FileVersionInfo",
+          "sha256": "ae73589f3288fc3648a718797361f0ab37606cc18667c8aaebea2787f62736a3",
+          "mvid": "0504d269-d2c5-4e6f-9ba0-491ce69e459b",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Diagnostics.Process.dll",
+          "assemblyName": "System.Diagnostics.Process",
+          "sha256": "cd121308cb25b34ebc2549d72da361e56a093b29ef5ab0a85870d13fb91de052",
+          "mvid": "a5234799-10dc-48c6-9368-07af2872f17c",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Diagnostics.StackTrace.dll",
+          "assemblyName": "System.Diagnostics.StackTrace",
+          "sha256": "e287630abe5753b658e64e947616c8bc8291bcd27bfcadc745a33818a43ad30d",
+          "mvid": "c57b4aa3-f684-4038-b7ad-02ff9c0ed645",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Diagnostics.TextWriterTraceListener.dll",
+          "assemblyName": "System.Diagnostics.TextWriterTraceListener",
+          "sha256": "2c567ad9a2efe67d171e0ab06d0c7035383508588cae62b3c3d08f579a064595",
+          "mvid": "5c7919a6-1422-4fdd-95b1-9795a311e81b",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Diagnostics.Tools.dll",
+          "assemblyName": "System.Diagnostics.Tools",
+          "sha256": "841c5e2b6c171fa9aaff0fc6295f3fbc93dc5dcab44118b62f1c942bb674aff2",
+          "mvid": "c2346557-dd4d-4296-8880-eba93c47e795",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Diagnostics.TraceSource.dll",
+          "assemblyName": "System.Diagnostics.TraceSource",
+          "sha256": "ecfe5b354ea6b7bf3736d8c4b02ae322c766f2bccf260182632a492f3309d883",
+          "mvid": "9c937135-4258-411b-813c-287b5f9a0b1e",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Diagnostics.Tracing.dll",
+          "assemblyName": "System.Diagnostics.Tracing",
+          "sha256": "e0f72905eb1b1cfd6db130e6b2f18424788769d79fae486054a242615d713a50",
+          "mvid": "cf51129c-7863-4518-b45d-dad41f7b44f0",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Drawing.Primitives.dll",
+          "assemblyName": "System.Drawing.Primitives",
+          "sha256": "8ffda23fafb73bdac7b6c8dfcac1c06894c729f65157e218980db9a4b74c7427",
+          "mvid": "3f79e844-f012-4e7d-b84c-c42f18ac9373",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Drawing.dll",
+          "assemblyName": "System.Drawing",
+          "sha256": "585a8da9952d715f8de7a7b1879b59d68ff8608b92f6ed1c5f0e1d251180d3c6",
+          "mvid": "b8ec074a-d711-4f9c-8227-d7a3e5574bd0",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Dynamic.Runtime.dll",
+          "assemblyName": "System.Dynamic.Runtime",
+          "sha256": "c0eac30c791db8c1a2b50b61c50d029f4ddd0eadfdd35433745001688a3e7466",
+          "mvid": "77a30915-5bc3-4a31-961c-f5049da3daa6",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Formats.Asn1.dll",
+          "assemblyName": "System.Formats.Asn1",
+          "sha256": "c6f8cb70a20321ac4c93219ccb5264f50d21d7f7cdd0bd61c02360ff87cd38f4",
+          "mvid": "ea2ec51e-3058-41b9-9a57-b2f077889245",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Formats.Tar.dll",
+          "assemblyName": "System.Formats.Tar",
+          "sha256": "c6d0aa4d2e3ed3ab6c1949669d79bfc763fc9e7b04830ab7174d4cc55569757c",
+          "mvid": "256b8b86-b825-40f9-a8a0-04db5fae7fdf",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Globalization.Calendars.dll",
+          "assemblyName": "System.Globalization.Calendars",
+          "sha256": "e0f3f3f6e4acc7b6755782fed5cb075ecf70beee4fc5d404579ae99bc0883ef2",
+          "mvid": "4f67667c-7e0b-44da-8f29-004001e25afe",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Globalization.Extensions.dll",
+          "assemblyName": "System.Globalization.Extensions",
+          "sha256": "be0390557cc72078a7217cf94fd44b9ab66aa30838c00a92aa78c62469c44aa0",
+          "mvid": "1d06e446-b900-449b-bbce-bf09aa61b239",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Globalization.dll",
+          "assemblyName": "System.Globalization",
+          "sha256": "66902cffd057673b4b77aa68faf80d33ffa4c94510e61db2a067943cc53b7702",
+          "mvid": "cdff6ad2-9e96-4f32-ac3a-0b1cdda9d9af",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.IO.Compression.Brotli.dll",
+          "assemblyName": "System.IO.Compression.Brotli",
+          "sha256": "1401375a39b7ba5e65e0b49274c0168b6c8b7e5455afefd269c1418fd019e997",
+          "mvid": "66f8a893-7243-410d-8eae-82ffe2bb0283",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.IO.Compression.FileSystem.dll",
+          "assemblyName": "System.IO.Compression.FileSystem",
+          "sha256": "4aeec2c0189f73ba8122f05c0d759008ddae1a8873b167cc8a558d53f2af80e1",
+          "mvid": "3f0af1a9-6290-40fa-b1e7-68e9f011f7dd",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.IO.Compression.ZipFile.dll",
+          "assemblyName": "System.IO.Compression.ZipFile",
+          "sha256": "c34ef5004f535f10adceb66b3f20f743b15656ed4c7dcf5946a8b83a6cdee329",
+          "mvid": "a0405662-01fd-46a2-9f48-7b8867bc9081",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.IO.Compression.dll",
+          "assemblyName": "System.IO.Compression",
+          "sha256": "ac573888ba94e958243674d82e51e88692e5bea6fd94bb68d87d30c28cdaecf5",
+          "mvid": "f407a7d0-2583-4600-abbc-a16e2c56a41f",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.IO.FileSystem.AccessControl.dll",
+          "assemblyName": "System.IO.FileSystem.AccessControl",
+          "sha256": "38eb787fd20b30f36e207364387fd34a5c68207baffddf318986216f4b6cc6b1",
+          "mvid": "55867c21-3900-4ef5-a3d5-11773ed84971",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.IO.FileSystem.DriveInfo.dll",
+          "assemblyName": "System.IO.FileSystem.DriveInfo",
+          "sha256": "5ce6349a752189b3bcaa553fef38f9c0cdd1fb2e39e7caba67c966f52ef66391",
+          "mvid": "40c9052c-eceb-4b36-a6fc-535a1032323e",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.IO.FileSystem.Primitives.dll",
+          "assemblyName": "System.IO.FileSystem.Primitives",
+          "sha256": "d3b21b8b38e48c6b4d1cb5cfe9adfe4abad7b3353601febd3c7e4027f9ef9c6b",
+          "mvid": "96386377-7389-42b7-a92f-d2d5da0fc8f7",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.IO.FileSystem.Watcher.dll",
+          "assemblyName": "System.IO.FileSystem.Watcher",
+          "sha256": "07fc2b07b7d53173c695e60e93f2da4325b68c797c4351fff571923f01f8054c",
+          "mvid": "d6e5a186-3ddc-4749-a941-07e3d8796387",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.IO.FileSystem.dll",
+          "assemblyName": "System.IO.FileSystem",
+          "sha256": "c251f33b29382c47b773d907463edd9fe978a06e39efd5670ef3b3b1d4f8c2b7",
+          "mvid": "589ecfd6-18be-48eb-bf83-cd19e7daf031",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.IO.IsolatedStorage.dll",
+          "assemblyName": "System.IO.IsolatedStorage",
+          "sha256": "6720027218d12697d30640fb97acdb02438649cccb038ffdb3ad80dc27f6f736",
+          "mvid": "848ebf05-b32e-495b-bb58-ab7a2635dbe2",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.IO.MemoryMappedFiles.dll",
+          "assemblyName": "System.IO.MemoryMappedFiles",
+          "sha256": "028850f2cebbcc3ccb48fcef97751522ea6455c05ff9234686a16cc088fac5a4",
+          "mvid": "4035f9c3-36d1-401a-8347-1c72e067152d",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.IO.Pipelines.dll",
+          "assemblyName": "System.IO.Pipelines",
+          "sha256": "08344a31693477a61b45dff21739bf576c7482b394fab2fa26d2d8ba87b2cb91",
+          "mvid": "0aefb033-75ff-4e63-870c-90378e4aabfd",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.IO.Pipes.AccessControl.dll",
+          "assemblyName": "System.IO.Pipes.AccessControl",
+          "sha256": "80fda558926f7d7a085a6a210596000d281e4af2fb235e4c8dc9cbef8f1a87d0",
+          "mvid": "51061a21-c0dc-46a7-9766-660146772a29",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.IO.Pipes.dll",
+          "assemblyName": "System.IO.Pipes",
+          "sha256": "0b7aaa8fea2a9483857b2ac918814ad1d8ff3303c98d6ef71d4593b16adee9ba",
+          "mvid": "09c2e556-ec6f-4648-93f0-ff0ae4ce6e79",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.IO.UnmanagedMemoryStream.dll",
+          "assemblyName": "System.IO.UnmanagedMemoryStream",
+          "sha256": "ad6a5f859589e1951103a00f45566da079cf87bd8b03f0c6ad985a6f39f19c5a",
+          "mvid": "0589ffa3-0cbf-4d19-8b34-f697f0a3e84b",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.IO.dll",
+          "assemblyName": "System.IO",
+          "sha256": "388400ccb189b819d6ec5f1ef70710a39641d93ed5b870fc9324866b75dfb78b",
+          "mvid": "68481c5e-f168-4eaf-b509-3cccd2471cb1",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Linq.AsyncEnumerable.dll",
+          "assemblyName": "System.Linq.AsyncEnumerable",
+          "sha256": "3367b7d6d2be9d171e158b544979131e8b97328b293d6e77917234a2a7279507",
+          "mvid": "44aee03e-505c-4c61-a1e8-9014c8f3bb48",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Linq.Expressions.dll",
+          "assemblyName": "System.Linq.Expressions",
+          "sha256": "772112c3f1c10fb713ccc3ad62cc313c2cad1cbaf122ef6d25120aa7b65b0447",
+          "mvid": "416664e6-9760-443b-a518-928de848b9c0",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Linq.Parallel.dll",
+          "assemblyName": "System.Linq.Parallel",
+          "sha256": "b4b597374ffebccf8a46793f03d5e6d5e477dfc5047157217d79449f9729e761",
+          "mvid": "cd85fb70-8a4c-4da3-b531-3f31630597eb",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Linq.Queryable.dll",
+          "assemblyName": "System.Linq.Queryable",
+          "sha256": "5baf83b98f103d9304eac427c4296c9dd501d320b7b5495ed8ede892aaf1076d",
+          "mvid": "3ce47f1d-9a6d-4065-9a07-6151e1bf64f6",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Linq.dll",
+          "assemblyName": "System.Linq",
+          "sha256": "9cb73d57c035503bdc70fdc422dee5bf4f9de97b812cd0dcb379d652c6f91205",
+          "mvid": "bb449aa3-39f9-4f8b-9f8f-215a8da6e9ce",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Memory.dll",
+          "assemblyName": "System.Memory",
+          "sha256": "d7e674a1feff0546c9932b0fcffa9d055976736342a4b1904f1f27894f3c0ed6",
+          "mvid": "363ac8b3-d8c1-49cb-bb77-acc31b223b6f",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Net.Http.Json.dll",
+          "assemblyName": "System.Net.Http.Json",
+          "sha256": "bf97fcfa0d20adb597878f902b761480fb02fa0f9f81521f16f2455ddc6a1ed2",
+          "mvid": "44e8f22f-ffe7-4128-b61f-865be4b0a3f9",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Net.Http.dll",
+          "assemblyName": "System.Net.Http",
+          "sha256": "3ff081221d0adeb99b5cf40788e20dab1d0d706618044b34e68a47529c761601",
+          "mvid": "3c111300-75a9-488e-99fe-f945211b58d9",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Net.HttpListener.dll",
+          "assemblyName": "System.Net.HttpListener",
+          "sha256": "03ca98abeb9ea2c7e372c31aa460d2a9e526617c22fa97c9d8750977167a9634",
+          "mvid": "d4f68b69-f7cd-4b11-b608-6b0a76dad3ef",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Net.Mail.dll",
+          "assemblyName": "System.Net.Mail",
+          "sha256": "8193e3652b1ecb1aa46258087bb5f44becd72693552da120e1274ef1ad443e53",
+          "mvid": "e9aca8d0-3909-4e6e-91be-600449d2fb72",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Net.NameResolution.dll",
+          "assemblyName": "System.Net.NameResolution",
+          "sha256": "97e0cc175bf13e4861e1508820f08561b38f28e98ebc9c5addb28c58fa7c344d",
+          "mvid": "f17e0f91-3080-44cd-b6c7-afbb75988d54",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Net.NetworkInformation.dll",
+          "assemblyName": "System.Net.NetworkInformation",
+          "sha256": "b90b729446f4ed3fa470b5c96e9c5adecbf4e438eaa91d0548832c58673a4c18",
+          "mvid": "5ab8a318-7880-456e-82fd-487e0a635b83",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Net.Ping.dll",
+          "assemblyName": "System.Net.Ping",
+          "sha256": "f623594e3309d40d36a7dd63dcb5251f72eb94eb2e74246805b4a0d23fc8c6b0",
+          "mvid": "b1d68d3d-55c6-42b0-8657-bd68a94e4f97",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Net.Primitives.dll",
+          "assemblyName": "System.Net.Primitives",
+          "sha256": "129e7b324fbc12f8c54b89e6d6706b08455532fb64a8913038add92be2924244",
+          "mvid": "9f1ee6e5-0c57-4e1a-8fdb-776af08b634e",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Net.Quic.dll",
+          "assemblyName": "System.Net.Quic",
+          "sha256": "f9651dcde17f5823c7d42be080059fd9f88aed81d91c64e58f95afca44a2e24a",
+          "mvid": "4b197555-6320-4231-acd4-89b42bb16372",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Net.Requests.dll",
+          "assemblyName": "System.Net.Requests",
+          "sha256": "d45910c06d2c2fcd6039e8b4076b5878fd195d0fc09d27c4ceb4009ad9491672",
+          "mvid": "00564b90-faf5-47ae-87ce-621a66b24c99",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Net.Security.dll",
+          "assemblyName": "System.Net.Security",
+          "sha256": "c4af7099d2077e34c7074e94efeb57ac5707af128ee6e5e0e75d398b8e5843ba",
+          "mvid": "6153e41a-7b2e-431c-91f5-a52e4e2d9735",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Net.ServerSentEvents.dll",
+          "assemblyName": "System.Net.ServerSentEvents",
+          "sha256": "87ba81cd8fd6ab3a9a3f4dce922849aea832928f52495788d371dda66e57da01",
+          "mvid": "607abb19-3e92-46d1-90b8-86fb3706ca6b",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Net.ServicePoint.dll",
+          "assemblyName": "System.Net.ServicePoint",
+          "sha256": "84fa83cd96e62fda02991b8a8e99fa1c7b3ac08807b04f7486a896cfe6b4a760",
+          "mvid": "c96697fc-3def-427a-86e6-64b93b311e65",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Net.Sockets.dll",
+          "assemblyName": "System.Net.Sockets",
+          "sha256": "8b7cebafd550083a8d242dbcfb7501384d17142ad6c2bbb047dd37a524762179",
+          "mvid": "5076729f-0a4d-4364-999f-deee5c709928",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Net.WebClient.dll",
+          "assemblyName": "System.Net.WebClient",
+          "sha256": "e4e6cc79e23892c8e67a4cb594bb304a26a0328507c45dc2d1998bc6836311a0",
+          "mvid": "7ac8b443-daec-45c5-a204-dbf5f5ab9805",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Net.WebHeaderCollection.dll",
+          "assemblyName": "System.Net.WebHeaderCollection",
+          "sha256": "c4ee735a52b966f3805cfbd5c172f151ffe013bd70c080f15c2f68be628cd357",
+          "mvid": "9f764d4a-99d1-4318-9646-1dfd3c8f6e0e",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Net.WebProxy.dll",
+          "assemblyName": "System.Net.WebProxy",
+          "sha256": "42c8eb8bf1563806069e1dd1c6c651159daa5589b7f69ff817cdeab3bd02915f",
+          "mvid": "9e4d2a57-cc3c-407e-9efe-153f969210c4",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Net.WebSockets.Client.dll",
+          "assemblyName": "System.Net.WebSockets.Client",
+          "sha256": "5ac14d45c1b92e9c831b37591941ea01f3097a39d130bc292506dd099aeb7260",
+          "mvid": "55f9b0c2-ca4f-4525-a11b-5e2ef1f13a8e",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Net.WebSockets.dll",
+          "assemblyName": "System.Net.WebSockets",
+          "sha256": "c16043d3ffa90a8fdaf193f0df91f99d6c23518d8432b4caa2d70a92d4c3cfa7",
+          "mvid": "bf3df2ee-769f-4928-96ef-d15c027b3087",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Net.dll",
+          "assemblyName": "System.Net",
+          "sha256": "481b38c912f8779b3510cd00f079e45096ea22b6defdaab66780d5ac3ae6986a",
+          "mvid": "7c99a1bf-8fff-43c7-b6d8-b8a4c2adc4dd",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Numerics.Vectors.dll",
+          "assemblyName": "System.Numerics.Vectors",
+          "sha256": "cc06324f279c581d8f76c0c8f6b011cf8d05efd0c95e998d68f9243da124eb52",
+          "mvid": "984c18be-004e-4c63-9aae-64e5e6354361",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Numerics.dll",
+          "assemblyName": "System.Numerics",
+          "sha256": "35adc9360421b3b7a3d50399cb2c651c160158d7e8c302907acbce5f61f4a4f7",
+          "mvid": "7f4bf834-1348-4ab6-85c1-79060c891762",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.ObjectModel.dll",
+          "assemblyName": "System.ObjectModel",
+          "sha256": "3a591e043cd443761537580084f714392bb3278176c9a19f1be8700a29ef6f56",
+          "mvid": "e9724eb6-c581-41ed-8f9e-cac88b7a673f",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Reflection.DispatchProxy.dll",
+          "assemblyName": "System.Reflection.DispatchProxy",
+          "sha256": "0d46dfb9c4ffc27d05a1c089d8f60a1cb365855140a9b30972133208270dd08b",
+          "mvid": "4973cc28-f8d0-43c5-8b1a-2266b0430818",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Reflection.Emit.ILGeneration.dll",
+          "assemblyName": "System.Reflection.Emit.ILGeneration",
+          "sha256": "0201069b706d397c573b9342902613a71879a2701994a48e2821c32d43101ae4",
+          "mvid": "0b7f7a65-980a-4daa-962b-6cc68443e378",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Reflection.Emit.Lightweight.dll",
+          "assemblyName": "System.Reflection.Emit.Lightweight",
+          "sha256": "eef97e1049d8dd7ecc695080dd22c199ee8ca82b1cfcb3e33866cf7125dbd1a4",
+          "mvid": "e2ca6598-a599-4e2e-85b7-a7c8695090d2",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Reflection.Emit.dll",
+          "assemblyName": "System.Reflection.Emit",
+          "sha256": "29021699e4128964365a86c22afb3b0a8368da7a3f7463c9c1a8fc0a1402a39f",
+          "mvid": "eb191179-1ffc-4711-8e39-91e632aa4377",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Reflection.Extensions.dll",
+          "assemblyName": "System.Reflection.Extensions",
+          "sha256": "ceb1b81e1eb488d87bd43d16dc54450b2a78e0b653c44c988aae2a20abc162bc",
+          "mvid": "35a333c9-3a2e-4a52-a8e2-47792686d43b",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Reflection.Metadata.dll",
+          "assemblyName": "System.Reflection.Metadata",
+          "sha256": "92ec811516b768220cc41fb6a7197f7ba735f97b694716dfd1bfdf274078a90a",
+          "mvid": "c16af9ae-8c20-42b2-b8f2-2d1ddc162337",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Reflection.Primitives.dll",
+          "assemblyName": "System.Reflection.Primitives",
+          "sha256": "fa52402a7b4096ef109853f6bf03adef0e1de67e3652bb31f413d197f19f9b22",
+          "mvid": "c1dcda1e-f393-4c13-a840-47e5bbdb0112",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Reflection.TypeExtensions.dll",
+          "assemblyName": "System.Reflection.TypeExtensions",
+          "sha256": "78178074bdb0f7714c634e4a1b425570264b13b2ca5b9ad6880622bff0bda58e",
+          "mvid": "9d1faf4f-adfc-4538-bbc2-343e9739bc5b",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Reflection.dll",
+          "assemblyName": "System.Reflection",
+          "sha256": "95059346d6271dd6d0322cc321e5fb8cceab662f550c67aee7615059e41739bb",
+          "mvid": "2c9abdde-250d-46c1-a414-2e5ee06b3429",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Resources.Reader.dll",
+          "assemblyName": "System.Resources.Reader",
+          "sha256": "20bdb5d302b5e28f6042c9f281cfa3ae2f2358544cc40783052fe5abf6aa859b",
+          "mvid": "88c1e520-7472-4687-b6ab-9acff96aa101",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Resources.ResourceManager.dll",
+          "assemblyName": "System.Resources.ResourceManager",
+          "sha256": "f709eb5cf16e26679782784c428825019785fcc7085562092425d4999bece03d",
+          "mvid": "07a85879-494c-433e-88e3-587df60b3c56",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Resources.Writer.dll",
+          "assemblyName": "System.Resources.Writer",
+          "sha256": "7e772363e799c78d8d1d37fe1d412723da9350496a6d7bacd37491f2bb777cc4",
+          "mvid": "9bce2e58-402d-4803-a7ce-e649f168c854",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Runtime.CompilerServices.Unsafe.dll",
+          "assemblyName": "System.Runtime.CompilerServices.Unsafe",
+          "sha256": "6e685ec0477b21a688cd38bfcafc673888cdf186c99df3c96fab352e96d6fdc8",
+          "mvid": "996e0a7a-920a-448f-b7a8-f83b4075bdd5",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Runtime.CompilerServices.VisualC.dll",
+          "assemblyName": "System.Runtime.CompilerServices.VisualC",
+          "sha256": "1e5eb23824055d6af5babb6a7ce47e314f78b0b464466db32b60f543304a9140",
+          "mvid": "55dfb742-9a4f-4b72-8cbb-82606a2a9c3a",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Runtime.Extensions.dll",
+          "assemblyName": "System.Runtime.Extensions",
+          "sha256": "3d7b517d4fd89ee58c53e0f642cc9be42e7a8669b51a85e861dafe118067cbfd",
+          "mvid": "11c1a799-611a-428b-b0ad-bd4b26d711ff",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Runtime.Handles.dll",
+          "assemblyName": "System.Runtime.Handles",
+          "sha256": "985457a3e6a67e96a445ee0fb69b2d58bcdadc4c964253fb63e2d5061a36b050",
+          "mvid": "0e0edd10-b375-4464-9dbf-21947d54773c",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Runtime.InteropServices.JavaScript.dll",
+          "assemblyName": "System.Runtime.InteropServices.JavaScript",
+          "sha256": "cb551cc19df1067dd8897d14bf02ecfa63d8ecf96067a21902406791d68ce226",
+          "mvid": "2ee7ec56-8bec-458d-a22e-c6dab4c501f3",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Runtime.InteropServices.RuntimeInformation.dll",
+          "assemblyName": "System.Runtime.InteropServices.RuntimeInformation",
+          "sha256": "c26d9f94329422bd000f28f6c65fdc162bf9397a6d29e418a189d4ca49c5c3ec",
+          "mvid": "82a0e0a4-0457-4906-9e11-ac643c88dd44",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Runtime.InteropServices.dll",
+          "assemblyName": "System.Runtime.InteropServices",
+          "sha256": "8ced47e6a2a717c459c3fa13f76a521b35917e123a9b1ee7ed1b5de13db80709",
+          "mvid": "a9ceca6c-a2f1-4766-9cc3-fa93e1815df0",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Runtime.Intrinsics.dll",
+          "assemblyName": "System.Runtime.Intrinsics",
+          "sha256": "df8f497f64b6a3ac02941fae92e057faddf93f3f135f2f6444f725617c38b619",
+          "mvid": "ae2db0a2-9232-4ef9-8ad5-b881a6d281fa",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Runtime.Loader.dll",
+          "assemblyName": "System.Runtime.Loader",
+          "sha256": "42884bcdc89ebd4ee509d5fcb4a679b1d7eebd6ddd9b66cb9e118063ddd30482",
+          "mvid": "dea3fbf3-32c3-488e-b2f9-010bd01a71de",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Runtime.Numerics.dll",
+          "assemblyName": "System.Runtime.Numerics",
+          "sha256": "4afc84f3e73b63ff6683941fcfda44e8a6aa5227b6afc128dcb979865e23d183",
+          "mvid": "f70b6a69-9b4f-49c1-a3e5-ae06cd690a23",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Runtime.Serialization.Formatters.dll",
+          "assemblyName": "System.Runtime.Serialization.Formatters",
+          "sha256": "ef24bb5669b54b31da46eb13238fb2b7f880dd780dc9b34a224a69dd59d93af8",
+          "mvid": "b3fcf4f5-9f79-42be-907c-ffa451c49762",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Runtime.Serialization.Json.dll",
+          "assemblyName": "System.Runtime.Serialization.Json",
+          "sha256": "de7eeca7df9f6bb664383fbead141719bd08d88b6aef43c0605528719f607e62",
+          "mvid": "b6a3bf5e-2491-4c62-9fc8-806b1e3b2ed4",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Runtime.Serialization.Primitives.dll",
+          "assemblyName": "System.Runtime.Serialization.Primitives",
+          "sha256": "a547b0d205cebe84508c2ddefd56d063c48cdfeae5b0c44bde6bae9f3d72f98a",
+          "mvid": "0946951d-d885-477a-b555-dd3160ad653b",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Runtime.Serialization.Xml.dll",
+          "assemblyName": "System.Runtime.Serialization.Xml",
+          "sha256": "117bcb0dd828eaf6bfad06d8380ba32d32729b45879d907d7023fe73e9655bd9",
+          "mvid": "9bdce182-13bd-4773-bc75-7ba902d090c0",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Runtime.Serialization.dll",
+          "assemblyName": "System.Runtime.Serialization",
+          "sha256": "d565fc261ca98cbd14833821f777860291e8a0f775de7aee91778a9f6647f6f4",
+          "mvid": "31f12edb-3841-4b47-a825-fae1a66458e2",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Runtime.dll",
+          "assemblyName": "System.Runtime",
+          "sha256": "10ceaa9b398f512b46def6fd16fb5374c82ac03a7495859adbaaa70868fe70aa",
+          "mvid": "048c6f94-5c2d-434d-ba58-041a1e45597f",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Security.AccessControl.dll",
+          "assemblyName": "System.Security.AccessControl",
+          "sha256": "2bd23d6aa92b920dafd374e1ab47ecb597ef3b1cf1652a4ec4944a0defb1a4ac",
+          "mvid": "04590695-9906-4213-b47a-1a6b4b038e2e",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Security.Claims.dll",
+          "assemblyName": "System.Security.Claims",
+          "sha256": "693a61dc317ab5a651ef598578a4b55912ac39342a0842fea003761f861b0caf",
+          "mvid": "0c465a40-be5b-48d7-8320-d4b6294cc223",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Security.Cryptography.Algorithms.dll",
+          "assemblyName": "System.Security.Cryptography.Algorithms",
+          "sha256": "eb99ae7dbe058a1b015aba6769ce1f65155b7ff51ff9a7203fcf6d7cdea5fef7",
+          "mvid": "e1fa4ed2-7462-4493-bcfa-e27300eac07d",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Security.Cryptography.Cng.dll",
+          "assemblyName": "System.Security.Cryptography.Cng",
+          "sha256": "7319f97896d92a7d0729cf28dc6c4d1f797c1520b656ee01a780eec726ec2c16",
+          "mvid": "a2ff4393-c2d5-4e95-88d1-c071520a25f5",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Security.Cryptography.Csp.dll",
+          "assemblyName": "System.Security.Cryptography.Csp",
+          "sha256": "4002af141e9cb29875b677841adf64a9681e5672c2595492dcbc161460d4e121",
+          "mvid": "f85e14e9-7130-4dbf-940f-be65a3920784",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Security.Cryptography.Encoding.dll",
+          "assemblyName": "System.Security.Cryptography.Encoding",
+          "sha256": "994494aec7760f40fade2264aa7c13eebae36360f0b1399a7134bb19c9d58fda",
+          "mvid": "8bacc2fd-2360-4ace-bf6c-da1f1ea5701f",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Security.Cryptography.OpenSsl.dll",
+          "assemblyName": "System.Security.Cryptography.OpenSsl",
+          "sha256": "1a8902bbad1b577a98bec62a8472105dc1e9a253e390f69fbe3d167e93206968",
+          "mvid": "7cc06554-ff77-4538-ab0b-2cf0665f890c",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Security.Cryptography.Primitives.dll",
+          "assemblyName": "System.Security.Cryptography.Primitives",
+          "sha256": "194cccea9354bb248e44c954b5373f9069163f8f21524b3ee4b3185fe436bc15",
+          "mvid": "210311a4-7061-496a-b6a7-f97b67c6f729",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Security.Cryptography.X509Certificates.dll",
+          "assemblyName": "System.Security.Cryptography.X509Certificates",
+          "sha256": "7439c3b90bc2ee49a9275b28ed29052b4d48b45999ac1b7d25593033b1bb8dd6",
+          "mvid": "0d82f1cb-240c-40c7-a8ac-2d64c805b761",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Security.Cryptography.dll",
+          "assemblyName": "System.Security.Cryptography",
+          "sha256": "a700a7f6c32169e62be879088aa2218bdd5450c3945ed6c6d0acb3d25db0b1bf",
+          "mvid": "b7351e24-394a-4011-b9ab-96e1a49a8639",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Security.Principal.Windows.dll",
+          "assemblyName": "System.Security.Principal.Windows",
+          "sha256": "4b8eab6e832e99e8c08db2b9649f95ae8298e1105deea45a62e7d3b68c6593b7",
+          "mvid": "440b084a-c78e-4478-8e4b-38c2903a0f21",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Security.Principal.dll",
+          "assemblyName": "System.Security.Principal",
+          "sha256": "1d3e351058be3a33214b23b308fe57f78cd6fd4d8fad448fc84cbbe7376129f9",
+          "mvid": "9cac2a28-3655-4d14-928c-e48dd0e72b75",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Security.SecureString.dll",
+          "assemblyName": "System.Security.SecureString",
+          "sha256": "73aac97072b7deefa4de9647bf822162224f1452ad467841b989ff89d4d94595",
+          "mvid": "856899a0-f234-418b-a3ad-282f7a1a577f",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Security.dll",
+          "assemblyName": "System.Security",
+          "sha256": "d8efd304765e859369698efef9b3ca707defa8e142721fe5605d7a2de7d38375",
+          "mvid": "cdd8042f-d068-4ca9-92bd-9fe75b00ba5d",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.ServiceModel.Web.dll",
+          "assemblyName": "System.ServiceModel.Web",
+          "sha256": "ce91013ee3a9a9d69a85e258f7749e6ece488295d7cb66f7c1079f2e8678fc5e",
+          "mvid": "6ccc748b-a138-45c8-aab8-e5a5b3e4fb67",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.ServiceProcess.dll",
+          "assemblyName": "System.ServiceProcess",
+          "sha256": "63fc498c9d04e3c4345dfdb8016ad0639d54562dd7d8c707c072792c854df944",
+          "mvid": "daa03e3a-48b4-43c8-8068-469e598cba96",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Text.Encoding.CodePages.dll",
+          "assemblyName": "System.Text.Encoding.CodePages",
+          "sha256": "2d66f9ae5e7439756eba063c0df86d6d3a0dc571f4bb07add18c59d6f10138ce",
+          "mvid": "5b78ef2b-1036-4325-9e16-a960e555a169",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Text.Encoding.Extensions.dll",
+          "assemblyName": "System.Text.Encoding.Extensions",
+          "sha256": "d6224360b0e91dfe544ec3baf0d5ded78a13349f6378493c96344a310c8caf08",
+          "mvid": "1e77eeea-6e15-4766-991c-4e972547f920",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Text.Encoding.dll",
+          "assemblyName": "System.Text.Encoding",
+          "sha256": "5e347db6b4f9b2746d50e1ac85be2d9cc7dc4038fde98ac4295bc7030c83cda9",
+          "mvid": "04a9e7d4-3096-4d38-a989-78bfc6d37fd2",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Text.Encodings.Web.dll",
+          "assemblyName": "System.Text.Encodings.Web",
+          "sha256": "f9f6120753fc9faeaa5b09e10ef309594dbd4c20c8cdf1717eb910455549793a",
+          "mvid": "544bf056-6554-45cc-84bc-926a6aae0737",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Text.Json.dll",
+          "assemblyName": "System.Text.Json",
+          "sha256": "4133a8597a10eeb99d56a962ff581db9fd3ac85506ee3a20a2d23119c73a4346",
+          "mvid": "46c95d2e-4416-4ff8-be96-77f50b3e2d9c",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Text.RegularExpressions.dll",
+          "assemblyName": "System.Text.RegularExpressions",
+          "sha256": "347c497cf2bd60a298efb59fe47156909ca854fdab4dabb944af7d6f8c270cef",
+          "mvid": "7f679b8c-55aa-4fac-afa6-828d18343bc5",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Threading.AccessControl.dll",
+          "assemblyName": "System.Threading.AccessControl",
+          "sha256": "8449a1ee09edf8bdc69c61605bebec602c7b28a9ca401ca463512e4d369a3b7b",
+          "mvid": "cab377c6-ae2b-469a-b6c5-ddda8e78828f",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Threading.Channels.dll",
+          "assemblyName": "System.Threading.Channels",
+          "sha256": "c72028e4423fb04f3a644a76e1807e3651191aeb606b8f7b15b3650e4714cdca",
+          "mvid": "012dfd45-b48e-4c17-a7c3-c81694e3e2fd",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Threading.Overlapped.dll",
+          "assemblyName": "System.Threading.Overlapped",
+          "sha256": "7837d3bd05e28f95749029c832fb1d0ce5bf403a17bef7bf95df522ba93dac3a",
+          "mvid": "61c2013f-e952-4140-a33f-6a618c2e1cbc",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Threading.Tasks.Dataflow.dll",
+          "assemblyName": "System.Threading.Tasks.Dataflow",
+          "sha256": "5d605d4c470c38bc37a04d58b4023a9c60179172790a29f4f7cb92aba6251648",
+          "mvid": "43a91ed0-a6a3-4b0f-9b26-4cad9e2ecb62",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Threading.Tasks.Extensions.dll",
+          "assemblyName": "System.Threading.Tasks.Extensions",
+          "sha256": "f148e3a1414b7c2763ae21529ad79ad759f7cfd3c885256b64b0d2209dec2613",
+          "mvid": "420e5c36-95d4-4e86-bcf9-eb3d8b1c4085",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Threading.Tasks.Parallel.dll",
+          "assemblyName": "System.Threading.Tasks.Parallel",
+          "sha256": "97f9ccb69d9f1d4d86df2869e1ef667c4c68285b04f336b1188e633c8f814d05",
+          "mvid": "037e9ecb-fe47-4d93-a8f2-2655c4c2335b",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Threading.Tasks.dll",
+          "assemblyName": "System.Threading.Tasks",
+          "sha256": "f80b21f7dae04377b73945456cabe25e2ab1f4b564095aed546c2aa571644567",
+          "mvid": "c4ba1484-45b3-445f-861f-f827e94b7f5f",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Threading.Thread.dll",
+          "assemblyName": "System.Threading.Thread",
+          "sha256": "fff2281f039c07e564bcb198e041627082702beda24dccc8df39683701ea25a0",
+          "mvid": "f80027fa-2767-4949-99ff-7be3ce8a3a27",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Threading.ThreadPool.dll",
+          "assemblyName": "System.Threading.ThreadPool",
+          "sha256": "12fedf2de6449bfec4c1a08d762493bc0188e1b9b0a58028289105ed81b983f5",
+          "mvid": "4ed61ceb-46b2-403e-9eb2-5c76097e55c3",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Threading.Timer.dll",
+          "assemblyName": "System.Threading.Timer",
+          "sha256": "9e4620846572f49aeb476aa99405071b4bbd0df4323e4e232787ed73642b1ee5",
+          "mvid": "374f266c-45ed-4a5c-a738-4a52571e6657",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Threading.dll",
+          "assemblyName": "System.Threading",
+          "sha256": "0c2a3b4fddb2d732b8ebd0bca9ac57a8c66c9d4f5fbcb55fcd17e3cbcf678a4b",
+          "mvid": "d9811dff-b3f2-4f1b-a878-2ff261c770ce",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Transactions.Local.dll",
+          "assemblyName": "System.Transactions.Local",
+          "sha256": "c9faffc186d677de7800ff7d4d1b0d204ae7614e6b8518add582c840d7532a3b",
+          "mvid": "7035883f-d0c9-4ae9-9eeb-67a88447baa0",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Transactions.dll",
+          "assemblyName": "System.Transactions",
+          "sha256": "56abfca0350c111d077b3d86a2469ea3da4fccc1871f7c51a8b4fdb664bb0ede",
+          "mvid": "63445b03-b30c-4d53-ab1f-4f90e6b68cb9",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.ValueTuple.dll",
+          "assemblyName": "System.ValueTuple",
+          "sha256": "07a5347f6a597e5e0d72109efa1a525697e8c3f74fb0029005500f8ebbf9187a",
+          "mvid": "57268f6d-025a-4f3f-93a8-d4a2a6c62ad6",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Web.HttpUtility.dll",
+          "assemblyName": "System.Web.HttpUtility",
+          "sha256": "f26b0586048fdf472e0fb33ca9435b163c91325de4281fce8684251cacc304cc",
+          "mvid": "5f8ae288-c863-4487-a4a4-2d36f2c25d42",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Web.dll",
+          "assemblyName": "System.Web",
+          "sha256": "bc260b3db247ad9a6e4a82a275da85c3691a41272cc745cb7eaefcf1f31cc817",
+          "mvid": "f4ef0290-9866-4337-9c0b-b80342612e9f",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Windows.dll",
+          "assemblyName": "System.Windows",
+          "sha256": "716eee98ceee87d38f0b301224462f8442aa793f4b1b9c3ffac315753320ab37",
+          "mvid": "a2052292-0cea-41cc-a425-06d0e3ed685e",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Xml.Linq.dll",
+          "assemblyName": "System.Xml.Linq",
+          "sha256": "ae04903b25717fa4695e7e63489091f0d461e791e0bd264c6c85250d668f540d",
+          "mvid": "756463c2-8292-4d99-8e7b-bf0ad9860e93",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Xml.ReaderWriter.dll",
+          "assemblyName": "System.Xml.ReaderWriter",
+          "sha256": "942964d32f72ba10288593f212e3a52c4811b65ca4d5f1a3979c92d2d526aa4c",
+          "mvid": "af7a7ac0-7ff5-4f8f-bc27-380b259dfb7c",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Xml.Serialization.dll",
+          "assemblyName": "System.Xml.Serialization",
+          "sha256": "489694401c60905cb6dca8ef0bf738cb609cd45b337126a01c825b913086ba43",
+          "mvid": "190147eb-9296-43ff-bbc4-17771d931370",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Xml.XDocument.dll",
+          "assemblyName": "System.Xml.XDocument",
+          "sha256": "05f6380411a81245960714a9fd81f6134f7bd279cd70b248a1e1586977798f1a",
+          "mvid": "5fd3c2ec-e166-4f0e-99c8-3ed9974a8cb1",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Xml.XPath.XDocument.dll",
+          "assemblyName": "System.Xml.XPath.XDocument",
+          "sha256": "b8f74e198c3c2cd00ccc90549579f1b69c6ae1655f8b348ace414fd9075c921f",
+          "mvid": "bf76e00a-76de-4c3b-a7a5-4ec5230ac078",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Xml.XPath.dll",
+          "assemblyName": "System.Xml.XPath",
+          "sha256": "0e68260b4c36d00c9a77c30a270100461123c0e7e1a37402bb7f67174051b8f3",
+          "mvid": "882c8998-8b72-447f-8e0e-d74dde1c5b42",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Xml.XmlDocument.dll",
+          "assemblyName": "System.Xml.XmlDocument",
+          "sha256": "a50b9b3a03596e36e73e7a7d54f4d018e8dcfaa7fe79e8cf900af8838ef3ec36",
+          "mvid": "9c95a520-b0f2-4b5f-84ec-c85db10a6b72",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Xml.XmlSerializer.dll",
+          "assemblyName": "System.Xml.XmlSerializer",
+          "sha256": "f957611b80e082a453264a13bf27b5b251faf598f377f948195123a374b2e8f6",
+          "mvid": "48b6fe4e-3fcb-4a82-8e7b-6ea8305f1664",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.Xml.dll",
+          "assemblyName": "System.Xml",
+          "sha256": "277a84ba155fe7808a514f32694a8157ec9f0eeeef00ef9643e5250004054ff0",
+          "mvid": "561b235b-8e2e-4bdb-afde-f7b03ca63473",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/System.dll",
+          "assemblyName": "System",
+          "sha256": "ff11e2ab9009ef141e315187254f8327dd1e2591e44b8bf158730869028f1f0e",
+          "mvid": "0aa489c5-5535-4b93-9b80-6457411b8ae5",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/WindowsBase.dll",
+          "assemblyName": "WindowsBase",
+          "sha256": "0ec46a38f29a234b9a4d0ae9364c8322f661a47c831c5b948f2787b7ca12dbbd",
+          "mvid": "aa744a13-8835-4922-8fd1-84909f583def",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/mscorlib.dll",
+          "assemblyName": "mscorlib",
+          "sha256": "894d95d82126559637417b4f14c48ed20bb1168b13a0e65bd1337cdc2a981d1b",
+          "mvid": "064ab2df-e7f7-43bd-b017-123978c73c3e",
+          "selected": true
+        },
+        {
+          "path": "framework/Microsoft.NETCore.App.Ref/10.0.12/ref/net10.0/netstandard.dll",
+          "assemblyName": "netstandard",
+          "sha256": "3dc81dbc9dacd28261632c94410859eda24c2db50cd6c14309cbb2a434b50c57",
+          "mvid": "5db59131-7afe-45dd-a471-6e9ad82b1239",
+          "selected": true
+        },
+        {
+          "path": "nuget/autofac.extensions.dependencyinjection/11.0.2/lib/net10.0/Autofac.Extensions.DependencyInjection.dll",
+          "assemblyName": "Autofac.Extensions.DependencyInjection",
+          "sha256": "2e2068946736a779cd990b46601731275952fd66e50ad1ad538a68310631bcb9",
+          "mvid": "359ac051-1e0a-4ec9-9a57-c50c053e3fa2",
+          "selected": true
+        },
+        {
+          "path": "nuget/autofac/9.3.1/lib/net10.0/Autofac.dll",
+          "assemblyName": "Autofac",
+          "sha256": "86c2e93f89f6790b705c95d064e57586ad12864bf4169d8ffc2aceacbc17c569",
+          "mvid": "ac3e8b20-4f5e-4daf-96fe-9ac9ba48025b",
+          "selected": true
+        },
+        {
+          "path": "nuget/bouncycastle.cryptography/2.7.0/lib/net6.0/BouncyCastle.Cryptography.dll",
+          "assemblyName": "BouncyCastle.Cryptography",
+          "sha256": "ef92fc661e8d7ba8ec4d39a7cdfcdba41f14cb327f0d24fe79d0b5bb428899b5",
+          "mvid": "fc1a4ae8-411b-471c-974a-95a266252cc5",
+          "selected": true
+        },
+        {
+          "path": "nuget/ckzg.bindings/2.1.8.1641/lib/net10.0/Ckzg.Bindings.dll",
+          "assemblyName": "Ckzg.Bindings",
+          "sha256": "3cf64ba2a93462c1eba49d79e497ab1822293412fe6a44f964081a732ffa9e92",
+          "mvid": "928c569b-d314-4b1f-96b6-a62a6e5d6854",
+          "selected": true
+        },
+        {
+          "path": "nuget/collections.pooled/1.0.82/lib/netcoreapp2.1/Collections.Pooled.dll",
+          "assemblyName": "Collections.Pooled",
+          "sha256": "3ada72f4a3f9b0fb1e65adbbfbbcbb07b6f85edaacb2e6f3bfaf0eafd734c6e3",
+          "mvid": "809f5f74-2b29-4a7c-a1e5-b5fdf6573abb",
+          "selected": true
+        },
+        {
+          "path": "nuget/fastenum.core/2.0.7/lib/net10.0/FastEnum.Core.dll",
+          "assemblyName": "FastEnum.Core",
+          "sha256": "fc88953afaa295dabec484ecf89d8271e3c0f7d5c76a4e9cc05b998a62e7272d",
+          "mvid": "f8f6c608-187b-483a-ad1f-4027ba17690d",
+          "selected": true
+        },
+        {
+          "path": "nuget/inlineil.fody/1.10.2/lib/net10.0/InlineIL.dll",
+          "assemblyName": "InlineIL",
+          "sha256": "51d6bd78ac367deb4575540085215ee7fe852b6332ae7262f8d4b69c4bc7843f",
+          "mvid": "450dd885-cd82-4f63-8363-2946e5cf0c11",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.aspnetcore.cryptography.internal/10.0.12/lib/net10.0/Microsoft.AspNetCore.Cryptography.Internal.dll",
+          "assemblyName": "Microsoft.AspNetCore.Cryptography.Internal",
+          "sha256": "3a790f25ec894ef5c6844d18abc1fac2e704043f9f75d236651173f47dae83a4",
+          "mvid": "a0553025-b766-49c5-8f5d-e2281c72e14f",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.aspnetcore.dataprotection.abstractions/10.0.12/lib/net10.0/Microsoft.AspNetCore.DataProtection.Abstractions.dll",
+          "assemblyName": "Microsoft.AspNetCore.DataProtection.Abstractions",
+          "sha256": "ed0428763bae2ad160fb384586f9f4c72c7bd2c857641a971bfac7b98662455f",
+          "mvid": "7019942f-2ef1-4d22-9ae1-a4dd2718875a",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.aspnetcore.dataprotection.extensions/10.0.12/lib/net10.0/Microsoft.AspNetCore.DataProtection.Extensions.dll",
+          "assemblyName": "Microsoft.AspNetCore.DataProtection.Extensions",
+          "sha256": "3f9bbfd083fb530d0b7cedfcc713ce8c45ca8ec24288f978698a8072dfb5f6e3",
+          "mvid": "dbbedb57-38c6-46a5-b8d8-cc33b115db3f",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.aspnetcore.dataprotection/10.0.12/lib/net10.0/Microsoft.AspNetCore.DataProtection.dll",
+          "assemblyName": "Microsoft.AspNetCore.DataProtection",
+          "sha256": "5971a8e7d2f7631446b685ed90b15e0d835bc6536c08d2b997ca2eec056ff4ee",
+          "mvid": "dfe1d90f-8fe0-40d7-a5d0-6cc2be46cd44",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.bcl.cryptography/10.0.2/lib/net10.0/Microsoft.Bcl.Cryptography.dll",
+          "assemblyName": "Microsoft.Bcl.Cryptography",
+          "sha256": "91c6bab93638c268569a38bc87770a5e3ef9932676f5b7a6d47aef4208062925",
+          "mvid": "1dc147cc-8a9a-4cd8-a9c4-178ca6514fb5",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.clearscript.core/7.5.1/lib/net5.0/ClearScript.Core.dll",
+          "assemblyName": "ClearScript.Core",
+          "sha256": "7fe8e9a5f2157bdc7b1185a9f79cba60fa3cd8b85a6652fc1fa11d84053d619d",
+          "mvid": "92cbbede-d38f-471f-82dd-92592ee3e428",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.clearscript.v8.icudata/7.5.1/lib/netstandard1.0/ClearScript.V8.ICUData.dll",
+          "assemblyName": "ClearScript.V8.ICUData",
+          "sha256": "102f461d21daa0e923555d47c56aa96c28a74e2a0b6b991d821b59dea57bba65",
+          "mvid": "2d9bd3f3-ba6c-49fb-ace4-c235a4b30f44",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.clearscript.v8/7.5.1/lib/net5.0/ClearScript.V8.dll",
+          "assemblyName": "ClearScript.V8",
+          "sha256": "1eaa856417954bc7f3710588ac806159bd1110a6dd6dab4d3a51c000922480d9",
+          "mvid": "2c6c8e59-cc61-4b9d-a94c-0af8762c3521",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.extensions.caching.abstractions/10.0.12/lib/net10.0/Microsoft.Extensions.Caching.Abstractions.dll",
+          "assemblyName": "Microsoft.Extensions.Caching.Abstractions",
+          "sha256": "eb027242c11808fe0d8faf851bd30d0c6e39944b773713ffb04e17e196bece0f",
+          "mvid": "21c73330-0eb4-4636-97df-9869d9c8b297",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.extensions.caching.memory/10.0.12/lib/net10.0/Microsoft.Extensions.Caching.Memory.dll",
+          "assemblyName": "Microsoft.Extensions.Caching.Memory",
+          "sha256": "dca415c48a9d6af45c7f28f6481a88baa9cb9f09d3090ca5878d1acbd446048d",
+          "mvid": "36f47705-d245-4d69-a557-ced5c8e54444",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.extensions.configuration.abstractions/10.0.12/lib/net10.0/Microsoft.Extensions.Configuration.Abstractions.dll",
+          "assemblyName": "Microsoft.Extensions.Configuration.Abstractions",
+          "sha256": "fb45286fa39f58b9e74b6346e31034e00031170169ee11fd0a15f99b6dca0b56",
+          "mvid": "280130f9-88d8-485a-9540-73b30c7580ae",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.extensions.dependencyinjection.abstractions/10.0.12/lib/net10.0/Microsoft.Extensions.DependencyInjection.Abstractions.dll",
+          "assemblyName": "Microsoft.Extensions.DependencyInjection.Abstractions",
+          "sha256": "da04edc338d5aa0f38a1f5fa5ff3ee7e36affe9c961daf3ea724a428bd746bc6",
+          "mvid": "2b847d34-f0fb-4e45-b27b-736bf56e0fb3",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.extensions.dependencyinjection/10.0.12/lib/net10.0/Microsoft.Extensions.DependencyInjection.dll",
+          "assemblyName": "Microsoft.Extensions.DependencyInjection",
+          "sha256": "2d0e268bf76b4ce36a55ebb2767354db956c6660de65d6cccfc35c957fb12cfc",
+          "mvid": "e007ce4e-5b86-4803-a6c9-ac1f6939389b",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.extensions.diagnostics.abstractions/10.0.12/lib/net10.0/Microsoft.Extensions.Diagnostics.Abstractions.dll",
+          "assemblyName": "Microsoft.Extensions.Diagnostics.Abstractions",
+          "sha256": "623879199a4d98248dbce917e8b2c11b1f5eff24a01cb3b50d772461566dbad4",
+          "mvid": "5a4830db-070c-4da0-9303-cf04d313a2ad",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.extensions.fileproviders.abstractions/10.0.12/lib/net10.0/Microsoft.Extensions.FileProviders.Abstractions.dll",
+          "assemblyName": "Microsoft.Extensions.FileProviders.Abstractions",
+          "sha256": "0ad9800893013d1e11c6b5afc6ef8a3fc0f14d38fa80bf5d63485fc70f848216",
+          "mvid": "08b9f099-38b0-4e3f-84aa-0394c417c892",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.extensions.hosting.abstractions/10.0.12/lib/net10.0/Microsoft.Extensions.Hosting.Abstractions.dll",
+          "assemblyName": "Microsoft.Extensions.Hosting.Abstractions",
+          "sha256": "37c244f5685ca031be74a49bd23b2634588235f672f3a0b0b352ca8f6f6c3887",
+          "mvid": "f01ae37a-b2e2-4a34-a5e6-7dd8a8ae4a43",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.extensions.logging.abstractions/10.0.12/lib/net10.0/Microsoft.Extensions.Logging.Abstractions.dll",
+          "assemblyName": "Microsoft.Extensions.Logging.Abstractions",
+          "sha256": "7c242f8ca612fa1acc61f78efd5f8c89e01bd0bd47dc4ecc65e0e6e24f1a1668",
+          "mvid": "a3db28ec-de35-4204-b865-206016b61f49",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.extensions.logging/5.0.0/lib/netstandard2.1/Microsoft.Extensions.Logging.dll",
+          "assemblyName": "Microsoft.Extensions.Logging",
+          "sha256": "565b0abf9cd781d2b432b6075ebf57954097c2ec0d23b01423f0b53c4157733e",
+          "mvid": "eeae490c-3300-468d-a793-a39c7791ea02",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.extensions.objectpool/10.0.12/lib/net10.0/Microsoft.Extensions.ObjectPool.dll",
+          "assemblyName": "Microsoft.Extensions.ObjectPool",
+          "sha256": "634cca4d69263df34f856a45d6f0eea0fbd82929ba410718254bdbdb03e12b70",
+          "mvid": "0531c45d-d9f9-47de-978f-959ed92e858f",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.extensions.options/10.0.12/lib/net10.0/Microsoft.Extensions.Options.dll",
+          "assemblyName": "Microsoft.Extensions.Options",
+          "sha256": "b4ff561da6a7b11b68341f9fd32cab3f8b23cdd8b40332b9fd8bed73a9ee7de3",
+          "mvid": "c8a6f837-3efa-4919-914c-4923fa05f09c",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.extensions.primitives/10.0.12/lib/net10.0/Microsoft.Extensions.Primitives.dll",
+          "assemblyName": "Microsoft.Extensions.Primitives",
+          "sha256": "67642533eb87e8dadeb9026de59ff4b66cc9bf35c0cfbedfef7b79bc6d8b30bc",
+          "mvid": "e3c071b7-9979-4db9-8075-c512b03830ba",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.identitymodel.abstractions/8.22.0/lib/net10.0/Microsoft.IdentityModel.Abstractions.dll",
+          "assemblyName": "Microsoft.IdentityModel.Abstractions",
+          "sha256": "f0d349d3b696b871d7988f8e13f9873f463edd1a31d367b22aaa39cdb071b186",
+          "mvid": "584a0c30-522c-4c3f-936a-34025624e961",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.identitymodel.jsonwebtokens/8.22.0/lib/net10.0/Microsoft.IdentityModel.JsonWebTokens.dll",
+          "assemblyName": "Microsoft.IdentityModel.JsonWebTokens",
+          "sha256": "7cdcc830f1e3c3ae4be44a67e37568495d02642955c7d21c1dc5d9947f67e891",
+          "mvid": "284ce29a-ce1e-4925-ba5d-dfa26c28cb73",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.identitymodel.logging/8.22.0/lib/net10.0/Microsoft.IdentityModel.Logging.dll",
+          "assemblyName": "Microsoft.IdentityModel.Logging",
+          "sha256": "a4476867e60d666daa22233f954672939861f2292cc699df88093056042f6c48",
+          "mvid": "237e1caf-1a2a-4c52-94de-caeb997a3c5c",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.identitymodel.tokens/8.22.0/lib/net10.0/Microsoft.IdentityModel.Tokens.dll",
+          "assemblyName": "Microsoft.IdentityModel.Tokens",
+          "sha256": "16c33e63bffff90f1b8698f899f96f3311329f26e940b8f031b1f26d82bc41b1",
+          "mvid": "9282a8e5-046f-4dd9-9fba-01bb99f83e0f",
+          "selected": true
+        },
+        {
+          "path": "nuget/microsoft.io.recyclablememorystream/3.0.1/lib/net6.0/Microsoft.IO.RecyclableMemoryStream.dll",
+          "assemblyName": "Microsoft.IO.RecyclableMemoryStream",
+          "sha256": "631a5fc41df9498d032c0655ebd0e1209430ccffbec55667d89c2566b338ccc0",
+          "mvid": "e78a4d0b-501a-4fcd-9a5d-626c1057aa00",
+          "selected": true
+        },
+        {
+          "path": "nuget/nethermind.crypto.bls/1.1.0/lib/net10.0/Nethermind.Crypto.Bls.dll",
+          "assemblyName": "Nethermind.Crypto.Bls",
+          "sha256": "0c59d1eb75ec66cf2cf4906041af89a3cdb32681e660e8026c02edac5b58a678",
+          "mvid": "42639be2-e5cb-44d9-8537-bff9cf7972e0",
+          "selected": true
+        },
+        {
+          "path": "nuget/nethermind.crypto.secp256k1/1.7.0/lib/net10.0/Nethermind.Crypto.SecP256k1.dll",
+          "assemblyName": "Nethermind.Crypto.SecP256k1",
+          "sha256": "259d3021149dc5e8c5af82c6528b1eae243a833a8e42c7c8818a9e89e73b52a4",
+          "mvid": "56a582d2-4438-404b-b41c-447e04378763",
+          "selected": true
+        },
+        {
+          "path": "nuget/nethermind.dotnetty.buffers/1.0.2.76/lib/net6.0/DotNetty.Buffers.dll",
+          "assemblyName": "DotNetty.Buffers",
+          "sha256": "be25b3a351a1ac2f46adb8c63d006de0eaf8f490fd30882b709b4164c8eafd21",
+          "mvid": "74bb4ec2-7690-4d77-82c4-f3cf67a79970",
+          "selected": true
+        },
+        {
+          "path": "nuget/nethermind.dotnetty.common/1.0.2.76/lib/net6.0/DotNetty.Common.dll",
+          "assemblyName": "DotNetty.Common",
+          "sha256": "234f02595aadce1ef3112a3d726a5fbe08eb81b6834b6bd37a39d0f8ffd9b6e7",
+          "mvid": "d6775840-0d19-4b4b-b019-df3fcfb1e67f",
+          "selected": true
+        },
+        {
+          "path": "nuget/nethermind.numerics.int256/1.8.0/impl/std/net10.0/Nethermind.Int256.dll",
+          "assemblyName": "Nethermind.Int256",
+          "sha256": "a02e20817e2e163d4858254067e549c582342e1f1141e6ba7441a06d0bd0f871",
+          "mvid": "06e014f4-e139-4b68-a027-4fece94c01e0",
+          "selected": true
+        },
+        {
+          "path": "nuget/newtonsoft.json/13.0.3/lib/net6.0/Newtonsoft.Json.dll",
+          "assemblyName": "Newtonsoft.Json",
+          "sha256": "22c649f75fce5be7c7ccda8880473b634ef69ecf33f5d1ab8ad892caf47d5a07",
+          "mvid": "7e62198b-eab2-4380-bbac-29171862d1d8",
+          "selected": true
+        },
+        {
+          "path": "nuget/nonblocking/2.1.2/lib/netstandard2.1/NonBlocking.dll",
+          "assemblyName": "NonBlocking",
+          "sha256": "86f694abfccacdc47b03a00bac0c11b3883eb165249fccbe62acd146e7c0f69b",
+          "mvid": "61e52a83-6550-4cf3-b1c2-929e078e01ee",
+          "selected": true
+        },
+        {
+          "path": "nuget/system.configuration.configurationmanager/10.0.12/lib/net10.0/System.Configuration.ConfigurationManager.dll",
+          "assemblyName": "System.Configuration.ConfigurationManager",
+          "sha256": "f6f445777420df03447d74f63671dfe97f8b833836ceb4643af76fa2e0c66a1b",
+          "mvid": "c4635a3c-b281-49ca-ba18-f3ca2a9bc5c0",
+          "selected": true
+        },
+        {
+          "path": "nuget/system.diagnostics.eventlog/10.0.12/lib/net10.0/System.Diagnostics.EventLog.dll",
+          "assemblyName": "System.Diagnostics.EventLog",
+          "sha256": "77aae5ac102caa9c8bdd8473bc55ed7de246b3e06171c6393bad7f959c1a7bf5",
+          "mvid": "8c618dfc-e0f4-48d2-a379-645ce5b251cf",
+          "selected": true
+        },
+        {
+          "path": "nuget/system.io.hashing/10.0.12/lib/net10.0/System.IO.Hashing.dll",
+          "assemblyName": "System.IO.Hashing",
+          "sha256": "cea6795cf9f7b139b2215ff6de794a6f6e44e78640fb30fa4c0d5fa8472df8e5",
+          "mvid": "5019f993-048d-428e-84e0-c6c1fc9ee92d",
+          "selected": true
+        },
+        {
+          "path": "nuget/system.security.cryptography.pkcs/10.0.12/lib/net10.0/System.Security.Cryptography.Pkcs.dll",
+          "assemblyName": "System.Security.Cryptography.Pkcs",
+          "sha256": "486d7c04bcd4d3745266228cdc5edab6bb0e9e4fe36ab7698992f41569cad0ea",
+          "mvid": "14b4c9f9-a7a1-4480-aeb2-9a6124d99e56",
+          "selected": true
+        },
+        {
+          "path": "nuget/system.security.cryptography.protecteddata/10.0.12/lib/net10.0/System.Security.Cryptography.ProtectedData.dll",
+          "assemblyName": "System.Security.Cryptography.ProtectedData",
+          "sha256": "b61a1445b99a1486a5d9abbd45d766497f136270f5b04862defee1fc054ded14",
+          "mvid": "1c48ee13-441e-4b1b-892c-592a6118a047",
+          "selected": true
+        },
+        {
+          "path": "nuget/system.security.cryptography.xml/10.0.12/lib/net10.0/System.Security.Cryptography.Xml.dll",
+          "assemblyName": "System.Security.Cryptography.Xml",
+          "sha256": "989c0b48004745329345c80d7edfe747035f81a854e852091af11d7730696b5f",
+          "mvid": "4e373a99-fcf3-463e-8144-a19cd40b9873",
+          "selected": true
+        },
+        {
+          "path": "nuget/testably.abstractions.filesystem.interface/10.3.0/lib/net10.0/Testably.Abstractions.FileSystem.Interface.dll",
+          "assemblyName": "Testably.Abstractions.FileSystem.Interface",
+          "sha256": "29c9ce9ee28db07fd527c5662e047172771cd872d54e430997040626e03e293d",
+          "mvid": "2c82a743-31cb-4d61-aac1-8d055905ddd8",
+          "selected": true
+        },
+        {
+          "path": "nuget/testably.abstractions.interface/10.3.0/lib/net10.0/Testably.Abstractions.Interface.dll",
+          "assemblyName": "Testably.Abstractions.Interface",
+          "sha256": "8a56816c92a21326ab09b7600b7ee1e6c9dc5ca48eb4081d8a3bd691f3ae5736",
+          "mvid": "71ea913f-e4b1-4e31-9ca9-b6b80246eec8",
+          "selected": true
+        },
+        {
+          "path": "nuget/testably.abstractions/10.3.0/lib/net10.0/Testably.Abstractions.dll",
+          "assemblyName": "Testably.Abstractions",
+          "sha256": "612a8e98cd4468d1494b4fb4b21134942eabb1bca7aa63647e095331484d6ab7",
+          "mvid": "82b65840-9df6-4a19-8085-c2389b9c9920",
+          "selected": true
+        },
+        {
+          "path": "nuget/zstdsharp.port/0.8.8/lib/net9.0/ZstdSharp.dll",
+          "assemblyName": "ZstdSharp",
+          "sha256": "b285bb9f59928becb8e048bf2a75e872f6555f8773d7b72386a9f77f447f425c",
+          "mvid": "e5041090-31b9-477c-b82c-0a28dad172db",
+          "selected": true
+        },
+        {
+          "path": "repo/src/Nethermind/artifacts/bin/Nethermind.Config/release/Nethermind.Config.dll",
+          "assemblyName": "Nethermind.Config",
+          "sha256": "d7453c6ec79c45940a12d8453e7328c5b0cbed79ae151223a38a01a5506daf56",
+          "mvid": "63037d2e-3e19-423f-8d1a-0dbd096141cc",
+          "selected": true
+        },
+        {
+          "path": "repo/src/Nethermind/artifacts/bin/Nethermind.Core/release/Nethermind.Core.dll",
+          "assemblyName": "Nethermind.Core",
+          "sha256": "4b0f6f2aa62ce87e145c37f413b44273f97be23152471ab16baae1799668d5af",
+          "mvid": "b73d2976-e252-4153-8c9f-e55c23ec10db",
+          "selected": true
+        },
+        {
+          "path": "repo/src/Nethermind/artifacts/bin/Nethermind.Crypto/release/Nethermind.Crypto.dll",
+          "assemblyName": "Nethermind.Crypto",
+          "sha256": "18a935010d3aaa04ed76daf66b0f1dfc84e37147c0efec6ba385692cca9c427d",
+          "mvid": "9fe9d438-7ef9-49ea-8b3e-86ca79f31544",
+          "selected": true
+        },
+        {
+          "path": "repo/src/Nethermind/artifacts/bin/Nethermind.Logging/release/Nethermind.Logging.dll",
+          "assemblyName": "Nethermind.Logging",
+          "sha256": "2f47d04e9cf5dfcdd0f421772ac6c78f0229a3456fd26d17582b76cb6249b39b",
+          "mvid": "d8d265a2-3c87-4f4c-aeb6-e3ef28af8518",
+          "selected": true
+        },
+        {
+          "path": "repo/src/Nethermind/artifacts/bin/Nethermind.Network.Enr/release/Nethermind.Network.Enr.dll",
+          "assemblyName": "Nethermind.Network.Enr",
+          "sha256": "e155eece8bb398aac76e5933db89aa43cf519ddc64541dba70e539a4079c2e09",
+          "mvid": "5632722e-bddc-4670-b91a-637476e1b1bf",
+          "selected": true
+        },
+        {
+          "path": "repo/src/Nethermind/artifacts/bin/Nethermind.Serialization.Json/release/Nethermind.Serialization.Json.dll",
+          "assemblyName": "Nethermind.Serialization.Json",
+          "sha256": "9053c279596379d79b2101af616c6ac8a22ea6ead70e1fac5b894a6e9e800439",
+          "mvid": "d832b156-df16-4f2a-aa26-f2b5cc95df9b",
+          "selected": true
+        },
+        {
+          "path": "repo/src/Nethermind/artifacts/bin/Nethermind.Serialization.Rlp/release/Nethermind.Serialization.Rlp.dll",
+          "assemblyName": "Nethermind.Serialization.Rlp",
+          "sha256": "406c3a7bc6db190db429db0339a835e5d30f6f65be0e3a1a2367487d8f24ae0a",
+          "mvid": "520f4a28-057c-4eb9-85a3-5e5b6f7cfddb",
+          "selected": true
+        },
+        {
+          "path": "repo/src/Nethermind/artifacts/bin/Nethermind.Serialization.Ssz/release/Nethermind.Serialization.Ssz.dll",
+          "assemblyName": "Nethermind.Serialization.Ssz",
+          "sha256": "939abd6896d44e9571ed7cc20ae288d8b8b73a85d791fbbad669115efae7ca19",
+          "mvid": "edded8b2-32e6-40ac-a828-faed66e09685",
+          "selected": true
+        },
+        {
+          "path": "repo/src/Nethermind/artifacts/bin/Nethermind.Specs/release/Nethermind.Specs.dll",
+          "assemblyName": "Nethermind.Specs",
+          "sha256": "2236a1f7b2f5f6fa28925abd6d1d443d8c976f22c5c3b14cbefc97f2ea410d95",
+          "mvid": "1bc25b6d-b8b2-4433-a7e3-b12f788dcab7",
+          "selected": true
+        }
+      ]
+    }
+  }
+}

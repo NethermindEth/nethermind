@@ -58,10 +58,8 @@ public class SystemTransactionProcessor<TGasPolicy>(
 
         OnBeforeSystemTransaction();
 
-        ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
-        _payOriginalValue = (coreOpts & ExecutionOptions.SkipValidation) != ExecutionOptions.SkipValidation
-                            && !coreOpts.HasFlag(ExecutionOptions.SkipValidationAndCommit);
-        return base.Execute(tx, tracer, _payOriginalValue ? opts | ExecutionOptions.SkipValidationAndCommit : opts);
+        _payOriginalValue = SystemTransactionRoutingKernel.ShouldPayOriginalValue(opts);
+        return base.Execute(tx, tracer, SystemTransactionRoutingKernel.GetSystemExecutionOptions(opts, _payOriginalValue));
     }
 
     protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,

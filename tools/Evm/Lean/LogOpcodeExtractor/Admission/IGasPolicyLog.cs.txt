@@ -1,0 +1,6 @@
+namespace Nethermind.Evm.GasPolicy;
+
+public interface IGasPolicy<TSelf>
+{
+    static abstract bool TryConsumeLogEmission(ref TSelf gas, ulong topicCount, ulong dataSize);
+}

@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nethermind.io/formal/evm-frame-machine-source-manifest.schema.json",
+  "title": "Amsterdam standard-build EVM frame-machine source manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "extractorVersion",
+    "roslynVersion",
+    "languageVersion",
+    "kernel",
+    "sources",
+    "admissions",
+    "ir",
+    "lean",
+    "combinedSourceSha256",
+    "dependencies",
+    "semanticBindings"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "extractorVersion": { "type": "string", "minLength": 1 },
+    "roslynVersion": { "type": "string", "minLength": 1 },
+    "languageVersion": { "const": "CSharp14" },
+    "kernel": { "const": "standard-mainnet-amsterdam-evm-frame-machine" },
+    "sources": {
+      "type": "array",
+      "minItems": 114,
+      "maxItems": 114,
+      "items": { "$ref": "#/$defs/sourceIdentity" }
+    },
+    "admissions": {
+      "type": "array",
+      "minItems": 181,
+      "maxItems": 181,
+      "items": { "$ref": "#/$defs/admissionIdentity" }
+    },
+    "ir": { "$ref": "#/$defs/artifactIdentity" },
+    "lean": { "$ref": "#/$defs/artifactIdentity" },
+    "combinedSourceSha256": { "$ref": "#/$defs/sha256" },
+    "dependencies": {
+      "type": "array",
+      "minItems": 32,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "prefixItems": [
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "opcodePackage" }, "name": { "const": "PureWordOpcodeExtractor" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "opcodePackage" }, "name": { "const": "Keccak256OpcodeExtractor" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "opcodePackage" }, "name": { "const": "EnvironmentOpcodeExtractor" }, "path": { "const": "tools/Evm/Lean/EnvironmentOpcodeExtractor/Generated/EnvironmentOpcodeKernel.source-manifest.json" }, "sha256": { "const": "5713dd4a50e7dcb139519b4656b9b82582823894c11f24722c41986ad7d04ab7" }, "proofModule": { "const": "Eip803x.Refinement.EnvironmentOpcode" }, "proofModulePath": { "const": "tools/Evm/Lean/Eip803x/Refinement/EnvironmentOpcode.lean" }, "proofModuleSha256": { "const": "d9461ae1535c877e1625295421aafe2f8bc4bf1b37d0310cd1dfaeac2801a357" }, "requiredTheorems": { "prefixItems": [{ "properties": { "fullyQualifiedName": { "const": "Eip803x.Refinement.EnvironmentOpcode.closed_amsterdam_refines" }, "signatureSha256": { "const": "7664bcb6bbbc57d48d1d209b875f2c3099ffcd37a3a845f15bb17ebbccf62738" } }, "required": ["fullyQualifiedName", "signatureSha256"] }], "minItems": 1, "maxItems": 1 }, "admitted": { "const": true } }, "required": ["kind", "name", "path", "sha256", "proofModule", "proofModulePath", "proofModuleSha256", "requiredTheorems", "admitted"] }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "opcodePackage" }, "name": { "const": "AccountReadOpcodeExtractor" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "opcodePackage" }, "name": { "const": "MemoryCopyOpcodeExtractor" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "opcodePackage" }, "name": { "const": "PersistentStorageOpcodeExtractor" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "opcodePackage" }, "name": { "const": "TransientStorageOpcodeExtractor" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "opcodePackage" }, "name": { "const": "StackRearrangementOpcodeExtractor" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "opcodePackage" }, "name": { "const": "PushOpcodeExtractor" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "opcodePackage" }, "name": { "const": "LogOpcodeExtractor" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "opcodePackage" }, "name": { "const": "CallCreateOpcodeExtractor" }, "path": { "const": "tools/Evm/Lean/CallCreateOpcodeExtractor/Generated/CallCreateOpcodeKernel.source-manifest.json" }, "sha256": { "const": "a8ad6c834d521ba0b55e3ef28ce994663c0099ba78046d5970830cd11a526164" }, "proofModule": { "const": "CallCreateOpcodeExtractor.Refinement.CallCreateOpcode" }, "proofModulePath": { "const": "tools/Evm/Lean/CallCreateOpcodeExtractor/Refinement/CallCreateOpcode.lean" }, "proofModuleSha256": { "const": "9f14f31975a4b50cddf577d308b841cc4a8e7a21d2f12ec00173c45b814f1ad0" }, "requiredTheorems": { "prefixItems": [{ "properties": { "fullyQualifiedName": { "const": "Eip803x.Generated.CallCreateOpcodeRefinement.closed_amsterdam_refines" }, "signatureSha256": { "const": "a8cc7dc3fb82698e33b1ced5ef93bb55de5cd1d3f5262c0582c189ea782b10a0" } }, "required": ["fullyQualifiedName", "signatureSha256"] }], "minItems": 1, "maxItems": 1 }, "admitted": { "const": true } }, "required": ["kind", "name", "path", "sha256", "proofModule", "proofModulePath", "proofModuleSha256", "requiredTheorems", "admitted"] }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "opcodePackage" }, "name": { "const": "ControlFlowOpcodeExtractor" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "opcodePackage" }, "name": { "const": "ExtendedStackOpcodeExtractor" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "opcodePackage" }, "name": { "const": "CallDataLoadOpcodeExtractor" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "precompileWrapper" }, "name": { "const": "ECRECOVER" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "precompileWrapper" }, "name": { "const": "SHA256" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "precompileWrapper" }, "name": { "const": "RIPEMD160" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "precompileWrapper" }, "name": { "const": "IDENTITY" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "precompileWrapper" }, "name": { "const": "MODEXP" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "precompileWrapper" }, "name": { "const": "BN254_ADD" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "precompileWrapper" }, "name": { "const": "BN254_MUL" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "precompileWrapper" }, "name": { "const": "BN254_PAIRING" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "precompileWrapper" }, "name": { "const": "BLAKE2F" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "precompileWrapper" }, "name": { "const": "KZG_POINT_EVALUATION" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "precompileWrapper" }, "name": { "const": "BLS12_G1ADD" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "precompileWrapper" }, "name": { "const": "BLS12_G1MSM" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "precompileWrapper" }, "name": { "const": "BLS12_G2ADD" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "precompileWrapper" }, "name": { "const": "BLS12_G2MSM" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "precompileWrapper" }, "name": { "const": "BLS12_PAIRING" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "precompileWrapper" }, "name": { "const": "BLS12_MAP_FP_TO_G1" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "precompileWrapper" }, "name": { "const": "BLS12_MAP_FP2_TO_G2" } } }] },
+        { "allOf": [{ "$ref": "#/$defs/dependencyIdentity" }, { "properties": { "kind": { "const": "precompileWrapper" }, "name": { "const": "P256VERIFY" } } }] }
+      ]
+    },
+    "semanticBindings": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sourceIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "roslynSyntaxSha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "roslynSyntaxSha256": {
+          "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
+        }
+      }
+    },
+    "admissionIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourcePath",
+        "namespace",
+        "ownerPath",
+        "memberKind",
+        "memberName",
+        "memberGenericArity",
+        "parameterTypes",
+        "syntaxKind",
+        "sha256"
+      ],
+      "properties": {
+        "sourcePath": { "type": "string", "minLength": 1 },
+        "namespace": { "type": "string", "minLength": 1 },
+        "ownerPath": { "type": "string", "minLength": 1 },
+        "memberKind": { "type": "string", "minLength": 1 },
+        "memberName": { "type": "string", "minLength": 1 },
+        "memberGenericArity": { "type": "integer", "minimum": 0 },
+        "parameterTypes": { "type": "string" },
+        "syntaxKind": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "artifactIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "dependencyIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "name",
+        "path",
+        "sha256",
+        "proofModule",
+        "proofModulePath",
+        "proofModuleSha256",
+        "requiredTheorems",
+        "admitted"
+      ],
+      "properties": {
+        "kind": { "enum": ["opcodePackage", "precompileWrapper"] },
+        "name": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "proofModule": { "oneOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }] },
+        "proofModulePath": { "oneOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }] },
+        "proofModuleSha256": { "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] },
+        "requiredTheorems": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/proofTheoremIdentity" }
+        },
+        "admitted": { "type": "boolean" }
+      }
+    },
+    "proofTheoremIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fullyQualifiedName", "signatureSha256"],
+      "properties": {
+        "fullyQualifiedName": { "type": "string", "minLength": 1 },
+        "signatureSha256": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}

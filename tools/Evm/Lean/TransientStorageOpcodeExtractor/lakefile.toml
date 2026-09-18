@@ -1,0 +1,11 @@
+name = "TransientStorageOpcodeExtractor"
+version = "0.1.0"
+defaultTargets = ["TransientStorageOpcodeExtractor.Refinement.TransientStorageOpcode"]
+
+[[lean_lib]]
+name = "Eip803x"
+srcDir = ".."
+
+[[lean_lib]]
+name = "TransientStorageOpcodeExtractor"
+srcDir = ".."

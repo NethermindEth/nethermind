@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.0.0",
+  "kernel": "Nethermind standard-mainnet Amsterdam SLOAD/SSTORE immediate-handler slice",
+  "reachability": {
+    "service": "IVirtualMachine",
+    "concreteVm": "EthereumVirtualMachine",
+    "closedVm": "VirtualMachine\u003CEthereumGasPolicy\u003E",
+    "gasPolicy": "EthereumGasPolicy",
+    "fork": "Amsterdam",
+    "buildSelection": "Directory.Build.targets selects *.std.cs when EnableZkEvm != true",
+    "dispatchRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode"
+  },
+  "executionMode": {
+    "isTracingAccess": false,
+    "applicability": "Normal consensus execution only; VM.IsTracingAccess must be false because access-list tracing uses the distinct warm-cost path."
+  },
+  "schedule": {
+    "sloadBase": 0,
+    "coldStorageAccess": 2100,
+    "warmAccess": 100,
+    "storageWrite": 10000,
+    "storageClearRefund": 11616,
+    "storageSetStateGas": 97920,
+    "sstoreStipend": 2300
+  },
+  "opcodes": [
+    {
+      "name": "sload",
+      "instruction": "SLOAD",
+      "opcodeByte": 84,
+      "handler": "SLoadOpcode\u003CTTracingInst,Eip8038On,OnFlag\u003E",
+      "wrapper": "EvmInstructions.InstructionSLoad\u003CTGasPolicy,TTracingInst,Eip8038On,OnFlag\u003E",
+      "stackInputs": 1,
+      "stackOutputs": 1,
+      "activation": "always assigned; Amsterdam closes EIP-2929 and EIP-8038 on",
+      "orderedEffects": [
+        "advancePc",
+        "chargeZeroBase",
+        "popKey",
+        "chargeAndWarmAccess",
+        "readCurrent",
+        "pushValue"
+      ]
+    },
+    {
+      "name": "sstore",
+      "instruction": "SSTORE",
+      "opcodeByte": 85,
+      "handler": "SStoreMeteredOpcode\u003CTTracingInst,OnFlag,OnFlag,Eip8038On,OnFlag\u003E",
+      "wrapper": "EvmInstructions.InstructionSStoreMetered\u003CTGasPolicy,TTracingInst,OnFlag,OnFlag,Eip8038On,OnFlag\u003E",
+      "stackInputs": 2,
+      "stackOutputs": 0,
+      "activation": "always assigned; Amsterdam closes EIP-2200, EIP-2929, EIP-8037, and EIP-8038 on",
+      "orderedEffects": [
+        "advancePc",
+        "staticCheck",
+        "stipendCheck",
+        "popKey",
+        "popValue",
+        "chargeAndWarmAccess",
+        "readCurrent",
+        "readOriginalOnChange",
+        "priceAfterAccess",
+        "chargeExecutionThenState",
+        "clearRefund",
+        "clearRefundReversal",
+        "stateRefill",
+        "restoreOriginalRefund",
+        "writeOnChange"
+      ]
+    }
+  ],
+  "specializations": [
+    {
+      "opcode": "sload",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CSLoadOpcode\u003COffFlag,Eip8038On,OnFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "sstore",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CSStoreMeteredOpcode\u003COffFlag,OnFlag,OnFlag,Eip8038On,OnFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "sload",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CSLoadOpcode\u003COffFlag,Eip8038On,OnFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "sstore",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CSStoreMeteredOpcode\u003COffFlag,OnFlag,OnFlag,Eip8038On,OnFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "sload",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CSLoadOpcode\u003COnFlag,Eip8038On,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "sstore",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CSStoreMeteredOpcode\u003COnFlag,OnFlag,OnFlag,Eip8038On,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "sload",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CSLoadOpcode\u003COnFlag,Eip8038On,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "sstore",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CSStoreMeteredOpcode\u003COnFlag,OnFlag,OnFlag,Eip8038On,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    }
+  ],
+  "composedGeneratedDependencies": [
+    "Eip803x.Generated.SStorePricingKernel with Eip803x.Refinement.SStorePricing",
+    "Eip803x.Generated.StateGasChargeKernel with Eip803x.Refinement.StateGasCharge",
+    "Eip803x.Generated.StateGasTransitionAdapterKernel with Eip803x.Refinement.StateGasTransitionAdapterKernel"
+  ],
+  "openExtractionObligations": [
+    "The theorem covers the immediate standard-mainnet Amsterdam SLOAD/SSTORE handler abstraction selected by the eight admitted dispatch roots; C#, Roslyn, CLR/JIT, unsafe function-pointer execution, and hardware remain trusted.",
+    "UInt256, Address, EvmStack, byte-array normalization, zero canonicalization, span lifetime, and provider-value representation remain adapter premises.",
+    "IWorldState Get/GetOriginal/Set correctness, database persistence, storage journaling, snapshots, frame rollback/merge, and decorators remain separate obligations.",
+    "StackAccessTracker collection implementation and BAL behavior are abstracted as an extensional warm-cell set; its admitted charge-before-warm path is covered for VM.IsTracingAccess=false, while access-list tracing, provider allocation, and concurrency remain open.",
+    "Tracing callbacks, callback failures, metrics, cancellation, opcode counter overflow, transaction refund cap, receipt accounting, and block accounting are outside this handler theorem.",
+    "Fixed-width ulong/long overflow is excluded by the refinement\u0027s explicit Amsterdam schedule and well-formed production-gas representation premises."
+  ]
+}

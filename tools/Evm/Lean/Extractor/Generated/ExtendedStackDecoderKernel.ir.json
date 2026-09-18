@@ -1,0 +1,1519 @@
+{
+  "schemaVersion": 3,
+  "kernel": "Nethermind.Evm.ExtendedStackDecoderKernel",
+  "roots": [
+    {
+      "name": "DecodePair",
+      "signature": "Nethermind.Evm.ExtendedStackPairDecode Nethermind.Evm.ExtendedStackDecoderKernel.DecodePair(byte immediate)"
+    },
+    {
+      "name": "DecodeSingle",
+      "signature": "Nethermind.Evm.ExtendedStackSingleDecode Nethermind.Evm.ExtendedStackDecoderKernel.DecodeSingle(byte immediate)"
+    }
+  ],
+  "dataTypes": [
+    {
+      "type": "Nethermind.Evm.ExtendedStackPairDecode",
+      "constructor": "Nethermind.Evm.ExtendedStackPairDecode.ExtendedStackPairDecode(bool isValid, int firstPosition, int secondPosition)",
+      "fields": [
+        {
+          "name": "IsValid",
+          "type": "bool",
+          "parameterOrdinal": 0
+        },
+        {
+          "name": "FirstPosition",
+          "type": "int",
+          "parameterOrdinal": 1
+        },
+        {
+          "name": "SecondPosition",
+          "type": "int",
+          "parameterOrdinal": 2
+        }
+      ]
+    },
+    {
+      "type": "Nethermind.Evm.ExtendedStackSingleDecode",
+      "constructor": "Nethermind.Evm.ExtendedStackSingleDecode.ExtendedStackSingleDecode(bool isValid, int depth)",
+      "fields": [
+        {
+          "name": "IsValid",
+          "type": "bool",
+          "parameterOrdinal": 0
+        },
+        {
+          "name": "Depth",
+          "type": "int",
+          "parameterOrdinal": 1
+        }
+      ]
+    }
+  ],
+  "methods": [
+    {
+      "signature": "Nethermind.Evm.ExtendedStackPairDecode Nethermind.Evm.ExtendedStackDecoderKernel.DecodePair(byte immediate)",
+      "returnType": "Nethermind.Evm.ExtendedStackPairDecode",
+      "parameters": [
+        {
+          "ordinal": 0,
+          "name": "immediate",
+          "type": "byte"
+        }
+      ],
+      "blocks": [
+        {
+          "ordinal": 0,
+          "kind": "Entry",
+          "conditionKind": "None",
+          "predecessors": [],
+          "operations": [],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 1
+          }
+        },
+        {
+          "ordinal": 1,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 0,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "SimpleAssignment",
+              "type": "int",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "int",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "shifted@1192"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "Binary",
+                  "type": "int",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "lifted",
+                      "value": "false"
+                    },
+                    {
+                      "name": "operator",
+                      "value": "ExclusiveOr"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Conversion",
+                      "type": "int",
+                      "isImplicit": true,
+                      "properties": [
+                        {
+                          "name": "checked",
+                          "value": "false"
+                        },
+                        {
+                          "name": "conversion",
+                          "value": "exists,nonidentity,numeric,nonreference,implicit,nonnullable,builtin"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "ParameterReference",
+                          "type": "byte",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "parameter",
+                              "value": "0"
+                            }
+                          ],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Literal",
+                      "type": "int",
+                      "constant": "143",
+                      "isImplicit": false,
+                      "properties": [],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "SimpleAssignment",
+              "type": "int",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "int",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "quotient@1232"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "Binary",
+                  "type": "int",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "lifted",
+                      "value": "false"
+                    },
+                    {
+                      "name": "operator",
+                      "value": "RightShift"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "LocalReference",
+                      "type": "int",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "local",
+                          "value": "shifted@1192"
+                        }
+                      ],
+                      "children": []
+                    },
+                    {
+                      "kind": "Literal",
+                      "type": "int",
+                      "constant": "4",
+                      "isImplicit": false,
+                      "properties": [],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "SimpleAssignment",
+              "type": "int",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "int",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "remainder@1269"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "Binary",
+                  "type": "int",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "lifted",
+                      "value": "false"
+                    },
+                    {
+                      "name": "operator",
+                      "value": "And"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "LocalReference",
+                      "type": "int",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "local",
+                          "value": "shifted@1192"
+                        }
+                      ],
+                      "children": []
+                    },
+                    {
+                      "kind": "Literal",
+                      "type": "int",
+                      "constant": "15",
+                      "isImplicit": false,
+                      "properties": [],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "SimpleAssignment",
+              "type": "int",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "int",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "mask@1309"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "Binary",
+                  "type": "int",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "lifted",
+                      "value": "false"
+                    },
+                    {
+                      "name": "operator",
+                      "value": "RightShift"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Binary",
+                      "type": "int",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "checked",
+                          "value": "false"
+                        },
+                        {
+                          "name": "lifted",
+                          "value": "false"
+                        },
+                        {
+                          "name": "operator",
+                          "value": "Subtract"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "LocalReference",
+                          "type": "int",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "local",
+                              "value": "quotient@1232"
+                            }
+                          ],
+                          "children": []
+                        },
+                        {
+                          "kind": "LocalReference",
+                          "type": "int",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "local",
+                              "value": "remainder@1269"
+                            }
+                          ],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Literal",
+                      "type": "int",
+                      "constant": "31",
+                      "isImplicit": false,
+                      "properties": [],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "SimpleAssignment",
+              "type": "int",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "int",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "firstPosition@1358"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "Binary",
+                  "type": "int",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "lifted",
+                      "value": "false"
+                    },
+                    {
+                      "name": "operator",
+                      "value": "Add"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Binary",
+                      "type": "int",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "checked",
+                          "value": "false"
+                        },
+                        {
+                          "name": "lifted",
+                          "value": "false"
+                        },
+                        {
+                          "name": "operator",
+                          "value": "Or"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "Binary",
+                          "type": "int",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "checked",
+                              "value": "false"
+                            },
+                            {
+                              "name": "lifted",
+                              "value": "false"
+                            },
+                            {
+                              "name": "operator",
+                              "value": "And"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "kind": "LocalReference",
+                              "type": "int",
+                              "isImplicit": false,
+                              "properties": [
+                                {
+                                  "name": "local",
+                                  "value": "quotient@1232"
+                                }
+                              ],
+                              "children": []
+                            },
+                            {
+                              "kind": "LocalReference",
+                              "type": "int",
+                              "isImplicit": false,
+                              "properties": [
+                                {
+                                  "name": "local",
+                                  "value": "mask@1309"
+                                }
+                              ],
+                              "children": []
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "Binary",
+                          "type": "int",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "checked",
+                              "value": "false"
+                            },
+                            {
+                              "name": "lifted",
+                              "value": "false"
+                            },
+                            {
+                              "name": "operator",
+                              "value": "And"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "kind": "LocalReference",
+                              "type": "int",
+                              "isImplicit": false,
+                              "properties": [
+                                {
+                                  "name": "local",
+                                  "value": "remainder@1269"
+                                }
+                              ],
+                              "children": []
+                            },
+                            {
+                              "kind": "Unary",
+                              "type": "int",
+                              "isImplicit": false,
+                              "properties": [
+                                {
+                                  "name": "checked",
+                                  "value": "false"
+                                },
+                                {
+                                  "name": "operator",
+                                  "value": "BitwiseNegation"
+                                }
+                              ],
+                              "children": [
+                                {
+                                  "kind": "LocalReference",
+                                  "type": "int",
+                                  "isImplicit": false,
+                                  "properties": [
+                                    {
+                                      "name": "local",
+                                      "value": "mask@1309"
+                                    }
+                                  ],
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Literal",
+                      "type": "int",
+                      "constant": "2",
+                      "isImplicit": false,
+                      "properties": [],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "SimpleAssignment",
+              "type": "int",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "int",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "secondPosition@1433"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "Binary",
+                  "type": "int",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "lifted",
+                      "value": "false"
+                    },
+                    {
+                      "name": "operator",
+                      "value": "Add"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Binary",
+                      "type": "int",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "checked",
+                          "value": "false"
+                        },
+                        {
+                          "name": "lifted",
+                          "value": "false"
+                        },
+                        {
+                          "name": "operator",
+                          "value": "Or"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "Binary",
+                          "type": "int",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "checked",
+                              "value": "false"
+                            },
+                            {
+                              "name": "lifted",
+                              "value": "false"
+                            },
+                            {
+                              "name": "operator",
+                              "value": "And"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "kind": "Binary",
+                              "type": "int",
+                              "isImplicit": false,
+                              "properties": [
+                                {
+                                  "name": "checked",
+                                  "value": "false"
+                                },
+                                {
+                                  "name": "lifted",
+                                  "value": "false"
+                                },
+                                {
+                                  "name": "operator",
+                                  "value": "Add"
+                                }
+                              ],
+                              "children": [
+                                {
+                                  "kind": "LocalReference",
+                                  "type": "int",
+                                  "isImplicit": false,
+                                  "properties": [
+                                    {
+                                      "name": "local",
+                                      "value": "remainder@1269"
+                                    }
+                                  ],
+                                  "children": []
+                                },
+                                {
+                                  "kind": "Literal",
+                                  "type": "int",
+                                  "constant": "1",
+                                  "isImplicit": false,
+                                  "properties": [],
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "LocalReference",
+                              "type": "int",
+                              "isImplicit": false,
+                              "properties": [
+                                {
+                                  "name": "local",
+                                  "value": "mask@1309"
+                                }
+                              ],
+                              "children": []
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "Binary",
+                          "type": "int",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "checked",
+                              "value": "false"
+                            },
+                            {
+                              "name": "lifted",
+                              "value": "false"
+                            },
+                            {
+                              "name": "operator",
+                              "value": "And"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "kind": "Binary",
+                              "type": "int",
+                              "isImplicit": false,
+                              "properties": [
+                                {
+                                  "name": "checked",
+                                  "value": "false"
+                                },
+                                {
+                                  "name": "lifted",
+                                  "value": "false"
+                                },
+                                {
+                                  "name": "operator",
+                                  "value": "Subtract"
+                                }
+                              ],
+                              "children": [
+                                {
+                                  "kind": "Literal",
+                                  "type": "int",
+                                  "constant": "29",
+                                  "isImplicit": false,
+                                  "properties": [],
+                                  "children": []
+                                },
+                                {
+                                  "kind": "LocalReference",
+                                  "type": "int",
+                                  "isImplicit": false,
+                                  "properties": [
+                                    {
+                                      "name": "local",
+                                      "value": "quotient@1232"
+                                    }
+                                  ],
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "Unary",
+                              "type": "int",
+                              "isImplicit": false,
+                              "properties": [
+                                {
+                                  "name": "checked",
+                                  "value": "false"
+                                },
+                                {
+                                  "name": "operator",
+                                  "value": "BitwiseNegation"
+                                }
+                              ],
+                              "children": [
+                                {
+                                  "kind": "LocalReference",
+                                  "type": "int",
+                                  "isImplicit": false,
+                                  "properties": [
+                                    {
+                                      "name": "local",
+                                      "value": "mask@1309"
+                                    }
+                                  ],
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Literal",
+                      "type": "int",
+                      "constant": "1",
+                      "isImplicit": false,
+                      "properties": [],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "SimpleAssignment",
+              "type": "bool",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "bool",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "isValid@1523"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "Binary",
+                  "type": "bool",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "lifted",
+                      "value": "false"
+                    },
+                    {
+                      "name": "operator",
+                      "value": "GreaterThan"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Conversion",
+                      "type": "uint",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "checked",
+                          "value": "false"
+                        },
+                        {
+                          "name": "conversion",
+                          "value": "exists,nonidentity,numeric,nonreference,explicit,nonnullable,builtin"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "Binary",
+                          "type": "int",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "checked",
+                              "value": "false"
+                            },
+                            {
+                              "name": "lifted",
+                              "value": "false"
+                            },
+                            {
+                              "name": "operator",
+                              "value": "Subtract"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "kind": "Conversion",
+                              "type": "int",
+                              "isImplicit": true,
+                              "properties": [
+                                {
+                                  "name": "checked",
+                                  "value": "false"
+                                },
+                                {
+                                  "name": "conversion",
+                                  "value": "exists,nonidentity,numeric,nonreference,implicit,nonnullable,builtin"
+                                }
+                              ],
+                              "children": [
+                                {
+                                  "kind": "ParameterReference",
+                                  "type": "byte",
+                                  "isImplicit": false,
+                                  "properties": [
+                                    {
+                                      "name": "parameter",
+                                      "value": "0"
+                                    }
+                                  ],
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "Literal",
+                              "type": "int",
+                              "constant": "82",
+                              "isImplicit": false,
+                              "properties": [],
+                              "children": []
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Conversion",
+                      "type": "uint",
+                      "constant": "45",
+                      "isImplicit": true,
+                      "properties": [
+                        {
+                          "name": "checked",
+                          "value": "false"
+                        },
+                        {
+                          "name": "conversion",
+                          "value": "exists,nonidentity,nonnumeric,nonreference,implicit,nonnullable,builtin"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "Literal",
+                          "type": "int",
+                          "constant": "45",
+                          "isImplicit": false,
+                          "properties": [],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "branchValue": {
+            "kind": "ObjectCreation",
+            "type": "Nethermind.Evm.ExtendedStackPairDecode",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "constructor",
+                "value": "Nethermind.Evm.ExtendedStackPairDecode.ExtendedStackPairDecode(bool isValid, int firstPosition, int secondPosition)"
+              }
+            ],
+            "children": [
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "LocalReference",
+                    "type": "bool",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "local",
+                        "value": "isValid@1523"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "LocalReference",
+                    "type": "int",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "local",
+                        "value": "firstPosition@1358"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "2"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "LocalReference",
+                    "type": "int",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "local",
+                        "value": "secondPosition@1433"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Return",
+            "destinationOrdinal": 2
+          }
+        },
+        {
+          "ordinal": 2,
+          "kind": "Exit",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 1,
+              "semantics": "Return"
+            }
+          ],
+          "operations": []
+        }
+      ]
+    },
+    {
+      "signature": "Nethermind.Evm.ExtendedStackSingleDecode Nethermind.Evm.ExtendedStackDecoderKernel.DecodeSingle(byte immediate)",
+      "returnType": "Nethermind.Evm.ExtendedStackSingleDecode",
+      "parameters": [
+        {
+          "ordinal": 0,
+          "name": "immediate",
+          "type": "byte"
+        }
+      ],
+      "blocks": [
+        {
+          "ordinal": 0,
+          "kind": "Entry",
+          "conditionKind": "None",
+          "predecessors": [],
+          "operations": [],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 1
+          }
+        },
+        {
+          "ordinal": 1,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 0,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "SimpleAssignment",
+              "type": "int",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "int",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "depth@891"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "Binary",
+                  "type": "int",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "lifted",
+                      "value": "false"
+                    },
+                    {
+                      "name": "operator",
+                      "value": "And"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Binary",
+                      "type": "int",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "checked",
+                          "value": "false"
+                        },
+                        {
+                          "name": "lifted",
+                          "value": "false"
+                        },
+                        {
+                          "name": "operator",
+                          "value": "Add"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "Conversion",
+                          "type": "int",
+                          "isImplicit": true,
+                          "properties": [
+                            {
+                              "name": "checked",
+                              "value": "false"
+                            },
+                            {
+                              "name": "conversion",
+                              "value": "exists,nonidentity,numeric,nonreference,implicit,nonnullable,builtin"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "kind": "ParameterReference",
+                              "type": "byte",
+                              "isImplicit": false,
+                              "properties": [
+                                {
+                                  "name": "parameter",
+                                  "value": "0"
+                                }
+                              ],
+                              "children": []
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "Literal",
+                          "type": "int",
+                          "constant": "145",
+                          "isImplicit": false,
+                          "properties": [],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Literal",
+                      "type": "int",
+                      "constant": "255",
+                      "isImplicit": false,
+                      "properties": [],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "SimpleAssignment",
+              "type": "bool",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "bool",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "isValid@938"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "Binary",
+                  "type": "bool",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "lifted",
+                      "value": "false"
+                    },
+                    {
+                      "name": "operator",
+                      "value": "GreaterThan"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Conversion",
+                      "type": "uint",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "checked",
+                          "value": "false"
+                        },
+                        {
+                          "name": "conversion",
+                          "value": "exists,nonidentity,numeric,nonreference,explicit,nonnullable,builtin"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "Binary",
+                          "type": "int",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "checked",
+                              "value": "false"
+                            },
+                            {
+                              "name": "lifted",
+                              "value": "false"
+                            },
+                            {
+                              "name": "operator",
+                              "value": "Subtract"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "kind": "Conversion",
+                              "type": "int",
+                              "isImplicit": true,
+                              "properties": [
+                                {
+                                  "name": "checked",
+                                  "value": "false"
+                                },
+                                {
+                                  "name": "conversion",
+                                  "value": "exists,nonidentity,numeric,nonreference,implicit,nonnullable,builtin"
+                                }
+                              ],
+                              "children": [
+                                {
+                                  "kind": "ParameterReference",
+                                  "type": "byte",
+                                  "isImplicit": false,
+                                  "properties": [
+                                    {
+                                      "name": "parameter",
+                                      "value": "0"
+                                    }
+                                  ],
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "Literal",
+                              "type": "int",
+                              "constant": "91",
+                              "isImplicit": false,
+                              "properties": [],
+                              "children": []
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Conversion",
+                      "type": "uint",
+                      "constant": "36",
+                      "isImplicit": true,
+                      "properties": [
+                        {
+                          "name": "checked",
+                          "value": "false"
+                        },
+                        {
+                          "name": "conversion",
+                          "value": "exists,nonidentity,nonnumeric,nonreference,implicit,nonnullable,builtin"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "Literal",
+                          "type": "int",
+                          "constant": "36",
+                          "isImplicit": false,
+                          "properties": [],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "branchValue": {
+            "kind": "ObjectCreation",
+            "type": "Nethermind.Evm.ExtendedStackSingleDecode",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "constructor",
+                "value": "Nethermind.Evm.ExtendedStackSingleDecode.ExtendedStackSingleDecode(bool isValid, int depth)"
+              }
+            ],
+            "children": [
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "LocalReference",
+                    "type": "bool",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "local",
+                        "value": "isValid@938"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "LocalReference",
+                    "type": "int",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "local",
+                        "value": "depth@891"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Return",
+            "destinationOrdinal": 2
+          }
+        },
+        {
+          "ordinal": 2,
+          "kind": "Exit",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 1,
+              "semantics": "Return"
+            }
+          ],
+          "operations": []
+        }
+      ]
+    }
+  ],
+  "program": {
+    "singleResultFields": [
+      {
+        "name": "IsValid",
+        "type": "bool",
+        "constructorParameterOrdinal": 0
+      },
+      {
+        "name": "Depth",
+        "type": "int",
+        "constructorParameterOrdinal": 1
+      }
+    ],
+    "pairResultFields": [
+      {
+        "name": "IsValid",
+        "type": "bool",
+        "constructorParameterOrdinal": 0
+      },
+      {
+        "name": "FirstPosition",
+        "type": "int",
+        "constructorParameterOrdinal": 1
+      },
+      {
+        "name": "SecondPosition",
+        "type": "int",
+        "constructorParameterOrdinal": 2
+      }
+    ]
+  },
+  "adapter": {
+    "immediateReader": "ReadEip8024ImmediateOrZero",
+    "singleDecoder": "TryDecodeSingle",
+    "pairDecoder": "TryDecodePair",
+    "adapterSteps": [
+      "read immediate or zero",
+      "decode through the pure kernel",
+      "project depth or one-based positions",
+      "reject an invalid immediate without advancing PC",
+      "advance PC after a valid immediate"
+    ],
+    "missingImmediateReadsZero": true,
+    "kernelDecodePrecedesValidityGate": true,
+    "invalidImmediateDoesNotAdvanceProgramCounter": true,
+    "validImmediateAdvancesProgramCounter": true,
+    "singleDepthMapsToDupAndOneBasedSwap": true,
+    "pairPositionsMapToOneBasedExchange": true,
+    "decoderInvocationsBindToTopLevelKernel": true
+  }
+}

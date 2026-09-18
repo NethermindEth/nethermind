@@ -8,7 +8,6 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -85,18 +84,23 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
     {
         // Track cumulative block gas for restore (execution + EIP-8037 state)
         (ulong prevExecution, ulong prevState) = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : (0, 0);
-        ulong cumulativeBlockGas = prevExecution + gasConsumed.EffectiveBlockGas;
-        ulong cumulativeBlockStateGas = prevState + gasConsumed.BlockStateGas;
-        _cumulativeBlockGasPerTx.Add((cumulativeBlockGas, cumulativeBlockStateGas));
+        BlockReceiptGasAccountingResult accounting = BlockReceiptGasAccountingKernel.Accumulate(
+            prevExecution,
+            prevState,
+            _cumulativeReceiptGas,
+            gasConsumed.EffectiveBlockGas,
+            gasConsumed.BlockStateGas,
+            gasConsumed.SpentGas);
+        _cumulativeBlockGasPerTx.Add((accounting.CumulativeExecutionGas, accounting.CumulativeStateGas));
 
         // EIP-8037: block gasUsed = max(sum_execution, sum_state). Override header accumulation.
         if (!parallel)
         {
-            Block.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(cumulativeBlockGas, cumulativeBlockStateGas);
+            Block.Header.GasUsed = accounting.HeaderGasUsed;
         }
 
         // Track cumulative receipt gas (post-refund)
-        _cumulativeReceiptGas += gasConsumed.SpentGas;
+        _cumulativeReceiptGas = accounting.CumulativeReceiptGas;
 
         Debug.Assert(_txReceipts.Count + 1 == _cumulativeBlockGasPerTx.Count,
             "Receipt and gas tracking lists must remain synchronized");
@@ -306,10 +310,14 @@ public class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, ITxTrace
 
         // Restore block gas from tracking: max(cumulative_execution, cumulative_state) for EIP-8037
         (ulong cumulativeExecution, ulong cumulativeState) = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : (0, 0);
-        Block.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(cumulativeExecution, cumulativeState);
-
         // Restore receipt gas from remaining receipts (post-refund)
-        _cumulativeReceiptGas = _txReceipts.Count > 0 ? _txReceipts[^1].GasUsedTotal : 0;
+        ulong cumulativeReceipt = _txReceipts.Count > 0 ? _txReceipts[^1].GasUsedTotal : 0;
+        BlockReceiptGasAccountingResult accounting = BlockReceiptGasAccountingKernel.FromTotals(
+            cumulativeExecution,
+            cumulativeState,
+            cumulativeReceipt);
+        Block.Header.GasUsed = accounting.HeaderGasUsed;
+        _cumulativeReceiptGas = accounting.CumulativeReceiptGas;
     }
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>

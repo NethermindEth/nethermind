@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Nethermind.Evm.Lean.OrdinaryTransactionRefundAdapterExtractor</AssemblyName>
+    <RootNamespace>Nethermind.Evm.Lean.OrdinaryTransactionRefundAdapterExtractor</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="Test/**/*.cs" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Nethermind.Evm.Lean.OrdinaryTransactionRefundAdapterExtractor.Test</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>

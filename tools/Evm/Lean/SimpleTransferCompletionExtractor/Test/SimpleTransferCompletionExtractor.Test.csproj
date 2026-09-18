@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="../../../../../src/Nethermind/tests.props" />
+
+  <PropertyGroup>
+    <AssemblyName>Nethermind.Evm.Lean.SimpleTransferCompletionExtractor.Test</AssemblyName>
+    <RootNamespace>Nethermind.Evm.Lean.SimpleTransferCompletionExtractor.Test</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../SimpleTransferCompletionExtractor.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -127,8 +127,7 @@ public static partial class EvmInstructions
         // This guard ensures we do not create nested contract calls beyond EVM limits.
         if (env.CallDepth >= MaxCallDepth)
         {
-            vm.ReturnDataBuffer = default;
-            return stack.PushZero<TTracingInst, OnFlag>();
+            return CompleteCreateWithoutChild<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
         }
 
         // Load the initialization code from memory based on the specified position and length.
@@ -139,16 +138,14 @@ public static partial class EvmInstructions
         UInt256 balance = state.GetBalance(env.ExecutingAccount);
         if (value > balance)
         {
-            vm.ReturnDataBuffer = default;
-            return stack.PushZero<TTracingInst, OnFlag>();
+            return CompleteCreateWithoutChild<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
         }
 
         // Retrieve the nonce of the executing account to ensure it hasn't reached the maximum.
         ulong accountNonce = state.GetNonce(env.ExecutingAccount);
         if (accountNonce >= ulong.MaxValue)
         {
-            vm.ReturnDataBuffer = default;
-            return stack.PushZero<TTracingInst, OnFlag>();
+            return CompleteCreateWithoutChild<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
         }
 
         // Compute the contract address:
@@ -164,9 +161,12 @@ public static partial class EvmInstructions
             vm.VmState.AccessTracker.WarmUp(contractAddress);
         }
 
-        bool isNonZeroAccount = state.IsNonZeroAccount(contractAddress, out bool accountExists);
-        bool isAliveAccount = !state.IsDeadAccount(contractAddress);
-        bool chargeCreateStateGas = TEip8037.IsActive && !isAliveAccount;
+        bool isCreateCollision = state.IsCreateCollision(
+            contractAddress,
+            TEip8037.IsActive,
+            out bool physicalLeafExists,
+            out bool logicalAccountExists);
+        bool chargeCreateStateGas = TEip8037.IsActive && !logicalAccountExists;
 
         if (chargeCreateStateGas && !TGasPolicy.TryConsumeCreateStateGas(ref gas))
             goto OutOfGas;
@@ -191,9 +191,10 @@ public static partial class EvmInstructions
         // Analyze and compile the initialization code.
         CodeInfo? codeInfo = CodeInfoFactory.CreateCodeInfo(initCode);
 
-        // EIP-684: if the account already exists with code or a non-zero nonce, the creation fails.
+        // EIP-684: code or a non-zero nonce causes a creation collision.
+        // EIP-8037 additionally adopts EIP-7610's non-empty storage collision.
         // Collision behaves as an immediate exceptional halt - burned callGas counts as block_execution.
-        if (isNonZeroAccount)
+        if (isCreateCollision)
         {
             if (chargeCreateStateGas)
             {
@@ -204,7 +205,8 @@ public static partial class EvmInstructions
             return stack.PushZero<TTracingInst, OnFlag>();
         }
 
-        state.ClearStorage(contractAddress);
+        if (!TEip8037.IsActive)
+            state.ClearStorage(contractAddress);
 
         // Deduct the transfer value from the executing account's balance.
         state.SubtractFromBalance(env.ExecutingAccount, value, spec);
@@ -227,7 +229,7 @@ public static partial class EvmInstructions
             outputLength: 0,
             executionType: TOpCreate.ExecutionType,
             isStatic: vm.VmState.IsStatic,
-            isCreateOnPreExistingAccount: accountExists,
+            isCreateOnPreExistingAccount: physicalLeafExists,
             env: callEnv,
             stateForAccessLists: in vm.VmState.AccessTracker,
             snapshot: in snapshot,
@@ -242,5 +244,18 @@ public static partial class EvmInstructions
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
 
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType CompleteCreateWithoutChild<TGasPolicy, TTracingInst>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        vm.ReturnDataBuffer = default;
+        EvmExceptionType result = stack.PushZero<TTracingInst, OnFlag>();
+        if (TTracingInst.IsActive)
+            vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+        return result;
     }
 }

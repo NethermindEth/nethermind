@@ -1,0 +1,20 @@
+using Nethermind.Core;
+using Nethermind.Evm.Tracing;
+
+namespace Nethermind.Evm;
+
+public partial class VirtualMachine<TGasPolicy>
+{
+    public ITxTracer TxTracer => _txTracer;
+    public VmState<TGasPolicy> VmState { get => _currentState; protected set => _currentState = value; }
+
+    internal void AddLog(LogEntry logEntry)
+    {
+        VmState.AccessTracker.Logs.Add(logEntry);
+
+        if (DispatchFlags.ConstTracing && TxTracer.IsTracingLogs)
+        {
+            TxTracer.ReportLog(logEntry);
+        }
+    }
+}

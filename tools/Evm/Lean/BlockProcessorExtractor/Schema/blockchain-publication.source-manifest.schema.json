@@ -1,0 +1,494 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BlockchainPublication source-audited manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "extractorVersion",
+    "name",
+    "acceptanceState",
+    "sourceClosureSha256",
+    "ir",
+    "lean",
+    "sources",
+    "dependencies"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "extractorVersion": {
+      "const": "1.0.0"
+    },
+    "name": {
+      "const": "BlockchainPublication"
+    },
+    "acceptanceState": {
+      "const": "source-admitted"
+    },
+    "sourceClosureSha256": {
+      "$ref": "#/$defs/hash"
+    },
+    "ir": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/identity"
+        },
+        {
+          "properties": {
+            "path": {
+              "const": "BlockchainPublication.ir.json"
+            }
+          }
+        }
+      ]
+    },
+    "lean": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/identity"
+        },
+        {
+          "properties": {
+            "path": {
+              "const": "BlockchainPublication.lean"
+            }
+          }
+        }
+      ]
+    },
+    "sources": {
+      "description": "Seventeen compiled semantic trees plus six pinned declaration sources; the four compiler-support trees remain separately bound by the accepted Branch manifest.",
+      "const": [
+        {
+          "path": "src/Nethermind/Nethermind.Blockchain/IBlockTree.cs",
+          "sha256": "fd4713254e7cfbf079f2edec9fc45e8ddfc4eacff858722e7f8992b5d0afb274"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Blockchain/Receipts/IReceiptStorage.cs",
+          "sha256": "bccf3716b8bc0be5112cfba522ce58d2b51a6865a0bed20563b090bee62e1328"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+          "sha256": "d520090e2adde45bced4b6af6f9add35ea77ed288060d09fdf05cae3b28bdf56"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+          "sha256": "e2db419219184150c979cd6a081c83ba758c5024a15f996b510806bd1303deda"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.std.cs",
+          "sha256": "7ec6d0f975f36958f83b002ca53404620427a756cab70a037c0988ed75567ed4"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockRef.cs",
+          "sha256": "ede22b15471c363d7713f5daf3fcbe0ba959c49c1ce5cc0ddfbe10faeb9d7a7e"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+          "sha256": "fc76d8d4dcf30093fb2e52262e8cd90d71493c2dc3ce04a1f314dd8f24f3a8cb"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessingCompletedEventArgs.cs",
+          "sha256": "f0d3fbeac9c35f442d301d2044d903988cdfb726c2f486f5a29b288fc67d283b"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+          "sha256": "451ad7a9cbb283351519623dcf358e7d3efdb69db2a0e5a452614cbe1d3dc369"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/IBlockProcessingQueue.cs",
+          "sha256": "b37a8491ac796a72eb38d51b43354e4c77c656a487a68cd82d065aedf58ecfd4"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/IBlockProcessor.cs",
+          "sha256": "df79a2a24ca0ad79918cf10bce5b9d74cb4ad1b7542185b41076a0f3758a940e"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/IBlockchainProcessor.cs",
+          "sha256": "60818b4b3cab75c49a588e3ef61861708553a9b8c9595f5b529974d1bfd92f38"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/IBranchProcessor.cs",
+          "sha256": "fc9ecd1b27f22c9b0861615e6c4f0c24f9430ae759e9c040c9e989d9249a0b20"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/ProcessingOptions.cs",
+          "sha256": "145c5bec2a5e70e01dc448a887cd17bb1b81277605a487e437971882a5b0421a"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Validators/BlockValidator.cs",
+          "sha256": "7cc7b515c3001ba4f36ea16b74216f84216556c95d87585a192979e8c4f195d6"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Validators/IBlockValidator.cs",
+          "sha256": "38cb507befc9695e522b16260b713b0b7b84efa226b857f7e5f410be0fd4e4c3"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Block.cs",
+          "sha256": "3cdd12ca52b00b6eefea372be868649653ac57043194aa081d41064d0ed749aa"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/BlockHeader.cs",
+          "sha256": "f354ddd2d45afc8774739ac46a10535b915871ce4ad11d996d0ab972cf9e7349"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Collections/ArrayPoolList.cs",
+          "sha256": "4d88f251cc668907ec51ba06d342efdc278417eb628c7634d2957d1359e32b67"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Crypto/Hash256.cs",
+          "sha256": "ce570ece3b5cd5b8abf9d99491c03340fe32e235a6ad15c65b98e6dbddab18f1"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Exceptions/InvalidBlockException.cs",
+          "sha256": "2098b8a970bd64d589d556a773eb0312a4681f8978f1a991f55af249b3f1aa56"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Extensions/CancellationTokenExtensions.cs",
+          "sha256": "7811bd704199aaae97c164a54b25f77a1613f716fe298c2baa2b4ac78d3d4fe0"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.State/WorldState.cs",
+          "sha256": "2dec74bcc5748a1850d1bed1e8fe0221aed8c904bf2ba0c0827e76e603a71f18"
+        }
+      ]
+    },
+    "dependencies": {
+      "type": "array",
+      "minItems": 21,
+      "maxItems": 21,
+      "prefixItems": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Generated/NormalFiniteBranchCompletion.ir.json"
+                },
+                "sha256": {
+                  "const": "ebccc9751bc3f65dc577ad78e9202497b9eeb38d410ec43c0c5d8808e7a15816"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Generated/NormalFiniteBranchCompletion.lean"
+                },
+                "sha256": {
+                  "const": "71fb06de4352ff82041687051bf3fa72968fbd351a88068ced427f9011ba7638"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Generated/NormalFiniteBranchCompletion.source-manifest.json"
+                },
+                "sha256": {
+                  "const": "5de2e5fe4d00d76f944806b5bf0044226011ead1f3a1a11ee99c80653dc01463"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Specification/NormalFiniteBranchCompletion.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Refinement/NormalFiniteBranchCompletion.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/NormalFiniteBranchCompletion.lean.template"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/OuterBlockExtractor.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/BlockchainPublication.lean.template"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Specification/BlockchainPublication.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Refinement/BlockchainPublication.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Vectors/OuterBlockVectors.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/EXPORTED_OUTER_THEOREMS.txt"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/PUBLICATION_CENSUS_PINS.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Verify-OuterAxioms.ps1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Verify-Outer.ps1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Verify-OuterMutationGates.ps1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Schema/blockchain-publication.ir.schema.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Schema/blockchain-publication.source-manifest.schema.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/PUBLICATION_PROMOTION_PINS.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Admission/BlockchainOuter.cs.txt"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "items": false
+    }
+  },
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "sha256": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    }
+  }
+}

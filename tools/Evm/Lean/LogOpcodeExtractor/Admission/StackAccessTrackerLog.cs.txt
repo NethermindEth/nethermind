@@ -1,0 +1,9 @@
+using Nethermind.Core;
+using Nethermind.Core.Collections;
+
+namespace Nethermind.Evm;
+
+public struct StackAccessTracker
+{
+    public readonly JournalCollection<LogEntry> Logs => _trackingState.Logs;
+}

@@ -1,0 +1,1527 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Source-admitted normal BranchProcessor iteration and terminal finally",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "extractorVersion",
+    "acceptanceState",
+    "sourceClosureSha256",
+    "sources",
+    "dependencies",
+    "compilerClosure",
+    "sites",
+    "controlFlows",
+    "program",
+    "checkpointModulus",
+    "exclusions"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 2
+    },
+    "acceptanceState": {
+      "const": "source-admitted"
+    },
+    "sourceClosureSha256": {
+      "$ref": "#/$defs/hash"
+    },
+    "sources": {
+      "description": "Exact ordered semantic-source closure; compiler-support trees are not semantic roots.",
+      "const": [
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+          "sha256": "451ad7a9cbb283351519623dcf358e7d3efdb69db2a0e5a452614cbe1d3dc369"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.State/WorldState.cs",
+          "sha256": "2dec74bcc5748a1850d1bed1e8fe0221aed8c904bf2ba0c0827e76e603a71f18"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessingCompletedEventArgs.cs",
+          "sha256": "f0d3fbeac9c35f442d301d2044d903988cdfb726c2f486f5a29b288fc67d283b"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/IBranchProcessor.cs",
+          "sha256": "fc9ecd1b27f22c9b0861615e6c4f0c24f9430ae759e9c040c9e989d9249a0b20"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Extensions/CancellationTokenExtensions.cs",
+          "sha256": "7811bd704199aaae97c164a54b25f77a1613f716fe298c2baa2b4ac78d3d4fe0"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+          "sha256": "e2db419219184150c979cd6a081c83ba758c5024a15f996b510806bd1303deda"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Validators/BlockValidator.cs",
+          "sha256": "7cc7b515c3001ba4f36ea16b74216f84216556c95d87585a192979e8c4f195d6"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Validators/IBlockValidator.cs",
+          "sha256": "38cb507befc9695e522b16260b713b0b7b84efa226b857f7e5f410be0fd4e4c3"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/ProcessingOptions.cs",
+          "sha256": "145c5bec2a5e70e01dc448a887cd17bb1b81277605a487e437971882a5b0421a"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.std.cs",
+          "sha256": "7ec6d0f975f36958f83b002ca53404620427a756cab70a037c0988ed75567ed4"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/IBlockProcessor.cs",
+          "sha256": "df79a2a24ca0ad79918cf10bce5b9d74cb4ad1b7542185b41076a0f3758a940e"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+          "sha256": "d520090e2adde45bced4b6af6f9add35ea77ed288060d09fdf05cae3b28bdf56"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Blockchain/Receipts/IReceiptStorage.cs",
+          "sha256": "bccf3716b8bc0be5112cfba522ce58d2b51a6865a0bed20563b090bee62e1328"
+        }
+      ]
+    },
+    "dependencies": {
+      "type": "array",
+      "minItems": 82,
+      "maxItems": 82,
+      "items": false,
+      "prefixItems": [
+        {
+          "const": {
+            "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/ProcessOneValidatedPublication.source-manifest.json",
+            "sha256": "547dbea87c2c26539a11b4e3db1f2d22db4d7590a6a68c1695a46f70518bdf3d"
+          }
+        },
+        {
+          "const": {
+            "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/ProcessOneValidatedPublication.ir.json",
+            "sha256": "201d8d2e6163d3a75b439cebf0e5fa7754792c3ba63de70b246939bc9d4cad3a"
+          }
+        },
+        {
+          "const": {
+            "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/ProcessOneValidatedPublication.lean",
+            "sha256": "7f47700c2f38717b37c6f8bb7e187021d9af8e6a641389fa0bd27865122eec5d"
+          }
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Validators/BlockValidator.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Validators/IBlockValidator.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Processing/ProcessingOptions.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.std.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Processing/IBlockProcessor.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Blockchain/Receipts/IReceiptStorage.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/LeanEmitter.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Specification/SequentialBlockPostTransactionFinalization.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Refinement/SequentialBlockPostTransactionFinalization.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Vectors/SequentialBlockPostTransactionFinalizationVectors.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/EXPORTED_THEOREMS.txt"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Verify-Axioms.ps1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Verify-MutationGates.ps1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PROMOTION_PINS.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Core/Metric/MetricsTimer.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.SystemContractHandler.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockAccessListSystemContractHandler.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Processing/TransactionProcessorAdapterExtensions.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Processing/IBlockAccessListManager.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/SOURCE_PINS.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.ir.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.source-manifest.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Specification/SequentialBlockTransactionFold.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Refinement/SequentialBlockTransactionFold.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Vectors/SequentialBlockTransactionFoldVectors.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/EXPORTED_THEOREMS.txt"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Verify-Axioms.ps1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/SOURCE_PINS.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.ir.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.source-manifest.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Specification/ReceiptTerminalFold.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Refinement/ReceiptTerminalFold.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Vectors/ReceiptTerminalFoldVectors.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/EXPORTED_THEOREMS.txt"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Verify-Axioms.ps1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/Eip803x/BlockReceiptGas.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/Eip803x/TransactionGas.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/Eip803x/Generated/BlockReceiptGasAccountingKernel.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/Eip803x/Generated/TransactionGasInitializationKernel.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/Eip803x/Refinement/BlockReceiptGasAccounting.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/Eip803x/Refinement/TransactionGasInitialization.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Specification/ProcessOneValidatedPublication.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Refinement/ProcessOneValidatedPublication.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Vectors/ProcessOneValidatedPublicationVectors.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PROCESS_ONE_PUBLICATION_SOURCE_PINS.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PUBLICATION_PROMOTION_PINS.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PUBLICATION_EXPORTED_THEOREMS.txt"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Verify-PublicationAxioms.ps1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Verify-PublicationMutationGates.ps1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Schema/process-one-validated-publication.ir.schema.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Schema/process-one-validated-publication.source-manifest.schema.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/SequentialBlockPostTransactionFinalization.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/SequentialBlockPostTransactionFinalization.ir.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/SequentialBlockPostTransactionFinalization.source-manifest.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PublicationKernel.lean.template"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/BRANCH_PROMOTION_PINS.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/BranchKernel.lean.template"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Admission/BranchAcceptedIteration.cs.txt"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Specification/BranchAcceptedIteration.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Refinement/BranchAcceptedIteration.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Vectors/BranchAcceptedIterationVectors.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Schema/branch-accepted-iteration.ir.schema.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Schema/branch-accepted-iteration.source-manifest.schema.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Verify-Branch.ps1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Verify-BranchMutationGates.ps1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Verify-BranchAxioms.ps1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/EXPORTED_BRANCH_THEOREMS.txt"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/BranchAcceptedIterationExtractor.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/BranchPromotionAdmission.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Extractor.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/Program.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/BlockProcessorExtractor.csproj"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/lakefile.toml"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/identity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/BlockProcessorExtractor/lean-toolchain"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "sites": {
+      "type": "array",
+      "minItems": 33,
+      "maxItems": 33,
+      "items": {
+        "$ref": "#/$defs/site"
+      }
+    },
+    "controlFlows": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": {
+        "$ref": "#/$defs/flow"
+      }
+    },
+    "checkpointModulus": {
+      "const": 64
+    },
+    "program": {
+      "type": "array",
+      "minItems": 18,
+      "maxItems": 18,
+      "items": false,
+      "prefixItems": [
+        {
+          "const": "cancel"
+        },
+        {
+          "const": "assignSlot"
+        },
+        {
+          "const": "inclusion"
+        },
+        {
+          "const": "queueClear"
+        },
+        {
+          "const": "waitPrewarm"
+        },
+        {
+          "const": "commitTree"
+        },
+        {
+          "const": "countSuccess"
+        },
+        {
+          "const": "blockEvent"
+        },
+        {
+          "const": "checkpointDispose"
+        },
+        {
+          "const": "checkpointReopen"
+        },
+        {
+          "const": "nextBase"
+        },
+        {
+          "const": "clearPrefetch"
+        },
+        {
+          "const": "reset"
+        },
+        {
+          "const": "scheduleHashes"
+        },
+        {
+          "const": "unsubscribe"
+        },
+        {
+          "const": "disposeFinally"
+        },
+        {
+          "const": "completionEvent"
+        },
+        {
+          "const": "return"
+        }
+      ]
+    },
+    "exclusions": {
+      "$ref": "#/$defs/strings"
+    },
+    "extractorVersion": {
+      "const": "1.0.0"
+    },
+    "compilerClosure": {
+      "$ref": "#/$defs/compilerClosure"
+    }
+  },
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "strings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/hash"
+        }
+      }
+    },
+    "site": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "owner",
+        "target",
+        "syntax",
+        "position",
+        "cfgBlock",
+        "region",
+        "trueGuards",
+        "reads",
+        "writes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "syntax": {
+          "type": "string",
+          "minLength": 1
+        },
+        "position": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cfgBlock": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "region": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trueGuards": {
+          "$ref": "#/$defs/strings"
+        },
+        "reads": {
+          "$ref": "#/$defs/strings"
+        },
+        "writes": {
+          "$ref": "#/$defs/strings"
+        }
+      }
+    },
+    "flow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "blocks",
+        "edges"
+      ],
+      "properties": {
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "blocks": {
+          "$ref": "#/$defs/strings"
+        },
+        "edges": {
+          "$ref": "#/$defs/strings"
+        }
+      }
+    },
+    "reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "assemblyName",
+        "sha256",
+        "mvid",
+        "selected"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "assemblyName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/hash"
+        },
+        "mvid": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        },
+        "selected": {
+          "type": "boolean"
+        }
+      }
+    },
+    "compilerClosure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "inventory",
+        "count",
+        "selectedCount",
+        "aggregateSha256",
+        "references",
+        "supportSources"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 2
+        },
+        "inventory": {
+          "const": {
+            "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json",
+            "sha256": "1f73a3800a957dd02d9d7b06b3b955c81bb92fd9eb8d2831920905394bfc1d5c"
+          }
+        },
+        "count": {
+          "const": 434
+        },
+        "selectedCount": {
+          "const": 329
+        },
+        "aggregateSha256": {
+          "const": "6fdfa102a4190083ae62080355aa6691b5f46acc32d4f9da2212012686d9c2e2"
+        },
+        "references": {
+          "type": "array",
+          "minItems": 434,
+          "maxItems": 434,
+          "items": {
+            "$ref": "#/$defs/reference"
+          },
+          "contains": {
+            "type": "object",
+            "properties": {
+              "selected": {
+                "const": true
+              }
+            },
+            "required": [
+              "selected"
+            ]
+          },
+          "minContains": 329,
+          "maxContains": 329
+        },
+        "supportSources": {
+          "description": "Exact ordered compiler-support closure; these trees supply types, not additional semantic roots.",
+          "const": [
+            {
+              "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.SystemContractHandler.cs",
+              "sha256": "a069ba0962027b068e388544d3f338a47990f11e5085d381238231607758128b"
+            },
+            {
+              "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockAccessListSystemContractHandler.cs",
+              "sha256": "07342dde345dcec7b34569e8cb9f447f9d4abe3a640cd127559db77f2e1981fe"
+            },
+            {
+              "path": "src/Nethermind/Nethermind.Consensus/Processing/TransactionProcessorAdapterExtensions.cs",
+              "sha256": "910820a7e8bba91c30b052f5818707c46d625a2fbf12727e2aa869512120aa9e"
+            },
+            {
+              "path": "src/Nethermind/Nethermind.Consensus/Processing/IBlockAccessListManager.cs",
+              "sha256": "0ed401a074b32a35fb3de497a516d8b717802c55ffdac3f1cd773a7f4e6be273"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

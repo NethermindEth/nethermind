@@ -1,0 +1,11 @@
+name = "CallDataLoadOpcodeExtractor"
+version = "0.1.0"
+defaultTargets = ["CallDataLoadOpcodeExtractor.Refinement.CallDataLoadOpcode"]
+
+[[lean_lib]]
+name = "Eip803x"
+srcDir = ".."
+
+[[lean_lib]]
+name = "CallDataLoadOpcodeExtractor"
+srcDir = ".."

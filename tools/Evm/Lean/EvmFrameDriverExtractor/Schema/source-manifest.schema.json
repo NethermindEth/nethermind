@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "extractorVersion", "roslynVersion", "languageVersion", "kernel", "sources", "members", "dependencies", "sourceControl", "controlPlan", "ir", "lean", "combinedSourceSha256", "combinedMemberSha256", "combinedControlSha256", "reviewedOperationalBindings"],
+  "properties": {
+    "schemaVersion": {"const": 1}, "extractorVersion": {"type": "string"}, "roslynVersion": {"type": "string"},
+    "languageVersion": {"const": "CSharp14"}, "kernel": {"type": "string"},
+    "sources": {"type": "array", "minItems": 12, "items": {"$ref": "#/definitions/source"}},
+    "members": {"type": "array", "minItems": 20, "items": {"$ref": "#/definitions/member"}},
+    "dependencies": {"type": "array", "minItems": 8, "items": {"$ref": "#/definitions/dependency"}},
+    "sourceControl": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"$ref": "#/definitions/sourceControl"}},
+    "controlPlan": {"type": "array", "minItems": 5, "maxItems": 5, "items": {"$ref": "#/definitions/controlPlanStep"}},
+    "ir": {"$ref": "#/definitions/artifact"}, "lean": {"$ref": "#/definitions/artifact"},
+    "combinedSourceSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "combinedMemberSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "combinedControlSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "reviewedOperationalBindings": {"type": "array", "minItems": 5, "items": {"type": "string", "minLength": 1}}
+  },
+  "definitions": {
+    "artifact": {"type": "object", "additionalProperties": false, "required": ["path", "sha256"], "properties": {"path": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}},
+    "source": {"type": "object", "additionalProperties": false, "required": ["role", "path", "sha256", "syntaxSha256"], "properties": {"role": {"type": "string"}, "path": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "syntaxSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}},
+    "member": {"type": "object", "additionalProperties": false, "required": ["sourcePath", "namespace", "ownerPath", "memberKind", "member", "genericArity", "parameterTypes", "syntaxKind", "sha256"], "properties": {"sourcePath": {"type": "string"}, "namespace": {"type": "string"}, "ownerPath": {"type": "string"}, "memberKind": {"type": "string"}, "member": {"type": "string"}, "genericArity": {"type": "integer", "minimum": 0}, "parameterTypes": {"type": "string"}, "syntaxKind": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}},
+    "controlNode": {"type": "object", "additionalProperties": false, "required": ["id", "kind", "parentId", "arm", "condition", "sha256", "operations"], "properties": {"id": {"type": "string"}, "kind": {"type": "string"}, "parentId": {"type": "string"}, "arm": {"type": "string"}, "condition": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "operations": {"type": "array", "items": {"type": "string"}}}},
+    "sourceControl": {"type": "object", "additionalProperties": false, "required": ["sourcePath", "ownerPath", "member", "sha256", "operations", "topology", "topologySha256"], "properties": {"sourcePath": {"type": "string"}, "ownerPath": {"type": "string"}, "member": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "operations": {"type": "array", "items": {"type": "string"}}, "topology": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/controlNode"}}, "topologySha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}},
+    "controlPlanStep": {"type": "object", "additionalProperties": false, "required": ["stage", "member", "nodeId", "kind", "sourceArm", "sourceSha256"], "properties": {"stage": {"enum": ["prepare", "dispatch", "classify", "settle", "cleanup"]}, "member": {"type": "string"}, "nodeId": {"type": "string"}, "kind": {"type": "string"}, "sourceArm": {"type": "string"}, "sourceSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}},
+    "dependency": {"type": "object", "additionalProperties": false, "required": ["kind", "name", "path", "sha256", "binding", "theorems"], "properties": {"kind": {"enum": ["generated", "proof"]}, "name": {"type": "string"}, "path": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "binding": {"type": "string"}, "theorems": {"type": "array", "items": {"type": "string"}}}}
+  }
+}

@@ -198,6 +198,18 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
         Address address,
         Address? delegated);
 
+    /// <summary>Charges an optional delegated CALL-family target access.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool TryConsumeDelegatedAccountAccessGas<Eip2929, Eip8038>(ref TSelf gas,
+        IReleaseSpec spec,
+        ref readonly StackAccessTracker accessTracker,
+        bool isTracingAccess,
+        Address? delegated)
+        where Eip2929 : struct, IFlag
+        where Eip8038 : struct, IFlag =>
+        !Eip2929.IsActive || delegated is null || TSelf.TryConsumeAccountAccessGas<Eip2929, Eip8038>(
+            ref gas, spec, in accessTracker, isTracingAccess, delegated);
+
     static abstract bool TryConsumeAccountAccessGas(ref TSelf gas,
         IReleaseSpec spec,
         ref readonly StackAccessTracker accessTracker,

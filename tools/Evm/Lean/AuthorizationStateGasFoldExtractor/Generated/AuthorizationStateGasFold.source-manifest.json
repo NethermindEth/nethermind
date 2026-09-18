@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 2,
+  "extractorVersion": "1.2.0",
+  "compilerVersion": "5.6.0.0",
+  "languageVersion": "14.0",
+  "ancestorBaselineCommit": "b2478235e71e6a7ec2a509aa0155e25d5fdfff80",
+  "sourceIdentityAuthority": "The source-manifest SHA-256 identities are authoritative for the admitted current source; the ancestor baseline records lineage only.",
+  "kernel": "Nethermind.Evm.AuthorizationStateGasFold",
+  "sources": [
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "sha256": "3c31ba40c24a78bf11243b38859168350f02934806124e913da0560bc1a4350f"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+      "sha256": "0374c6f35a9a23361f37b41162ac281ca83b09846ab4295d5a592db6315c99cc"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/IntrinsicGasCalculator.cs",
+      "sha256": "886772dce848f566ba97a112a9b12b9f535a2d951dace63647136ababd822909"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+      "sha256": "fce65ce5bb523c56fc8aa6ee0e4d092c940a5a90b174c820ffe262eeb5241c60"
+    }
+  ],
+  "admissions": [
+    {
+      "key": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs:compilation-unit/0:complete-source",
+      "sourceSha256": "3c31ba40c24a78bf11243b38859168350f02934806124e913da0560bc1a4350f"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs:compilation-unit/0:complete-source",
+      "sourceSha256": "0374c6f35a9a23361f37b41162ac281ca83b09846ab4295d5a592db6315c99cc"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/IntrinsicGasCalculator.cs:compilation-unit/0:complete-source",
+      "sourceSha256": "886772dce848f566ba97a112a9b12b9f535a2d951dace63647136ababd822909"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs:compilation-unit/0:complete-source",
+      "sourceSha256": "fce65ce5bb523c56fc8aa6ee0e4d092c940a5a90b174c820ffe262eeb5241c60"
+    }
+  ],
+  "ir": {
+    "path": "AuthorizationStateGasFold.ir.json",
+    "sha256": "d1d86731c09eabde1385e6a2f811ed881a4071940946ab4aa8e762f2ff443b3c"
+  },
+  "lean": {
+    "path": "tools/Evm/Lean/AuthorizationStateGasFoldExtractor/Generated/AuthorizationStateGasFold.lean",
+    "sha256": "562a288d1ce8538310287867dd1346e74431693c1d5b4bef7e83103a22a790be"
+  },
+  "combinedSha256": "ebc9e1585c67ae8ab227f4a64312b221509a18331b8071e5c8354617c67b549c",
+  "dependencies": [
+    {
+      "name": "TransactionGasInitialization",
+      "manifestPath": "tools/Evm/Lean/Extractor/Generated/TransactionGasInitializationKernel.source-manifest.json",
+      "manifestSha256": "c4081417da301771539d0509bf281a42f40a1a719cc4611c051e60fc8d6c7202",
+      "refinementPath": "tools/Evm/Lean/Eip803x/Refinement/TransactionGasInitialization.lean",
+      "refinementSha256": "8986504ad786cc621dcb0c74400980366847c43d832830973f52a5d38c290578",
+      "leanPath": "tools/Evm/Lean/Eip803x/Generated/TransactionGasInitializationKernel.lean",
+      "leanSha256": "83ce996d6dcc93a588114e73737a25a14cb21689e9e8900e6dc68a07fb170b6f",
+      "rootSignature": "Nethermind.Evm.GasPolicy.TransactionGasInitializationResult Nethermind.Evm.GasPolicy.TransactionGasInitializationKernel.TryCreate(ulong gasLimit, ulong intrinsicExecutionGas, long intrinsicStateGas, bool eip8037Enabled, ulong executionGasLimitCap)",
+      "theoremName": "generatedTryCreate_refines_initializeTransactionGas",
+      "theoremSignature": "theoremgeneratedTryCreate_refines_initializeTransactionGas{gasLimitintrinsicExecutionGasexecutionGasLimitCap:Nat}{intrinsicStateGas:Int}(h:RefinementValidgasLimitintrinsicExecutionGasintrinsicStateGasexecutionGasLimitCap):letresult:=tryCreategasLimitintrinsicExecutionGasintrinsicStateGastrueexecutionGasLimitCapletinput:=referenceInputgasLimitintrinsicExecutionGasintrinsicStateGasexecutionGasLimitCapletmodel:=TransactionGas.initializeTransactionGasinputinput.Valid\u2227result.outcome=.success\u2227result.value=model.gasLeft\u2227result.stateReservoir=(model.stateGasReservoir:Int)\u2227result.stateGasUsed=(model.stateGasUsed:Int)\u2227result.stateGasSpill=(model.stateGasSpill:Int)\u2227result.stateGasSpillRefunded=(model.stateGasSpillRefunded:Int)\u2227model.evmGas=gasLimit-(intrinsicExecutionGas\u002BInt.toNatintrinsicStateGas)\u2227model.executionGasBudget=executionGasLimitCap-intrinsicExecutionGas"
+    },
+    {
+      "name": "StateGasCharge",
+      "manifestPath": "tools/Evm/Lean/Extractor/Generated/StateGasChargeKernel.source-manifest.json",
+      "manifestSha256": "bc62e03880343c8cd27dedd238fa386125a412e112548bec70d4a3bba4a0e575",
+      "refinementPath": "tools/Evm/Lean/Eip803x/Refinement/StateGasCharge.lean",
+      "refinementSha256": "4cb359f611ef04300618f9109ac89ca6b32c857c8e9e6c2305e11a0323d57ead",
+      "leanPath": "tools/Evm/Lean/Eip803x/Generated/StateGasChargeKernel.lean",
+      "leanSha256": "d6a09be29c449e3f005d84cde988a619e03c4d2b0a69fcf0989f879b2fc87337",
+      "rootSignature": "Nethermind.Evm.GasPolicy.StateGasChargeResult Nethermind.Evm.GasPolicy.StateGasChargeKernel.TryCharge(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long stateGasCost)",
+      "theoremName": "generatedTryCharge_refines_chargeState",
+      "theoremSignature": "theoremgeneratedTryCharge_refines_chargeState{production:ProductionGasState}{model:GasState}(amount:Nat)(hRep:ProductionGas.Representsproductionmodel)(hWell:ProductionGas.WellFormedproduction)(hNoOverflow:ProductionGas.ChargeNoOverflowamountproduction):letresult:=generatedResultToProduction(Eip803x.Generated.StateGasChargeKernel.tryChargeproduction.gasLeftproduction.stateReservoirproduction.stateGasUsedproduction.stateGasSpillproduction.stateGasSpillRefunded(amount:Int))(result.outcome=.success\u2192\u2203after,GasMachine.chargeStateamountmodel=.okafter\u2227ProductionGas.Represents(ProductionGas.resultStateresult)after)\u2227(result.outcome=.outOfGas\u2192GasMachine.chargeStateamountmodel=.error.outOfGas\u2227ProductionGas.resultStateresult=production)"
+    },
+    {
+      "name": "StateGasTransition",
+      "manifestPath": "tools/Evm/Lean/Extractor/Generated/StateGasTransitionKernel.source-manifest.json",
+      "manifestSha256": "362031db8ef6bbfdcab657694f69a810369273f2ca41b7e1a233465e05c4cf85",
+      "refinementPath": "tools/Evm/Lean/Eip803x/Refinement/StateGasTransition.lean",
+      "refinementSha256": "a3d3beb8004c1431e2550a702f84d816751657ad90c8320ddc5809956da41cec",
+      "leanPath": "tools/Evm/Lean/Eip803x/Generated/StateGasTransitionKernel.lean",
+      "leanSha256": "f284d83951b94cbfaf10ad8b5a58b0015b2c96f4ac86e97c9de8b3865dee1dce",
+      "rootSignature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.AddStateGasRefundToReservoir(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long amount, bool trackSpillRefund)",
+      "theoremName": "generated_refund_matches_spec",
+      "theoremSignature": "theoremgenerated_refund_matches_spec{parentchild:ProductionGasState}(hNoOverflow:Spec.refundNoOverflowparentchild):generatedResultToSpec(Eip803x.Generated.StateGasTransitionKernel.refundparent.gasLeftparent.stateReservoirparent.stateGasUsedparent.stateGasSpillparent.stateGasSpillRefundedchild.gasLeftchild.stateReservoirchild.stateGasUsedchild.stateGasSpillchild.stateGasSpillRefunded)=Spec.refundparentchild"
+    }
+  ],
+  "semanticBindings": [
+    "EthereumGasPolicy.Calculate -\u003E IntrinsicGasCalculator.AuthorizationListCost -\u003E zero intrinsic state gas",
+    "TransactionProcessorBase\u003CTGasPolicy\u003E.Execute -\u003E CalculateAvailableGas -\u003E TransactionGasInitializationKernel.TryCreate",
+    "EthereumTransactionProcessorBase -\u003E TransactionProcessorBase\u003CEthereumGasPolicy\u003E -\u003E BlockProcessingModule standard registration",
+    "ExecuteEvmTransaction: prePreparationGas -\u003E EIP-7702/EIP-8037 ProcessDelegations guard -\u003E failure reset",
+    "ProcessDelegations: EIP-8037 logical account existence -\u003E new-account state charge -\u003E account-write execution charge -\u003E per-authorization state charge",
+    "EthereumGasPolicy.TryConsumeStateGas -\u003E StateGasChargeKernel.TryCharge -\u003E exact five-field success projection and no mutation on out-of-gas",
+    "ProcessDelegations: partial charge failure returns false before later authority mutation",
+    "ProcessDelegations: GetStateGasUsed post-state minus pre-state is authorizationStateGasUsed",
+    "ProcessDelegations: FoldTopFrameStateGas(gasAvailable, executionIntrinsicGasStandard, delta) only after loop success",
+    "EthereumGasPolicy.FoldTopFrameStateGas: exact five fields and source order",
+    "composition depends on exact current TransactionGasInitialization, StateGasCharge, and StateGasTransition manifests/theorem signatures"
+  ]
+}

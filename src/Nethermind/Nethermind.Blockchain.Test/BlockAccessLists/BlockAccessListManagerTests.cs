@@ -43,20 +43,25 @@ public class BlockAccessListManagerTests
         /// <see cref="BlockAccessListManager.PrepareForProcessing"/> with prerequisites met so
         /// the hint gets tracked. Subsequent calls re-stub and re-prepare for a new block.
         /// </summary>
-        public void IssueHint(Task hint)
+        public void IssueHint(
+            Task hint,
+            ProcessingOptions options = ProcessingOptions.None,
+            bool eip8037Enabled = false,
+            ReadOnlyBlockAccessList? blockAccessList = null)
         {
             WorldState.IsInScope.Returns(true);
             WorldState.HintBal(Arg.Any<ReadOnlyBlockAccessList>()).Returns(hint);
 
             IReleaseSpec spec = Substitute.For<IReleaseSpec>();
             spec.BlockLevelAccessListsEnabled.Returns(true);
+            spec.IsEip8037Enabled.Returns(eip8037Enabled);
 
             Block block = Build.A.Block
                 .WithNumber(1) // not genesis — Enabled requires non-genesis
-                .WithBlockAccessList(Build.A.BlockAccessList.TestObject)
+                .WithBlockAccessList(blockAccessList ?? Build.A.BlockAccessList.TestObject)
                 .TestObject;
 
-            Manager.PrepareForProcessing(block, spec, ProcessingOptions.None);
+            Manager.PrepareForProcessing(block, spec, options);
         }
     }
 
@@ -112,5 +117,31 @@ public class BlockAccessListManagerTests
 
         Task drain = Task.Run(h.Manager.WaitForBalWarmup);
         Assert.That(drain.Wait(DrainTimeout), Is.True, "a stale hint from the previous block must not be awaited");
+    }
+
+    [Test]
+    public void Read_only_chain_disables_parallel_bal_execution()
+    {
+        Harness h = new();
+        h.IssueHint(Task.CompletedTask, ProcessingOptions.ReadOnlyChain);
+
+        Assert.That(h.Manager.ParallelExecutionEnabled, Is.False);
+    }
+
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    public void Empty_account_leaf_disables_parallel_bal_only_with_eip8037(bool eip8037Enabled, bool expectedParallel)
+    {
+        Harness h = new();
+        h.WorldState.HasEmptyAccountLeaf(TestItem.AddressA).Returns(true);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .TestObject)
+            .TestObject;
+
+        h.IssueHint(Task.CompletedTask, eip8037Enabled: eip8037Enabled, blockAccessList: bal);
+
+        Assert.That(h.Manager.ParallelExecutionEnabled, Is.EqualTo(expectedParallel));
     }
 }

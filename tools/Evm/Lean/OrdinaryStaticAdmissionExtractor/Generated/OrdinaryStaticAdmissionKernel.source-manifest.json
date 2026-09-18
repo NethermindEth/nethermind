@@ -1,0 +1,222 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.1.0-static-admission-initialization",
+  "roslynVersion": "5.6.0.0",
+  "languageVersion": "14.0",
+  "kernel": "standard-mainnet-ethereum-transaction-processor-static-admission-and-initialization",
+  "acceptanceState": "two-return-value-helper-projections-only",
+  "sources": [
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+      "role": "processor",
+      "owner": "Nethermind.Evm.TransactionProcessing.TransactionProcessorBase<TGasPolicy>",
+      "member": "ValidateStatic;ValidateGas;CalculateAvailableGas;EthereumTransactionProcessor",
+      "signature": "Nethermind.Evm.TransactionProcessing.EthereumTransactionProcessor -> EthereumTransactionProcessorBase -> TransactionProcessorBase<EthereumGasPolicy>",
+      "sha256": "0374c6f35a9a23361f37b41162ac281ca83b09846ab4295d5a592db6315c99cc",
+      "tokenSha256": "f4bc38667937142c67c1a58a11f68f55c651f57a533f0a0e3651417f286d53c8"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/TransactionGasInitializationKernel.cs",
+      "role": "initialization",
+      "owner": "Nethermind.Evm.GasPolicy.TransactionGasInitializationKernel",
+      "member": "TryCreate;TransactionGasInitializationResult",
+      "signature": "TryCreate(ulong,ulong,long,bool,ulong) -> all six result fields",
+      "sha256": "65ab0742596ea7ebf49d2c79601eae00152d8d039ac8e417076bf63123be1e82",
+      "tokenSha256": "06377f7a2ead05842abdab009663769186f6595f68889fe8d7209523e472c2bc"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "role": "gas-policy",
+      "owner": "Nethermind.Evm.GasPolicy.EthereumGasPolicy",
+      "member": "TryCreateAvailableFromIntrinsic;GetRemainingGas;GetStateReservoir",
+      "signature": "initializer bridge plus direct Value and StateReservoir projections",
+      "sha256": "3c31ba40c24a78bf11243b38859168350f02934806124e913da0560bc1a4350f",
+      "tokenSha256": "121a7a870174ab579a25efcb6ea9de3774730a65a422734b87614a5645dd06bc"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/IGasPolicy.cs",
+      "role": "gas-policy-contract",
+      "owner": "Nethermind.Evm.GasPolicy.IGasPolicy<TSelf>",
+      "member": "IntrinsicGas<TGasPolicy>",
+      "signature": "StandardGas;MinRequiredGasLimit",
+      "sha256": "b4d26db87723243514f2f6b8a5e48d1176139105c3b012ad0f3956e59afc98a8",
+      "tokenSha256": "93a9546106851715d07ceb7ad2997d0614de7fd21665c81b255cc00373cc5ff3"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Transaction.cs",
+      "role": "transaction-shape",
+      "owner": "Nethermind.Core.Transaction",
+      "member": "IsContractCreation;DataLength;SupportsAuthorizationList;AuthorizationList",
+      "signature": "To;Data;SenderAddress;Nonce;GasLimit;Type",
+      "sha256": "3fdf94805739c6ccdfa8b4617c5d4cfa6bee9e9565f16d667b22106c434d6596",
+      "tokenSha256": "5d752a18f22210c9ad860b3903a39b61561a017d9be4b47d05858f79c8622d6a"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/TxType.cs",
+      "role": "transaction-shape",
+      "owner": "Nethermind.Core.TxType",
+      "member": "SetCode",
+      "signature": "byte-backed enum value 4",
+      "sha256": "d2ac5cab07babd4d82d26d0c035fd3de4252105f4d2a24edb347078bd9093165",
+      "tokenSha256": "bae56f6ed338271a3a64107db4c940fa9e2329e624bde3de40e9fd471b5a5923"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/TxTypeExtensions.cs",
+      "role": "transaction-shape",
+      "owner": "Nethermind.Core.TxTypeExtensions",
+      "member": "SupportsAuthorizationList",
+      "signature": "TxType == TxType.SetCode",
+      "sha256": "c0621582fec1731f588b5c01a8a61e90dec3cda014863f4cb42dc05c579795f3",
+      "tokenSha256": "92ab0708337c895a093911bfb12df0b41f323b8a8575a3f3e91057e201370f2c"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/TransactionExtensions.cs",
+      "role": "transaction-shape",
+      "owner": "Nethermind.Core.TransactionExtensions",
+      "member": "IsAboveInitCode",
+      "signature": "creation && EIP-3860 && DataLength > MaxInitCodeSize",
+      "sha256": "d3df04cb465668a3dcc842f33e5bc7a16d2420cdc1dcd03edf1c3275c2b24852",
+      "tokenSha256": "e865cb8cbf284679db86bc5573a70dfba07ba0a59ba40d62bbc4e888435d68fc"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Validation/SetCodeTxValidation.cs",
+      "role": "transaction-shape",
+      "owner": "Nethermind.Core.Validation.SetCodeTxValidation",
+      "member": "ValidateNoContractCreation;ValidateAuthorizationList",
+      "signature": "creation; null or Length == 0",
+      "sha256": "5bdb170db6895c986b368c09ae3c13ac126c5a57d7bf94125c6119b61da3298e",
+      "tokenSha256": "5ecf005d3bee208d5b500f187d3426683214ee5e0f36b48efbd8058fa3172879"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Specs/IReleaseSpecExtensions.cs",
+      "role": "spec-shape",
+      "owner": "Nethermind.Core.Specs.IReleaseSpecExtensions",
+      "member": "MaxInitCodeSize",
+      "signature": "2 * spec.MaxCodeSize",
+      "sha256": "5a22587aa81b5f0e4276e61bc1970ff89e4e4cecbed8c9b08dd338576c7d041a",
+      "tokenSha256": "557ad7d892ef59991d94d46047e21668e35b3ba0279a98d9887ce5a603db2001"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Specs/IReleaseSpec.cs",
+      "role": "spec-shape",
+      "owner": "Nethermind.Core.Specs.IReleaseSpec",
+      "member": "IsEip3860Enabled;IsEip8037Enabled;MaxCodeSize",
+      "signature": "fork flags and long max code",
+      "sha256": "3f44b3da5614c94d59eae2e4a6266a9e698614f75a7b5a9894a4828b0021b18a",
+      "tokenSha256": "8dee6e2fb0eb71088eb253ea6b85646008a2673e81d242912a5d223ab7e817b1"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/BlockHeader.cs",
+      "role": "block-shape",
+      "owner": "Nethermind.Core.BlockHeader",
+      "member": "GasLimit;GasUsed",
+      "signature": "ulong",
+      "sha256": "f354ddd2d45afc8774739ac46a10535b915871ce4ad11d996d0ab972cf9e7349",
+      "tokenSha256": "791c5235fb99322432bb8137c43972c495c58a8c59180bd05539dd7a99287065"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Eip7825Constants.cs",
+      "role": "gas-constant",
+      "owner": "Nethermind.Core.Eip7825Constants",
+      "member": "DefaultTxGasLimitCap",
+      "signature": "ulong 16_777_216",
+      "sha256": "5f79dcccbab06167bb591814318957e4ffcf6c8d4c760a069f10cae0a7bc48da",
+      "tokenSha256": "3013713034661dbc1f0fa2f1a446a4a0913823bde70ca272018290fbdcfbce20"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ExecutionOptions.cs",
+      "role": "dispatch",
+      "owner": "Nethermind.Evm.TransactionProcessing.ExecutionOptions",
+      "member": "SkipValidation",
+      "signature": "exact flag bit",
+      "sha256": "014a2598e1def284b7b98dc97185b6dbbc45ca04be4ab159e330a0675ac24f10",
+      "tokenSha256": "d955dbfc5a461b92ec5a5279bc5c3f9c17b86dd1e071798a274997e45a96cde5"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionRoutingKernel.cs",
+      "role": "dispatch",
+      "owner": "Nethermind.Evm.TransactionProcessing.SystemTransactionRoutingKernel",
+      "member": "UseSystemProcessor",
+      "signature": "isSystemTransaction || options == SkipValidation",
+      "sha256": "b884bb49ad7c109b907f4dfcac56a5eb13283d964310d45eb9ca85177ff5e5c1",
+      "tokenSha256": "d29db83f3e6022d2ccfa6f37df30c7f289848ee2c2fe3f0d10032bd5c1c0926f"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+      "role": "dispatch",
+      "owner": "Nethermind.Init.Modules.BlockProcessingModule",
+      "member": "ITransactionProcessor registration",
+      "signature": "AddScoped<ITransactionProcessor, EthereumTransactionProcessor>",
+      "sha256": "fce65ce5bb523c56fc8aa6ee0e4d092c940a5a90b174c820ffe262eeb5241c60",
+      "tokenSha256": "3ad3e9cec4b3fde5e319ae078fdb185a2f2029d217fc355396530aa91f5849c0"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ITransactionProcessorFactory.cs",
+      "role": "dispatch",
+      "owner": "Nethermind.Evm.TransactionProcessing.TransactionProcessorFactory<TGasPolicy>",
+      "member": "Create",
+      "signature": "new TransactionProcessor<TGasPolicy>(..., parallel)",
+      "sha256": "c02f25408dce7d378533fb85803906ca18e3dc7d1d884400669a3ac201591a7b",
+      "tokenSha256": "58a62bac4064237a3a80a4d15d993bdde28c24912ee0373379076ecff2556251"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BalTxProcessorFactory.cs",
+      "role": "dispatch",
+      "owner": "Nethermind.Consensus.Processing.BalTxProcessorFactory",
+      "member": "Create",
+      "signature": "TransactionProcessorFactory<EthereumGasPolicy> -> Create(..., parallel)",
+      "sha256": "61ee27ced3bf0f1534dff1048230eb5f1aa5aa3ca28418a974f24f907626f678",
+      "tokenSha256": "85e7c2ebb5a625c1ba2bdf3b4633bf0897ecf542545cf6c25c77c03108eb07c6"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/ValidationResult.cs",
+      "role": "result-shape",
+      "owner": "Nethermind.Core.ValidationResult",
+      "member": "Error;Success;op_Implicit;AsBool",
+      "signature": "string conversion stores Error; success iff Error is null",
+      "sha256": "ec60288e0937b7a365a4c1eb174387066aac7b6caa686af162611b982041a0ba",
+      "tokenSha256": "78f2a56df9eebbbdea2120ac5f4699b32950b377fabe020a9f0b9810b5ff6a39"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/EvmException.cs",
+      "role": "result-shape",
+      "owner": "Nethermind.Evm.EvmExceptionType",
+      "member": "Stop;None;BadInstruction;StackOverflow;StackUnderflow;OutOfGas;InvalidJumpDestination;AccessViolation;StaticCallViolation;PrecompileFailure;TransactionCollision;NotEnoughBalance;Other;Revert;InvalidCode;Suspend",
+      "signature": "int-backed exact ordered values from Stop=-1 and None=0",
+      "sha256": "8c503bfbe0c60c41597e64c96b5d823dc98b934b4511730217eceaaf13837450",
+      "tokenSha256": "0a792898563d7f67e7737a74005ded36dfcbdca250fc212855135110a79c876e"
+    }
+  ],
+  "dependencies": [
+    {
+      "path": "tools/Evm/Lean/Extractor/Generated/TransactionGasInitializationKernel.ir.json",
+      "sha256": "a48a5bf063439cd9a21f4eee0e9b2509dfe07a4fa98f075aa5430db59f900f52"
+    },
+    {
+      "path": "tools/Evm/Lean/Extractor/Generated/TransactionGasInitializationKernel.source-manifest.json",
+      "sha256": "c4081417da301771539d0509bf281a42f40a1a719cc4611c051e60fc8d6c7202"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Generated/TransactionGasInitializationKernel.lean",
+      "sha256": "83ce996d6dcc93a588114e73737a25a14cb21689e9e8900e6dc68a07fb170b6f"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Refinement/TransactionGasInitialization.lean",
+      "sha256": "8986504ad786cc621dcb0c74400980366847c43d832830973f52a5d38c290578"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/TransactionGas.lean",
+      "sha256": "2e87721125c6430eab9c76dc8f32a11f4898db0dec68b57a48043c18cbdeefcd"
+    }
+  ],
+  "ir": {
+    "path": "OrdinaryStaticAdmissionKernel.ir.json",
+    "sha256": "371b62d91c38bfeee01f068d8f1a120b9e2a54673dd36368e104a7d9a88ed94c"
+  },
+  "lean": {
+    "path": "OrdinaryStaticAdmissionKernel.lean",
+    "sha256": "fe1f879297f3370edd0e6da2fcca8c4030bbd9bbeb67765f7ca7ec3fe1b8dfad"
+  },
+  "combinedSourceSha256": "685ae33347bc1efcc19bd6ba81e9644f1dbefd7af791ebc4181e7d94e7d115f6",
+  "semanticIrSha256": "be3f9ae3f63ac7b8b4d14ca1be249823f0c547483e57d5a5bb52c53a41f14677"
+}

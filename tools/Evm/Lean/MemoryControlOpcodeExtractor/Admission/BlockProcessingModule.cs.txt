@@ -1,0 +1,122 @@
+namespace Nethermind.Init.Modules;
+
+partial class BlockProcessingModule
+{
+protected override void Load(ContainerBuilder builder)
+    {
+        builder
+            // Validators
+            .AddSingleton<TxValidator, ISpecProvider>((spec) => new TxValidator(spec.ChainId))
+            .Bind<ITxValidator, TxValidator>()
+            .AddKeyedSingleton<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey,
+                static ctx => new SpecChangeTxValidator(ctx.Resolve<ISpecProvider>().ChainId))
+            .AddSingleton<IBlockValidator, BlockValidator>()
+            .AddSingleton<IHeaderValidator, HeaderValidator>()
+            .AddSingleton<IUnclesValidator, UnclesValidator>()
+
+            .AddLast<ITxGossipPolicy, SpecDrivenTxGossipPolicy>()
+
+            // Block preprocessor steps, injected as an ordered IReadOnlyList<IBlockPreprocessorStep>.
+            // Consensus plugins prepend/append their own steps via the same DSL.
+            .AddFirst<IBlockPreprocessorStep, RecoverSignatures>()
+
+            // Block processing components common between rpc, validation and production
+            .AddScoped<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeCalculator>()
+            .AddScoped<ITransactionProcessor, EthereumTransactionProcessor>()
+            .AddSingleton<ITransactionProcessorFactory, TransactionProcessorFactory<EthereumGasPolicy>>()
+            .AddScoped<ICodeInfoRepository, CacheCodeInfoRepository>()
+                .AddSingleton<IPrecompileProvider, EthereumPrecompileProvider>()
+                .AddSingleton<ICodeCache>(StaticCodeCache.Instance)
+            .AddScoped<IWorldState, WorldState>()
+            .AddScoped<IVirtualMachine, EthereumVirtualMachine>()
+            .AddScoped<IBlockhashProvider, BlockhashProvider>()
+            .AddSingleton<IUnresolvedBlockhashPolicy>(ThrowingUnresolvedBlockhashPolicy.Instance)
+            .AddSingleton<IBlockhashCache, BlockhashCache>()
+            .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
+            .AddScoped<IBlockhashStore, BlockhashStore>()
+            .AddScoped<IBranchProcessor, BranchProcessor>()
+            .AddScoped<IInclusionListSatisfactionChecker, InclusionListSatisfactionChecker>()
+            .AddScoped<IBlockProcessor, BlockProcessor>()
+            .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
+            .AddSingleton<IWithdrawalProcessorFactory, WithdrawalProcessorFactory>()
+            .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
+
+            .AddScoped<CodeInfoRepositoryFactory, IPrecompileProvider, ICodeCache>((precompileProvider, codeCache) =>
+                worldState => new CacheCodeInfoRepository(worldState, precompileProvider, codeCache))
+            .AddScoped<TransactionProcessorAdapterFactory>(CreateExecuteAdapter)
+            .AddScoped<ITransactionProcessorAdapter, ITransactionProcessor, TransactionProcessorAdapterFactory>(
+                static (transactionProcessor, adapterFactory) => adapterFactory(transactionProcessor))
+            .AddScoped<BalTxProcessorFactory>()
+            .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
+
+            .AddScoped<IProcessingStats, ProcessingStats>()
+            .AddScoped<IBlockchainProcessor, BlockchainProcessor>()
+            .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>((rewardSource, txP) => rewardSource.Get(txP))
+            .AddScoped<BlockProcessor.IBlockProductionTransactionPicker, ISpecProvider, IBlocksConfig>((specProvider, blocksConfig) =>
+                new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes))
+            .AddSingleton<IReadOnlyTxProcessingEnvFactory, AutoReadOnlyTxProcessingEnvFactory>()
+            .AddSingleton<IShareableTxProcessorSource, ShareableTxProcessingSource>()
+            .Add<BlockchainProcessorFacade>()
+
+            .AddSingleton<IOverridableEnvFactory, OverridableEnvFactory>()
+            .AddScopedOpenGeneric(typeof(IOverridableEnv<>), typeof(DisposableScopeOverridableEnv<>))
+
+            // The main block processing pipeline, anything that requires the use of the main IWorldState is wrapped
+            // in a `IMainProcessingContext`.
+            .AddSingleton<IMainProcessingContext, MainProcessingContext>()
+            // Then component that has no ambiguity is extracted back out.
+            .Map<IBlockProcessingQueue, MainProcessingContext>(ctx => (IBlockProcessingQueue)ctx.BlockchainProcessor)
+            .Map<IBlockProcessingPauseControl, MainProcessingContext>(ctx => (IBlockProcessingPauseControl)ctx.BlockchainProcessor)
+            .Bind<IMainProcessingContext, MainProcessingContext>()
+
+            .AddSingleton<INonceManager, IChainHeadInfoProvider>((chainHeadInfoProvider) => new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider))
+            .AddSingleton<IBackgroundTaskScheduler, IMainProcessingContext, IChainHeadInfoProvider, ILogManager>((mainProcessingContext, chainHeadInfoProvider, logManager) => new BackgroundTaskScheduler(
+                mainProcessingContext.BranchProcessor,
+                chainHeadInfoProvider,
+                initConfig.BackgroundTaskConcurrency,
+                initConfig.BackgroundTaskMaxNumber,
+                logManager))
+
+            // Some configuration that applies to validation and rpc but not to block producer. Plugins can add
+            // modules in case they have special case where it only apply to validation and rpc but not block producer.
+            .AddSingleton<IBlockValidationModule, StandardBlockValidationModule>()
+
+            // Block production components
+            .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
+            .AddSingleton<ISealValidator>(NullSealEngine.Instance)
+            .AddSingleton<ISealer>(NullSealEngine.Instance)
+            .AddSingleton<ISealEngine, SealEngine>()
+            .AddSingleton<IBlockProducerTxSourceFactory, TxPoolTxSourceFactory>()
+            .AddSingleton<IBlockProductionPolicy, BlockProductionPolicy>()
+
+            .AddSingleton<IGasPriceOracle, IBlockFinder, ISpecProvider, ILogManager, IBlocksConfig>((blockTree, specProvider, logManager, blocksConfig) =>
+                new GasPriceOracle(
+                    blockTree,
+                    specProvider,
+                    logManager,
+                    blocksConfig.MinGasPrice
+                ))
+
+            // Genesis
+            .AddSingleton<GenesisLoader.Config>((ctx) => new GenesisLoader.Config(
+                string.IsNullOrWhiteSpace(initConfig?.GenesisHash) ? null : new Hash256(initConfig.GenesisHash),
+                TimeSpan.FromMilliseconds(ctx.Resolve<IBlocksConfig>().GenesisTimeoutMs)))
+            .AddScoped<IGenesisBuilder, GenesisBuilder>()
+            .AddScoped<IGenesisLoader, GenesisLoader>()
+            ;
+
+        builder.AddSingleton<IMainStateBlockProducerEnvFactory, GlobalWorldStateBlockProducerEnvFactory>();
+
+        if (blocksConfig.BuildBlocksOnMainState)
+        {
+            builder.Bind<IBlockProducerEnvFactory, IMainStateBlockProducerEnvFactory>()
+                .AddScoped<IProducedBlockSuggester, NonProcessingProducedBlockSuggester>();
+        }
+        else
+        {
+            builder.AddSingleton<IBlockProducerEnvFactory, BlockProducerEnvFactory>()
+                .AddScoped<IProducedBlockSuggester, ProducedBlockSuggester>();
+        }
+    }
+
+}

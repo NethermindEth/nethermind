@@ -65,14 +65,20 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
 
     public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
-        bool? currentlyExists = AccountExistsCurrent(address);
+        AccountChangesAtIndex? currentChanges = GeneratingBlockAccessList.GetAccountChanges(address);
+        bool? currentPhysicalAccountExists = currentChanges?.PhysicalAccountExists;
         UInt256? currentBalance = GetBalanceCurrent(address);
+        bool suppressZeroBalanceChange = ShouldSuppressSystemUserZeroBalanceChange(address, in balanceChange);
         bool res = base.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
         oldBalance = currentBalance ?? oldBalance;
-        res = currentlyExists ?? res;
+        res = currentPhysicalAccountExists is null ? res : !currentPhysicalAccountExists.Value;
+        if (!suppressZeroBalanceChange)
+        {
+            GeneratingBlockAccessList.SetPhysicalAccountExists(address, true);
+        }
 
         UInt256 newBalance = oldBalance + balanceChange;
-        if (!ShouldSuppressSystemUserZeroBalanceChange(address, in balanceChange))
+        if (!suppressZeroBalanceChange)
         {
             GeneratingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
         }
@@ -118,7 +124,9 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         byte[] oldCode = GetCodeInternal(address) ?? [];
         GeneratingBlockAccessList.AddCodeChange(address, oldCode, code);
-        return base.InsertCode(address, codeHash, code, spec, isGenesis);
+        bool inserted = base.InsertCode(address, codeHash, code, spec, isGenesis);
+        GeneratingBlockAccessList.SetPhysicalAccountExists(address, true);
+        return inserted;
     }
 
     public override void Set(in StorageCell storageCell, byte[] newValue)
@@ -185,18 +193,21 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         GeneratingBlockAccessList.DeleteAccount(address, GetBalanceInternal(address));
         base.DeleteAccount(address);
+        GeneratingBlockAccessList.SetPhysicalAccountExists(address, false);
     }
 
     public override void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
     {
         RecordCreateAccount(address, balance, nonce);
         base.CreateAccount(address, balance, nonce);
+        GeneratingBlockAccessList.SetPhysicalAccountExists(address, true);
     }
 
     public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)
     {
         RecordCreateAccount(address, balance, nonce);
         base.CreateAccountIfNotExists(address, balance, nonce);
+        GeneratingBlockAccessList.SetPhysicalAccountExists(address, true);
     }
 
     public override bool TryGetAccount(Address address, out AccountStruct account)
@@ -270,6 +281,63 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         return GetCodeHashInternal(address) != Keccak.OfAnEmptyString;
     }
 
+    /// <inheritdoc/>
+    public override bool IsCreateCollision(
+        Address address,
+        bool includeStorageCollision,
+        out bool physicalLeafExists,
+        out bool logicalAccountExists)
+    {
+        AddAccountRead(address);
+        AccountChangesAtIndex? accountChanges = GeneratingBlockAccessList.GetAccountChanges(address);
+        if (accountChanges is null || !HasCurrentChanges(accountChanges))
+        {
+            return base.IsCreateCollision(address, includeStorageCollision, out physicalLeafExists, out logicalAccountExists);
+        }
+
+        bool underlyingCodeOrNonceCollision = base.IsCreateCollision(
+            address,
+            includeStorageCollision: false,
+            out bool underlyingPhysicalLeafExists,
+            out _);
+
+        ValueHash256 codeHash = GetCodeHashInternal(address);
+        ulong nonce = GetNonceInternal(address);
+        logicalAccountExists = !GetBalanceInternal(address).IsZero
+            || nonce != 0
+            || codeHash != Keccak.OfAnEmptyString;
+        bool hasNonZeroStorageChange = HasNonZeroStorageChange(accountChanges);
+        physicalLeafExists = accountChanges.PhysicalAccountExists ??
+            (underlyingPhysicalLeafExists
+                || HasCurrentAccountFieldChanges(accountChanges)
+                || hasNonZeroStorageChange);
+
+        if (nonce != 0 || codeHash != Keccak.OfAnEmptyString || !includeStorageCollision)
+        {
+            return nonce != 0 || codeHash != Keccak.OfAnEmptyString;
+        }
+
+        if (hasNonZeroStorageChange)
+        {
+            return true;
+        }
+
+        bool underlyingCollision = base.IsCreateCollision(
+            address,
+            includeStorageCollision: true,
+            out _,
+            out _);
+        bool underlyingStorageCollision = underlyingCollision && !underlyingCodeOrNonceCollision;
+        if (underlyingStorageCollision && accountChanges.StorageChangeCount != 0 && State is BlockAccessListBasedWorldState blockAccessListWorldState)
+        {
+            // A zero-only EIP-7928 delta cannot establish whether it cleared the parent trie’s
+            // final live slot. Reject parallel replay instead of accepting an EIP-8037 collision fact.
+            blockAccessListWorldState.ThrowAmbiguousStorageCollision(address);
+        }
+
+        return underlyingStorageCollision;
+    }
+
     public override bool IsDeadAccount(Address address)
     {
         AddAccountRead(address);
@@ -294,7 +362,15 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         GeneratingBlockAccessList.AddNonceChange(address, oldNonce - delta);
     }
     private UInt256 GetBalanceInternal(Address address)
-        => GetBalanceCurrent(address) ?? base.GetBalance(address);
+    {
+        AccountChangesAtIndex? accountChanges = GeneratingBlockAccessList.GetAccountChanges(address);
+        if (accountChanges?.BalanceChange is { } balanceChange)
+        {
+            return balanceChange.Value;
+        }
+
+        return base.GetBalance(address);
+    }
 
     private UInt256? GetBalanceCurrent(Address address)
     {
@@ -303,7 +379,15 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     }
 
     private ulong GetNonceInternal(Address address)
-        => GetNonceCurrent(address) ?? base.GetNonce(address);
+    {
+        AccountChangesAtIndex? accountChanges = GeneratingBlockAccessList.GetAccountChanges(address);
+        if (accountChanges?.NonceChange is { } nonceChange)
+        {
+            return nonceChange.Value;
+        }
+
+        return base.GetNonce(address);
+    }
 
     private ulong? GetNonceCurrent(Address address)
     {
@@ -340,10 +424,24 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     }
 
     private byte[]? GetCodeInternal(Address address)
-        => GetCodeCurrent(address) ?? base.GetCode(address);
+    {
+        if (GetCodeCurrent(address) is { } code)
+        {
+            return code;
+        }
+
+        return base.GetCode(address);
+    }
 
     private ValueHash256 GetCodeHashInternal(Address address)
-        => GetCodeHashCurrent(address, out ValueHash256 hash) ? hash : base.GetCodeHash(address);
+    {
+        if (GetCodeHashCurrent(address, out ValueHash256 hash))
+        {
+            return hash;
+        }
+
+        return base.GetCodeHash(address);
+    }
 
     private ReadOnlySpan<byte> GetInternal(in StorageCell storageCell)
         => GetInternal(parallel ? GeneratingBlockAccessList.GetAccountChanges(storageCell.Address) : null, in storageCell);
@@ -353,13 +451,18 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         if (parallel && accountChanges is not null &&
             accountChanges.TryGetStorageChange(storageCell.Index, out StorageChange? change))
         {
-            // Store the 32-byte word straight into _scratchStorage; the returned span outlives this
-            // frame without allocating a new byte[32] per SLOAD.
-            change.Value.Value.CopyTo(_scratchStorage);
-            return _scratchStorage;
+            return CopyStorageChange(change.Value);
         }
 
         return base.Get(storageCell);
+    }
+
+    private ReadOnlySpan<byte> CopyStorageChange(StorageChange change)
+    {
+        // Store the 32-byte word straight into _scratchStorage; the returned span outlives this
+        // frame without allocating a new byte[32] per SLOAD.
+        change.Value.CopyTo(_scratchStorage);
+        return _scratchStorage;
     }
 
     private bool AccountExistsInternal(Address address)
@@ -368,15 +471,20 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     private bool? AccountExistsCurrent(Address address)
     {
         AccountChangesAtIndex? accountChanges = GeneratingBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null && (accountChanges.NonceChange is not null || accountChanges.BalanceChange is not null))
+        if (accountChanges is null)
         {
-            // if nonce or balance is changed in this tx must exist (could have been created this tx)
-            return true;
+            return null;
         }
 
-        // EIP-7928: code-only modifications (e.g. EIP-7702 SetCode) also imply existence at this index.
-        if (accountChanges?.CodeChange is { Code.Length: > 0 })
+        if (accountChanges.PhysicalAccountExists is { } physicalAccountExists)
         {
+            return physicalAccountExists;
+        }
+
+        if (HasCurrentAccountFieldChanges(accountChanges))
+        {
+            // Scalar changes preserve a current account leaf even when their effective values
+            // are EIP-161 empty; callers needing non-emptiness inspect those values separately.
             return true;
         }
 
@@ -394,6 +502,29 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
         {
             GeneratingBlockAccessList.AddNonceChange(address, nonce);
         }
+    }
+
+    private static bool HasCurrentChanges(AccountChangesAtIndex accountChanges)
+        => accountChanges.PhysicalAccountExists is not null
+            || HasCurrentAccountFieldChanges(accountChanges)
+            || accountChanges.StorageChangeCount != 0;
+
+    private static bool HasCurrentAccountFieldChanges(AccountChangesAtIndex accountChanges)
+        => accountChanges.BalanceChange is not null
+            || accountChanges.NonceChange is not null
+            || accountChanges.CodeChange is not null;
+
+    private static bool HasNonZeroStorageChange(AccountChangesAtIndex accountChanges)
+    {
+        foreach (StorageChange storageChange in accountChanges.StorageChanges.Values)
+        {
+            if (!storageChange.Value.Equals(default))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private sealed class SystemAccountReadSuppressionScope : IDisposable

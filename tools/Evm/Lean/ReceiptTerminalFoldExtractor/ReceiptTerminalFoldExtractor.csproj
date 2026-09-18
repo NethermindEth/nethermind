@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Nethermind.Evm.Lean.ReceiptTerminalFoldExtractor</AssemblyName>
+    <RootNamespace>Nethermind.Evm.Lean.ReceiptTerminalFoldExtractor</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Test/**/*.cs" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Nethermind.Evm.Lean.ReceiptTerminalFoldExtractor.Test</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Nethermind.Evm.Lean.SequentialBlockTransactionFoldExtractor</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

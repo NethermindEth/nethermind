@@ -140,6 +140,23 @@ namespace Nethermind.Evm.Test
             AssertRipemdTouchPreserved(initCode, (MainnetSpecProvider.LondonBlockNumber, 0), 500_000, contractCreation: true);
         }
 
+        [Test]
+        public void Failed_top_level_code_deposit_reports_access_once()
+        {
+            byte[] initCode = BuildRipemdTouchThenReturnInvalidCode();
+            (Block block, Transaction transaction) = PrepareTx((MainnetSpecProvider.LondonBlockNumber, 0), 500_000, initCode, value: 0);
+            transaction.To = null;
+            transaction.Data = initCode;
+            AccessCountingTracer tracer = new();
+
+            _processor.Execute(
+                transaction,
+                new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+                tracer);
+
+            Assert.That(tracer.AccessReports, Is.EqualTo(1));
+        }
+
         private void AssertRipemdTouchPreserved(
             byte[] code,
             ForkActivation activation,
@@ -192,6 +209,14 @@ namespace Nethermind.Evm.Test
             .PushData(0)
             .Op(Instruction.RETURN)
             .Done;
+
+        private sealed class AccessCountingTracer : TestAllTracerWithOutput
+        {
+            public int AccessReports { get; private set; }
+
+            public override void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells) =>
+                AccessReports++;
+        }
 
         [Test]
         public void Child_output_copy_preserves_memory_beyond_returned_bytes(

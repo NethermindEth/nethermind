@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 3,
+  "extractorVersion": "1.2.0",
+  "compilerVersion": "5.6.0.0",
+  "languageVersion": "14.0",
+  "root": "Nethermind.Evm.GasPolicy.AccountAccessPricingKernel",
+  "methodSignature": "Nethermind.Evm.GasPolicy.AccountAccessPricingResult Nethermind.Evm.GasPolicy.AccountAccessPricingKernel.Price(bool hotAndColdEnabled, bool eip8038Enabled, bool isCold, bool isPrecompile, Nethermind.Evm.GasPolicy.AccountAccessKind kind, ulong coldAccountAccessGas, ulong warmAccessGas)",
+  "rootSignatures": [
+    "Nethermind.Evm.GasPolicy.AccountAccessPricingResult Nethermind.Evm.GasPolicy.AccountAccessPricingKernel.Price(bool hotAndColdEnabled, bool eip8038Enabled, bool isCold, bool isPrecompile, Nethermind.Evm.GasPolicy.AccountAccessKind kind, ulong coldAccountAccessGas, ulong warmAccessGas)"
+  ],
+  "source": {
+    "path": "src/Nethermind/Nethermind.Evm/GasPolicy/AccountAccessPricingKernel.cs",
+    "sha256": "1988faefb55bb65bf4e915e77e99966f43b88675dec47689e04378bde4f31c92"
+  },
+  "artifact": {
+    "path": "AccountAccessPricingKernel.ir.json",
+    "sha256": "026161d45607f750fdc7bc6acc023c3b0c7c69ee237d77432fe3bfe86a12ffae"
+  },
+  "leanArtifact": {
+    "path": "tools/Evm/Lean/Eip803x/Generated/AccountAccessPricingKernel.lean",
+    "sha256": "973ff2da5235f045c51d114e4dd0b5d93d8c8e5feff8f92a5a5d4742af228a5c"
+  },
+  "extractedMethods": [
+    "Nethermind.Evm.GasPolicy.AccountAccessPricingResult Nethermind.Evm.GasPolicy.AccountAccessPricingKernel.Price(bool hotAndColdEnabled, bool eip8038Enabled, bool isCold, bool isPrecompile, Nethermind.Evm.GasPolicy.AccountAccessKind kind, ulong coldAccountAccessGas, ulong warmAccessGas)"
+  ],
+  "supportingSources": [
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/AccountAccessKind.cs",
+      "sha256": "a61bc07a6ca4077bf47206799304c8335a901d22bba5e77b3403c92a52eb5462"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "sha256": "3c31ba40c24a78bf11243b38859168350f02934806124e913da0560bc1a4350f"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Call.cs",
+      "sha256": "cfc87832eb304f8f8dccfb27b6b89605f6c74e88522f02b13c775834d14948a5"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Spec.cs",
+      "sha256": "2aee227767f2adf6d04f02a2d2d3ada8028d84dac60192678630b6af9212ae97"
+    }
+  ]
+}

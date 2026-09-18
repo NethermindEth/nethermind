@@ -157,15 +157,15 @@ public static partial class EvmInstructions
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, ref vm.VmState.Memory))
             goto OutOfGas;
 
-        // Charge gas for accessing the account's code (including delegation logic if applicable).
+        // Charge the code account before loading code, preserving the OOG/state-read order.
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.IsTracingAccess, codeSource)) goto OutOfGas;
 
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, vmSpec: spec, delegationAddress: out Address? delegated);
 
-        if (TSpec.UseHotAndColdStorage &&
-            delegated is not null &&
-            !TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, delegated))
+        // Charge the optional delegated target only after delegation has been discovered.
+        if (!TSpec.TryConsumeDelegatedAccountAccessGas<TGasPolicy>(ref gas, vm.Spec,
+                in vm.VmState.AccessTracker, vm.IsTracingAccess, delegated))
             goto OutOfGas;
 
         // Charge additional gas if the target account is new or considered empty.

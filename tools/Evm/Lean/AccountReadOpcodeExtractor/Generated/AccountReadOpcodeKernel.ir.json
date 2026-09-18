@@ -1,0 +1,199 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.0.0",
+  "kernel": "Nethermind standard-mainnet Amsterdam account-read opcode slice",
+  "reachability": {
+    "interface": "IVirtualMachine",
+    "implementation": "EthereumVirtualMachine",
+    "closedVm": "VirtualMachine\u003CEthereumGasPolicy\u003E",
+    "gasPolicy": "EthereumGasPolicy",
+    "worldState": "WorldState",
+    "codeRepository": "CacheCodeInfoRepository",
+    "precompileProvider": "EthereumPrecompileProvider",
+    "codeCache": "StaticCodeCache.Instance",
+    "fork": "Amsterdam",
+    "dispatchRoot": "PrepareOpcodes-\u003EOpcodeTable.GetHandlers-\u003EGenerateOpcodeHandlers-\u003EConfigureAccessOpcodes-\u003EOpcodeHandler-\u003EExecuteOpcode",
+    "buildSelection": "EnableZkEvm != true selects *.std.cs and excludes *.zkevm.cs"
+  },
+  "schedule": {
+    "accountReadBase": 0,
+    "coldAccountAccess": 3000,
+    "warmAccess": 100,
+    "copyWord": 3,
+    "memoryLinear": 3,
+    "memoryQuadraticDivisor": 512,
+    "veryLow": 3
+  },
+  "opcodes": [
+    {
+      "name": "balance",
+      "instruction": "BALANCE",
+      "opcodeByte": 49,
+      "handlerRoute": "BalanceOpcode\u003CTTracingInst,EvmInstructions.AccessSpec\u003COnFlag,Eip8038On\u003E\u003E",
+      "valueRule": "balance",
+      "stackInputs": 1,
+      "stackOutputs": 1,
+      "popsBeforeGas": false,
+      "chargesSecondRead": false,
+      "effectOrder": "enter\u003EbaseGas\u003EpopAddress\u003Ewarm\u003EaccessGas\u003EgetBalance\u003Epush"
+    },
+    {
+      "name": "extCodeSize",
+      "instruction": "EXTCODESIZE",
+      "opcodeByte": 59,
+      "handlerRoute": "ExtCodeSizeOpcode\u003CTTracingInst,Eip8038On,OnFlag\u003E",
+      "valueRule": "codeLength",
+      "stackInputs": 1,
+      "stackOutputs": 1,
+      "popsBeforeGas": false,
+      "chargesSecondRead": true,
+      "effectOrder": "enter\u003EbaseGas\u003EpopAddress\u003Ewarm\u003EaccessGas\u003EsecondWarmGas\u003EaccountRead\u003EfusionOrCodeNoDelegation\u003Epush"
+    },
+    {
+      "name": "extCodeCopy",
+      "instruction": "EXTCODECOPY",
+      "opcodeByte": 60,
+      "handlerRoute": "ExtCodeCopyOpcode\u003CTTracingInst,Eip8038On,OnFlag\u003E",
+      "valueRule": "zeroExtendedCodeCopy",
+      "stackInputs": 4,
+      "stackOutputs": 0,
+      "popsBeforeGas": true,
+      "chargesSecondRead": true,
+      "effectOrder": "enter\u003EpopAddress\u003EpopDestinationSourceLength\u003EcopyGas\u003Ewarm\u003EaccessGas\u003EsecondWarmGas\u003EzeroLengthRecordOrMemoryGas\u003EaccountRead\u003EcodeNoDelegation\u003EzeroExtendedCopy"
+    },
+    {
+      "name": "extCodeHash",
+      "instruction": "EXTCODEHASH",
+      "opcodeByte": 63,
+      "handlerRoute": "ExtCodeHashOpcode\u003CTTracingInst,EvmInstructions.AccessSpec\u003COnFlag,Eip8038On\u003E\u003E",
+      "valueRule": "zeroIfDeadElseCodeHash",
+      "stackInputs": 1,
+      "stackOutputs": 1,
+      "popsBeforeGas": false,
+      "chargesSecondRead": false,
+      "effectOrder": "enter\u003EbaseGas\u003EpopAddress\u003Ewarm\u003EaccessGas\u003EisDead\u003EgetCodeHashIfLive\u003Epush"
+    }
+  ],
+  "specializations": [
+    {
+      "opcode": "balance",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBalanceOpcode\u003COffFlag,EvmInstructions.AccessSpec\u003COnFlag,Eip8038On\u003E\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "balance",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBalanceOpcode\u003COffFlag,EvmInstructions.AccessSpec\u003COnFlag,Eip8038On\u003E\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "balance",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBalanceOpcode\u003COnFlag,EvmInstructions.AccessSpec\u003COnFlag,Eip8038On\u003E\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "balance",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBalanceOpcode\u003COnFlag,EvmInstructions.AccessSpec\u003COnFlag,Eip8038On\u003E\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "extCodeSize",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CExtCodeSizeOpcode\u003COffFlag,Eip8038On,OnFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "extCodeSize",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CExtCodeSizeOpcode\u003COffFlag,Eip8038On,OnFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "extCodeSize",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CExtCodeSizeOpcode\u003COnFlag,Eip8038On,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "extCodeSize",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CExtCodeSizeOpcode\u003COnFlag,Eip8038On,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "extCodeCopy",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CExtCodeCopyOpcode\u003COffFlag,Eip8038On,OnFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "extCodeCopy",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CExtCodeCopyOpcode\u003COffFlag,Eip8038On,OnFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "extCodeCopy",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CExtCodeCopyOpcode\u003COnFlag,Eip8038On,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "extCodeCopy",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CExtCodeCopyOpcode\u003COnFlag,Eip8038On,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "extCodeHash",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CExtCodeHashOpcode\u003COffFlag,EvmInstructions.AccessSpec\u003COnFlag,Eip8038On\u003E\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "extCodeHash",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CExtCodeHashOpcode\u003COffFlag,EvmInstructions.AccessSpec\u003COnFlag,Eip8038On\u003E\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "extCodeHash",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CExtCodeHashOpcode\u003COnFlag,EvmInstructions.AccessSpec\u003COnFlag,Eip8038On\u003E\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "extCodeHash",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CExtCodeHashOpcode\u003COnFlag,EvmInstructions.AccessSpec\u003COnFlag,Eip8038On\u003E\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    }
+  ],
+  "openExtractionObligations": [
+    "C# and CLR execution correctness are trusted; complete Roslyn token admission only fails closed on source drift.",
+    "Address is the low 160 bits of the popped UInt256; UInt256 and ValueHash256 byte/word representations are adapter premises.",
+    "IWorldState and ICodeInfoRepository values, IsPrecompile, IsContract, IsDeadAccount, and code-cache coherence are provider premises.",
+    "The operational theorem assumes IsTracingAccess=false; access-list-generation tracing intentionally pre-warms before pricing.",
+    "Instruction trace callbacks, cancellation polling, unsafe stack storage, cache metrics, and frame rollback are outside this slice.",
+    "PC in this model is the dispatch-local program counter; exceptional VM-state publication is a later frame/dispatcher obligation."
+  ]
+}

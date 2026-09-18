@@ -202,8 +202,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     {
         // postStep runs from ReportOperationRemainingGas. The interpreter reports that once per
         // instruction, and the CALL handler reports it once more itself before the child frame runs, so
-        // the one CALL below is the only step that fires postStep twice. Both frames halt on an explicit
-        // opcode, so no instruction picks up the extra end-of-code report either.
+        // the one CALL below is the only step that fires postStep twice.
         string userTracer = @"{
                     steps: 0,
                     postSteps: 0,

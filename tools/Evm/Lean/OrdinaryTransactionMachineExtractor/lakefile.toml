@@ -1,0 +1,35 @@
+name = "OrdinaryTransactionMachineExtractor"
+version = "0.1.0"
+defaultTargets = ["OrdinaryTransactionMachineExtractor.Refinement.OrdinaryTransactionMachine"]
+
+[[lean_lib]]
+name = "Eip803x"
+srcDir = ".."
+
+[[lean_lib]]
+name = "WorldJournalExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "FrameJournalExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "PersistentStorageOpcodeExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "TransientStorageOpcodeExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "LogOpcodeExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "OrdinaryTransactionMachineExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "ReceiptTerminalFoldExtractor"
+srcDir = ".."

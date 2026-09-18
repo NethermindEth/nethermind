@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 3,
+  "extractorVersion": "1.2.0",
+  "compilerVersion": "5.6.0.0",
+  "languageVersion": "14.0",
+  "root": "Nethermind.Evm.GasPolicy.TransactionGasInitializationKernel",
+  "methodSignature": "Nethermind.Evm.GasPolicy.TransactionGasInitializationResult Nethermind.Evm.GasPolicy.TransactionGasInitializationKernel.TryCreate(ulong gasLimit, ulong intrinsicExecutionGas, long intrinsicStateGas, bool eip8037Enabled, ulong executionGasLimitCap)",
+  "rootSignatures": [
+    "Nethermind.Evm.GasPolicy.TransactionGasInitializationResult Nethermind.Evm.GasPolicy.TransactionGasInitializationKernel.TryCreate(ulong gasLimit, ulong intrinsicExecutionGas, long intrinsicStateGas, bool eip8037Enabled, ulong executionGasLimitCap)",
+    "ulong Nethermind.Evm.GasPolicy.BlockGasAccountingKernel.Combine(ulong blockExecutionGas, ulong blockStateGas)"
+  ],
+  "source": {
+    "path": "src/Nethermind/Nethermind.Evm/GasPolicy/TransactionGasInitializationKernel.cs",
+    "sha256": "65ab0742596ea7ebf49d2c79601eae00152d8d039ac8e417076bf63123be1e82"
+  },
+  "artifact": {
+    "path": "TransactionGasInitializationKernel.ir.json",
+    "sha256": "a48a5bf063439cd9a21f4eee0e9b2509dfe07a4fa98f075aa5430db59f900f52"
+  },
+  "leanArtifact": {
+    "path": "tools/Evm/Lean/Eip803x/Generated/TransactionGasInitializationKernel.lean",
+    "sha256": "83ce996d6dcc93a588114e73737a25a14cb21689e9e8900e6dc68a07fb170b6f"
+  },
+  "extractedMethods": [
+    "Nethermind.Evm.GasPolicy.TransactionGasInitializationResult Nethermind.Evm.GasPolicy.TransactionGasInitializationKernel.TryCreate(ulong gasLimit, ulong intrinsicExecutionGas, long intrinsicStateGas, bool eip8037Enabled, ulong executionGasLimitCap)",
+    "ulong Nethermind.Evm.GasPolicy.BlockGasAccountingKernel.Combine(ulong blockExecutionGas, ulong blockStateGas)"
+  ]
+}

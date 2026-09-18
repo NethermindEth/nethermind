@@ -1,0 +1,287 @@
+namespace Nethermind.Evm;
+
+partial class EvmInstructions
+{
+/// <summary>
+    /// Pushes the current program counter (minus one) onto the EVM stack.
+    /// This is used to obtain the current execution point within the code.
+    /// </summary>
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="stack">The execution stack where the program counter is pushed.</param>
+    /// <param name="gas">The gas which is updated by the operation's cost.</param>
+    /// <param name="programCounter">The current program counter.</param>
+    /// <returns>
+    /// <see cref="EvmExceptionType.None"/> on success.
+    /// </returns>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionProgramCounter<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        // Deduct the base gas cost for reading the program counter.
+        if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+        // The program counter pushed is adjusted by -1 to reflect the correct opcode location.
+        return stack.PushUInt32<TTracingInst, OnFlag>((uint)(programCounter - 1));
+    }
+
+/// <summary>
+    /// Marks a valid jump destination.
+    /// This instruction only deducts the jump destination gas cost without modifying the stack.
+    /// </summary>
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="stack">The execution stack.</param>
+    /// <param name="gas">The gas which is updated by the operation's cost.</param>
+    /// <returns>
+    /// <see cref="EvmExceptionType.None"/> on success.
+    /// </returns>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionJumpDest<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        // Deduct the gas cost specific for a jump destination marker.
+        if (!TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+
+        return EvmExceptionType.None;
+    }
+
+/// <summary>
+    /// Executes an unconditional jump.
+    /// Pops a jump destination from the stack and validates it.
+    /// If the destination is valid, updates the program counter; otherwise, returns an error.
+    /// </summary>
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="stack">The execution stack from which the jump destination is popped.</param>
+    /// <param name="gas">Reference to the gas state; reduced by the gas cost for jumping.</param>
+    /// <param name="programCounter">The program counter; the destination is returned rather than written back.</param>
+    /// <returns>
+    /// <see cref="EvmExceptionType.None"/> on success; <see cref="EvmExceptionType.StackUnderflow"/> or <see cref="EvmExceptionType.InvalidJumpDestination"/>
+    /// on failure.
+    /// </returns>
+    [SkipLocalsInit]
+    public static OpcodeResult InstructionJump<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        => InstructionJump<TGasPolicy, OffFlag>(ref stack, ref gas, vm, programCounter);
+
+/// <summary>
+    /// <see cref="InstructionJump{TGasPolicy}"/> for non-traced tables: a valid taken jump also
+    /// counts and charges the target <c>JUMPDEST</c> and leaves PC on the instruction after it,
+    /// eliminating the marker's dispatch.
+    /// </summary>
+    [SkipLocalsInit]
+    internal static OpcodeResult InstructionJumpAndSkipJumpDest<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        => InstructionJump<TGasPolicy, OnFlag>(ref stack, ref gas, vm, programCounter);
+
+[SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static OpcodeResult InstructionJump<TGasPolicy, TSkipJumpDest>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TSkipJumpDest : struct, IFlag
+    {
+        // Deduct the gas cost for performing a jump.
+        if (!TGasPolicy.UpdateGas<JumpGasCost>(ref gas)) return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
+        // Pop the jump destination from the stack.
+        if (!stack.EnsureDepth(1)) goto StackUnderflow;
+        // Validate the jump destination and update the program counter if valid.
+        nint destination = JumpDestination(ref stack.PopBytesByRefUnchecked(), ref stack);
+        if (destination < 0) goto InvalidJumpDestination;
+        if (!SkipJumpDest<TGasPolicy, TSkipJumpDest>(vm, ref gas, destination, out programCounter))
+            return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
+        PrefetchCodeAtDestination(ref stack, programCounter);
+
+        return new OpcodeResult(programCounter, EvmExceptionType.None);
+        // Jump forward to be unpredicted by the branch predictor.
+    StackUnderflow:
+        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
+    InvalidJumpDestination:
+        return new OpcodeResult(programCounter, EvmExceptionType.InvalidJumpDestination);
+    }
+
+/// <summary>
+    /// Executes a conditional jump.
+    /// Pops a jump destination and a condition from the stack. If the condition is non-zero,
+    /// attempts to jump to the specified destination.
+    /// </summary>
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="stack">The execution stack from which the jump destination and condition are popped.</param>
+    /// <param name="gas">Reference to the gas state; reduced by the cost for conditional jump.</param>
+    /// <param name="programCounter">The program counter; the destination is returned rather than written back.</param>
+    /// <returns>
+    /// <see cref="EvmExceptionType.None"/> on success; returns <see cref="EvmExceptionType.StackUnderflow"/>
+    /// or <see cref="EvmExceptionType.InvalidJumpDestination"/> on error.
+    /// </returns>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static OpcodeResult InstructionJumpIf<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        => InstructionJumpIf<TGasPolicy, OffFlag>(ref stack, ref gas, vm, programCounter);
+
+/// <summary>
+    /// <see cref="InstructionJumpIf{TGasPolicy}"/> for non-traced tables: a valid taken jump also
+    /// counts and charges the target <c>JUMPDEST</c> and leaves PC on the instruction after it,
+    /// eliminating the marker's dispatch. Untaken jumps are unchanged.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static OpcodeResult InstructionJumpIfAndSkipJumpDest<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        => InstructionJumpIf<TGasPolicy, OnFlag>(ref stack, ref gas, vm, programCounter);
+
+[SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static OpcodeResult InstructionJumpIf<TGasPolicy, TSkipJumpDest>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TSkipJumpDest : struct, IFlag
+    {
+        // Deduct the high gas cost for a conditional jump.
+        if (!TGasPolicy.UpdateGas<JumpIGasCost>(ref gas)) return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
+        // The condition sits directly below the destination, so one depth check covers both.
+        if (!stack.EnsureDepth(2)) goto StackUnderflow;
+        ref byte condition = ref stack.Pop2BytesByRefUnchecked();
+
+        // Only a taken jump reads the destination, so an untaken one never decodes it.
+        if (!EvmStack.IsSlotZero(ref condition))
+        {
+            nint destination = JumpDestination(ref Unsafe.Add(ref condition, EvmStack.WordSize), ref stack);
+            if (destination < 0) goto InvalidJumpDestination;
+            if (!SkipJumpDest<TGasPolicy, TSkipJumpDest>(vm, ref gas, destination, out programCounter))
+                return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
+            PrefetchCodeAtDestination(ref stack, programCounter);
+        }
+
+        return new OpcodeResult(programCounter, EvmExceptionType.None);
+        // Jump forward to be unpredicted by the branch predictor.
+    StackUnderflow:
+        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
+    InvalidJumpDestination:
+        return new OpcodeResult(programCounter, EvmExceptionType.InvalidJumpDestination);
+    }
+
+/// <summary>Steps past a landed-on <c>JUMPDEST</c> and returns whether its gas charge succeeded.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool SkipJumpDest<TGasPolicy, TSkipJumpDest>(VirtualMachine<TGasPolicy> vm, ref TGasPolicy gas, nint destination, out nint programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TSkipJumpDest : struct, IFlag
+    {
+        programCounter = destination;
+        if (TSkipJumpDest.IsActive)
+        {
+            // Count before charging so an out-of-gas JUMPDEST matches the dispatch loop's ordering.
+            vm.OpCodeCount++;
+            programCounter++;
+            return TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas);
+        }
+
+        return true;
+    }
+
+/// <summary>
+    /// Stops the execution of the EVM.
+    /// </summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionStop<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        => EvmExceptionType.Stop;
+
+/// <summary>
+    /// Implements the REVERT opcode.
+    /// Pops a memory offset and length from the stack, updates memory gas cost, loads the return data,
+    /// and returns a revert exception.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionRevert<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        // Attempt to pop memory offset and length; if either fails, signal a stack underflow.
+        if (!stack.PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 length))
+        {
+            goto StackUnderflow;
+        }
+
+        // Ensure sufficient gas for any required memory expansion.
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory) ||
+            !vm.VmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
+        {
+            goto OutOfGas;
+        }
+
+        vm.ReturnData = returnData.ToArray();
+
+        return EvmExceptionType.Revert;
+        // Jump forward to be unpredicted by the branch predictor.
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    }
+
+/// <summary>
+    /// Handles invalid opcodes by deducting a high gas cost and returning a BadInstruction error.
+    /// </summary>
+    public static EvmExceptionType InstructionInvalid<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> _)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        if (!TGasPolicy.UpdateGas<HighGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+        return EvmExceptionType.BadInstruction;
+    }
+
+/// <summary>
+    /// Reads a jump destination out of the stack slot that holds it, returning it, or <c>-1</c> when it
+    /// is not a jump marker.
+    /// </summary>
+    /// <remarks>
+    /// Only the last four bytes of the big-endian word can name a marker; every byte above them just has
+    /// to be zero. Testing the slot in place skips the full 256-bit endianness conversion that decoding
+    /// it as a <see cref="UInt256"/> would run first. The destination is returned rather than written
+    /// through a reference so the caller's counter stays in a register: taking its address pins it to a
+    /// stack slot for the whole of the calling instruction.
+    /// </remarks>
+    /// <param name="slot">The stack slot holding the destination, big-endian.</param>
+    /// <param name="stack">The current EVM stack, which carries the code length and jump-destination bitmap.</param>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static nint JumpDestination(ref byte slot, ref EvmStack stack)
+    {
+        ref ulong parts = ref Unsafe.As<byte, ulong>(ref slot);
+        ulong low = Unsafe.Add(ref parts, 3);
+        // The low limb's leading four bytes carry the value's high half, so they belong to the zero test.
+        if ((parts | Unsafe.Add(ref parts, 1) | Unsafe.Add(ref parts, 2) | (uint)low) != 0)
+            return -1;
+
+        // A value above int.MaxValue needs no test of its own: the bound below compares unsigned, so the
+        // sign-flipped index is far past any code length.
+        return JumpDestination((int)BinaryPrimitives.ReverseEndianness((uint)(low >> 32)), ref stack);
+    }
+
+/// <inheritdoc cref="JumpDestination(ref byte, ref EvmStack)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static nint JumpDestination(int jumpDestination, ref EvmStack stack) =>
+        (uint)jumpDestination < (uint)stack.CodeLength
+            && JumpDestinationAnalyzer.IsJumpDestination(stack.JumpDestinations, jumpDestination)
+            ? jumpDestination
+            : -1;
+
+/// <summary>Prefetches the bytecode cache line at a taken jump's next instruction.</summary>
+    /// <remarks>Hints the target explicitly to reduce cache misses after non-sequential control flow.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void PrefetchCodeAtDestination(ref EvmStack stack, nint programCounter)
+    {
+        if (Sse.IsSupported)
+        {
+            ref byte code = ref stack.Code;
+            nuint dest = (nuint)programCounter;
+            nuint codeLength = (nuint)stack.CodeLength;
+
+            if (dest < codeLength)
+            {
+                unsafe
+                {
+                    // PREFETCHT0 is a non-faulting hint; a GC relocation only makes the hint ineffective.
+                    Sse.Prefetch0(Unsafe.AsPointer(ref Unsafe.Add(ref code, dest)));
+                }
+            }
+        }
+    }
+
+}

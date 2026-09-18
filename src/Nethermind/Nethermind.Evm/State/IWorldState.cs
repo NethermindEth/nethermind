@@ -152,6 +152,20 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void ResetTransient();
 
+    /// <summary>
+    /// Applies EIP-161 empty-account deletion to uncommitted transaction state.
+    /// </summary>
+    void ReapEmptyAccounts() { }
+
+    /// <summary>
+    /// Determines whether an EIP-161-empty account still has a physical state leaf.
+    /// </summary>
+    /// <remarks>
+    /// The default is conservative for implementations that cannot distinguish an absent account
+    /// from an empty leaf.
+    /// </remarks>
+    bool HasEmptyAccountLeaf(Address address) => IsDeadAccount(address);
+
     public void AddAccountRead(Address address) { }
 
     public void RecordAccountAccess(Address address) { }
@@ -160,11 +174,27 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     public IDisposable? BeginSystemAccountReadSuppression() => null;
 
-    // EIP-684: a creation collision occurs when the destination has code or a non-zero nonce.
-    bool IsNonZeroAccount(Address address, out bool accountExists)
+    /// <summary>
+    /// Determines whether CREATE collides and classifies the destination's physical and EIP-161 state.
+    /// </summary>
+    /// <param name="address">The CREATE destination.</param>
+    /// <param name="includeStorageCollision">Whether nonempty storage is a collision.</param>
+    /// <param name="physicalLeafExists">Whether the destination has a physical account leaf.</param>
+    /// <param name="logicalAccountExists">Whether the destination is nonempty under EIP-161.</param>
+    bool IsCreateCollision(
+        Address address,
+        bool includeStorageCollision,
+        out bool physicalLeafExists,
+        out bool logicalAccountExists)
     {
-        accountExists = AccountExists(address);
-        return accountExists
-            && (IsContract(address) || GetNonce(address) != 0);
+        physicalLeafExists = AccountExists(address);
+        if (!physicalLeafExists)
+        {
+            logicalAccountExists = false;
+            return false;
+        }
+
+        logicalAccountExists = !IsDeadAccount(address);
+        return IsContract(address) || GetNonce(address) != 0;
     }
 }

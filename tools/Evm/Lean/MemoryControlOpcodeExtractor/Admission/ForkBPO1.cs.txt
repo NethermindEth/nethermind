@@ -1,0 +1,13 @@
+namespace Nethermind.Specs.Forks;
+
+public class BPO1() : NamedReleaseSpec<BPO1>(Osaka.Instance)
+{
+    public override void Apply(NamedReleaseSpec spec)
+    {
+        spec.Name = "bpo1";
+        spec.MaxBlobCount = 15;
+        spec.TargetBlobCount = 10;
+        spec.BlobBaseFeeUpdateFraction = 8346193;
+    }
+}
+

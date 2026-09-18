@@ -1,0 +1,3045 @@
+{
+  "schemaVersion": 1,
+  "count": 434,
+  "aggregateSha256": "a563dcff8680800e3928451615182f7f0057f43f0488ce3aa3480cd13946bb9b",
+  "references": [
+    {
+      "path": "platform/Microsoft.CSharp.dll",
+      "assemblyName": "Microsoft.CSharp",
+      "sha256": "2000912f2fc52e0c64ed893d79f4e7b143502540fb7170b5ae5fcea7099ba431",
+      "mvid": "d2968d86-8908-4bbe-9bc1-59e4dec4b047",
+      "selected": true
+    },
+    {
+      "path": "platform/Microsoft.VisualBasic.Core.dll",
+      "assemblyName": "Microsoft.VisualBasic.Core",
+      "sha256": "2666b24eb6e295476b44abd057ea250fd5957db9c1c7adee6a223a747ddfe3d2",
+      "mvid": "5cde5ad0-c294-4106-9b95-5387bb893667",
+      "selected": true
+    },
+    {
+      "path": "platform/Microsoft.VisualBasic.dll",
+      "assemblyName": "Microsoft.VisualBasic",
+      "sha256": "e192508adde6a758138a5a8e28998dccb64e7f45eaf30d8ab3564f87749028b1",
+      "mvid": "2ba33129-ab75-46e0-a400-a54c8f059632",
+      "selected": true
+    },
+    {
+      "path": "platform/Microsoft.Win32.Primitives.dll",
+      "assemblyName": "Microsoft.Win32.Primitives",
+      "sha256": "6c21472b0ae2f9b484a97614fad5485a22f18f9f19ee1adb9ceb3ed8ddb072d7",
+      "mvid": "753b72c2-70fa-488b-a736-b0a6c5a29cba",
+      "selected": true
+    },
+    {
+      "path": "platform/Microsoft.Win32.Registry.dll",
+      "assemblyName": "Microsoft.Win32.Registry",
+      "sha256": "76849cfde4369f3ae93e28261fe5e1010dbf1332f7da95c98543cba9b03961c0",
+      "mvid": "0d0460dc-04af-459f-88cb-cbf49d11dab9",
+      "selected": true
+    },
+    {
+      "path": "platform/mscorlib.dll",
+      "assemblyName": "mscorlib",
+      "sha256": "b698595367a7d4fa57ccacab73751fde0bb8f2415345c62cdfe7ced890da2c0c",
+      "mvid": "b9279757-c386-4c24-be15-f1cce0b32453",
+      "selected": true
+    },
+    {
+      "path": "platform/netstandard.dll",
+      "assemblyName": "netstandard",
+      "sha256": "3dc81dbc9dacd28261632c94410859eda24c2db50cd6c14309cbb2a434b50c57",
+      "mvid": "5db59131-7afe-45dd-a471-6e9ad82b1239",
+      "selected": true
+    },
+    {
+      "path": "platform/System.AppContext.dll",
+      "assemblyName": "System.AppContext",
+      "sha256": "d9dd9fa44e019f27172d6b2662e2b6038f48c270912ac8aae53d4d909da7e9be",
+      "mvid": "6a084f0e-dcb4-47a9-926c-570472dd627e",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Buffers.dll",
+      "assemblyName": "System.Buffers",
+      "sha256": "a1a35f5524e2f831d08ca55f702fbddcb8c6dfecd264f0f563d81a1c8b8280bd",
+      "mvid": "da086818-0830-48a0-af06-49324a3d715c",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Collections.Concurrent.dll",
+      "assemblyName": "System.Collections.Concurrent",
+      "sha256": "082f4bc0da1141eb65111b6da633d75624adfb7bb067d7ee90c5622c8b30885b",
+      "mvid": "93bf2b84-4609-4e8a-b841-65ce7d052071",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Collections.dll",
+      "assemblyName": "System.Collections",
+      "sha256": "df6f2037eabee28100184e92f7536427ba2f086c1110629804d466b124bc4d54",
+      "mvid": "24041caa-9aaf-4066-918f-696c30ef331d",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Collections.Immutable.dll",
+      "assemblyName": "System.Collections.Immutable",
+      "sha256": "b527dd7b2beb82c22aa39787298cbeb33f3eac9eb9b83a0f0271353421db28db",
+      "mvid": "7054ed45-349a-4832-890c-3c83a6c977d5",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Collections.NonGeneric.dll",
+      "assemblyName": "System.Collections.NonGeneric",
+      "sha256": "aa4d5216d066c91cb489f63c6cbfcaf1f47b6e74e070db45639d3460454fc60b",
+      "mvid": "b93e913f-358c-41ca-a56e-5841a81efa61",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Collections.Specialized.dll",
+      "assemblyName": "System.Collections.Specialized",
+      "sha256": "e31af1f866e880844e027be59f545b9a6b34108e0b0680ebe3fbc19a53070819",
+      "mvid": "1ab479b2-e1d9-462d-8891-555d2f8907ae",
+      "selected": true
+    },
+    {
+      "path": "platform/System.ComponentModel.Annotations.dll",
+      "assemblyName": "System.ComponentModel.Annotations",
+      "sha256": "e3be2d35d81e6475c64110cfc099895b71df22c8b46a18c2d7c76a913b8ba903",
+      "mvid": "05cfa926-63ee-45a9-b9e9-735faa01d73e",
+      "selected": true
+    },
+    {
+      "path": "platform/System.ComponentModel.DataAnnotations.dll",
+      "assemblyName": "System.ComponentModel.DataAnnotations",
+      "sha256": "d40e8c7062e6b9ce11ba83eab3d26be0eec8066b99970ea88b8e87fb75f411bd",
+      "mvid": "b36856bc-8299-4668-969a-8c49b9711da0",
+      "selected": true
+    },
+    {
+      "path": "platform/System.ComponentModel.dll",
+      "assemblyName": "System.ComponentModel",
+      "sha256": "e3b6f75864ee944898540937c1f300e04f44a1b2729516f0bbf948589a8b14b2",
+      "mvid": "9331f9f8-cb07-4cfc-bce4-287538aaa318",
+      "selected": true
+    },
+    {
+      "path": "platform/System.ComponentModel.EventBasedAsync.dll",
+      "assemblyName": "System.ComponentModel.EventBasedAsync",
+      "sha256": "cc84fe814ef5e58271d83193e328f8ec220efd4696d90af9a7c4690c10451495",
+      "mvid": "777e26ab-96d9-43f4-bb9f-616781c73c72",
+      "selected": true
+    },
+    {
+      "path": "platform/System.ComponentModel.Primitives.dll",
+      "assemblyName": "System.ComponentModel.Primitives",
+      "sha256": "1e2451184c287409ea25acde3c90f25950bf34d16458a6e52a94ca4292434f62",
+      "mvid": "e7714447-a3cb-4c79-bce6-6e7374c9f249",
+      "selected": true
+    },
+    {
+      "path": "platform/System.ComponentModel.TypeConverter.dll",
+      "assemblyName": "System.ComponentModel.TypeConverter",
+      "sha256": "10dae312a6697718f8ce3dfcdb17d6ae4b74687c765d74d50de8a8e69e08f5e7",
+      "mvid": "827d7669-7920-4732-8cbf-3a56f602644f",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Configuration.dll",
+      "assemblyName": "System.Configuration",
+      "sha256": "3952a72e1f18774f16952b46c20e80ed2bc601a06eca01f33fa924c738022a9c",
+      "mvid": "d0a53643-16c7-4b29-85a1-8c7d66b1d7b2",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Console.dll",
+      "assemblyName": "System.Console",
+      "sha256": "3b85daf02a3d9ed99b84bb1c639fe8b1ced46d8d157fa56f525f6b8c5be43b3e",
+      "mvid": "aaf146d0-4986-45a7-bfc8-18300c2e26b4",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Core.dll",
+      "assemblyName": "System.Core",
+      "sha256": "ac23faf1b37fa49f1b117baad951a65609e799a6e669a6df06d3552677e0c086",
+      "mvid": "d5e9ef21-98ed-41a1-808d-ca301b53f9f9",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Data.Common.dll",
+      "assemblyName": "System.Data.Common",
+      "sha256": "66bdd62047ee460e2ce2c33d15dd1173ac97997b2745864a905179594f821acc",
+      "mvid": "fe73e041-985a-49b6-9577-2d153abf908e",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Data.DataSetExtensions.dll",
+      "assemblyName": "System.Data.DataSetExtensions",
+      "sha256": "aeeae0755c8c7f6747765cdf82fa43182e320e97f2035e3a0a19f21905e6c113",
+      "mvid": "d90ea48b-0b1c-4327-88cc-b35a2d271cc4",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Data.dll",
+      "assemblyName": "System.Data",
+      "sha256": "49f52958a2a6e461d0fd7a47e54a199eb263c69ecfcc0fc684b73b5918ebf466",
+      "mvid": "633f664a-772d-4ac6-b8d8-8bc0190f2869",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Diagnostics.Contracts.dll",
+      "assemblyName": "System.Diagnostics.Contracts",
+      "sha256": "6c05cacd9b61b08ae75f2d783cc402b0b5fc848e3d68c29c10b93897cc083e8b",
+      "mvid": "e9c8c952-8148-481d-9552-6b40b634af46",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Diagnostics.Debug.dll",
+      "assemblyName": "System.Diagnostics.Debug",
+      "sha256": "8b160ffe7518588bf64e13c01c6dcb2ef504d64f38bbf0f198d31e7b698db92c",
+      "mvid": "dae841f1-5a59-4553-930f-5037b7fcf815",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Diagnostics.DiagnosticSource.dll",
+      "assemblyName": "System.Diagnostics.DiagnosticSource",
+      "sha256": "6267c1bd1bdf2bdd4b5748b885b0adcda10f18697adfea8488a19a009ad44fdb",
+      "mvid": "1e3b1536-9aa0-4ed7-8550-0f89ec788c10",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Diagnostics.FileVersionInfo.dll",
+      "assemblyName": "System.Diagnostics.FileVersionInfo",
+      "sha256": "e94f158142e93834dec3100bde3313935517d549ff36c65819a06d3104dec427",
+      "mvid": "f4216db4-ef81-4d87-8295-78983e8623f9",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Diagnostics.Process.dll",
+      "assemblyName": "System.Diagnostics.Process",
+      "sha256": "51a57fbe918f8b68930c090792b718fc0850ea12da869d50b97a3796af29a740",
+      "mvid": "e9373620-50e0-45a7-afbe-369c5cc9d809",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Diagnostics.StackTrace.dll",
+      "assemblyName": "System.Diagnostics.StackTrace",
+      "sha256": "8f6397c1e2ba9b8b8bfa317962151b5035049ce8d6b3575e5027a0d0eeacc797",
+      "mvid": "ede314b1-9034-4813-bef1-ccd10d247d0a",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Diagnostics.TextWriterTraceListener.dll",
+      "assemblyName": "System.Diagnostics.TextWriterTraceListener",
+      "sha256": "1bf165cee916a854e1150f489e4348ce94755359d5fcdcc0bc2bbbe6a7102bdd",
+      "mvid": "ca7e6fcf-25aa-4f61-b5f9-fa0a6609ad40",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Diagnostics.Tools.dll",
+      "assemblyName": "System.Diagnostics.Tools",
+      "sha256": "841c5e2b6c171fa9aaff0fc6295f3fbc93dc5dcab44118b62f1c942bb674aff2",
+      "mvid": "c2346557-dd4d-4296-8880-eba93c47e795",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Diagnostics.TraceSource.dll",
+      "assemblyName": "System.Diagnostics.TraceSource",
+      "sha256": "8445c7f1bbaae6cffde60e2c9a8753faaa5100255fbe31d0a1927d9d9bb7f194",
+      "mvid": "f43cc637-abaf-4b27-b5fa-83fc28c29686",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Diagnostics.Tracing.dll",
+      "assemblyName": "System.Diagnostics.Tracing",
+      "sha256": "9563d5eec35f94d13a5e62eaa9535dbe0e9ea474f055da132fb8af46b0b01263",
+      "mvid": "bb6f41e9-d025-483b-9658-0df87a1870f9",
+      "selected": true
+    },
+    {
+      "path": "platform/System.dll",
+      "assemblyName": "System",
+      "sha256": "ef135f0bda0c41e142fdbd67b93e5aa7911916cb250f7df302f4151a3bbfa380",
+      "mvid": "08c4e005-ee8d-4e87-8a86-3f07a1a4143b",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Drawing.dll",
+      "assemblyName": "System.Drawing",
+      "sha256": "585a8da9952d715f8de7a7b1879b59d68ff8608b92f6ed1c5f0e1d251180d3c6",
+      "mvid": "b8ec074a-d711-4f9c-8227-d7a3e5574bd0",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Drawing.Primitives.dll",
+      "assemblyName": "System.Drawing.Primitives",
+      "sha256": "17585b32ca91bac8ccff2ef1c6ddf62ee9ea5efc552928c3a9d1b868394246e9",
+      "mvid": "aeba65e5-d23b-4757-a885-4047082f5abf",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Dynamic.Runtime.dll",
+      "assemblyName": "System.Dynamic.Runtime",
+      "sha256": "c0eac30c791db8c1a2b50b61c50d029f4ddd0eadfdd35433745001688a3e7466",
+      "mvid": "77a30915-5bc3-4a31-961c-f5049da3daa6",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Formats.Asn1.dll",
+      "assemblyName": "System.Formats.Asn1",
+      "sha256": "a163fe5f96d1689f1bc1ac531b38c3aba95792ac7dd52231d325d658947fbcfd",
+      "mvid": "243bcc9d-3cb6-41b3-876a-0e0abba89805",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Formats.Tar.dll",
+      "assemblyName": "System.Formats.Tar",
+      "sha256": "44c9984f269a158915195fd32007f22c3bb692dcfeb933cda8ea45a3ac6cd1ce",
+      "mvid": "88185050-9692-4436-bd2a-cb793d75619a",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Globalization.Calendars.dll",
+      "assemblyName": "System.Globalization.Calendars",
+      "sha256": "e0f3f3f6e4acc7b6755782fed5cb075ecf70beee4fc5d404579ae99bc0883ef2",
+      "mvid": "4f67667c-7e0b-44da-8f29-004001e25afe",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Globalization.dll",
+      "assemblyName": "System.Globalization",
+      "sha256": "66902cffd057673b4b77aa68faf80d33ffa4c94510e61db2a067943cc53b7702",
+      "mvid": "cdff6ad2-9e96-4f32-ac3a-0b1cdda9d9af",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Globalization.Extensions.dll",
+      "assemblyName": "System.Globalization.Extensions",
+      "sha256": "be0390557cc72078a7217cf94fd44b9ab66aa30838c00a92aa78c62469c44aa0",
+      "mvid": "1d06e446-b900-449b-bbce-bf09aa61b239",
+      "selected": true
+    },
+    {
+      "path": "platform/System.IO.Compression.Brotli.dll",
+      "assemblyName": "System.IO.Compression.Brotli",
+      "sha256": "0a59a95787ee15784d73079fdd5dc555b78659a6c560b6cbbf0d7452e638df89",
+      "mvid": "8d2062f8-44fd-41f4-aab7-702eabd1da16",
+      "selected": true
+    },
+    {
+      "path": "platform/System.IO.Compression.dll",
+      "assemblyName": "System.IO.Compression",
+      "sha256": "c942747f84b730887090f5e0cf86d164c0ee402e524dce2750e06a6df48513fb",
+      "mvid": "d4061549-42bf-458d-9038-1d4dfb0b37a1",
+      "selected": true
+    },
+    {
+      "path": "platform/System.IO.Compression.FileSystem.dll",
+      "assemblyName": "System.IO.Compression.FileSystem",
+      "sha256": "4aeec2c0189f73ba8122f05c0d759008ddae1a8873b167cc8a558d53f2af80e1",
+      "mvid": "3f0af1a9-6290-40fa-b1e7-68e9f011f7dd",
+      "selected": true
+    },
+    {
+      "path": "platform/System.IO.Compression.ZipFile.dll",
+      "assemblyName": "System.IO.Compression.ZipFile",
+      "sha256": "2da76eb281740be485b5637da8c60fe0ce12bc2848d1a1a81ce144fa74313e18",
+      "mvid": "2c7df275-e7da-4617-89bf-54b43a2b7900",
+      "selected": true
+    },
+    {
+      "path": "platform/System.IO.dll",
+      "assemblyName": "System.IO",
+      "sha256": "388400ccb189b819d6ec5f1ef70710a39641d93ed5b870fc9324866b75dfb78b",
+      "mvid": "68481c5e-f168-4eaf-b509-3cccd2471cb1",
+      "selected": true
+    },
+    {
+      "path": "platform/System.IO.FileSystem.AccessControl.dll",
+      "assemblyName": "System.IO.FileSystem.AccessControl",
+      "sha256": "f7f9ed6cdab35274711e9345266784ec332ae8040db184d141c70e7941fbbec5",
+      "mvid": "a88315eb-4dbb-47f3-bedd-fe804ebd3fc1",
+      "selected": true
+    },
+    {
+      "path": "platform/System.IO.FileSystem.dll",
+      "assemblyName": "System.IO.FileSystem",
+      "sha256": "c251f33b29382c47b773d907463edd9fe978a06e39efd5670ef3b3b1d4f8c2b7",
+      "mvid": "589ecfd6-18be-48eb-bf83-cd19e7daf031",
+      "selected": true
+    },
+    {
+      "path": "platform/System.IO.FileSystem.DriveInfo.dll",
+      "assemblyName": "System.IO.FileSystem.DriveInfo",
+      "sha256": "0a7f3dd2fb6147a3fc046aeac8501d764effe5a3d8cfa56d2b244aa50b874b98",
+      "mvid": "168aa2e4-faca-4762-ac16-e132c9f3bbdc",
+      "selected": true
+    },
+    {
+      "path": "platform/System.IO.FileSystem.Primitives.dll",
+      "assemblyName": "System.IO.FileSystem.Primitives",
+      "sha256": "d3b21b8b38e48c6b4d1cb5cfe9adfe4abad7b3353601febd3c7e4027f9ef9c6b",
+      "mvid": "96386377-7389-42b7-a92f-d2d5da0fc8f7",
+      "selected": true
+    },
+    {
+      "path": "platform/System.IO.FileSystem.Watcher.dll",
+      "assemblyName": "System.IO.FileSystem.Watcher",
+      "sha256": "8ab1704e4bd171056ec5a11e886d5199d05a641c6d0233c53d4766bf30328dd3",
+      "mvid": "87c6b41a-d121-4321-b25c-22cb415e68bb",
+      "selected": true
+    },
+    {
+      "path": "platform/System.IO.IsolatedStorage.dll",
+      "assemblyName": "System.IO.IsolatedStorage",
+      "sha256": "2272a8bde18ed0e7c9e54ece9b849b9be76c90b978909d2b2fc94cf0ccbce427",
+      "mvid": "1e4adddb-595a-41b1-87f6-21eda2c844f4",
+      "selected": true
+    },
+    {
+      "path": "platform/System.IO.MemoryMappedFiles.dll",
+      "assemblyName": "System.IO.MemoryMappedFiles",
+      "sha256": "6e8b281ecb2f0f5e7aad3980f61d8812caa6b37884737f542f95410a76663e0e",
+      "mvid": "d5034489-b762-4152-865e-deab1dd677f0",
+      "selected": true
+    },
+    {
+      "path": "platform/System.IO.Pipelines.dll",
+      "assemblyName": "System.IO.Pipelines",
+      "sha256": "ee9f0fd6c659f50799afd103c6ed9c5e408967e28dfa059bddf4b0a3fd2557dd",
+      "mvid": "cfa4b5bc-310d-4eda-8e48-eb30a180c386",
+      "selected": true
+    },
+    {
+      "path": "platform/System.IO.Pipes.AccessControl.dll",
+      "assemblyName": "System.IO.Pipes.AccessControl",
+      "sha256": "1102f25a6e88f2fae81e4cd3628d8ef826f847b9c9b6a4d32ff8b37e0300da35",
+      "mvid": "10af2eb4-1788-4c77-a9a4-29bedbd50def",
+      "selected": true
+    },
+    {
+      "path": "platform/System.IO.Pipes.dll",
+      "assemblyName": "System.IO.Pipes",
+      "sha256": "3804f9992861122e60990b0765d0b50b33cdc2e4d89d26d9dbf8641d1d0134a2",
+      "mvid": "1eacdddd-4526-4d99-bc62-a561931acf20",
+      "selected": true
+    },
+    {
+      "path": "platform/System.IO.UnmanagedMemoryStream.dll",
+      "assemblyName": "System.IO.UnmanagedMemoryStream",
+      "sha256": "ad6a5f859589e1951103a00f45566da079cf87bd8b03f0c6ad985a6f39f19c5a",
+      "mvid": "0589ffa3-0cbf-4d19-8b34-f697f0a3e84b",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Linq.AsyncEnumerable.dll",
+      "assemblyName": "System.Linq.AsyncEnumerable",
+      "sha256": "925208e8ac40ac3f7b988aba6ccbbb58adac38ad1876a7d97ee137be6c21a653",
+      "mvid": "5a2c90f2-b368-4ddf-bb38-da81240120a7",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Linq.dll",
+      "assemblyName": "System.Linq",
+      "sha256": "284d38945b6e92e847129bd28af458b19818d0f2181f79882888ab2003f4c519",
+      "mvid": "97873af1-4849-430d-9ded-e9a460a2a88a",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Linq.Expressions.dll",
+      "assemblyName": "System.Linq.Expressions",
+      "sha256": "8830f4a6a6982f53cfbb54f992858ee36b4994a6ff6e6078c39627e77bef282f",
+      "mvid": "256d4627-c7a5-4e50-a86c-7ff812f84080",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Linq.Parallel.dll",
+      "assemblyName": "System.Linq.Parallel",
+      "sha256": "aa6068e3d8f6b2e492cc63dcaad6b02942edbae445cb2b88c24f1850b25c49f5",
+      "mvid": "9566aafc-9f43-4e3c-a465-8b100481e1ab",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Linq.Queryable.dll",
+      "assemblyName": "System.Linq.Queryable",
+      "sha256": "b3b3a9c1b87a51dacd46a3f9ec392c5d05e449152d44d6bd495df0994350e2fa",
+      "mvid": "da18b039-b700-4f75-b20a-d88c2d34de09",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Memory.dll",
+      "assemblyName": "System.Memory",
+      "sha256": "f8f9d38efd6b0de30954d6bf1f353e9617bfb36d3d245c013a3b12be9f6bd88a",
+      "mvid": "0ae2e4aa-3f9f-4b49-9642-22f30e4a0303",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Net.dll",
+      "assemblyName": "System.Net",
+      "sha256": "481b38c912f8779b3510cd00f079e45096ea22b6defdaab66780d5ac3ae6986a",
+      "mvid": "7c99a1bf-8fff-43c7-b6d8-b8a4c2adc4dd",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Net.Http.dll",
+      "assemblyName": "System.Net.Http",
+      "sha256": "b98ed0cb80dd54c33fc049f33af5448710752155bbd5cc8cbcd932e01f066801",
+      "mvid": "46de204e-e1d2-4761-a903-d6494a3b6772",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Net.Http.Json.dll",
+      "assemblyName": "System.Net.Http.Json",
+      "sha256": "a9fe81ba3c048f9977e0099800eefd570a49be723c555725da57ba797c92b4e0",
+      "mvid": "be3159d9-ead2-4180-a083-5635cb10dcd7",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Net.HttpListener.dll",
+      "assemblyName": "System.Net.HttpListener",
+      "sha256": "3dfe11fb30c5f84c911d9562be6c2037113cd8976ef2def3550ac415ae58955b",
+      "mvid": "8faa6508-2e6e-414e-a779-b86491518e20",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Net.Mail.dll",
+      "assemblyName": "System.Net.Mail",
+      "sha256": "b585a55ee67c80d7f02a84d50d626d279c7aa77fd3e38206b434bd20c181eedc",
+      "mvid": "33113ffa-9164-470c-ac7a-2c36190b40bd",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Net.NameResolution.dll",
+      "assemblyName": "System.Net.NameResolution",
+      "sha256": "e786c0940f5322f0ad6e8e34e7b582e5b050df0fb2230329325307e61bfd994c",
+      "mvid": "db2c22db-9259-44a8-914c-edc6d2d27bb2",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Net.NetworkInformation.dll",
+      "assemblyName": "System.Net.NetworkInformation",
+      "sha256": "7e8791833eb2d0aea77b119fed3cab8bf501f6a553155cc1c4e5b1c02f65593b",
+      "mvid": "59480660-8edf-4e89-b7b4-24bc8bfc29b0",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Net.Ping.dll",
+      "assemblyName": "System.Net.Ping",
+      "sha256": "06bb307343db955a312634d00ba5e097cf5168a901284437592c28d780804e33",
+      "mvid": "96ea6020-236b-4365-864b-89d149ce4669",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Net.Primitives.dll",
+      "assemblyName": "System.Net.Primitives",
+      "sha256": "4dbb41a178ef013a898327152eccd146228dd2eb83859b9bb36078333b41f0f1",
+      "mvid": "a4e44280-3c57-4dd3-b98e-9b8d8d40eaa2",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Net.Quic.dll",
+      "assemblyName": "System.Net.Quic",
+      "sha256": "af5b52cdee62d014af677c411530a3fde5c1c368adecb8f83dcfe9246e8bbe73",
+      "mvid": "1e7eaeab-34ac-40c5-aee1-17324920caf6",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Net.Requests.dll",
+      "assemblyName": "System.Net.Requests",
+      "sha256": "ed82d9d0b7942b2b02c5744a4591fbe2316879618adfc5660c9f111f814155f2",
+      "mvid": "5d20cb90-64c8-463a-a875-b371b7aeb501",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Net.Security.dll",
+      "assemblyName": "System.Net.Security",
+      "sha256": "a78bd713e807729f15b0e085c67fd6cbfefa85736a2618512d4ff1212759eba5",
+      "mvid": "889c23f0-44c2-4ec6-adb3-cd6ca649b9c6",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Net.ServerSentEvents.dll",
+      "assemblyName": "System.Net.ServerSentEvents",
+      "sha256": "c0b1944020d0e5688b90fba9f29209e367674e29d2020f700c302994d5417eda",
+      "mvid": "0dca696f-b92b-4688-9791-ba669425fffb",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Net.ServicePoint.dll",
+      "assemblyName": "System.Net.ServicePoint",
+      "sha256": "84fa83cd96e62fda02991b8a8e99fa1c7b3ac08807b04f7486a896cfe6b4a760",
+      "mvid": "c96697fc-3def-427a-86e6-64b93b311e65",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Net.Sockets.dll",
+      "assemblyName": "System.Net.Sockets",
+      "sha256": "645c56d637ce15976998119e50722a911315682ce141b4aab98874ce1b063f3a",
+      "mvid": "c8391439-5987-4a43-abca-2a9338e8e6a1",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Net.WebClient.dll",
+      "assemblyName": "System.Net.WebClient",
+      "sha256": "defa7bbf90c77ed01d6add53f678e4adfbcf97f3b1152affec06e652d327f1a2",
+      "mvid": "39021fd6-6157-4b0b-9159-8ea5f56e13fd",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Net.WebHeaderCollection.dll",
+      "assemblyName": "System.Net.WebHeaderCollection",
+      "sha256": "74d66f776b4c15936a7b887f47ceb8bf277dbe82e71a78dd3ea5d02502b081e7",
+      "mvid": "f615fffe-0587-4a7c-b418-4a6a37aa0cb4",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Net.WebProxy.dll",
+      "assemblyName": "System.Net.WebProxy",
+      "sha256": "408e3daabb3f42b4f1b72a1e1def38f12ba58eb9d23dca620086819cf7484195",
+      "mvid": "538bd87b-a409-4f7f-b519-7684004e2dd0",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Net.WebSockets.Client.dll",
+      "assemblyName": "System.Net.WebSockets.Client",
+      "sha256": "f308a69b9ee1ac982f53d1d94374f4972a7e3c700742901ff7c2bbfb570019d2",
+      "mvid": "cb5a3d13-f08d-4a12-be9f-e002665e4bde",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Net.WebSockets.dll",
+      "assemblyName": "System.Net.WebSockets",
+      "sha256": "c014a074d408c71011e26eac69be85003a852cfe115e8608bb5d4fd70536eb2e",
+      "mvid": "370cdded-58b2-4da4-9485-8d6b3da43af3",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Numerics.dll",
+      "assemblyName": "System.Numerics",
+      "sha256": "35adc9360421b3b7a3d50399cb2c651c160158d7e8c302907acbce5f61f4a4f7",
+      "mvid": "7f4bf834-1348-4ab6-85c1-79060c891762",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Numerics.Vectors.dll",
+      "assemblyName": "System.Numerics.Vectors",
+      "sha256": "a9a980ee33ed0c798a5e1960c4557521f465ac9e0987dfd2c3049d53b1f2fa5a",
+      "mvid": "6cf7553e-16ec-49b5-a464-2fa8e1c04e4f",
+      "selected": true
+    },
+    {
+      "path": "platform/System.ObjectModel.dll",
+      "assemblyName": "System.ObjectModel",
+      "sha256": "2179bb19f335b4fcacd0994ad2ccfdac6840deff09c7889debfe9dbb5b88a3e6",
+      "mvid": "fabe842a-2434-4045-a06f-a01af8e43bae",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Private.CoreLib.dll",
+      "assemblyName": "System.Private.CoreLib",
+      "sha256": "1125acc8106c43fc8bad2d203c4c4485df6182d292846c2fff415c1040c54678",
+      "mvid": "77d2994f-32f8-4ff2-8313-7ebf44feba98",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Private.DataContractSerialization.dll",
+      "assemblyName": "System.Private.DataContractSerialization",
+      "sha256": "8c07a5333c4e938cad8ac8f24b5965121bc0622442a352cbe81c58f17c2349a8",
+      "mvid": "3da23e32-4146-4794-b4cd-83f3ae64583b",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Private.Uri.dll",
+      "assemblyName": "System.Private.Uri",
+      "sha256": "b15c84d2120e1ec9612c66ba59bc3d7e67d841e2bce7b7d0478cb212537539b4",
+      "mvid": "6dad39ba-b976-4c1b-ad45-d828664d94e2",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Private.Xml.dll",
+      "assemblyName": "System.Private.Xml",
+      "sha256": "d71e72a7a9de324352edd281a46466b51bd0bdd2831b1573f8d3bae8bd2dd4a6",
+      "mvid": "8d116bfb-5299-4ad9-a5ac-fcadb9005eb4",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Private.Xml.Linq.dll",
+      "assemblyName": "System.Private.Xml.Linq",
+      "sha256": "c832b73de9783e6929ca5ff4863fc313e13ef7cfb5965c52587c4f77f6e037a7",
+      "mvid": "0108aace-ec5b-4f26-ae24-9a4f1c2fbe32",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Reflection.DispatchProxy.dll",
+      "assemblyName": "System.Reflection.DispatchProxy",
+      "sha256": "bf93a361c0bba8497889c9f7713add5968ba39394f9e6bda27e86294c6c43560",
+      "mvid": "06471ab4-c729-4ff9-81da-621d6e3c4119",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Reflection.dll",
+      "assemblyName": "System.Reflection",
+      "sha256": "95059346d6271dd6d0322cc321e5fb8cceab662f550c67aee7615059e41739bb",
+      "mvid": "2c9abdde-250d-46c1-a414-2e5ee06b3429",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Reflection.Emit.dll",
+      "assemblyName": "System.Reflection.Emit",
+      "sha256": "09059981bbeea0fdc5df589be5d7e3937d57e22bec4d78ceb492c587926fc238",
+      "mvid": "c564af78-cee9-43ff-8336-23a5058d5d39",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Reflection.Emit.ILGeneration.dll",
+      "assemblyName": "System.Reflection.Emit.ILGeneration",
+      "sha256": "6b42ddd05b0ca1c7342d73ea9f401fe588044215d65c67b756deb780f0894a26",
+      "mvid": "49312b23-5a45-4108-8dc2-798485cb176b",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Reflection.Emit.Lightweight.dll",
+      "assemblyName": "System.Reflection.Emit.Lightweight",
+      "sha256": "d2724a2b7b46146877ec1f6e400c49ea05f84bdd31f3bba52ae139ee68a4f779",
+      "mvid": "7077b08e-ad19-4200-a0f8-d454edc40a17",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Reflection.Extensions.dll",
+      "assemblyName": "System.Reflection.Extensions",
+      "sha256": "ceb1b81e1eb488d87bd43d16dc54450b2a78e0b653c44c988aae2a20abc162bc",
+      "mvid": "35a333c9-3a2e-4a52-a8e2-47792686d43b",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Reflection.Metadata.dll",
+      "assemblyName": "System.Reflection.Metadata",
+      "sha256": "82973e772017944a0548e445f30757595d95fe99e1f5c4a446df8c4db04b1c18",
+      "mvid": "3b3d5521-45b9-4ae9-8aa0-c3ca921cd16f",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Reflection.Primitives.dll",
+      "assemblyName": "System.Reflection.Primitives",
+      "sha256": "c2bbd885d03da5e880667c228ac1f56a5f3a72ea37d43f010ada000adc33da28",
+      "mvid": "81059e26-2fc1-4947-bd53-c49d90bf21ea",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Reflection.TypeExtensions.dll",
+      "assemblyName": "System.Reflection.TypeExtensions",
+      "sha256": "7cac73ed746ce05a4a2f1e61dd52d41322ecc6ba84cfec463380f49487031459",
+      "mvid": "f4836f91-da6a-4885-bb6e-21002a99f23a",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Resources.Reader.dll",
+      "assemblyName": "System.Resources.Reader",
+      "sha256": "20bdb5d302b5e28f6042c9f281cfa3ae2f2358544cc40783052fe5abf6aa859b",
+      "mvid": "88c1e520-7472-4687-b6ab-9acff96aa101",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Resources.ResourceManager.dll",
+      "assemblyName": "System.Resources.ResourceManager",
+      "sha256": "f709eb5cf16e26679782784c428825019785fcc7085562092425d4999bece03d",
+      "mvid": "07a85879-494c-433e-88e3-587df60b3c56",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Resources.Writer.dll",
+      "assemblyName": "System.Resources.Writer",
+      "sha256": "684836486b9ba2817efa3099118860d259fd16db0c4c0533d42cad8c6c165b62",
+      "mvid": "09c9a481-fc81-4afb-b29a-3ea4ac26020e",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Runtime.CompilerServices.Unsafe.dll",
+      "assemblyName": "System.Runtime.CompilerServices.Unsafe",
+      "sha256": "6e685ec0477b21a688cd38bfcafc673888cdf186c99df3c96fab352e96d6fdc8",
+      "mvid": "996e0a7a-920a-448f-b7a8-f83b4075bdd5",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Runtime.CompilerServices.VisualC.dll",
+      "assemblyName": "System.Runtime.CompilerServices.VisualC",
+      "sha256": "5fd85d3d7b47a921bdf48bf938c6615a49a4a3d493e1ea199f1b997c709618f4",
+      "mvid": "f1826bdf-efef-4982-9e57-0a96e216027b",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Runtime.dll",
+      "assemblyName": "System.Runtime",
+      "sha256": "76be53624f64b23d0249dfa0bbe85390086de7c44bfd490642ea86c6faaf44af",
+      "mvid": "bf5d1aff-3be7-460d-b7f3-d09d77d3ef18",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Runtime.Extensions.dll",
+      "assemblyName": "System.Runtime.Extensions",
+      "sha256": "3d7b517d4fd89ee58c53e0f642cc9be42e7a8669b51a85e861dafe118067cbfd",
+      "mvid": "11c1a799-611a-428b-b0ad-bd4b26d711ff",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Runtime.Handles.dll",
+      "assemblyName": "System.Runtime.Handles",
+      "sha256": "985457a3e6a67e96a445ee0fb69b2d58bcdadc4c964253fb63e2d5061a36b050",
+      "mvid": "0e0edd10-b375-4464-9dbf-21947d54773c",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Runtime.InteropServices.dll",
+      "assemblyName": "System.Runtime.InteropServices",
+      "sha256": "e5eb1679f3579c9141e2bb9dbdce62624a623f38d299805cc1de07bacd21841f",
+      "mvid": "3078d135-981d-498f-9176-af5897038c37",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Runtime.InteropServices.JavaScript.dll",
+      "assemblyName": "System.Runtime.InteropServices.JavaScript",
+      "sha256": "5ba32bcde2d72362db2d6e02763ece79fa35bc878b50493e956ce594307e997f",
+      "mvid": "98906013-cdec-4a9f-8769-c6c4dbe4430f",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Runtime.InteropServices.RuntimeInformation.dll",
+      "assemblyName": "System.Runtime.InteropServices.RuntimeInformation",
+      "sha256": "c26d9f94329422bd000f28f6c65fdc162bf9397a6d29e418a189d4ca49c5c3ec",
+      "mvid": "82a0e0a4-0457-4906-9e11-ac643c88dd44",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Runtime.Intrinsics.dll",
+      "assemblyName": "System.Runtime.Intrinsics",
+      "sha256": "b07694ec91f3a200acf0f8b37c6ce5fcf05126a9198ae156d839fa5ca8439dc5",
+      "mvid": "b3ef946b-4f08-49cc-a66c-80db64857a3f",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Runtime.Loader.dll",
+      "assemblyName": "System.Runtime.Loader",
+      "sha256": "9b9b2a4f0358d9146e76178ddb87d019be380c78baa7dac853493d45df089f03",
+      "mvid": "43077802-08ae-4c9f-8cfb-74c95f582cc8",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Runtime.Numerics.dll",
+      "assemblyName": "System.Runtime.Numerics",
+      "sha256": "8ac94fb810c092a9297a903762e79a75ae07d7229d0721540c391f86d3d5d220",
+      "mvid": "b7616717-0eb2-4934-95bb-40dd6af6c3c7",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Runtime.Serialization.dll",
+      "assemblyName": "System.Runtime.Serialization",
+      "sha256": "d565fc261ca98cbd14833821f777860291e8a0f775de7aee91778a9f6647f6f4",
+      "mvid": "31f12edb-3841-4b47-a825-fae1a66458e2",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Runtime.Serialization.Formatters.dll",
+      "assemblyName": "System.Runtime.Serialization.Formatters",
+      "sha256": "5e8e957c6b7a63132555ede5bcf5fe6a59934c83300e28074ec6e9845ecdd17f",
+      "mvid": "04eb0631-1601-48c8-855b-bd4ae6a48920",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Runtime.Serialization.Json.dll",
+      "assemblyName": "System.Runtime.Serialization.Json",
+      "sha256": "2fd71e3545dab4fc89b3fe54d13a1142f26a0cf187ebe375b3f7fa210fcb2596",
+      "mvid": "b6625ba6-a06d-4cf9-a7a8-4773b2a6b0ac",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Runtime.Serialization.Primitives.dll",
+      "assemblyName": "System.Runtime.Serialization.Primitives",
+      "sha256": "f96093940e64d8eead98c86de9773d3c9d12c2b033bc6b1312ac88398303fdf3",
+      "mvid": "e81f473d-14b4-4b65-9221-f081c4c19f12",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Runtime.Serialization.Xml.dll",
+      "assemblyName": "System.Runtime.Serialization.Xml",
+      "sha256": "eedb66ea2cd1a26cc45a46d6631209ccbec959af82208872a93b3ae52f189222",
+      "mvid": "5ebd180d-6a1e-4c62-ad69-f23d22150ee5",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Security.AccessControl.dll",
+      "assemblyName": "System.Security.AccessControl",
+      "sha256": "cdc304f9ddb32023adb8db8953e56711c9b64462e4341d0b62e87ccd19dc7b10",
+      "mvid": "a29e9be7-846e-45c8-813a-2399e0cd1a44",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Security.Claims.dll",
+      "assemblyName": "System.Security.Claims",
+      "sha256": "c53c8a7e95d8296f951872fdd2e6334d11c20bffd4322f1a088773bf9dcaa3c2",
+      "mvid": "3b6f1fa3-3234-4333-b7bd-2d4c69ce6b4d",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Security.Cryptography.Algorithms.dll",
+      "assemblyName": "System.Security.Cryptography.Algorithms",
+      "sha256": "eb99ae7dbe058a1b015aba6769ce1f65155b7ff51ff9a7203fcf6d7cdea5fef7",
+      "mvid": "e1fa4ed2-7462-4493-bcfa-e27300eac07d",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Security.Cryptography.Cng.dll",
+      "assemblyName": "System.Security.Cryptography.Cng",
+      "sha256": "7319f97896d92a7d0729cf28dc6c4d1f797c1520b656ee01a780eec726ec2c16",
+      "mvid": "a2ff4393-c2d5-4e95-88d1-c071520a25f5",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Security.Cryptography.Csp.dll",
+      "assemblyName": "System.Security.Cryptography.Csp",
+      "sha256": "4002af141e9cb29875b677841adf64a9681e5672c2595492dcbc161460d4e121",
+      "mvid": "f85e14e9-7130-4dbf-940f-be65a3920784",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Security.Cryptography.dll",
+      "assemblyName": "System.Security.Cryptography",
+      "sha256": "e0a839a540e47343b53a936b32d91599a3470005228d50fd0b896f8bbdcc65b0",
+      "mvid": "09415519-de27-4c5d-b503-38d7d02621fc",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Security.Cryptography.Encoding.dll",
+      "assemblyName": "System.Security.Cryptography.Encoding",
+      "sha256": "994494aec7760f40fade2264aa7c13eebae36360f0b1399a7134bb19c9d58fda",
+      "mvid": "8bacc2fd-2360-4ace-bf6c-da1f1ea5701f",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Security.Cryptography.OpenSsl.dll",
+      "assemblyName": "System.Security.Cryptography.OpenSsl",
+      "sha256": "1a8902bbad1b577a98bec62a8472105dc1e9a253e390f69fbe3d167e93206968",
+      "mvid": "7cc06554-ff77-4538-ab0b-2cf0665f890c",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Security.Cryptography.Primitives.dll",
+      "assemblyName": "System.Security.Cryptography.Primitives",
+      "sha256": "194cccea9354bb248e44c954b5373f9069163f8f21524b3ee4b3185fe436bc15",
+      "mvid": "210311a4-7061-496a-b6a7-f97b67c6f729",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Security.Cryptography.X509Certificates.dll",
+      "assemblyName": "System.Security.Cryptography.X509Certificates",
+      "sha256": "7439c3b90bc2ee49a9275b28ed29052b4d48b45999ac1b7d25593033b1bb8dd6",
+      "mvid": "0d82f1cb-240c-40c7-a8ac-2d64c805b761",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Security.dll",
+      "assemblyName": "System.Security",
+      "sha256": "d8efd304765e859369698efef9b3ca707defa8e142721fe5605d7a2de7d38375",
+      "mvid": "cdd8042f-d068-4ca9-92bd-9fe75b00ba5d",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Security.Principal.dll",
+      "assemblyName": "System.Security.Principal",
+      "sha256": "1d3e351058be3a33214b23b308fe57f78cd6fd4d8fad448fc84cbbe7376129f9",
+      "mvid": "9cac2a28-3655-4d14-928c-e48dd0e72b75",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Security.Principal.Windows.dll",
+      "assemblyName": "System.Security.Principal.Windows",
+      "sha256": "2311a3f92971de918943573dfb66e04e25c1d543663951eb24e8eb1a0dcd4251",
+      "mvid": "cfa215ac-36f3-4816-922f-6cd49419777e",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Security.SecureString.dll",
+      "assemblyName": "System.Security.SecureString",
+      "sha256": "73aac97072b7deefa4de9647bf822162224f1452ad467841b989ff89d4d94595",
+      "mvid": "856899a0-f234-418b-a3ad-282f7a1a577f",
+      "selected": true
+    },
+    {
+      "path": "platform/System.ServiceModel.Web.dll",
+      "assemblyName": "System.ServiceModel.Web",
+      "sha256": "ce91013ee3a9a9d69a85e258f7749e6ece488295d7cb66f7c1079f2e8678fc5e",
+      "mvid": "6ccc748b-a138-45c8-aab8-e5a5b3e4fb67",
+      "selected": true
+    },
+    {
+      "path": "platform/System.ServiceProcess.dll",
+      "assemblyName": "System.ServiceProcess",
+      "sha256": "63fc498c9d04e3c4345dfdb8016ad0639d54562dd7d8c707c072792c854df944",
+      "mvid": "daa03e3a-48b4-43c8-8068-469e598cba96",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Text.Encoding.CodePages.dll",
+      "assemblyName": "System.Text.Encoding.CodePages",
+      "sha256": "226e216e33c94ef7594bdffe670ba4dc5907151c113cb41ac9e9d570227e1765",
+      "mvid": "e6ad033e-328e-4083-a538-ac492bfa25b7",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Text.Encoding.dll",
+      "assemblyName": "System.Text.Encoding",
+      "sha256": "5e347db6b4f9b2746d50e1ac85be2d9cc7dc4038fde98ac4295bc7030c83cda9",
+      "mvid": "04a9e7d4-3096-4d38-a989-78bfc6d37fd2",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Text.Encoding.Extensions.dll",
+      "assemblyName": "System.Text.Encoding.Extensions",
+      "sha256": "8f51b9535db64fe027a40d6076200b1a6b0889bf05f62bb8e68c3eb083c7f113",
+      "mvid": "03eb955f-de3e-4620-8d57-adac11dcadc6",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Text.Encodings.Web.dll",
+      "assemblyName": "System.Text.Encodings.Web",
+      "sha256": "d20431f20d992e71a4e82e5f25c822474e2f4097d8527972d3d78ea1f26e47c3",
+      "mvid": "4a1c9816-e83a-43f9-9af2-5433ed423581",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Text.Json.dll",
+      "assemblyName": "System.Text.Json",
+      "sha256": "fa99f413be21ed5f484a09093fe5f0beba7de3062cf9cc9f847dbf8108dba55a",
+      "mvid": "2aaaf149-a6ae-4634-be1f-f86dca2ee497",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Text.RegularExpressions.dll",
+      "assemblyName": "System.Text.RegularExpressions",
+      "sha256": "060bcc88a688e687ff1404b83b5fb5cf17e19ec57f33d5b8a48ab494da83c134",
+      "mvid": "f8d612b9-533c-4358-8f89-e8794a47e616",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Threading.AccessControl.dll",
+      "assemblyName": "System.Threading.AccessControl",
+      "sha256": "66d618b5522b3e4f7a3c7f2bd872fc378fa6f9bbdca3636854eb1a8cb948e631",
+      "mvid": "ccbbc13f-778c-4034-a427-95246db464f0",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Threading.Channels.dll",
+      "assemblyName": "System.Threading.Channels",
+      "sha256": "afc5deb3c32b3f64bced2025d0b01b316d41b691ebc6ccb1a2ec445ad4c15e39",
+      "mvid": "8c1dd8b4-9b4a-4ef0-bb24-e462cfa0be05",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Threading.dll",
+      "assemblyName": "System.Threading",
+      "sha256": "6c32ed1bf8067e4169e8feddd15e6489b89d19d1c7aae1520a551b57745d0a60",
+      "mvid": "3426fe22-55df-4fb4-b705-00d121b1f6d8",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Threading.Overlapped.dll",
+      "assemblyName": "System.Threading.Overlapped",
+      "sha256": "89fde15f8e520c4bcbc6cbfdceba2baed8670cdf52399a4cd7a21c6efb276c1a",
+      "mvid": "43036ed4-0496-4374-a7e2-116c846c4199",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Threading.Tasks.Dataflow.dll",
+      "assemblyName": "System.Threading.Tasks.Dataflow",
+      "sha256": "a895b0c73d3a1afc4d89c1d9e445ed447af12864c25aad2c4cb7398ff50aa934",
+      "mvid": "6c5ee632-3a76-48e8-a1e1-97c810145518",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Threading.Tasks.dll",
+      "assemblyName": "System.Threading.Tasks",
+      "sha256": "f80b21f7dae04377b73945456cabe25e2ab1f4b564095aed546c2aa571644567",
+      "mvid": "c4ba1484-45b3-445f-861f-f827e94b7f5f",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Threading.Tasks.Extensions.dll",
+      "assemblyName": "System.Threading.Tasks.Extensions",
+      "sha256": "f148e3a1414b7c2763ae21529ad79ad759f7cfd3c885256b64b0d2209dec2613",
+      "mvid": "420e5c36-95d4-4e86-bcf9-eb3d8b1c4085",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Threading.Tasks.Parallel.dll",
+      "assemblyName": "System.Threading.Tasks.Parallel",
+      "sha256": "6fa359bdbebb56be96339f244ed41658afcead5e010074da470df1115d1e7699",
+      "mvid": "c066cee6-c143-46b8-a18a-4b32b43eca75",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Threading.Thread.dll",
+      "assemblyName": "System.Threading.Thread",
+      "sha256": "ce71949bb1ea67b686e799128582015ebf8758f1107e59e43f342ece3f662930",
+      "mvid": "51b268ce-ce98-424f-806e-d942bb468819",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Threading.ThreadPool.dll",
+      "assemblyName": "System.Threading.ThreadPool",
+      "sha256": "58fbc6c4b9c72087152fd0f0670a527098c00b0c19ba8d0979d3ca5ce07c6936",
+      "mvid": "f5be3d08-006b-441a-bcf3-983b00a8da66",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Threading.Timer.dll",
+      "assemblyName": "System.Threading.Timer",
+      "sha256": "9e4620846572f49aeb476aa99405071b4bbd0df4323e4e232787ed73642b1ee5",
+      "mvid": "374f266c-45ed-4a5c-a738-4a52571e6657",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Transactions.dll",
+      "assemblyName": "System.Transactions",
+      "sha256": "56abfca0350c111d077b3d86a2469ea3da4fccc1871f7c51a8b4fdb664bb0ede",
+      "mvid": "63445b03-b30c-4d53-ab1f-4f90e6b68cb9",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Transactions.Local.dll",
+      "assemblyName": "System.Transactions.Local",
+      "sha256": "8d0283a311a16333ffb6f966d9765e4d8b866777ad99291a93b30db349a15bc4",
+      "mvid": "abca64f4-0e22-4377-a952-d30544d751f8",
+      "selected": true
+    },
+    {
+      "path": "platform/System.ValueTuple.dll",
+      "assemblyName": "System.ValueTuple",
+      "sha256": "07a5347f6a597e5e0d72109efa1a525697e8c3f74fb0029005500f8ebbf9187a",
+      "mvid": "57268f6d-025a-4f3f-93a8-d4a2a6c62ad6",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Web.dll",
+      "assemblyName": "System.Web",
+      "sha256": "bc260b3db247ad9a6e4a82a275da85c3691a41272cc745cb7eaefcf1f31cc817",
+      "mvid": "f4ef0290-9866-4337-9c0b-b80342612e9f",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Web.HttpUtility.dll",
+      "assemblyName": "System.Web.HttpUtility",
+      "sha256": "2cedef51b0a2c2b84240583339ecf2422c650e3388aa46f3494160b93b673887",
+      "mvid": "52fcbb85-d7b8-4f55-b12b-e78698fc67c0",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Windows.dll",
+      "assemblyName": "System.Windows",
+      "sha256": "716eee98ceee87d38f0b301224462f8442aa793f4b1b9c3ffac315753320ab37",
+      "mvid": "a2052292-0cea-41cc-a425-06d0e3ed685e",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Xml.dll",
+      "assemblyName": "System.Xml",
+      "sha256": "277a84ba155fe7808a514f32694a8157ec9f0eeeef00ef9643e5250004054ff0",
+      "mvid": "561b235b-8e2e-4bdb-afde-f7b03ca63473",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Xml.Linq.dll",
+      "assemblyName": "System.Xml.Linq",
+      "sha256": "ae04903b25717fa4695e7e63489091f0d461e791e0bd264c6c85250d668f540d",
+      "mvid": "756463c2-8292-4d99-8e7b-bf0ad9860e93",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Xml.ReaderWriter.dll",
+      "assemblyName": "System.Xml.ReaderWriter",
+      "sha256": "8e48fed4d12bcffff01e8059caafb564697275797d2f5ec6823fdd82b87fe938",
+      "mvid": "487ee222-6c4b-473e-8c53-95e701cc3947",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Xml.Serialization.dll",
+      "assemblyName": "System.Xml.Serialization",
+      "sha256": "489694401c60905cb6dca8ef0bf738cb609cd45b337126a01c825b913086ba43",
+      "mvid": "190147eb-9296-43ff-bbc4-17771d931370",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Xml.XDocument.dll",
+      "assemblyName": "System.Xml.XDocument",
+      "sha256": "3ff858607de5146051498a7124ef983bea280d86e165f993516c6c26af81cfb5",
+      "mvid": "a8f5dd34-88f0-4153-b9ff-e9891c52ec74",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Xml.XmlDocument.dll",
+      "assemblyName": "System.Xml.XmlDocument",
+      "sha256": "a50b9b3a03596e36e73e7a7d54f4d018e8dcfaa7fe79e8cf900af8838ef3ec36",
+      "mvid": "9c95a520-b0f2-4b5f-84ec-c85db10a6b72",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Xml.XmlSerializer.dll",
+      "assemblyName": "System.Xml.XmlSerializer",
+      "sha256": "0b7d057c2b5b2272e8d4096a755edfd96f3cf03ab9aaa3fef54b462bf48d517e",
+      "mvid": "90dc5e46-d6d5-4c6e-aa4d-7c1ad55fb388",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Xml.XPath.dll",
+      "assemblyName": "System.Xml.XPath",
+      "sha256": "c817b11c58d95fa942fbc62a4cfa8219e16dafa5641eb004cb2be424028ed5d8",
+      "mvid": "f1e66e2e-98cd-4cc2-871f-0183295fba2d",
+      "selected": true
+    },
+    {
+      "path": "platform/System.Xml.XPath.XDocument.dll",
+      "assemblyName": "System.Xml.XPath.XDocument",
+      "sha256": "5bcd27a7e93515b745993f6dda51391033883cb8a1a8a2e3dad5caed3548f0da",
+      "mvid": "51d62738-b487-46da-9239-39fb96a2c979",
+      "selected": true
+    },
+    {
+      "path": "platform/WindowsBase.dll",
+      "assemblyName": "WindowsBase",
+      "sha256": "0ec46a38f29a234b9a4d0ae9364c8322f661a47c831c5b948f2787b7ca12dbbd",
+      "mvid": "aa744a13-8835-4922-8fd1-84909f583def",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Abi.dll",
+      "assemblyName": "Nethermind.Abi",
+      "sha256": "eabef223f4ac1c78b3300837082442385cb2fddaf78c93ce0165a37eccb81997",
+      "mvid": "baac6edb-1321-4d92-ac88-ac861f760a33",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Api.dll",
+      "assemblyName": "Nethermind.Api",
+      "sha256": "3a3d1173ac2f6a370d6cfafe2a6de0b24f19c31722847f467bce95b69be7fcdd",
+      "mvid": "2fa117d0-e14c-472f-b0a5-1534431e1f86",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Blockchain.dll",
+      "assemblyName": "Nethermind.Blockchain",
+      "sha256": "dc7b54125b22fd1df4d0fa0c4407f55f6cc970031ae1b533bf5db7dc648eff79",
+      "mvid": "909e77fe-4da5-460c-848b-cb5ffe0532f4",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Config.dll",
+      "assemblyName": "Nethermind.Config",
+      "sha256": "bcdbae2b2d03b1bf6cf841b0c30375250765aae0f80ae98851fc895fd73e0005",
+      "mvid": "9f1c748b-4cdc-44de-b3ef-b2e506e19be1",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Consensus.dll",
+      "assemblyName": "Nethermind.Consensus",
+      "sha256": "81fb85cc016249b112ecb7cfd52671a845f6b1669ae0d580efdaf174bcecce57",
+      "mvid": "ca911a7f-7722-44f2-9f13-3547c36fbb20",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Core.dll",
+      "assemblyName": "Nethermind.Core",
+      "sha256": "104d56350b37ea1befcc9ab0448f9d00e3a38ad50bdb7763ff5f1116fca0f565",
+      "mvid": "de804a36-6477-4052-9ed5-3858a9853031",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Crypto.dll",
+      "assemblyName": "Nethermind.Crypto",
+      "sha256": "04f0f128019e299b30e54612d3e2fe04bcf439e3bc1918f32e085a3fc54d8b81",
+      "mvid": "2a9ccfcb-3d3e-4f8f-a755-0f39959256de",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Db.dll",
+      "assemblyName": "Nethermind.Db",
+      "sha256": "cc58afc738d04ddb018e4fd2eb6d157ec68bc65464ce8df301631760e6d58ece",
+      "mvid": "c3b77bbc-aa53-48cc-a24f-cd0ae394bdff",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Db.Rocks.dll",
+      "assemblyName": "Nethermind.Db.Rocks",
+      "sha256": "322d821d5284419153922912917b08b52b0964edf3c1929ffceadaffdc8c9ba6",
+      "mvid": "30d2191b-0382-470a-ba76-578e308d7786",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Db.Rpc.dll",
+      "assemblyName": "Nethermind.Db.Rpc",
+      "sha256": "db3ceb7e9e7e41b0e0eacfb5edd40502b439e418be43eccc3581e3a83124e4ea",
+      "mvid": "0d2c4655-d835-46e7-bb41-affe17b17e2e",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Era1.dll",
+      "assemblyName": "Nethermind.Era1",
+      "sha256": "d2836652fb01d50b5bdc3242c9f3ac50da353c770bcb03ebe35164a32d9095d7",
+      "mvid": "cae99076-f3e8-4bc0-b121-897e9a88189a",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.EraE.dll",
+      "assemblyName": "Nethermind.EraE",
+      "sha256": "7904c96f0f78d93c026309f0ab8254f337d77028f64c6673516337ad037e89d7",
+      "mvid": "32dae088-6c30-40a9-acfa-d5dce7f44d02",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Evm.dll",
+      "assemblyName": "Nethermind.Evm",
+      "sha256": "fb5b44c2345caaa068a7cf42dd7a8ac6f912cab273e96c01e708fe19f6b7d3be",
+      "mvid": "cfa4f68d-a948-48d1-9b67-a933401efce0",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Evm.Precompiles.dll",
+      "assemblyName": "Nethermind.Evm.Precompiles",
+      "sha256": "25cb256affe3b0900c173426aea6d88f3d0fe2b641c30e0a94fca7c4a262c401",
+      "mvid": "2f8f591d-7977-47e5-85ba-50cdcb34ac4f",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Facade.dll",
+      "assemblyName": "Nethermind.Facade",
+      "sha256": "58cd5a60eb3967a19835cae2feb629de0a49f5fafe800d7c0874270a09a814da",
+      "mvid": "b4454c5e-0653-42fd-ba7e-559fe331409b",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.History.dll",
+      "assemblyName": "Nethermind.History",
+      "sha256": "4d05f32dacb067f9af0304dae0bd4e7ad93d637953459c56c9ba516d7cce033f",
+      "mvid": "1476f58a-1e43-4f77-9996-b1aefa33df8b",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Init.dll",
+      "assemblyName": "Nethermind.Init",
+      "sha256": "3859388794f9cb879ed197a197fa285b5f184f80598cc2c56e576d91d780f52e",
+      "mvid": "a821c1d8-fc59-44ce-902d-59a4f6966f18",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Int256.dll",
+      "assemblyName": "Nethermind.Int256",
+      "sha256": "a02e20817e2e163d4858254067e549c582342e1f1141e6ba7441a06d0bd0f871",
+      "mvid": "06e014f4-e139-4b68-a027-4fece94c01e0",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.JsonRpc.dll",
+      "assemblyName": "Nethermind.JsonRpc",
+      "sha256": "c9dd06a2d270859e6a2ad1084cd23b062a06d0a7cccfb86d611519fe02af4fff",
+      "mvid": "c95f6fb8-a864-43b1-aae9-30c1142fc9eb",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Kademlia.dll",
+      "assemblyName": "Nethermind.Kademlia",
+      "sha256": "3a16977db7f902762717312ce15eefaf5ed09b96cdeb43eb6ef48c5ec05f41c7",
+      "mvid": "53bf65d1-c65b-4384-9ee8-db803358baf2",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.KeyStore.dll",
+      "assemblyName": "Nethermind.KeyStore",
+      "sha256": "0f1cf2653c4c54ece4f8fd6e648e2578cfb38f7db1794208bb0c7f793246e551",
+      "mvid": "54f45bc5-a253-4084-abdd-9c6c91219e46",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Logging.dll",
+      "assemblyName": "Nethermind.Logging",
+      "sha256": "35f2a4bfcd9e5d3a2d72aebabb8694721b5ff209e460f4883cc5c613c7bf1000",
+      "mvid": "df4b4891-bddf-442d-9b7d-0896561b74ec",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Logging.Microsoft.dll",
+      "assemblyName": "Nethermind.Logging.Microsoft",
+      "sha256": "a4779b8bcfcbad05f895580df161d32f84ed2f8a3de6da7e1a1ca235a2e1a802",
+      "mvid": "3a6c5539-4a4f-4ed5-b7b7-5ef7b9083060",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Monitoring.dll",
+      "assemblyName": "Nethermind.Monitoring",
+      "sha256": "4785fcaf3c57a3c308f7b82eecefd8e394d65c8915af4b0c2d8fe761d6144de1",
+      "mvid": "e29d430e-1caa-4b0c-b46d-53c4e6aeeaec",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Network.Contract.dll",
+      "assemblyName": "Nethermind.Network.Contract",
+      "sha256": "1852bd0281aca3575ae96fa6a2392340d2d9f4bc9473a5721d0dd2da59729821",
+      "mvid": "50351837-40b5-42f7-9bf1-571b638379b7",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Network.Discovery.dll",
+      "assemblyName": "Nethermind.Network.Discovery",
+      "sha256": "45ce58f7519dd3644f2698dbd6e99675b7a4314f404df9af89a8e9105d7f8fef",
+      "mvid": "1f919d4e-a461-47c4-ba7b-2c748ea07982",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Network.dll",
+      "assemblyName": "Nethermind.Network",
+      "sha256": "b69cfa01ad932b7822b503283619d4c347559f498ba38e673e2fb0007646a1e4",
+      "mvid": "31fbe3df-3487-4dd2-a3de-4e6cc8d2ffb4",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Network.Dns.dll",
+      "assemblyName": "Nethermind.Network.Dns",
+      "sha256": "cc7d7b884003779ffd658c015c9e7e4f10fc1b88df6dee07c13d31e4fa69d876",
+      "mvid": "99350327-e047-4266-9a69-59f65ecfd0f1",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Network.Enr.dll",
+      "assemblyName": "Nethermind.Network.Enr",
+      "sha256": "1c901f810d2c492d39104934e758543617cc5afa111f7055c5acc372d160e2a3",
+      "mvid": "62cf43f5-0b44-480f-a3c0-81f59c387c6c",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Network.Stats.dll",
+      "assemblyName": "Nethermind.Network.Stats",
+      "sha256": "c5ba30298357ecbdb941b8b475fe2ed5d6ddc4b117fe9a5301c6351791301c45",
+      "mvid": "1efa0a01-d665-4305-a4e3-88365f76ed07",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Serialization.Json.dll",
+      "assemblyName": "Nethermind.Serialization.Json",
+      "sha256": "8f53cf63d57e5fe88a9e3bc7c6f74717b959ba28e5815995b7ff41f4ff1599dd",
+      "mvid": "f7f41abe-e6cf-4fad-9fb9-1f7379bd5471",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Serialization.Rlp.dll",
+      "assemblyName": "Nethermind.Serialization.Rlp",
+      "sha256": "897415d7dd610c67a28f1a3a00b12713b65a15bb064a0b3b0ffbb59e497b9174",
+      "mvid": "e19c148f-f278-4d89-9069-a83bd0ef6dfa",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Serialization.Ssz.dll",
+      "assemblyName": "Nethermind.Serialization.Ssz",
+      "sha256": "83c4e2b8135e7a6d16b78391ad4d495189f2bdff8665e252e73cf346ef5e6cec",
+      "mvid": "947c2c90-2199-4794-9d3a-222fedaf8faa",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Sockets.dll",
+      "assemblyName": "Nethermind.Sockets",
+      "sha256": "be774aa45c8fad4180112659fd1bba3933ce488736dd5a3960c47f706030a40f",
+      "mvid": "ca0a78b4-5e43-4553-8902-eb96bdcce384",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Specs.dll",
+      "assemblyName": "Nethermind.Specs",
+      "sha256": "c062776f14c0928d85e4e71be527186d6d9f16b62c9fc3c5b4503107929e9635",
+      "mvid": "7f4bb034-a92e-40f2-84ee-2f099dcf2092",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.State.dll",
+      "assemblyName": "Nethermind.State",
+      "sha256": "3ef931ac1673ef7095a75295e44b58914351557ce853d53d42be02cc7552d5f6",
+      "mvid": "ca5fe1bb-6ae6-47db-9123-7792587bbae9",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.State.Flat.dll",
+      "assemblyName": "Nethermind.State.Flat",
+      "sha256": "2ccc0c074edb19fb2d7544781bc1f06e6113c880c496c7d2e41d044249b8037d",
+      "mvid": "29c4fea7-8981-46ef-8865-c7e06afdc070",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.State.Flat.History.dll",
+      "assemblyName": "Nethermind.State.Flat.History",
+      "sha256": "3615b84114c24488929426e34b9bde3bb2db0deaace4953dc6c4d32c9d882c0e",
+      "mvid": "f35faf79-9ca7-4d05-aad2-3863ee483e48",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Synchronization.dll",
+      "assemblyName": "Nethermind.Synchronization",
+      "sha256": "b4bdbc13bb3316fbcc14f34f993afcb93690b5e6a60b16908c4861fcb492ceab",
+      "mvid": "892b4000-83d6-46a6-96fe-de657634418c",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Trie.dll",
+      "assemblyName": "Nethermind.Trie",
+      "sha256": "07a2b171c5976057569e5ca1be75d78c278dcdb1669e4c2118c39c3ff8fbcdcd",
+      "mvid": "9c39ddd5-62b0-4246-b764-0baa7d997d83",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.TxPool.dll",
+      "assemblyName": "Nethermind.TxPool",
+      "sha256": "8a1e63059f2519d0751df17eb9c07fb2de10bc22650206ea53b468177a2d480b",
+      "mvid": "4882ffc0-f606-469c-8b09-8dab964d5e6f",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Wallet.dll",
+      "assemblyName": "Nethermind.Wallet",
+      "sha256": "37ec52ce74c163a265af0c4cda014f64e2df034c2a0fcd017bca5600495e633f",
+      "mvid": "e00a2a96-ed72-4955-aa98-db5837f09d2d",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Autofac.dll",
+      "assemblyName": "Autofac",
+      "sha256": "86c2e93f89f6790b705c95d064e57586ad12864bf4169d8ffc2aceacbc17c569",
+      "mvid": "ac3e8b20-4f5e-4daf-96fe-9ac9ba48025b",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Autofac.Extensions.DependencyInjection.dll",
+      "assemblyName": "Autofac.Extensions.DependencyInjection",
+      "sha256": "2e2068946736a779cd990b46601731275952fd66e50ad1ad538a68310631bcb9",
+      "mvid": "359ac051-1e0a-4ec9-9a57-c50c053e3fa2",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/BouncyCastle.Cryptography.dll",
+      "assemblyName": "BouncyCastle.Cryptography",
+      "sha256": "ef92fc661e8d7ba8ec4d39a7cdfcdba41f14cb327f0d24fe79d0b5bb428899b5",
+      "mvid": "fc1a4ae8-411b-471c-974a-95a266252cc5",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Ckzg.Bindings.dll",
+      "assemblyName": "Ckzg.Bindings",
+      "sha256": "3cf64ba2a93462c1eba49d79e497ab1822293412fe6a44f964081a732ffa9e92",
+      "mvid": "928c569b-d314-4b1f-96b6-a62a6e5d6854",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/DotNetty.Buffers.dll",
+      "assemblyName": "DotNetty.Buffers",
+      "sha256": "be25b3a351a1ac2f46adb8c63d006de0eaf8f490fd30882b709b4164c8eafd21",
+      "mvid": "74bb4ec2-7690-4d77-82c4-f3cf67a79970",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/DotNetty.Common.dll",
+      "assemblyName": "DotNetty.Common",
+      "sha256": "234f02595aadce1ef3112a3d726a5fbe08eb81b6834b6bd37a39d0f8ffd9b6e7",
+      "mvid": "d6775840-0d19-4b4b-b019-df3fcfb1e67f",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/FastEnum.Core.dll",
+      "assemblyName": "FastEnum.Core",
+      "sha256": "fc88953afaa295dabec484ecf89d8271e3c0f7d5c76a4e9cc05b998a62e7272d",
+      "mvid": "f8f6c608-187b-483a-ad1f-4027ba17690d",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.ApplicationInsights.dll",
+      "assemblyName": "Microsoft.ApplicationInsights",
+      "sha256": "bf9a4b88c7f94267e1cc7ed0700c575d3eb3266ff25bcb76e4f40f1b0fba022d",
+      "mvid": "bcf1683b-7056-470d-acdf-320c98769a42",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.AspNetCore.Cryptography.Internal.dll",
+      "assemblyName": "Microsoft.AspNetCore.Cryptography.Internal",
+      "sha256": "3a790f25ec894ef5c6844d18abc1fac2e704043f9f75d236651173f47dae83a4",
+      "mvid": "a0553025-b766-49c5-8f5d-e2281c72e14f",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.AspNetCore.DataProtection.Abstractions.dll",
+      "assemblyName": "Microsoft.AspNetCore.DataProtection.Abstractions",
+      "sha256": "ed0428763bae2ad160fb384586f9f4c72c7bd2c857641a971bfac7b98662455f",
+      "mvid": "7019942f-2ef1-4d22-9ae1-a4dd2718875a",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.AspNetCore.DataProtection.dll",
+      "assemblyName": "Microsoft.AspNetCore.DataProtection",
+      "sha256": "5971a8e7d2f7631446b685ed90b15e0d835bc6536c08d2b997ca2eec056ff4ee",
+      "mvid": "dfe1d90f-8fe0-40d7-a5d0-6cc2be46cd44",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.AspNetCore.DataProtection.Extensions.dll",
+      "assemblyName": "Microsoft.AspNetCore.DataProtection.Extensions",
+      "sha256": "3f9bbfd083fb530d0b7cedfcc713ce8c45ca8ec24288f978698a8072dfb5f6e3",
+      "mvid": "dbbedb57-38c6-46a5-b8d8-cc33b115db3f",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Bcl.Cryptography.dll",
+      "assemblyName": "Microsoft.Bcl.Cryptography",
+      "sha256": "91c6bab93638c268569a38bc87770a5e3ef9932676f5b7a6d47aef4208062925",
+      "mvid": "1dc147cc-8a9a-4cd8-a9c4-178ca6514fb5",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.CodeCoverage.Core.dll",
+      "assemblyName": "Microsoft.CodeCoverage.Core",
+      "sha256": "21e27a0ea70b9f9b018e8187c0091f535ecae369f51f32139f0087e309b5a14b",
+      "mvid": "c35b9338-4c62-438e-b190-f908548a93d7",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.CodeCoverage.Instrumentation.Core.dll",
+      "assemblyName": "Microsoft.CodeCoverage.Instrumentation.Core",
+      "sha256": "03e4ccc812f0202a78f59e34d6bfd3bf17c63b15b2c7e6efedfbb97dfc36674b",
+      "mvid": "a5449a69-8b3a-4a02-9a00-09688293a948",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.CodeCoverage.Instrumentation.dll",
+      "assemblyName": "Microsoft.CodeCoverage.Instrumentation",
+      "sha256": "21f3d99765f7feddf01877da5481ade0d5be24f6a815fde263f144cfce60335d",
+      "mvid": "aa5f7dd6-efe6-4316-b000-ef3217f40212",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.CodeCoverage.Interprocess.dll",
+      "assemblyName": "Microsoft.CodeCoverage.Interprocess",
+      "sha256": "bbf3926a2601f8adc7d2908a23fbb2ed865181df12da5f9b99db9038aa072593",
+      "mvid": "88b7ede8-fc52-4e55-a5b1-ce1a614df79f",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Diagnostics.NETCore.Client.dll",
+      "assemblyName": "Microsoft.Diagnostics.NETCore.Client",
+      "sha256": "72ded8db2efee89684b965a5e4c135a45e14bf55295e984f3358c2a07d223716",
+      "mvid": "fbf8b1ef-20f6-45a2-9611-fe62ea43457b",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.DiaSymReader.dll",
+      "assemblyName": "Microsoft.DiaSymReader",
+      "sha256": "b954800a263122a383573c8698bb28629fb2af7fe3ef8a2621522a7fae979440",
+      "mvid": "dd39da54-fede-44ae-b0ae-0b565dc6d709",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Extensions.Configuration.Abstractions.dll",
+      "assemblyName": "Microsoft.Extensions.Configuration.Abstractions",
+      "sha256": "fb45286fa39f58b9e74b6346e31034e00031170169ee11fd0a15f99b6dca0b56",
+      "mvid": "280130f9-88d8-485a-9540-73b30c7580ae",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Extensions.DependencyInjection.Abstractions.dll",
+      "assemblyName": "Microsoft.Extensions.DependencyInjection.Abstractions",
+      "sha256": "da04edc338d5aa0f38a1f5fa5ff3ee7e36affe9c961daf3ea724a428bd746bc6",
+      "mvid": "2b847d34-f0fb-4e45-b27b-736bf56e0fb3",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Extensions.DependencyInjection.dll",
+      "assemblyName": "Microsoft.Extensions.DependencyInjection",
+      "sha256": "2d0e268bf76b4ce36a55ebb2767354db956c6660de65d6cccfc35c957fb12cfc",
+      "mvid": "e007ce4e-5b86-4803-a6c9-ac1f6939389b",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Extensions.DependencyModel.dll",
+      "assemblyName": "Microsoft.Extensions.DependencyModel",
+      "sha256": "2385bfbc9344e03acb2ff44f1ed21a3770fbafdf1ba4be2dbcacd42027b8c3bd",
+      "mvid": "39f89330-8fc6-4c7e-8ccc-a92ec694fbee",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Extensions.Diagnostics.Abstractions.dll",
+      "assemblyName": "Microsoft.Extensions.Diagnostics.Abstractions",
+      "sha256": "623879199a4d98248dbce917e8b2c11b1f5eff24a01cb3b50d772461566dbad4",
+      "mvid": "5a4830db-070c-4da0-9303-cf04d313a2ad",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Extensions.FileProviders.Abstractions.dll",
+      "assemblyName": "Microsoft.Extensions.FileProviders.Abstractions",
+      "sha256": "0ad9800893013d1e11c6b5afc6ef8a3fc0f14d38fa80bf5d63485fc70f848216",
+      "mvid": "08b9f099-38b0-4e3f-84aa-0394c417c892",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Extensions.Hosting.Abstractions.dll",
+      "assemblyName": "Microsoft.Extensions.Hosting.Abstractions",
+      "sha256": "37c244f5685ca031be74a49bd23b2634588235f672f3a0b0b352ca8f6f6c3887",
+      "mvid": "f01ae37a-b2e2-4a34-a5e6-7dd8a8ae4a43",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Extensions.Logging.Abstractions.dll",
+      "assemblyName": "Microsoft.Extensions.Logging.Abstractions",
+      "sha256": "7c242f8ca612fa1acc61f78efd5f8c89e01bd0bd47dc4ecc65e0e6e24f1a1668",
+      "mvid": "a3db28ec-de35-4204-b865-206016b61f49",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Extensions.Logging.dll",
+      "assemblyName": "Microsoft.Extensions.Logging",
+      "sha256": "565b0abf9cd781d2b432b6075ebf57954097c2ec0d23b01423f0b53c4157733e",
+      "mvid": "eeae490c-3300-468d-a793-a39c7791ea02",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Extensions.ObjectPool.dll",
+      "assemblyName": "Microsoft.Extensions.ObjectPool",
+      "sha256": "634cca4d69263df34f856a45d6f0eea0fbd82929ba410718254bdbdb03e12b70",
+      "mvid": "0531c45d-d9f9-47de-978f-959ed92e858f",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Extensions.Options.dll",
+      "assemblyName": "Microsoft.Extensions.Options",
+      "sha256": "b4ff561da6a7b11b68341f9fd32cab3f8b23cdd8b40332b9fd8bed73a9ee7de3",
+      "mvid": "c8a6f837-3efa-4919-914c-4923fa05f09c",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Extensions.Primitives.dll",
+      "assemblyName": "Microsoft.Extensions.Primitives",
+      "sha256": "67642533eb87e8dadeb9026de59ff4b66cc9bf35c0cfbedfef7b79bc6d8b30bc",
+      "mvid": "e3c071b7-9979-4db9-8075-c512b03830ba",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.IdentityModel.Abstractions.dll",
+      "assemblyName": "Microsoft.IdentityModel.Abstractions",
+      "sha256": "f0d349d3b696b871d7988f8e13f9873f463edd1a31d367b22aaa39cdb071b186",
+      "mvid": "584a0c30-522c-4c3f-936a-34025624e961",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.IdentityModel.JsonWebTokens.dll",
+      "assemblyName": "Microsoft.IdentityModel.JsonWebTokens",
+      "sha256": "7cdcc830f1e3c3ae4be44a67e37568495d02642955c7d21c1dc5d9947f67e891",
+      "mvid": "284ce29a-ce1e-4925-ba5d-dfa26c28cb73",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.IdentityModel.Logging.dll",
+      "assemblyName": "Microsoft.IdentityModel.Logging",
+      "sha256": "a4476867e60d666daa22233f954672939861f2292cc699df88093056042f6c48",
+      "mvid": "237e1caf-1a2a-4c52-94de-caeb997a3c5c",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.IdentityModel.Tokens.dll",
+      "assemblyName": "Microsoft.IdentityModel.Tokens",
+      "sha256": "16c33e63bffff90f1b8698f899f96f3311329f26e940b8f031b1f26d82bc41b1",
+      "mvid": "9282a8e5-046f-4dd9-9fba-01bb99f83e0f",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.IO.RecyclableMemoryStream.dll",
+      "assemblyName": "Microsoft.IO.RecyclableMemoryStream",
+      "sha256": "631a5fc41df9498d032c0655ebd0e1209430ccffbec55667d89c2566b338ccc0",
+      "mvid": "e78a4d0b-501a-4fcd-9a5d-626c1057aa00",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Testing.Extensions.CodeCoverage.dll",
+      "assemblyName": "Microsoft.Testing.Extensions.CodeCoverage",
+      "sha256": "4528f1589b2997be254f47fd940bf03aa47c65965e06a1f80dc5744cb04df74c",
+      "mvid": "ba8bfbe9-ca95-4c57-8e4c-465d6674d052",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Testing.Extensions.HangDump.dll",
+      "assemblyName": "Microsoft.Testing.Extensions.HangDump",
+      "sha256": "75876c7ceae542e4c1019c8cfb3e4d9315909bd370d14be805d820010e496221",
+      "mvid": "40e0ec12-5588-49b2-9821-5267cc840523",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Testing.Extensions.MSBuild.dll",
+      "assemblyName": "Microsoft.Testing.Extensions.MSBuild",
+      "sha256": "654d0645d1e44c78b25aa346fe7c4eadece32f94d2e36de4d9f16e4b73e5a5b0",
+      "mvid": "91c69d14-2ec8-4fcd-af44-cbf05ffd2ac0",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Testing.Extensions.Telemetry.dll",
+      "assemblyName": "Microsoft.Testing.Extensions.Telemetry",
+      "sha256": "44810b6f11f36962433e5776fdc6360c29e528641df7b0595f353caaeac0022d",
+      "mvid": "3f2a9215-ea09-40e8-8175-fe94cf8898ee",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Testing.Extensions.TrxReport.Abstractions.dll",
+      "assemblyName": "Microsoft.Testing.Extensions.TrxReport.Abstractions",
+      "sha256": "41db06706f23a24dfe2b94fd1a75ba3b7266fb1ddc4e10143766915eb5b4c626",
+      "mvid": "cb310539-671a-44d3-b762-1ca1b5e8d4ca",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Testing.Extensions.VSTestBridge.dll",
+      "assemblyName": "Microsoft.Testing.Extensions.VSTestBridge",
+      "sha256": "5ab7d3ffe01f25e5822fc082b2ad6f42d8e18136188ca71b62c6c55cc18a5cb4",
+      "mvid": "5962045d-cc17-4d02-89c3-4648f77cec8f",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.Testing.Platform.dll",
+      "assemblyName": "Microsoft.Testing.Platform",
+      "sha256": "92db7b51a0e878e84d17a0ffef92abe22b3033ce5655f8bdbda06a3a93651c2e",
+      "mvid": "faf216b3-4b4b-440a-8030-e85566c3e118",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.TestPlatform.CommunicationUtilities.dll",
+      "assemblyName": "Microsoft.TestPlatform.CommunicationUtilities",
+      "sha256": "1a2804419729d5f69af77c979a2039ce76afeb8550e5fd1f9cc1e7be2935b839",
+      "mvid": "249c981c-e4d8-4514-81e6-c657da7b444b",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.TestPlatform.CoreUtilities.dll",
+      "assemblyName": "Microsoft.TestPlatform.CoreUtilities",
+      "sha256": "52b2520dff2cc1ad6787769c2d931ff1b6c7274df98af177f1eecdcfa045fdcf",
+      "mvid": "ec271879-62ba-4c02-8e59-fe1066d26ea6",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.TestPlatform.CrossPlatEngine.dll",
+      "assemblyName": "Microsoft.TestPlatform.CrossPlatEngine",
+      "sha256": "8f01fee350289234092c0034bae580b1f7ec3987a4d44294592e0299c99020c0",
+      "mvid": "51364813-f937-47b5-955a-0dabc6a2a754",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.TestPlatform.PlatformAbstractions.dll",
+      "assemblyName": "Microsoft.TestPlatform.PlatformAbstractions",
+      "sha256": "74de54a5899309aed8c989fee4db4eeaa727a0a0f78a88a83069e9a2b11ae4e0",
+      "mvid": "7c75d688-fef6-4e42-af94-50feb50daa2e",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.TestPlatform.Utilities.dll",
+      "assemblyName": "Microsoft.TestPlatform.Utilities",
+      "sha256": "c56d7cd30095de7bfd4960dd668f4e5055a195a94c6962b5c4706b3ee85ed020",
+      "mvid": "9bda0b8d-33d4-487b-a5d0-2c91a3802765",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.VisualStudio.CodeCoverage.Shim.dll",
+      "assemblyName": "Microsoft.VisualStudio.CodeCoverage.Shim",
+      "sha256": "2685bf9d1616e600be40f515131fa22cc2d10f26c44da7f8b0fe7952ba94e322",
+      "mvid": "c0ed462c-ae66-4a58-b18b-933f1d417eb4",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.VisualStudio.TestPlatform.Common.dll",
+      "assemblyName": "Microsoft.VisualStudio.TestPlatform.Common",
+      "sha256": "8d9669191385a7bebe8f545cd519788896ba947dab285f5e74c70aee95dd9af0",
+      "mvid": "655c2369-e263-4add-a1b3-9a4f14d2c655",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Microsoft.VisualStudio.TestPlatform.ObjectModel.dll",
+      "assemblyName": "Microsoft.VisualStudio.TestPlatform.ObjectModel",
+      "sha256": "75404da5f644faea7e8a12759c3264aec135a33eee31474d6ff4c09078a51141",
+      "mvid": "58a1a684-6e65-4070-9b8a-2cfb15c97c45",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Mono.Cecil.dll",
+      "assemblyName": "Mono.Cecil",
+      "sha256": "81adc10be60563fd970af55905cf6f97b14e6b439c0e13fa38fc5b93ee9b678c",
+      "mvid": "02de59f0-5453-4590-b2b1-5b8e7ea14252",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Mono.Cecil.Mdb.dll",
+      "assemblyName": "Mono.Cecil.Mdb",
+      "sha256": "68415e02ee35a442d48e16a443d4e7b828ff55e62ff11677a73892de2202cc39",
+      "mvid": "f6d88ee8-8fe0-4c5c-b186-076402ab31a8",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Mono.Cecil.Pdb.dll",
+      "assemblyName": "Mono.Cecil.Pdb",
+      "sha256": "2004c6077c79105f6d985736edde61df5a3f83436617f7a3e1e7fafc096102b5",
+      "mvid": "27ccd682-41e2-4974-8c4f-49e5e6129295",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Mono.Cecil.Rocks.dll",
+      "assemblyName": "Mono.Cecil.Rocks",
+      "sha256": "6d08f642023e752ac50f9ac3ad8197019d313b2d27bfc93d39607884866dad07",
+      "mvid": "6f0419e9-ec22-4816-9e8a-3b825a26753d",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Nethermind.Core.dll",
+      "assemblyName": "Nethermind.Core",
+      "sha256": "efdd58fc5e5463e606ca5e75323dc74e0cf64e959c6921c7c143668d493d7ef6",
+      "mvid": "b27c6e99-b03d-4d07-99e8-2181af6050c4",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Nethermind.Crypto.Bls.dll",
+      "assemblyName": "Nethermind.Crypto.Bls",
+      "sha256": "0c59d1eb75ec66cf2cf4906041af89a3cdb32681e660e8026c02edac5b58a678",
+      "mvid": "42639be2-e5cb-44d9-8537-bff9cf7972e0",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Nethermind.Crypto.dll",
+      "assemblyName": "Nethermind.Crypto",
+      "sha256": "1fdc67baeb9731be95ebe8b2fa1caa6f489767425d3db4f86069fb116d91d159",
+      "mvid": "bb75e055-5847-4b75-9ba9-cd5226382953",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Nethermind.Crypto.SecP256k1.dll",
+      "assemblyName": "Nethermind.Crypto.SecP256k1",
+      "sha256": "259d3021149dc5e8c5af82c6528b1eae243a833a8e42c7c8818a9e89e73b52a4",
+      "mvid": "56a582d2-4438-404b-b41c-447e04378763",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Nethermind.Int256.dll",
+      "assemblyName": "Nethermind.Int256",
+      "sha256": "a02e20817e2e163d4858254067e549c582342e1f1141e6ba7441a06d0bd0f871",
+      "mvid": "06e014f4-e139-4b68-a027-4fece94c01e0",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Nethermind.Logging.dll",
+      "assemblyName": "Nethermind.Logging",
+      "sha256": "8949464c6e6b6643ee236f1e829e1feefaed316c9c2eb959c9a6c066c24bb5da",
+      "mvid": "4c86d72c-4a41-4bb6-985c-919b2a8586d8",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Nethermind.Network.Enr.dll",
+      "assemblyName": "Nethermind.Network.Enr",
+      "sha256": "1ac057b6b2ae58190971a3241c5db18b6bb52b81ebf7348703c7b82715ce2241",
+      "mvid": "5850c0af-3716-45c3-8ebd-418675f9b6b0",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Nethermind.Network.Enr.Test.dll",
+      "assemblyName": "Nethermind.Network.Enr.Test",
+      "sha256": "949a0eee4e2185a7af74289db9a1766ee38d262edd23a8f63d1942cd4a3c2b39",
+      "mvid": "373433bb-dec6-48ff-92c9-6a71dd57dacc",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Nethermind.Serialization.Rlp.dll",
+      "assemblyName": "Nethermind.Serialization.Rlp",
+      "sha256": "84901d46f160a2435e5701489d7f5328b2410ffb91240a79226a52e31228cfe9",
+      "mvid": "8ecbc7e8-7d83-41b2-b839-dfe15aa13d42",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Nethermind.Serialization.Ssz.dll",
+      "assemblyName": "Nethermind.Serialization.Ssz",
+      "sha256": "c8cc0102391009dc2a3e32ec0388ecf920de88dce96ac8c3df631b6037e22a01",
+      "mvid": "620fd952-089a-45b8-aa07-35f3fbd38776",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/NonBlocking.dll",
+      "assemblyName": "NonBlocking",
+      "sha256": "86f694abfccacdc47b03a00bac0c11b3883eb165249fccbe62acd146e7c0f69b",
+      "mvid": "61e52a83-6550-4cf3-b1c2-929e078e01ee",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/nunit.engine.api.dll",
+      "assemblyName": "nunit.engine.api",
+      "sha256": "05c632a930c55a87305e73a58a896a79fac8dc2038c02cdc9aec30e30fe9c526",
+      "mvid": "1775d352-fb2a-4f41-836b-bed4774ef390",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/nunit.engine.core.dll",
+      "assemblyName": "nunit.engine.core",
+      "sha256": "7f4758e81955a75d226e5af8429172f0183ae46d5441506fbf27df1a6b2affef",
+      "mvid": "3b30d50e-7f63-4dee-b8b0-88030d8457ad",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/nunit.engine.dll",
+      "assemblyName": "nunit.engine",
+      "sha256": "14dd0a981457344395839eefa56a6fb5043dcb77d0f17eff8f4a65a121e6f945",
+      "mvid": "c22d8dc6-e2f6-493c-ad76-e1f3db2c9761",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/nunit.framework.dll",
+      "assemblyName": "nunit.framework",
+      "sha256": "dee001d2ec493cf181d456d53a612f4727e03bafc7c9ce3067a9535bce115f63",
+      "mvid": "ab08d6b6-deab-40bb-aef9-39b782374eb8",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/nunit.framework.legacy.dll",
+      "assemblyName": "nunit.framework.legacy",
+      "sha256": "a299bc941edcfc8773c480f8e44d9296f793caaed13c5e36e017a49a7ddba2b2",
+      "mvid": "6e2f6f84-f0dd-4ad7-8b49-fca8eef51ee9",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/NUnit3.TestAdapter.dll",
+      "assemblyName": "NUnit3.TestAdapter",
+      "sha256": "d40c457cbdd67d2b910b00e40dcf6a3f46259f4ef8128ddddb70a5f31517e2b7",
+      "mvid": "53ca141c-c533-4f99-8811-6a7830dbb5c7",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/System.IO.Hashing.dll",
+      "assemblyName": "System.IO.Hashing",
+      "sha256": "cea6795cf9f7b139b2215ff6de794a6f6e44e78640fb30fa4c0d5fa8472df8e5",
+      "mvid": "5019f993-048d-428e-84e0-c6c1fc9ee92d",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/System.Security.Cryptography.Pkcs.dll",
+      "assemblyName": "System.Security.Cryptography.Pkcs",
+      "sha256": "486d7c04bcd4d3745266228cdc5edab6bb0e9e4fe36ab7698992f41569cad0ea",
+      "mvid": "14b4c9f9-a7a1-4480-aeb2-9a6124d99e56",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/System.Security.Cryptography.ProtectedData.dll",
+      "assemblyName": "System.Security.Cryptography.ProtectedData",
+      "sha256": "b61a1445b99a1486a5d9abbd45d766497f136270f5b04862defee1fc054ded14",
+      "mvid": "1c48ee13-441e-4b1b-892c-592a6118a047",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/System.Security.Cryptography.Xml.dll",
+      "assemblyName": "System.Security.Cryptography.Xml",
+      "sha256": "989c0b48004745329345c80d7edfe747035f81a854e852091af11d7730696b5f",
+      "mvid": "4e373a99-fcf3-463e-8144-a19cd40b9873",
+      "selected": true
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Testably.Abstractions.dll",
+      "assemblyName": "Testably.Abstractions",
+      "sha256": "612a8e98cd4468d1494b4fb4b21134942eabb1bca7aa63647e095331484d6ab7",
+      "mvid": "82b65840-9df6-4a19-8085-c2389b9c9920",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Testably.Abstractions.FileSystem.Interface.dll",
+      "assemblyName": "Testably.Abstractions.FileSystem.Interface",
+      "sha256": "29c9ce9ee28db07fd527c5662e047172771cd872d54e430997040626e03e293d",
+      "mvid": "2c82a743-31cb-4d61-aac1-8d055905ddd8",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/Testably.Abstractions.Interface.dll",
+      "assemblyName": "Testably.Abstractions.Interface",
+      "sha256": "8a56816c92a21326ab09b7600b7ee1e6c9dc5ca48eb4081d8a3bd691f3ae5736",
+      "mvid": "71ea913f-e4b1-4e31-9ca9-b6b80246eec8",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/testcentric.engine.metadata.dll",
+      "assemblyName": "testcentric.engine.metadata",
+      "sha256": "55efa956cb6b9682e6508dbcef41d7506030e660796e29c87cc42f4c1e043e34",
+      "mvid": "b2b1a507-94c6-4e1c-bbd0-7a20f2035ab6",
+      "selected": false
+    },
+    {
+      "path": "src/Nethermind/artifacts/bin/Nethermind.Network.Enr.Test/release/testhost.dll",
+      "assemblyName": "testhost",
+      "sha256": "a0e6a54fd89ebc2920926bba9683427eebf4e89190fe9f19c68f1f331f1ef704",
+      "mvid": "01def09c-6a35-4718-9942-624659827f6f",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Autofac.dll",
+      "assemblyName": "Autofac",
+      "sha256": "86c2e93f89f6790b705c95d064e57586ad12864bf4169d8ffc2aceacbc17c569",
+      "mvid": "ac3e8b20-4f5e-4daf-96fe-9ac9ba48025b",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Autofac.Extensions.DependencyInjection.dll",
+      "assemblyName": "Autofac.Extensions.DependencyInjection",
+      "sha256": "2e2068946736a779cd990b46601731275952fd66e50ad1ad538a68310631bcb9",
+      "mvid": "359ac051-1e0a-4ec9-9a57-c50c053e3fa2",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/BouncyCastle.Cryptography.dll",
+      "assemblyName": "BouncyCastle.Cryptography",
+      "sha256": "ef92fc661e8d7ba8ec4d39a7cdfcdba41f14cb327f0d24fe79d0b5bb428899b5",
+      "mvid": "fc1a4ae8-411b-471c-974a-95a266252cc5",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Castle.Core.dll",
+      "assemblyName": "Castle.Core",
+      "sha256": "9c5762ae27f2afe0913e8ffa494f705ffe9680699aa4fb79c2613344c918ee28",
+      "mvid": "34e54cf5-2b4a-4c2b-8264-5ccc3a46837e",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Ckzg.Bindings.dll",
+      "assemblyName": "Ckzg.Bindings",
+      "sha256": "3cf64ba2a93462c1eba49d79e497ab1822293412fe6a44f964081a732ffa9e92",
+      "mvid": "928c569b-d314-4b1f-96b6-a62a6e5d6854",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/ClearScript.Core.dll",
+      "assemblyName": "ClearScript.Core",
+      "sha256": "7fe8e9a5f2157bdc7b1185a9f79cba60fa3cd8b85a6652fc1fa11d84053d619d",
+      "mvid": "92cbbede-d38f-471f-82dd-92592ee3e428",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/ClearScript.V8.dll",
+      "assemblyName": "ClearScript.V8",
+      "sha256": "1eaa856417954bc7f3710588ac806159bd1110a6dd6dab4d3a51c000922480d9",
+      "mvid": "2c6c8e59-cc61-4b9d-a94c-0af8762c3521",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/ClearScript.V8.ICUData.dll",
+      "assemblyName": "ClearScript.V8.ICUData",
+      "sha256": "102f461d21daa0e923555d47c56aa96c28a74e2a0b6b991d821b59dea57bba65",
+      "mvid": "2d9bd3f3-ba6c-49fb-ace4-c235a4b30f44",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Collections.Pooled.dll",
+      "assemblyName": "Collections.Pooled",
+      "sha256": "3ada72f4a3f9b0fb1e65adbbfbbcbb07b6f85edaacb2e6f3bfaf0eafd734c6e3",
+      "mvid": "809f5f74-2b29-4a7c-a1e5-b5fdf6573abb",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/CommunityToolkit.HighPerformance.dll",
+      "assemblyName": "CommunityToolkit.HighPerformance",
+      "sha256": "196607c6d4d704b5ee95c80f8e3cd799595b7d8a08108701894c211b138d2839",
+      "mvid": "c64760f8-108a-442f-a87e-4eadaf35aa31",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/ConcurrentCollections.dll",
+      "assemblyName": "ConcurrentCollections",
+      "sha256": "fe768c5c4f8a2c109b4e0677d804fa655c1726c35957635f66dc1ed0b3fb7734",
+      "mvid": "c91fa506-a00a-4453-8a64-09162bb68daf",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Crc32.NET.dll",
+      "assemblyName": "Crc32.NET",
+      "sha256": "3f0bc7dac6b74ebf5c97ce58d35d61457dc84915023f625dbeacb9d84bdd6e24",
+      "mvid": "b1000804-96c2-4210-8121-b034cee5682e",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/CryptSharp.SCryptSubset.dll",
+      "assemblyName": "CryptSharp.SCryptSubset",
+      "sha256": "b9a2b86fdcdaf58aec5ece90991a011e7c65e44f8fa2e4b45dd28cb5d57ae2e2",
+      "mvid": "d486df3d-3e76-4d6f-b384-61d1b10d989e",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/DnsClient.dll",
+      "assemblyName": "DnsClient",
+      "sha256": "fcf2d07f01bb34f6e8ea61da6d281d1979b5d3c1485bcc5b2b350ec8c59cc2f0",
+      "mvid": "4fcf4c81-9423-4035-a096-b7e5a06e2317",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/DotNetty.Buffers.dll",
+      "assemblyName": "DotNetty.Buffers",
+      "sha256": "be25b3a351a1ac2f46adb8c63d006de0eaf8f490fd30882b709b4164c8eafd21",
+      "mvid": "74bb4ec2-7690-4d77-82c4-f3cf67a79970",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/DotNetty.Codecs.dll",
+      "assemblyName": "DotNetty.Codecs",
+      "sha256": "01bda4574b4ba4defd6eee6d2775ace52f8b32fb3c7c13e530cb9bc04e90174e",
+      "mvid": "84998a23-0e15-4b57-bc87-40f8460b159f",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/DotNetty.Common.dll",
+      "assemblyName": "DotNetty.Common",
+      "sha256": "234f02595aadce1ef3112a3d726a5fbe08eb81b6834b6bd37a39d0f8ffd9b6e7",
+      "mvid": "d6775840-0d19-4b4b-b019-df3fcfb1e67f",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/DotNetty.Handlers.dll",
+      "assemblyName": "DotNetty.Handlers",
+      "sha256": "b136f903992a5eb6cfb5a66446ccd485ddc48763b6fab995495a22fa7870d2a1",
+      "mvid": "39372630-cb51-455c-acb1-c46a496a740a",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/DotNetty.Transport.dll",
+      "assemblyName": "DotNetty.Transport",
+      "sha256": "5ac90a00490c268fea360a4d81694c3a972cd6c830bbc8bfa637e62f3d80fb01",
+      "mvid": "95cb2578-231e-40dc-962f-43cb3413833c",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Ethereum.Test.Base.dll",
+      "assemblyName": "Ethereum.Test.Base",
+      "sha256": "ab2605801e366a12df0445673160f6f5123860c6b1a23b415b67bb38f00f8fb7",
+      "mvid": "eb3a59b9-c9f9-45ef-a70d-986b9f101ce0",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Evm.dll",
+      "assemblyName": "Evm",
+      "sha256": "000378d4e9af7c05d87b701f4788b18d2547c842e349c590fc75a2c47716c067",
+      "mvid": "bd189c90-95f2-4948-8b2c-238448099f2c",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/FastEnum.Core.dll",
+      "assemblyName": "FastEnum.Core",
+      "sha256": "fc88953afaa295dabec484ecf89d8271e3c0f7d5c76a4e9cc05b998a62e7272d",
+      "mvid": "f8f6c608-187b-483a-ad1f-4027ba17690d",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/FSharp.Core.dll",
+      "assemblyName": "FSharp.Core",
+      "sha256": "daf33bfdf50e64128f15f3a6d4018bd71ad0e03a24cbd6d214b2713f67cb6f0f",
+      "mvid": "810fecc0-c218-b0d2-357e-2b536d0eedb4",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/MathNet.Numerics.dll",
+      "assemblyName": "MathNet.Numerics",
+      "sha256": "83b41a608e438409d6520d01124f52f57409e229791c0e074e315ace7d9f4134",
+      "mvid": "4562fe71-fa3a-42a2-9438-c8963fa580c6",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/MathNet.Numerics.FSharp.dll",
+      "assemblyName": "MathNet.Numerics.FSharp",
+      "sha256": "6bd30eda784574cc7f08351236740a46e3af346c2e19f27c40d56bfc9cc04de3",
+      "mvid": "40b83447-f710-180a-38ec-4da1e45b2298",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.ApplicationInsights.dll",
+      "assemblyName": "Microsoft.ApplicationInsights",
+      "sha256": "bf9a4b88c7f94267e1cc7ed0700c575d3eb3266ff25bcb76e4f40f1b0fba022d",
+      "mvid": "bcf1683b-7056-470d-acdf-320c98769a42",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.Bcl.Cryptography.dll",
+      "assemblyName": "Microsoft.Bcl.Cryptography",
+      "sha256": "91c6bab93638c268569a38bc87770a5e3ef9932676f5b7a6d47aef4208062925",
+      "mvid": "1dc147cc-8a9a-4cd8-a9c4-178ca6514fb5",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.CodeCoverage.Core.dll",
+      "assemblyName": "Microsoft.CodeCoverage.Core",
+      "sha256": "21e27a0ea70b9f9b018e8187c0091f535ecae369f51f32139f0087e309b5a14b",
+      "mvid": "c35b9338-4c62-438e-b190-f908548a93d7",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.CodeCoverage.Instrumentation.Core.dll",
+      "assemblyName": "Microsoft.CodeCoverage.Instrumentation.Core",
+      "sha256": "03e4ccc812f0202a78f59e34d6bfd3bf17c63b15b2c7e6efedfbb97dfc36674b",
+      "mvid": "a5449a69-8b3a-4a02-9a00-09688293a948",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.CodeCoverage.Instrumentation.dll",
+      "assemblyName": "Microsoft.CodeCoverage.Instrumentation",
+      "sha256": "21f3d99765f7feddf01877da5481ade0d5be24f6a815fde263f144cfce60335d",
+      "mvid": "aa5f7dd6-efe6-4316-b000-ef3217f40212",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.CodeCoverage.Interprocess.dll",
+      "assemblyName": "Microsoft.CodeCoverage.Interprocess",
+      "sha256": "bbf3926a2601f8adc7d2908a23fbb2ed865181df12da5f9b99db9038aa072593",
+      "mvid": "88b7ede8-fc52-4e55-a5b1-ce1a614df79f",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.Diagnostics.NETCore.Client.dll",
+      "assemblyName": "Microsoft.Diagnostics.NETCore.Client",
+      "sha256": "72ded8db2efee89684b965a5e4c135a45e14bf55295e984f3358c2a07d223716",
+      "mvid": "fbf8b1ef-20f6-45a2-9611-fe62ea43457b",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.DiaSymReader.dll",
+      "assemblyName": "Microsoft.DiaSymReader",
+      "sha256": "b954800a263122a383573c8698bb28629fb2af7fe3ef8a2621522a7fae979440",
+      "mvid": "dd39da54-fede-44ae-b0ae-0b565dc6d709",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.Extensions.DependencyModel.dll",
+      "assemblyName": "Microsoft.Extensions.DependencyModel",
+      "sha256": "2385bfbc9344e03acb2ff44f1ed21a3770fbafdf1ba4be2dbcacd42027b8c3bd",
+      "mvid": "39f89330-8fc6-4c7e-8ccc-a92ec694fbee",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.IdentityModel.Abstractions.dll",
+      "assemblyName": "Microsoft.IdentityModel.Abstractions",
+      "sha256": "f0d349d3b696b871d7988f8e13f9873f463edd1a31d367b22aaa39cdb071b186",
+      "mvid": "584a0c30-522c-4c3f-936a-34025624e961",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.IdentityModel.JsonWebTokens.dll",
+      "assemblyName": "Microsoft.IdentityModel.JsonWebTokens",
+      "sha256": "7cdcc830f1e3c3ae4be44a67e37568495d02642955c7d21c1dc5d9947f67e891",
+      "mvid": "284ce29a-ce1e-4925-ba5d-dfa26c28cb73",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.IdentityModel.Logging.dll",
+      "assemblyName": "Microsoft.IdentityModel.Logging",
+      "sha256": "a4476867e60d666daa22233f954672939861f2292cc699df88093056042f6c48",
+      "mvid": "237e1caf-1a2a-4c52-94de-caeb997a3c5c",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.IdentityModel.Tokens.dll",
+      "assemblyName": "Microsoft.IdentityModel.Tokens",
+      "sha256": "16c33e63bffff90f1b8698f899f96f3311329f26e940b8f031b1f26d82bc41b1",
+      "mvid": "9282a8e5-046f-4dd9-9fba-01bb99f83e0f",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.IO.RecyclableMemoryStream.dll",
+      "assemblyName": "Microsoft.IO.RecyclableMemoryStream",
+      "sha256": "631a5fc41df9498d032c0655ebd0e1209430ccffbec55667d89c2566b338ccc0",
+      "mvid": "e78a4d0b-501a-4fcd-9a5d-626c1057aa00",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.Testing.Extensions.CodeCoverage.dll",
+      "assemblyName": "Microsoft.Testing.Extensions.CodeCoverage",
+      "sha256": "4528f1589b2997be254f47fd940bf03aa47c65965e06a1f80dc5744cb04df74c",
+      "mvid": "ba8bfbe9-ca95-4c57-8e4c-465d6674d052",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.Testing.Extensions.HangDump.dll",
+      "assemblyName": "Microsoft.Testing.Extensions.HangDump",
+      "sha256": "75876c7ceae542e4c1019c8cfb3e4d9315909bd370d14be805d820010e496221",
+      "mvid": "40e0ec12-5588-49b2-9821-5267cc840523",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.Testing.Extensions.MSBuild.dll",
+      "assemblyName": "Microsoft.Testing.Extensions.MSBuild",
+      "sha256": "654d0645d1e44c78b25aa346fe7c4eadece32f94d2e36de4d9f16e4b73e5a5b0",
+      "mvid": "91c69d14-2ec8-4fcd-af44-cbf05ffd2ac0",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.Testing.Extensions.Telemetry.dll",
+      "assemblyName": "Microsoft.Testing.Extensions.Telemetry",
+      "sha256": "44810b6f11f36962433e5776fdc6360c29e528641df7b0595f353caaeac0022d",
+      "mvid": "3f2a9215-ea09-40e8-8175-fe94cf8898ee",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.Testing.Extensions.TrxReport.Abstractions.dll",
+      "assemblyName": "Microsoft.Testing.Extensions.TrxReport.Abstractions",
+      "sha256": "41db06706f23a24dfe2b94fd1a75ba3b7266fb1ddc4e10143766915eb5b4c626",
+      "mvid": "cb310539-671a-44d3-b762-1ca1b5e8d4ca",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.Testing.Extensions.VSTestBridge.dll",
+      "assemblyName": "Microsoft.Testing.Extensions.VSTestBridge",
+      "sha256": "5ab7d3ffe01f25e5822fc082b2ad6f42d8e18136188ca71b62c6c55cc18a5cb4",
+      "mvid": "5962045d-cc17-4d02-89c3-4648f77cec8f",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.Testing.Platform.dll",
+      "assemblyName": "Microsoft.Testing.Platform",
+      "sha256": "92db7b51a0e878e84d17a0ffef92abe22b3033ce5655f8bdbda06a3a93651c2e",
+      "mvid": "faf216b3-4b4b-440a-8030-e85566c3e118",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.TestPlatform.CommunicationUtilities.dll",
+      "assemblyName": "Microsoft.TestPlatform.CommunicationUtilities",
+      "sha256": "1a2804419729d5f69af77c979a2039ce76afeb8550e5fd1f9cc1e7be2935b839",
+      "mvid": "249c981c-e4d8-4514-81e6-c657da7b444b",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.TestPlatform.CoreUtilities.dll",
+      "assemblyName": "Microsoft.TestPlatform.CoreUtilities",
+      "sha256": "52b2520dff2cc1ad6787769c2d931ff1b6c7274df98af177f1eecdcfa045fdcf",
+      "mvid": "ec271879-62ba-4c02-8e59-fe1066d26ea6",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.TestPlatform.CrossPlatEngine.dll",
+      "assemblyName": "Microsoft.TestPlatform.CrossPlatEngine",
+      "sha256": "8f01fee350289234092c0034bae580b1f7ec3987a4d44294592e0299c99020c0",
+      "mvid": "51364813-f937-47b5-955a-0dabc6a2a754",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.TestPlatform.PlatformAbstractions.dll",
+      "assemblyName": "Microsoft.TestPlatform.PlatformAbstractions",
+      "sha256": "74de54a5899309aed8c989fee4db4eeaa727a0a0f78a88a83069e9a2b11ae4e0",
+      "mvid": "7c75d688-fef6-4e42-af94-50feb50daa2e",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.TestPlatform.Utilities.dll",
+      "assemblyName": "Microsoft.TestPlatform.Utilities",
+      "sha256": "c56d7cd30095de7bfd4960dd668f4e5055a195a94c6962b5c4706b3ee85ed020",
+      "mvid": "9bda0b8d-33d4-487b-a5d0-2c91a3802765",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.VisualStudio.CodeCoverage.Shim.dll",
+      "assemblyName": "Microsoft.VisualStudio.CodeCoverage.Shim",
+      "sha256": "2685bf9d1616e600be40f515131fa22cc2d10f26c44da7f8b0fe7952ba94e322",
+      "mvid": "c0ed462c-ae66-4a58-b18b-933f1d417eb4",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.VisualStudio.TestPlatform.Common.dll",
+      "assemblyName": "Microsoft.VisualStudio.TestPlatform.Common",
+      "sha256": "8d9669191385a7bebe8f545cd519788896ba947dab285f5e74c70aee95dd9af0",
+      "mvid": "655c2369-e263-4add-a1b3-9a4f14d2c655",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Microsoft.VisualStudio.TestPlatform.ObjectModel.dll",
+      "assemblyName": "Microsoft.VisualStudio.TestPlatform.ObjectModel",
+      "sha256": "75404da5f644faea7e8a12759c3264aec135a33eee31474d6ff4c09078a51141",
+      "mvid": "58a1a684-6e65-4070-9b8a-2cfb15c97c45",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Mono.Cecil.dll",
+      "assemblyName": "Mono.Cecil",
+      "sha256": "81adc10be60563fd970af55905cf6f97b14e6b439c0e13fa38fc5b93ee9b678c",
+      "mvid": "02de59f0-5453-4590-b2b1-5b8e7ea14252",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Mono.Cecil.Mdb.dll",
+      "assemblyName": "Mono.Cecil.Mdb",
+      "sha256": "68415e02ee35a442d48e16a443d4e7b828ff55e62ff11677a73892de2202cc39",
+      "mvid": "f6d88ee8-8fe0-4c5c-b186-076402ab31a8",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Mono.Cecil.Pdb.dll",
+      "assemblyName": "Mono.Cecil.Pdb",
+      "sha256": "2004c6077c79105f6d985736edde61df5a3f83436617f7a3e1e7fafc096102b5",
+      "mvid": "27ccd682-41e2-4974-8c4f-49e5e6129295",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Mono.Cecil.Rocks.dll",
+      "assemblyName": "Mono.Cecil.Rocks",
+      "sha256": "6d08f642023e752ac50f9ac3ad8197019d313b2d27bfc93d39607884866dad07",
+      "mvid": "6f0419e9-ec22-4816-9e8a-3b825a26753d",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Abi.dll",
+      "assemblyName": "Nethermind.Abi",
+      "sha256": "aa3994ff404c4a524a6ceaaee574864da0c2d49e1cc43545362d9b0f597b7cdd",
+      "mvid": "ecb2ae75-226b-48c6-8f89-06dbf842a03e",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Api.dll",
+      "assemblyName": "Nethermind.Api",
+      "sha256": "ec06a7e6bc557c35ea0c20c0cac1fd6aa5f10a8e7f003228c9555d78849256ea",
+      "mvid": "f0a9e745-a866-4406-904c-bc5cb7b9feca",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Blockchain.dll",
+      "assemblyName": "Nethermind.Blockchain",
+      "sha256": "589450ee4b874047cc4ca0f6150043212309703e47d2dce9dca67c02a40a3c7d",
+      "mvid": "f4c50db9-f94a-49fd-b2c8-87fa72d9b0e6",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Config.dll",
+      "assemblyName": "Nethermind.Config",
+      "sha256": "86b42de3a67201dd83a63ece525686b33833d31bd389415f21c5bada9cdbe3e3",
+      "mvid": "22fde66b-4e11-478d-9ebd-0393fafd2a3a",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Consensus.AuRa.dll",
+      "assemblyName": "Nethermind.Consensus.AuRa",
+      "sha256": "5bc05ffad7719ed72a71c527833f8c2dab6967a4336fd6b815912b96f24bcc37",
+      "mvid": "96aa91d7-91ed-406c-a37c-e7706a088378",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Consensus.dll",
+      "assemblyName": "Nethermind.Consensus",
+      "sha256": "2e6bec655ea136d0cef79af819dfcad8d9256642c18bcaa47d62e16c88d2f9bd",
+      "mvid": "c895cb2e-cd6d-4662-8375-318f2283d13d",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Consensus.Ethash.dll",
+      "assemblyName": "Nethermind.Consensus.Ethash",
+      "sha256": "cfd5ffda70c48551cb57fade488f5235fd22aa5b241eb8144445da07895b8430",
+      "mvid": "774b10dc-c53d-409e-8ca3-1f4ce8b7c8d3",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Core.dll",
+      "assemblyName": "Nethermind.Core",
+      "sha256": "7c6c26d9190e162b1be59549129c31dd5b545815bc9e0759bb96ec8ff08114b3",
+      "mvid": "66d21852-8017-4129-9f1e-378528cc8a37",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Core.Test.dll",
+      "assemblyName": "Nethermind.Core.Test",
+      "sha256": "55b18daab4e14fffe84370656f6ed6c6603e09f4dfaa41af05fb7826adceaef9",
+      "mvid": "19088564-30b2-4e5c-b1b2-07aec8dbcf8f",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Crypto.Bls.dll",
+      "assemblyName": "Nethermind.Crypto.Bls",
+      "sha256": "0c59d1eb75ec66cf2cf4906041af89a3cdb32681e660e8026c02edac5b58a678",
+      "mvid": "42639be2-e5cb-44d9-8537-bff9cf7972e0",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Crypto.dll",
+      "assemblyName": "Nethermind.Crypto",
+      "sha256": "a1ac5545eb5bdcfa8390f00ac9766a7fc1a02172b7fe9c9406a1d44b46c1b5e5",
+      "mvid": "b70836f3-3f2c-4748-8dae-c63c1f0801ae",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Crypto.SecP256k1.dll",
+      "assemblyName": "Nethermind.Crypto.SecP256k1",
+      "sha256": "259d3021149dc5e8c5af82c6528b1eae243a833a8e42c7c8818a9e89e73b52a4",
+      "mvid": "56a582d2-4438-404b-b41c-447e04378763",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Crypto.SecP256r1.dll",
+      "assemblyName": "Nethermind.Crypto.SecP256r1",
+      "sha256": "e70bea90441aab17ca12595497c5ea8ba22fe5e2a7d38f1517b0f893b7f28028",
+      "mvid": "536e4bfa-ea9b-4525-b731-aab5b970e8a3",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Db.dll",
+      "assemblyName": "Nethermind.Db",
+      "sha256": "0f4d3e832c2f36a47eef1880002f5a0e9329894c66e816563801db05cf60dee4",
+      "mvid": "eeae4300-22e6-4db1-866c-c50807d4286a",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Db.Rocks.dll",
+      "assemblyName": "Nethermind.Db.Rocks",
+      "sha256": "5d67086075b411ac632e8a1b10a114d1a2e0ae286b84ae24abb605e0914b60e4",
+      "mvid": "bf6fd7c4-3f80-434c-9fa6-c1547368a6c3",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Db.Rpc.dll",
+      "assemblyName": "Nethermind.Db.Rpc",
+      "sha256": "73befabf2114f76c5e207e30decc1c4fbf6d3babeebba8cdbfec0af607fb3a43",
+      "mvid": "2dbcfa16-7b1c-4c71-a386-69ae62c3d333",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Era1.dll",
+      "assemblyName": "Nethermind.Era1",
+      "sha256": "c208cc6546b22b7f946dbf09d8964b8d61c2854d6444affb427faa7b717fdb04",
+      "mvid": "24c3a820-8923-4eb6-880a-8fd4eeec14bf",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.EraE.dll",
+      "assemblyName": "Nethermind.EraE",
+      "sha256": "64c96b88e91db38cc387962616d869a15ee43587c0d5da49eb46a861bc982f6c",
+      "mvid": "c3f406dc-695a-4752-9b47-cf8c037403a2",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Evm.dll",
+      "assemblyName": "Nethermind.Evm",
+      "sha256": "5ba43cb9034202fe2ba65c80edfd54c7c276bb3e9f17c9e0ec1f4dcef83a96a5",
+      "mvid": "e1c2ed57-3623-4f41-9f2e-cf6c180d8cce",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Evm.Precompiles.dll",
+      "assemblyName": "Nethermind.Evm.Precompiles",
+      "sha256": "3cd4303d2353fca443c153064f19872bd15d78b7844a1fad8c62641872b8a9ce",
+      "mvid": "3b62b3d5-2be2-4485-8185-b77a136e69ee",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Facade.dll",
+      "assemblyName": "Nethermind.Facade",
+      "sha256": "0cd354218ac7170e882d7dc7bb7771883178062aedb5c09280eb50b0e80b7f42",
+      "mvid": "cbbc469f-ebd0-402d-9481-92a5a3445176",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.GmpBindings.dll",
+      "assemblyName": "Nethermind.GmpBindings",
+      "sha256": "9ffb508da2d7705639e1bf34b45525ba6f3369db0820b80686b3db26a870168a",
+      "mvid": "b54e965b-895a-49ba-a08b-13bad657506e",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.History.dll",
+      "assemblyName": "Nethermind.History",
+      "sha256": "1578f8f1df6266a6bf55ce52fd1bf46a8c87bbf8f5cff03a1182b7a3aeae9715",
+      "mvid": "d3e043e3-ea5c-4119-b764-43bd38b5e334",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Init.dll",
+      "assemblyName": "Nethermind.Init",
+      "sha256": "141c53d7350454a8cf39ec2f4cadcf658f4db1f73086680e59f6ed20664ab56b",
+      "mvid": "302a56a5-3754-4d78-a2b8-67079cd3d014",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Int256.dll",
+      "assemblyName": "Nethermind.Int256",
+      "sha256": "a02e20817e2e163d4858254067e549c582342e1f1141e6ba7441a06d0bd0f871",
+      "mvid": "06e014f4-e139-4b68-a027-4fece94c01e0",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.JsonRpc.dll",
+      "assemblyName": "Nethermind.JsonRpc",
+      "sha256": "4a5d0134f746be862b5ce3b1d0a82bb329ad13f08d24c9a37b77f4768d77d138",
+      "mvid": "999a931a-e7a2-4aac-a62e-fa63f6ff5ef0",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Kademlia.dll",
+      "assemblyName": "Nethermind.Kademlia",
+      "sha256": "1381983906d5577ba6b2caa79663a2a3868084293177d0fd9b61a1daabd8aaf5",
+      "mvid": "a51ff8c9-3660-4356-b101-5b196067a8c2",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.KeyStore.dll",
+      "assemblyName": "Nethermind.KeyStore",
+      "sha256": "c2cc9054513ed5839fe04c646cfdef6b6568075391e6361cdb28a86c1e339851",
+      "mvid": "87a1bb24-4704-4102-b3d6-c57fcb52792f",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Logging.dll",
+      "assemblyName": "Nethermind.Logging",
+      "sha256": "f5358e447c5d10fb20014e069d80d28819390313e9516716cc29c1671867ee97",
+      "mvid": "4a1b6b1d-a24d-4a51-b10c-e0445358a05d",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Logging.Microsoft.dll",
+      "assemblyName": "Nethermind.Logging.Microsoft",
+      "sha256": "f22d156d39d026197b467ab3e9ed0d93a7fe6b46e3e27dcc265676b987ba257e",
+      "mvid": "b24243f1-ed46-49f6-84a8-01901dd3537c",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Logging.NLog.dll",
+      "assemblyName": "Nethermind.Logging.NLog",
+      "sha256": "30759f6067197e902fcb81c2e49b6c8dd6d3bd99e2d24ab478bd56ed7dca0536",
+      "mvid": "ce9563a2-91a0-46ac-8907-ccf76a04e235",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.MclBindings.dll",
+      "assemblyName": "Nethermind.MclBindings",
+      "sha256": "b51ba976a5fbbe0724ae2f7de61f0d5749ac34196a010d97474322fc0f0022aa",
+      "mvid": "f6ea4b45-63f7-4cf7-b999-2c030b73c0af",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Merge.Plugin.dll",
+      "assemblyName": "Nethermind.Merge.Plugin",
+      "sha256": "44f497081dcdb23a3420e187d928a6c9047949a2386ea0b4ae048da3e56cb5d4",
+      "mvid": "f6df5079-ab2f-41b0-8531-59c6a7695ada",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Monitoring.dll",
+      "assemblyName": "Nethermind.Monitoring",
+      "sha256": "0a2bb3e1bfc1f494aac4b018e769788f8dbd2e553db0598335c4ba9d96963803",
+      "mvid": "9218c8a1-84d7-475b-9cec-9e78e3ec0822",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Network.Contract.dll",
+      "assemblyName": "Nethermind.Network.Contract",
+      "sha256": "c970bb07ac08aaf1c9236d473f627d1ec2ccc050d17c106a96c3197be34a944e",
+      "mvid": "d537854f-32f3-4b10-9b61-da60cc75fc96",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Network.Discovery.dll",
+      "assemblyName": "Nethermind.Network.Discovery",
+      "sha256": "3605547ed07b0ae64ed73fe4893965168eb46f9130c936f239cf9613b38a43a5",
+      "mvid": "9f203d47-6574-4d41-bd79-2130d6ea4129",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Network.dll",
+      "assemblyName": "Nethermind.Network",
+      "sha256": "44e85e920ad9192c7cb1929f4f4c1cb17a75c9dde09a7277ccee911650e07edd",
+      "mvid": "dfe17328-b810-423a-9870-5535886317fb",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Network.Dns.dll",
+      "assemblyName": "Nethermind.Network.Dns",
+      "sha256": "a9533b7ade771eb78b0a9b2f95822dd4c88fb9f24f22e09be13c1ec0b4571952",
+      "mvid": "863c0d67-cd76-41ae-9363-3dafe81eb27a",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Network.Enr.dll",
+      "assemblyName": "Nethermind.Network.Enr",
+      "sha256": "0a49182bef0dfc7c4e105aa25a6df26fae815922b88491a25b3c763716fab8e6",
+      "mvid": "11d71be2-6a98-411d-b14e-fd72ee47d315",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Network.Stats.dll",
+      "assemblyName": "Nethermind.Network.Stats",
+      "sha256": "10d2c37291f306a731a2662af14bc9b25b1458ecdac91ccd91a21f8b58da674a",
+      "mvid": "810ae5bb-1442-40f8-8966-810fc752057c",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.RocksDbBindings.dll",
+      "assemblyName": "Nethermind.RocksDbBindings",
+      "sha256": "6d495a419f3e079c496acc03c8ca128c97767273cb893a8f6f030e15d9566259",
+      "mvid": "fe200446-bc27-4cfa-9dc0-98b2a82e46a8",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Serialization.Json.dll",
+      "assemblyName": "Nethermind.Serialization.Json",
+      "sha256": "a23a535effe1a177f495d0bab31785862aaea62e1d060071debe1e583dd7123e",
+      "mvid": "7d46b97b-94d5-46f2-8bbb-43cedf0b6761",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Serialization.Rlp.dll",
+      "assemblyName": "Nethermind.Serialization.Rlp",
+      "sha256": "24740dc4194cbfb5a2bad30f7578ae63ac70f1c32de44245eec6a06abba31fef",
+      "mvid": "b659f440-e57e-430c-86f6-2156d62f6d70",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Serialization.Ssz.dll",
+      "assemblyName": "Nethermind.Serialization.Ssz",
+      "sha256": "564d069762c19dff7ebafbbde13b59c4be3028ba0384950f46a02ca76dbe3dc0",
+      "mvid": "6d24a3d6-06c6-4ea4-a359-8978ff8c9444",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Sockets.dll",
+      "assemblyName": "Nethermind.Sockets",
+      "sha256": "41e66016c87b5cacf5c7cc13eb8b5635b7fe5fd6413f064c1c4585e320cf8d29",
+      "mvid": "888864f4-da12-4e13-b859-5440d56d2de9",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Specs.dll",
+      "assemblyName": "Nethermind.Specs",
+      "sha256": "15a3f9b9e8940a1ba293ebb8af3fcabffb15803d1fc1da0b267394e418a335a5",
+      "mvid": "4c9a5b01-d360-4335-bf03-31320c033eed",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Specs.Test.dll",
+      "assemblyName": "Nethermind.Specs.Test",
+      "sha256": "15c4ba96aa0363aaa2ec3a3e405a965db53ca75e55067d48846d8b0bc9b8ae8c",
+      "mvid": "9205baa0-0af7-4822-ba1f-e084bde78550",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.State.dll",
+      "assemblyName": "Nethermind.State",
+      "sha256": "8a1af0d5d5d6e25c2feeb3f2eafce6120cb5268b6717d3405d5086ec25362843",
+      "mvid": "10960de5-263f-4af7-a510-b1082c7ac6fd",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.State.Flat.dll",
+      "assemblyName": "Nethermind.State.Flat",
+      "sha256": "1094942ba45313164244ccf7e41eeb6e8b5a0cfeddf314c843608fedf0fe933a",
+      "mvid": "c41aef65-7d3a-4c5b-9f27-e68f5fcaea64",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.State.Flat.History.dll",
+      "assemblyName": "Nethermind.State.Flat.History",
+      "sha256": "a7765eac11969948f258baa4fedc4e26792b010bcf50a6235e257c5e47773141",
+      "mvid": "abb87355-e339-4cf3-8901-8f7058317588",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Synchronization.dll",
+      "assemblyName": "Nethermind.Synchronization",
+      "sha256": "9dab5db062b1a70e8c7808b00d97271067a70866436d15df606265ea43ef6ae9",
+      "mvid": "875231bf-77c3-427e-b64a-960e80523c3b",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Trie.dll",
+      "assemblyName": "Nethermind.Trie",
+      "sha256": "061db656f08b43c42c7c413cca8e223011877c0f42131d512cafdf3219038227",
+      "mvid": "5a92c11c-8bb7-46c9-a83a-a9056145922d",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.TurboPForBindings.dll",
+      "assemblyName": "Nethermind.TurboPForBindings",
+      "sha256": "775bf6d9c2090d0407df52ea6f0a3d6dac04e1b2b7dddedc9f9b879bcc078a04",
+      "mvid": "987b099e-9a24-4df8-8d9d-ea29e6251acb",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.TxPool.dll",
+      "assemblyName": "Nethermind.TxPool",
+      "sha256": "225fd847c1fd03e0c6cba523be1992adebd13e948b7faf03f8dd0d72c7bd1e6a",
+      "mvid": "08c707d7-0eef-476d-92c0-4a3b849ec060",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nethermind.Wallet.dll",
+      "assemblyName": "Nethermind.Wallet",
+      "sha256": "7efede575d1d36d8f71aab33ee41c4af75f1c85643810d6d7211aad480a9e31f",
+      "mvid": "e30da761-c3a0-4448-a8f7-bf7beb2014fe",
+      "selected": false
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Newtonsoft.Json.dll",
+      "assemblyName": "Newtonsoft.Json",
+      "sha256": "22c649f75fce5be7c7ccda8880473b634ef69ecf33f5d1ab8ad892caf47d5a07",
+      "mvid": "7e62198b-eab2-4380-bbac-29171862d1d8",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Nito.Collections.Deque.dll",
+      "assemblyName": "Nito.Collections.Deque",
+      "sha256": "724b5ac9cf9f244bb06565fc21db9efce8dbaa84ab8d94214d4d35ec4c6c5042",
+      "mvid": "c3c12186-9df2-48a4-a40d-4508d5696503",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/NLog.dll",
+      "assemblyName": "NLog",
+      "sha256": "0b96c27373786d9ae27e2a26e00d890adff5adfc4d3f0ee0bd1ae2a958292860",
+      "mvid": "ebdaa35c-e5e0-4a96-b6e7-177c8ec3adf8",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/NonBlocking.dll",
+      "assemblyName": "NonBlocking",
+      "sha256": "86f694abfccacdc47b03a00bac0c11b3883eb165249fccbe62acd146e7c0f69b",
+      "mvid": "61e52a83-6550-4cf3-b1c2-929e078e01ee",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/NSubstitute.dll",
+      "assemblyName": "NSubstitute",
+      "sha256": "132bca6ba791048d4122113d3a79f7d6c4fa04ff017f05953a3e87919eca098d",
+      "mvid": "402b2077-f387-42cb-9b38-1ab9e79e4932",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/nunit.engine.api.dll",
+      "assemblyName": "nunit.engine.api",
+      "sha256": "05c632a930c55a87305e73a58a896a79fac8dc2038c02cdc9aec30e30fe9c526",
+      "mvid": "1775d352-fb2a-4f41-836b-bed4774ef390",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/nunit.engine.core.dll",
+      "assemblyName": "nunit.engine.core",
+      "sha256": "7f4758e81955a75d226e5af8429172f0183ae46d5441506fbf27df1a6b2affef",
+      "mvid": "3b30d50e-7f63-4dee-b8b0-88030d8457ad",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/nunit.engine.dll",
+      "assemblyName": "nunit.engine",
+      "sha256": "14dd0a981457344395839eefa56a6fb5043dcb77d0f17eff8f4a65a121e6f945",
+      "mvid": "c22d8dc6-e2f6-493c-ad76-e1f3db2c9761",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/nunit.framework.dll",
+      "assemblyName": "nunit.framework",
+      "sha256": "dee001d2ec493cf181d456d53a612f4727e03bafc7c9ce3067a9535bce115f63",
+      "mvid": "ab08d6b6-deab-40bb-aef9-39b782374eb8",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/nunit.framework.legacy.dll",
+      "assemblyName": "nunit.framework.legacy",
+      "sha256": "a299bc941edcfc8773c480f8e44d9296f793caaed13c5e36e017a49a7ddba2b2",
+      "mvid": "6e2f6f84-f0dd-4ad7-8b49-fca8eef51ee9",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/NUnit3.TestAdapter.dll",
+      "assemblyName": "NUnit3.TestAdapter",
+      "sha256": "d40c457cbdd67d2b910b00e40dcf6a3f46259f4ef8128ddddb70a5f31517e2b7",
+      "mvid": "53ca141c-c533-4f99-8811-6a7830dbb5c7",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Polly.Core.dll",
+      "assemblyName": "Polly.Core",
+      "sha256": "f7f50017ca9f457b854498358ae595c2a8ab69c1fd8b915139d22bed8f7e4f2a",
+      "mvid": "93b7c81c-a268-4bd8-b6c3-71c7d5524935",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Polly.dll",
+      "assemblyName": "Polly",
+      "sha256": "cecb78ee944fd7cd1889c21602cc905df8f72af06a3798fb0fd75d96d436891e",
+      "mvid": "da98275b-9a96-49bb-aa7f-c193ae3dc8a3",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Prometheus.AspNetCore.dll",
+      "assemblyName": "Prometheus.AspNetCore",
+      "sha256": "04fad5a2ff2c62da5bf31fe1e17978056162e57e8cdf266d89d28c4a36f61dbd",
+      "mvid": "35110c70-c4e5-4556-a15f-f9d4a7221436",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Prometheus.NetStandard.dll",
+      "assemblyName": "Prometheus.NetStandard",
+      "sha256": "87f007a4e95ded1e9a8b0b0cd0dca43e89822c926b8d93c15ec69a3e520f3620",
+      "mvid": "bff680f7-4016-452f-99ac-59aaacf8b25b",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Snappier.dll",
+      "assemblyName": "Snappier",
+      "sha256": "cfccfe3683587e56a8ae91b69a3a036d1cf45291334bf6760de857ebf2db0b35",
+      "mvid": "e0df9364-5f78-4d9e-a533-de3f3a99c8e2",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/System.CommandLine.dll",
+      "assemblyName": "System.CommandLine",
+      "sha256": "2b5ee7c20fdbd08af6c5dd7271c4e6b53fedab72864ee85abee94a647aba704e",
+      "mvid": "c3dd90af-5c04-4fa5-8165-0768bcd69b0d",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/System.Configuration.ConfigurationManager.dll",
+      "assemblyName": "System.Configuration.ConfigurationManager",
+      "sha256": "f6f445777420df03447d74f63671dfe97f8b833836ceb4643af76fa2e0c66a1b",
+      "mvid": "c4635a3c-b281-49ca-ba18-f3ca2a9bc5c0",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/System.IO.Hashing.dll",
+      "assemblyName": "System.IO.Hashing",
+      "sha256": "cea6795cf9f7b139b2215ff6de794a6f6e44e78640fb30fa4c0d5fa8472df8e5",
+      "mvid": "5019f993-048d-428e-84e0-c6c1fc9ee92d",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/System.Security.Cryptography.ProtectedData.dll",
+      "assemblyName": "System.Security.Cryptography.ProtectedData",
+      "sha256": "b61a1445b99a1486a5d9abbd45d766497f136270f5b04862defee1fc054ded14",
+      "mvid": "1c48ee13-441e-4b1b-892c-592a6118a047",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Testably.Abstractions.dll",
+      "assemblyName": "Testably.Abstractions",
+      "sha256": "612a8e98cd4468d1494b4fb4b21134942eabb1bca7aa63647e095331484d6ab7",
+      "mvid": "82b65840-9df6-4a19-8085-c2389b9c9920",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Testably.Abstractions.FileSystem.Interface.dll",
+      "assemblyName": "Testably.Abstractions.FileSystem.Interface",
+      "sha256": "29c9ce9ee28db07fd527c5662e047172771cd872d54e430997040626e03e293d",
+      "mvid": "2c82a743-31cb-4d61-aac1-8d055905ddd8",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/Testably.Abstractions.Interface.dll",
+      "assemblyName": "Testably.Abstractions.Interface",
+      "sha256": "8a56816c92a21326ab09b7600b7ee1e6c9dc5ca48eb4081d8a3bd691f3ae5736",
+      "mvid": "71ea913f-e4b1-4e31-9ca9-b6b80246eec8",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/testcentric.engine.metadata.dll",
+      "assemblyName": "testcentric.engine.metadata",
+      "sha256": "55efa956cb6b9682e6508dbcef41d7506030e660796e29c87cc42f4c1e043e34",
+      "mvid": "b2b1a507-94c6-4e1c-bbd0-7a20f2035ab6",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/testhost.dll",
+      "assemblyName": "testhost",
+      "sha256": "a0e6a54fd89ebc2920926bba9683427eebf4e89190fe9f19c68f1f331f1ef704",
+      "mvid": "01def09c-6a35-4718-9942-624659827f6f",
+      "selected": true
+    },
+    {
+      "path": "tools/artifacts/bin/Evm/release/ZstdSharp.dll",
+      "assemblyName": "ZstdSharp",
+      "sha256": "b285bb9f59928becb8e048bf2a75e872f6555f8773d7b72386a9f77f447f425c",
+      "mvid": "e5041090-31b9-477c-b82c-0a28dad172db",
+      "selected": true
+    }
+  ]
+}

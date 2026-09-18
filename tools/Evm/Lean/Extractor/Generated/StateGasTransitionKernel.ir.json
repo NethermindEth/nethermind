@@ -1,0 +1,2126 @@
+{
+  "schemaVersion": 3,
+  "kernel": "Nethermind.Evm.GasPolicy.StateGasTransitionKernel",
+  "roots": [
+    {
+      "name": "AddStateGasRefundToReservoir",
+      "signature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.AddStateGasRefundToReservoir(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long amount, bool trackSpillRefund)"
+    },
+    {
+      "name": "DiscardStateGas",
+      "signature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.DiscardStateGas(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long amount, long stateGasFloor)"
+    },
+    {
+      "name": "Refund",
+      "signature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.Refund(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, ulong childValue, long childStateReservoir, long childStateGasUsed, long childStateGasSpill, long childStateGasSpillRefunded)"
+    },
+    {
+      "name": "RefundStateGas",
+      "signature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RefundStateGas(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long amount, long stateGasFloor, bool trackSpillRefund)"
+    },
+    {
+      "name": "RemoveStateGasRefundFromReservoir",
+      "signature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RemoveStateGasRefundFromReservoir(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long amount)"
+    },
+    {
+      "name": "RepayStateGasSpill",
+      "signature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RepayStateGasSpill(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded)"
+    },
+    {
+      "name": "RestoreChildStateGas",
+      "signature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RestoreChildStateGas(ulong parentValue, long parentStateReservoir, long parentStateGasUsed, long parentStateGasSpill, long parentStateGasSpillRefunded, long childStateReservoir, long childStateGasUsed, long childStateGasSpill, long childStateGasSpillRefunded)"
+    },
+    {
+      "name": "RestoreChildStateGasOnHalt",
+      "signature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RestoreChildStateGasOnHalt(ulong parentValue, long parentStateReservoir, long parentStateGasUsed, long parentStateGasSpill, long parentStateGasSpillRefunded, long childStateReservoir, long childStateGasUsed, long childStateGasSpill, long childStateGasSpillRefunded)"
+    },
+    {
+      "name": "RevertRefundToHalt",
+      "signature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RevertRefundToHalt(ulong parentValue, long parentStateReservoir, long parentStateGasUsed, long parentStateGasSpill, long parentStateGasSpillRefunded, long childStateGasUsed, long childStateGasSpill, long childStateGasSpillRefunded)"
+    }
+  ],
+  "program": {
+    "resultType": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+    "resultFields": [
+      {
+        "name": "value",
+        "type": "Nat",
+        "constructorParameterOrdinal": 0
+      },
+      {
+        "name": "stateReservoir",
+        "type": "Int",
+        "constructorParameterOrdinal": 1
+      },
+      {
+        "name": "stateGasUsed",
+        "type": "Int",
+        "constructorParameterOrdinal": 2
+      },
+      {
+        "name": "stateGasSpill",
+        "type": "Int",
+        "constructorParameterOrdinal": 3
+      },
+      {
+        "name": "stateGasSpillRefunded",
+        "type": "Int",
+        "constructorParameterOrdinal": 4
+      },
+      {
+        "name": "unappliedAmount",
+        "type": "Int",
+        "constructorParameterOrdinal": 5
+      }
+    ],
+    "functions": [
+      {
+        "name": "PositivePart",
+        "signature": "long Nethermind.Evm.GasPolicy.StateGasTransitionKernel.PositivePart(long value)",
+        "isPublicRoot": false,
+        "returnType": "long",
+        "parameters": [
+          {
+            "ordinal": 0,
+            "name": "value",
+            "type": "long"
+          }
+        ],
+        "body": {
+          "kind": "if",
+          "type": "long",
+          "children": [
+            {
+              "kind": "compare",
+              "type": "bool",
+              "value": "\u003E",
+              "children": [
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "value",
+                  "children": []
+                },
+                {
+                  "kind": "literal",
+                  "type": "long",
+                  "value": "0",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "kind": "variable",
+              "type": "long",
+              "value": "value",
+              "children": []
+            },
+            {
+              "kind": "literal",
+              "type": "long",
+              "value": "0",
+              "children": []
+            }
+          ]
+        }
+      },
+      {
+        "name": "GetUnrefundedStateGasSpill",
+        "signature": "long Nethermind.Evm.GasPolicy.StateGasTransitionKernel.GetUnrefundedStateGasSpill(long stateGasSpill, long stateGasSpillRefunded)",
+        "isPublicRoot": false,
+        "returnType": "long",
+        "parameters": [
+          {
+            "ordinal": 0,
+            "name": "stateGasSpill",
+            "type": "long"
+          },
+          {
+            "ordinal": 1,
+            "name": "stateGasSpillRefunded",
+            "type": "long"
+          }
+        ],
+        "body": {
+          "kind": "let",
+          "type": "long",
+          "value": "unrefundedSpill",
+          "auxiliary": "long",
+          "children": [
+            {
+              "kind": "int64Sub",
+              "type": "long",
+              "children": [
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "stateGasSpill",
+                  "children": []
+                },
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "stateGasSpillRefunded",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "kind": "call",
+              "type": "long",
+              "value": "PositivePart",
+              "children": [
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "unrefundedSpill",
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "AddStateGasRefundToReservoir",
+        "signature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.AddStateGasRefundToReservoir(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long amount, bool trackSpillRefund)",
+        "isPublicRoot": true,
+        "returnType": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+        "parameters": [
+          {
+            "ordinal": 0,
+            "name": "value",
+            "type": "ulong"
+          },
+          {
+            "ordinal": 1,
+            "name": "stateReservoir",
+            "type": "long"
+          },
+          {
+            "ordinal": 2,
+            "name": "stateGasUsed",
+            "type": "long"
+          },
+          {
+            "ordinal": 3,
+            "name": "stateGasSpill",
+            "type": "long"
+          },
+          {
+            "ordinal": 4,
+            "name": "stateGasSpillRefunded",
+            "type": "long"
+          },
+          {
+            "ordinal": 5,
+            "name": "amount",
+            "type": "long"
+          },
+          {
+            "ordinal": 6,
+            "name": "trackSpillRefund",
+            "type": "bool"
+          }
+        ],
+        "body": {
+          "kind": "let",
+          "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+          "value": "toGasLeft",
+          "auxiliary": "long",
+          "children": [
+            {
+              "kind": "if",
+              "type": "long",
+              "children": [
+                {
+                  "kind": "variable",
+                  "type": "bool",
+                  "value": "trackSpillRefund",
+                  "children": []
+                },
+                {
+                  "kind": "minInt64",
+                  "type": "long",
+                  "children": [
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "amount",
+                      "children": []
+                    },
+                    {
+                      "kind": "call",
+                      "type": "long",
+                      "value": "GetUnrefundedStateGasSpill",
+                      "children": [
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "stateGasSpill",
+                          "children": []
+                        },
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "stateGasSpillRefunded",
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "kind": "literal",
+                  "type": "long",
+                  "value": "0",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "kind": "construct",
+              "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+              "children": [
+                {
+                  "kind": "uint64Add",
+                  "type": "ulong",
+                  "children": [
+                    {
+                      "kind": "variable",
+                      "type": "ulong",
+                      "value": "value",
+                      "children": []
+                    },
+                    {
+                      "kind": "int64ToUInt64",
+                      "type": "ulong",
+                      "children": [
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "toGasLeft",
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "kind": "int64Add",
+                  "type": "long",
+                  "children": [
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "stateReservoir",
+                      "children": []
+                    },
+                    {
+                      "kind": "int64Sub",
+                      "type": "long",
+                      "children": [
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "amount",
+                          "children": []
+                        },
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "toGasLeft",
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "stateGasUsed",
+                  "children": []
+                },
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "stateGasSpill",
+                  "children": []
+                },
+                {
+                  "kind": "if",
+                  "type": "long",
+                  "children": [
+                    {
+                      "kind": "variable",
+                      "type": "bool",
+                      "value": "trackSpillRefund",
+                      "children": []
+                    },
+                    {
+                      "kind": "int64Add",
+                      "type": "long",
+                      "children": [
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "stateGasSpillRefunded",
+                          "children": []
+                        },
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "toGasLeft",
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "stateGasSpillRefunded",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "literal",
+                  "type": "long",
+                  "value": "0",
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "ClampToRefundAmount",
+        "signature": "long Nethermind.Evm.GasPolicy.StateGasTransitionKernel.ClampToRefundAmount(long stateReservoir, long amount)",
+        "isPublicRoot": false,
+        "returnType": "long",
+        "parameters": [
+          {
+            "ordinal": 0,
+            "name": "stateReservoir",
+            "type": "long"
+          },
+          {
+            "ordinal": 1,
+            "name": "amount",
+            "type": "long"
+          }
+        ],
+        "body": {
+          "kind": "if",
+          "type": "long",
+          "children": [
+            {
+              "kind": "compare",
+              "type": "bool",
+              "value": "\u003C=",
+              "children": [
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "stateReservoir",
+                  "children": []
+                },
+                {
+                  "kind": "literal",
+                  "type": "long",
+                  "value": "0",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "kind": "literal",
+              "type": "long",
+              "value": "0",
+              "children": []
+            },
+            {
+              "kind": "if",
+              "type": "long",
+              "children": [
+                {
+                  "kind": "compare",
+                  "type": "bool",
+                  "value": "\u003E=",
+                  "children": [
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "stateReservoir",
+                      "children": []
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "amount",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "amount",
+                  "children": []
+                },
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "stateReservoir",
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "DiscardStateGas",
+        "signature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.DiscardStateGas(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long amount, long stateGasFloor)",
+        "isPublicRoot": true,
+        "returnType": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+        "parameters": [
+          {
+            "ordinal": 0,
+            "name": "value",
+            "type": "ulong"
+          },
+          {
+            "ordinal": 1,
+            "name": "stateReservoir",
+            "type": "long"
+          },
+          {
+            "ordinal": 2,
+            "name": "stateGasUsed",
+            "type": "long"
+          },
+          {
+            "ordinal": 3,
+            "name": "stateGasSpill",
+            "type": "long"
+          },
+          {
+            "ordinal": 4,
+            "name": "stateGasSpillRefunded",
+            "type": "long"
+          },
+          {
+            "ordinal": 5,
+            "name": "amount",
+            "type": "long"
+          },
+          {
+            "ordinal": 6,
+            "name": "stateGasFloor",
+            "type": "long"
+          }
+        ],
+        "body": {
+          "kind": "let",
+          "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+          "value": "discardableStateGas",
+          "auxiliary": "long",
+          "children": [
+            {
+              "kind": "call",
+              "type": "long",
+              "value": "PositivePart",
+              "children": [
+                {
+                  "kind": "int64Sub",
+                  "type": "long",
+                  "children": [
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "stateGasUsed",
+                      "children": []
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "stateGasFloor",
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "let",
+              "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+              "value": "appliedRefund",
+              "auxiliary": "long",
+              "children": [
+                {
+                  "kind": "minInt64",
+                  "type": "long",
+                  "children": [
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "amount",
+                      "children": []
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "discardableStateGas",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "construct",
+                  "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+                  "children": [
+                    {
+                      "kind": "variable",
+                      "type": "ulong",
+                      "value": "value",
+                      "children": []
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "stateReservoir",
+                      "children": []
+                    },
+                    {
+                      "kind": "int64Sub",
+                      "type": "long",
+                      "children": [
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "stateGasUsed",
+                          "children": []
+                        },
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "appliedRefund",
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "stateGasSpill",
+                      "children": []
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "stateGasSpillRefunded",
+                      "children": []
+                    },
+                    {
+                      "kind": "int64Sub",
+                      "type": "long",
+                      "children": [
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "amount",
+                          "children": []
+                        },
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "appliedRefund",
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Refund",
+        "signature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.Refund(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, ulong childValue, long childStateReservoir, long childStateGasUsed, long childStateGasSpill, long childStateGasSpillRefunded)",
+        "isPublicRoot": true,
+        "returnType": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+        "parameters": [
+          {
+            "ordinal": 0,
+            "name": "value",
+            "type": "ulong"
+          },
+          {
+            "ordinal": 1,
+            "name": "stateReservoir",
+            "type": "long"
+          },
+          {
+            "ordinal": 2,
+            "name": "stateGasUsed",
+            "type": "long"
+          },
+          {
+            "ordinal": 3,
+            "name": "stateGasSpill",
+            "type": "long"
+          },
+          {
+            "ordinal": 4,
+            "name": "stateGasSpillRefunded",
+            "type": "long"
+          },
+          {
+            "ordinal": 5,
+            "name": "childValue",
+            "type": "ulong"
+          },
+          {
+            "ordinal": 6,
+            "name": "childStateReservoir",
+            "type": "long"
+          },
+          {
+            "ordinal": 7,
+            "name": "childStateGasUsed",
+            "type": "long"
+          },
+          {
+            "ordinal": 8,
+            "name": "childStateGasSpill",
+            "type": "long"
+          },
+          {
+            "ordinal": 9,
+            "name": "childStateGasSpillRefunded",
+            "type": "long"
+          }
+        ],
+        "body": {
+          "kind": "construct",
+          "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+          "children": [
+            {
+              "kind": "uint64Add",
+              "type": "ulong",
+              "children": [
+                {
+                  "kind": "variable",
+                  "type": "ulong",
+                  "value": "value",
+                  "children": []
+                },
+                {
+                  "kind": "variable",
+                  "type": "ulong",
+                  "value": "childValue",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "kind": "int64Add",
+              "type": "long",
+              "children": [
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "stateReservoir",
+                  "children": []
+                },
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "childStateReservoir",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "kind": "int64Add",
+              "type": "long",
+              "children": [
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "stateGasUsed",
+                  "children": []
+                },
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "childStateGasUsed",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "kind": "int64Add",
+              "type": "long",
+              "children": [
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "stateGasSpill",
+                  "children": []
+                },
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "childStateGasSpill",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "kind": "int64Add",
+              "type": "long",
+              "children": [
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "stateGasSpillRefunded",
+                  "children": []
+                },
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "childStateGasSpillRefunded",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "kind": "literal",
+              "type": "long",
+              "value": "0",
+              "children": []
+            }
+          ]
+        }
+      },
+      {
+        "name": "RefundStateGas",
+        "signature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RefundStateGas(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long amount, long stateGasFloor, bool trackSpillRefund)",
+        "isPublicRoot": true,
+        "returnType": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+        "parameters": [
+          {
+            "ordinal": 0,
+            "name": "value",
+            "type": "ulong"
+          },
+          {
+            "ordinal": 1,
+            "name": "stateReservoir",
+            "type": "long"
+          },
+          {
+            "ordinal": 2,
+            "name": "stateGasUsed",
+            "type": "long"
+          },
+          {
+            "ordinal": 3,
+            "name": "stateGasSpill",
+            "type": "long"
+          },
+          {
+            "ordinal": 4,
+            "name": "stateGasSpillRefunded",
+            "type": "long"
+          },
+          {
+            "ordinal": 5,
+            "name": "amount",
+            "type": "long"
+          },
+          {
+            "ordinal": 6,
+            "name": "stateGasFloor",
+            "type": "long"
+          },
+          {
+            "ordinal": 7,
+            "name": "trackSpillRefund",
+            "type": "bool"
+          }
+        ],
+        "body": {
+          "kind": "let",
+          "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+          "value": "refundableStateGas",
+          "auxiliary": "long",
+          "children": [
+            {
+              "kind": "call",
+              "type": "long",
+              "value": "PositivePart",
+              "children": [
+                {
+                  "kind": "int64Sub",
+                  "type": "long",
+                  "children": [
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "stateGasUsed",
+                      "children": []
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "stateGasFloor",
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "let",
+              "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+              "value": "appliedRefund",
+              "auxiliary": "long",
+              "children": [
+                {
+                  "kind": "minInt64",
+                  "type": "long",
+                  "children": [
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "amount",
+                      "children": []
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "refundableStateGas",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "let",
+                  "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+                  "value": "toGasLeft",
+                  "auxiliary": "long",
+                  "children": [
+                    {
+                      "kind": "if",
+                      "type": "long",
+                      "children": [
+                        {
+                          "kind": "variable",
+                          "type": "bool",
+                          "value": "trackSpillRefund",
+                          "children": []
+                        },
+                        {
+                          "kind": "minInt64",
+                          "type": "long",
+                          "children": [
+                            {
+                              "kind": "variable",
+                              "type": "long",
+                              "value": "appliedRefund",
+                              "children": []
+                            },
+                            {
+                              "kind": "call",
+                              "type": "long",
+                              "value": "GetUnrefundedStateGasSpill",
+                              "children": [
+                                {
+                                  "kind": "variable",
+                                  "type": "long",
+                                  "value": "stateGasSpill",
+                                  "children": []
+                                },
+                                {
+                                  "kind": "variable",
+                                  "type": "long",
+                                  "value": "stateGasSpillRefunded",
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "literal",
+                          "type": "long",
+                          "value": "0",
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "construct",
+                      "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+                      "children": [
+                        {
+                          "kind": "uint64Add",
+                          "type": "ulong",
+                          "children": [
+                            {
+                              "kind": "variable",
+                              "type": "ulong",
+                              "value": "value",
+                              "children": []
+                            },
+                            {
+                              "kind": "int64ToUInt64",
+                              "type": "ulong",
+                              "children": [
+                                {
+                                  "kind": "variable",
+                                  "type": "long",
+                                  "value": "toGasLeft",
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "int64Add",
+                          "type": "long",
+                          "children": [
+                            {
+                              "kind": "variable",
+                              "type": "long",
+                              "value": "stateReservoir",
+                              "children": []
+                            },
+                            {
+                              "kind": "int64Sub",
+                              "type": "long",
+                              "children": [
+                                {
+                                  "kind": "variable",
+                                  "type": "long",
+                                  "value": "appliedRefund",
+                                  "children": []
+                                },
+                                {
+                                  "kind": "variable",
+                                  "type": "long",
+                                  "value": "toGasLeft",
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "int64Sub",
+                          "type": "long",
+                          "children": [
+                            {
+                              "kind": "variable",
+                              "type": "long",
+                              "value": "stateGasUsed",
+                              "children": []
+                            },
+                            {
+                              "kind": "variable",
+                              "type": "long",
+                              "value": "appliedRefund",
+                              "children": []
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "stateGasSpill",
+                          "children": []
+                        },
+                        {
+                          "kind": "if",
+                          "type": "long",
+                          "children": [
+                            {
+                              "kind": "variable",
+                              "type": "bool",
+                              "value": "trackSpillRefund",
+                              "children": []
+                            },
+                            {
+                              "kind": "int64Add",
+                              "type": "long",
+                              "children": [
+                                {
+                                  "kind": "variable",
+                                  "type": "long",
+                                  "value": "stateGasSpillRefunded",
+                                  "children": []
+                                },
+                                {
+                                  "kind": "variable",
+                                  "type": "long",
+                                  "value": "toGasLeft",
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "variable",
+                              "type": "long",
+                              "value": "stateGasSpillRefunded",
+                              "children": []
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "literal",
+                          "type": "long",
+                          "value": "0",
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "RemoveStateGasRefundFromReservoir",
+        "signature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RemoveStateGasRefundFromReservoir(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long amount)",
+        "isPublicRoot": true,
+        "returnType": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+        "parameters": [
+          {
+            "ordinal": 0,
+            "name": "value",
+            "type": "ulong"
+          },
+          {
+            "ordinal": 1,
+            "name": "stateReservoir",
+            "type": "long"
+          },
+          {
+            "ordinal": 2,
+            "name": "stateGasUsed",
+            "type": "long"
+          },
+          {
+            "ordinal": 3,
+            "name": "stateGasSpill",
+            "type": "long"
+          },
+          {
+            "ordinal": 4,
+            "name": "stateGasSpillRefunded",
+            "type": "long"
+          },
+          {
+            "ordinal": 5,
+            "name": "amount",
+            "type": "long"
+          }
+        ],
+        "body": {
+          "kind": "let",
+          "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+          "value": "fromReservoir",
+          "auxiliary": "long",
+          "children": [
+            {
+              "kind": "call",
+              "type": "long",
+              "value": "ClampToRefundAmount",
+              "children": [
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "stateReservoir",
+                  "children": []
+                },
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "amount",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "kind": "let",
+              "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+              "value": "remainingAmount",
+              "auxiliary": "long",
+              "children": [
+                {
+                  "kind": "int64Sub",
+                  "type": "long",
+                  "children": [
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "amount",
+                      "children": []
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "fromReservoir",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "let",
+                  "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+                  "value": "nextStateReservoir",
+                  "auxiliary": "long",
+                  "children": [
+                    {
+                      "kind": "int64Sub",
+                      "type": "long",
+                      "children": [
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "stateReservoir",
+                          "children": []
+                        },
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "fromReservoir",
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "if",
+                      "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+                      "children": [
+                        {
+                          "kind": "compare",
+                          "type": "bool",
+                          "value": "\u003C=",
+                          "children": [
+                            {
+                              "kind": "variable",
+                              "type": "long",
+                              "value": "remainingAmount",
+                              "children": []
+                            },
+                            {
+                              "kind": "literal",
+                              "type": "long",
+                              "value": "0",
+                              "children": []
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "construct",
+                          "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+                          "children": [
+                            {
+                              "kind": "variable",
+                              "type": "ulong",
+                              "value": "value",
+                              "children": []
+                            },
+                            {
+                              "kind": "variable",
+                              "type": "long",
+                              "value": "nextStateReservoir",
+                              "children": []
+                            },
+                            {
+                              "kind": "variable",
+                              "type": "long",
+                              "value": "stateGasUsed",
+                              "children": []
+                            },
+                            {
+                              "kind": "variable",
+                              "type": "long",
+                              "value": "stateGasSpill",
+                              "children": []
+                            },
+                            {
+                              "kind": "variable",
+                              "type": "long",
+                              "value": "stateGasSpillRefunded",
+                              "children": []
+                            },
+                            {
+                              "kind": "literal",
+                              "type": "long",
+                              "value": "0",
+                              "children": []
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "let",
+                          "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+                          "value": "fromUsed",
+                          "auxiliary": "long",
+                          "children": [
+                            {
+                              "kind": "minInt64",
+                              "type": "long",
+                              "children": [
+                                {
+                                  "kind": "variable",
+                                  "type": "long",
+                                  "value": "remainingAmount",
+                                  "children": []
+                                },
+                                {
+                                  "kind": "variable",
+                                  "type": "long",
+                                  "value": "stateGasUsed",
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "construct",
+                              "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+                              "children": [
+                                {
+                                  "kind": "variable",
+                                  "type": "ulong",
+                                  "value": "value",
+                                  "children": []
+                                },
+                                {
+                                  "kind": "int64Sub",
+                                  "type": "long",
+                                  "children": [
+                                    {
+                                      "kind": "variable",
+                                      "type": "long",
+                                      "value": "nextStateReservoir",
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "int64Sub",
+                                      "type": "long",
+                                      "children": [
+                                        {
+                                          "kind": "variable",
+                                          "type": "long",
+                                          "value": "remainingAmount",
+                                          "children": []
+                                        },
+                                        {
+                                          "kind": "variable",
+                                          "type": "long",
+                                          "value": "fromUsed",
+                                          "children": []
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "int64Sub",
+                                  "type": "long",
+                                  "children": [
+                                    {
+                                      "kind": "variable",
+                                      "type": "long",
+                                      "value": "stateGasUsed",
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "variable",
+                                      "type": "long",
+                                      "value": "fromUsed",
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "variable",
+                                  "type": "long",
+                                  "value": "stateGasSpill",
+                                  "children": []
+                                },
+                                {
+                                  "kind": "variable",
+                                  "type": "long",
+                                  "value": "stateGasSpillRefunded",
+                                  "children": []
+                                },
+                                {
+                                  "kind": "literal",
+                                  "type": "long",
+                                  "value": "0",
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "RepayStateGasSpill",
+        "signature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RepayStateGasSpill(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded)",
+        "isPublicRoot": true,
+        "returnType": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+        "parameters": [
+          {
+            "ordinal": 0,
+            "name": "value",
+            "type": "ulong"
+          },
+          {
+            "ordinal": 1,
+            "name": "stateReservoir",
+            "type": "long"
+          },
+          {
+            "ordinal": 2,
+            "name": "stateGasUsed",
+            "type": "long"
+          },
+          {
+            "ordinal": 3,
+            "name": "stateGasSpill",
+            "type": "long"
+          },
+          {
+            "ordinal": 4,
+            "name": "stateGasSpillRefunded",
+            "type": "long"
+          }
+        ],
+        "body": {
+          "kind": "let",
+          "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+          "value": "repayment",
+          "auxiliary": "long",
+          "children": [
+            {
+              "kind": "minInt64",
+              "type": "long",
+              "children": [
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "stateReservoir",
+                  "children": []
+                },
+                {
+                  "kind": "call",
+                  "type": "long",
+                  "value": "GetUnrefundedStateGasSpill",
+                  "children": [
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "stateGasSpill",
+                      "children": []
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "stateGasSpillRefunded",
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "if",
+              "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+              "children": [
+                {
+                  "kind": "compare",
+                  "type": "bool",
+                  "value": "\u003C=",
+                  "children": [
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "repayment",
+                      "children": []
+                    },
+                    {
+                      "kind": "literal",
+                      "type": "long",
+                      "value": "0",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "construct",
+                  "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+                  "children": [
+                    {
+                      "kind": "variable",
+                      "type": "ulong",
+                      "value": "value",
+                      "children": []
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "stateReservoir",
+                      "children": []
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "stateGasUsed",
+                      "children": []
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "stateGasSpill",
+                      "children": []
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "stateGasSpillRefunded",
+                      "children": []
+                    },
+                    {
+                      "kind": "literal",
+                      "type": "long",
+                      "value": "0",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "construct",
+                  "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+                  "children": [
+                    {
+                      "kind": "uint64Add",
+                      "type": "ulong",
+                      "children": [
+                        {
+                          "kind": "variable",
+                          "type": "ulong",
+                          "value": "value",
+                          "children": []
+                        },
+                        {
+                          "kind": "int64ToUInt64",
+                          "type": "ulong",
+                          "children": [
+                            {
+                              "kind": "variable",
+                              "type": "long",
+                              "value": "repayment",
+                              "children": []
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "int64Sub",
+                      "type": "long",
+                      "children": [
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "stateReservoir",
+                          "children": []
+                        },
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "repayment",
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "stateGasUsed",
+                      "children": []
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "stateGasSpill",
+                      "children": []
+                    },
+                    {
+                      "kind": "int64Add",
+                      "type": "long",
+                      "children": [
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "stateGasSpillRefunded",
+                          "children": []
+                        },
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "repayment",
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "literal",
+                      "type": "long",
+                      "value": "0",
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "RestoreChildStateGas",
+        "signature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RestoreChildStateGas(ulong parentValue, long parentStateReservoir, long parentStateGasUsed, long parentStateGasSpill, long parentStateGasSpillRefunded, long childStateReservoir, long childStateGasUsed, long childStateGasSpill, long childStateGasSpillRefunded)",
+        "isPublicRoot": true,
+        "returnType": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+        "parameters": [
+          {
+            "ordinal": 0,
+            "name": "parentValue",
+            "type": "ulong"
+          },
+          {
+            "ordinal": 1,
+            "name": "parentStateReservoir",
+            "type": "long"
+          },
+          {
+            "ordinal": 2,
+            "name": "parentStateGasUsed",
+            "type": "long"
+          },
+          {
+            "ordinal": 3,
+            "name": "parentStateGasSpill",
+            "type": "long"
+          },
+          {
+            "ordinal": 4,
+            "name": "parentStateGasSpillRefunded",
+            "type": "long"
+          },
+          {
+            "ordinal": 5,
+            "name": "childStateReservoir",
+            "type": "long"
+          },
+          {
+            "ordinal": 6,
+            "name": "childStateGasUsed",
+            "type": "long"
+          },
+          {
+            "ordinal": 7,
+            "name": "childStateGasSpill",
+            "type": "long"
+          },
+          {
+            "ordinal": 8,
+            "name": "childStateGasSpillRefunded",
+            "type": "long"
+          }
+        ],
+        "body": {
+          "kind": "let",
+          "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+          "value": "childNetSpill",
+          "auxiliary": "long",
+          "children": [
+            {
+              "kind": "call",
+              "type": "long",
+              "value": "GetUnrefundedStateGasSpill",
+              "children": [
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "childStateGasSpill",
+                  "children": []
+                },
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "childStateGasSpillRefunded",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "kind": "construct",
+              "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+              "children": [
+                {
+                  "kind": "uint64Add",
+                  "type": "ulong",
+                  "children": [
+                    {
+                      "kind": "variable",
+                      "type": "ulong",
+                      "value": "parentValue",
+                      "children": []
+                    },
+                    {
+                      "kind": "int64ToUInt64",
+                      "type": "ulong",
+                      "children": [
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "childNetSpill",
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "kind": "int64Sub",
+                  "type": "long",
+                  "children": [
+                    {
+                      "kind": "int64Add",
+                      "type": "long",
+                      "children": [
+                        {
+                          "kind": "int64Add",
+                          "type": "long",
+                          "children": [
+                            {
+                              "kind": "variable",
+                              "type": "long",
+                              "value": "parentStateReservoir",
+                              "children": []
+                            },
+                            {
+                              "kind": "variable",
+                              "type": "long",
+                              "value": "childStateReservoir",
+                              "children": []
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "childStateGasUsed",
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "childNetSpill",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "parentStateGasUsed",
+                  "children": []
+                },
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "parentStateGasSpill",
+                  "children": []
+                },
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "parentStateGasSpillRefunded",
+                  "children": []
+                },
+                {
+                  "kind": "literal",
+                  "type": "long",
+                  "value": "0",
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "RestoreChildStateGasOnHalt",
+        "signature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RestoreChildStateGasOnHalt(ulong parentValue, long parentStateReservoir, long parentStateGasUsed, long parentStateGasSpill, long parentStateGasSpillRefunded, long childStateReservoir, long childStateGasUsed, long childStateGasSpill, long childStateGasSpillRefunded)",
+        "isPublicRoot": true,
+        "returnType": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+        "parameters": [
+          {
+            "ordinal": 0,
+            "name": "parentValue",
+            "type": "ulong"
+          },
+          {
+            "ordinal": 1,
+            "name": "parentStateReservoir",
+            "type": "long"
+          },
+          {
+            "ordinal": 2,
+            "name": "parentStateGasUsed",
+            "type": "long"
+          },
+          {
+            "ordinal": 3,
+            "name": "parentStateGasSpill",
+            "type": "long"
+          },
+          {
+            "ordinal": 4,
+            "name": "parentStateGasSpillRefunded",
+            "type": "long"
+          },
+          {
+            "ordinal": 5,
+            "name": "childStateReservoir",
+            "type": "long"
+          },
+          {
+            "ordinal": 6,
+            "name": "childStateGasUsed",
+            "type": "long"
+          },
+          {
+            "ordinal": 7,
+            "name": "childStateGasSpill",
+            "type": "long"
+          },
+          {
+            "ordinal": 8,
+            "name": "childStateGasSpillRefunded",
+            "type": "long"
+          }
+        ],
+        "body": {
+          "kind": "let",
+          "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+          "value": "childNetSpill",
+          "auxiliary": "long",
+          "children": [
+            {
+              "kind": "call",
+              "type": "long",
+              "value": "GetUnrefundedStateGasSpill",
+              "children": [
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "childStateGasSpill",
+                  "children": []
+                },
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "childStateGasSpillRefunded",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "kind": "construct",
+              "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+              "children": [
+                {
+                  "kind": "variable",
+                  "type": "ulong",
+                  "value": "parentValue",
+                  "children": []
+                },
+                {
+                  "kind": "int64Sub",
+                  "type": "long",
+                  "children": [
+                    {
+                      "kind": "int64Add",
+                      "type": "long",
+                      "children": [
+                        {
+                          "kind": "int64Add",
+                          "type": "long",
+                          "children": [
+                            {
+                              "kind": "variable",
+                              "type": "long",
+                              "value": "parentStateReservoir",
+                              "children": []
+                            },
+                            {
+                              "kind": "variable",
+                              "type": "long",
+                              "value": "childStateReservoir",
+                              "children": []
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "childStateGasUsed",
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "childNetSpill",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "parentStateGasUsed",
+                  "children": []
+                },
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "parentStateGasSpill",
+                  "children": []
+                },
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "parentStateGasSpillRefunded",
+                  "children": []
+                },
+                {
+                  "kind": "literal",
+                  "type": "long",
+                  "value": "0",
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "RevertRefundToHalt",
+        "signature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RevertRefundToHalt(ulong parentValue, long parentStateReservoir, long parentStateGasUsed, long parentStateGasSpill, long parentStateGasSpillRefunded, long childStateGasUsed, long childStateGasSpill, long childStateGasSpillRefunded)",
+        "isPublicRoot": true,
+        "returnType": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+        "parameters": [
+          {
+            "ordinal": 0,
+            "name": "parentValue",
+            "type": "ulong"
+          },
+          {
+            "ordinal": 1,
+            "name": "parentStateReservoir",
+            "type": "long"
+          },
+          {
+            "ordinal": 2,
+            "name": "parentStateGasUsed",
+            "type": "long"
+          },
+          {
+            "ordinal": 3,
+            "name": "parentStateGasSpill",
+            "type": "long"
+          },
+          {
+            "ordinal": 4,
+            "name": "parentStateGasSpillRefunded",
+            "type": "long"
+          },
+          {
+            "ordinal": 5,
+            "name": "childStateGasUsed",
+            "type": "long"
+          },
+          {
+            "ordinal": 6,
+            "name": "childStateGasSpill",
+            "type": "long"
+          },
+          {
+            "ordinal": 7,
+            "name": "childStateGasSpillRefunded",
+            "type": "long"
+          }
+        ],
+        "body": {
+          "kind": "let",
+          "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+          "value": "childNetSpill",
+          "auxiliary": "long",
+          "children": [
+            {
+              "kind": "call",
+              "type": "long",
+              "value": "GetUnrefundedStateGasSpill",
+              "children": [
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "childStateGasSpill",
+                  "children": []
+                },
+                {
+                  "kind": "variable",
+                  "type": "long",
+                  "value": "childStateGasSpillRefunded",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "kind": "construct",
+              "type": "Nethermind.Evm.GasPolicy.StateGasTransitionResult",
+              "children": [
+                {
+                  "kind": "variable",
+                  "type": "ulong",
+                  "value": "parentValue",
+                  "children": []
+                },
+                {
+                  "kind": "int64Sub",
+                  "type": "long",
+                  "children": [
+                    {
+                      "kind": "int64Add",
+                      "type": "long",
+                      "children": [
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "parentStateReservoir",
+                          "children": []
+                        },
+                        {
+                          "kind": "variable",
+                          "type": "long",
+                          "value": "childStateGasUsed",
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "childNetSpill",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "int64Sub",
+                  "type": "long",
+                  "children": [
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "parentStateGasUsed",
+                      "children": []
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "childStateGasUsed",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "int64Sub",
+                  "type": "long",
+                  "children": [
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "parentStateGasSpill",
+                      "children": []
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "childStateGasSpill",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "int64Sub",
+                  "type": "long",
+                  "children": [
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "parentStateGasSpillRefunded",
+                      "children": []
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "childStateGasSpillRefunded",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "literal",
+                  "type": "long",
+                  "value": "0",
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

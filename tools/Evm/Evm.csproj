@@ -6,6 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="Lean/**/*.cs" />
     <PackageReference Include="System.CommandLine" />
     <ProjectReference Include="..\..\src\Nethermind\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Core\Nethermind.Core.csproj" />

@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.0.0",
+  "kernel": "Nethermind standard-mainnet Amsterdam TLOAD/TSTORE immediate-handler slice",
+  "reachability": {
+    "service": "IVirtualMachine",
+    "concreteVm": "EthereumVirtualMachine",
+    "closedVm": "VirtualMachine\u003CEthereumGasPolicy\u003E",
+    "gasPolicy": "EthereumGasPolicy",
+    "fork": "Amsterdam",
+    "activation": "Cancun.IsEip1153Enabled inherited through the complete named-mainnet ancestry",
+    "buildSelection": "Directory.Build.targets selects *.std.cs when EnableZkEvm != true",
+    "dispatchRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode"
+  },
+  "opcodes": [
+    {
+      "name": "tload",
+      "instruction": "TLOAD",
+      "opcodeByte": 92,
+      "handler": "TLoadOpcode\u003CTTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionTLoad\u003CTGasPolicy,TTracingInst\u003E",
+      "fixedGas": 100,
+      "stackInputs": 1,
+      "stackOutputs": 1,
+      "staticCheckBeforeGas": false,
+      "orderedEffects": [
+        "charge",
+        "popKey",
+        "readExecutingAccountCell",
+        "pushValue"
+      ]
+    },
+    {
+      "name": "tstore",
+      "instruction": "TSTORE",
+      "opcodeByte": 93,
+      "handler": "TStoreOpcode",
+      "wrapper": "EvmInstructions.InstructionTStore\u003CTGasPolicy\u003E",
+      "fixedGas": 100,
+      "stackInputs": 2,
+      "stackOutputs": 0,
+      "staticCheckBeforeGas": true,
+      "orderedEffects": [
+        "staticCheck",
+        "charge",
+        "popKey",
+        "popValue",
+        "snapshotPreWriteValueWhenTracing",
+        "write"
+      ]
+    }
+  ],
+  "specializations": [
+    {
+      "opcode": "tload",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CTLoadOpcode\u003COffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "tstore",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CTStoreOpcode,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "tload",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CTLoadOpcode\u003COffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "tstore",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CTStoreOpcode,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "tload",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CTLoadOpcode\u003COnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "tstore",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CTStoreOpcode,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "tload",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CTLoadOpcode\u003COnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "tstore",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CTStoreOpcode,OnFlag,OnFlag,OnFlag\u003E"
+    }
+  ],
+  "openExtractionObligations": [
+    "Theorems cover the immediate TLOAD/TSTORE transition selected by standard-mainnet Amsterdam dispatch; C# language, Roslyn binding, CLR/JIT, unsafe function-pointer dispatch, and hardware correctness remain outside the theorem.",
+    "UInt256 and Address representation, EvmStack unsafe storage and endian conversions, ReadOnlySpan lifetime, zero-value byte canonicalization, and PushBytes/PopUInt256/PopWord256 implementation equivalence remain adapter premises.",
+    "IWorldState transient-provider lookup, journaling, nested-frame snapshot restore/merge, account destruction, transaction-boundary ResetTransient, and WorldState decorator behavior remain separate production-refinement obligations.",
+    "Tracer callback behavior, callback exceptions, trace byte representation, cancellation, opcode-count accounting, and instruction trace side effects are outside the consensus-state refinement; the admitted handler preserves the fixed pre-write TSTORE trace ordering."
+  ]
+}

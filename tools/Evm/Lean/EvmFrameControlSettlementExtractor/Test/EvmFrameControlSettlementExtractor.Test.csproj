@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsTestProject>true</IsTestProject>
+    <EnableNUnitRunner>true</EnableNUnitRunner>
+    <AssemblyName>Nethermind.Evm.Lean.EvmFrameControlSettlementExtractor.Test</AssemblyName>
+    <RootNamespace>Nethermind.Evm.Lean.EvmFrameControlSettlementExtractor.Test</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../EvmFrameControlSettlementExtractor.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnit3TestAdapter" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "nethermind://eip803x/precompile-frame-stage-a-source-manifest",
+  "title": "Precompile frame Stage A source manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "extractorVersion", "roslynVersion", "languageVersion", "kernel", "sources", "members", "dependencies", "ir", "lean", "combinedSourceSha256", "combinedMemberSha256", "semanticBindings"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "extractorVersion": { "type": "string", "minLength": 1 },
+    "roslynVersion": { "type": "string", "minLength": 1 },
+    "languageVersion": { "const": "CSharp14" },
+    "kernel": { "const": "standard-mainnet-amsterdam-precompile-frame-stage-a" },
+    "sources": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/source" } },
+    "members": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/member" } },
+    "dependencies": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/dependency" } },
+    "ir": { "$ref": "#/definitions/artifact" },
+    "lean": { "$ref": "#/definitions/artifact" },
+    "combinedSourceSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "combinedMemberSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "semanticBindings": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+  },
+  "definitions": {
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "role", "sha256", "roslynSyntaxSha256", "isRaw", "includedInStandardBuild"],
+      "properties": { "path": { "type": "string" }, "role": { "type": "string" }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }, "roslynSyntaxSha256": { "type": "string" }, "isRaw": { "type": "boolean" }, "includedInStandardBuild": { "type": "boolean" } }
+    },
+    "member": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sourcePath", "owner", "member", "signature", "syntaxKind", "sha256"],
+      "properties": { "sourcePath": { "type": "string" }, "owner": { "type": "string" }, "member": { "type": "string" }, "signature": { "type": "string" }, "syntaxKind": { "type": "string" }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" } }
+    },
+    "dependency": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "name", "path", "sha256", "binding", "oracleOnly"],
+      "properties": { "kind": { "type": "string" }, "name": { "type": "string" }, "path": { "type": "string" }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }, "binding": { "type": "string" }, "oracleOnly": { "type": "boolean" } }
+    },
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": { "path": { "type": "string" }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" } }
+    }
+  }
+}

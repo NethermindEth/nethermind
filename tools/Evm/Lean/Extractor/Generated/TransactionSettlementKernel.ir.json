@@ -1,0 +1,2475 @@
+{
+  "schemaVersion": 3,
+  "kernel": "Nethermind.Evm.TransactionProcessing.TransactionSettlementKernel",
+  "roots": [
+    {
+      "name": "Calculate",
+      "signature": "Nethermind.Evm.TransactionProcessing.TransactionSettlementResult Nethermind.Evm.TransactionProcessing.TransactionSettlementKernel.Calculate(ulong transactionGasLimit, ulong preRefundGas, long refundCounter, int destroyCount, ulong destroyRefund, ulong codeInsertExecutionRefund, ulong calldataFloorGas, long stateGasUsed, ulong refundQuotient, bool isError, bool shouldRevert, bool isEip8037Enabled, bool isEip7778Enabled)"
+    }
+  ],
+  "dataTypes": [
+    {
+      "type": "Nethermind.Evm.TransactionProcessing.TransactionSettlementResult",
+      "constructor": "Nethermind.Evm.TransactionProcessing.TransactionSettlementResult.TransactionSettlementResult(ulong spentGas, ulong operationGas, ulong blockGas, ulong blockStateGas, ulong maxUsedGas, ulong gasRefund)",
+      "fields": [
+        {
+          "name": "SpentGas",
+          "type": "ulong",
+          "parameterOrdinal": 0
+        },
+        {
+          "name": "OperationGas",
+          "type": "ulong",
+          "parameterOrdinal": 1
+        },
+        {
+          "name": "BlockGas",
+          "type": "ulong",
+          "parameterOrdinal": 2
+        },
+        {
+          "name": "BlockStateGas",
+          "type": "ulong",
+          "parameterOrdinal": 3
+        },
+        {
+          "name": "MaxUsedGas",
+          "type": "ulong",
+          "parameterOrdinal": 4
+        },
+        {
+          "name": "GasRefund",
+          "type": "ulong",
+          "parameterOrdinal": 5
+        }
+      ]
+    }
+  ],
+  "methods": [
+    {
+      "signature": "Nethermind.Evm.TransactionProcessing.TransactionSettlementResult Nethermind.Evm.TransactionProcessing.TransactionSettlementKernel.Calculate(ulong transactionGasLimit, ulong preRefundGas, long refundCounter, int destroyCount, ulong destroyRefund, ulong codeInsertExecutionRefund, ulong calldataFloorGas, long stateGasUsed, ulong refundQuotient, bool isError, bool shouldRevert, bool isEip8037Enabled, bool isEip7778Enabled)",
+      "returnType": "Nethermind.Evm.TransactionProcessing.TransactionSettlementResult",
+      "parameters": [
+        {
+          "ordinal": 0,
+          "name": "transactionGasLimit",
+          "type": "ulong"
+        },
+        {
+          "ordinal": 1,
+          "name": "preRefundGas",
+          "type": "ulong"
+        },
+        {
+          "ordinal": 2,
+          "name": "refundCounter",
+          "type": "long"
+        },
+        {
+          "ordinal": 3,
+          "name": "destroyCount",
+          "type": "int"
+        },
+        {
+          "ordinal": 4,
+          "name": "destroyRefund",
+          "type": "ulong"
+        },
+        {
+          "ordinal": 5,
+          "name": "codeInsertExecutionRefund",
+          "type": "ulong"
+        },
+        {
+          "ordinal": 6,
+          "name": "calldataFloorGas",
+          "type": "ulong"
+        },
+        {
+          "ordinal": 7,
+          "name": "stateGasUsed",
+          "type": "long"
+        },
+        {
+          "ordinal": 8,
+          "name": "refundQuotient",
+          "type": "ulong"
+        },
+        {
+          "ordinal": 9,
+          "name": "isError",
+          "type": "bool"
+        },
+        {
+          "ordinal": 10,
+          "name": "shouldRevert",
+          "type": "bool"
+        },
+        {
+          "ordinal": 11,
+          "name": "isEip8037Enabled",
+          "type": "bool"
+        },
+        {
+          "ordinal": 12,
+          "name": "isEip7778Enabled",
+          "type": "bool"
+        }
+      ],
+      "blocks": [
+        {
+          "ordinal": 0,
+          "kind": "Entry",
+          "conditionKind": "None",
+          "predecessors": [],
+          "operations": [],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 1
+          }
+        },
+        {
+          "ordinal": 1,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 0,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "ParameterReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "parameter",
+                "value": "9"
+              }
+            ],
+            "children": []
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 2
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 3
+          }
+        },
+        {
+          "ordinal": 2,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 1,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "ParameterReference",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "parameter",
+                      "value": "0"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 4
+          }
+        },
+        {
+          "ordinal": 3,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 1,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "ParameterReference",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "parameter",
+                      "value": "1"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 4
+          }
+        },
+        {
+          "ordinal": 4,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 2,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 3,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "SimpleAssignment",
+              "type": "ulong",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "ulong",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "gasUsedBeforeRefund@1305"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "FlowCaptureReference",
+                  "type": "ulong",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "capture",
+                      "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 5
+          }
+        },
+        {
+          "ordinal": 5,
+          "kind": "Block",
+          "conditionKind": "WhenTrue",
+          "predecessors": [
+            {
+              "sourceOrdinal": 4,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "SimpleAssignment",
+              "type": "long",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "long",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "totalToRefund@1386"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "Conversion",
+                  "type": "long",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "conversion",
+                      "value": "exists,nonidentity,numeric,nonreference,explicit,nonnullable,builtin"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "ParameterReference",
+                      "type": "ulong",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "parameter",
+                          "value": "5"
+                        }
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "branchValue": {
+            "kind": "ParameterReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "parameter",
+                "value": "9"
+              }
+            ],
+            "children": []
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 6
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 8
+          }
+        },
+        {
+          "ordinal": 6,
+          "kind": "Block",
+          "conditionKind": "WhenTrue",
+          "predecessors": [
+            {
+              "sourceOrdinal": 5,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "ParameterReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "parameter",
+                "value": "10"
+              }
+            ],
+            "children": []
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 7
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 8
+          }
+        },
+        {
+          "ordinal": 7,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 6,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "SimpleAssignment",
+              "type": "long",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "long",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "destroyRefundTotal@1513"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "Binary",
+                  "type": "long",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "lifted",
+                      "value": "false"
+                    },
+                    {
+                      "name": "operator",
+                      "value": "Multiply"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Conversion",
+                      "type": "long",
+                      "isImplicit": true,
+                      "properties": [
+                        {
+                          "name": "checked",
+                          "value": "false"
+                        },
+                        {
+                          "name": "conversion",
+                          "value": "exists,nonidentity,numeric,nonreference,implicit,nonnullable,builtin"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "ParameterReference",
+                          "type": "int",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "parameter",
+                              "value": "3"
+                            }
+                          ],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Conversion",
+                      "type": "long",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "checked",
+                          "value": "false"
+                        },
+                        {
+                          "name": "conversion",
+                          "value": "exists,nonidentity,numeric,nonreference,explicit,nonnullable,builtin"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "ParameterReference",
+                          "type": "ulong",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "parameter",
+                              "value": "4"
+                            }
+                          ],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "ExpressionStatement",
+              "isImplicit": false,
+              "properties": [],
+              "children": [
+                {
+                  "kind": "SimpleAssignment",
+                  "type": "long",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "ref",
+                      "value": "false"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "LocalReference",
+                      "type": "long",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "local",
+                          "value": "totalToRefund@1386"
+                        }
+                      ],
+                      "children": []
+                    },
+                    {
+                      "kind": "Binary",
+                      "type": "long",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "checked",
+                          "value": "false"
+                        },
+                        {
+                          "name": "lifted",
+                          "value": "false"
+                        },
+                        {
+                          "name": "operator",
+                          "value": "Add"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "LocalReference",
+                          "type": "long",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "local",
+                              "value": "totalToRefund@1386"
+                            }
+                          ],
+                          "children": []
+                        },
+                        {
+                          "kind": "Binary",
+                          "type": "long",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "checked",
+                              "value": "false"
+                            },
+                            {
+                              "name": "lifted",
+                              "value": "false"
+                            },
+                            {
+                              "name": "operator",
+                              "value": "Add"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "kind": "ParameterReference",
+                              "type": "long",
+                              "isImplicit": false,
+                              "properties": [
+                                {
+                                  "name": "parameter",
+                                  "value": "2"
+                                }
+                              ],
+                              "children": []
+                            },
+                            {
+                              "kind": "LocalReference",
+                              "type": "long",
+                              "isImplicit": false,
+                              "properties": [
+                                {
+                                  "name": "local",
+                                  "value": "destroyRefundTotal@1513"
+                                }
+                              ],
+                              "children": []
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 8
+          }
+        },
+        {
+          "ordinal": 8,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 5,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 6,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 7,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "SimpleAssignment",
+              "type": "long",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "long",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "refund@1707"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "Invocation",
+                  "type": "long",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "target",
+                      "value": "long System.Math.Min(long val1, long val2)"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Argument",
+                      "isImplicit": true,
+                      "properties": [
+                        {
+                          "name": "argumentKind",
+                          "value": "Explicit"
+                        },
+                        {
+                          "name": "parameter",
+                          "value": "0"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "Conversion",
+                          "type": "long",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "checked",
+                              "value": "false"
+                            },
+                            {
+                              "name": "conversion",
+                              "value": "exists,nonidentity,numeric,nonreference,explicit,nonnullable,builtin"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "kind": "Binary",
+                              "type": "ulong",
+                              "isImplicit": false,
+                              "properties": [
+                                {
+                                  "name": "checked",
+                                  "value": "false"
+                                },
+                                {
+                                  "name": "lifted",
+                                  "value": "false"
+                                },
+                                {
+                                  "name": "operator",
+                                  "value": "Divide"
+                                }
+                              ],
+                              "children": [
+                                {
+                                  "kind": "LocalReference",
+                                  "type": "ulong",
+                                  "isImplicit": false,
+                                  "properties": [
+                                    {
+                                      "name": "local",
+                                      "value": "gasUsedBeforeRefund@1305"
+                                    }
+                                  ],
+                                  "children": []
+                                },
+                                {
+                                  "kind": "ParameterReference",
+                                  "type": "ulong",
+                                  "isImplicit": false,
+                                  "properties": [
+                                    {
+                                      "name": "parameter",
+                                      "value": "8"
+                                    }
+                                  ],
+                                  "children": []
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Argument",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "argumentKind",
+                          "value": "Explicit"
+                        },
+                        {
+                          "name": "parameter",
+                          "value": "1"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "LocalReference",
+                          "type": "long",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "local",
+                              "value": "totalToRefund@1386"
+                            }
+                          ],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 9
+          }
+        },
+        {
+          "ordinal": 9,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 8,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "Binary",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "checked",
+                "value": "false"
+              },
+              {
+                "name": "lifted",
+                "value": "false"
+              },
+              {
+                "name": "operator",
+                "value": "GreaterThanOrEqual"
+              }
+            ],
+            "children": [
+              {
+                "kind": "LocalReference",
+                "type": "long",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "local",
+                    "value": "refund@1707"
+                  }
+                ],
+                "children": []
+              },
+              {
+                "kind": "Conversion",
+                "type": "long",
+                "constant": "0",
+                "isImplicit": true,
+                "properties": [
+                  {
+                    "name": "checked",
+                    "value": "false"
+                  },
+                  {
+                    "name": "conversion",
+                    "value": "exists,nonidentity,numeric,nonreference,implicit,nonnullable,builtin"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "Literal",
+                    "type": "int",
+                    "constant": "0",
+                    "isImplicit": false,
+                    "properties": [],
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 10
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 11
+          }
+        },
+        {
+          "ordinal": 10,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 9,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "Binary",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "lifted",
+                      "value": "false"
+                    },
+                    {
+                      "name": "operator",
+                      "value": "Subtract"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "LocalReference",
+                      "type": "ulong",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "local",
+                          "value": "gasUsedBeforeRefund@1305"
+                        }
+                      ],
+                      "children": []
+                    },
+                    {
+                      "kind": "Conversion",
+                      "type": "ulong",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "checked",
+                          "value": "false"
+                        },
+                        {
+                          "name": "conversion",
+                          "value": "exists,nonidentity,numeric,nonreference,explicit,nonnullable,builtin"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "LocalReference",
+                          "type": "long",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "local",
+                              "value": "refund@1707"
+                            }
+                          ],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 12
+          }
+        },
+        {
+          "ordinal": 11,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 9,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "Binary",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "lifted",
+                      "value": "false"
+                    },
+                    {
+                      "name": "operator",
+                      "value": "Add"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "LocalReference",
+                      "type": "ulong",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "local",
+                          "value": "gasUsedBeforeRefund@1305"
+                        }
+                      ],
+                      "children": []
+                    },
+                    {
+                      "kind": "Conversion",
+                      "type": "ulong",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "checked",
+                          "value": "false"
+                        },
+                        {
+                          "name": "conversion",
+                          "value": "exists,nonidentity,numeric,nonreference,explicit,nonnullable,builtin"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "Unary",
+                          "type": "long",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "checked",
+                              "value": "false"
+                            },
+                            {
+                              "name": "operator",
+                              "value": "Minus"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "kind": "LocalReference",
+                              "type": "long",
+                              "isImplicit": false,
+                              "properties": [
+                                {
+                                  "name": "local",
+                                  "value": "refund@1707"
+                                }
+                              ],
+                              "children": []
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 12
+          }
+        },
+        {
+          "ordinal": 12,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 10,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 11,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "SimpleAssignment",
+              "type": "ulong",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "ulong",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "operationGas@1812"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "FlowCaptureReference",
+                  "type": "ulong",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "capture",
+                      "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 13
+          }
+        },
+        {
+          "ordinal": 13,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 12,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "SimpleAssignment",
+              "type": "ulong",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "ulong",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "spentGas@1988"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "Invocation",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "target",
+                      "value": "ulong System.Math.Max(ulong val1, ulong val2)"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Argument",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "argumentKind",
+                          "value": "Explicit"
+                        },
+                        {
+                          "name": "parameter",
+                          "value": "0"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "LocalReference",
+                          "type": "ulong",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "local",
+                              "value": "operationGas@1812"
+                            }
+                          ],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Argument",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "argumentKind",
+                          "value": "Explicit"
+                        },
+                        {
+                          "name": "parameter",
+                          "value": "1"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "ParameterReference",
+                          "type": "ulong",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "parameter",
+                              "value": "6"
+                            }
+                          ],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "branchValue": {
+            "kind": "ParameterReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "parameter",
+                "value": "11"
+              }
+            ],
+            "children": []
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 14
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 15
+          }
+        },
+        {
+          "ordinal": 14,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 13,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "ExpressionStatement",
+              "isImplicit": false,
+              "properties": [],
+              "children": [
+                {
+                  "kind": "SimpleAssignment",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "ref",
+                      "value": "false"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "LocalReference",
+                      "type": "ulong",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "local",
+                          "value": "blockStateGas@2080"
+                        }
+                      ],
+                      "children": []
+                    },
+                    {
+                      "kind": "Conversion",
+                      "type": "ulong",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "checked",
+                          "value": "false"
+                        },
+                        {
+                          "name": "conversion",
+                          "value": "exists,nonidentity,numeric,nonreference,explicit,nonnullable,builtin"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "ParameterReference",
+                          "type": "long",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "parameter",
+                              "value": "7"
+                            }
+                          ],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "ExpressionStatement",
+              "isImplicit": false,
+              "properties": [],
+              "children": [
+                {
+                  "kind": "SimpleAssignment",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "ref",
+                      "value": "false"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "LocalReference",
+                      "type": "ulong",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "local",
+                          "value": "blockGas@2056"
+                        }
+                      ],
+                      "children": []
+                    },
+                    {
+                      "kind": "Invocation",
+                      "type": "ulong",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "target",
+                          "value": "ulong Nethermind.Evm.GasPolicy.Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(ulong preRefundGas, ulong blockStateGas, ulong calldataFloor)"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "Argument",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "argumentKind",
+                              "value": "Explicit"
+                            },
+                            {
+                              "name": "parameter",
+                              "value": "0"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "kind": "LocalReference",
+                              "type": "ulong",
+                              "isImplicit": false,
+                              "properties": [
+                                {
+                                  "name": "local",
+                                  "value": "gasUsedBeforeRefund@1305"
+                                }
+                              ],
+                              "children": []
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "Argument",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "argumentKind",
+                              "value": "Explicit"
+                            },
+                            {
+                              "name": "parameter",
+                              "value": "1"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "kind": "LocalReference",
+                              "type": "ulong",
+                              "isImplicit": false,
+                              "properties": [
+                                {
+                                  "name": "local",
+                                  "value": "blockStateGas@2080"
+                                }
+                              ],
+                              "children": []
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "Argument",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "argumentKind",
+                              "value": "Explicit"
+                            },
+                            {
+                              "name": "parameter",
+                              "value": "2"
+                            }
+                          ],
+                          "children": [
+                            {
+                              "kind": "ParameterReference",
+                              "type": "ulong",
+                              "isImplicit": false,
+                              "properties": [
+                                {
+                                  "name": "parameter",
+                                  "value": "6"
+                                }
+                              ],
+                              "children": []
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 20
+          }
+        },
+        {
+          "ordinal": 15,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 13,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "ExpressionStatement",
+              "isImplicit": false,
+              "properties": [],
+              "children": [
+                {
+                  "kind": "SimpleAssignment",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "ref",
+                      "value": "false"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "LocalReference",
+                      "type": "ulong",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "local",
+                          "value": "blockStateGas@2080"
+                        }
+                      ],
+                      "children": []
+                    },
+                    {
+                      "kind": "Conversion",
+                      "type": "ulong",
+                      "constant": "0",
+                      "isImplicit": true,
+                      "properties": [
+                        {
+                          "name": "checked",
+                          "value": "false"
+                        },
+                        {
+                          "name": "conversion",
+                          "value": "exists,nonidentity,nonnumeric,nonreference,implicit,nonnullable,builtin"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "Literal",
+                          "type": "int",
+                          "constant": "0",
+                          "isImplicit": false,
+                          "properties": [],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 16
+          }
+        },
+        {
+          "ordinal": 16,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 15,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "blockGas@2056"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ],
+          "branchValue": {
+            "kind": "ParameterReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "parameter",
+                "value": "12"
+              }
+            ],
+            "children": []
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 17
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 18
+          }
+        },
+        {
+          "ordinal": 17,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 16,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "Invocation",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "target",
+                      "value": "ulong System.Math.Max(ulong val1, ulong val2)"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Argument",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "argumentKind",
+                          "value": "Explicit"
+                        },
+                        {
+                          "name": "parameter",
+                          "value": "0"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "LocalReference",
+                          "type": "ulong",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "local",
+                              "value": "gasUsedBeforeRefund@1305"
+                            }
+                          ],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Argument",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "argumentKind",
+                          "value": "Explicit"
+                        },
+                        {
+                          "name": "parameter",
+                          "value": "1"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "ParameterReference",
+                          "type": "ulong",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "parameter",
+                              "value": "6"
+                            }
+                          ],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 19
+          }
+        },
+        {
+          "ordinal": 18,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 16,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "Conversion",
+                  "type": "ulong",
+                  "constant": "0",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "conversion",
+                      "value": "exists,nonidentity,nonnumeric,nonreference,implicit,nonnullable,builtin"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Literal",
+                      "type": "int",
+                      "constant": "0",
+                      "isImplicit": false,
+                      "properties": [],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 19
+          }
+        },
+        {
+          "ordinal": 19,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 17,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 18,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "ExpressionStatement",
+              "isImplicit": false,
+              "properties": [],
+              "children": [
+                {
+                  "kind": "SimpleAssignment",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "ref",
+                      "value": "false"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "FlowCaptureReference",
+                      "type": "ulong",
+                      "isImplicit": true,
+                      "properties": [
+                        {
+                          "name": "capture",
+                          "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                        }
+                      ],
+                      "children": []
+                    },
+                    {
+                      "kind": "FlowCaptureReference",
+                      "type": "ulong",
+                      "isImplicit": true,
+                      "properties": [
+                        {
+                          "name": "capture",
+                          "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                        }
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 20
+          }
+        },
+        {
+          "ordinal": 20,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 14,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 19,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "spentGas@1988"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "operationGas@1812"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "blockGas@2056"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "blockStateGas@2080"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            },
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "Invocation",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "target",
+                      "value": "ulong System.Math.Max(ulong val1, ulong val2)"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Argument",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "argumentKind",
+                          "value": "Explicit"
+                        },
+                        {
+                          "name": "parameter",
+                          "value": "0"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "LocalReference",
+                          "type": "ulong",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "local",
+                              "value": "gasUsedBeforeRefund@1305"
+                            }
+                          ],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Argument",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "argumentKind",
+                          "value": "Explicit"
+                        },
+                        {
+                          "name": "parameter",
+                          "value": "1"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "ParameterReference",
+                          "type": "ulong",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "parameter",
+                              "value": "6"
+                            }
+                          ],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "branchValue": {
+            "kind": "Binary",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "checked",
+                "value": "false"
+              },
+              {
+                "name": "lifted",
+                "value": "false"
+              },
+              {
+                "name": "operator",
+                "value": "GreaterThan"
+              }
+            ],
+            "children": [
+              {
+                "kind": "LocalReference",
+                "type": "long",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "local",
+                    "value": "refund@1707"
+                  }
+                ],
+                "children": []
+              },
+              {
+                "kind": "Conversion",
+                "type": "long",
+                "constant": "0",
+                "isImplicit": true,
+                "properties": [
+                  {
+                    "name": "checked",
+                    "value": "false"
+                  },
+                  {
+                    "name": "conversion",
+                    "value": "exists,nonidentity,numeric,nonreference,implicit,nonnullable,builtin"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "Literal",
+                    "type": "int",
+                    "constant": "0",
+                    "isImplicit": false,
+                    "properties": [],
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 21
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 22
+          }
+        },
+        {
+          "ordinal": 21,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 20,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "Conversion",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "conversion",
+                      "value": "exists,nonidentity,numeric,nonreference,explicit,nonnullable,builtin"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "LocalReference",
+                      "type": "long",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "local",
+                          "value": "refund@1707"
+                        }
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 23
+          }
+        },
+        {
+          "ordinal": 22,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 20,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "Conversion",
+                  "type": "ulong",
+                  "constant": "0",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "conversion",
+                      "value": "exists,nonidentity,nonnumeric,nonreference,implicit,nonnullable,builtin"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Literal",
+                      "type": "int",
+                      "constant": "0",
+                      "isImplicit": false,
+                      "properties": [],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 23
+          }
+        },
+        {
+          "ordinal": 23,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 21,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 22,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "ObjectCreation",
+            "type": "Nethermind.Evm.TransactionProcessing.TransactionSettlementResult",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "constructor",
+                "value": "Nethermind.Evm.TransactionProcessing.TransactionSettlementResult.TransactionSettlementResult(ulong spentGas, ulong operationGas, ulong blockGas, ulong blockStateGas, ulong maxUsedGas, ulong gasRefund)"
+              }
+            ],
+            "children": [
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FlowCaptureReference",
+                    "type": "ulong",
+                    "isImplicit": true,
+                    "properties": [
+                      {
+                        "name": "capture",
+                        "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FlowCaptureReference",
+                    "type": "ulong",
+                    "isImplicit": true,
+                    "properties": [
+                      {
+                        "name": "capture",
+                        "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "2"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FlowCaptureReference",
+                    "type": "ulong",
+                    "isImplicit": true,
+                    "properties": [
+                      {
+                        "name": "capture",
+                        "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "3"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FlowCaptureReference",
+                    "type": "ulong",
+                    "isImplicit": true,
+                    "properties": [
+                      {
+                        "name": "capture",
+                        "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "4"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FlowCaptureReference",
+                    "type": "ulong",
+                    "isImplicit": true,
+                    "properties": [
+                      {
+                        "name": "capture",
+                        "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "5"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FlowCaptureReference",
+                    "type": "ulong",
+                    "isImplicit": true,
+                    "properties": [
+                      {
+                        "name": "capture",
+                        "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Return",
+            "destinationOrdinal": 24
+          }
+        },
+        {
+          "ordinal": 24,
+          "kind": "Exit",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 23,
+              "semantics": "Return"
+            }
+          ],
+          "operations": []
+        }
+      ]
+    }
+  ],
+  "program": {
+    "resultFields": [
+      {
+        "name": "spentGas",
+        "type": "Nat",
+        "constructorParameterOrdinal": 0
+      },
+      {
+        "name": "operationGas",
+        "type": "Nat",
+        "constructorParameterOrdinal": 1
+      },
+      {
+        "name": "blockGas",
+        "type": "Nat",
+        "constructorParameterOrdinal": 2
+      },
+      {
+        "name": "blockStateGas",
+        "type": "Nat",
+        "constructorParameterOrdinal": 3
+      },
+      {
+        "name": "maxUsedGas",
+        "type": "Nat",
+        "constructorParameterOrdinal": 4
+      },
+      {
+        "name": "gasRefund",
+        "type": "Nat",
+        "constructorParameterOrdinal": 5
+      }
+    ],
+    "operations": [
+      "select pre-refund gas from error status",
+      "accumulate signed code, refund-counter, and destroy refunds with int64 wrap",
+      "cap refund by unsigned quotient then apply signed refund with uint64 wrap",
+      "apply calldata floor to paid and max-used gas",
+      "project EIP-8037 execution/state dimensions with saturating subtraction",
+      "preserve the pre-EIP-8037 EIP-7778 projection branch",
+      "expose only a positive refund counter"
+    ]
+  }
+}

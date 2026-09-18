@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "package": "OrdinaryEvmCompletionExtractor",
+  "acceptanceState": "static-draft-unreviewed",
+  "generatedCompletionArtifacts": [],
+  "files": [
+    {
+      "path": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Generated/EvmTransactionPreparation.ir.json",
+      "sha256": "e0f24be598e3bf88505fe6b5550e5c46dd504c9e69115e3c7a18f95a5bdc5a7e",
+      "role": "preparation"
+    },
+    {
+      "path": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Generated/EvmTransactionPreparation.source-manifest.json",
+      "sha256": "b3f88923311ec963d40768bf34f22a0e15ca6807a12ade85a846d2815eafb9c1",
+      "role": "preparation"
+    },
+    {
+      "path": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Generated/EvmTransactionPreparation.lean",
+      "sha256": "471e789607e8a294c6deb2148291578a185c77d970360e16e1fa0958f3987930",
+      "role": "preparation"
+    },
+    {
+      "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Generated/OrdinaryTransactionRefund.ir.json",
+      "sha256": "53f6a24671a917e2675a1a45eb1b49e812b91283fc1c78bf49014f2ad08a1666",
+      "role": "refund"
+    },
+    {
+      "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Generated/OrdinaryTransactionRefund.source-manifest.json",
+      "sha256": "527ee805b9be85e57898863fd618fa1ede84862a0cd78ef02083c37ed88278bb",
+      "role": "refund"
+    },
+    {
+      "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Generated/OrdinaryTransactionRefund.lean",
+      "sha256": "b7b21ec284183b073ff1a3f603471b156c07624de3270bc63189b7f7d6600f23",
+      "role": "refund"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.ir.json",
+      "sha256": "0bf061d43d54e3eb9bdc7ccff4d0541d6dee189ac1ccea7f139095d3e1b7945a",
+      "role": "receipt"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.source-manifest.json",
+      "sha256": "3d1ec03bce750645bc29d8fb51ac94321508364735b9a65a987043100f74bd8e",
+      "role": "receipt"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.lean",
+      "sha256": "028d11a14e031aaedce27c71b26e2c69cf16e759ff3ac870373ead10f6971180",
+      "role": "receipt"
+    }
+  ]
+}
+

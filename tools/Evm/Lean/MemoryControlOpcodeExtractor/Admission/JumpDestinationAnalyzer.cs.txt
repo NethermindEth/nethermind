@@ -1,0 +1,18 @@
+namespace Nethermind.Evm.CodeAnalysis;
+
+partial class JumpDestinationAnalyzer
+{
+/// <summary>
+    /// Checks if the position is in a code segment.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsJumpDestination(long[] bitvec, int pos)
+    {
+        int vecIndex = pos >> BitShiftPerInt64;
+        // Check if in bounds, Jit will add slightly more expensive exception throwing check if we don't.
+        if ((uint)vecIndex >= (uint)bitvec.Length) return false;
+
+        return (bitvec[vecIndex] & (1L << pos)) != 0;
+    }
+
+}

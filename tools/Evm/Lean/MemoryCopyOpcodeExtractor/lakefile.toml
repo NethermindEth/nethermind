@@ -1,0 +1,11 @@
+name = "MemoryCopyOpcodeExtractor"
+version = "0.1.0"
+defaultTargets = ["MemoryCopyOpcodeExtractor.Refinement.MemoryCopyOpcode"]
+
+[[lean_lib]]
+name = "Eip803x"
+srcDir = ".."
+
+[[lean_lib]]
+name = "MemoryCopyOpcodeExtractor"
+srcDir = ".."

@@ -1,0 +1,2182 @@
+{
+  "schemaVersion": 2,
+  "extractorVersion": "1.0.0",
+  "kernel": "standard exact-base sequential BAL-disabled ProcessOne validated-publication suffix",
+  "acceptanceState": "source-admitted",
+  "sourceClosureSha256": "c4f8fe9960f5d8205b0a89fd4ecaeb9df06c790c23f02680d253d3bd4b28bc85",
+  "sources": [
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "role": "ProcessOne caller and suffix",
+      "sha256": "e2db419219184150c979cd6a081c83ba758c5024a15f996b510806bd1303deda",
+      "syntaxSha256": "4e4132b814775fe20d61628f68be48d18bb09662bc973997582fe96418121615"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Validators/BlockValidator.cs",
+      "role": "validator side-effect observation",
+      "sha256": "7cc7b515c3001ba4f36ea16b74216f84216556c95d87585a192979e8c4f195d6",
+      "syntaxSha256": "86fe46cc924e297ab245e55c75b4d8d38cd20b7475510bd3671b2a9f4eae0648"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Validators/IBlockValidator.cs",
+      "role": "validator contract",
+      "sha256": "38cb507befc9695e522b16260b713b0b7b84efa226b857f7e5f410be0fd4e4c3",
+      "syntaxSha256": "ce9586eee9f91096128f85f759e680f9e41983e56d273bd184d05cba2cb0fecb"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/ProcessingOptions.cs",
+      "role": "option guard closure",
+      "sha256": "145c5bec2a5e70e01dc448a887cd17bb1b81277605a487e437971882a5b0421a",
+      "syntaxSha256": "13341635f80468839be5d70505d8b90038cba668a44b6a9700aad1269d612559"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.std.cs",
+      "role": "partial standard closure",
+      "sha256": "7ec6d0f975f36958f83b002ca53404620427a756cab70a037c0988ed75567ed4",
+      "syntaxSha256": "659b288a4a4425dcfa8d7f2579c00e1e2960a6ca9ae2be9a8a08519074439cd5"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/IBlockProcessor.cs",
+      "role": "processor interface closure",
+      "sha256": "df79a2a24ca0ad79918cf10bce5b9d74cb4ad1b7542185b41076a0f3758a940e",
+      "syntaxSha256": "b2646a87262313d2575eb33ddb3360a3557e94efcbe0c07d1e03f21398ce4f66"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+      "role": "standard executor closure",
+      "sha256": "d520090e2adde45bced4b6af6f9add35ea77ed288060d09fdf05cae3b28bdf56",
+      "syntaxSha256": "a14e7733329d6c08c738336cf8817f6402ee3b970bd26b24bebc81fdac611139"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Blockchain/Receipts/IReceiptStorage.cs",
+      "role": "receipt storage contract",
+      "sha256": "bccf3716b8bc0be5112cfba522ce58d2b51a6865a0bed20563b090bee62e1328",
+      "syntaxSha256": "bf4803955a6049b162c8321a0ed73c282aebe12883e16e5be616b2e90185ad39"
+    }
+  ],
+  "compilerClosure": {
+    "inventoryPath": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json",
+    "count": 434,
+    "aggregateSha256": "6fdfa102a4190083ae62080355aa6691b5f46acc32d4f9da2212012686d9c2e2",
+    "inventorySha256": "1f73a3800a957dd02d9d7b06b3b955c81bb92fd9eb8d2831920905394bfc1d5c",
+    "supportSources": [
+      {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.SystemContractHandler.cs",
+        "sha256": "a069ba0962027b068e388544d3f338a47990f11e5085d381238231607758128b"
+      },
+      {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockAccessListSystemContractHandler.cs",
+        "sha256": "07342dde345dcec7b34569e8cb9f447f9d4abe3a640cd127559db77f2e1981fe"
+      },
+      {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/TransactionProcessorAdapterExtensions.cs",
+        "sha256": "910820a7e8bba91c30b052f5818707c46d625a2fbf12727e2aa869512120aa9e"
+      },
+      {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/IBlockAccessListManager.cs",
+        "sha256": "0ed401a074b32a35fb3de497a516d8b717802c55ffdac3f1cd773a7f4e6be273"
+      }
+    ]
+  },
+  "synchronousCallables": [
+    {
+      "id": "validateProcessedBlock",
+      "symbol": "global::Nethermind.Consensus.Processing.BlockProcessor.ValidateProcessedBlock(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Block,Nethermind.Core.TxReceipt[])",
+      "methodKind": "Ordinary",
+      "bodyKind": "block",
+      "returnsVoid": true,
+      "isAsync": false,
+      "isIterator": false,
+      "isPartial": false,
+      "isExtern": false,
+      "isAbstract": false,
+      "hasConditionalAttribute": false,
+      "attributes": [],
+      "isStatic": false,
+      "isVirtual": false,
+      "isOverride": false,
+      "accessibility": "Private",
+      "declaringType": "global::Nethermind.Consensus.Processing.BlockProcessor",
+      "declaringAssembly": "Nethermind.Consensus",
+      "baseTypes": [
+        "object|System.Private.CoreLib"
+      ],
+      "interfaces": [
+        "global::Nethermind.Consensus.Processing.IBlockProcessor|Nethermind.Consensus"
+      ],
+      "implementedInterfaceMethods": [],
+      "overriddenMethods": [],
+      "inheritedAttributes": [],
+      "hasInheritedConditionalAttribute": false
+    },
+    {
+      "id": "postValidation",
+      "symbol": "global::Nethermind.Consensus.Processing.BlockProcessor.PostValidation(Nethermind.Core.Block,Nethermind.Core.Block,Nethermind.Core.TxReceipt[],Nethermind.Consensus.Processing.ProcessingOptions)",
+      "methodKind": "Ordinary",
+      "bodyKind": "block",
+      "returnsVoid": true,
+      "isAsync": false,
+      "isIterator": false,
+      "isPartial": false,
+      "isExtern": false,
+      "isAbstract": false,
+      "hasConditionalAttribute": false,
+      "attributes": [],
+      "isStatic": false,
+      "isVirtual": true,
+      "isOverride": false,
+      "accessibility": "Protected",
+      "declaringType": "global::Nethermind.Consensus.Processing.BlockProcessor",
+      "declaringAssembly": "Nethermind.Consensus",
+      "baseTypes": [
+        "object|System.Private.CoreLib"
+      ],
+      "interfaces": [
+        "global::Nethermind.Consensus.Processing.IBlockProcessor|Nethermind.Consensus"
+      ],
+      "implementedInterfaceMethods": [],
+      "overriddenMethods": [],
+      "inheritedAttributes": [],
+      "hasInheritedConditionalAttribute": false
+    },
+    {
+      "id": "storeTxReceipts",
+      "symbol": "global::Nethermind.Consensus.Processing.BlockProcessor.StoreTxReceipts(Nethermind.Core.Block,Nethermind.Core.TxReceipt[],Nethermind.Core.Specs.IReleaseSpec)",
+      "methodKind": "Ordinary",
+      "bodyKind": "expression",
+      "returnsVoid": true,
+      "isAsync": false,
+      "isIterator": false,
+      "isPartial": false,
+      "isExtern": false,
+      "isAbstract": false,
+      "hasConditionalAttribute": false,
+      "attributes": [],
+      "isStatic": false,
+      "isVirtual": false,
+      "isOverride": false,
+      "accessibility": "Private",
+      "declaringType": "global::Nethermind.Consensus.Processing.BlockProcessor",
+      "declaringAssembly": "Nethermind.Consensus",
+      "baseTypes": [
+        "object|System.Private.CoreLib"
+      ],
+      "interfaces": [
+        "global::Nethermind.Consensus.Processing.IBlockProcessor|Nethermind.Consensus"
+      ],
+      "implementedInterfaceMethods": [],
+      "overriddenMethods": [],
+      "inheritedAttributes": [],
+      "hasInheritedConditionalAttribute": false
+    }
+  ],
+  "anchors": [
+    {
+      "id": "processOne.processBlock-return",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "ownerFqn": "(global::Nethermind.Core.Block Block, global::Nethermind.Core.TxReceipt[] Receipts) global::Nethermind.Consensus.Processing.BlockProcessor.ProcessOne(global::Nethermind.Core.Block, global::Nethermind.Consensus.Processing.ProcessingOptions, global::Nethermind.Evm.Tracing.IBlockTracer, global::Nethermind.Core.Specs.IReleaseSpec, global::System.Threading.CancellationToken)",
+      "symbolFqn": "global::Nethermind.Core.TxReceipt[] global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(global::Nethermind.Core.Block, global::Nethermind.Evm.Tracing.IBlockTracer, global::Nethermind.Consensus.Processing.ProcessingOptions, global::Nethermind.Core.Specs.IReleaseSpec, global::System.Threading.CancellationToken)",
+      "nodeKind": "SimpleAssignmentExpression",
+      "canonicalSyntax": "receipts=ProcessBlock(block,blockTracer,options,spec,token)",
+      "startLine": 90,
+      "endLine": 90,
+      "cfgRegion": "B9:Try",
+      "dataFlow": "receipts: ProcessBlock result -\u003E validation/store/return",
+      "isReachable": true,
+      "sourceSyntaxSha256": "4e4132b814775fe20d61628f68be48d18bb09662bc973997582fe96418121615",
+      "position": 3805,
+      "controlFlowBlock": 9,
+      "operationKind": "Invocation"
+    },
+    {
+      "id": "processOne.processed-commit",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "ownerFqn": "(global::Nethermind.Core.Block Block, global::Nethermind.Core.TxReceipt[] Receipts) global::Nethermind.Consensus.Processing.BlockProcessor.ProcessOne(global::Nethermind.Core.Block, global::Nethermind.Consensus.Processing.ProcessingOptions, global::Nethermind.Evm.Tracing.IBlockTracer, global::Nethermind.Core.Specs.IReleaseSpec, global::System.Threading.CancellationToken)",
+      "symbolFqn": "bool processed",
+      "nodeKind": "SimpleAssignmentExpression",
+      "canonicalSyntax": "processed=true",
+      "startLine": 91,
+      "endLine": 91,
+      "cfgRegion": "B9:Try",
+      "dataFlow": "processed=false -\u003E true dominates validation; finally reads it",
+      "isReachable": true,
+      "sourceSyntaxSha256": "4e4132b814775fe20d61628f68be48d18bb09662bc973997582fe96418121615",
+      "position": 3873,
+      "controlFlowBlock": 9,
+      "operationKind": "LocalReference"
+    },
+    {
+      "id": "processOne.retry-access-list-catch",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "ownerFqn": "(global::Nethermind.Core.Block Block, global::Nethermind.Core.TxReceipt[] Receipts) global::Nethermind.Consensus.Processing.BlockProcessor.ProcessOne(global::Nethermind.Core.Block, global::Nethermind.Consensus.Processing.ProcessingOptions, global::Nethermind.Evm.Tracing.IBlockTracer, global::Nethermind.Core.Specs.IReleaseSpec, global::System.Threading.CancellationToken)",
+      "symbolFqn": "global::Nethermind.State.BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException",
+      "nodeKind": "CatchClause",
+      "canonicalSyntax": "catch(BlockAccessListBasedWorldState.InvalidBlockLevelAccessListExceptionex)when(_balManager.ParallelExecutionEnabled){thrownewBlockAccessListSequentialRetryException(ex);}",
+      "startLine": 93,
+      "endLine": 96,
+      "cfgRegion": "B10:Filter",
+      "dataFlow": "parallel-only retry branch excluded by nonparallel premise",
+      "isReachable": true,
+      "sourceSyntaxSha256": "4e4132b814775fe20d61628f68be48d18bb09662bc973997582fe96418121615",
+      "position": 3994,
+      "controlFlowBlock": 10,
+      "operationKind": "Declaration"
+    },
+    {
+      "id": "processOne.retry-parallel-catch",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "ownerFqn": "(global::Nethermind.Core.Block Block, global::Nethermind.Core.TxReceipt[] Receipts) global::Nethermind.Consensus.Processing.BlockProcessor.ProcessOne(global::Nethermind.Core.Block, global::Nethermind.Consensus.Processing.ProcessingOptions, global::Nethermind.Evm.Tracing.IBlockTracer, global::Nethermind.Core.Specs.IReleaseSpec, global::System.Threading.CancellationToken)",
+      "symbolFqn": "global::Nethermind.Consensus.Processing.BlockAccessListManager.ParallelExecutionException",
+      "nodeKind": "CatchClause",
+      "canonicalSyntax": "catch(BlockAccessListManager.ParallelExecutionExceptionex)when(_balManager.ParallelExecutionEnabled\u0026\u0026ex.InnerExceptionisBlockAccessListBasedWorldState.InvalidBlockLevelAccessListExceptionblockAccessListException){thrownewBlockAccessListSequentialRetryException(blockAccessListException);}",
+      "startLine": 97,
+      "endLine": 102,
+      "cfgRegion": "B12:Filter",
+      "dataFlow": "parallel-only retry branch excluded by nonparallel premise",
+      "isReachable": true,
+      "sourceSyntaxSha256": "4e4132b814775fe20d61628f68be48d18bb09662bc973997582fe96418121615",
+      "position": 4207,
+      "controlFlowBlock": 12,
+      "operationKind": "Declaration"
+    },
+    {
+      "id": "processOne.disposal-finally",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "ownerFqn": "(global::Nethermind.Core.Block Block, global::Nethermind.Core.TxReceipt[] Receipts) global::Nethermind.Consensus.Processing.BlockProcessor.ProcessOne(global::Nethermind.Core.Block, global::Nethermind.Consensus.Processing.ProcessingOptions, global::Nethermind.Evm.Tracing.IBlockTracer, global::Nethermind.Core.Specs.IReleaseSpec, global::System.Threading.CancellationToken)",
+      "symbolFqn": "void global::Nethermind.Core.BlockExtensions.DisposeAccountChanges(global::Nethermind.Core.Block)",
+      "nodeKind": "IfStatement",
+      "canonicalSyntax": "if(!processed)block.DisposeAccountChanges();",
+      "startLine": 105,
+      "endLine": 105,
+      "cfgRegion": "B17:Finally",
+      "dataFlow": "processed=false reaching definition",
+      "isReachable": true,
+      "sourceSyntaxSha256": "4e4132b814775fe20d61628f68be48d18bb09662bc973997582fe96418121615",
+      "position": 4537,
+      "controlFlowBlock": 17,
+      "operationKind": "Invocation"
+    },
+    {
+      "id": "processOne.validate-call",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "ownerFqn": "(global::Nethermind.Core.Block Block, global::Nethermind.Core.TxReceipt[] Receipts) global::Nethermind.Consensus.Processing.BlockProcessor.ProcessOne(global::Nethermind.Core.Block, global::Nethermind.Consensus.Processing.ProcessingOptions, global::Nethermind.Evm.Tracing.IBlockTracer, global::Nethermind.Core.Specs.IReleaseSpec, global::System.Threading.CancellationToken)",
+      "symbolFqn": "void global::Nethermind.Consensus.Processing.BlockProcessor.ValidateProcessedBlock(global::Nethermind.Core.Block, global::Nethermind.Consensus.Processing.ProcessingOptions, global::Nethermind.Core.Block, global::Nethermind.Core.TxReceipt[])",
+      "nodeKind": "InvocationExpression",
+      "canonicalSyntax": "ValidateProcessedBlock(suggestedBlock,options,block,receipts)",
+      "startLine": 107,
+      "endLine": 107,
+      "cfgRegion": "B19:LocalLifetime",
+      "dataFlow": "normal ProcessBlock result -\u003E validation gate",
+      "isReachable": true,
+      "sourceSyntaxSha256": "4e4132b814775fe20d61628f68be48d18bb09662bc973997582fe96418121615",
+      "position": 4586,
+      "controlFlowBlock": 19,
+      "operationKind": "Invocation"
+    },
+    {
+      "id": "processOne.validation-guard",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "ownerFqn": "void global::Nethermind.Consensus.Processing.BlockProcessor.ValidateProcessedBlock(global::Nethermind.Core.Block, global::Nethermind.Consensus.Processing.ProcessingOptions, global::Nethermind.Core.Block, global::Nethermind.Core.TxReceipt[])",
+      "symbolFqn": "global::Nethermind.Consensus.Processing.ProcessingOptions.NoValidation",
+      "nodeKind": "IfStatement",
+      "canonicalSyntax": "if(!options.ContainsFlag(ProcessingOptions.NoValidation)\u0026\u0026!blockValidator.ValidateProcessedBlock(block,receipts,suggestedBlock,outstring?error)){block.DisposeAccountChanges();if(_logger.IsWarn)_logger.Warn(InvalidBlockHelper.GetMessage(suggestedBlock,\u0022invalid block after processing\u0022));thrownewInvalidBlockException(suggestedBlock,error);}",
+      "startLine": 118,
+      "endLine": 123,
+      "cfgRegion": "B1:LocalLifetime",
+      "dataFlow": "NoValidation guard controls validator call; predicate=global::Nethermind.Consensus.Processing.ProcessingOptionsExtensions.ContainsFlag(Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Consensus.Processing.ProcessingOptions)",
+      "isReachable": true,
+      "sourceSyntaxSha256": "4e4132b814775fe20d61628f68be48d18bb09662bc973997582fe96418121615",
+      "position": 4997,
+      "controlFlowBlock": 1,
+      "operationKind": "FieldReference"
+    },
+    {
+      "id": "processOne.validator-call",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "ownerFqn": "void global::Nethermind.Consensus.Processing.BlockProcessor.ValidateProcessedBlock(global::Nethermind.Core.Block, global::Nethermind.Consensus.Processing.ProcessingOptions, global::Nethermind.Core.Block, global::Nethermind.Core.TxReceipt[])",
+      "symbolFqn": "bool global::Nethermind.Consensus.Validators.IBlockValidator.ValidateProcessedBlock(global::Nethermind.Core.Block, global::Nethermind.Core.TxReceipt[], global::Nethermind.Core.Block, out string)",
+      "nodeKind": "InvocationExpression",
+      "canonicalSyntax": "blockValidator.ValidateProcessedBlock(block,receipts,suggestedBlock,outstring?error)",
+      "startLine": 118,
+      "endLine": 118,
+      "cfgRegion": "B2:LocalLifetime",
+      "dataFlow": "validator observation including proposed GeneratedBAL side effect; receiver=global::Nethermind.Consensus.Validators.IBlockValidator blockValidator",
+      "isReachable": true,
+      "sourceSyntaxSha256": "4e4132b814775fe20d61628f68be48d18bb09662bc973997582fe96418121615",
+      "position": 5033,
+      "controlFlowBlock": 2,
+      "operationKind": "Invocation"
+    },
+    {
+      "id": "processOne.validation-dispose",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "ownerFqn": "void global::Nethermind.Consensus.Processing.BlockProcessor.ValidateProcessedBlock(global::Nethermind.Core.Block, global::Nethermind.Consensus.Processing.ProcessingOptions, global::Nethermind.Core.Block, global::Nethermind.Core.TxReceipt[])",
+      "symbolFqn": "void global::Nethermind.Core.BlockExtensions.DisposeAccountChanges(global::Nethermind.Core.Block)",
+      "nodeKind": "InvocationExpression",
+      "canonicalSyntax": "block.DisposeAccountChanges()",
+      "startLine": 120,
+      "endLine": 120,
+      "cfgRegion": "B3:LocalLifetime",
+      "dataFlow": "validator=false -\u003E disposal before throw",
+      "isReachable": true,
+      "sourceSyntaxSha256": "4e4132b814775fe20d61628f68be48d18bb09662bc973997582fe96418121615",
+      "position": 5146,
+      "controlFlowBlock": 3,
+      "operationKind": "Invocation"
+    },
+    {
+      "id": "processOne.invalid-block-throw",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "ownerFqn": "void global::Nethermind.Consensus.Processing.BlockProcessor.ValidateProcessedBlock(global::Nethermind.Core.Block, global::Nethermind.Consensus.Processing.ProcessingOptions, global::Nethermind.Core.Block, global::Nethermind.Core.TxReceipt[])",
+      "symbolFqn": "global::Nethermind.Core.Exceptions.InvalidBlockException.InvalidBlockException(global::Nethermind.Core.Block, string, global::System.Exception)",
+      "nodeKind": "ObjectCreationExpression",
+      "canonicalSyntax": "newInvalidBlockException(suggestedBlock,error)",
+      "startLine": 122,
+      "endLine": 122,
+      "cfgRegion": "B5:LocalLifetime",
+      "dataFlow": "dispose -\u003E InvalidBlockException; no publication",
+      "isReachable": true,
+      "sourceSyntaxSha256": "4e4132b814775fe20d61628f68be48d18bb09662bc973997582fe96418121615",
+      "position": 5322,
+      "controlFlowBlock": 5,
+      "operationKind": "ObjectCreation"
+    },
+    {
+      "id": "processOne.post-validation-call",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "ownerFqn": "void global::Nethermind.Consensus.Processing.BlockProcessor.ValidateProcessedBlock(global::Nethermind.Core.Block, global::Nethermind.Consensus.Processing.ProcessingOptions, global::Nethermind.Core.Block, global::Nethermind.Core.TxReceipt[])",
+      "symbolFqn": "void global::Nethermind.Consensus.Processing.BlockProcessor.PostValidation(global::Nethermind.Core.Block, global::Nethermind.Core.Block, global::Nethermind.Core.TxReceipt[], global::Nethermind.Consensus.Processing.ProcessingOptions)",
+      "nodeKind": "InvocationExpression",
+      "canonicalSyntax": "PostValidation(suggestedBlock,block,receipts,options)",
+      "startLine": 125,
+      "endLine": 125,
+      "cfgRegion": "B6:LocalLifetime",
+      "dataFlow": "four-field publication call",
+      "isReachable": true,
+      "sourceSyntaxSha256": "4e4132b814775fe20d61628f68be48d18bb09662bc973997582fe96418121615",
+      "position": 5391,
+      "controlFlowBlock": 6,
+      "operationKind": "Invocation"
+    },
+    {
+      "id": "processOne.store-guard",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "ownerFqn": "(global::Nethermind.Core.Block Block, global::Nethermind.Core.TxReceipt[] Receipts) global::Nethermind.Consensus.Processing.BlockProcessor.ProcessOne(global::Nethermind.Core.Block, global::Nethermind.Consensus.Processing.ProcessingOptions, global::Nethermind.Evm.Tracing.IBlockTracer, global::Nethermind.Core.Specs.IReleaseSpec, global::System.Threading.CancellationToken)",
+      "symbolFqn": "global::Nethermind.Consensus.Processing.ProcessingOptions.StoreReceipts",
+      "nodeKind": "IfStatement",
+      "canonicalSyntax": "if(options.ContainsFlag(ProcessingOptions.StoreReceipts)){StoreTxReceipts(block,receipts,spec);}",
+      "startLine": 108,
+      "endLine": 111,
+      "cfgRegion": "B19:LocalLifetime",
+      "dataFlow": "StoreReceipts controls InsertDeferred; predicate=global::Nethermind.Consensus.Processing.ProcessingOptionsExtensions.ContainsFlag(Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Consensus.Processing.ProcessingOptions)",
+      "isReachable": true,
+      "sourceSyntaxSha256": "4e4132b814775fe20d61628f68be48d18bb09662bc973997582fe96418121615",
+      "position": 4685,
+      "controlFlowBlock": 19,
+      "operationKind": "FieldReference"
+    },
+    {
+      "id": "processOne.insert-deferred",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "ownerFqn": "void global::Nethermind.Consensus.Processing.BlockProcessor.StoreTxReceipts(global::Nethermind.Core.Block, global::Nethermind.Core.TxReceipt[], global::Nethermind.Core.Specs.IReleaseSpec)",
+      "symbolFqn": "void global::Nethermind.Blockchain.Receipts.IReceiptStorage.InsertDeferred(global::Nethermind.Core.Block, global::Nethermind.Core.TxReceipt[], global::Nethermind.Core.Specs.IReleaseSpec)",
+      "nodeKind": "InvocationExpression",
+      "canonicalSyntax": "receiptStorage.InsertDeferred(block,txReceipts,spec)",
+      "startLine": 387,
+      "endLine": 387,
+      "cfgRegion": "B1:Root",
+      "dataFlow": "publication -\u003E InsertDeferred; receiver=global::Nethermind.Blockchain.Receipts.IReceiptStorage receiptStorage",
+      "isReachable": true,
+      "sourceSyntaxSha256": "4e4132b814775fe20d61628f68be48d18bb09662bc973997582fe96418121615",
+      "position": 14865,
+      "controlFlowBlock": 1,
+      "operationKind": "Invocation"
+    },
+    {
+      "id": "processOne.return-tuple",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "ownerFqn": "(global::Nethermind.Core.Block Block, global::Nethermind.Core.TxReceipt[] Receipts) global::Nethermind.Consensus.Processing.BlockProcessor.ProcessOne(global::Nethermind.Core.Block, global::Nethermind.Consensus.Processing.ProcessingOptions, global::Nethermind.Evm.Tracing.IBlockTracer, global::Nethermind.Core.Specs.IReleaseSpec, global::System.Threading.CancellationToken)",
+      "symbolFqn": "(global::Nethermind.Core.Block block, global::Nethermind.Core.TxReceipt[] receipts)",
+      "nodeKind": "ReturnStatement",
+      "canonicalSyntax": "return(block,receipts);",
+      "startLine": 113,
+      "endLine": 113,
+      "cfgRegion": "B21:LocalLifetime",
+      "dataFlow": "processed block and same receipts local",
+      "isReachable": true,
+      "sourceSyntaxSha256": "4e4132b814775fe20d61628f68be48d18bb09662bc973997582fe96418121615",
+      "position": 4807,
+      "controlFlowBlock": 21,
+      "operationKind": "Tuple"
+    },
+    {
+      "id": "postValidation.accountChanges",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "ownerFqn": "void global::Nethermind.Consensus.Processing.BlockProcessor.PostValidation(global::Nethermind.Core.Block, global::Nethermind.Core.Block, global::Nethermind.Core.TxReceipt[], global::Nethermind.Consensus.Processing.ProcessingOptions)",
+      "symbolFqn": "global::Nethermind.Core.Collections.ArrayPoolList\u003Cglobal::Nethermind.Core.AddressAsKey\u003E global::Nethermind.Core.Block.AccountChanges",
+      "nodeKind": "SimpleAssignmentExpression",
+      "canonicalSyntax": "suggestedBlock.AccountChanges=processedBlock.AccountChanges",
+      "startLine": 133,
+      "endLine": 133,
+      "cfgRegion": "B1:Root",
+      "dataFlow": "suggested \u003C- processed",
+      "isReachable": true,
+      "sourceSyntaxSha256": "4e4132b814775fe20d61628f68be48d18bb09662bc973997582fe96418121615",
+      "position": 5866,
+      "controlFlowBlock": 1,
+      "operationKind": "PropertyReference"
+    },
+    {
+      "id": "postValidation.executionRequests",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "ownerFqn": "void global::Nethermind.Consensus.Processing.BlockProcessor.PostValidation(global::Nethermind.Core.Block, global::Nethermind.Core.Block, global::Nethermind.Core.TxReceipt[], global::Nethermind.Consensus.Processing.ProcessingOptions)",
+      "symbolFqn": "byte[][] global::Nethermind.Core.Block.ExecutionRequests",
+      "nodeKind": "SimpleAssignmentExpression",
+      "canonicalSyntax": "suggestedBlock.ExecutionRequests=processedBlock.ExecutionRequests",
+      "startLine": 134,
+      "endLine": 134,
+      "cfgRegion": "B1:Root",
+      "dataFlow": "suggested \u003C- processed",
+      "isReachable": true,
+      "sourceSyntaxSha256": "4e4132b814775fe20d61628f68be48d18bb09662bc973997582fe96418121615",
+      "position": 5937,
+      "controlFlowBlock": 1,
+      "operationKind": "PropertyReference"
+    },
+    {
+      "id": "postValidation.generatedBlockAccessList",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "ownerFqn": "void global::Nethermind.Consensus.Processing.BlockProcessor.PostValidation(global::Nethermind.Core.Block, global::Nethermind.Core.Block, global::Nethermind.Core.TxReceipt[], global::Nethermind.Consensus.Processing.ProcessingOptions)",
+      "symbolFqn": "global::Nethermind.Core.BlockAccessLists.GeneratedBlockAccessList global::Nethermind.Core.Block.GeneratedBlockAccessList",
+      "nodeKind": "SimpleAssignmentExpression",
+      "canonicalSyntax": "suggestedBlock.GeneratedBlockAccessList=processedBlock.GeneratedBlockAccessList",
+      "startLine": 135,
+      "endLine": 135,
+      "cfgRegion": "B1:Root",
+      "dataFlow": "suggested \u003C- processed",
+      "isReachable": true,
+      "sourceSyntaxSha256": "4e4132b814775fe20d61628f68be48d18bb09662bc973997582fe96418121615",
+      "position": 6014,
+      "controlFlowBlock": 1,
+      "operationKind": "PropertyReference"
+    },
+    {
+      "id": "postValidation.encodedBlockAccessList-fallback",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "ownerFqn": "void global::Nethermind.Consensus.Processing.BlockProcessor.PostValidation(global::Nethermind.Core.Block, global::Nethermind.Core.Block, global::Nethermind.Core.TxReceipt[], global::Nethermind.Consensus.Processing.ProcessingOptions)",
+      "symbolFqn": "byte[] global::Nethermind.Core.Block.EncodedBlockAccessList",
+      "nodeKind": "SimpleAssignmentExpression",
+      "canonicalSyntax": "suggestedBlock.EncodedBlockAccessList=processedBlock.EncodedBlockAccessList??suggestedBlock.EncodedBlockAccessList",
+      "startLine": 136,
+      "endLine": 136,
+      "cfgRegion": "B2:LocalLifetime",
+      "dataFlow": "processed ?? suggested",
+      "isReachable": true,
+      "sourceSyntaxSha256": "4e4132b814775fe20d61628f68be48d18bb09662bc973997582fe96418121615",
+      "position": 6105,
+      "controlFlowBlock": 2,
+      "operationKind": "PropertyReference"
+    },
+    {
+      "id": "validator.generatedBlockAccessList-observation",
+      "path": "src/Nethermind/Nethermind.Consensus/Validators/BlockValidator.cs",
+      "ownerFqn": "bool global::Nethermind.Consensus.Validators.BlockValidator.ValidateProcessedBlock(global::Nethermind.Core.Block, global::Nethermind.Core.TxReceipt[], global::Nethermind.Core.Block, out string)",
+      "symbolFqn": "global::Nethermind.Core.BlockAccessLists.GeneratedBlockAccessList global::Nethermind.Core.Block.GeneratedBlockAccessList",
+      "nodeKind": "SimpleAssignmentExpression",
+      "canonicalSyntax": "suggestedBlock.GeneratedBlockAccessList=processedBlock.GeneratedBlockAccessList",
+      "startLine": 209,
+      "endLine": 209,
+      "cfgRegion": "B38:LocalLifetime",
+      "dataFlow": "proposed GeneratedBAL side effect",
+      "isReachable": true,
+      "sourceSyntaxSha256": "86fe46cc924e297ab245e55c75b4d8d38cd20b7475510bd3671b2a9f4eae0648",
+      "position": 11414,
+      "controlFlowBlock": 38,
+      "operationKind": "PropertyReference"
+    },
+    {
+      "id": "options.NoValidation",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/ProcessingOptions.cs",
+      "ownerFqn": "global::Nethermind.Consensus.Processing.ProcessingOptions",
+      "symbolFqn": "global::Nethermind.Consensus.Processing.ProcessingOptions.NoValidation",
+      "nodeKind": "EnumMemberDeclaration",
+      "canonicalSyntax": "NoValidation=8",
+      "startLine": 31,
+      "endLine": 31,
+      "cfgRegion": "declaration",
+      "dataFlow": "validation guard flag",
+      "isReachable": true,
+      "sourceSyntaxSha256": "13341635f80468839be5d70505d8b90038cba668a44b6a9700aad1269d612559",
+      "position": 803,
+      "controlFlowBlock": -1,
+      "operationKind": "Declaration"
+    },
+    {
+      "id": "options.StoreReceipts",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/ProcessingOptions.cs",
+      "ownerFqn": "global::Nethermind.Consensus.Processing.ProcessingOptions",
+      "symbolFqn": "global::Nethermind.Consensus.Processing.ProcessingOptions.StoreReceipts",
+      "nodeKind": "EnumMemberDeclaration",
+      "canonicalSyntax": "StoreReceipts=4",
+      "startLine": 26,
+      "endLine": 26,
+      "cfgRegion": "declaration",
+      "dataFlow": "receipt-store guard flag",
+      "isReachable": true,
+      "sourceSyntaxSha256": "13341635f80468839be5d70505d8b90038cba668a44b6a9700aad1269d612559",
+      "position": 672,
+      "controlFlowBlock": -1,
+      "operationKind": "Declaration"
+    }
+  ],
+  "controlFlows": [
+    {
+      "id": "processOne",
+      "ownerFqn": "(global::Nethermind.Core.Block Block, global::Nethermind.Core.TxReceipt[] Receipts) global::Nethermind.Consensus.Processing.BlockProcessor.ProcessOne(global::Nethermind.Core.Block, global::Nethermind.Consensus.Processing.ProcessingOptions, global::Nethermind.Evm.Tracing.IBlockTracer, global::Nethermind.Core.Specs.IReleaseSpec, global::System.Threading.CancellationToken)",
+      "startLine": 76,
+      "endLine": 114,
+      "reachableRegions": [
+        "B0:Root",
+        "B1:LocalLifetime",
+        "B2:LocalLifetime",
+        "B3:LocalLifetime",
+        "B4:LocalLifetime",
+        "B5:LocalLifetime",
+        "B6:LocalLifetime",
+        "B7:LocalLifetime",
+        "B8:LocalLifetime",
+        "B9:Try",
+        "B10:Filter",
+        "B11:Catch",
+        "B12:Filter",
+        "B13:Filter",
+        "B14:Filter",
+        "B15:Catch",
+        "B16:Finally",
+        "B17:Finally",
+        "B18:Finally",
+        "B19:LocalLifetime",
+        "B20:LocalLifetime",
+        "B21:LocalLifetime",
+        "B22:Root"
+      ],
+      "edges": [
+        "B0:fallthrough:None:Regular-\u003EB1:finally=",
+        "B1:fallthrough:WhenFalse:Regular-\u003EB2:finally=",
+        "B1:conditional:WhenFalse:Regular-\u003EB3:finally=",
+        "B2:fallthrough:None:Regular-\u003EB3:finally=",
+        "B3:fallthrough:None:Regular-\u003EB4:finally=",
+        "B4:fallthrough:WhenFalse:Regular-\u003EB5:finally=",
+        "B4:conditional:WhenFalse:Regular-\u003EB6:finally=",
+        "B5:fallthrough:None:Regular-\u003EB7:finally=",
+        "B6:fallthrough:None:Regular-\u003EB7:finally=",
+        "B7:fallthrough:None:Regular-\u003EB8:finally=",
+        "B8:fallthrough:None:Regular-\u003EB9:finally=",
+        "B9:fallthrough:None:Regular-\u003EB19:finally=16-18",
+        "B10:fallthrough:WhenTrue:StructuredExceptionHandling-\u003Eexit:finally=",
+        "B10:conditional:WhenTrue:Regular-\u003EB11:finally=",
+        "B11:fallthrough:None:Throw-\u003Eexit:finally=",
+        "B12:fallthrough:WhenFalse:Regular-\u003EB13:finally=",
+        "B12:conditional:WhenFalse:Regular-\u003EB14:finally=",
+        "B13:fallthrough:WhenTrue:Regular-\u003EB14:finally=",
+        "B13:conditional:WhenTrue:Regular-\u003EB15:finally=",
+        "B14:fallthrough:None:StructuredExceptionHandling-\u003Eexit:finally=",
+        "B15:fallthrough:None:Throw-\u003Eexit:finally=",
+        "B16:fallthrough:WhenTrue:Regular-\u003EB17:finally=",
+        "B16:conditional:WhenTrue:Regular-\u003EB18:finally=",
+        "B17:fallthrough:None:Regular-\u003EB18:finally=",
+        "B18:fallthrough:None:StructuredExceptionHandling-\u003Eexit:finally=",
+        "B19:fallthrough:WhenFalse:Regular-\u003EB20:finally=",
+        "B19:conditional:WhenFalse:Regular-\u003EB21:finally=",
+        "B20:fallthrough:None:Regular-\u003EB21:finally=",
+        "B21:fallthrough:None:Return-\u003EB22:finally="
+      ],
+      "normalExits": [
+        "B21:fallthrough:None:Return-\u003EB22:finally="
+      ],
+      "exceptionalExits": [
+        "B11:fallthrough:None:Throw-\u003Eexit:finally=",
+        "B15:fallthrough:None:Throw-\u003Eexit:finally="
+      ],
+      "shapeSha256": "429d4e905a674bc19f46e7ccb8ddd2e79a3c8398df04c2532db92b3ed1d18603",
+      "blockMemberships": [
+        {
+          "ordinal": 0,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 1,
+          "syntaxStarts": [
+            3275
+          ]
+        },
+        {
+          "ordinal": 2,
+          "syntaxStarts": [
+            3292,
+            3306,
+            3308,
+            3325,
+            3326,
+            3350,
+            3370,
+            3372,
+            3373,
+            3381
+          ]
+        },
+        {
+          "ordinal": 3,
+          "syntaxStarts": [
+            3395,
+            3428,
+            3444,
+            3450
+          ]
+        },
+        {
+          "ordinal": 4,
+          "syntaxStarts": [
+            3469,
+            3494
+          ]
+        },
+        {
+          "ordinal": 5,
+          "syntaxStarts": [
+            3516
+          ]
+        },
+        {
+          "ordinal": 6,
+          "syntaxStarts": [
+            3550
+          ]
+        },
+        {
+          "ordinal": 7,
+          "syntaxStarts": [
+            3469
+          ]
+        },
+        {
+          "ordinal": 8,
+          "syntaxStarts": [
+            3597,
+            3616,
+            3655,
+            3681,
+            3753
+          ]
+        },
+        {
+          "ordinal": 9,
+          "syntaxStarts": [
+            3794,
+            3805,
+            3818,
+            3825,
+            3838,
+            3847,
+            3853,
+            3873,
+            3885
+          ]
+        },
+        {
+          "ordinal": 10,
+          "syntaxStarts": [
+            3994
+          ]
+        },
+        {
+          "ordinal": 11,
+          "syntaxStarts": [
+            4060,
+            4104
+          ]
+        },
+        {
+          "ordinal": 12,
+          "syntaxStarts": [
+            4207
+          ]
+        },
+        {
+          "ordinal": 13,
+          "syntaxStarts": [
+            4259,
+            4280
+          ]
+        },
+        {
+          "ordinal": 14,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 15,
+          "syntaxStarts": [
+            4402,
+            4446
+          ]
+        },
+        {
+          "ordinal": 16,
+          "syntaxStarts": [
+            4526
+          ]
+        },
+        {
+          "ordinal": 17,
+          "syntaxStarts": [
+            4537
+          ]
+        },
+        {
+          "ordinal": 18,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 19,
+          "syntaxStarts": [
+            4586,
+            4609,
+            4625,
+            4634,
+            4641,
+            4664,
+            4685
+          ]
+        },
+        {
+          "ordinal": 20,
+          "syntaxStarts": [
+            4741,
+            4757,
+            4764,
+            4774
+          ]
+        },
+        {
+          "ordinal": 21,
+          "syntaxStarts": [
+            4807,
+            4808,
+            4815
+          ]
+        },
+        {
+          "ordinal": 22,
+          "syntaxStarts": []
+        }
+      ]
+    },
+    {
+      "id": "validateProcessedBlock",
+      "ownerFqn": "void global::Nethermind.Consensus.Processing.BlockProcessor.ValidateProcessedBlock(global::Nethermind.Core.Block, global::Nethermind.Consensus.Processing.ProcessingOptions, global::Nethermind.Core.Block, global::Nethermind.Core.TxReceipt[])",
+      "startLine": 116,
+      "endLine": 126,
+      "reachableRegions": [
+        "B0:Root",
+        "B1:LocalLifetime",
+        "B2:LocalLifetime",
+        "B3:LocalLifetime",
+        "B4:LocalLifetime",
+        "B5:LocalLifetime",
+        "B6:LocalLifetime",
+        "B7:Root"
+      ],
+      "edges": [
+        "B0:fallthrough:None:Regular-\u003EB1:finally=",
+        "B1:fallthrough:WhenTrue:Regular-\u003EB2:finally=",
+        "B1:conditional:WhenTrue:Regular-\u003EB6:finally=",
+        "B2:fallthrough:WhenTrue:Regular-\u003EB3:finally=",
+        "B2:conditional:WhenTrue:Regular-\u003EB6:finally=",
+        "B3:fallthrough:WhenFalse:Regular-\u003EB4:finally=",
+        "B3:conditional:WhenFalse:Regular-\u003EB5:finally=",
+        "B4:fallthrough:None:Regular-\u003EB5:finally=",
+        "B5:fallthrough:None:Throw-\u003Eexit:finally=",
+        "B6:fallthrough:None:Regular-\u003EB7:finally="
+      ],
+      "normalExits": [
+        "B6:fallthrough:None:Regular-\u003EB7:finally="
+      ],
+      "exceptionalExits": [
+        "B5:fallthrough:None:Throw-\u003Eexit:finally="
+      ],
+      "shapeSha256": "b9e29fc896864617e9e7ff1d451a4c91edb7ba8a96fd1d83b87b050fcdd85336",
+      "blockMemberships": [
+        {
+          "ordinal": 0,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 1,
+          "syntaxStarts": [
+            4976,
+            4997
+          ]
+        },
+        {
+          "ordinal": 2,
+          "syntaxStarts": [
+            5033,
+            5071,
+            5078,
+            5088,
+            5104,
+            5108,
+            5116
+          ]
+        },
+        {
+          "ordinal": 3,
+          "syntaxStarts": [
+            5146,
+            5193
+          ]
+        },
+        {
+          "ordinal": 4,
+          "syntaxStarts": [
+            5209,
+            5222,
+            5252,
+            5268
+          ]
+        },
+        {
+          "ordinal": 5,
+          "syntaxStarts": [
+            5322,
+            5348,
+            5364
+          ]
+        },
+        {
+          "ordinal": 6,
+          "syntaxStarts": [
+            5391,
+            5406,
+            5422,
+            5429,
+            5439
+          ]
+        },
+        {
+          "ordinal": 7,
+          "syntaxStarts": []
+        }
+      ]
+    },
+    {
+      "id": "postValidation",
+      "ownerFqn": "void global::Nethermind.Consensus.Processing.BlockProcessor.PostValidation(global::Nethermind.Core.Block, global::Nethermind.Core.Block, global::Nethermind.Core.TxReceipt[], global::Nethermind.Consensus.Processing.ProcessingOptions)",
+      "startLine": 128,
+      "endLine": 137,
+      "reachableRegions": [
+        "B0:Root",
+        "B1:Root",
+        "B2:LocalLifetime",
+        "B3:LocalLifetime",
+        "B4:LocalLifetime",
+        "B5:LocalLifetime",
+        "B6:LocalLifetime",
+        "B7:Root"
+      ],
+      "edges": [
+        "B0:fallthrough:None:Regular-\u003EB1:finally=",
+        "B1:fallthrough:None:Regular-\u003EB2:finally=",
+        "B2:fallthrough:None:Regular-\u003EB3:finally=",
+        "B3:fallthrough:WhenTrue:Regular-\u003EB4:finally=",
+        "B3:conditional:WhenTrue:Regular-\u003EB5:finally=",
+        "B4:fallthrough:None:Regular-\u003EB6:finally=",
+        "B5:fallthrough:None:Regular-\u003EB6:finally=",
+        "B6:fallthrough:None:Regular-\u003EB7:finally="
+      ],
+      "normalExits": [
+        "B6:fallthrough:None:Regular-\u003EB7:finally="
+      ],
+      "exceptionalExits": [],
+      "shapeSha256": "5440635ad5a92344acc0ef041990f143379839c7df1458fc97d53d43415d86d6",
+      "blockMemberships": [
+        {
+          "ordinal": 0,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 1,
+          "syntaxStarts": [
+            5866,
+            5898,
+            5937,
+            5972,
+            6014,
+            6056
+          ]
+        },
+        {
+          "ordinal": 2,
+          "syntaxStarts": [
+            6105
+          ]
+        },
+        {
+          "ordinal": 3,
+          "syntaxStarts": [
+            6145
+          ]
+        },
+        {
+          "ordinal": 4,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 5,
+          "syntaxStarts": [
+            6186
+          ]
+        },
+        {
+          "ordinal": 6,
+          "syntaxStarts": [
+            6105
+          ]
+        },
+        {
+          "ordinal": 7,
+          "syntaxStarts": []
+        }
+      ]
+    },
+    {
+      "id": "validator",
+      "ownerFqn": "bool global::Nethermind.Consensus.Validators.BlockValidator.ValidateProcessedBlock(global::Nethermind.Core.Block, global::Nethermind.Core.TxReceipt[], global::Nethermind.Core.Block, out string)",
+      "startLine": 160,
+      "endLine": 271,
+      "reachableRegions": [
+        "B0:Root",
+        "B1:LocalLifetime",
+        "B2:LocalLifetime",
+        "B3:LocalLifetime",
+        "B4:LocalLifetime",
+        "B5:LocalLifetime",
+        "B6:LocalLifetime",
+        "B7:LocalLifetime",
+        "B8:LocalLifetime",
+        "B9:LocalLifetime",
+        "B10:LocalLifetime",
+        "B11:LocalLifetime",
+        "B12:LocalLifetime",
+        "B13:LocalLifetime",
+        "B14:LocalLifetime",
+        "B15:LocalLifetime",
+        "B16:LocalLifetime",
+        "B17:LocalLifetime",
+        "B18:LocalLifetime",
+        "B19:LocalLifetime",
+        "B20:LocalLifetime",
+        "B21:LocalLifetime",
+        "B22:LocalLifetime",
+        "B23:LocalLifetime",
+        "B24:LocalLifetime",
+        "B25:LocalLifetime",
+        "B26:LocalLifetime",
+        "B27:LocalLifetime",
+        "B28:LocalLifetime",
+        "B29:LocalLifetime",
+        "B30:LocalLifetime",
+        "B31:LocalLifetime",
+        "B32:LocalLifetime",
+        "B33:LocalLifetime",
+        "B34:LocalLifetime",
+        "B35:LocalLifetime",
+        "B36:LocalLifetime",
+        "B37:LocalLifetime",
+        "B38:LocalLifetime",
+        "B39:LocalLifetime",
+        "B40:LocalLifetime",
+        "B41:LocalLifetime",
+        "B42:LocalLifetime",
+        "B43:LocalLifetime",
+        "B44:LocalLifetime",
+        "B45:LocalLifetime",
+        "B46:LocalLifetime",
+        "B47:LocalLifetime",
+        "B48:LocalLifetime",
+        "B49:LocalLifetime",
+        "B50:LocalLifetime",
+        "B51:LocalLifetime",
+        "B52:LocalLifetime",
+        "B53:LocalLifetime",
+        "B54:LocalLifetime",
+        "B55:LocalLifetime",
+        "B56:LocalLifetime",
+        "B57:LocalLifetime",
+        "B58:LocalLifetime",
+        "B59:LocalLifetime",
+        "B60:LocalLifetime",
+        "B61:LocalLifetime",
+        "B62:LocalLifetime",
+        "B63:LocalLifetime",
+        "B64:LocalLifetime",
+        "B65:LocalLifetime",
+        "B66:LocalLifetime",
+        "B67:LocalLifetime",
+        "B68:LocalLifetime",
+        "B69:LocalLifetime",
+        "B70:LocalLifetime",
+        "B71:LocalLifetime",
+        "B72:LocalLifetime",
+        "B73:LocalLifetime",
+        "B74:LocalLifetime",
+        "B75:LocalLifetime",
+        "B76:LocalLifetime",
+        "B77:LocalLifetime",
+        "B78:LocalLifetime",
+        "B79:LocalLifetime",
+        "B80:LocalLifetime",
+        "B81:LocalLifetime",
+        "B82:LocalLifetime",
+        "B83:LocalLifetime",
+        "B84:LocalLifetime",
+        "B85:LocalLifetime",
+        "B86:LocalLifetime",
+        "B87:LocalLifetime",
+        "B88:LocalLifetime",
+        "B89:LocalLifetime",
+        "B90:LocalLifetime",
+        "B91:LocalLifetime",
+        "B92:LocalLifetime",
+        "B93:LocalLifetime",
+        "B94:LocalLifetime",
+        "B95:LocalLifetime",
+        "B96:Root"
+      ],
+      "edges": [
+        "B0:fallthrough:None:Regular-\u003EB1:finally=",
+        "B1:fallthrough:WhenFalse:Regular-\u003EB2:finally=",
+        "B1:conditional:WhenFalse:Regular-\u003EB6:finally=",
+        "B2:fallthrough:WhenFalse:Regular-\u003EB3:finally=",
+        "B2:conditional:WhenFalse:Regular-\u003EB6:finally=",
+        "B3:fallthrough:WhenFalse:Regular-\u003EB4:finally=",
+        "B3:conditional:WhenFalse:Regular-\u003EB6:finally=",
+        "B4:fallthrough:WhenTrue:Regular-\u003EB5:finally=",
+        "B4:conditional:WhenTrue:Regular-\u003EB6:finally=",
+        "B5:fallthrough:None:Return-\u003EB96:finally=",
+        "B6:fallthrough:WhenFalse:Regular-\u003EB7:finally=",
+        "B6:conditional:WhenFalse:Regular-\u003EB8:finally=",
+        "B7:fallthrough:None:Return-\u003EB96:finally=",
+        "B8:fallthrough:WhenFalse:Regular-\u003EB9:finally=",
+        "B8:conditional:WhenFalse:Regular-\u003EB10:finally=",
+        "B9:fallthrough:None:Regular-\u003EB10:finally=",
+        "B10:fallthrough:WhenFalse:Regular-\u003EB11:finally=",
+        "B10:conditional:WhenFalse:Regular-\u003EB12:finally=",
+        "B11:fallthrough:None:Regular-\u003EB12:finally=",
+        "B12:fallthrough:WhenFalse:Regular-\u003EB13:finally=",
+        "B12:conditional:WhenFalse:Regular-\u003EB18:finally=",
+        "B13:fallthrough:WhenFalse:Regular-\u003EB14:finally=",
+        "B13:conditional:WhenFalse:Regular-\u003EB15:finally=",
+        "B14:fallthrough:None:Regular-\u003EB15:finally=",
+        "B15:fallthrough:None:Regular-\u003EB16:finally=",
+        "B16:fallthrough:WhenTrue:Regular-\u003EB18:finally=",
+        "B16:conditional:WhenTrue:Regular-\u003EB17:finally=",
+        "B17:fallthrough:None:Regular-\u003EB18:finally=",
+        "B18:fallthrough:WhenFalse:Regular-\u003EB19:finally=",
+        "B18:conditional:WhenFalse:Regular-\u003EB24:finally=",
+        "B19:fallthrough:WhenFalse:Regular-\u003EB20:finally=",
+        "B19:conditional:WhenFalse:Regular-\u003EB21:finally=",
+        "B20:fallthrough:None:Regular-\u003EB21:finally=",
+        "B21:fallthrough:None:Regular-\u003EB22:finally=",
+        "B22:fallthrough:WhenTrue:Regular-\u003EB24:finally=",
+        "B22:conditional:WhenTrue:Regular-\u003EB23:finally=",
+        "B23:fallthrough:None:Regular-\u003EB24:finally=",
+        "B24:fallthrough:WhenFalse:Regular-\u003EB25:finally=",
+        "B24:conditional:WhenFalse:Regular-\u003EB30:finally=",
+        "B25:fallthrough:WhenFalse:Regular-\u003EB26:finally=",
+        "B25:conditional:WhenFalse:Regular-\u003EB27:finally=",
+        "B26:fallthrough:None:Regular-\u003EB27:finally=",
+        "B27:fallthrough:None:Regular-\u003EB28:finally=",
+        "B28:fallthrough:WhenTrue:Regular-\u003EB30:finally=",
+        "B28:conditional:WhenTrue:Regular-\u003EB29:finally=",
+        "B29:fallthrough:None:Regular-\u003EB30:finally=",
+        "B30:fallthrough:WhenFalse:Regular-\u003EB31:finally=",
+        "B30:conditional:WhenFalse:Regular-\u003EB39:finally=",
+        "B31:fallthrough:WhenFalse:Regular-\u003EB32:finally=",
+        "B31:conditional:WhenFalse:Regular-\u003EB33:finally=",
+        "B32:fallthrough:None:Regular-\u003EB33:finally=",
+        "B33:fallthrough:None:Regular-\u003EB34:finally=",
+        "B34:fallthrough:WhenTrue:Regular-\u003EB36:finally=",
+        "B34:conditional:WhenTrue:Regular-\u003EB35:finally=",
+        "B35:fallthrough:None:Regular-\u003EB36:finally=",
+        "B36:fallthrough:WhenFalse:Regular-\u003EB37:finally=",
+        "B36:conditional:WhenFalse:Regular-\u003EB38:finally=",
+        "B37:fallthrough:None:Regular-\u003EB38:finally=",
+        "B38:fallthrough:None:Regular-\u003EB39:finally=",
+        "B39:fallthrough:WhenFalse:Regular-\u003EB40:finally=",
+        "B39:conditional:WhenFalse:Regular-\u003EB45:finally=",
+        "B40:fallthrough:WhenFalse:Regular-\u003EB41:finally=",
+        "B40:conditional:WhenFalse:Regular-\u003EB42:finally=",
+        "B41:fallthrough:None:Regular-\u003EB42:finally=",
+        "B42:fallthrough:None:Regular-\u003EB43:finally=",
+        "B43:fallthrough:WhenTrue:Regular-\u003EB45:finally=",
+        "B43:conditional:WhenTrue:Regular-\u003EB44:finally=",
+        "B44:fallthrough:None:Regular-\u003EB45:finally=",
+        "B45:fallthrough:WhenFalse:Regular-\u003EB46:finally=",
+        "B45:conditional:WhenFalse:Regular-\u003EB51:finally=",
+        "B46:fallthrough:WhenFalse:Regular-\u003EB47:finally=",
+        "B46:conditional:WhenFalse:Regular-\u003EB48:finally=",
+        "B47:fallthrough:None:Regular-\u003EB48:finally=",
+        "B48:fallthrough:None:Regular-\u003EB49:finally=",
+        "B49:fallthrough:WhenTrue:Regular-\u003EB51:finally=",
+        "B49:conditional:WhenTrue:Regular-\u003EB50:finally=",
+        "B50:fallthrough:None:Regular-\u003EB51:finally=",
+        "B51:fallthrough:WhenFalse:Regular-\u003EB52:finally=",
+        "B51:conditional:WhenFalse:Regular-\u003EB57:finally=",
+        "B52:fallthrough:WhenFalse:Regular-\u003EB53:finally=",
+        "B52:conditional:WhenFalse:Regular-\u003EB54:finally=",
+        "B53:fallthrough:None:Regular-\u003EB54:finally=",
+        "B54:fallthrough:None:Regular-\u003EB55:finally=",
+        "B55:fallthrough:WhenTrue:Regular-\u003EB57:finally=",
+        "B55:conditional:WhenTrue:Regular-\u003EB56:finally=",
+        "B56:fallthrough:None:Regular-\u003EB57:finally=",
+        "B57:fallthrough:WhenFalse:Regular-\u003EB58:finally=",
+        "B57:conditional:WhenFalse:Regular-\u003EB63:finally=",
+        "B58:fallthrough:WhenFalse:Regular-\u003EB59:finally=",
+        "B58:conditional:WhenFalse:Regular-\u003EB60:finally=",
+        "B59:fallthrough:None:Regular-\u003EB60:finally=",
+        "B60:fallthrough:None:Regular-\u003EB61:finally=",
+        "B61:fallthrough:WhenTrue:Regular-\u003EB63:finally=",
+        "B61:conditional:WhenTrue:Regular-\u003EB62:finally=",
+        "B62:fallthrough:None:Regular-\u003EB63:finally=",
+        "B63:fallthrough:WhenFalse:Regular-\u003EB64:finally=",
+        "B63:conditional:WhenFalse:Regular-\u003EB69:finally=",
+        "B64:fallthrough:WhenFalse:Regular-\u003EB65:finally=",
+        "B64:conditional:WhenFalse:Regular-\u003EB66:finally=",
+        "B65:fallthrough:None:Regular-\u003EB66:finally=",
+        "B66:fallthrough:None:Regular-\u003EB67:finally=",
+        "B67:fallthrough:WhenTrue:Regular-\u003EB69:finally=",
+        "B67:conditional:WhenTrue:Regular-\u003EB68:finally=",
+        "B68:fallthrough:None:Regular-\u003EB69:finally=",
+        "B69:fallthrough:WhenFalse:Regular-\u003EB70:finally=",
+        "B69:conditional:WhenFalse:Regular-\u003EB75:finally=",
+        "B70:fallthrough:WhenFalse:Regular-\u003EB71:finally=",
+        "B70:conditional:WhenFalse:Regular-\u003EB72:finally=",
+        "B71:fallthrough:None:Regular-\u003EB72:finally=",
+        "B72:fallthrough:None:Regular-\u003EB73:finally=",
+        "B73:fallthrough:WhenTrue:Regular-\u003EB75:finally=",
+        "B73:conditional:WhenTrue:Regular-\u003EB74:finally=",
+        "B74:fallthrough:None:Regular-\u003EB75:finally=",
+        "B75:fallthrough:WhenFalse:Regular-\u003EB76:finally=",
+        "B75:conditional:WhenFalse:Regular-\u003EB81:finally=",
+        "B76:fallthrough:WhenFalse:Regular-\u003EB77:finally=",
+        "B76:conditional:WhenFalse:Regular-\u003EB78:finally=",
+        "B77:fallthrough:None:Regular-\u003EB78:finally=",
+        "B78:fallthrough:None:Regular-\u003EB79:finally=",
+        "B79:fallthrough:WhenTrue:Regular-\u003EB92:finally=",
+        "B79:conditional:WhenTrue:Regular-\u003EB80:finally=",
+        "B80:fallthrough:None:Regular-\u003EB92:finally=",
+        "B81:fallthrough:None:Regular-\u003EB82:finally=",
+        "B82:fallthrough:WhenFalse:Regular-\u003EB83:finally=",
+        "B82:conditional:WhenFalse:Regular-\u003EB92:finally=",
+        "B83:fallthrough:WhenFalse:Regular-\u003EB84:finally=",
+        "B83:conditional:WhenFalse:Regular-\u003EB91:finally=",
+        "B84:fallthrough:WhenFalse:Regular-\u003EB85:finally=",
+        "B84:conditional:WhenFalse:Regular-\u003EB91:finally=",
+        "B85:fallthrough:WhenFalse:Regular-\u003EB86:finally=",
+        "B85:conditional:WhenFalse:Regular-\u003EB91:finally=",
+        "B86:fallthrough:WhenFalse:Regular-\u003EB87:finally=",
+        "B86:conditional:WhenFalse:Regular-\u003EB88:finally=",
+        "B87:fallthrough:None:Regular-\u003EB88:finally=",
+        "B88:fallthrough:None:Regular-\u003EB89:finally=",
+        "B89:fallthrough:WhenTrue:Regular-\u003EB91:finally=",
+        "B89:conditional:WhenTrue:Regular-\u003EB90:finally=",
+        "B90:fallthrough:None:Regular-\u003EB91:finally=",
+        "B91:fallthrough:None:Regular-\u003EB82:finally=",
+        "B92:fallthrough:WhenFalse:Regular-\u003EB93:finally=",
+        "B92:conditional:WhenFalse:Regular-\u003EB95:finally=",
+        "B93:fallthrough:WhenFalse:Regular-\u003EB94:finally=",
+        "B93:conditional:WhenFalse:Regular-\u003EB95:finally=",
+        "B94:fallthrough:None:Regular-\u003EB95:finally=",
+        "B95:fallthrough:None:Return-\u003EB96:finally="
+      ],
+      "normalExits": [
+        "B5:fallthrough:None:Return-\u003EB96:finally=",
+        "B7:fallthrough:None:Return-\u003EB96:finally=",
+        "B95:fallthrough:None:Return-\u003EB96:finally="
+      ],
+      "exceptionalExits": [],
+      "shapeSha256": "717350895df7d41e347e961760a2f54f772ab3fc3e84cbcfce6b23d5711a15c7",
+      "blockMemberships": [
+        {
+          "ordinal": 0,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 1,
+          "syntaxStarts": [
+            8817,
+            8835,
+            8869
+          ]
+        },
+        {
+          "ordinal": 2,
+          "syntaxStarts": [
+            8889,
+            8932,
+            8936
+          ]
+        },
+        {
+          "ordinal": 3,
+          "syntaxStarts": [
+            8956,
+            8978
+          ]
+        },
+        {
+          "ordinal": 4,
+          "syntaxStarts": [
+            9046,
+            9079,
+            9095,
+            9099
+          ]
+        },
+        {
+          "ordinal": 5,
+          "syntaxStarts": [
+            9136,
+            9144,
+            9177
+          ]
+        },
+        {
+          "ordinal": 6,
+          "syntaxStarts": [
+            9207,
+            9237
+          ]
+        },
+        {
+          "ordinal": 7,
+          "syntaxStarts": [
+            9287,
+            9295,
+            9320
+          ]
+        },
+        {
+          "ordinal": 8,
+          "syntaxStarts": [
+            9349
+          ]
+        },
+        {
+          "ordinal": 9,
+          "syntaxStarts": [
+            9365,
+            9378,
+            9380,
+            9396,
+            9397,
+            9421,
+            9441
+          ]
+        },
+        {
+          "ordinal": 10,
+          "syntaxStarts": [
+            9469
+          ]
+        },
+        {
+          "ordinal": 11,
+          "syntaxStarts": [
+            9485,
+            9498,
+            9500,
+            9517,
+            9518,
+            9538,
+            9544,
+            9545
+          ]
+        },
+        {
+          "ordinal": 12,
+          "syntaxStarts": [
+            9577,
+            9585,
+            9603,
+            9636
+          ]
+        },
+        {
+          "ordinal": 13,
+          "syntaxStarts": [
+            9693
+          ]
+        },
+        {
+          "ordinal": 14,
+          "syntaxStarts": [
+            9709,
+            9722,
+            9724,
+            9745,
+            9746,
+            9776,
+            9782,
+            9783,
+            9813,
+            9821,
+            9822,
+            9854,
+            9884
+          ]
+        },
+        {
+          "ordinal": 15,
+          "syntaxStarts": [
+            9901
+          ]
+        },
+        {
+          "ordinal": 16,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 17,
+          "syntaxStarts": [
+            9911,
+            9952,
+            9983
+          ]
+        },
+        {
+          "ordinal": 18,
+          "syntaxStarts": [
+            10038,
+            10069
+          ]
+        },
+        {
+          "ordinal": 19,
+          "syntaxStarts": [
+            10124
+          ]
+        },
+        {
+          "ordinal": 20,
+          "syntaxStarts": [
+            10140,
+            10153,
+            10155,
+            10173,
+            10174,
+            10202,
+            10208,
+            10209
+          ]
+        },
+        {
+          "ordinal": 21,
+          "syntaxStarts": [
+            10253
+          ]
+        },
+        {
+          "ordinal": 22,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 23,
+          "syntaxStarts": [
+            10263,
+            10299,
+            10328
+          ]
+        },
+        {
+          "ordinal": 24,
+          "syntaxStarts": [
+            10381,
+            10419
+          ]
+        },
+        {
+          "ordinal": 25,
+          "syntaxStarts": [
+            10481
+          ]
+        },
+        {
+          "ordinal": 26,
+          "syntaxStarts": [
+            10497,
+            10510,
+            10512,
+            10538,
+            10539,
+            10574,
+            10580,
+            10581
+          ]
+        },
+        {
+          "ordinal": 27,
+          "syntaxStarts": [
+            10632
+          ]
+        },
+        {
+          "ordinal": 28,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 29,
+          "syntaxStarts": [
+            10642,
+            10681,
+            10717
+          ]
+        },
+        {
+          "ordinal": 30,
+          "syntaxStarts": [
+            10777,
+            10822
+          ]
+        },
+        {
+          "ordinal": 31,
+          "syntaxStarts": [
+            10891
+          ]
+        },
+        {
+          "ordinal": 32,
+          "syntaxStarts": [
+            10907,
+            10920,
+            10922,
+            10958,
+            10959,
+            11001,
+            11007,
+            11008
+          ]
+        },
+        {
+          "ordinal": 33,
+          "syntaxStarts": [
+            11066
+          ]
+        },
+        {
+          "ordinal": 34,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 35,
+          "syntaxStarts": [
+            11076,
+            11127,
+            11170
+          ]
+        },
+        {
+          "ordinal": 36,
+          "syntaxStarts": [
+            11230
+          ]
+        },
+        {
+          "ordinal": 37,
+          "syntaxStarts": [
+            11247,
+            11261,
+            11263,
+            11293,
+            11294,
+            11334,
+            11366,
+            11367
+          ]
+        },
+        {
+          "ordinal": 38,
+          "syntaxStarts": [
+            11414,
+            11456
+          ]
+        },
+        {
+          "ordinal": 39,
+          "syntaxStarts": [
+            11520,
+            11555
+          ]
+        },
+        {
+          "ordinal": 40,
+          "syntaxStarts": [
+            11614
+          ]
+        },
+        {
+          "ordinal": 41,
+          "syntaxStarts": [
+            11630,
+            11643,
+            11645,
+            11668,
+            11669,
+            11701,
+            11707,
+            11708
+          ]
+        },
+        {
+          "ordinal": 42,
+          "syntaxStarts": [
+            11756
+          ]
+        },
+        {
+          "ordinal": 43,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 44,
+          "syntaxStarts": [
+            11766,
+            11802,
+            11835
+          ]
+        },
+        {
+          "ordinal": 45,
+          "syntaxStarts": [
+            11892,
+            11929
+          ]
+        },
+        {
+          "ordinal": 46,
+          "syntaxStarts": [
+            11990
+          ]
+        },
+        {
+          "ordinal": 47,
+          "syntaxStarts": [
+            12006,
+            12019,
+            12021,
+            12047,
+            12048,
+            12082,
+            12088,
+            12089
+          ]
+        },
+        {
+          "ordinal": 48,
+          "syntaxStarts": [
+            12139
+          ]
+        },
+        {
+          "ordinal": 49,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 50,
+          "syntaxStarts": [
+            12149,
+            12190,
+            12225
+          ]
+        },
+        {
+          "ordinal": 51,
+          "syntaxStarts": [
+            12284,
+            12323
+          ]
+        },
+        {
+          "ordinal": 52,
+          "syntaxStarts": [
+            12386
+          ]
+        },
+        {
+          "ordinal": 53,
+          "syntaxStarts": [
+            12402,
+            12415,
+            12417,
+            12445,
+            12446,
+            12482,
+            12488,
+            12489
+          ]
+        },
+        {
+          "ordinal": 54,
+          "syntaxStarts": [
+            12541
+          ]
+        },
+        {
+          "ordinal": 55,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 56,
+          "syntaxStarts": [
+            12551,
+            12593,
+            12630
+          ]
+        },
+        {
+          "ordinal": 57,
+          "syntaxStarts": [
+            12691,
+            12738
+          ]
+        },
+        {
+          "ordinal": 58,
+          "syntaxStarts": [
+            12809
+          ]
+        },
+        {
+          "ordinal": 59,
+          "syntaxStarts": [
+            12825,
+            12838,
+            12840,
+            12878,
+            12879,
+            12923,
+            12929,
+            12930
+          ]
+        },
+        {
+          "ordinal": 60,
+          "syntaxStarts": [
+            12990
+          ]
+        },
+        {
+          "ordinal": 61,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 62,
+          "syntaxStarts": [
+            13000,
+            13048,
+            13093
+          ]
+        },
+        {
+          "ordinal": 63,
+          "syntaxStarts": [
+            13162,
+            13200
+          ]
+        },
+        {
+          "ordinal": 64,
+          "syntaxStarts": [
+            13262
+          ]
+        },
+        {
+          "ordinal": 65,
+          "syntaxStarts": [
+            13278,
+            13291,
+            13293,
+            13320,
+            13321,
+            13356,
+            13362,
+            13363
+          ]
+        },
+        {
+          "ordinal": 66,
+          "syntaxStarts": [
+            13414
+          ]
+        },
+        {
+          "ordinal": 67,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 68,
+          "syntaxStarts": [
+            13424,
+            13463,
+            13499
+          ]
+        },
+        {
+          "ordinal": 69,
+          "syntaxStarts": [
+            13559,
+            13595
+          ]
+        },
+        {
+          "ordinal": 70,
+          "syntaxStarts": [
+            13655
+          ]
+        },
+        {
+          "ordinal": 71,
+          "syntaxStarts": [
+            13671,
+            13684,
+            13686,
+            13710,
+            13711,
+            13744,
+            13750,
+            13751
+          ]
+        },
+        {
+          "ordinal": 72,
+          "syntaxStarts": [
+            13800
+          ]
+        },
+        {
+          "ordinal": 73,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 74,
+          "syntaxStarts": [
+            13810,
+            13848,
+            13882
+          ]
+        },
+        {
+          "ordinal": 75,
+          "syntaxStarts": [
+            13940,
+            13959
+          ]
+        },
+        {
+          "ordinal": 76,
+          "syntaxStarts": [
+            14021
+          ]
+        },
+        {
+          "ordinal": 77,
+          "syntaxStarts": [
+            14037,
+            14050,
+            14052,
+            14087,
+            14088,
+            14123,
+            14165,
+            14166
+          ]
+        },
+        {
+          "ordinal": 78,
+          "syntaxStarts": [
+            14198
+          ]
+        },
+        {
+          "ordinal": 79,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 80,
+          "syntaxStarts": [
+            14208,
+            14248,
+            14284
+          ]
+        },
+        {
+          "ordinal": 81,
+          "syntaxStarts": [
+            14360
+          ]
+        },
+        {
+          "ordinal": 82,
+          "syntaxStarts": [
+            14363,
+            14367
+          ]
+        },
+        {
+          "ordinal": 83,
+          "syntaxStarts": [
+            14442,
+            14451,
+            14463,
+            14467
+          ]
+        },
+        {
+          "ordinal": 84,
+          "syntaxStarts": [
+            14475,
+            14484,
+            14498
+          ]
+        },
+        {
+          "ordinal": 85,
+          "syntaxStarts": [
+            14503,
+            14512,
+            14524
+          ]
+        },
+        {
+          "ordinal": 86,
+          "syntaxStarts": [
+            14577
+          ]
+        },
+        {
+          "ordinal": 87,
+          "syntaxStarts": [
+            14593,
+            14606,
+            14608,
+            14630,
+            14631
+          ]
+        },
+        {
+          "ordinal": 88,
+          "syntaxStarts": [
+            14657
+          ]
+        },
+        {
+          "ordinal": 89,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 90,
+          "syntaxStarts": [
+            14667,
+            14703
+          ]
+        },
+        {
+          "ordinal": 91,
+          "syntaxStarts": [
+            14403
+          ]
+        },
+        {
+          "ordinal": 92,
+          "syntaxStarts": [
+            14762,
+            14790,
+            14794
+          ]
+        },
+        {
+          "ordinal": 93,
+          "syntaxStarts": [
+            14826
+          ]
+        },
+        {
+          "ordinal": 94,
+          "syntaxStarts": [
+            14842,
+            14855,
+            14857,
+            14878,
+            14879,
+            14918,
+            14926,
+            14927,
+            14951
+          ]
+        },
+        {
+          "ordinal": 95,
+          "syntaxStarts": [
+            15007
+          ]
+        },
+        {
+          "ordinal": 96,
+          "syntaxStarts": []
+        }
+      ]
+    },
+    {
+      "id": "storeTxReceipts",
+      "ownerFqn": "void global::Nethermind.Consensus.Processing.BlockProcessor.StoreTxReceipts(global::Nethermind.Core.Block, global::Nethermind.Core.TxReceipt[], global::Nethermind.Core.Specs.IReleaseSpec)",
+      "startLine": 384,
+      "endLine": 387,
+      "reachableRegions": [
+        "B0:Root",
+        "B1:Root",
+        "B2:Root"
+      ],
+      "edges": [
+        "B0:fallthrough:None:Regular-\u003EB1:finally=",
+        "B1:fallthrough:None:Regular-\u003EB2:finally="
+      ],
+      "normalExits": [
+        "B1:fallthrough:None:Regular-\u003EB2:finally="
+      ],
+      "exceptionalExits": [],
+      "shapeSha256": "541bb0033e8130c54549522e8de7bbdfeb64c48d8c7e52bc95eaf5612c7b2901",
+      "blockMemberships": [
+        {
+          "ordinal": 0,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 1,
+          "syntaxStarts": [
+            14865,
+            14895,
+            14902,
+            14914
+          ]
+        },
+        {
+          "ordinal": 2,
+          "syntaxStarts": []
+        }
+      ]
+    }
+  ],
+  "dataFlows": [
+    {
+      "id": "processOne.receipts",
+      "symbolFqn": "global::Nethermind.Core.TxReceipt[] receipts",
+      "definition": "receipts",
+      "reads": [
+        "ValidateProcessedBlock(suggestedBlock,options,block,receipts);",
+        "StoreTxReceipts(block,receipts,spec);",
+        "return(block,receipts);"
+      ],
+      "writes": [
+        "receipts",
+        "receipts=ProcessBlock(block,blockTracer,options,spec,token)"
+      ],
+      "reachingDefinitions": "Exact statement skeleton and typed local read/write set; the normal ProcessBlock definition reaches the suffix through processed=true and finally.",
+      "dataFlowSucceeded": true
+    },
+    {
+      "id": "processOne.processed",
+      "symbolFqn": "bool processed",
+      "definition": "processed=false",
+      "reads": [
+        "if(!processed)block.DisposeAccountChanges();"
+      ],
+      "writes": [
+        "processed=false",
+        "processed=true"
+      ],
+      "reachingDefinitions": "Exact statement skeleton and typed local read/write set; the normal ProcessBlock definition reaches the suffix through processed=true and finally.",
+      "dataFlowSucceeded": true
+    },
+    {
+      "id": "processOne.suggestedGeneratedBal",
+      "symbolFqn": "global::Nethermind.Core.BlockAccessLists.GeneratedBlockAccessList global::Nethermind.Core.Block.GeneratedBlockAccessList",
+      "definition": "suggestedBlock.GeneratedBlockAccessList=processedBlock.GeneratedBlockAccessList",
+      "reads": [
+        "global::Nethermind.Core.BlockAccessLists.GeneratedBlockAccessList global::Nethermind.Core.Block.GeneratedBlockAccessList:processedBlock.GeneratedBlockAccessList"
+      ],
+      "writes": [
+        "suggestedBlock.GeneratedBlockAccessList"
+      ],
+      "reachingDefinitions": "rejection retains validator observation; normal PostValidation overwrites it",
+      "dataFlowSucceeded": true
+    },
+    {
+      "id": "postValidation.encodedBal",
+      "symbolFqn": "byte[] global::Nethermind.Core.Block.EncodedBlockAccessList",
+      "definition": "suggestedBlock.EncodedBlockAccessList=processedBlock.EncodedBlockAccessList??suggestedBlock.EncodedBlockAccessList",
+      "reads": [
+        "byte[] global::Nethermind.Core.Block.EncodedBlockAccessList:processedBlock.EncodedBlockAccessList",
+        "byte[] global::Nethermind.Core.Block.EncodedBlockAccessList:suggestedBlock.EncodedBlockAccessList"
+      ],
+      "writes": [
+        "suggestedBlock.EncodedBlockAccessList"
+      ],
+      "reachingDefinitions": "Roslyn coalesce operation reads processed first, then suggested only when null",
+      "dataFlowSucceeded": true
+    }
+  ],
+  "adapterPremises": [
+    {
+      "id": "exactBase",
+      "statement": "runtime premise: exact BlockProcessor.ProcessOne receiver and exact-base PostValidation"
+    },
+    {
+      "id": "standardSequential",
+      "statement": "runtime premise: standard BlockValidationTransactionsExecutor and sequential route"
+    },
+    {
+      "id": "balDisabled",
+      "statement": "runtime premise: BAL manager disabled"
+    },
+    {
+      "id": "nonparallel",
+      "statement": "runtime premise: ParallelExecutionEnabled=false; both retry catches excluded"
+    },
+    {
+      "id": "processBlockNormalReturn",
+      "statement": "adapter premise: supplied normal ProcessBlock result with block and receipts"
+    },
+    {
+      "id": "validatorObservation",
+      "statement": "adapter premise: validator ran iff NoValidation=false; accepted/rejected and proposed GeneratedBAL are observed"
+    },
+    {
+      "id": "rejectionCleanupNormalReturn",
+      "statement": "adapter premise: rejection disposal and diagnostic logging complete before InvalidBlockException"
+    },
+    {
+      "id": "postValidationNormalReturn",
+      "statement": "adapter premise: exact PostValidation returns normally"
+    },
+    {
+      "id": "storeNormalReturn",
+      "statement": "adapter premise: InsertDeferred returns normally when StoreReceipts is selected"
+    },
+    {
+      "id": "noAdditionalEffects",
+      "statement": "adapter premise: no other modeled field/identity mutation and no CommitTree/reset/head effects on normal return"
+    }
+  ],
+  "orderedEvents": [
+    "processBlockReturned",
+    "validatedOrNoValidation",
+    "postValidation.accountChanges",
+    "postValidation.executionRequests",
+    "postValidation.generatedBlockAccessList",
+    "postValidation.encodedBlockAccessListCoalesce",
+    "publishedExecutionArtifacts",
+    "receiptStorage.InsertDeferred",
+    "returnedProcessedBlockAndReceipts"
+  ],
+  "forbiddenEffects": [
+    "WorldState.CommitTree",
+    "WorldState.Reset",
+    "BlockTree head update",
+    "BlockchainProcessor head publication"
+  ],
+  "dependencies": [
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/LeanEmitter.cs",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Specification/SequentialBlockPostTransactionFinalization.lean",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Refinement/SequentialBlockPostTransactionFinalization.lean",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Vectors/SequentialBlockPostTransactionFinalizationVectors.lean",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/EXPORTED_THEOREMS.txt",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Verify-Axioms.ps1",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Verify-MutationGates.ps1",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PROMOTION_PINS.json",
+    "src/Nethermind/Nethermind.Core/Metric/MetricsTimer.cs",
+    "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.SystemContractHandler.cs",
+    "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockAccessListSystemContractHandler.cs",
+    "src/Nethermind/Nethermind.Consensus/Processing/TransactionProcessorAdapterExtensions.cs",
+    "src/Nethermind/Nethermind.Consensus/Processing/IBlockAccessListManager.cs",
+    "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/SOURCE_PINS.json",
+    "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.ir.json",
+    "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.source-manifest.json",
+    "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.lean",
+    "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Specification/SequentialBlockTransactionFold.lean",
+    "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Refinement/SequentialBlockTransactionFold.lean",
+    "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Vectors/SequentialBlockTransactionFoldVectors.lean",
+    "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/EXPORTED_THEOREMS.txt",
+    "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Verify-Axioms.ps1",
+    "tools/Evm/Lean/ReceiptTerminalFoldExtractor/SOURCE_PINS.json",
+    "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json",
+    "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.ir.json",
+    "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.source-manifest.json",
+    "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.lean",
+    "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Specification/ReceiptTerminalFold.lean",
+    "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Refinement/ReceiptTerminalFold.lean",
+    "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Vectors/ReceiptTerminalFoldVectors.lean",
+    "tools/Evm/Lean/ReceiptTerminalFoldExtractor/EXPORTED_THEOREMS.txt",
+    "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Verify-Axioms.ps1",
+    "tools/Evm/Lean/Eip803x/BlockReceiptGas.lean",
+    "tools/Evm/Lean/Eip803x/TransactionGas.lean",
+    "tools/Evm/Lean/Eip803x/Generated/BlockReceiptGasAccountingKernel.lean",
+    "tools/Evm/Lean/Eip803x/Generated/TransactionGasInitializationKernel.lean",
+    "tools/Evm/Lean/Eip803x/Refinement/BlockReceiptGasAccounting.lean",
+    "tools/Evm/Lean/Eip803x/Refinement/TransactionGasInitialization.lean",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Specification/ProcessOneValidatedPublication.lean",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Refinement/ProcessOneValidatedPublication.lean",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Vectors/ProcessOneValidatedPublicationVectors.lean",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PROCESS_ONE_PUBLICATION_SOURCE_PINS.json",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PUBLICATION_PROMOTION_PINS.json",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PUBLICATION_EXPORTED_THEOREMS.txt",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Verify-PublicationAxioms.ps1",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Verify-PublicationMutationGates.ps1",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Schema/process-one-validated-publication.ir.schema.json",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Schema/process-one-validated-publication.source-manifest.schema.json",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/SequentialBlockPostTransactionFinalization.lean",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/SequentialBlockPostTransactionFinalization.ir.json",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/SequentialBlockPostTransactionFinalization.source-manifest.json",
+    "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PublicationKernel.lean.template"
+  ],
+  "mutationChecks": [
+    "move or remove ProcessBlock normal-result binding",
+    "move validation before the ProcessBlock result or after publication",
+    "remove or invert the NoValidation guard",
+    "swap validator arguments or hide the out error local",
+    "admit either BAL/parallel retry catch under the nonparallel premise",
+    "omit finally disposal or dispose on the normal validator path",
+    "replace validator rejection with a normal return or a generic escape",
+    "omit, reorder, or redirect any of the four PostValidation copies",
+    "replace encoded-BAL null-coalescing fallback with overwrite or reverse fallback",
+    "store before publication, duplicate InsertDeferred, or change its guard/arguments",
+    "return suggestedBlock or a different receipts local",
+    "hide or remove the validator-side GeneratedBlockAccessList observation",
+    "add CommitTree, reset, or head effects to the ProcessOne boundary",
+    "change source/FQN/symbol identity, CFG region, dataflow, or source digest",
+    "accept a stale upstream ReceiptTerminal or finalization artifact dependency"
+  ],
+  "openObligations": [
+    "The adapter supplies exact-base BlockProcessor.ProcessOne and exact-base PostValidation dispatch.",
+    "The adapter supplies the standard BlockValidationTransactionsExecutor result as a normal ProcessBlock result.",
+    "The adapter supplies standard sequential, BAL-disabled, and nonparallel premises; BAL retry catches are excluded.",
+    "Validator observation includes normal return, Boolean acceptance, and the proposed GeneratedBlockAccessList post-call value; NoValidation requires before=after.",
+    "The validator\u0027s root/hash/BAL-size diagnostics and all external validator implementations remain outside this suffix.",
+    "Rejection disposal/diagnostics, PostValidation, and IReceiptStorage.InsertDeferred normal return are separate adapter premises.",
+    "InsertDeferred is observed as synchronous visibility only; durable receipt write and canonical publication remain outside.",
+    "No CommitTree, reset, or chain-head effect is admitted; BranchProcessor and BlockchainProcessor remain downstream.",
+    "Opaque identifiers preserve block and receipt-array identity, not mutable receipt contents. External calls have no other modeled effect on normal return.",
+    "Serialized artifact acceptance requires fresh matching ReceiptTerminal and normal-tail artifacts; stale checked outputs are rejected."
+  ]
+}

@@ -35,6 +35,9 @@ public static partial class EvmInstructions
         static abstract bool ClearEmptyAccountWhenTouched { get; }
         static abstract bool IsEip2780Enabled { get; }
         static abstract bool IsEip8038Enabled { get; }
+        static abstract bool TryConsumeDelegatedAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
+            ref readonly StackAccessTracker tracker, bool tracing, Address? delegated)
+            where TGasPolicy : struct, IGasPolicy<TGasPolicy>;
         static abstract bool TryReserveChildGas<TGasPolicy>(ref TGasPolicy gas, in UInt256 requestedGas, IReleaseSpec spec, out ulong childGas)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy>;
     }
@@ -59,6 +62,13 @@ public static partial class EvmInstructions
             ref readonly StackAccessTracker tracker, bool tracing, Address address, AccountAccessKind kind = AccountAccessKind.Default)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
             TGasPolicy.TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in tracker, tracing, address, kind);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool TryConsumeDelegatedAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
+            ref readonly StackAccessTracker tracker, bool tracing, Address? delegated)
+            where TGasPolicy : struct, IGasPolicy<TGasPolicy> =>
+            TGasPolicy.TryConsumeDelegatedAccountAccessGas<Eip2929, Eip8038>(
+                ref gas, spec, in tracker, tracing, delegated);
     }
 
     internal interface ICreateSpec

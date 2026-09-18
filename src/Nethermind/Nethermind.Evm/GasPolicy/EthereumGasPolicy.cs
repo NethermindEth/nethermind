@@ -8,6 +8,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 
 [assembly: InternalsVisibleTo("Nethermind.TxPool")]
@@ -33,6 +34,20 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public long StateGasSpill;
     /// <summary>State gas spill repaid to execution gas and excluded from net spill accounting.</summary>
     public long StateGasSpillRefunded;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ApplyStateGasTransition(ref EthereumGasPolicy gas, in StateGasTransitionResult result)
+    {
+        gas.Value = result.Value;
+        gas.StateReservoir = result.StateReservoir;
+        gas.StateGasUsed = result.StateGasUsed;
+        gas.StateGasSpill = result.StateGasSpill;
+        gas.StateGasSpillRefunded = result.StateGasSpillRefunded;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ApplyStateGasTransition(ref EthereumGasPolicy gas, in StateGasTransitionAdapterOutcome outcome) =>
+        ApplyStateGasTransition(ref gas, in outcome.Transition);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy FromULong(ulong value) => new() { Value = value };
@@ -81,23 +96,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static long GetStateGasSpill(in EthereumGasPolicy gas) => gas.StateGasSpill;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ulong CalculateStateGasSpill(in EthereumGasPolicy gas, long stateGasCost)
-    {
-        if (stateGasCost <= 0)
-        {
-            return 0;
-        }
-
-        long reservoirContribution = gas.StateReservoir;
-        if (reservoirContribution <= 0)
-        {
-            return (ulong)stateGasCost;
-        }
-
-        return stateGasCost > reservoirContribution
-            ? (ulong)(stateGasCost - reservoirContribution)
-            : 0;
-    }
+    public static ulong CalculateStateGasSpill(in EthereumGasPolicy gas, long stateGasCost) =>
+        StateGasChargeKernel.CalculateSpill(gas.StateReservoir, stateGasCost);
 
     /// <summary>Subtracts <paramref name="cost"/> from the execution gas budget with no affordability check.</summary>
     /// <remarks>The caller must have already proven <c>gas.Value &gt;= cost</c>; otherwise the value underflows.</remarks>
@@ -113,22 +113,40 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryConsumePrecompileGas(
+        ref EthereumGasPolicy gas,
+        IPrecompile precompile,
+        ReadOnlyMemory<byte> inputData,
+        IReleaseSpec spec)
+    {
+        ulong baseGasCost = precompile.BaseGasCost(spec);
+        ulong dataGasCost = precompile.DataGasCost(inputData, spec);
+        PrecompileGasPricingResult result = PrecompileGasPricingKernel.TryConsume(
+            gas.Value,
+            baseGasCost,
+            dataGasCost);
+        gas.Value = result.RemainingGas;
+        return result.Outcome is PrecompileGasPricingOutcome.Success;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryConsumeStateGas(ref EthereumGasPolicy gas, long stateGasCost)
     {
-        long reservoir = gas.StateReservoir;
-        if (reservoir >= stateGasCost)
-        {
-            gas.StateReservoir -= stateGasCost;
-            gas.StateGasUsed += stateGasCost;
-            return true;
-        }
+        StateGasChargeResult result = StateGasChargeKernel.TryCharge(
+            gas.Value,
+            gas.StateReservoir,
+            gas.StateGasUsed,
+            gas.StateGasSpill,
+            gas.StateGasSpillRefunded,
+            stateGasCost);
 
-        ulong spillAmount = CalculateStateGasSpill(in gas, stateGasCost);
-        if (!TryConsume(ref gas, spillAmount)) return false;
+        if (result.Outcome is StateGasChargeOutcome.OutOfGas) return false;
 
-        gas.StateReservoir = Math.Min(0, reservoir);
-        gas.StateGasUsed += stateGasCost;
-        gas.StateGasSpill += (long)spillAmount;
+        gas.Value = result.Value;
+        gas.StateReservoir = result.StateReservoir;
+        gas.StateGasUsed = result.StateGasUsed;
+        gas.StateGasSpill = result.StateGasSpill;
+        gas.StateGasSpillRefunded = result.StateGasSpillRefunded;
         return true;
     }
 
@@ -142,26 +160,31 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Refund(ref EthereumGasPolicy gas, in EthereumGasPolicy childGas)
     {
-        gas.Value += childGas.Value;
-        gas.StateReservoir += childGas.StateReservoir;
-        gas.StateGasUsed += childGas.StateGasUsed;
-        gas.StateGasSpill += childGas.StateGasSpill;
-        gas.StateGasSpillRefunded += childGas.StateGasSpillRefunded;
+        StateGasTransitionAdapterOutcome outcome = StateGasTransitionAdapterKernel.Refund(
+            gas.Value,
+            gas.StateReservoir,
+            gas.StateGasUsed,
+            gas.StateGasSpill,
+            gas.StateGasSpillRefunded,
+            childGas.Value,
+            childGas.StateReservoir,
+            childGas.StateGasUsed,
+            childGas.StateGasSpill,
+            childGas.StateGasSpillRefunded);
+        ApplyStateGasTransition(ref gas, in outcome);
     }
 
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RepayStateGasSpill(ref EthereumGasPolicy gas)
     {
-        long repayment = Math.Min(gas.StateReservoir, GetUnrefundedStateGasSpill(in gas));
-        if (repayment <= 0)
-        {
-            return;
-        }
-
-        gas.Value += (ulong)repayment;
-        gas.StateReservoir -= repayment;
-        gas.StateGasSpillRefunded += repayment;
+        StateGasTransitionAdapterOutcome outcome = StateGasTransitionAdapterKernel.RepayStateGasSpill(
+            gas.Value,
+            gas.StateReservoir,
+            gas.StateGasUsed,
+            gas.StateGasSpill,
+            gas.StateGasSpillRefunded);
+        ApplyStateGasTransition(ref gas, in outcome);
     }
 
     // On explicit REVERT, restore the child's remaining state reservoir plus its reverted
@@ -171,9 +194,17 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         // Source-based LIFO rollback: net spill refills gas_left, (used - spill) returns to
         // the reservoir; the rolled-back spill counters are not inherited.
-        long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
-        parentGas.Value += (ulong)childNetSpill;
-        parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
+        StateGasTransitionAdapterOutcome outcome = StateGasTransitionAdapterKernel.RestoreChildStateGas(
+            parentGas.Value,
+            parentGas.StateReservoir,
+            parentGas.StateGasUsed,
+            parentGas.StateGasSpill,
+            parentGas.StateGasSpillRefunded,
+            childGas.StateReservoir,
+            childGas.StateGasUsed,
+            childGas.StateGasSpill,
+            childGas.StateGasSpillRefunded);
+        ApplyStateGasTransition(ref parentGas, in outcome);
     }
 
     // On a child exceptional halt state gas produced no durable growth: restore the child's
@@ -183,8 +214,17 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         // On a halt only the reservoir-funded portion returns to the parent; the spilled
         // portion refills gas_left, which the halt burns as execution gas.
-        long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
-        parentGas.StateReservoir += childGas.StateReservoir + childGas.StateGasUsed - childNetSpill;
+        StateGasTransitionAdapterOutcome outcome = StateGasTransitionAdapterKernel.RestoreChildStateGasOnHalt(
+            parentGas.Value,
+            parentGas.StateReservoir,
+            parentGas.StateGasUsed,
+            parentGas.StateGasSpill,
+            parentGas.StateGasSpillRefunded,
+            childGas.StateReservoir,
+            childGas.StateGasUsed,
+            childGas.StateGasSpill,
+            childGas.StateGasSpillRefunded);
+        ApplyStateGasTransition(ref parentGas, in outcome);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -192,16 +232,17 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         // Code deposit failure halts the child create frame after it merged into the parent;
         // spilled state gas is burned, so only the reservoir-funded portion returns.
-        long childNetSpill = GetUnrefundedStateGasSpill(in childGas);
-        parentGas.StateGasSpill -= childGas.StateGasSpill;
-        parentGas.StateGasSpillRefunded -= childGas.StateGasSpillRefunded;
-        parentGas.StateReservoir += childGas.StateGasUsed - childNetSpill;
-        parentGas.StateGasUsed -= childGas.StateGasUsed;
+        StateGasTransitionAdapterOutcome outcome = StateGasTransitionAdapterKernel.RevertRefundToHalt(
+            parentGas.Value,
+            parentGas.StateReservoir,
+            parentGas.StateGasUsed,
+            parentGas.StateGasSpill,
+            parentGas.StateGasSpillRefunded,
+            childGas.StateGasUsed,
+            childGas.StateGasSpill,
+            childGas.StateGasSpillRefunded);
+        ApplyStateGasTransition(ref parentGas, in outcome);
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static long GetUnrefundedStateGasSpill(in EthereumGasPolicy childGas) =>
-        Math.Max(0, childGas.StateGasSpill - childGas.StateGasSpillRefunded);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryConsumeAccountAccessGasWithDelegation(ref EthereumGasPolicy gas,
@@ -217,6 +258,17 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         bool notOutOfGas = TryConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address);
         return notOutOfGas && (delegated is null || TryConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, delegated));
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryConsumeDelegatedAccountAccessGas<Eip2929, Eip8038>(ref EthereumGasPolicy gas,
+        IReleaseSpec spec,
+        ref readonly StackAccessTracker accessTracker,
+        bool isTracingAccess,
+        Address? delegated)
+        where Eip2929 : struct, IFlag
+        where Eip8038 : struct, IFlag
+        => !Eip2929.IsActive || delegated is null || TryConsumeAccountAccessGas<Eip2929, Eip8038>(
+            ref gas, spec, in accessTracker, isTracingAccess, delegated);
 
     public static bool TryConsumeAccountAccessGas(ref EthereumGasPolicy gas,
         IReleaseSpec spec,
@@ -236,7 +288,8 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         where TColdCost : struct, ISpecGasCost
         where TMode : struct, IStorageMode
     {
-        if (!TMode.UseHotAndColdStorage(spec)) return true;
+        bool hotAndColdEnabled = TMode.UseHotAndColdStorage(spec);
+        if (!hotAndColdEnabled) return true;
         if (isTracingAccess)
         {
             // Ensure that tracing simulates access-list behavior.
@@ -244,12 +297,21 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         }
 
         // WarmUp first so the warm path skips IsPrecompile; precompiles are pre-warmed at tx start.
-        return (accessTracker.WarmUp(address) && !spec.IsPrecompile(address)) switch
-        {
-            true => UpdateGas(ref gas, TColdCost.GasCost(spec)),
-            false when kind == AccountAccessKind.SelfDestructBeneficiary => true,
-            false => UpdateGas(ref gas, GasCostOf.WarmStateRead)
-        };
+        bool isCold = accessTracker.WarmUp(address);
+        bool isPrecompile = isCold && spec.IsPrecompile(address);
+        bool eip8038Enabled = kind == AccountAccessKind.SelfDestructBeneficiary &&
+            (!isCold || isPrecompile) &&
+            TMode.IsEip8038Enabled(spec);
+        AccountAccessPricingResult pricing = AccountAccessPricingKernel.Price(
+            hotAndColdEnabled,
+            eip8038Enabled,
+            isCold,
+            isPrecompile,
+            kind,
+            isCold && !isPrecompile ? TColdCost.GasCost(spec) : 0,
+            TMode.WarmAccountAccessGas(spec));
+        return pricing.Decision == AccountAccessPricingDecision.NoCharge ||
+            UpdateGas(ref gas, pricing.Amount);
     }
 
     private readonly struct ColdAccountGasCost : ISpecGasCost
@@ -302,6 +364,10 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         public static bool UseHotAndColdStorage(IReleaseSpec spec) => Eip2929.IsActive;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsEip8038Enabled(IReleaseSpec spec) => Eip8038.IsActive;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong WarmAccountAccessGas(IReleaseSpec spec) =>
+            Eip8038.IsActive ? Eip8038Constants.WarmAccess : GasCostOf.WarmStateRead;
     }
 
     /// <inheritdoc/>
@@ -341,6 +407,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         static abstract bool IsEip8038Enabled(IReleaseSpec spec);
         static abstract bool UseHotAndColdStorage(IReleaseSpec spec);
+        static abstract ulong WarmAccountAccessGas(IReleaseSpec spec);
     }
 
     private readonly struct DynamicStorageMode : IStorageMode
@@ -350,6 +417,10 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsEip8038Enabled(IReleaseSpec spec) => spec.IsEip8038Enabled;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong WarmAccountAccessGas(IReleaseSpec spec) =>
+            spec.IsEip8038Enabled ? Eip8038Constants.WarmAccess : GasCostOf.WarmStateRead;
     }
 
     private readonly struct StorageMode<Eip8038> : IStorageMode where Eip8038 : struct, IFlag
@@ -359,6 +430,10 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool IsEip8038Enabled(IReleaseSpec spec) => Eip8038.IsActive;
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static ulong WarmAccountAccessGas(IReleaseSpec spec) =>
+            Eip8038.IsActive ? Eip8038Constants.WarmAccess : GasCostOf.WarmStateRead;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -554,20 +629,18 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         // All callers guard amount >= 0; a negative amount would wrap gas.Value via (ulong)toGasLeft below.
         Debug.Assert(amount >= 0, $"Negative state-gas refund ({amount}).");
-        long refundableStateGas = Math.Max(0, gas.StateGasUsed - stateGasFloor);
-        long appliedRefund = Math.Min(amount, refundableStateGas);
-        long toGasLeft = 0;
-        if (trackSpillRefund)
-        {
-            // Source-based LIFO refill: gas_left first (up to the spill), then the reservoir,
-            // so a reverted sub-frame's spill does not inflate it.
-            toGasLeft = Math.Min(appliedRefund, GetUnrefundedStateGasSpill(in gas));
-            gas.StateGasSpillRefunded += toGasLeft;
-        }
-
-        gas.Value += (ulong)toGasLeft;
-        gas.StateReservoir += appliedRefund - toGasLeft;
-        gas.StateGasUsed -= appliedRefund;
+        // Source-based LIFO refill: gas_left first (up to the spill), then the reservoir,
+        // so a reverted sub-frame's spill does not inflate it.
+        StateGasTransitionAdapterOutcome outcome = StateGasTransitionAdapterKernel.RefundStateGas(
+            gas.Value,
+            gas.StateReservoir,
+            gas.StateGasUsed,
+            gas.StateGasSpill,
+            gas.StateGasSpillRefunded,
+            amount,
+            stateGasFloor,
+            trackSpillRefund);
+        ApplyStateGasTransition(ref gas, in outcome);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -575,10 +648,16 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         // No StateGasSpillRefunded marking here: the credit-time LIFO refill already marked,
         // and the marks arrive via the normal child-gas merge.
-        long discardableStateGas = Math.Max(0, gas.StateGasUsed - stateGasFloor);
-        long appliedRefund = Math.Min(amount, discardableStateGas);
-        gas.StateGasUsed -= appliedRefund;
-        return amount - appliedRefund;
+        StateGasTransitionAdapterOutcome outcome = StateGasTransitionAdapterKernel.DiscardStateGas(
+            gas.Value,
+            gas.StateReservoir,
+            gas.StateGasUsed,
+            gas.StateGasSpill,
+            gas.StateGasSpillRefunded,
+            amount,
+            stateGasFloor);
+        ApplyStateGasTransition(ref gas, in outcome);
+        return outcome.Transition.UnappliedAmount;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -586,9 +665,15 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         // Continues the source-based LIFO refill: gas_left up to the unrefunded spill, then
         // the reservoir.
-        long toGasLeft = trackSpillRefund ? TrackStateGasSpillRefund(ref gas, amount) : 0;
-        gas.Value += (ulong)toGasLeft;
-        gas.StateReservoir += amount - toGasLeft;
+        StateGasTransitionAdapterOutcome outcome = StateGasTransitionAdapterKernel.AddStateGasRefundToReservoir(
+            gas.Value,
+            gas.StateReservoir,
+            gas.StateGasUsed,
+            gas.StateGasSpill,
+            gas.StateGasSpillRefunded,
+            amount,
+            trackSpillRefund);
+        ApplyStateGasTransition(ref gas, in outcome);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -596,24 +681,22 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         // Revoke what is still parked in the reservoir (never fabricating spill debt), then what
         // the credit funded from usage; any remainder refilled a net-spill hole, so restore the debt.
-        long fromReservoir = Math.Clamp(gas.StateReservoir, 0, amount);
-        gas.StateReservoir -= fromReservoir;
-        amount -= fromReservoir;
-
-        if (amount > 0)
+        // Preserve Math.Clamp's existing invalid-range exception after the pure boundary
+        // classified it, before any mutation is applied.
+        StateGasTransitionAdapterOutcome outcome = StateGasTransitionAdapterKernel.RemoveStateGasRefundFromReservoir(
+            gas.Value,
+            gas.StateReservoir,
+            gas.StateGasUsed,
+            gas.StateGasSpill,
+            gas.StateGasSpillRefunded,
+            amount);
+        if (outcome.Kind is StateGasTransitionAdapterOutcomeKind.ArgumentException)
         {
-            long fromUsed = Math.Min(amount, gas.StateGasUsed);
-            gas.StateGasUsed -= fromUsed;
-            gas.StateReservoir -= amount - fromUsed;
+            _ = Math.Clamp(gas.StateReservoir, 0, amount);
+            return;
         }
-    }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static long TrackStateGasSpillRefund(ref EthereumGasPolicy gas, long amount)
-    {
-        long tracked = Math.Min(amount, GetUnrefundedStateGasSpill(in gas));
-        gas.StateGasSpillRefunded += tracked;
-        return tracked;
+        ApplyStateGasTransition(ref gas, in outcome);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -685,7 +768,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong CombineBlockGas(ulong blockExecutionGas, ulong blockStateGas) =>
-        Math.Max(blockExecutionGas, blockStateGas);
+        BlockGasAccountingKernel.Combine(blockExecutionGas, blockStateGas);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static EthereumGasPolicy CreateChildFrameGas(ref EthereumGasPolicy parentGas, ulong childExecutionGas)
@@ -768,30 +851,26 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryCreateAvailableFromIntrinsic(ulong gasLimit, in EthereumGasPolicy intrinsicGas, IReleaseSpec spec, out EthereumGasPolicy available)
     {
-        ulong intrinsicTotal = intrinsicGas.Value + (ulong)intrinsicGas.StateReservoir;
-        if (gasLimit < intrinsicTotal)
+        TransactionGasInitializationResult result = TransactionGasInitializationKernel.TryCreate(
+            gasLimit,
+            intrinsicGas.Value,
+            intrinsicGas.StateReservoir,
+            spec.IsEip8037Enabled,
+            Eip7825Constants.DefaultTxGasLimitCap);
+
+        if (result.Outcome is TransactionGasInitializationOutcome.IntrinsicGasExceedsLimit)
         {
             available = default;
             return false;
         }
 
-        ulong evmGas = gasLimit - intrinsicTotal;
-        ulong reservoir = 0;
-
-        if (spec.IsEip8037Enabled)
-        {
-            // EIP-8037: cap gas_left at TX_MAX_GAS_LIMIT - intrinsic_execution, overflow goes to reservoir
-            ulong maxGasLeft = Eip7825Constants.DefaultTxGasLimitCap.SaturatingSub(intrinsicGas.Value);
-            reservoir = evmGas.SaturatingSub(maxGasLeft);
-            evmGas -= reservoir;
-        }
-
         available = new EthereumGasPolicy
         {
-            Value = evmGas,
-            StateReservoir = (long)reservoir,
-            StateGasUsed = intrinsicGas.StateReservoir,
-            StateGasSpill = 0,
+            Value = result.Value,
+            StateReservoir = result.StateReservoir,
+            StateGasUsed = result.StateGasUsed,
+            StateGasSpill = result.StateGasSpill,
+            StateGasSpillRefunded = result.StateGasSpillRefunded,
         };
         return true;
     }

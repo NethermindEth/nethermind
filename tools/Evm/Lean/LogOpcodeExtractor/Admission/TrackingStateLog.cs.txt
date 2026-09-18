@@ -1,0 +1,12 @@
+using Nethermind.Core;
+using Nethermind.Core.Collections;
+
+namespace Nethermind.Evm;
+
+public struct StackAccessTracker
+{
+    private sealed class TrackingState
+    {
+        public JournalCollection<LogEntry> Logs { get; } = [];
+    }
+}

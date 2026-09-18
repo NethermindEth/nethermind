@@ -1,0 +1,11 @@
+name = "OrdinaryStaticAdmissionExtractor"
+version = "0.1.0"
+defaultTargets = ["OrdinaryStaticAdmissionExtractor.Refinement.OrdinaryStaticAdmission"]
+
+[[lean_lib]]
+name = "Eip803x"
+srcDir = ".."
+
+[[lean_lib]]
+name = "OrdinaryStaticAdmissionExtractor"
+srcDir = ".."

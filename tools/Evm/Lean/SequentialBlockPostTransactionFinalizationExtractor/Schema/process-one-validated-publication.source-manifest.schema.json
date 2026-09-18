@@ -1,0 +1,835 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ProcessOne validated-publication source manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "extractorVersion",
+    "kernel",
+    "acceptanceState",
+    "sourceClosureSha256",
+    "sources",
+    "compilerClosure",
+    "synchronousCallables",
+    "controlFlows",
+    "dataFlows",
+    "adapterPremises",
+    "ir",
+    "lean",
+    "dependencies",
+    "mutationChecks",
+    "openObligations"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "$ref": "process-one-validated-publication.ir.schema.json#/properties/schemaVersion"
+    },
+    "extractorVersion": {
+      "$ref": "process-one-validated-publication.ir.schema.json#/properties/extractorVersion"
+    },
+    "kernel": {
+      "$ref": "process-one-validated-publication.ir.schema.json#/properties/kernel"
+    },
+    "acceptanceState": {
+      "$ref": "process-one-validated-publication.ir.schema.json#/properties/acceptanceState"
+    },
+    "sourceClosureSha256": {
+      "$ref": "process-one-validated-publication.ir.schema.json#/properties/sourceClosureSha256"
+    },
+    "sources": {
+      "$ref": "process-one-validated-publication.ir.schema.json#/properties/sources"
+    },
+    "compilerClosure": {
+      "$ref": "process-one-validated-publication.ir.schema.json#/properties/compilerClosure"
+    },
+    "synchronousCallables": {
+      "$ref": "process-one-validated-publication.ir.schema.json#/properties/synchronousCallables"
+    },
+    "controlFlows": {
+      "$ref": "process-one-validated-publication.ir.schema.json#/properties/controlFlows"
+    },
+    "dataFlows": {
+      "$ref": "process-one-validated-publication.ir.schema.json#/properties/dataFlows"
+    },
+    "adapterPremises": {
+      "$ref": "process-one-validated-publication.ir.schema.json#/properties/adapterPremises"
+    },
+    "ir": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "const": "ProcessOneValidatedPublication.ir.json"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "lean": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/ProcessOneValidatedPublication.lean"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "minItems": 52,
+      "maxItems": 52,
+      "prefixItems": [
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/LeanEmitter.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Specification/SequentialBlockPostTransactionFinalization.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Refinement/SequentialBlockPostTransactionFinalization.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Vectors/SequentialBlockPostTransactionFinalizationVectors.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/EXPORTED_THEOREMS.txt"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Verify-Axioms.ps1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Verify-MutationGates.ps1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PROMOTION_PINS.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Core/Metric/MetricsTimer.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.SystemContractHandler.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockAccessListSystemContractHandler.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Processing/TransactionProcessorAdapterExtensions.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Processing/IBlockAccessListManager.cs"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/SOURCE_PINS.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.ir.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.source-manifest.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Specification/SequentialBlockTransactionFold.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Refinement/SequentialBlockTransactionFold.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Vectors/SequentialBlockTransactionFoldVectors.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/EXPORTED_THEOREMS.txt"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Verify-Axioms.ps1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/SOURCE_PINS.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.ir.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.source-manifest.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Specification/ReceiptTerminalFold.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Refinement/ReceiptTerminalFold.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Vectors/ReceiptTerminalFoldVectors.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/EXPORTED_THEOREMS.txt"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Verify-Axioms.ps1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/Eip803x/BlockReceiptGas.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/Eip803x/TransactionGas.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/Eip803x/Generated/BlockReceiptGasAccountingKernel.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/Eip803x/Generated/TransactionGasInitializationKernel.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/Eip803x/Refinement/BlockReceiptGasAccounting.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/Eip803x/Refinement/TransactionGasInitialization.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Specification/ProcessOneValidatedPublication.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Refinement/ProcessOneValidatedPublication.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Vectors/ProcessOneValidatedPublicationVectors.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PROCESS_ONE_PUBLICATION_SOURCE_PINS.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PUBLICATION_PROMOTION_PINS.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PUBLICATION_EXPORTED_THEOREMS.txt"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Verify-PublicationAxioms.ps1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Verify-PublicationMutationGates.ps1"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Schema/process-one-validated-publication.ir.schema.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Schema/process-one-validated-publication.source-manifest.schema.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/SequentialBlockPostTransactionFinalization.lean"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/SequentialBlockPostTransactionFinalization.ir.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/SequentialBlockPostTransactionFinalization.source-manifest.json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "process-one-validated-publication.ir.schema.json#/$defs/dependencyIdentity"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PublicationKernel.lean.template"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "items": false
+    },
+    "mutationChecks": {
+      "$ref": "process-one-validated-publication.ir.schema.json#/properties/mutationChecks"
+    },
+    "openObligations": {
+      "$ref": "process-one-validated-publication.ir.schema.json#/properties/openObligations"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "name": "NormalFiniteBranchCompletion",
+  "status": "accepted-upstream",
+  "upstream": "BranchAcceptedIteration",
+  "upstreamSchemaVersion": 2,
+  "upstreamExtractorVersion": "1.0.0",
+  "artifacts": [
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/BranchAcceptedIteration.ir.json",
+      "sha256": "a4ef55d283e20e63999710c9e3edecc046e1e3d23367c89a34ad463bee21e96d"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/BranchAcceptedIteration.lean",
+      "sha256": "07abf81a2b3885b3e7baadabf2d72f13e4766841ba5725254b16d760a4dc49c9"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/BranchAcceptedIteration.source-manifest.json",
+      "sha256": "3609aac9ae2eee30ec0936173336cd65da0582d8909995e077f9557967930074"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+using Nethermind.Core;
+
+namespace Nethermind.Evm
+{
+    public sealed class ExecutionEnvironment
+    {
+        public Address ExecutingAccount { get; private set; } = null!;
+    }
+}

@@ -1,0 +1,1893 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.1.0-stage-d-single-iteration",
+  "roslynVersion": "5.6.0.0",
+  "languageVersion": "CSharp14",
+  "kernel": "standard-mainnet-amsterdam-evm-frame-control-settlement-single-iteration-stage-d",
+  "sources": [
+    {
+      "role": "build",
+      "path": "src/Nethermind/Directory.Build.props",
+      "sha256": "ad544425af1b0ec60334511abf79896a77843088457ef81b98a06b56d13e4e3c",
+      "syntaxSha256": "ad544425af1b0ec60334511abf79896a77843088457ef81b98a06b56d13e4e3c"
+    },
+    {
+      "role": "build",
+      "path": "src/Nethermind/Directory.Build.targets",
+      "sha256": "0598cebaef1df41102a18a3f9ace810bed1e4e64b8471d055724b4a394dccec6",
+      "syntaxSha256": "0598cebaef1df41102a18a3f9ace810bed1e4e64b8471d055724b4a394dccec6"
+    },
+    {
+      "role": "frame",
+      "path": "src/Nethermind/Nethermind.Evm/IVirtualMachine.cs",
+      "sha256": "330da5f31bd7aca4f4212a42c912c33cf0ac5b3def0689b7f9985cd6510aa56d",
+      "syntaxSha256": "bb0078d05df98f6949e455f3b437d9edf25876ddd4556ff277e6de0f08b2d6d6"
+    },
+    {
+      "role": "frame",
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "sha256": "45edba3691e09185e749485785990662ddea1af849bc6e4564f92b68a5137a6b",
+      "syntaxSha256": "2a9a7729a65e762f7829e3f07682e02812600aa7ef858546f0f8cf607a274156"
+    },
+    {
+      "role": "frame",
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.CallResult.cs",
+      "sha256": "d21bebbb4caea938c42d369083d922f6e18d01eb797b1c534fb1541c242ca073",
+      "syntaxSha256": "7b6f20bd8d614447bceaa4812357149b19094324eeec76e0f4625dd912cfdd4f"
+    },
+    {
+      "role": "dispatch",
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "sha256": "4f36bb20057caec9c85bcd3621372563f4d47ba36a9cbf01be267af4e379bca1",
+      "syntaxSha256": "8ec8a065b8a619ccdbfdfd42a5cd831867324d3e0977552dae73c873df807e96"
+    },
+    {
+      "role": "dispatch",
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.ExecutionHandlers.cs",
+      "sha256": "62714bd459a38cc13e7b7bd2d5cfc7bc2ffdcb50743eeb565fdc2ee2966e286a",
+      "syntaxSha256": "11ec411e9f5c10caf002c9f8f6062689c141318967ab301fba54fe4f008ade51"
+    },
+    {
+      "role": "dispatch",
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+      "sha256": "5148dd594e40ebb976179b1048f233914f54acc8d033d358cf3e2e7594e112b6",
+      "syntaxSha256": "2010c2e82585ccad31196a3314b24006ab2cc33ca5e57695d2f4ba927a821c00"
+    },
+    {
+      "role": "dispatch",
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.std.cs",
+      "sha256": "357fbd35369424a379c8c29338f491627512d40a12199d7a3d9aac44c87ca92a",
+      "syntaxSha256": "7650739157d7ae3ca44e5ba0fc99708a640ec0a9268b80ac76a483b9061febc5"
+    },
+    {
+      "role": "frame-state",
+      "path": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "sha256": "7b7b6ddb753118b426d14976a3fe8e79f808320d6a09ea9cace9df19197f9f23",
+      "syntaxSha256": "c5b9564d22e918aece00d1db6f3f99224c41f71a328a190644693396d87825b1"
+    },
+    {
+      "role": "frame-state",
+      "path": "src/Nethermind/Nethermind.Evm/VmStateStack.cs",
+      "sha256": "dd0591223138a1604e423466eee4489c05aa52f6d0a7d20426dad7aea3664515",
+      "syntaxSha256": "ce89f962fa1813352b7d5dd0d6937a914baffe7255f01b346c7584970226f606"
+    },
+    {
+      "role": "frame-state",
+      "path": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "sha256": "853f8f9b46e5deef1c655442694dfbb1f862de80d0ecdbee2d66e7282f974e84",
+      "syntaxSha256": "1360df1ea49c9272b6cc05e5639bde199b145391069b2fcb2c108e255aa1e3c0"
+    },
+    {
+      "role": "frame-state",
+      "path": "src/Nethermind/Nethermind.Evm/EvmStack.cs",
+      "sha256": "561520be4f0fe1d533ddea9cfea7ff48edb2745b1f3adf1b45c24e6c0bed02ad",
+      "syntaxSha256": "80d3b5c46476b76f6f72d2b6ce1c15c47f456ab836e8e93acb5964ac56a1aadd"
+    },
+    {
+      "role": "frame-state",
+      "path": "src/Nethermind/Nethermind.Evm/EvmStack.std.cs",
+      "sha256": "01a1b26ce105fa69fff94b8df171dcf11b85fe5462318a3ff9da3889ff41577e",
+      "syntaxSha256": "b8b773f35c20f09cc186570e7881aa495a22f42f2bc20d80d93370fb69ff1d2f"
+    },
+    {
+      "role": "frame-state",
+      "path": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs",
+      "sha256": "ed5cdfdfe2ebf4d8c9f651572927efe7bdb5c75107db63a40577c5ec3ec2882f",
+      "syntaxSha256": "3eb7d35f86387466be8447cfd9fd3109731ba3dbf862c86bde70939f5fa39028"
+    },
+    {
+      "role": "frame-state",
+      "path": "src/Nethermind/Nethermind.Evm/EvmException.cs",
+      "sha256": "8c503bfbe0c60c41597e64c96b5d823dc98b934b4511730217eceaaf13837450",
+      "syntaxSha256": "b290c6dac7e8df8243d2ca90df3f85144377811b627f11a193d7439394710c7e"
+    },
+    {
+      "role": "frame-state",
+      "path": "src/Nethermind/Nethermind.Evm/Instruction.cs",
+      "sha256": "6895d06277ac4f9369d7bdc748976576bf384f6f3a5a348a2e4fd3767a46a030",
+      "syntaxSha256": "692b9b12c2f8aaf7a1b08393e0d87215fc26bbd05a5474c5d8e19bcf7a77ef49"
+    },
+    {
+      "role": "frame-state",
+      "path": "src/Nethermind/Nethermind.Evm/StatusCode.cs",
+      "sha256": "e896f55406c9fc1ce99199d80bea69b87fa8891c23afef59712b87cadb971190",
+      "syntaxSha256": "9084cde269e76f0d851c13647e525660b3d0de9ee89f2ccc2579e27c276c8ce3"
+    },
+    {
+      "role": "frame-state",
+      "path": "src/Nethermind/Nethermind.Evm/BlockExecutionContext.cs",
+      "sha256": "cf1fe40026055a51233f9832f7b8ba7ce8ee381405f36074ce8d7b957b169792",
+      "syntaxSha256": "9837e5e93b37cbbb8a425c5aecd7857440ea741f7ee5803f6dfb1b710fd9a138"
+    },
+    {
+      "role": "frame-state",
+      "path": "src/Nethermind/Nethermind.Evm/TxExecutionContext.cs",
+      "sha256": "b1dea501cdf6577967aa3a73ba4ca1b77dc96fedb3d5bbb3c0ca8dd14c65c4b0",
+      "syntaxSha256": "f1393661e6478a22b4d2f2504490294e24382cf96bf1bf0fc3bd1ab8c466ecb8"
+    },
+    {
+      "role": "frame-state",
+      "path": "src/Nethermind/Nethermind.Evm/ExecutionEnvironment.cs",
+      "sha256": "c076225b688b1e04ed83cddc90a2ddbda69862333dc927945eb32d376e43e1db",
+      "syntaxSha256": "a2e55228df98af8df84b0e63524a722cd1a8177d9525a37404427c5fa3b46bfc"
+    },
+    {
+      "role": "frame-state",
+      "path": "src/Nethermind/Nethermind.Evm/ExecutionType.cs",
+      "sha256": "b6689c7c928182f6d115ca57cc8ac45bb9312359a026704f2eec77b921028013",
+      "syntaxSha256": "bdb16c95c849bf80cb7ab21730353bf27803e58547578fdc6b51e965893da968"
+    },
+    {
+      "role": "frame-state",
+      "path": "src/Nethermind/Nethermind.Evm/TransactionSubstate.cs",
+      "sha256": "1312a5f1a9990976670914fcc0a6ad2c77dd92d768d92fd91b28f27fefe66a00",
+      "syntaxSha256": "46b0a4e327cd881b136a569e472b58c44eb66e2a41babf3eea0466bbd702ddae"
+    },
+    {
+      "role": "frame-state",
+      "path": "src/Nethermind/Nethermind.Core/IJournal.cs",
+      "sha256": "065a1fc97bcae6cb3237284af300a907c99bde40960fe84ae01ffb0c86839f91",
+      "syntaxSha256": "163bdf12c819a807f2903a008e747296760cd6bfc70af5ef3df63138e8d20bf6"
+    },
+    {
+      "role": "code-deposit",
+      "path": "src/Nethermind/Nethermind.Evm/CodeDepositHandler.cs",
+      "sha256": "72248ff72f65f545d723bc75e3703ccc05333b165944d95905f310294be3cfc7",
+      "syntaxSha256": "92a18742f56cb78c1c1358e0d16301a7bc87083469dfad352086a77673247c7c"
+    },
+    {
+      "role": "code-deposit",
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmCalculations.cs",
+      "sha256": "1912ef2add71990f29ab0cb7ef1de745b44f76bd201d4ac76c3032d5f60dc244",
+      "syntaxSha256": "6a8488579cf902d8d2d6adb882ed57adba19ca8a2afb1687d55bcc129a660d35"
+    },
+    {
+      "role": "precompile",
+      "path": "src/Nethermind/Nethermind.Evm/IPrecompileProvider.cs",
+      "sha256": "b75187a431b4ae89f48a212cf680025593bd28aa208f41653d9507a11283596b",
+      "syntaxSha256": "4fe82c5776d805f7290e56e90b0c93831d4d53454f19b13567f0c4e5898badb7"
+    },
+    {
+      "role": "precompile",
+      "path": "src/Nethermind/Nethermind.Evm/Precompiles/IPrecompile.cs",
+      "sha256": "601e075c3f89ebdeab2a30e684cdd654cb129fc2bea78ab93097a2915d0f2191",
+      "syntaxSha256": "f97aba3bdc3aed193b01bb3521e5fa498e5d1c743892d31f05dbce797b33bdaa"
+    },
+    {
+      "role": "world-adapter",
+      "path": "src/Nethermind/Nethermind.Evm/State/IWorldState.cs",
+      "sha256": "0680ebc7168472645d93df58d2b3240508c177361815c85cceb09cf960f189c7",
+      "syntaxSha256": "6c4f3ef6f6ec6bf71441813ae4c81e01a96310f1dac77032055e7217321e18cc"
+    },
+    {
+      "role": "world-adapter",
+      "path": "src/Nethermind/Nethermind.Evm/State/Snapshot.cs",
+      "sha256": "47625d60a8315bbc3afd26eca85780b0ab894d7401d913cbec00ed89b51f46c8",
+      "syntaxSha256": "16483551b0c824d0820d3620057d229a87cc4c7e5078502cd451341f2b485d94"
+    },
+    {
+      "role": "world-adapter",
+      "path": "src/Nethermind/Nethermind.Evm/State/WorldStateExtensions.cs",
+      "sha256": "4c0a66d1de95b4340bc9a190f6bef29b6e4068ebffa19ebe9cce3f789131fc62",
+      "syntaxSha256": "3c182eb938e20a1cb73a3ce197e08fd73317f288fdf9219cd6fc00ee9bfae6a5"
+    },
+    {
+      "role": "world-adapter",
+      "path": "src/Nethermind/Nethermind.Evm/State/PrecompileCaches.cs",
+      "sha256": "6a30dc79f7930ec1297ab9dbd81ed22b3f5ae7bc5cb9877ca342979226233524",
+      "syntaxSha256": "46e8f71b064b77afe890c289a7b1096a04fccb4c813e340423d05bd762897154"
+    },
+    {
+      "role": "bytecode",
+      "path": "src/Nethermind/Nethermind.Evm/CodeAnalysis/CodeInfo.cs",
+      "sha256": "41e5e0316853f5970b5f868a6a47e24105dcb6eeb9be9608378482d74bcbd254",
+      "syntaxSha256": "cfe66b50a7761e6319a04a7e7415eda1ed2ce83f1956d57ace9ec0ad15994165"
+    },
+    {
+      "role": "bytecode",
+      "path": "src/Nethermind/Nethermind.Evm/CodeAnalysis/CodeInfoFactory.cs",
+      "sha256": "ef71341adb0d8d5691392359e7e2b0a1c1b483edf8963f205877a89b39ab7c7c",
+      "syntaxSha256": "1fee811af8ee6553ccc6b8769ab9aa8959dcdfcea6b83fc8b4ed1b4b782c2c36"
+    },
+    {
+      "role": "bytecode",
+      "path": "src/Nethermind/Nethermind.Evm/ICodeInfoRepository.cs",
+      "sha256": "e0669f612f31fe4a353a60896f40325e493e1ff925a92614ad73f49bf1435015",
+      "syntaxSha256": "f3cdf83d12b303c455089fe9902b4a7a85d5c872aa0e572bbe1985eacb066e3e"
+    },
+    {
+      "role": "bytecode",
+      "path": "src/Nethermind/Nethermind.Evm/CodeInfoRepository.cs",
+      "sha256": "76734fad45dd415deaf016b1b9ce6670580042e09f5493253b06c7a9c9f622b7",
+      "syntaxSha256": "414d9cd3160cefdf55c34630ac39e7957338c5df3e5d94da7aba52e5c15b45dc"
+    },
+    {
+      "role": "bytecode",
+      "path": "src/Nethermind/Nethermind.Evm/CacheCodeInfoRepository.cs",
+      "sha256": "498e32be24e098f1540273f9780e548b52fbbbbc8cb55fbf7b8335eb7743d0f3",
+      "syntaxSha256": "4bceddd9a7a2d9c20bb2f29f763162e951f9a10130c1876fc69a98e646a6aeb7"
+    },
+    {
+      "role": "child-preparation",
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Call.cs",
+      "sha256": "cfc87832eb304f8f8dccfb27b6b89605f6c74e88522f02b13c775834d14948a5",
+      "syntaxSha256": "a1ea940bc7888479676b6993d52b53b675d669595d6d8eddcf00b514b167ea8c"
+    },
+    {
+      "role": "child-preparation",
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Call.std.cs",
+      "sha256": "42954af1ac17ea3a973d9ca57a01432637bd92ebc98857838ddafa8e7aef93d6",
+      "syntaxSha256": "9dea65b867b88bc259255036c30049b409462c374f81fe867c7b195fb83956c3"
+    },
+    {
+      "role": "child-preparation",
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Create.cs",
+      "sha256": "23927529d13488932ec47b57972ab7084566a28deae83805d69a1fe977576719",
+      "syntaxSha256": "d49cd362c106ab74eb4ac469cf964aa33a3e261804107adc9c38595e6f77344b"
+    },
+    {
+      "role": "child-preparation",
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.ControlFlow.cs",
+      "sha256": "282ba75f60c1ddd03fd51460b0e3273c0113430d02faee3abff991fe5f920c6c",
+      "syntaxSha256": "fa7c8b2b7f5136bd164249ca18373e0c5858c3e79ee38ae23eff3472c87d866b"
+    },
+    {
+      "role": "gas-settlement",
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/IGasCost.cs",
+      "sha256": "16289cdc2f777a76fda3ad8ff4ce4275c30513aee04c9cf42d314cc6e1ec48c0",
+      "syntaxSha256": "e66efb8d09f9be2da644255acb66ec22303e5482cc164a5cb0a3f93e36b501c4"
+    },
+    {
+      "role": "gas-settlement",
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/IGasPolicy.cs",
+      "sha256": "b4d26db87723243514f2f6b8a5e48d1176139105c3b012ad0f3956e59afc98a8",
+      "syntaxSha256": "d3647a6653984671406ac7775da971d2428f6e37d6f58cb1c00b865c470eeafe"
+    },
+    {
+      "role": "gas-settlement",
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "sha256": "3c31ba40c24a78bf11243b38859168350f02934806124e913da0560bc1a4350f",
+      "syntaxSha256": "5847c4ffe199ad63ccf43ddd18ceff5d9aae1c2163fe332a0830cd59ef7261dd"
+    },
+    {
+      "role": "gas-settlement",
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/PrecompileGasPricingKernel.cs",
+      "sha256": "dd23b8bd461a13c75ec203b1dbe853a885f61640edf4d47287c1dadd0d9ff576",
+      "syntaxSha256": "71da01652bde3e741e9495c0b553e694fd78419f5c90793198d179328c21450c"
+    },
+    {
+      "role": "gas-settlement",
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasChargeKernel.cs",
+      "sha256": "ec3276958cbc6b0255fadedf15dbe49691195aa95570b332937f8d1703b103fd",
+      "syntaxSha256": "b0565fc06c981f06b2ccc5d69cbf56857a4e198a01ec3f3fcedb2bf7d7f3537e"
+    },
+    {
+      "role": "gas-settlement",
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasTransitionKernel.cs",
+      "sha256": "4a31dc76fb8284a8ea5994de9a63810abe0fd7efbe6add4aa8b3d6cb564a75cc",
+      "syntaxSha256": "86a4baf1c27c22ad089e815163ce5610df8036a59ef46979c8f4be242bd0dc31"
+    },
+    {
+      "role": "gas-settlement",
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasTransitionAdapterKernel.cs",
+      "sha256": "ca16429e4cb1b728619b7fa0113b2302ca75600b0a32d9345e38721c7c2d7368",
+      "syntaxSha256": "52785420a6e3bbfbdb1f3eb0cceb01da544808cf099f4a5373e2afb46846188c"
+    },
+    {
+      "role": "tracing",
+      "path": "src/Nethermind/Nethermind.Evm/Tracing/ITxTracer.cs",
+      "sha256": "9f2550f8c3407f494452386699040feab8aa597437b1cd4180d038d9fd0a9169",
+      "syntaxSha256": "0c5c5fe95268f2c0402946c46ab15228e91d7ccd2abddc763927f9086f794dd3"
+    },
+    {
+      "role": "tracing",
+      "path": "src/Nethermind/Nethermind.Evm/Tracing/CancellationTxTracer.cs",
+      "sha256": "ccda2ccda79e804bf778c57498a24887b358e4c69f623ec2b3a6ca4d82ecd359",
+      "syntaxSha256": "b6db4c6ab3e7068558e8a4d6fa47862c01128d157dce34a50b3f3d572a8ac9ec"
+    },
+    {
+      "role": "tracing",
+      "path": "src/Nethermind/Nethermind.Evm/Tracing/TracerExtensions.cs",
+      "sha256": "4704eb408436ecb82614bbf1db26f11fcfcfa65ef613146e37a31f7e30a8d662",
+      "syntaxSha256": "0c2de10cf38272e98b26cb5d801d3b9cb3c6b4d68bb4410c580d525b25281688"
+    },
+    {
+      "role": "tracing",
+      "path": "src/Nethermind/Nethermind.Evm/Tracing/TraceStack.cs",
+      "sha256": "a2e06210112f3a47bca6f95e4b3a89433c78f4d39b5ec4cbafe485f21191acb8",
+      "syntaxSha256": "353920c1b7cbf718fb762f5b74ed17d1d4d2e99118fb7c984880c518bc768cf4"
+    },
+    {
+      "role": "tracing",
+      "path": "src/Nethermind/Nethermind.Evm/Tracing/TraceMemory.cs",
+      "sha256": "0e8bda869acd599a94a8cd6a9a79a7ff457c4acf1534a0c7f4ebd39939b8fca6",
+      "syntaxSha256": "ff83f7742a0fbde779e59ef1d94e943605de29968355c1f1674ed43c6445739c"
+    },
+    {
+      "role": "processing",
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+      "sha256": "0374c6f35a9a23361f37b41162ac281ca83b09846ab4295d5a592db6315c99cc",
+      "syntaxSha256": "3e44e3322701bdd8515654c8df85f2e09b374e11c2eed988b789252bf1fa8cbe"
+    },
+    {
+      "role": "processing",
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionProcessor.cs",
+      "sha256": "10c7370e5f6d5ca25e4cd0801967083f97f432e211314dc40126a18fbea48a95",
+      "syntaxSha256": "908c0fff58d1fc60daa3b2c21183669b54babcd8beeaf3e4c9fe942b8f8a8d3d"
+    },
+    {
+      "role": "di",
+      "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+      "sha256": "fce65ce5bb523c56fc8aa6ee0e4d092c940a5a90b174c820ffe262eeb5241c60",
+      "syntaxSha256": "87abd82d0c6a39ed2ee458463ef8946438fbaf90650211af6f1dd43219dcd2e8"
+    },
+    {
+      "role": "di",
+      "path": "src/Nethermind/Nethermind.Blockchain/EthereumPrecompileProvider.cs",
+      "sha256": "2c2e523e32c5f9c2936a0d07af36a1194fc6001d5eddfb52b7ef31b6dfa883ad",
+      "syntaxSha256": "1abc11eafeebb401b862ee5058d395af2c0b0ed390a57680b283cab2ea2c9583"
+    },
+    {
+      "role": "di",
+      "path": "src/Nethermind/Nethermind.Blockchain/PrecompileCachedCodeInfoRepository.cs",
+      "sha256": "d0573ff5f6680db3f1e718d1a1c1692bcde2f5cbb66fab63a38b12cfe88050a8",
+      "syntaxSha256": "75ee5de190af1b014d59bbd0bf0093d2083a9ff14259bb639602356b0dff476b"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/ReleaseSpec.cs",
+      "sha256": "7a34da425c0ed0a7ba6776fd43262235170211f93e9563013ddc47e31651b7dc",
+      "syntaxSha256": "5d9d3a39f45caa0ffbfe40147f79474a1d29bbd7fe837ba37ca8feb7480bd822"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/MainnetSpecProvider.cs",
+      "sha256": "ef89706a6ec327c5975a1ccb0e23930e774ef82a24b43a45053f7b021ddcb3b8",
+      "syntaxSha256": "3215dbbb292d916b2dafad73bda5eab1dcd8cfd71eaec24bdface6fa0257140e"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/ForkScheduleSpecProvider.cs",
+      "sha256": "8d5675e4efefa51da3a786b4c4f36df2d0e4cd45be76d0e85af5380e14bb633e",
+      "syntaxSha256": "efe5856235339136f856d55073b80f6ec2b7e755185b58e9bcf0635a852d88e6"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/Fork.cs",
+      "sha256": "78f8bbd6632b56ddae017df6007f33c634a7bc4427b1847a0564a9bf59d1949b",
+      "syntaxSha256": "d1d301c675159d447dc40d224b960711991b9beda146fc44ef7b5efb7903d967"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/NamedReleaseSpec.cs",
+      "sha256": "ea9400ed44270fb18766a5dbd20d4dd7e7ee95b1bb7ab7ee6d5406cca03a46cc",
+      "syntaxSha256": "34353fa0797478867ec6a9db1fc7bdef0f2d5d848806fb25b830f701913204ce"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/00_Olympic.cs",
+      "sha256": "8874f5ed3ae7bf5a0e0d1d127babd258393abcc3093b98abc296a1a347d61246",
+      "syntaxSha256": "f1c41143577e3d0bed957f893441507d02fe0696591277ee368e5bb5a080d6f7"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/01_Frontier.cs",
+      "sha256": "28318120065dc43c084c998b4cdef83669fa7b036ebe850802f0f9ff860df075",
+      "syntaxSha256": "ba3b723219b016684b6ff75b02bd7efca8cd33c73bbac1c84fd645e9af22066c"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/02_Homestead.cs",
+      "sha256": "52dae1ff91fcc53fc95e4dc9adab9ce9686411620b88135a408728d56d6b0ad2",
+      "syntaxSha256": "684cc1034d38fc7b56e4a04194b322c0bb07a30092307b24bf6ab96f468ff479"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/03_Dao.cs",
+      "sha256": "9354856fe91fde3d1394828e94bb700b6c765b9d42425221b6e1554898c34455",
+      "syntaxSha256": "96251d659d7d50fd2b0e877c1be136b8fbbc1a688a50c8e3af630b00aa2b143c"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/04_TangerineWhistle.cs",
+      "sha256": "82a6ea651cb884be41e1105d73cf726e1f095195322bf3293f663658da40939f",
+      "syntaxSha256": "a2525c07db1a2da3920eba94621cc303ab5dc68e8fd724439641cdcfe199a84c"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/05_SpuriousDragon.cs",
+      "sha256": "7fb950f37739ad6435c4dc5bcd3bf9b9566d3a6137479675276cea5a07196af5",
+      "syntaxSha256": "3731aa6e3e59e59c42bc0fb9baceeff738b453a8ecdfc5483ba0d08a838a41cb"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/06_Byzantium.cs",
+      "sha256": "c47fcc9740483de8081c4591aa6b2994271602dacc0a0fb590e63e39f0288e73",
+      "syntaxSha256": "3213fba3cc145ea9a34050e60b8b40bd7be68b60b875e24a90091b70d305e11e"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/07_Constantinople.cs",
+      "sha256": "a0ee60c7fb44400a18e1b5d6cc3fe324de557023c34f5c7427ecaf72da17cfbe",
+      "syntaxSha256": "175c0f5f4009876ea740d4028c175a93f2d41f69c55ae5f5fc66c4070ee7eb7f"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/08_ConstantinopleFix.cs",
+      "sha256": "1a0336f8a06e64f40cdfbba3ecac79158ddf9f38d9694df346916c819819a6a5",
+      "syntaxSha256": "1aa2df1b5666e16f2567481a5c6d75bdda52ef2021f23c26504c82b7cecdcf63"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/09_Istanbul.cs",
+      "sha256": "911764bbfd46d09c055d8a5a0a699c62b65ac96a528f76c294044a4c84b84714",
+      "syntaxSha256": "d6adde27e27dd39f2479269afb7764f8f680a06349c2542ddfa0e55e70bb0ea7"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/10_MuirGlacier.cs",
+      "sha256": "76508e7a64c3bf94a8da0145fedb4f277c1d06e75454a53d1c2d036fc9e9f5e8",
+      "syntaxSha256": "2387043e6e2032b8ff11b2ef6ffd256ba28b97b55dd0cb9254112bb87feb8575"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/11_Berlin.cs",
+      "sha256": "b02b45deb5dedddc9df19283c7491ffc3ab10ab0aaae313e44cdafca9ee547b0",
+      "syntaxSha256": "733fa261d9650ce23b4ac996688c1595a47ac99d3ecedd9132e84ebc2ab59f29"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/12_London.cs",
+      "sha256": "06ea8bd017ccff59759026a801138bd794919e8493d49f8ef05385276662f8ef",
+      "syntaxSha256": "60fdd7631cced6172783578601a7e0f37af964a2881a69568cc1149e76f0c0a0"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/13_ArrowGlacier.cs",
+      "sha256": "267c4b5529156e692ac1d1827f189b988f07d398bda986befef9561234c94491",
+      "syntaxSha256": "7dee5b782919a100314f0b90aa6fe2af2b0a54e03e4e6cb41b475a1232f6dd97"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/14_GrayGlacier.cs",
+      "sha256": "a3904920bc25153c271057fe3b990b183c9cf93bba3a393c1f7561c750907a2e",
+      "syntaxSha256": "b98fd31e832a9805b0b187a3312b4536f8174a2ae7c6506c893e66bdc0d79934"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/15_Paris.cs",
+      "sha256": "90c0f08765e2b50a8fadc2fdfcbe43965b9352e0a17ac692676403eb95972abd",
+      "syntaxSha256": "ae80849c1e19d3099c041c8066591434518107424617853561ffda22615a9fb9"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/16_Shanghai.cs",
+      "sha256": "dcbfdacf3b6c7a8db0e8d5abc1ad3c388d407ae989395d52f1725721a5cc767e",
+      "syntaxSha256": "4ac1f13d8b747e893c539f6e929d882b87cf53c0476d8e102ba9630ec44d59d1"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/17_Cancun.cs",
+      "sha256": "29b93ca43e919352495a0406242d7b49ce9423117aeec2e1bb94427fff20aa79",
+      "syntaxSha256": "5068798439a31c6088eda37e0edb64ec7dc2e82aec8555a4d2286b5e86f13f32"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/18_Prague.cs",
+      "sha256": "949248f5f22162433e7f4e17a7e5a35b4cf54416836738831edd3b1c0e5a6b8c",
+      "syntaxSha256": "cd37487a73c5f67e0899ceab604e891278e2c2760bf3bcc99030dad6420ad50d"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/19_Osaka.cs",
+      "sha256": "24da07f0c85e3c5822c10f010c4b35a5ca21046ac6b21f5bb26397de2ef5cf77",
+      "syntaxSha256": "6c8d6653829d15b20957d8546c5541423c68c3de1a67001e8373ec262fa5444c"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/20_BPO1.cs",
+      "sha256": "6fc6d2c0fc7159882c03ad44006da8aad1354d68d2d1fe750ef8a551b43bbad8",
+      "syntaxSha256": "de4deec92a4ef776d140bd1c8e09ebe8627b2296aa6daba6dca0e9a001ece602"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/21_BPO2.cs",
+      "sha256": "4788ce812f73163686b2b419970d70bdae4de73523fe6ad426a618dd1f1d40d9",
+      "syntaxSha256": "bbd54f79c21c4be803a1fb55c12030f740ab5de02f653800d5bd5e96bafcee2c"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/22_BPO3.cs",
+      "sha256": "f20c9b9f96bb2ba9738db1a3f8ef6e9114653ffeeb197069c99ea4c61a350282",
+      "syntaxSha256": "ff6ac184d0e824ace2f4432c412613c149100be0e652556e56d754ed960450ab"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/23_BPO4.cs",
+      "sha256": "fcf95565b727e511cd01f28f1da821fa91891af18140cde7b05ad29f55957230",
+      "syntaxSha256": "763d0bf072df83edb1c6f3d717265fc0788dcdf46e2432b01747f25f1112505d"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/24_BPO5.cs",
+      "sha256": "48613a836eba4a420ad30c83cc0436742653cab4575d1b10f51f5131bda991fb",
+      "syntaxSha256": "1a9755dd89af4f25e61b96cd77637ae4ddd2efd0eae8374915e2313ab3d739cd"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/25_Amsterdam.cs",
+      "sha256": "4dfbf9079e9dce30423327ae4433f32e49388d403a8fedfcf253f94f79450c6a",
+      "syntaxSha256": "dde2e8c1b5a532216b70d03f828a9a718ca0e77c3ce85700317a2ac0c98e6c22"
+    },
+    {
+      "role": "fork",
+      "path": "src/Nethermind/Nethermind.Specs/Forks/26_Bogota.cs",
+      "sha256": "6021ef70ed33e854facbb67a2a6e13b85caeb868ba9a7abe89b213a42428bf65",
+      "syntaxSha256": "3533e6f8c8d25dc466e8f936fbe2f462d78204e8030dac70694cce8fb6ea4a1a"
+    }
+  ],
+  "members": [
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "EthereumVirtualMachine",
+      "member": "EthereumVirtualMachine",
+      "syntaxKind": "ClassDeclaration",
+      "signature": "(IBlockhashProvider? blockHashProvider, ISpecProvider? specProvider, ILogManager? logManager)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachineStatics",
+      "member": "ThrowOperationCanceledException",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[DoesNotReturn]\r\ninternal static void ThrowOperationCanceledException();"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "ExecuteTransaction",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Executes a transaction by iteratively processing call frames until a top-level call returns\n/// or a failure condition is reached. This method handles both precompiled contracts and regular\n/// EVM calls, along with proper state management, tracing, and error handling.\n/// \u003C/summary\u003E\n/// \u003Ctypeparam name = \u0022TTracingInst\u0022\u003E\n/// The type of tracing instructions flag used to conditionally trace execution actions.\n/// \u003C/typeparam\u003E\n/// \u003Cparam name = \u0022vmState\u0022\u003EThe initial EVM state to begin transaction execution.\u003C/param\u003E\n/// \u003Cparam name = \u0022worldState\u0022\u003EThe current world state that may be modified during execution.\u003C/param\u003E\n/// \u003Cparam name = \u0022txTracer\u0022\u003EAn object used to record execution details and trace transaction actions.\u003C/param\u003E\n/// \u003Creturns\u003E\n/// A \u003Csee cref = \u0022TransactionSubstate\u0022/\u003E representing the final state of the transaction execution.\n/// \u003C/returns\u003E\n/// \u003Cexception cref = \u0022EvmException\u0022\u003E\n/// Thrown when an EVM-specific error occurs during execution.\n/// \u003C/exception\u003E\npublic virtual TransactionSubstate ExecuteTransaction\u003CTTracingInst\u003E(VmState\u003CTGasPolicy\u003E vmState, IWorldState worldState, ITxTracer txTracer)\r\n    where TTracingInst : struct, IFlag"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "ExecuteTransaction",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "public TransactionSubstate ExecuteTransaction(VmState\u003CTGasPolicy\u003E vmState, IWorldState worldState, ITxTracer txTracer);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "_stateStack",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "protected readonly VmStateStack\u003CTGasPolicy\u003E _stateStack = new(MaxCallDepth \u002B 1);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "_worldState",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "// These execution-scoped fields are initialized before opcode dispatch; current state is cleared between executions.\r\nprotected IWorldState _worldState = null!;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "_txTracer",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "protected ITxTracer _txTracer = NullTxTracer.Instance;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "_currentState",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "protected VmState\u003CTGasPolicy\u003E _currentState = null!;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "_previousCallResult",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "protected (Address? CreatedAddress, bool? Success) _previousCallResult;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "_previousCallOutputDestination",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "protected UInt256 _previousCallOutputDestination;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "ReturnDataBuffer",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "public ref ReadOnlyMemory\u003Cbyte\u003E ReturnDataBuffer =\u003E ref _returnDataBuffer;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "VmState",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "public VmState\u003CTGasPolicy\u003E VmState { get =\u003E _currentState; protected set =\u003E _currentState = value; }"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "StateStack",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "protected VmStateStack\u003CTGasPolicy\u003E StateStack =\u003E _stateStack;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "OpCodeCount",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "public int OpCodeCount { get; set; }"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "DisposeActiveFrames",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "private void DisposeActiveFrames(VmState\u003CTGasPolicy\u003E topLevel)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "PrepareCreateData",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "protected void PrepareCreateData(VmState\u003CTGasPolicy\u003E previousState, ref nuint previousCallOutputLength)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "HandleRegularReturn",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "protected nuint HandleRegularReturn\u003CTTracingInst\u003E(scoped in CallResult callResult, VmState\u003CTGasPolicy\u003E previousState)\r\n    where TTracingInst : struct, IFlag"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "HandleCreate",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Handles the code deposit for a contract creation operation.\n/// This method calculates code deposit gas,\n/// validates the code, and either deposits the code or reverts the world state if the deposit fails.\n/// \u003C/summary\u003E\n/// \u003Cparam name = \u0022callResult\u0022\u003E\n/// The result of the contract creation call, which includes the output code intended for deposit.\n/// \u003C/param\u003E\n/// \u003Cparam name = \u0022previousState\u0022\u003E\n/// The EVM state prior to the current call frame. It provides access to the snapshot, the executing account,\n/// and flags indicating if the account pre-existed.\n/// \u003C/param\u003E\n/// \u003Cparam name = \u0022gasAvailableForCodeDeposit\u0022\u003E\n/// The amount of gas available for covering the cost of code deposit.\n/// \u003C/param\u003E\n/// \u003Cparam name = \u0022previousStateSucceeded\u0022\u003E\n/// A reference flag indicating whether the previous call frame executed successfully. This flag is set to false if the deposit fails.\n/// \u003C/param\u003E\nprotected void HandleCreate(in CallResult callResult, VmState\u003CTGasPolicy\u003E previousState, ulong gasAvailableForCodeDeposit, ref bool previousStateSucceeded)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "HandleRevert",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Reverts the state changes made during the execution of a call frame.\n/// This method restores the world state to a previous snapshot, sets appropriate\n/// failure indicators and output data, and reports the revert action via the tracer.\n/// \u003C/summary\u003E\n/// \u003Cparam name = \u0022previousState\u0022\u003E\n/// The EVM state prior to the current call, which contains the snapshot for restoration,\n/// output length, output destination, and execution type.\n/// \u003C/param\u003E\n/// \u003Cparam name = \u0022callResult\u0022\u003E\n/// The result of the call that triggered the revert, containing output data and flags\n/// indicating precompile success.\n/// \u003C/param\u003E\n/// \u003Cparam name = \u0022previousCallOutputLength\u0022\u003E\n/// The bounded number of reverted output bytes to copy into parent memory.\n/// \u003C/param\u003E\nprotected void HandleRevert(VmState\u003CTGasPolicy\u003E previousState, in CallResult callResult, ref nuint previousCallOutputLength)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "PrepareTopLevelSubstate",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "protected TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "TraceTransactionActionStart",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(MethodImplOptions.NoInlining)]\r\nprotected void TraceTransactionActionStart(VmState\u003CTGasPolicy\u003E currentState)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "TraceTransactionActionEnd",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Reports the final outcome of a transaction action to the transaction tracer, taking into account\n/// various conditions such as exceptions, reverts, and contract creation flows. For contract creation,\n/// the method adjusts the available gas by the code deposit cost and validates the deployed code.\n/// \u003C/summary\u003E\n/// \u003Cparam name = \u0022currentState\u0022\u003E\n/// The current EVM state, which contains the available gas, execution type, and target address.\n/// \u003C/param\u003E\n/// \u003Cparam name = \u0022spec\u0022\u003E\n/// The release specification that provides rules and parameters such as code deposit cost and code validation.\n/// \u003C/param\u003E\n/// \u003Cparam name = \u0022callResult\u0022\u003E\n/// The result of the executed call, including output bytes, exception and revert flags, and additional metadata.\n/// \u003C/param\u003E\n[MethodImpl(MethodImplOptions.NoInlining)]\r\nprotected void TraceTransactionActionEnd(VmState\u003CTGasPolicy\u003E currentState, in CallResult callResult)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "CanExecutePrecompileCallDirectly",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Whether a STATICCALL into the precompile at \u003Cparamref name = \u0022codeSource\u0022/\u003E may be executed inline\n/// instead of building a full child call frame.\n/// \u003C/summary\u003E\n/// \u003Cremarks\u003E\n/// The Parity touch-bug account (RIPEMD-160) is excluded because \u003Csee cref = \u0022RunPrecompile\u0022/\u003E records its\n/// EIP-161 empty-account deletion, which the inline path does not replay.\n/// \u003C/remarks\u003E\nprotected internal virtual bool CanExecutePrecompileCallDirectly(IPrecompile precompile, Address codeSource);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "TryRunPrecompileDirectly",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Runs a precompile outside of a call frame for the inline STATICCALL fast path, applying the same\n/// exception handling as \u003Csee cref = \u0022ExecutePrecompileCall\u0022/\u003E.\n/// \u003C/summary\u003E\n/// \u003Creturns\u003E\u003Cc\u003Efalse\u003C/c\u003E when the precompile threw a non-fatal exception; otherwise \u003Cc\u003Etrue\u003C/c\u003E with its result in \u003Cparamref name = \u0022output\u0022/\u003E.\u003C/returns\u003E\ninternal bool TryRunPrecompileDirectly(IPrecompile precompile, ReadOnlyMemory\u003Cbyte\u003E callData, IReleaseSpec spec, out Result\u003Cbyte[]\u003E output)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "ExecutePrecompileCall",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Executes a precompile\u0027s \u003Csee cref = \u0022IPrecompile.Run\u0022/\u003E method after base and data gas have been deducted.\n/// Subclasses may override this to support precompile variants that compute and report their own dynamic\n/// gas consumption after execution.\n/// \u003C/summary\u003E\nprotected virtual CallResult ExecutePrecompileCall(VmState\u003CTGasPolicy\u003E state, IPrecompile precompile, ReadOnlyMemory\u003Cbyte\u003E callData, IReleaseSpec spec)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "FrameCleanupScope",
+      "member": "FrameCleanupScope",
+      "syntaxKind": "StructDeclaration",
+      "signature": "(VirtualMachine\u003CTGasPolicy\u003E vm, VmState\u003CTGasPolicy\u003E topLevel)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "FrameCleanupScope",
+      "member": "Dispose",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "public void Dispose()"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "PrepareNextCallFrame",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Prepares the execution environment for the next call frame by updating the current state\n/// and resetting relevant output fields.\n/// \u003C/summary\u003E\n/// \u003Cparam name = \u0022callResult\u0022\u003E\n/// The result object from the current call, which contains the state to be executed next.\n/// \u003C/param\u003E\n/// \u003Cparam name = \u0022previousCallOutputLength\u0022\u003E\n/// The pending memory-copy length, cleared before entering the new frame.\n/// \u003C/param\u003E\nprotected void PrepareNextCallFrame(in CallResult callResult, ref nuint previousCallOutputLength)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "HandleException",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Handles exceptions that occur during the execution of a call frame by restoring the world state,\n/// reverting known side effects, and either finalizing the transaction (for top-level calls) or\n/// preparing to resume execution in a parent call frame (for nested calls).\n/// \u003C/summary\u003E\n/// \u003Cparam name = \u0022callResult\u0022\u003E\n/// The result object that contains the exception type and any output data from the failed call.\n/// \u003C/param\u003E\n/// \u003Cparam name = \u0022previousCallOutputLength\u0022\u003E\n/// The pending output copy length, reset on exception.\n/// \u003C/param\u003E\n/// \u003Creturns\u003E\n/// A \u003Csee cref = \u0022TransactionSubstate\u0022/\u003E instance if the failure occurred in a top-level call,\n/// otherwise \u003Cc\u003Enull\u003C/c\u003E to indicate that execution should continue in the parent frame.\n/// \u003C/returns\u003E\nprotected TransactionSubstate HandleException(scoped in CallResult callResult, scoped ref nuint previousCallOutputLength, out bool shouldExit)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "HandleFailure",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Handles a failure during transaction execution by restoring the world state,\n/// reporting error details via the tracer, and either finalizing the top-level transaction\n/// or preparing to revert to the parent call frame.\n/// \u003C/summary\u003E\n/// \u003Ctypeparam name = \u0022TTracingInst\u0022\u003E\n/// A type parameter representing tracing instructions. It must be a struct implementing \u003Csee cref = \u0022IFlag\u0022/\u003E.\n/// \u003C/typeparam\u003E\n/// \u003Cparam name = \u0022failure\u0022\u003EThe exception that caused the failure during execution.\u003C/param\u003E\n/// \u003Cparam name = \u0022previousCallOutputLength\u0022\u003E\n/// The pending output copy length, reset upon failure.\n/// \u003C/param\u003E\n/// \u003Creturns\u003E\n/// A \u003Csee cref = \u0022TransactionSubstate\u0022/\u003E if the failure occurs in the top-level call; otherwise, \u003Cc\u003Enull\u003C/c\u003E\n/// to indicate that execution should continue with the parent call frame.\n/// \u003C/returns\u003E\nprotected TransactionSubstate HandleFailure\u003CTTracingInst\u003E(Exception failure, string? substateError, scoped ref nuint previousCallOutputLength, out bool shouldExit)\r\n    where TTracingInst : struct, IFlag"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "PopAndRestoreParentState",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Pops the exceptionally halted child state, restores state gas to the parent frame, and disposes the child.\n/// Must be called before the child \u003Csee cref = \u0022VmState{TGasPolicy}\u0022/\u003E is disposed so that\n/// spill/usage accounting is not lost.\n/// \u003C/summary\u003E\nprivate void PopAndRestoreParentState()"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "TryChargeAndDepositCode",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "private void TryChargeAndDepositCode(VmState\u003CTGasPolicy\u003E previousState, ulong gasAvailableForCodeDeposit, ref bool previousStateSucceeded, ulong executionDepositCost, long stateDepositCost, bool invalidCode, ReadOnlyMemory\u003Cbyte\u003E code)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "ExecutePrecompile",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Executes a precompiled contract operation based on the current execution state.\n/// If tracing is enabled, reports the precompile action. It then runs the precompile operation,\n/// checks for failure conditions, and adjusts the execution state accordingly.\n/// \u003C/summary\u003E\n/// \u003Cparam name = \u0022currentState\u0022\u003EThe current EVM state containing execution parameters for the precompile.\u003C/param\u003E\n/// \u003Cparam name = \u0022isTracingActions\u0022\u003E\n/// A boolean indicating whether detailed tracing actions should be reported during execution.\n/// \u003C/param\u003E\n/// \u003Cparam name = \u0022failure\u0022\u003E\n/// An output parameter that is set to the encountered exception if the precompile fails; otherwise, \u003Cc\u003Enull\u003C/c\u003E.\n/// \u003C/param\u003E\n/// \u003Cparam name = \u0022substateError\u0022\u003E\n/// An output parameter that is set to detailed error if the precompile fails; otherwise, \u003Cc\u003Enull\u003C/c\u003E.\n/// \u003C/param\u003E\n/// \u003Creturns\u003E\n/// A \u003Csee cref = \u0022CallResult\u0022/\u003E containing the results of the precompile execution. In case of a failure,\n/// returns the default value of \u003Csee cref = \u0022CallResult\u0022/\u003E.\n/// \u003C/returns\u003E\nprotected CallResult ExecutePrecompile(VmState\u003CTGasPolicy\u003E currentState, bool isTracingActions, out Exception? failure, out string? substateError)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "ExecuteCall",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Executes an EVM call by preparing the execution environment, including account balance adjustments,\n/// stack initialization, and memory updates. It then dispatches the bytecode execution using a\n/// specialized interpreter that is optimized at compile time based on the tracing instructions flag.\n/// \u003C/summary\u003E\n/// \u003Ctypeparam name = \u0022TTracingInst\u0022\u003E\n/// A struct implementing \u003Csee cref = \u0022IFlag\u0022/\u003E that indicates, via a compile-time constant,\n/// whether tracing-specific opcodes and behavior should be used.\n/// \u003C/typeparam\u003E\n/// \u003Cparam name = \u0022vmState\u0022\u003E\n/// The current EVM state containing the execution environment, gas, memory, and stack information.\n/// \u003C/param\u003E\n/// \u003Cparam name = \u0022previousCallResult\u0022\u003E\n/// The pending call status or created address to push onto the resumed frame\u0027s stack.\n/// \u003C/param\u003E\n/// \u003Cparam name = \u0022previousCallOutputLength\u0022\u003E\n/// The bounded number of return bytes to copy into parent memory.\n/// \u003C/param\u003E\n/// \u003Cparam name = \u0022previousCallOutputDestination\u0022\u003E\n/// The memory destination address where the previous call\u0027s output should be stored.\n/// \u003C/param\u003E\n/// \u003Creturns\u003E\n/// A \u003Csee cref = \u0022CallResult\u0022/\u003E that encapsulates the result of executing the EVM call, including success,\n/// failure, or out-of-gas conditions.\n/// \u003C/returns\u003E\n/// \u003Cremarks\u003E\n/// The generic struct parameter is used to eliminate runtime if-statements via compile-time evaluation\n/// of \u003Cc\u003ETTracingInst.IsActive\u003C/c\u003E.\n/// \u003C/remarks\u003E\n[SkipLocalsInit]\r\nprotected unsafe CallResult ExecuteCall\u003CTTracingInst\u003E(in (Address? CreatedAddress, bool? Success) previousCallResult, nuint previousCallOutputLength, scoped in UInt256 previousCallOutputDestination)\r\n    where TTracingInst : struct, IFlag"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "RunByteCode",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003ERuns the frame\u0027s bytecode through the opcode dispatch loop.\u003C/summary\u003E\n[SkipLocalsInit]\r\nprivate CallResult RunByteCode\u003CTTracingInst, TCancelable\u003E(scoped ref EvmStack stack, scoped ref TGasPolicy gas)\r\n    where TTracingInst : struct, IFlag where TCancelable : struct, IFlag"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "RunPrecompile",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "private unsafe CallResult RunPrecompile(VmState\u003CTGasPolicy\u003E state);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "RunPrecompile",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "private CallResult RunPrecompile\u003CEip158\u003E(VmState\u003CTGasPolicy\u003E state)\r\n    where Eip158 : struct, IFlag"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "RefundRevertedTopLevelStateGas",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\nprivate void RefundRevertedTopLevelStateGas()"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "IncorporateChildStateGasRefunds",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\nprivate void IncorporateChildStateGasRefunds(VmState\u003CTGasPolicy\u003E childState)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachine",
+      "member": "RemoveAdvancedStateGasRefund",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\nprivate static void RemoveAdvancedStateGasRefund(VmState\u003CTGasPolicy\u003E vmState, ref TGasPolicy gas)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "owner": "VirtualMachineStatics",
+      "member": "RestoreRipemdTouch",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Restores the RIPEMD-160 empty-account touch after a world-state snapshot rollback.\n/// \u003C/summary\u003E\n/// \u003Cremarks\u003E\n/// The historical \u003Csee href=\u0022https://eips.ethereum.org/EIPS/eip-161\u0022\u003EEIP-161\u003C/see\u003E exception keeps\n/// this touch alive for the rest of the transaction, matching Geth\u0027s non-revertible dirty marker.\n/// \u003C/remarks\u003E\ninternal static void RestoreRipemdTouch(IWorldState worldState, IReleaseSpec spec, bool shouldRestore)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.CallResult.cs",
+      "owner": "CallResult",
+      "member": "CallResult",
+      "syntaxKind": "ConstructorDeclaration",
+      "signature": "public CallResult(VmState\u003CTGasPolicy\u003E stateToExecute)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.CallResult.cs",
+      "owner": "CallResult",
+      "member": "CallResult",
+      "syntaxKind": "ConstructorDeclaration",
+      "signature": "public CallResult(ReadOnlyMemory\u003Cbyte\u003E output, bool? precompileSuccess, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.CallResult.cs",
+      "owner": "CallResult",
+      "member": "CallResult",
+      "syntaxKind": "ConstructorDeclaration",
+      "signature": "public CallResult(EvmExceptionType exceptionType)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.CallResult.cs",
+      "owner": "CallResult",
+      "member": "IsReturn",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "[MemberNotNullWhen(false, nameof(StateToExecute))]\r\npublic bool IsReturn =\u003E StateToExecute is null;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.CallResult.cs",
+      "owner": "CallResult",
+      "member": "IsException",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "//EvmExceptionType.Revert is returned when the top frame encounters a REVERT opcode, which is not an exception.\r\npublic bool IsException =\u003E ExceptionType != EvmExceptionType.None \u0026\u0026 ExceptionType != EvmExceptionType.Revert;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.CallResult.cs",
+      "owner": "CallResult",
+      "member": "ShouldRevert",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "public bool ShouldRevert { get; }"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.CallResult.cs",
+      "owner": "CallResult",
+      "member": "StateToExecute",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "public VmState\u003CTGasPolicy\u003E? StateToExecute { get; }"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.CallResult.cs",
+      "owner": "CallResult",
+      "member": "PrecompileSuccess",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "public bool? PrecompileSuccess { get; }"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "RentFrame",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Constructor for a frame \u003Csee cref = \u0022VmState{TGasPolicy}\u0022/\u003E beneath top level.\n/// \u003C/summary\u003E\npublic static VmState\u003CTGasPolicy\u003E RentFrame(TGasPolicy gas, long outputDestination, long outputLength, ExecutionType executionType, bool isStatic, bool isCreateOnPreExistingAccount, ExecutionEnvironment env, in StackAccessTracker stateForAccessLists, in Snapshot snapshot, bool isTopLevel = false, bool newAccountCharged = false, bool isCreateStateGasCharged = false)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "RentTopLevel",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Rent a top level \u003Csee cref = \u0022VmState{TGasPolicy}\u0022/\u003E.\n/// \u003C/summary\u003E\npublic static VmState\u003CTGasPolicy\u003E RentTopLevel(TGasPolicy gas, ExecutionType executionType, ExecutionEnvironment env, in StackAccessTracker accessedItems, in Snapshot snapshot)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "Initialize",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[SkipLocalsInit]\r\nprivate void Initialize(TGasPolicy gas, long outputDestination, long outputLength, ExecutionType executionType, bool isTopLevel, bool isStatic, bool isCreateOnPreExistingAccount, bool isCreateStateGasCharged, bool newAccountCharged, ExecutionEnvironment env, in StackAccessTracker stateForAccessLists, in Snapshot snapshot)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "Dispose",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "public void Dispose()"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "Gas",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "public TGasPolicy Gas;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "Refund",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "public long Refund { get; set; }"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "StateGasRefundAdvanced",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "// State-gas refund already made spendable in this frame while its accounting correction\r\n// still has to reach the ancestor frame that originally paid the state gas.\r\npublic long StateGasRefundAdvanced;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "InitialStateGasUsed",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "public long InitialStateGasUsed;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "DataStackHead",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "public int DataStackHead;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "IsContinuation",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "public bool IsContinuation { get; set; } // TODO: move to CallEnv\r\n"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "IsTopLevel",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "public bool IsTopLevel { get; private set; } // TODO: move to CallEnv\r\n"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "IsPrecompile",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "public bool IsPrecompile =\u003E Env.CodeInfo?.IsPrecompile ?? false;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "IsStatic",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "public bool IsStatic { get; private set; } // TODO: move to CallEnv\r\n"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "OutputDestination",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "internal long OutputDestination { get; private set; } // TODO: move to CallEnv\r\n"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "OutputLength",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "internal long OutputLength { get; private set; } // TODO: move to CallEnv\r\n"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "ExecutionType",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "public ExecutionType ExecutionType { get; private set; } // TODO: move to CallEnv\r\n"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "ProgramCounter",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "public int ProgramCounter { get; set; }"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "NewAccountCharged",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// EIP-8037: the parent \u003Cc\u003E*CALL\u003C/c\u003E charged NEW_ACCOUNT state gas up-front for this (dead)\n/// recipient; on this frame\u0027s error/revert no account is created, so the parent refunds it.\n/// \u003C/summary\u003E\npublic bool NewAccountCharged { get; private set; } // TODO: move to CallEnv\r\n"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "IsCreateStateGasCharged",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "public bool IsCreateStateGasCharged { get; private set; } // TODO: move to CallEnv\r\n"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "CommitToParent",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "public void CommitToParent(VmState\u003CTGasPolicy\u003E parentState)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "owner": "VmState",
+      "member": "RestoreStack",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "internal void RestoreStack\u003CTTracingInst\u003E(ITxTracer txTracer, ReadOnlySpan\u003Cbyte\u003E codeSpan, out EvmStack stack)\r\n    where TTracingInst : struct, IFlag"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/ExecutionType.cs",
+      "owner": "ExecutionTypeExtensions",
+      "member": "IsAnyCreate",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic static bool IsAnyCreate(this ExecutionType executionType);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmStateStack.cs",
+      "owner": "VmStateStack",
+      "member": "VmStateStack",
+      "syntaxKind": "ClassDeclaration",
+      "signature": "(int capacity)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmStateStack.cs",
+      "owner": "VmStateStack",
+      "member": "_items",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "private readonly VmState\u003CTGasPolicy\u003E? [] _items = new VmState\u003CTGasPolicy\u003E? [capacity];"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmStateStack.cs",
+      "owner": "VmStateStack",
+      "member": "_count",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "private int _count;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmStateStack.cs",
+      "owner": "VmStateStack",
+      "member": "Count",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "/// \u003Csummary\u003EThe number of frames currently held.\u003C/summary\u003E\npublic int Count =\u003E _count;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmStateStack.cs",
+      "owner": "VmStateStack",
+      "member": "Push",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003EPushes a frame that a later \u003Csee cref = \u0022Pop\u0022/\u003E will restore.\u003C/summary\u003E\n/// \u003Cparam name = \u0022state\u0022\u003EThe frame to suspend. Ownership stays with the caller.\u003C/param\u003E\n/// \u003Cexception cref = \u0022InvalidOperationException\u0022\u003E\n/// The stack is full. Capacity covers every depth the interpreter\u0027s call guards permit, so this\n/// signals a broken depth guard rather than a legal deep call.\n/// \u003C/exception\u003E\npublic void Push(VmState\u003CTGasPolicy\u003E state)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmStateStack.cs",
+      "owner": "VmStateStack",
+      "member": "Pop",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003ERemoves and returns the most recently pushed frame.\u003C/summary\u003E\n/// \u003Cremarks\u003E\n/// The vacated slot is cleared, so the stack stops keeping the returned frame alive; disposing it\n/// remains the caller\u0027s responsibility.\n/// \u003C/remarks\u003E\n/// \u003Creturns\u003EThe frame from the top of the stack.\u003C/returns\u003E\n/// \u003Cexception cref = \u0022InvalidOperationException\u0022\u003EThe stack is empty.\u003C/exception\u003E\npublic VmState\u003CTGasPolicy\u003E Pop()"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "owner": "EvmPooledMemory",
+      "member": "TrySave",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "public bool TrySave(in UInt256 location, ReadOnlySpan\u003Cbyte\u003E value)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "owner": "EvmPooledMemory",
+      "member": "TrySave",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "public bool TrySave(in UInt256 location, byte[] value);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "owner": "EvmPooledMemory",
+      "member": "UpdateSize",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "private void UpdateSize(ulong length, bool rentIfNeeded = true)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "owner": "EvmPooledMemory",
+      "member": "SaveAfterGas",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Variant of \u003Csee cref = \u0022TrySave\u0022/\u003E requiring the caller to have already invoked\n/// \u003Csee cref = \u0022IGasPolicy{TSelf}.UpdateMemoryCost\u0022/\u003E for (\u003Cparamref name = \u0022location\u0022/\u003E,\n/// \u003Cparamref name = \u0022value\u0022/\u003E.Length), which bounds-checks and updates the logical memory size,\n/// so this skips re-validation. Mirrors \u003Csee cref = \u0022CopyAfterGas\u0022/\u003E.\n/// \u003C/summary\u003E\n[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\ninternal void SaveAfterGas(in UInt256 location, ReadOnlySpan\u003Cbyte\u003E value)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "owner": "EvmPooledMemory",
+      "member": "Dispose",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "public void Dispose()"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "owner": "EvmPooledMemory",
+      "member": "_initializedSize",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "// Bytes below this prefix are valid; Size may exceed both it and the backing array until a read\r\n// materializes the logical zero tail.\r\nprivate ulong _initializedSize;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "owner": "EvmPooledMemory",
+      "member": "_memory",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "private byte[]? _memory;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "owner": "EvmPooledMemory",
+      "member": "Size",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "public ulong Size { get; private set; }"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmStack.cs",
+      "owner": "EvmStack",
+      "member": "PopUInt256",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Pops an UInt256 written in big endian.\n/// \u003C/summary\u003E\n/// \u003Cremarks\u003E\n/// This method does its own calculations to create the \u003Cparamref name = \u0022result\u0022/\u003E. It knows that 32 bytes were popped with \u003Csee cref = \u0022PopBytesByRef\u0022/\u003E. It doesn\u0027t have to check the size of span or slice it.\n/// All it does is \u003Csee cref = \u0022Unsafe.ReadUnaligned{T}(ref byte)\u0022/\u003E and then reverse endianness if needed. Then it creates \u003Cparamref name = \u0022result\u0022/\u003E.\n/// \u003C/remarks\u003E\n/// \u003Cparam name = \u0022result\u0022\u003EThe returned value.\u003C/param\u003E\n[SkipLocalsInit]\r\n[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic bool PopUInt256(out UInt256 result)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmStack.cs",
+      "owner": "EvmStack",
+      "member": "PopUInt256",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Pops two UInt256 values written in big endian, amortising bounds checking\n/// and offset calculation costs.\n/// \u003C/summary\u003E\n/// \u003Cparam name = \u0022a\u0022\u003EFirst popped value (was at top of stack).\u003C/param\u003E\n/// \u003Cparam name = \u0022b\u0022\u003ESecond popped value (was deeper).\u003C/param\u003E\n[SkipLocalsInit]\r\n[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic bool PopUInt256(out UInt256 a, out UInt256 b)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmStack.cs",
+      "owner": "EvmStack",
+      "member": "PopUInt256",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Pops three UInt256 values written in big endian, amortising bounds checking\n/// and offset calculation costs.\n/// \u003C/summary\u003E\n/// \u003Cparam name = \u0022a\u0022\u003EFirst popped value (was at top of stack).\u003C/param\u003E\n/// \u003Cparam name = \u0022b\u0022\u003ESecond popped value.\u003C/param\u003E\n/// \u003Cparam name = \u0022c\u0022\u003EThird popped value (was deepest).\u003C/param\u003E\n[SkipLocalsInit]\r\n[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic bool PopUInt256(out UInt256 a, out UInt256 b, out UInt256 c)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmStack.cs",
+      "owner": "EvmStack",
+      "member": "PopUInt256",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Pops four UInt256 values written in big endian, amortising bounds checking\n/// and offset calculation costs.\n/// \u003C/summary\u003E\n/// \u003Cparam name = \u0022a\u0022\u003EFirst popped value (was at top of stack).\u003C/param\u003E\n/// \u003Cparam name = \u0022b\u0022\u003ESecond popped value.\u003C/param\u003E\n/// \u003Cparam name = \u0022c\u0022\u003EThird popped value.\u003C/param\u003E\n/// \u003Cparam name = \u0022d\u0022\u003EFourth popped value (was deepest).\u003C/param\u003E\n[SkipLocalsInit]\r\n[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic bool PopUInt256(out UInt256 a, out UInt256 b, out UInt256 c, out UInt256 d)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmStack.cs",
+      "owner": "EvmStack",
+      "member": "PushUInt256",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Pushes an Uint256 written in big endian.\n/// \u003C/summary\u003E\n/// \u003Cremarks\u003E\n/// This method is a counterpart to \u003Csee cref = \u0022PopUInt256\u0022/\u003E and uses the same, raw data approach to write data back.\n/// \u003C/remarks\u003E\n[SkipLocalsInit]\r\n[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic EvmExceptionType PushUInt256\u003CTTracingInst\u003E(in UInt256 value)\r\n    where TTracingInst : struct, IFlag;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmStack.cs",
+      "owner": "EvmStack",
+      "member": "PushUInt256",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[SkipLocalsInit]\r\n[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\ninternal EvmExceptionType PushUInt256\u003CTTracingInst, TCheckDepth\u003E(in UInt256 value)\r\n    where TTracingInst : struct, IFlag where TCheckDepth : struct, IFlag"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "owner": "VirtualMachine",
+      "member": "PrepareOpcodes",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003EResolves the dispatch table the coming transaction runs on.\u003C/summary\u003E\n/// \u003Cremarks\u003E\n/// Once per transaction rather than once per frame: the tracing and cancellation flags hold for the\n/// whole transaction and the spec for the whole block, so every frame the transaction enters or\n/// resumes would resolve the same table, and the per-spec lookup behind it is not free.\n/// \u003C/remarks\u003E\nprivate void PrepareOpcodes\u003CTTracingInst\u003E()\r\n    where TTracingInst : struct, IFlag"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "owner": "VirtualMachine",
+      "member": "PrepareOpcodes",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "private void PrepareOpcodes\u003CTTracingInst, TCancelable\u003E()\r\n    where TTracingInst : struct, IFlag where TCancelable : struct, IFlag"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "owner": "VirtualMachine",
+      "member": "RunDispatchLoop",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003ERuns the current frame\u0027s bytecode until it halts, faults, or yields a child frame.\u003C/summary\u003E\n/// \u003Cparam name = \u0022programCounter\u0022\u003EOn entry the offset to resume from; on exit the offset reached.\u003C/param\u003E\n/// \u003Creturns\u003E\n/// The halting reason; \u003Cc\u003ENone\u003C/c\u003E, \u003Cc\u003EStop\u003C/c\u003E and \u003Cc\u003ERevert\u003C/c\u003E are normal halts, while \u003Cc\u003ESuspend\u003C/c\u003E\n/// indicates a yielded child frame.\n/// \u003C/returns\u003E\n[SkipLocalsInit]\r\nprivate EvmExceptionType RunDispatchLoop\u003CTTracingInst, TCancelable\u003E(scoped ref EvmStack stack, scoped ref TGasPolicy gas, ref nint programCounter)\r\n    where TTracingInst : struct, IFlag where TCancelable : struct, IFlag"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "owner": "VirtualMachine",
+      "member": "ExecuteOpcode",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[SkipLocalsInit]\r\n[MethodImpl(MethodImplOptions.NoInlining)]\r\nprivate static EvmExceptionType ExecuteOpcode\u003CTOpcode, TTracingInst, TCancelable, TContinuable\u003E(ref EvmStack stack, ref TGasPolicy gas, ref DispatchState state, nint pc, int opCodeCount)\r\n    where TOpcode : struct, IOpcodeBody where TTracingInst : struct, IFlag where TCancelable : struct, IFlag where TContinuable : struct, IFlag"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "owner": "VirtualMachine",
+      "member": "ExecuteJumpIfOpcode",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[SkipLocalsInit]\r\n[MethodImpl(MethodImplOptions.NoInlining)]\r\nprivate static EvmExceptionType ExecuteJumpIfOpcode\u003CTTracingInst, TCancelable\u003E(ref EvmStack stack, ref TGasPolicy gas, ref DispatchState state, nint pc, int opCodeCount)\r\n    where TTracingInst : struct, IFlag where TCancelable : struct, IFlag"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "owner": "DispatchState",
+      "member": "DispatchState",
+      "syntaxKind": "StructDeclaration",
+      "signature": "internal struct DispatchState\r\n{\r\n    public delegate*\u003Cref EvmStack, ref TGasPolicy, ref DispatchState, nint, int, EvmExceptionType\u003E * OpcodeHandlers;\r\n    public VirtualMachine\u003CTGasPolicy\u003E Vm;\r\n    /// \u003Csummary\u003EWhere the chain stopped. Written only as the chain leaves.\u003C/summary\u003E\n    /// \u003Cremarks\u003E\n    /// This and \u003Csee cref = \u0022OpCodeCount\u0022/\u003E ride the dispatch signature while the chain runs. A counter\n    /// in the struct would be a narrow read-modify-write through a byref on every opcode, which the\n    /// zkEVM guest charges at roughly twenty times an aligned load.\n    /// \u003C/remarks\u003E\n    public nint FinalProgramCounter;\r\n    /// \u003Csummary\u003EHow many opcodes the chain ran. Written only as the chain leaves.\u003C/summary\u003E\n    public int OpCodeCount;\r\n}"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "owner": "DispatchState",
+      "member": "FinalProgramCounter",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "/// \u003Csummary\u003EWhere the chain stopped. Written only as the chain leaves.\u003C/summary\u003E\n/// \u003Cremarks\u003E\n/// This and \u003Csee cref = \u0022OpCodeCount\u0022/\u003E ride the dispatch signature while the chain runs. A counter\n/// in the struct would be a narrow read-modify-write through a byref on every opcode, which the\n/// zkEVM guest charges at roughly twenty times an aligned load.\n/// \u003C/remarks\u003E\npublic nint FinalProgramCounter;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "owner": "DispatchState",
+      "member": "OpCodeCount",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "/// \u003Csummary\u003EHow many opcodes the chain ran. Written only as the chain leaves.\u003C/summary\u003E\npublic int OpCodeCount;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.ExecutionHandlers.cs",
+      "owner": "VirtualMachine",
+      "member": "GetExecutionHandlers",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(ExecutionHandlersInlining)]\r\nprivate ExecutionHandlers GetExecutionHandlers()"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.ExecutionHandlers.cs",
+      "owner": "VirtualMachine",
+      "member": "_executionHandlers",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "private ExecutionHandlers? _executionHandlers;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.ExecutionHandlers.cs",
+      "owner": "ExecutionHandlers",
+      "member": "ExecutionHandlers",
+      "syntaxKind": "ClassDeclaration",
+      "signature": "(IReleaseSpec spec)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.ExecutionHandlers.cs",
+      "owner": "ExecutionHandlers",
+      "member": "InitializeFrame",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "#if DEBUG\r\n        public readonly IReleaseSpec Spec = spec;\n#endif\r\n// All targets have these managed signatures; the table captures no VM or transaction state.\r\npublic readonly delegate*\u003CVirtualMachine\u003CTGasPolicy\u003E, VmState\u003CTGasPolicy\u003E, void\u003E InitializeFrame = SpecFlags.Eip158(spec) ? \u0026InitializeFrameCore\u003COnFlag\u003E : \u0026InitializeFrameCore\u003COffFlag\u003E;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.ExecutionHandlers.cs",
+      "owner": "ExecutionHandlers",
+      "member": "TransferLog",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "public readonly delegate*\u003CVirtualMachine\u003CTGasPolicy\u003E, VmState\u003CTGasPolicy\u003E, void\u003E TransferLog = spec.IsEip7708Enabled ? \u0026AddTransferLogCore\u003COnFlag\u003E : \u0026AddTransferLogCore\u003COffFlag\u003E;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.ExecutionHandlers.cs",
+      "owner": "ExecutionHandlers",
+      "member": "RunPrecompile",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "public readonly delegate*\u003CVirtualMachine\u003CTGasPolicy\u003E, VmState\u003CTGasPolicy\u003E, CallResult\u003E RunPrecompile = SpecFlags.Eip158(spec) ? \u0026RunPrecompileCore\u003COnFlag\u003E : \u0026RunPrecompileCore\u003COffFlag\u003E;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.ExecutionHandlers.cs",
+      "owner": "ExecutionHandlers",
+      "member": "CreditStateGasRefund",
+      "syntaxKind": "FieldDeclaration",
+      "signature": "public readonly delegate*\u003CVirtualMachine\u003CTGasPolicy\u003E, ref TGasPolicy, long, bool, void\u003E CreditStateGasRefund = spec.IsEip8037Enabled ? \u0026CreditStateGasRefundCore\u003COnFlag\u003E : \u0026CreditStateGasRefundCore\u003COffFlag\u003E;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.ExecutionHandlers.cs",
+      "owner": "VirtualMachine",
+      "member": "InitializeFrameCore",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "private static void InitializeFrameCore\u003CEip158\u003E(VirtualMachine\u003CTGasPolicy\u003E vm, VmState\u003CTGasPolicy\u003E state)\r\n    where Eip158 : struct, IFlag"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.ExecutionHandlers.cs",
+      "owner": "VirtualMachine",
+      "member": "AddTransferLogCore",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "private static void AddTransferLogCore\u003CEip7708\u003E(VirtualMachine\u003CTGasPolicy\u003E vm, VmState\u003CTGasPolicy\u003E state)\r\n    where Eip7708 : struct, IFlag"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.ExecutionHandlers.cs",
+      "owner": "VirtualMachine",
+      "member": "RunPrecompileCore",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\nprivate static CallResult RunPrecompileCore\u003CEip158\u003E(VirtualMachine\u003CTGasPolicy\u003E vm, VmState\u003CTGasPolicy\u003E state)\r\n    where Eip158 : struct, IFlag;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.ExecutionHandlers.cs",
+      "owner": "VirtualMachine",
+      "member": "CreditStateGasRefundCore",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\nprivate static void CreditStateGasRefundCore\u003CEip8037\u003E(VirtualMachine\u003CTGasPolicy\u003E vm, ref TGasPolicy gas, long amount, bool trackSpillRefund)\r\n    where Eip8037 : struct, IFlag;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Call.cs",
+      "owner": "EvmInstructions",
+      "member": "InstructionCall",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Executes a call-like operation.\n/// This method handles various call types (CALL, CALLCODE, DELEGATECALL, STATICCALL) by:\n/// - Popping call parameters from the stack,\n/// - Charging appropriate gas for the call and memory expansion,\n/// - Validating call conditions (such as static call restrictions and call depth),\n/// - Performing balance transfers,\n/// - Creating a new execution frame for the call.\n/// \u003C/summary\u003E\n/// \u003Ctypeparam name = \u0022TOpCall\u0022\u003E\n/// The call opcode type (e.g. \u003Csee cref = \u0022OpCall\u0022/\u003E, \u003Csee cref = \u0022OpStaticCall\u0022/\u003E).\n/// \u003C/typeparam\u003E\n/// \u003Ctypeparam name = \u0022TTracingInst\u0022\u003E\n/// A type implementing \u003Csee cref = \u0022IFlag\u0022/\u003E that indicates whether instruction tracing is active.\n/// \u003C/typeparam\u003E\n/// \u003Ctypeparam name = \u0022TSpec\u0022\u003EThe fork rules the opcode table specialized this handler on.\u003C/typeparam\u003E\n/// \u003Cparam name = \u0022vm\u0022\u003EThe current virtual machine instance containing execution state.\u003C/param\u003E\n/// \u003Cparam name = \u0022stack\u0022\u003EThe EVM stack for retrieving call parameters and pushing results.\u003C/param\u003E\n/// \u003Cparam name = \u0022gas\u0022\u003EThe gas which is updated by the operation\u0027s cost.\u003C/param\u003E\n/// \u003Creturns\u003E\n/// An \u003Csee cref = \u0022EvmExceptionType\u0022/\u003E value indicating success or the type of error encountered.\n/// \u003C/returns\u003E\n[SkipLocalsInit]\r\n[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\ninternal static EvmExceptionType InstructionCall\u003CTGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708, TSpec\u003E(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine\u003CTGasPolicy\u003E vm)\r\n    where TGasPolicy : struct, IGasPolicy\u003CTGasPolicy\u003E where TOpCall : struct, IOpCall where TTracingInst : struct, IFlag where TEip8037 : struct, IFlag where TEip7708 : struct, IFlag where TSpec : struct, ICallSpec"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Call.cs",
+      "owner": "EvmInstructions",
+      "member": "CreateFullCallFrame",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "// Mainline keeps this out-of-line for icache locality on the common path. The zkVM guest\r\n// has no icache and counts instructions, so the NoInlining call and its wide argument\r\n// marshalling are pure overhead on every CALL; inline it, pulling the hot precompile path in too.\r\n#if ZK_EVM\r\n    [MethodImpl(MethodImplOptions.AggressiveInlining)]\n#else\r\n[MethodImpl(MethodImplOptions.NoInlining)]\r\n#endif\r\n[SkipLocalsInit]\r\nprivate static EvmExceptionType CreateFullCallFrame\u003CTGasPolicy, TOpCall, TTracingInst\u003E(VirtualMachine\u003CTGasPolicy\u003E vm, ref EvmStack stack, ref TGasPolicy gas, in UInt256 dataOffset, UInt256 dataLength, UInt256 outputOffset, UInt256 outputLength, CodeInfo codeInfo, Address target, Address caller, Address codeSource, ExecutionEnvironment env, in UInt256 callValue, ulong gasLimitUl, bool newAccountCharged)\r\n    where TGasPolicy : struct, IGasPolicy\u003CTGasPolicy\u003E where TOpCall : struct, IOpCall where TTracingInst : struct, IFlag"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Call.std.cs",
+      "owner": "EvmInstructions",
+      "member": "TryInlineStaticPrecompileCall",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(MethodImplOptions.NoInlining)]\r\nprivate static partial bool TryInlineStaticPrecompileCall\u003CTGasPolicy, TTracingInst\u003E(VirtualMachine\u003CTGasPolicy\u003E vm, ref EvmStack stack, ref TGasPolicy gas, in UInt256 dataOffset, UInt256 dataLength, in UInt256 outputOffset, UInt256 outputLength, IPrecompile precompile, Address target, Address codeSource, ulong gasLimitUl, out EvmExceptionType result)\r\n    where TGasPolicy : struct, IGasPolicy\u003CTGasPolicy\u003E where TTracingInst : struct, IFlag"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Create.cs",
+      "owner": "EvmInstructions",
+      "member": "InstructionCreate",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Implements the CREATE/CREATE2 opcode, handling new contract deployment.\n/// This method performs validation, gas and memory cost calculations, state updates,\n/// and delegates execution to a new call frame for the contract\u0027s initialization code.\n/// \u003C/summary\u003E\n/// \u003Ctypeparam name = \u0022TGasPolicy\u0022\u003EThe gas policy implementation.\u003C/typeparam\u003E\n/// \u003Ctypeparam name = \u0022TOpCreate\u0022\u003EThe type of create operation (either \u003Csee cref = \u0022OpCreate\u0022/\u003E or \u003Csee cref = \u0022OpCreate2\u0022/\u003E).\u003C/typeparam\u003E\n/// \u003Ctypeparam name = \u0022TTracingInst\u0022\u003ETracing instructions type used for instrumentation if active.\u003C/typeparam\u003E\n/// \u003Ctypeparam name = \u0022TSpec\u0022\u003EThe fork rules the opcode table specialized this handler on.\u003C/typeparam\u003E\n/// \u003Cparam name = \u0022vm\u0022\u003EThe current virtual machine instance.\u003C/param\u003E\n/// \u003Cparam name = \u0022stack\u0022\u003EReference to the EVM stack.\u003C/param\u003E\n/// \u003Cparam name = \u0022gas\u0022\u003EReference to the gas state.\u003C/param\u003E\n/// \u003Creturns\u003EAn \u003Csee cref = \u0022EvmExceptionType\u0022/\u003E indicating success or the type of exception encountered.\u003C/returns\u003E\n[SkipLocalsInit]\r\ninternal static EvmExceptionType InstructionCreate\u003CTGasPolicy, TOpCreate, TTracingInst, TEip8037, TSpec\u003E(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine\u003CTGasPolicy\u003E vm)\r\n    where TGasPolicy : struct, IGasPolicy\u003CTGasPolicy\u003E where TOpCreate : struct, IOpCreate where TTracingInst : struct, IFlag where TEip8037 : struct, IFlag where TSpec : struct, ICreateSpec"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Create.cs",
+      "owner": "EvmInstructions",
+      "member": "CompleteCreateWithoutChild",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\nprivate static EvmExceptionType CompleteCreateWithoutChild\u003CTGasPolicy, TTracingInst\u003E(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine\u003CTGasPolicy\u003E vm)\r\n    where TGasPolicy : struct, IGasPolicy\u003CTGasPolicy\u003E where TTracingInst : struct, IFlag"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/CodeAnalysis/CodeInfo.cs",
+      "owner": "CodeInfo",
+      "member": "IsPrecompile",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "public bool IsPrecompile =\u003E Precompile is not null;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.ControlFlow.cs",
+      "owner": "EvmInstructions",
+      "member": "InstructionSelfDestruct",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Executes the SELFDESTRUCT opcode.\n/// This method handles gas adjustments, account balance transfers,\n/// and marks the executing account for destruction.\n/// \u003C/summary\u003E\n[SkipLocalsInit]\r\ninternal static EvmExceptionType InstructionSelfDestruct\u003CTGasPolicy, TEip8037, TEip7708, TSpec\u003E(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine\u003CTGasPolicy\u003E vm)\r\n    where TGasPolicy : struct, IGasPolicy\u003CTGasPolicy\u003E where TEip8037 : struct, IFlag where TEip7708 : struct, IFlag where TSpec : struct, ISelfDestructSpec"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/CodeDepositHandler.cs",
+      "owner": "CodeDepositHandler",
+      "member": "CalculateCost",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "public static ulong CalculateCost(IReleaseSpec spec, int byteCodeLength);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/CodeDepositHandler.cs",
+      "owner": "CodeDepositHandler",
+      "member": "CalculateCost",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "public static ulong CalculateCost\u003CTGasPolicy\u003E(IReleaseSpec spec, int byteCodeLength, in TGasPolicy gas)\r\n    where TGasPolicy : struct, IGasPolicy\u003CTGasPolicy\u003E;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/CodeDepositHandler.cs",
+      "owner": "CodeDepositHandler",
+      "member": "CalculateCost",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "public static bool CalculateCost(IReleaseSpec spec, int byteCodeLength, out ulong executionCost, out long stateCost)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/CodeDepositHandler.cs",
+      "owner": "CodeDepositHandler",
+      "member": "CalculateCost",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "public static bool CalculateCost\u003CTGasPolicy\u003E(IReleaseSpec spec, int byteCodeLength, in TGasPolicy gas, out ulong executionCost, out long stateCost)\r\n    where TGasPolicy : struct, IGasPolicy\u003CTGasPolicy\u003E"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/CodeDepositHandler.cs",
+      "owner": "CodeDepositHandler",
+      "member": "CodeIsInvalid",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "public static bool CodeIsInvalid(IReleaseSpec spec, ReadOnlyMemory\u003Cbyte\u003E code);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "owner": "EthereumGasPolicy",
+      "member": "Refund",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic static void Refund(ref EthereumGasPolicy gas, in EthereumGasPolicy childGas)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "owner": "EthereumGasPolicy",
+      "member": "UpdateGas",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic static bool UpdateGas(ref EthereumGasPolicy gas, ulong gasCost)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "owner": "EthereumGasPolicy",
+      "member": "UpdateGasUp",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic static void UpdateGasUp(ref EthereumGasPolicy gas, ulong refund);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "owner": "EthereumGasPolicy",
+      "member": "ClearExecutionGas",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Cinheritdoc/\u003E\n[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic static void ClearExecutionGas(ref EthereumGasPolicy gas);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "owner": "EthereumGasPolicy",
+      "member": "RepayStateGasSpill",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Cinheritdoc/\u003E\n[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic static void RepayStateGasSpill(ref EthereumGasPolicy gas)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "owner": "EthereumGasPolicy",
+      "member": "RestoreChildStateGas",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "// On explicit REVERT, restore the child\u0027s remaining state reservoir plus its reverted\r\n// state gas usage.\r\n[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic static void RestoreChildStateGas(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "owner": "EthereumGasPolicy",
+      "member": "RestoreChildStateGasOnHalt",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "// On a child exceptional halt state gas produced no durable growth: restore the child\u0027s\r\n// reservoir and usage to the parent reservoir without adding to parent block-state usage.\r\n[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic static void RestoreChildStateGasOnHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "owner": "EthereumGasPolicy",
+      "member": "RevertRefundToHalt",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic static void RevertRefundToHalt(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "owner": "EthereumGasPolicy",
+      "member": "TryReserveChildGas",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic static bool TryReserveChildGas(ref EthereumGasPolicy gas, in UInt256 requestedGas, IReleaseSpec spec, out ulong childGas);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "owner": "EthereumGasPolicy",
+      "member": "TryReserveChildGas",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Cinheritdoc/\u003E\n[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic static bool TryReserveChildGas\u003CEip150\u003E(ref EthereumGasPolicy gas, in UInt256 requestedGas, IReleaseSpec spec, out ulong childGas)\r\n    where Eip150 : struct, IFlag;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "owner": "EthereumGasPolicy",
+      "member": "TryReserveChildGas",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic static bool TryReserveChildGas(ref EthereumGasPolicy gas, IReleaseSpec spec, out ulong childGas);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "owner": "EthereumGasPolicy",
+      "member": "TryReserveChildGas",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Cinheritdoc/\u003E\n[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic static bool TryReserveChildGas\u003CEip150\u003E(ref EthereumGasPolicy gas, IReleaseSpec spec, out ulong childGas)\r\n    where Eip150 : struct, IFlag;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "owner": "EthereumGasPolicy",
+      "member": "TryReserveChildGas",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\nprivate static bool TryReserveChildGas(ref EthereumGasPolicy gas, ulong childGas)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasTransitionKernel.cs",
+      "owner": "StateGasTransitionKernel",
+      "member": "Refund",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic static StateGasTransitionResult Refund(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, ulong childValue, long childStateReservoir, long childStateGasUsed, long childStateGasSpill, long childStateGasSpillRefunded);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasTransitionKernel.cs",
+      "owner": "StateGasTransitionKernel",
+      "member": "RestoreChildStateGasOnHalt",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic static StateGasTransitionResult RestoreChildStateGasOnHalt(ulong parentValue, long parentStateReservoir, long parentStateGasUsed, long parentStateGasSpill, long parentStateGasSpillRefunded, long childStateReservoir, long childStateGasUsed, long childStateGasSpill, long childStateGasSpillRefunded)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasChargeKernel.cs",
+      "owner": "StateGasChargeKernel",
+      "member": "TryCharge",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\npublic static StateGasChargeResult TryCharge(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long stateGasCost)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/State/IWorldState.cs",
+      "owner": "IWorldState",
+      "member": "TakeSnapshot",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Creates a restartable snapshot.\n/// \u003C/summary\u003E\n/// \u003Cparam name = \u0022newTransactionStart\u0022\u003E Indicates new transaction will start here.\u003C/param\u003E\n/// \u003Creturns\u003ESnapshot index\u003C/returns\u003E\n/// \u003Cremarks\u003E\n/// If \u003Csee cref = \u0022newTransactionStart\u0022/\u003E is true and there are already changes in \u003Csee cref = \u0022IStorageProvider\u0022/\u003E then next call to\n/// \u003Csee cref = \u0022GetOriginal\u0022/\u003E will use changes before this snapshot as original values for this new transaction.\n/// \u003C/remarks\u003E\nSnapshot TakeSnapshot(bool newTransactionStart = false);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/State/IWorldState.cs",
+      "owner": "IWorldState",
+      "member": "TakeSnapshot",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "Snapshot IJournal\u003CSnapshot\u003E.TakeSnapshot();"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/IJournal.cs",
+      "owner": "IJournal",
+      "member": "Restore",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Restores previously saved state.\n/// \u003C/summary\u003E\n/// \u003Cparam name = \u0022snapshot\u0022\u003EPreviously saved state.\u003C/param\u003E\n/// \u003Cexception cref = \u0022InvalidOperationException\u0022\u003EThrown when snapshot cannot be restored. For example previous snapshot was already restored.\u003C/exception\u003E\nvoid Restore(TSnapshot snapshot);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/State/IWorldState.cs",
+      "owner": "IWorldState",
+      "member": "InsertCode",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Inserts the given smart contract code into the system at the specified address,\n/// associating it with a unique code hash.\n/// \u003C/summary\u003E\n/// \u003Cparam name = \u0022address\u0022\u003EThe target address where the code is to be inserted.\u003C/param\u003E\n/// \u003Cparam name = \u0022codeHash\u0022\u003EThe hash representing the code content, used for deduplication and reference.\u003C/param\u003E\n/// \u003Cparam name = \u0022code\u0022\u003EThe bytecode to be inserted.\u003C/param\u003E\n/// \u003Cparam name = \u0022spec\u0022\u003EThe current release specification which may affect validation or processing rules.\u003C/param\u003E\n/// \u003Cparam name = \u0022isGenesis\u0022\u003EIndicates whether the insertion is part of the genesis block setup.\u003C/param\u003E\n/// \u003Creturns\u003ETrue if the code was inserted to the database at that hash; otherwise false if it was already there.\n/// Note: This is different from whether the account has its hash updated\u003C/returns\u003E\nbool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory\u003Cbyte\u003E code, IReleaseSpec spec, bool isGenesis = false);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/State/IWorldState.cs",
+      "owner": "IWorldState",
+      "member": "DeleteAccount",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "void DeleteAccount(Address address);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/State/WorldStateExtensions.cs",
+      "owner": "WorldStateExtensions",
+      "member": "AddToBalanceAndCreateIfNotExists",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[SkipLocalsInit]\r\npublic static bool AddToBalanceAndCreateIfNotExists(this IWorldState worldState, Address address, in UInt256 balanceChange, IReleaseSpec spec);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/State/WorldStateExtensions.cs",
+      "owner": "WorldStateExtensions",
+      "member": "AddToBalanceAndCreateIfNotExists",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[MethodImpl(MethodImplOptions.AggressiveInlining)]\r\n[SkipLocalsInit]\r\npublic static void AddToBalanceAndCreateIfNotExists(this IWorldState worldState, Address address, ExecutionType executionType, in UInt256 balanceChange, IReleaseSpec spec);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/State/Snapshot.cs",
+      "owner": "Snapshot",
+      "member": "Snapshot",
+      "syntaxKind": "StructDeclaration",
+      "signature": "/// \u003Csummary\u003E\n/// Stores state and storage snapshots (as the change index that we can revert to)\n/// At the beginning and after each commit the snapshot is set to the value of EmptyPosition\n/// \u003C/summary\u003E\npublic readonly struct Snapshot\r\n{\r\n    public Snapshot(in Storage storageSnapshot, int stateSnapshot, int balSnapshot)\r\n    {\r\n        StorageSnapshot = storageSnapshot;\r\n        StateSnapshot = stateSnapshot;\r\n        BlockAccessListSnapshot = balSnapshot;\r\n    }\r\n\r\n    public Snapshot(in Storage storageSnapshot, int stateSnapshot)\r\n    {\r\n        StorageSnapshot = storageSnapshot;\r\n        StateSnapshot = stateSnapshot;\r\n        BlockAccessListSnapshot = EmptyPosition;\r\n    }\r\n\r\n    public static readonly Snapshot Empty = new(Storage.Empty, EmptyPosition, EmptyPosition);\r\n    /// \u003Csummary\u003E\n    /// Tracks snapshot positions for Persistent and Transient storage\n    /// \u003C/summary\u003E\n    public readonly struct Storage(int storageSnapshot, int transientStorageSnapshot)\r\n    {\r\n        public static readonly Storage Empty = new(EmptyPosition, EmptyPosition);\r\n        public int PersistentStorageSnapshot { get; } = storageSnapshot;\r\n        public int TransientStorageSnapshot { get; } = transientStorageSnapshot;\r\n    }\r\n\r\n    public Storage StorageSnapshot { get; }\r\n    public int StateSnapshot { get; }\r\n    public int BlockAccessListSnapshot { get; }\r\n\r\n    public const int EmptyPosition = -1;\r\n}"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Tracing/ITxTracer.cs",
+      "owner": "ITxTracer",
+      "member": "ReportAction",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n///\n/// \u003C/summary\u003E\n/// \u003Cparam name = \u0022gas\u0022\u003E\u003C/param\u003E\n/// \u003Cparam name = \u0022value\u0022\u003E\u003C/param\u003E\n/// \u003Cparam name = \u0022from\u0022\u003E\u003C/param\u003E\n/// \u003Cparam name = \u0022to\u0022\u003E\u003C/param\u003E\n/// \u003Cparam name = \u0022input\u0022\u003E\u003C/param\u003E\n/// \u003Cparam name = \u0022callType\u0022\u003E\u003C/param\u003E\n/// \u003Cparam name = \u0022isPrecompileCall\u0022\u003E\u003C/param\u003E\n/// \u003Cremarks\u003EDepends on \u003Csee cref = \u0022IsTracingActions\u0022/\u003E\u003C/remarks\u003E\nvoid ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory\u003Cbyte\u003E input, ExecutionType callType, bool isPrecompileCall = false);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Tracing/ITxTracer.cs",
+      "owner": "ITxTracer",
+      "member": "IsCancelable",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "bool IsCancelable =\u003E false;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Tracing/ITxTracer.cs",
+      "owner": "ITxTracer",
+      "member": "IsCancelled",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "bool IsCancelled =\u003E false;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Tracing/CancellationTxTracer.cs",
+      "owner": "CancellationTxTracer",
+      "member": "IsCancelled",
+      "syntaxKind": "PropertyDeclaration",
+      "signature": "public bool IsCancelled =\u003E token.IsCancellationRequested;"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Tracing/CancellationTxTracer.cs",
+      "owner": "CancellationTxTracer",
+      "member": "ReportAction",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "public void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory\u003Cbyte\u003E input, ExecutionType callType, bool isPrecompileCall = false)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Tracing/ITxTracer.cs",
+      "owner": "ITxTracer",
+      "member": "ReportActionEnd",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n///\n/// \u003C/summary\u003E\n/// \u003Cparam name = \u0022gas\u0022\u003E\u003C/param\u003E\n/// \u003Cparam name = \u0022output\u0022\u003E\u003C/param\u003E\n/// \u003Cremarks\u003EDepends on \u003Csee cref = \u0022IsTracingActions\u0022/\u003E\u003C/remarks\u003E\nvoid ReportActionEnd(ulong gas, ReadOnlyMemory\u003Cbyte\u003E output);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Tracing/ITxTracer.cs",
+      "owner": "ITxTracer",
+      "member": "ReportActionEnd",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n///\n/// \u003C/summary\u003E\n/// \u003Cparam name = \u0022gas\u0022\u003E\u003C/param\u003E\n/// \u003Cparam name = \u0022deploymentAddress\u0022\u003E\u003C/param\u003E\n/// \u003Cparam name = \u0022deployedCode\u0022\u003E\u003C/param\u003E\n/// \u003Cremarks\u003EDepends on \u003Csee cref = \u0022IsTracingActions\u0022/\u003E\u003C/remarks\u003E\nvoid ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory\u003Cbyte\u003E deployedCode);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Tracing/ITxTracer.cs",
+      "owner": "ITxTracer",
+      "member": "ReportActionError",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Csummary\u003E\n///\n/// \u003C/summary\u003E\n/// \u003Cparam name = \u0022evmExceptionType\u0022\u003E\u003C/param\u003E\n/// \u003Cremarks\u003EDepends on \u003Csee cref = \u0022IsTracingActions\u0022/\u003E\u003C/remarks\u003E\nvoid ReportActionError(EvmExceptionType evmExceptionType);"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Tracing/TraceStack.cs",
+      "owner": "TraceStack",
+      "member": "TraceStack",
+      "syntaxKind": "StructDeclaration",
+      "signature": "(ReadOnlyMemory\u003Cbyte\u003E stack)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Tracing/TraceMemory.cs",
+      "owner": "TraceMemory",
+      "member": "TraceMemory",
+      "syntaxKind": "StructDeclaration",
+      "signature": "(ulong size, ReadOnlyMemory\u003Cbyte\u003E memory)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+      "owner": "TransactionProcessorBase",
+      "member": "ExecuteEvmCall",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "private int ExecuteEvmCall\u003CTTracingInst\u003E(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts, long delegationRefunds, IntrinsicGas\u003CTGasPolicy\u003E gas, long postIntrinsicStateReservoir, in StackAccessTracker accessedItems, TGasPolicy gasAvailable, ExecutionEnvironment env, bool topFrameOutOfGas, out TransactionSubstate substate, out GasConsumed gasConsumed)\r\n    where TTracingInst : struct, IFlag"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+      "owner": "TransactionProcessorBase",
+      "member": "FinalizeTransaction",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "[SkipLocalsInit]\r\n[MethodImpl(MethodImplOptions.NoInlining)]\r\nprivate TransactionResult FinalizeTransaction(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in UInt256 senderReservedGasPayment, Address executingAccount, in TransactionSubstate substate, GasConsumed spentGas, int statusCode)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+      "owner": "TransactionProcessorBase",
+      "member": "DeployContract",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "protected bool DeployContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+      "owner": "TransactionProcessorBase",
+      "member": "Refund",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "protected virtual GasConsumed Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts, in TransactionSubstate substate, in TGasPolicy unspentGas, in UInt256 gasPrice, ulong codeInsertRefunds, in TGasPolicy floorGas, in TGasPolicy intrinsicGasStandard, long postIntrinsicStateReservoir, bool topLevelCreateStateGasCharged = false)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionProcessor.cs",
+      "owner": "SystemTransactionProcessor",
+      "member": "Execute",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+      "owner": "BlockProcessingModule",
+      "member": "Load",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "protected override void Load(ContainerBuilder builder)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Blockchain/EthereumPrecompileProvider.cs",
+      "owner": "EthereumPrecompileProvider",
+      "member": "GetPrecompiles",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "public FrozenDictionary\u003CAddressAsKey, CodeInfo\u003E GetPrecompiles();"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Blockchain/PrecompileCachedCodeInfoRepository.cs",
+      "owner": "PrecompileCachedCodeInfoRepository",
+      "member": "GetCachedCodeInfo",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/ReleaseSpec.cs",
+      "owner": "ReleaseSpec",
+      "member": "BuildPrecompilesCache",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "public virtual FrozenSet\u003CAddressAsKey\u003E BuildPrecompilesCache()"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/ReleaseSpec.cs",
+      "owner": "ReleaseSpec",
+      "member": "IsPrecompile",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "/// \u003Cinheritdoc cref = \u0022IReleaseSpec.IsPrecompile\u0022/\u003E\n/// \u003Cremarks\u003EThe precompile\u0027s number is its address, so membership is a bit test rather than hashing\n/// and probing twenty bytes. Numbers above the mask fall back to the set, which is what keeps this\n/// correct for a chain registering one far away \u2014 Taiko\u0027s sit at 0x10001 and 0x10002.\u003C/remarks\u003E\npublic bool IsPrecompile(Address address)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/ForkScheduleSpecProvider.cs",
+      "owner": "ForkScheduleSpecProvider",
+      "member": "GetSpec",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "public IReleaseSpec GetSpec(ForkActivation forkActivation)"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/25_Amsterdam.cs",
+      "owner": "Amsterdam",
+      "member": "Apply",
+      "syntaxKind": "MethodDeclaration",
+      "signature": "public override void Apply(NamedReleaseSpec spec)"
+    }
+  ],
+  "dependencies": [
+    {
+      "kind": "generated",
+      "name": "EvmFrameMachineKernel",
+      "path": "tools/Evm/Lean/EvmFrameMachineExtractor/Generated/EvmFrameMachineKernel.lean",
+      "sha256": "1960d191dca2e8de2c816e3e31cf10350500f7bf8f1a29f72c19265b08f6a084",
+      "binding": "EvmFrameMachineExtractor.Generated.EvmFrameMachineRouting",
+      "theorems": [
+        "EvmFrameMachineExtractor.Refinement.StageARouting.generated_route_lookup_refines_independent_spec"
+      ]
+    },
+    {
+      "kind": "proof",
+      "name": "EvmFrameMachineStageA",
+      "path": "tools/Evm/Lean/EvmFrameMachineExtractor/Refinement/StageARouting.lean",
+      "sha256": "64256f92a7013579d271cf88a88fb98e2a3bb879da16fcd0238502f7a6867c8e",
+      "binding": "EvmFrameMachineExtractor.Refinement.StageARouting",
+      "theorems": [
+        "EvmFrameMachineExtractor.Refinement.StageARouting.generated_route_lookup_refines_independent_spec"
+      ]
+    },
+    {
+      "kind": "generated",
+      "name": "FrameJournalKernel",
+      "path": "tools/Evm/Lean/FrameJournalExtractor/Generated/FrameJournalKernel.lean",
+      "sha256": "232951813100d23c1d593fde8fb0955888f373049df6cba8512afc8c9de6ccf2",
+      "binding": "FrameJournalExtractor.Generated.FrameJournalKernel",
+      "theorems": [
+        "FrameJournalExtractor.Refinement.FrameJournal.transition_refines",
+        "FrameJournalExtractor.Refinement.FrameJournal.finite_trace_refines"
+      ]
+    },
+    {
+      "kind": "proof",
+      "name": "FrameJournalRefinement",
+      "path": "tools/Evm/Lean/FrameJournalExtractor/Refinement/FrameJournal.lean",
+      "sha256": "36fbd6da282c88a590b038d8824a4149f03c1b9d2abcce61b1ed498524948737",
+      "binding": "FrameJournalExtractor.Refinement.FrameJournal",
+      "theorems": [
+        "FrameJournalExtractor.Refinement.FrameJournal.transition_refines",
+        "FrameJournalExtractor.Refinement.FrameJournal.finite_trace_refines"
+      ]
+    },
+    {
+      "kind": "generated",
+      "name": "WorldJournalKernel",
+      "path": "tools/Evm/Lean/WorldJournalExtractor/Generated/WorldJournalKernel.lean",
+      "sha256": "188c1a3d9a2f6c5cdb1a33b1446381b325e769910e8583470ccc5b5684e843a9",
+      "binding": "WorldJournalExtractor.Generated.WorldJournalKernel",
+      "theorems": [
+        "WorldJournalExtractor.Refinement.WorldJournal.transition_refines",
+        "WorldJournalExtractor.Refinement.WorldJournal.finite_trace_refines"
+      ]
+    },
+    {
+      "kind": "proof",
+      "name": "WorldJournalRefinement",
+      "path": "tools/Evm/Lean/WorldJournalExtractor/Refinement/WorldJournal.lean",
+      "sha256": "f37d5ebd59a9f6353bf5200f6dd1952c1591cde70f408d23403fb9f0ecd91407",
+      "binding": "WorldJournalExtractor.Refinement.WorldJournal",
+      "theorems": [
+        "WorldJournalExtractor.Refinement.WorldJournal.transition_refines",
+        "WorldJournalExtractor.Refinement.WorldJournal.finite_trace_refines"
+      ]
+    },
+    {
+      "kind": "proof",
+      "name": "CallCreateRefinement",
+      "path": "tools/Evm/Lean/CallCreateOpcodeExtractor/Refinement/CallCreateOpcode.lean",
+      "sha256": "9f14f31975a4b50cddf577d308b841cc4a8e7a21d2f12ec00173c45b814f1ad0",
+      "binding": "Eip803x.Generated.CallCreateOpcodeRefinement",
+      "theorems": [
+        "Eip803x.Generated.CallCreateOpcodeRefinement.closed_amsterdam_refines",
+        "Eip803x.Generated.CallCreateOpcodeRefinement.generated_create_deposit_failure_gas_is_exception_merge_and_refill"
+      ]
+    },
+    {
+      "kind": "proof",
+      "name": "PrecompileInlineStageB",
+      "path": "tools/Evm/Lean/PrecompileFrameExtractor/Refinement/PrecompileFrameStageB.lean",
+      "sha256": "3a926b90ce1322300b842a804691047f9297347afc06726b3e7b0b9951a33435",
+      "binding": "Eip803x.PrecompileFrame.StageB.Refinement",
+      "theorems": [
+        "Eip803x.PrecompileFrame.StageB.Refinement.source_execute_precompile_refines_reference"
+      ]
+    },
+    {
+      "kind": "proof",
+      "name": "PrecompileFullFrameStageC",
+      "path": "tools/Evm/Lean/PrecompileFullFrameExtractor/Refinement/PrecompileFullFrame.lean",
+      "sha256": "505cc7f5d31c9a9d8055be3f957d1625bcc71d5e8aaded4a9efee4fad977b27a",
+      "binding": "Eip803x.PrecompileFullFrame.Refinement",
+      "theorems": [
+        "Eip803x.PrecompileFullFrame.Refinement.source_full_frame_refines_reference",
+        "Eip803x.PrecompileFullFrame.Refinement.generated_execute_is_raw_admitted"
+      ]
+    },
+    {
+      "kind": "generated",
+      "name": "StateGasTransition",
+      "path": "tools/Evm/Lean/Eip803x/Generated/StateGasTransitionKernel.lean",
+      "sha256": "f284d83951b94cbfaf10ad8b5a58b0015b2c96f4ac86e97c9de8b3865dee1dce",
+      "binding": "Eip803x.Generated.StateGasTransitionKernel",
+      "theorems": [
+        "Eip803x.Refinement.StateGasTransition.generated_refund_matches_spec"
+      ]
+    },
+    {
+      "kind": "proof",
+      "name": "StateGasTransitionRefinement",
+      "path": "tools/Evm/Lean/Eip803x/Refinement/StateGasTransition.lean",
+      "sha256": "a3d3beb8004c1431e2550a702f84d816751657ad90c8320ddc5809956da41cec",
+      "binding": "Eip803x.Refinement.StateGasTransition",
+      "theorems": [
+        "Eip803x.Refinement.StateGasTransition.generated_refund_matches_spec"
+      ]
+    },
+    {
+      "kind": "generated",
+      "name": "PrecompileGasPricing",
+      "path": "tools/Evm/Lean/Eip803x/Generated/PrecompileGasPricingKernel.lean",
+      "sha256": "a80078403d7d7018e9743ad7a84b146d8371dea8512691088f00a13b19c1f04e",
+      "binding": "Eip803x.Generated.PrecompileGasPricingKernel",
+      "theorems": [
+        "Eip803x.Refinement.PrecompileGasPricing.tryConsume_refines_wrapper"
+      ]
+    },
+    {
+      "kind": "proof",
+      "name": "PrecompileGasPricingRefinement",
+      "path": "tools/Evm/Lean/Eip803x/Refinement/PrecompileGasPricing.lean",
+      "sha256": "8ba4eeb00a7858e65dd2e338119c3f60319716c7283d1d18aa2ced6b6f6d8c43",
+      "binding": "Eip803x.Refinement.PrecompileGasPricing",
+      "theorems": [
+        "Eip803x.Refinement.PrecompileGasPricing.tryConsume_refines_wrapper"
+      ]
+    }
+  ],
+  "ir": {
+    "path": "EvmFrameControlSettlementKernel.ir.json",
+    "sha256": "4839548ffa67c70acb685964a9805e915e47c55638a547e2f3fc390ce00f3f7a"
+  },
+  "lean": {
+    "path": "EvmFrameControlSettlementKernel.lean",
+    "sha256": "e9fd758bf572ed65829d762e867c5b71868e164a86a6fa7e3f1f5ec7b89afef6"
+  },
+  "combinedSourceSha256": "86e610fb19e950d7ea8ef34c2363770bd9abae2e24ca4e2fb68814caa481f0ad",
+  "combinedMemberSha256": "1aabcd828ba0c609d7fa7704c5b5f4426696357d76a3c8b4e20fe2da5b4ca437",
+  "reviewedOperationalBindings": [
+    "Exact source bytes, syntax identities, member selectors, and imported theorem names are derived from the admission profile; C# statement bodies are not translated into Lean semantics.",
+    "The generated driver and independently planned reference are separate handwritten operational transcriptions over one shared CanonicalLeaves record; their theorem checks control agreement, not production leaf simulation.",
+    "ExecuteTransaction clears ReturnDataBuffer only on a non-continuation frame before fresh dispatch; continuation preserves the prior child return and copy metadata.",
+    "The current VmState IsPrecompile/CodeInfo state selects full-frame precompile execution; its top-versus-nested settlement classification reads IsTopLevel.",
+    "The STATICCALL direct precompile fast path is an opcode outcome in a bytecode parent before a child frame is rented, never a current-frame dispatch subject.",
+    "Returned child results either suspend a parent or restore it in LIFO order; top-versus-nested CREATE classification reads the current VmState.ExecutionType, while a top frame produces PrepareTopLevelSubstate and leaves outer transaction work excluded.",
+    "Nested CREATE code deposit occurs after successful initcode return and gas refund in HandleCreate/TryChargeAndDepositCode, not as an opcode invocation tag.",
+    "Regular, create, revert, and exceptional VM-frame settlement expose state, every observed gas/refund field, returndata, journal, log, trace, and lifecycle effects through individual simulation obligations.",
+    "Full-frame precompile success completes its current non-CREATE frame with nullable PrecompileSuccess=true; out-of-gas, returned failure, and managed exception have separate top and nested settlement leaves, with the split derived from the current IsTopLevel flag.",
+    "InvocationResult.cancelled models only RunDispatchLoop entry and positive completed-batch-with-successor polling; terminal and exceptional opcode results retain their own result, while CancellationTxTracer callback cancellation is an escaped invocation/unwind rather than a driver poll.",
+    "FrameCleanupScope disposes only exceptional-unwind active child frames and drains the state stack; normal completed exits are settled before the scope\u0027s no-op, while top VmState, pooled memory, and world rollback remain caller-owned external obligations.",
+    "Critical driver helpers for cancellation, parent restoration, CREATE settlement, full/inline precompile execution, dispatch batching, VmState ownership, and pooled memory disposal are named member admissions.",
+    "SourceAdapterBindings is an explicit assumption interface: it carries identity-checked Stage A, Stage B, Stage C, state-gas, and pricing theorem witnesses and assumes each canonical bytecode/full-precompile dispatch leaf equals its caller oracle on admitted states; it does not discharge semantic adapter composition, which remains open alongside ProductionLeafSimulation.",
+    "The central theorem is a single admitted iteration control-agreement check over shared canonical leaves; ProductionLeafSimulation separately states per-leaf production obligations only for AdmittedStep-derived invocation/route pairs.",
+    "AdmissionWitnesses constructively instantiates the complete control-agreement and production-obligation interfaces for terminal bytecode, continuation/suspend/direct-inline bytecode, and full-frame precompile fixtures using nonproduction synthetic leaves.",
+    "Whole-loop induction, reachability of successive admissions, outer transaction deployment/refund/finalization, and caller rollback are intentionally open."
+  ]
+}

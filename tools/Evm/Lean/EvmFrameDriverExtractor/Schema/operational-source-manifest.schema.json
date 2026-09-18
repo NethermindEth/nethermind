@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion", "extractorVersion", "roslynVersion", "compilerMvid", "languageVersion", "kernel",
+    "acceptanceState", "stageEIrSha256", "compilerReferences", "sources", "members", "sourceControl",
+    "controlPlan", "topology", "branchBindings", "opcodeRoutes", "precompileRoutes", "loop", "acceptedDependencies", "ir", "lean", "combinedSourceSha256", "combinedMemberSha256",
+    "combinedControlSha256", "combinedDependencySha256", "reviewedOperationalBindings", "explicitOpenObligations"
+  ],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "extractorVersion": {"type": "string"}, "roslynVersion": {"type": "string"},
+    "compilerMvid": {"type": "string", "format": "uuid"}, "languageVersion": {"const": "CSharp14"},
+    "kernel": {"const": "standard-mainnet-amsterdam-evm-frame-driver-operational-stage-f"},
+    "acceptanceState": {"const": "stage-f-source-derived-finite-fuel-operational-refinement"},
+    "stageEIrSha256": {"$ref": "#/$defs/sha256"},
+    "compilerReferences": {"type": "array", "minItems": 330, "maxItems": 330, "items": {"$ref": "#/$defs/compilerReference"}},
+    "sources": {"type": "array", "minItems": 12, "maxItems": 12, "items": {"$ref": "#/$defs/source"}},
+    "members": {"type": "array", "minItems": 21, "maxItems": 21, "items": {"$ref": "#/$defs/member"}},
+    "sourceControl": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"$ref": "#/$defs/sourceControl"}},
+    "controlPlan": {"type": "array", "minItems": 5, "maxItems": 5, "items": {"$ref": "#/$defs/controlPlanStep"}},
+    "topology": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/topologyNode"}},
+    "branchBindings": {"type": "array", "minItems": 28, "maxItems": 28, "items": {"$ref": "#/$defs/branchBinding"}},
+    "opcodeRoutes": {"type": "array", "minItems": 1024, "maxItems": 1024, "items": {"$ref": "#/$defs/opcodeRoute"}},
+    "precompileRoutes": {"type": "array", "minItems": 18, "maxItems": 18, "items": {"$ref": "#/$defs/precompileRoute"}},
+    "loop": {"$ref": "#/$defs/loop"},
+    "acceptedDependencies": {"type": "array", "minItems": 24, "items": {"$ref": "#/$defs/dependency"}},
+    "ir": {"$ref": "#/$defs/artifact"}, "lean": {"$ref": "#/$defs/artifact"},
+    "combinedSourceSha256": {"$ref": "#/$defs/sha256"}, "combinedMemberSha256": {"$ref": "#/$defs/sha256"},
+    "combinedControlSha256": {"$ref": "#/$defs/sha256"}, "combinedDependencySha256": {"$ref": "#/$defs/sha256"},
+    "reviewedOperationalBindings": {"type": "array", "minItems": 5, "items": {"type": "string", "minLength": 1}},
+    "explicitOpenObligations": {"type": "array", "minItems": 5, "items": {"type": "string", "minLength": 1}}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "artifact": {"type": "object", "additionalProperties": false, "required": ["path", "sha256"], "properties": {"path": {"type": "string"}, "sha256": {"$ref": "#/$defs/sha256"}}},
+    "compilerReference": {"type": "object", "additionalProperties": false, "required": ["path", "sha256", "moduleMvid"], "properties": {"path": {"type": "string"}, "sha256": {"$ref": "#/$defs/sha256"}, "moduleMvid": {"type": "string", "format": "uuid"}}},
+    "source": {"type": "object", "additionalProperties": false, "required": ["role", "path", "sha256", "syntaxSha256"], "properties": {"role": {"type": "string"}, "path": {"type": "string"}, "sha256": {"$ref": "#/$defs/sha256"}, "syntaxSha256": {"$ref": "#/$defs/sha256"}}},
+    "member": {"type": "object", "additionalProperties": false, "required": ["sourcePath", "namespace", "ownerPath", "memberKind", "member", "genericArity", "parameterTypes", "syntaxKind", "sha256"], "properties": {"sourcePath": {"type": "string"}, "namespace": {"type": "string"}, "ownerPath": {"type": "string"}, "memberKind": {"type": "string"}, "member": {"type": "string"}, "genericArity": {"type": "integer"}, "parameterTypes": {"type": "string"}, "syntaxKind": {"type": "string"}, "sha256": {"$ref": "#/$defs/sha256"}}},
+    "sourceControl": {"type": "object", "additionalProperties": false, "required": ["sourcePath", "ownerPath", "member", "sha256", "operations", "topology", "topologySha256"], "properties": {"sourcePath": {"type": "string"}, "ownerPath": {"type": "string"}, "member": {"type": "string"}, "sha256": {"$ref": "#/$defs/sha256"}, "operations": {"type": "array", "items": {"type": "string"}}, "topology": {"type": "array", "items": {"$ref": "#/$defs/controlNode"}}, "topologySha256": {"$ref": "#/$defs/sha256"}}},
+    "controlNode": {"type": "object", "additionalProperties": false, "required": ["id", "kind", "parentId", "arm", "condition", "sha256", "operations"], "properties": {"id": {"type": "string"}, "kind": {"type": "string"}, "parentId": {"type": "string"}, "arm": {"type": "string"}, "condition": {"type": "string"}, "sha256": {"$ref": "#/$defs/sha256"}, "operations": {"type": "array", "items": {"type": "string"}}}},
+    "controlPlanStep": {"type": "object", "additionalProperties": false, "required": ["stage", "member", "nodeId", "kind", "sourceArm", "sourceSha256", "actions"], "properties": {"stage": {"enum": ["prepare", "dispatch", "classify", "settle", "cleanup"]}, "member": {"type": "string"}, "nodeId": {"type": "string"}, "kind": {"type": "string"}, "sourceArm": {"type": "string"}, "sourceSha256": {"$ref": "#/$defs/sha256"}, "actions": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["PrepareFresh", "PrepareContinuation", "DispatchBytecode", "DispatchFullPrecompile", "PrecompileFailure", "ClassifyContinue", "ClassifySuspend", "ClassifyHalt", "SettleNestedRegularSuccess", "SettleNestedCreateSuccess", "SettleNestedCreateInvalidCode", "SettleNestedCreateOutOfGas", "SettleNestedRevert", "SettleNestedException", "SettleResume", "SettleTopLevelSuccess", "SettleTopLevelRevert", "SettleTopLevelException", "CleanupCancelled", "CleanupEscaped", "CleanupInvalidControl", "CleanupCompleted"]}}}},
+    "topologyNode": {"type": "object", "additionalProperties": false, "required": ["member", "id", "kind", "parentId", "arm", "condition", "sha256", "operations"], "properties": {"member": {"type": "string"}, "id": {"type": "string"}, "kind": {"type": "string"}, "parentId": {"type": "string"}, "arm": {"type": "string"}, "condition": {"type": "string"}, "sha256": {"$ref": "#/$defs/sha256"}, "operations": {"type": "array", "items": {"type": "string"}}}},
+    "branchBinding": {"type": "object", "additionalProperties": false, "required": ["branch", "member", "nodeId", "kind", "sourceArm", "sourceSha256", "bindingArm", "invocation", "predicate", "effects", "effectKinds", "settlement", "settlementKind", "actions", "stages"], "properties": {"branch": {"type": "string"}, "member": {"type": "string"}, "nodeId": {"type": "string"}, "kind": {"type": "string"}, "sourceArm": {"type": "string"}, "sourceSha256": {"$ref": "#/$defs/sha256"}, "bindingArm": {"type": "string"}, "invocation": {"type": "string", "minLength": 1}, "predicate": {"enum": ["FreshFrame", "ContinuationFrame", "BytecodeFrame", "FullPrecompileFrame", "BytecodeContinue", "BytecodeSuspend", "NestedRegularSuccess", "NestedCreateSuccess", "CreateDepositInvalidCode", "CreateDepositOutOfGas", "NestedRevert", "NestedException", "ResumeParent", "TopLevelSuccess", "TopLevelRevert", "TopLevelException", "PrecompileOutOfGasNested", "PrecompileOutOfGasTop", "PrecompileReturnedFailure", "PrecompileManagedException", "Cancelled", "Escaped", "InvalidControl", "Completed"]}, "effects": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}, "effectKinds": {"type": "array", "minItems": 1, "items": {"enum": ["ClearReturnData", "PrepareFresh", "RetainReturnData", "PrepareContinuation", "RunBytecode", "RunDispatchLoop", "RunFullPrecompile", "ExecutePrecompile", "RetainCurrentFrame", "PrepareChildFrame", "RetainParent", "PopParent", "MergeChild", "RepayStateGasSpill", "PrepareCreateData", "HandleCreate", "RestoreWorld", "CreditParent", "BurnDepositGas", "RestoreSnapshot", "RestoreChildGas", "HandleRevert", "RestoreFailureControl", "ResumeParent", "PrepareTopLevelSubstate", "RefundRevertedStateGas", "HandleExceptionOrFailure", "FailureSettlement", "Dispose", "FailClosed", "DisposeActiveFrames"]}}, "settlement": {"type": "string", "minLength": 1}, "settlementKind": {"enum": ["Preparation", "Invocation", "Continued", "Suspended", "ChildSuccess", "ChildCreateSuccess", "ChildCreateInvalidCode", "ChildCreateOutOfGas", "ChildRevert", "ChildException", "TopLevelSuccess", "TopLevelRevert", "TopLevelException", "FullPrecompileOutOfGasNested", "FullPrecompileOutOfGasTop", "FullPrecompileReturnedFailure", "FullPrecompileManagedException", "Cancelled", "Escaped", "InvalidControl", "Completed"]}, "actions": {"type": "array", "minItems": 1, "items": {"enum": ["PrepareFresh", "PrepareContinuation", "DispatchBytecode", "DispatchFullPrecompile", "PrecompileFailure", "ClassifyContinue", "ClassifySuspend", "ClassifyHalt", "SettleNestedRegularSuccess", "SettleNestedCreateSuccess", "SettleNestedCreateInvalidCode", "SettleNestedCreateOutOfGas", "SettleNestedRevert", "SettleNestedException", "SettleResume", "SettleTopLevelSuccess", "SettleTopLevelRevert", "SettleTopLevelException", "CleanupCancelled", "CleanupEscaped", "CleanupInvalidControl", "CleanupCompleted"]}}, "stages": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["prepare", "dispatch", "classify", "settle", "cleanup"]}}}},
+    "opcodeRoute": {"type": "object", "additionalProperties": false, "required": ["dispatchTable", "byte", "instruction", "routeKind", "activationRule", "package", "closedHandlerRoot", "admitted"], "properties": {"dispatchTable": {"enum": ["NoTrace", "NoTraceCancelable", "Traced", "TracedCancelable"]}, "byte": {"type": "integer", "minimum": 0, "maximum": 255}, "instruction": {"type": "string"}, "routeKind": {"enum": ["enabled", "disabled", "badInstruction"]}, "activationRule": {"type": "string"}, "package": {"type": "string"}, "closedHandlerRoot": {"type": "string"}, "admitted": {"type": "boolean"}}},
+    "precompileRoute": {"type": "object", "additionalProperties": false, "required": ["name", "address", "activationRule", "providerRoot", "wrapperManifestPath", "wrapperManifestSha256", "leanModule", "fullyQualifiedTheorem", "admitted"], "properties": {"name": {"type": "string"}, "address": {"type": "integer", "minimum": 0}, "activationRule": {"type": "string"}, "providerRoot": {"type": "string"}, "wrapperManifestPath": {"type": "string"}, "wrapperManifestSha256": {"$ref": "#/$defs/sha256"}, "leanModule": {"type": "string"}, "fullyQualifiedTheorem": {"type": ["string", "null"]}, "admitted": {"type": "boolean"}}},
+    "loop": {
+      "type": "object", "additionalProperties": false,
+      "required": ["batchLimit", "dispatchModes", "entryTransitions", "bytecodeOutcomes", "settlementRoutes", "stateEffects", "cleanupRoutes", "fuelRules", "measure", "adequacyStatus"],
+      "properties": {
+        "batchLimit": {"const": 1024},
+        "dispatchModes": {"const": ["NoTrace", "NoTraceCancelable", "Traced", "TracedCancelable"]},
+        "entryTransitions": {"type": "array", "minItems": 3, "items": {"type": "string"}},
+        "bytecodeOutcomes": {"type": "array", "minItems": 5, "items": {"type": "string"}},
+        "settlementRoutes": {"type": "array", "minItems": 5, "items": {"type": "string"}},
+        "stateEffects": {"type": "array", "minItems": 8, "items": {"type": "string"}},
+        "cleanupRoutes": {"type": "array", "minItems": 4, "items": {"type": "string"}},
+        "fuelRules": {"type": "array", "minItems": 4, "items": {"type": "string"}},
+        "measure": {"type": "string", "minLength": 1},
+        "adequacyStatus": {"type": "string", "minLength": 1}
+      }
+    },
+    "dependency": {"type": "object", "additionalProperties": false, "required": ["stage", "name", "manifestPath", "manifestSha256", "proofPath", "proofSha256", "theorem", "signatureSha256", "binding"], "properties": {"stage": {"type": "string"}, "name": {"type": "string"}, "manifestPath": {"type": "string"}, "manifestSha256": {"$ref": "#/$defs/sha256"}, "proofPath": {"type": "string"}, "proofSha256": {"$ref": "#/$defs/sha256"}, "theorem": {"type": "string"}, "signatureSha256": {"$ref": "#/$defs/sha256"}, "binding": {"type": "string"}}}
+  }
+}

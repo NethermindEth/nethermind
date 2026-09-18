@@ -1,0 +1,471 @@
+{
+  "schemaVersion": 1,
+  "phases": [
+    {
+      "name": "daoTransition",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessOne",
+      "line": 84,
+      "syntax": "ApplyDaoTransition(suggestedBlock)",
+      "guards": []
+    },
+    {
+      "name": "beaconRootSystemCall",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 162,
+      "syntax": "_systemContractHandler.StoreBeaconRoot(block,spec,NullTxTracer.Instance)",
+      "guards": []
+    },
+    {
+      "name": "historicalBlockhashStateChange",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 163,
+      "syntax": "_systemContractHandler.ApplyBlockhashStateChanges(header,spec)",
+      "guards": []
+    },
+    {
+      "name": "userTransactionFold",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 166,
+      "syntax": "_blockTransactionsExecutor.ProcessTransactions(block,options,ReceiptsTracer,token)",
+      "guards": []
+    },
+    {
+      "name": "blobGasReceiptRootAndBloom",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 180,
+      "syntax": "ShouldCalculateReceiptsInBackground(receipts)",
+      "guards": []
+    },
+    {
+      "name": "rewards",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 196,
+      "syntax": "ApplyMinerRewards(block,blockTracer,spec)",
+      "guards": []
+    },
+    {
+      "name": "withdrawals",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 197,
+      "syntax": "_systemContractHandler.ProcessWithdrawals(block,spec)",
+      "guards": []
+    },
+    {
+      "name": "executionRequestsAndSystemCalls",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 203,
+      "syntax": "_systemContractHandler.ProcessExecutionRequests(block,_stateProvider,receipts,spec)",
+      "guards": []
+    },
+    {
+      "name": "storageAndStateRoots",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 207,
+      "syntax": "CommitStateAndStorageRoots(spec)",
+      "guards": []
+    },
+    {
+      "name": "blockAccessList",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 224,
+      "syntax": "_balManager.SetBlockAccessList(block)",
+      "guards": []
+    },
+    {
+      "name": "processedHeaderValidation",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessOne",
+      "line": 107,
+      "syntax": "ValidateProcessedBlock(suggestedBlock,options,block,receipts)",
+      "guards": []
+    }
+  ],
+  "receiptEvents": [
+    {
+      "name": "receiptBloomsComputed",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 190,
+      "syntax": "CalculateBlooms(receipts)",
+      "guards": [
+        "else:ShouldCalculateReceiptsInBackground(receipts)"
+      ]
+    },
+    {
+      "name": "receiptsRootComputed",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 191,
+      "syntax": "CalculateReceiptsRoot(receipts,spec,block)",
+      "guards": [
+        "else:ShouldCalculateReceiptsInBackground(receipts)"
+      ]
+    },
+    {
+      "name": "receiptsRootInstalled",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 191,
+      "syntax": "header.ReceiptsRoot=CalculateReceiptsRoot(receipts,spec,block)",
+      "guards": [
+        "else:ShouldCalculateReceiptsInBackground(receipts)"
+      ]
+    }
+  ],
+  "blockEvents": [
+    {
+      "name": "traceStarted",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 156,
+      "syntax": "ReceiptsTracer.StartNewBlockTrace(block)",
+      "guards": []
+    },
+    {
+      "name": "executionContextSet",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 158,
+      "syntax": "_blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header,spec))",
+      "guards": []
+    },
+    {
+      "name": "balSetup",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 160,
+      "syntax": "_balManager.Setup(block)",
+      "guards": []
+    },
+    {
+      "name": "commitState",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 164,
+      "syntax": "CommitState(spec)",
+      "guards": []
+    },
+    {
+      "name": "commitState",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 172,
+      "syntax": "CommitState(spec)",
+      "guards": []
+    },
+    {
+      "name": "commitState",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 201,
+      "syntax": "CommitState(spec)",
+      "guards": []
+    },
+    {
+      "name": "executionRequests",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 203,
+      "syntax": "_systemContractHandler.ProcessExecutionRequests(block,_stateProvider,receipts,spec)",
+      "guards": []
+    },
+    {
+      "name": "traceEnded",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 205,
+      "syntax": "ReceiptsTracer.EndBlockTrace(accumulateBlockBloom:bloomsAndReceiptsRootTaskisnull)",
+      "guards": []
+    },
+    {
+      "name": "commitStorageRoots",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 207,
+      "syntax": "CommitStateAndStorageRoots(spec)",
+      "guards": []
+    },
+    {
+      "name": "accountChanges",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 211,
+      "syntax": "SetAccountChanges(block)",
+      "guards": [
+        "BlockchainProcessor.IsMainProcessingThread"
+      ]
+    },
+    {
+      "name": "stateRoot",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 216,
+      "syntax": "ComputeStateRoot(header)",
+      "guards": [
+        "ShouldComputeStateRoot(header)"
+      ]
+    },
+    {
+      "name": "balFinalized",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessBlock",
+      "line": 224,
+      "syntax": "_balManager.SetBlockAccessList(block)",
+      "guards": []
+    }
+  ],
+  "branchEvents": [
+    {
+      "name": "processOne",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "method": "Process",
+      "line": 138,
+      "syntax": "blockProcessor.ProcessOne(suggestedBlock,blockOptions,blockTracer,spec,token)",
+      "guards": []
+    },
+    {
+      "name": "inclusionList",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "method": "Process",
+      "line": 163,
+      "syntax": "inclusionListSatisfactionChecker.IsSatisfied(processedBlock,suggestedBlock,stateProvider)",
+      "guards": []
+    },
+    {
+      "name": "waitPrewarm",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "method": "Process",
+      "line": 169,
+      "syntax": "WaitAndClear(refpreWarmTask)",
+      "guards": []
+    },
+    {
+      "name": "commitTree",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "method": "Process",
+      "line": 172,
+      "syntax": "PreCommitBlock(suggestedBlock.Header)",
+      "guards": []
+    },
+    {
+      "name": "reset",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "method": "Process",
+      "line": 197,
+      "syntax": "stateProvider.Reset()",
+      "guards": []
+    }
+  ],
+  "commitTarget": {
+    "name": "commitTreeTarget",
+    "source": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+    "method": "PreCommitBlock",
+    "line": 46,
+    "syntax": "stateProvider.CommitTree(block.Number)",
+    "guards": []
+  },
+  "finalization": [
+    {
+      "name": "totalDifficulty",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "method": "Process",
+      "line": 520,
+      "syntax": "lastProcessed.Header.TotalDifficulty=suggestedBlock.TotalDifficulty",
+      "guards": [
+        "processedBlocks.Length\u003E0"
+      ]
+    },
+    {
+      "name": "mainChainUpdate",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "method": "Process",
+      "line": 543,
+      "syntax": "_blockTree.TryUpdateMainChain(suggestedBlock.Header,wereProcessed:true,preloadedBlocks:processingBranch.Blocks.AsSpan())",
+      "guards": [
+        "updateHead"
+      ]
+    },
+    {
+      "name": "markProcessed",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "method": "Process",
+      "line": 550,
+      "syntax": "_blockTree.MarkChainAsProcessed(processingBranch.Blocks)",
+      "guards": [
+        "(options\u0026ProcessingOptions.MarkAsProcessed)==ProcessingOptions.MarkAsProcessed"
+      ]
+    }
+  ],
+  "cleanup": [
+    {
+      "name": "disposeAccountChanges",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ProcessOne",
+      "line": 105,
+      "syntax": "block.DisposeAccountChanges()",
+      "guards": [
+        "!processed",
+        "finally"
+      ]
+    },
+    {
+      "name": "disposeAccountChanges",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "method": "ValidateProcessedBlock",
+      "line": 120,
+      "syntax": "block.DisposeAccountChanges()",
+      "guards": [
+        "!options.ContainsFlag(ProcessingOptions.NoValidation)\u0026\u0026!blockValidator.ValidateProcessedBlock(block,receipts,suggestedBlock,outstring?error)"
+      ]
+    },
+    {
+      "name": "disposeScopeForRetry",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "method": "Process",
+      "line": 149,
+      "syntax": "worldStateCloser.Dispose()",
+      "guards": [
+        "catch:(BlockProcessor.BlockAccessListSequentialRetryException)"
+      ]
+    },
+    {
+      "name": "reopenScopeForRetry",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "method": "Process",
+      "line": 150,
+      "syntax": "stateProvider.BeginScope(preBlockBaseBlock)",
+      "guards": [
+        "catch:(BlockProcessor.BlockAccessListSequentialRetryException)"
+      ]
+    },
+    {
+      "name": "disposeScopeAtCheckpoint",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "method": "Process",
+      "line": 190,
+      "syntax": "worldStateCloser?.Dispose()",
+      "guards": [
+        "isCommitPoint\u0026\u0026notReadOnly"
+      ]
+    },
+    {
+      "name": "disposeScopeFinally",
+      "source": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "method": "Process",
+      "line": 225,
+      "syntax": "worldStateCloser?.Dispose()",
+      "guards": [
+        "finally"
+      ]
+    }
+  ],
+  "headerFields": [
+    {
+      "target": "dst.Bloom",
+      "value": "Core.Bloom.Empty"
+    },
+    {
+      "target": "dst.Author",
+      "value": "Author"
+    },
+    {
+      "target": "dst.Hash",
+      "value": "Hash"
+    },
+    {
+      "target": "dst.MixHash",
+      "value": "MixHash"
+    },
+    {
+      "target": "dst.Nonce",
+      "value": "Nonce"
+    },
+    {
+      "target": "dst.TxRoot",
+      "value": "TxRoot"
+    },
+    {
+      "target": "dst.TotalDifficulty",
+      "value": "TotalDifficulty"
+    },
+    {
+      "target": "dst.ReceiptsRoot",
+      "value": "ReceiptsRoot"
+    },
+    {
+      "target": "dst.BaseFeePerGas",
+      "value": "BaseFeePerGas"
+    },
+    {
+      "target": "dst.WithdrawalsRoot",
+      "value": "WithdrawalsRoot"
+    },
+    {
+      "target": "dst.RequestsHash",
+      "value": "RequestsHash"
+    },
+    {
+      "target": "dst.IsPostMerge",
+      "value": "IsPostMerge"
+    },
+    {
+      "target": "dst.ParentBeaconBlockRoot",
+      "value": "ParentBeaconBlockRoot"
+    },
+    {
+      "target": "dst.SlotNumber",
+      "value": "SlotNumber"
+    },
+    {
+      "target": "dst.BlockAccessListHash",
+      "value": "BlockAccessListHash"
+    },
+    {
+      "target": "dst.BlobGasUsed",
+      "value": "BlobGasUsed"
+    },
+    {
+      "target": "dst.ExcessBlobGas",
+      "value": "ExcessBlobGas"
+    }
+  ],
+  "artifacts": [
+    {
+      "target": "suggestedBlock.AccountChanges",
+      "value": "processedBlock.AccountChanges"
+    },
+    {
+      "target": "suggestedBlock.ExecutionRequests",
+      "value": "processedBlock.ExecutionRequests"
+    },
+    {
+      "target": "suggestedBlock.GeneratedBlockAccessList",
+      "value": "processedBlock.GeneratedBlockAccessList"
+    },
+    {
+      "target": "suggestedBlock.EncodedBlockAccessList",
+      "value": "processedBlock.EncodedBlockAccessList??suggestedBlock.EncodedBlockAccessList"
+    }
+  ],
+  "checkpoint": "(((index % 64) == 0) \u0026\u0026 ((!(index == 0)) \u0026\u0026 (!(index == (total - 1)))))",
+  "externalObligations": [
+    "Admission compares complete method syntax tokens with independently reviewable templates; event extraction follows the admitted source AST.",
+    "Concrete standard BlockProcessor, BranchProcessor and BlockHeader runtime implementations, standard SystemContractHandler dispatch, and synchronous receipt selection are premises.",
+    "Roslyn parsing and the extractor are trusted; no C# semantic-model, overload resolution, full C# operational semantics, CLR/JIT, or dependency-injection correctness theorem is supplied.",
+    "Calls into DAO, beacon roots, historical blockhash, rewards, withdrawals, execution requests, hashing, BAL, tracers, events, scopes, storage and persistence remain external hooks.",
+    "The abstract reference restores its complete BlockWorld on failure; production source only anchors DisposeAccountChanges, scope disposal/reopen and rethrow. Real world-state rollback and database durability are not proved.",
+    "The source records both background receipt arms and finally observation; the Lean synchronous receipt projection does not prove background scheduling or parallel block execution.",
+    "Header fields remain syntax projections. Reference Nat header fields do not prove C# constructor defaults, nullable values, deep copy, widths, aliasing or hash bytes.",
+    "BlockchainProcessor invalid-block handling is anchored by its complete admitted ProcessBranch template; diagnostic replay, event failures, deletion and head update implementations remain external."
+  ]
+}

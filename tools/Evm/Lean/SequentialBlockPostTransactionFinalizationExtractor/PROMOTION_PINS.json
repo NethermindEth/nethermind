@@ -1,0 +1,9 @@
+{
+  "acceptanceState": "accepted-upstreams",
+  "foldSchemaVersion": 9,
+  "foldExtractorVersion": "1.8.0",
+  "foldManifestSha256": "f531d9ca1bf15382ef74b2c055ad45ca8352163815a35b07e382a20f257c5a56",
+  "foldIrSha256": "0580b07867d42ffcd210a2044cf15f6e30193ba4170486c97b20caad54cbdda5",
+  "foldLeanSha256": "e1c7c38d5f90662a649fff77b8fa7bbc2543ea25e8eea1ac845a4d15ffbf5516",
+  "receiptManifestSha256": "3d1ec03bce750645bc29d8fb51ac94321508364735b9a65a987043100f74bd8e"
+}

@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "precompile-frame-stage-b.source-manifest.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "extractorVersion", "kernel", "stageA", "sources", "members", "oracleBindings", "reference", "refinement", "ir", "lean", "semanticBindings"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "extractorVersion": { "const": "precompile-frame-stage-b-1" },
+    "kernel": { "const": "standard-mainnet-amsterdam-precompile-direct-stage-b" },
+    "stageA": { "$ref": "#/definitions/stageA" },
+    "sources": { "type": "array", "minItems": 10, "maxItems": 10, "items": { "$ref": "#/definitions/source" } },
+    "members": { "type": "array", "minItems": 24, "maxItems": 24, "items": { "$ref": "#/definitions/member" } },
+    "oracleBindings": { "type": "array", "minItems": 18, "maxItems": 18, "items": { "$ref": "#/definitions/oracle" } },
+    "reference": { "$ref": "#/definitions/proof" },
+    "refinement": { "$ref": "#/definitions/proof" },
+    "ir": { "$ref": "#/definitions/artifact" },
+    "lean": { "$ref": "#/definitions/artifact" },
+    "semanticBindings": { "type": "array", "minItems": 8, "maxItems": 8, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+  },
+  "definitions": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": { "path": { "type": "string", "minLength": 1 }, "sha256": { "$ref": "#/definitions/sha256" } }
+    },
+    "stageA": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ir", "manifest", "lean", "combinedSourceSha256", "combinedMemberSha256", "sourceCount", "memberCount", "dependencyCount", "routeCount"],
+      "properties": {
+        "ir": { "$ref": "#/definitions/artifact" }, "manifest": { "$ref": "#/definitions/artifact" }, "lean": { "$ref": "#/definitions/artifact" },
+        "combinedSourceSha256": { "$ref": "#/definitions/sha256" }, "combinedMemberSha256": { "$ref": "#/definitions/sha256" },
+        "sourceCount": { "const": 122 }, "memberCount": { "const": 154 }, "dependencyCount": { "const": 23 }, "routeCount": { "const": 18 }
+      }
+    },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "role", "sha256", "roslynSyntaxSha256", "isRaw", "includedInStandardBuild"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 }, "role": { "type": "string", "minLength": 1 }, "sha256": { "$ref": "#/definitions/sha256" },
+        "roslynSyntaxSha256": { "$ref": "#/definitions/sha256" }, "isRaw": { "const": false }, "includedInStandardBuild": { "const": true }
+      }
+    },
+    "member": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sourcePath", "owner", "member", "signature", "syntaxKind", "sha256"],
+      "properties": {
+        "sourcePath": { "type": "string", "minLength": 1 }, "owner": { "type": "string", "minLength": 1 }, "member": { "type": "string", "minLength": 1 },
+        "signature": { "type": "string", "minLength": 1 }, "syntaxKind": { "const": "MethodDeclaration" }, "sha256": { "$ref": "#/definitions/sha256" }
+      }
+    },
+    "oracle": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "address", "dependencyPath", "dependencySha256", "namespace", "entrySymbol"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 }, "address": { "type": "integer", "minimum": 1 }, "dependencyPath": { "type": "string", "minLength": 1 },
+        "dependencySha256": { "$ref": "#/definitions/sha256" }, "namespace": { "type": "string", "minLength": 1 }, "entrySymbol": { "const": "run" }
+      }
+    },
+    "proof": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "path", "sha256", "namespace", "types", "definition", "theorem"],
+      "properties": {
+        "kind": { "enum": ["independentReference", "refinementProof"] }, "path": { "type": "string", "minLength": 1 }, "sha256": { "$ref": "#/definitions/sha256" },
+        "namespace": { "type": "string", "minLength": 1 }, "types": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "definition": { "type": "string", "minLength": 1 }, "theorem": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

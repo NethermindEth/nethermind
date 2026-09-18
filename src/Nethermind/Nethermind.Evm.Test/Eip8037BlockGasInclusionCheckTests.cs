@@ -138,6 +138,23 @@ public class Eip8037BlockGasInclusionCheckTests
         Assert.That(outcome, Is.EqualTo(Eip8037BlockGasInclusionCheck.Outcome.Ok));
     }
 
+    [TestCase(100UL, 101UL, 0UL, Eip8037BlockGasInclusionCheck.Outcome.ExecutionDimensionExceeded,
+        TestName = "Cumulative_execution_already_over_limit_rejects")]
+    [TestCase(100UL, 0UL, 101UL, Eip8037BlockGasInclusionCheck.Outcome.StateDimensionExceeded,
+        TestName = "Cumulative_state_already_over_limit_rejects")]
+    public void Cumulative_dimension_already_over_limit_rejects(
+        ulong blockGasLimit,
+        ulong cumulativeBlockExecution,
+        ulong cumulativeBlockState,
+        Eip8037BlockGasInclusionCheck.Outcome expected)
+        => Assert.That(
+            Eip8037BlockGasInclusionCheck.Validate(
+                blockGasLimit,
+                cumulativeBlockExecution,
+                cumulativeBlockState,
+                txGas: 0),
+            Is.EqualTo(expected));
+
     [TestCase(379_970UL, 281_520UL, 0UL, 98_450UL, TestName = "Calculate_block_execution_gas_subtracts_state_component")]
     [TestCase(133_379UL, 97_920UL, 0UL, 35_459UL, TestName = "Calculate_block_execution_gas_subtracts_smaller_state_component")]
     [TestCase(12_625UL, 1_566_720UL, 0UL, 0UL, TestName = "Calculate_block_execution_gas_never_negative")]

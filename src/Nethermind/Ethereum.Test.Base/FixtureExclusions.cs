@@ -28,15 +28,6 @@ internal static partial class FixtureExclusions
         ["stExtCodeHash"] = ["dynamicAccountOverwriteEmpty*"],
         ["stRevertTest"] = ["RevertInCreateInInit*"],
         ["stSpecialTest"] = ["FailedCreateRevertsDeletionParis"],
-        // Explicit EEST version overrides can still select releases containing these retired fixtures.
-        ["eip7610_create_collision"] =
-        [
-            "test_collision_with_create2_revert_in_initcode[fork_*",
-            "test_create*_collision_storage[fork_*",
-            "test_init_collision_create_opcode[fork_*-opcode_*-non-empty-balance-correct-initcode]*",
-            "test_init_collision_create_tx[fork_*-non-empty-balance-correct-initcode]*",
-            "test_init_collision_create_tx[fork_*-non-empty-balance-revert-initcode]*",
-        ],
     };
 
     public static IEnumerable<T> Filter<T>(IEnumerable<T> tests, string? sourceFile = null) where T : EthereumTest

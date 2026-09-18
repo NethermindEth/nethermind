@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="../../../../../src/Nethermind/tests.props" />
+
+  <PropertyGroup>
+    <AssemblyName>Nethermind.Evm.Lean.Keccak256OpcodeExtractor.Test</AssemblyName>
+    <RootNamespace>Nethermind.Evm.Lean.Keccak256OpcodeExtractor.Test</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Keccak256OpcodeExtractor.csproj" />
+  </ItemGroup>
+
+</Project>
+

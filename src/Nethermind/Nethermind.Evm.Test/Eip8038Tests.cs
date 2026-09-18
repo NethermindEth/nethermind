@@ -134,11 +134,18 @@ public class Eip8038Tests(bool eip8038Enabled, bool tracing = true, bool cancela
     }
 
     [Test]
-    public void Selfdestruct_charges_beneficiary_access_and_creation([Values] bool newBeneficiary)
+    public void Selfdestruct_charges_beneficiary_access_and_creation([Values] bool newBeneficiary, [Values] bool warmBeneficiary)
     {
         Address beneficiary = newBeneficiary ? TestItem.AddressE : Target;
-        byte[] code = Prepare.EvmCode.SELFDESTRUCT(beneficiary).Done;
-        ulong expected = GasCostOf.Transaction + GasCostOf.VeryLow + GasCostOf.SelfDestructEip150 + ColdAccountAccess;
+        byte[] code = warmBeneficiary
+            ? Prepare.EvmCode.PushData(beneficiary).Op(Instruction.BALANCE).Op(Instruction.POP).SELFDESTRUCT(beneficiary).Done
+            : Prepare.EvmCode.SELFDESTRUCT(beneficiary).Done;
+        ulong beneficiaryAccess = warmBeneficiary
+            ? eip8038Enabled ? Eip8038Constants.WarmAccess : 0
+            : ColdAccountAccess;
+        ulong expected = GasCostOf.Transaction + GasCostOf.VeryLow + GasCostOf.SelfDestructEip150 + beneficiaryAccess;
+        if (warmBeneficiary)
+            expected += GasCostOf.VeryLow + ColdAccountAccess + GasCostOf.Base;
         if (newBeneficiary)
             expected += GasCostOf.NewAccount + (eip8038Enabled ? Eip8038Constants.AccountWrite : 0);
 

@@ -1,0 +1,329 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.0.0",
+  "root": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E",
+  "gasPolicy": "Nethermind.Evm.GasPolicy.EthereumGasPolicy",
+  "fork": "Nethermind.Specs.Forks.Amsterdam",
+  "logBaseGas": 375,
+  "logTopicGas": 375,
+  "logDataByteGas": 8,
+  "memoryLinearGas": 3,
+  "memoryQuadraticDivisor": 512,
+  "maxMemorySize": 2147483616,
+  "opcodes": [
+    {
+      "name": "log0",
+      "instruction": "LOG0",
+      "opcodeByte": 160,
+      "topicCount": 0,
+      "handlerBody": "LogOpcode\u003CEvmInstructions.Op0\u003E",
+      "programCounterDelta": 1,
+      "headerStackInputs": 2,
+      "effectOrder": [
+        "traceStartIfInstructionTracing",
+        "incrementProgramCounter",
+        "staticGuard",
+        "popOffsetLengthAtomically",
+        "readTopicCount",
+        "prepareMemoryAndInstallSize",
+        "chargeMemoryExpansion",
+        "chargeLogEmission",
+        "loadPayload",
+        "allocateTopicArray",
+        "popTopicsSequentially",
+        "copyPayload",
+        "constructLog",
+        "appendJournal",
+        "reportLogIfEnabled",
+        "traceEndIfInstructionTracing",
+        "dispatchContinue"
+      ]
+    },
+    {
+      "name": "log1",
+      "instruction": "LOG1",
+      "opcodeByte": 161,
+      "topicCount": 1,
+      "handlerBody": "LogOpcode\u003CEvmInstructions.Op1\u003E",
+      "programCounterDelta": 1,
+      "headerStackInputs": 2,
+      "effectOrder": [
+        "traceStartIfInstructionTracing",
+        "incrementProgramCounter",
+        "staticGuard",
+        "popOffsetLengthAtomically",
+        "readTopicCount",
+        "prepareMemoryAndInstallSize",
+        "chargeMemoryExpansion",
+        "chargeLogEmission",
+        "loadPayload",
+        "allocateTopicArray",
+        "popTopicsSequentially",
+        "copyPayload",
+        "constructLog",
+        "appendJournal",
+        "reportLogIfEnabled",
+        "traceEndIfInstructionTracing",
+        "dispatchContinue"
+      ]
+    },
+    {
+      "name": "log2",
+      "instruction": "LOG2",
+      "opcodeByte": 162,
+      "topicCount": 2,
+      "handlerBody": "LogOpcode\u003CEvmInstructions.Op2\u003E",
+      "programCounterDelta": 1,
+      "headerStackInputs": 2,
+      "effectOrder": [
+        "traceStartIfInstructionTracing",
+        "incrementProgramCounter",
+        "staticGuard",
+        "popOffsetLengthAtomically",
+        "readTopicCount",
+        "prepareMemoryAndInstallSize",
+        "chargeMemoryExpansion",
+        "chargeLogEmission",
+        "loadPayload",
+        "allocateTopicArray",
+        "popTopicsSequentially",
+        "copyPayload",
+        "constructLog",
+        "appendJournal",
+        "reportLogIfEnabled",
+        "traceEndIfInstructionTracing",
+        "dispatchContinue"
+      ]
+    },
+    {
+      "name": "log3",
+      "instruction": "LOG3",
+      "opcodeByte": 163,
+      "topicCount": 3,
+      "handlerBody": "LogOpcode\u003CEvmInstructions.Op3\u003E",
+      "programCounterDelta": 1,
+      "headerStackInputs": 2,
+      "effectOrder": [
+        "traceStartIfInstructionTracing",
+        "incrementProgramCounter",
+        "staticGuard",
+        "popOffsetLengthAtomically",
+        "readTopicCount",
+        "prepareMemoryAndInstallSize",
+        "chargeMemoryExpansion",
+        "chargeLogEmission",
+        "loadPayload",
+        "allocateTopicArray",
+        "popTopicsSequentially",
+        "copyPayload",
+        "constructLog",
+        "appendJournal",
+        "reportLogIfEnabled",
+        "traceEndIfInstructionTracing",
+        "dispatchContinue"
+      ]
+    },
+    {
+      "name": "log4",
+      "instruction": "LOG4",
+      "opcodeByte": 164,
+      "topicCount": 4,
+      "handlerBody": "LogOpcode\u003CEvmInstructions.Op4\u003E",
+      "programCounterDelta": 1,
+      "headerStackInputs": 2,
+      "effectOrder": [
+        "traceStartIfInstructionTracing",
+        "incrementProgramCounter",
+        "staticGuard",
+        "popOffsetLengthAtomically",
+        "readTopicCount",
+        "prepareMemoryAndInstallSize",
+        "chargeMemoryExpansion",
+        "chargeLogEmission",
+        "loadPayload",
+        "allocateTopicArray",
+        "popTopicsSequentially",
+        "copyPayload",
+        "constructLog",
+        "appendJournal",
+        "reportLogIfEnabled",
+        "traceEndIfInstructionTracing",
+        "dispatchContinue"
+      ]
+    }
+  ],
+  "specializations": [
+    {
+      "opcode": "log0",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CLogOpcode\u003CEvmInstructions.Op0\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "log0",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CLogOpcode\u003CEvmInstructions.Op0\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "log0",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CLogOpcode\u003CEvmInstructions.Op0\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "log0",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CLogOpcode\u003CEvmInstructions.Op0\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "log1",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CLogOpcode\u003CEvmInstructions.Op1\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "log1",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CLogOpcode\u003CEvmInstructions.Op1\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "log1",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CLogOpcode\u003CEvmInstructions.Op1\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "log1",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CLogOpcode\u003CEvmInstructions.Op1\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "log2",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CLogOpcode\u003CEvmInstructions.Op2\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "log2",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CLogOpcode\u003CEvmInstructions.Op2\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "log2",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CLogOpcode\u003CEvmInstructions.Op2\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "log2",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CLogOpcode\u003CEvmInstructions.Op2\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "log3",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CLogOpcode\u003CEvmInstructions.Op3\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "log3",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CLogOpcode\u003CEvmInstructions.Op3\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "log3",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CLogOpcode\u003CEvmInstructions.Op3\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "log3",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CLogOpcode\u003CEvmInstructions.Op3\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "log4",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CLogOpcode\u003CEvmInstructions.Op4\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "log4",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CLogOpcode\u003CEvmInstructions.Op4\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "log4",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CLogOpcode\u003CEvmInstructions.Op4\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "log4",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CLogOpcode\u003CEvmInstructions.Op4\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    }
+  ],
+  "forkLineage": [
+    "Olympic",
+    "Frontier",
+    "Homestead",
+    "Dao",
+    "TangerineWhistle",
+    "SpuriousDragon",
+    "Byzantium",
+    "Constantinople",
+    "ConstantinopleFix",
+    "Istanbul",
+    "MuirGlacier",
+    "Berlin",
+    "London",
+    "ArrowGlacier",
+    "GrayGlacier",
+    "Paris",
+    "Shanghai",
+    "Cancun",
+    "Prague",
+    "Osaka",
+    "BPO1",
+    "BPO2",
+    "Amsterdam"
+  ],
+  "openExtractionObligations": [
+    "Roslyn syntax admission does not prove C# compilation, CLR/JIT execution, function-pointer dispatch, or tail-call behavior.",
+    "The proof assumes the admitted unsafe big-endian stack operations, UInt256 conversions, Address representation, and Hash256 span constructor implement the shared Lean word values.",
+    "The proof models logical EVM memory bytes and size; backing-array allocation, pooling, initialization, aliasing, and allocation failure remain provider and CLR obligations.",
+    "The log journal and optional ReportLog callback are modeled as ordered append-only observations; callback exceptions, tracer internals, frame rollback, receipt construction, and Bloom accumulation remain outside this opcode step.",
+    "Cancellation polling, opcode counters, instruction-trace payloads, exceptional-frame settlement, and database persistence remain outside this projection."
+  ]
+}

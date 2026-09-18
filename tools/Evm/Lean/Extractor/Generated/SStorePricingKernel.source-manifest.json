@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 3,
+  "extractorVersion": "1.2.0",
+  "compilerVersion": "5.6.0.0",
+  "languageVersion": "14.0",
+  "root": "Nethermind.Evm.GasPolicy.SStorePricingKernel",
+  "methodSignature": "Nethermind.Evm.GasPolicy.SStorePricingResult Nethermind.Evm.GasPolicy.SStorePricingKernel.Price(Nethermind.Evm.GasPolicy.SStorePricingInput input, Nethermind.Evm.GasPolicy.SStoreAccessStatus accessStatus, Nethermind.Evm.GasPolicy.SStoreAccessPricingSchedule accessSchedule, Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule postAccessSchedule)",
+  "rootSignatures": [
+    "Nethermind.Evm.GasPolicy.SStorePricingResult Nethermind.Evm.GasPolicy.SStorePricingKernel.Price(Nethermind.Evm.GasPolicy.SStorePricingInput input, Nethermind.Evm.GasPolicy.SStoreAccessStatus accessStatus, Nethermind.Evm.GasPolicy.SStoreAccessPricingSchedule accessSchedule, Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule postAccessSchedule)"
+  ],
+  "source": {
+    "path": "src/Nethermind/Nethermind.Evm/GasPolicy/SStorePricingKernel.cs",
+    "sha256": "6eb99aee5247c9d5d7c35659c41628d758b672923d0fc5ec76e7d5cb9a30a125"
+  },
+  "artifact": {
+    "path": "SStorePricingKernel.ir.json",
+    "sha256": "2b99d6fe91afff39dba20941535fd2b905db0785685a630e7a8b7c4a1c5d7b4f"
+  },
+  "leanArtifact": {
+    "path": "tools/Evm/Lean/Eip803x/Generated/SStorePricingKernel.lean",
+    "sha256": "1af7ad1cac6f62174274ffe182e3200de7ae1dbb1f7e310ad3bf22c8517fb607"
+  },
+  "extractedMethods": [
+    "Nethermind.Evm.GasPolicy.SStorePostAccessPricingResult Nethermind.Evm.GasPolicy.SStorePricingKernel.PriceAfterAccess(Nethermind.Evm.GasPolicy.SStorePricingInput input, Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule schedule)",
+    "Nethermind.Evm.GasPolicy.SStorePricingResult Nethermind.Evm.GasPolicy.SStorePricingKernel.Price(Nethermind.Evm.GasPolicy.SStorePricingInput input, Nethermind.Evm.GasPolicy.SStoreAccessStatus accessStatus, Nethermind.Evm.GasPolicy.SStoreAccessPricingSchedule accessSchedule, Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule postAccessSchedule)"
+  ],
+  "supportingSources": [
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Storage.cs",
+      "sha256": "0101effa0c71c4a602021f18de7075e047974b75b37b9d672364499db0bf390d"
+    }
+  ]
+}

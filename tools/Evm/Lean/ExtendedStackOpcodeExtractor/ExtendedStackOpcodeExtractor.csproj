@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Nethermind.Evm.Lean.ExtendedStackOpcodeExtractor</AssemblyName>
+    <RootNamespace>Nethermind.Evm.Lean.ExtendedStackOpcodeExtractor</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Test/**/*.cs" />
+    <EmbeddedResource Include="Admission/*.txt" WithCulture="false" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Nethermind.Evm.Lean.ExtendedStackOpcodeExtractor.Test</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

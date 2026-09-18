@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Nethermind.Evm.Lean.SynchronousBlockPipelineMachineExtractor</AssemblyName>
+    <RootNamespace>Nethermind.Evm.Lean.SynchronousBlockPipelineMachineExtractor</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="SOURCE_PINS.json" />
+    <EmbeddedResource Include="METADATA_MIRROR.json" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+  </ItemGroup>
+</Project>

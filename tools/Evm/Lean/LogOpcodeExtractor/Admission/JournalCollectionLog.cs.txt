@@ -1,0 +1,10 @@
+using System.Collections.Generic;
+
+namespace Nethermind.Core.Collections
+{
+    public sealed class JournalCollection<T>
+    {
+        private readonly List<T> _list = [];
+        public void Add(T item) => _list.Add(item);
+    }
+}

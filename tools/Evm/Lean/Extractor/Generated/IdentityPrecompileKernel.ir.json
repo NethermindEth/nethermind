@@ -1,0 +1,252 @@
+{
+  "schemaVersion": 3,
+  "kernel": "Nethermind.Evm.Precompiles.IdentityPrecompileKernel",
+  "roots": [
+    {
+      "name": "BaseGasCost",
+      "signature": "ulong Nethermind.Evm.Precompiles.IdentityPrecompileKernel.BaseGasCost()"
+    },
+    {
+      "name": "DataGasCost",
+      "signature": "ulong Nethermind.Evm.Precompiles.IdentityPrecompileKernel.DataGasCost(uint inputLength)"
+    }
+  ],
+  "dataTypes": [],
+  "methods": [
+    {
+      "signature": "ulong Nethermind.Evm.Precompiles.IdentityPrecompileKernel.BaseGasCost()",
+      "returnType": "ulong",
+      "parameters": [],
+      "blocks": [
+        {
+          "ordinal": 0,
+          "kind": "Entry",
+          "conditionKind": "None",
+          "predecessors": [],
+          "operations": [],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 1
+          }
+        },
+        {
+          "ordinal": 1,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 0,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "Literal",
+            "type": "ulong",
+            "constant": "15",
+            "isImplicit": false,
+            "properties": [],
+            "children": []
+          },
+          "fallThrough": {
+            "semantics": "Return",
+            "destinationOrdinal": 2
+          }
+        },
+        {
+          "ordinal": 2,
+          "kind": "Exit",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 1,
+              "semantics": "Return"
+            }
+          ],
+          "operations": []
+        }
+      ]
+    },
+    {
+      "signature": "ulong Nethermind.Evm.Precompiles.IdentityPrecompileKernel.DataGasCost(uint inputLength)",
+      "returnType": "ulong",
+      "parameters": [
+        {
+          "ordinal": 0,
+          "name": "inputLength",
+          "type": "uint"
+        }
+      ],
+      "blocks": [
+        {
+          "ordinal": 0,
+          "kind": "Entry",
+          "conditionKind": "None",
+          "predecessors": [],
+          "operations": [],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 1
+          }
+        },
+        {
+          "ordinal": 1,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 0,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "Binary",
+            "type": "ulong",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "checked",
+                "value": "false"
+              },
+              {
+                "name": "lifted",
+                "value": "false"
+              },
+              {
+                "name": "operator",
+                "value": "Multiply"
+              }
+            ],
+            "children": [
+              {
+                "kind": "Literal",
+                "type": "ulong",
+                "constant": "3",
+                "isImplicit": false,
+                "properties": [],
+                "children": []
+              },
+              {
+                "kind": "Binary",
+                "type": "ulong",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "checked",
+                    "value": "false"
+                  },
+                  {
+                    "name": "lifted",
+                    "value": "false"
+                  },
+                  {
+                    "name": "operator",
+                    "value": "RightShift"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "Binary",
+                    "type": "ulong",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "checked",
+                        "value": "false"
+                      },
+                      {
+                        "name": "lifted",
+                        "value": "false"
+                      },
+                      {
+                        "name": "operator",
+                        "value": "Add"
+                      }
+                    ],
+                    "children": [
+                      {
+                        "kind": "Conversion",
+                        "type": "ulong",
+                        "isImplicit": false,
+                        "properties": [
+                          {
+                            "name": "checked",
+                            "value": "false"
+                          },
+                          {
+                            "name": "conversion",
+                            "value": "exists,nonidentity,numeric,nonreference,implicit,nonnullable,builtin"
+                          }
+                        ],
+                        "children": [
+                          {
+                            "kind": "ParameterReference",
+                            "type": "uint",
+                            "isImplicit": false,
+                            "properties": [
+                              {
+                                "name": "parameter",
+                                "value": "0"
+                              }
+                            ],
+                            "children": []
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "Literal",
+                        "type": "ulong",
+                        "constant": "31",
+                        "isImplicit": false,
+                        "properties": [],
+                        "children": []
+                      }
+                    ]
+                  },
+                  {
+                    "kind": "Literal",
+                    "type": "int",
+                    "constant": "5",
+                    "isImplicit": false,
+                    "properties": [],
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Return",
+            "destinationOrdinal": 2
+          }
+        },
+        {
+          "ordinal": 2,
+          "kind": "Exit",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 1,
+              "semantics": "Return"
+            }
+          ],
+          "operations": []
+        }
+      ]
+    }
+  ],
+  "program": {
+    "baseGas": 15,
+    "wordGas": 3,
+    "wordSize": 32
+  },
+  "adapter": {
+    "address": 4,
+    "name": "ID",
+    "supportsCaching": false,
+    "baseGasMethod": "IdentityPrecompileKernel.BaseGasCost",
+    "dataGasMethod": "IdentityPrecompileKernel.DataGasCost",
+    "runExpression": "inputData.ToArray()"
+  }
+}

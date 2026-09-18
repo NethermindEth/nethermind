@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 3,
+  "extractorVersion": "1.2.0",
+  "compilerVersion": "5.6.0.0",
+  "languageVersion": "14.0",
+  "root": "Nethermind.Evm.GasPolicy.PrecompileGasPricingKernel",
+  "methodSignature": "Nethermind.Evm.GasPolicy.PrecompileGasPricingResult Nethermind.Evm.GasPolicy.PrecompileGasPricingKernel.TryConsume(ulong gas, ulong baseGasCost, ulong dataGasCost)",
+  "rootSignatures": [
+    "Nethermind.Evm.GasPolicy.PrecompileGasPricingResult Nethermind.Evm.GasPolicy.PrecompileGasPricingKernel.TryConsume(ulong gas, ulong baseGasCost, ulong dataGasCost)"
+  ],
+  "source": {
+    "path": "src/Nethermind/Nethermind.Evm/GasPolicy/PrecompileGasPricingKernel.cs",
+    "sha256": "dd23b8bd461a13c75ec203b1dbe853a885f61640edf4d47287c1dadd0d9ff576"
+  },
+  "artifact": {
+    "path": "PrecompileGasPricingKernel.ir.json",
+    "sha256": "a972e120172c64fa5ec1012fc098e5c9f23d0f2cc1fbc2fce53b6a7bfbfcb485"
+  },
+  "leanArtifact": {
+    "path": "tools/Evm/Lean/Eip803x/Generated/PrecompileGasPricingKernel.lean",
+    "sha256": "a80078403d7d7018e9743ad7a84b146d8371dea8512691088f00a13b19c1f04e"
+  },
+  "extractedMethods": [
+    "Nethermind.Evm.GasPolicy.PrecompileGasPricingResult Nethermind.Evm.GasPolicy.PrecompileGasPricingKernel.TryConsume(ulong gas, ulong baseGasCost, ulong dataGasCost)"
+  ],
+  "supportingSources": [
+    {
+      "path": "src/Nethermind/Nethermind.Core/ContainerBuilderExtensions.cs",
+      "sha256": "3799fa7083184f34951fa15ed67f40af2548e33b5944757681b80cc309ecad4a"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "sha256": "3c31ba40c24a78bf11243b38859168350f02934806124e913da0560bc1a4350f"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/IGasPolicy.cs",
+      "sha256": "b4d26db87723243514f2f6b8a5e48d1176139105c3b012ad0f3956e59afc98a8"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Call.std.cs",
+      "sha256": "42954af1ac17ea3a973d9ca57a01432637bd92ebc98857838ddafa8e7aef93d6"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "sha256": "45edba3691e09185e749485785990662ddea1af849bc6e4564f92b68a5137a6b"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+      "sha256": "fce65ce5bb523c56fc8aa6ee0e4d092c940a5a90b174c820ffe262eeb5241c60"
+    }
+  ]
+}

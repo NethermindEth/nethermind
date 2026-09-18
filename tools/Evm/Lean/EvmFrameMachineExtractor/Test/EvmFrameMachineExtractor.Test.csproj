@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="../../../../../src/Nethermind/tests.props" />
+
+  <PropertyGroup>
+    <AssemblyName>Nethermind.Evm.Lean.EvmFrameMachineExtractor.Test</AssemblyName>
+    <RootNamespace>Nethermind.Evm.Lean.EvmFrameMachineExtractor.Test</RootNamespace>
+    <Nullable>enable</Nullable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../EvmFrameMachineExtractor.csproj" />
+  </ItemGroup>
+
+</Project>

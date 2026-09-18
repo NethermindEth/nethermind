@@ -1,0 +1,38 @@
+using System;
+using System.Runtime.CompilerServices;
+using Nethermind.Int256;
+
+namespace Nethermind.Evm;
+
+public partial struct EvmPooledMemory
+{
+    public bool TryLoad(in UInt256 location, in UInt256 length, out ReadOnlyMemory<byte> data)
+    {
+        if (length.IsZero)
+        {
+            data = default;
+            return true;
+        }
+
+        CheckMemoryAccessViolation(in location, in length, out ulong newLength, out bool isViolation);
+        if (isViolation)
+        {
+            data = default;
+            return false;
+        }
+
+        UpdateSize(newLength);
+
+        data = GetBackingMemory(TruncateToInt32(location.u0), TruncateToInt32(length.u0));
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ReadOnlyMemory<byte> GetBackingMemory(int offset, int length)
+    {
+        byte[]? memory = _memory;
+        return memory is null
+            ? _inlineMemoryManager!.Memory.Slice(offset, length)
+            : memory.AsMemory(offset, length);
+    }
+}

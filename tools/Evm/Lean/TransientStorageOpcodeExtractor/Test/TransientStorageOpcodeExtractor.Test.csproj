@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="../../../../../src/Nethermind/tests.props" />
+
+  <PropertyGroup>
+    <AssemblyName>Nethermind.Evm.Lean.TransientStorageOpcodeExtractor.Test</AssemblyName>
+    <RootNamespace>Nethermind.Evm.Lean.TransientStorageOpcodeExtractor.Test</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TransientStorageOpcodeExtractor.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,9 @@
+namespace Nethermind.Core
+{
+    public static class GasCostOf
+    {
+        public const ulong Log = 375;
+        public const ulong LogTopic = 375;
+        public const ulong LogData = 8;
+    }
+}

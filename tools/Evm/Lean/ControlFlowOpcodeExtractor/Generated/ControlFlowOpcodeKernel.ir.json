@@ -1,0 +1,610 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.0.0",
+  "kernel": "standard-mainnet-amsterdam-control-flow-operational",
+  "closedVm": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E",
+  "gasPolicy": "Nethermind.Evm.GasPolicy.EthereumGasPolicy",
+  "fork": "Nethermind.Specs.Forks.Amsterdam",
+  "standardBuildSelector": "Directory.Build.props aliases EvmWord to Vector256\u003Cbyte\u003E; Directory.Build.targets EnableZkEvm != true selects *.std.cs and excludes *.zkevm.cs",
+  "schedule": {
+    "zero": 0,
+    "base": 2,
+    "mid": 8,
+    "high": 10,
+    "jumpDest": 1,
+    "memoryLinear": 3,
+    "memoryQuadraticDivisor": 512,
+    "maxMemorySize": 2147483616,
+    "stackLimit": 1024,
+    "cancellationCheckMask": 1023
+  },
+  "jumpValidation": {
+    "stopOpcode": 0,
+    "jumpDestinationOpcode": 91,
+    "pushFirstOpcode": 96,
+    "pushLastOpcode": 127,
+    "maximumDestination": 2147483647
+  },
+  "dispatchTables": [
+    {
+      "name": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag"
+    },
+    {
+      "name": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag"
+    },
+    {
+      "name": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag"
+    },
+    {
+      "name": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag"
+    }
+  ],
+  "opcodes": [
+    {
+      "name": "stop",
+      "instruction": "STOP",
+      "opcodeByte": 0,
+      "handlerBody": "StopOpcode",
+      "handlerKind": "terminating",
+      "handlerTarget": "EvmInstructions.InstructionStop\u003CTGasPolicy\u003E",
+      "stackInputs": 0,
+      "stackOutputs": 0,
+      "hasCheckedBody": "false",
+      "endsInstructionTrace": false,
+      "activation": "always",
+      "gasClass": "zero",
+      "fixedGas": 0,
+      "tracePushWidth": 0,
+      "effectOrder": [
+        "traceStart",
+        "incrementPc",
+        "incrementOpcodeCount",
+        "returnStop",
+        "outerTraceFinish"
+      ]
+    },
+    {
+      "name": "slotnum",
+      "instruction": "SLOTNUM",
+      "opcodeByte": 75,
+      "handlerBody": "SlotNumOpcode\u003CTTracingInst\u003E",
+      "handlerKind": "continuable",
+      "handlerTarget": "EvmInstructions.InstructionSlotNum\u003CTGasPolicy,TTracingInst\u003E",
+      "stackInputs": 0,
+      "stackOutputs": 1,
+      "hasCheckedBody": "false",
+      "endsInstructionTrace": false,
+      "activation": "EIP-7843",
+      "gasClass": "base",
+      "fixedGas": 2,
+      "tracePushWidth": 8,
+      "effectOrder": [
+        "traceStart",
+        "incrementPc",
+        "incrementOpcodeCount",
+        "readNullableSlot",
+        "missingBadInstruction",
+        "chargeBase",
+        "checkPushOverflow",
+        "pushUInt64",
+        "tracePush8",
+        "checkBodyTraceOwnership",
+        "traceFinish"
+      ]
+    },
+    {
+      "name": "jump",
+      "instruction": "JUMP",
+      "opcodeByte": 86,
+      "handlerBody": "JumpOpcode\u003CTTracingInst\u003E",
+      "handlerKind": "continuable",
+      "handlerTarget": "EvmInstructions.InstructionJump\u003CTGasPolicy,TSkipJumpDest\u003E",
+      "stackInputs": 1,
+      "stackOutputs": 0,
+      "hasCheckedBody": "false",
+      "endsInstructionTrace": false,
+      "activation": "always",
+      "gasClass": "mid",
+      "fixedGas": 8,
+      "tracePushWidth": 0,
+      "effectOrder": [
+        "traceStart",
+        "incrementPc",
+        "incrementOpcodeCount",
+        "chargeMid",
+        "checkDepth",
+        "popDestination",
+        "validateInstructionBoundary",
+        "untracedCountAndAdvanceJumpDest",
+        "untracedChargeJumpDest",
+        "checkBodyTraceOwnership",
+        "traceFinish"
+      ]
+    },
+    {
+      "name": "jumpi",
+      "instruction": "JUMPI",
+      "opcodeByte": 87,
+      "handlerBody": "ExecuteJumpIfOpcode\u003CTTracingInst,TCancelable\u003E",
+      "handlerKind": "jumpIf",
+      "handlerTarget": "EvmInstructions.InstructionJumpIf\u003CTGasPolicy,TSkipJumpDest\u003E",
+      "stackInputs": 2,
+      "stackOutputs": 0,
+      "hasCheckedBody": "false",
+      "endsInstructionTrace": false,
+      "activation": "always",
+      "gasClass": "high",
+      "fixedGas": 10,
+      "tracePushWidth": 0,
+      "effectOrder": [
+        "traceStart",
+        "incrementPc",
+        "incrementOpcodeCount",
+        "chargeHigh",
+        "checkDepth",
+        "popDestinationAndCondition",
+        "zeroConditionFallthrough",
+        "validateTakenDestination",
+        "untracedCountAndAdvanceJumpDest",
+        "untracedChargeJumpDest",
+        "dedicatedTraceFinish"
+      ]
+    },
+    {
+      "name": "pc",
+      "instruction": "PC",
+      "opcodeByte": 88,
+      "handlerBody": "ProgramCounterOpcode\u003CTTracingInst\u003E",
+      "handlerKind": "continuable",
+      "handlerTarget": "EvmInstructions.InstructionProgramCounter\u003CTGasPolicy,TTracingInst\u003E",
+      "stackInputs": 0,
+      "stackOutputs": 1,
+      "hasCheckedBody": "!TTracingInst.IsActive",
+      "endsInstructionTrace": false,
+      "activation": "always",
+      "gasClass": "base",
+      "fixedGas": 2,
+      "tracePushWidth": 4,
+      "effectOrder": [
+        "traceStart",
+        "incrementPc",
+        "incrementOpcodeCount",
+        "chargeBase",
+        "checkPushOverflow",
+        "pushPreincrementPc",
+        "tracePush4",
+        "checkBodyTraceOwnership",
+        "traceFinish"
+      ]
+    },
+    {
+      "name": "jumpdest",
+      "instruction": "JUMPDEST",
+      "opcodeByte": 91,
+      "handlerBody": "JumpDestOpcode",
+      "handlerKind": "continuable",
+      "handlerTarget": "EvmInstructions.InstructionJumpDest\u003CTGasPolicy\u003E",
+      "stackInputs": 0,
+      "stackOutputs": 0,
+      "hasCheckedBody": "false",
+      "endsInstructionTrace": false,
+      "activation": "always",
+      "gasClass": "jumpDest",
+      "fixedGas": 1,
+      "tracePushWidth": 0,
+      "effectOrder": [
+        "traceStart",
+        "incrementPc",
+        "incrementOpcodeCount",
+        "chargeJumpDest",
+        "checkBodyTraceOwnership",
+        "traceFinish"
+      ]
+    },
+    {
+      "name": "return_",
+      "instruction": "RETURN",
+      "opcodeByte": 243,
+      "handlerBody": "ReturnOpcode",
+      "handlerKind": "terminating",
+      "handlerTarget": "EvmInstructions.InstructionReturn\u003CTGasPolicy\u003E",
+      "stackInputs": 2,
+      "stackOutputs": 0,
+      "hasCheckedBody": "false",
+      "endsInstructionTrace": false,
+      "activation": "always",
+      "gasClass": "memory",
+      "fixedGas": 0,
+      "tracePushWidth": 0,
+      "effectOrder": [
+        "traceStart",
+        "incrementPc",
+        "incrementOpcodeCount",
+        "popOffsetAndLengthAtomically",
+        "validateRange",
+        "computeExpansionCost",
+        "chargeExpansion",
+        "installLogicalMemorySize",
+        "loadBytes",
+        "stageOwnedOutput",
+        "returnStop",
+        "outerTraceFinish"
+      ]
+    },
+    {
+      "name": "revert",
+      "instruction": "REVERT",
+      "opcodeByte": 253,
+      "handlerBody": "RevertOpcode",
+      "handlerKind": "terminating",
+      "handlerTarget": "EvmInstructions.InstructionRevert\u003CTGasPolicy\u003E",
+      "stackInputs": 2,
+      "stackOutputs": 0,
+      "hasCheckedBody": "false",
+      "endsInstructionTrace": false,
+      "activation": "Byzantium REVERT",
+      "gasClass": "memory",
+      "fixedGas": 0,
+      "tracePushWidth": 0,
+      "effectOrder": [
+        "traceStart",
+        "incrementPc",
+        "incrementOpcodeCount",
+        "popOffsetAndLengthAtomically",
+        "validateRange",
+        "computeExpansionCost",
+        "chargeExpansion",
+        "installLogicalMemorySize",
+        "loadBytes",
+        "stageOwnedOutput",
+        "returnRevert",
+        "outerTraceFinish"
+      ]
+    }
+  ],
+  "specializations": [
+    {
+      "opcode": "stop",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OffFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CStopOpcode,OffFlag,OffFlag,OffFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "stop",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OffFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CStopOpcode,OffFlag,OnFlag,OffFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "stop",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OffFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CStopOpcode,OnFlag,OffFlag,OffFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "stop",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OffFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CStopOpcode,OnFlag,OnFlag,OffFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "slotnum",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CSlotNumOpcode\u003COffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E",
+      "disabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CBadInstructionOpcode,OffFlag,OffFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "slotnum",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CSlotNumOpcode\u003COffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E",
+      "disabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CBadInstructionOpcode,OffFlag,OnFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "slotnum",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CSlotNumOpcode\u003COnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E",
+      "disabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CBadInstructionOpcode,OnFlag,OffFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "slotnum",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CSlotNumOpcode\u003COnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E",
+      "disabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CBadInstructionOpcode,OnFlag,OnFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "jump",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CJumpOpcode\u003COffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "jump",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CJumpOpcode\u003COffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "jump",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CJumpOpcode\u003COnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "jump",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CJumpOpcode\u003COnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "jumpi",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteJumpIfOpcode\u003COffFlag,OffFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "jumpi",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteJumpIfOpcode\u003COffFlag,OnFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "jumpi",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteJumpIfOpcode\u003COnFlag,OffFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "jumpi",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteJumpIfOpcode\u003COnFlag,OnFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "pc",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CProgramCounterOpcode\u003COffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "pc",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CProgramCounterOpcode\u003COffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "pc",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CProgramCounterOpcode\u003COnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "pc",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CProgramCounterOpcode\u003COnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "jumpdest",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CJumpDestOpcode,OffFlag,OffFlag,OnFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "jumpdest",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CJumpDestOpcode,OffFlag,OnFlag,OnFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "jumpdest",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CJumpDestOpcode,OnFlag,OffFlag,OnFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "jumpdest",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CJumpDestOpcode,OnFlag,OnFlag,OnFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "return_",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OffFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CReturnOpcode,OffFlag,OffFlag,OffFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "return_",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OffFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CReturnOpcode,OffFlag,OnFlag,OffFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "return_",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OffFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CReturnOpcode,OnFlag,OffFlag,OffFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "return_",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OffFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CReturnOpcode,OnFlag,OnFlag,OffFlag\u003E",
+      "disabledRoot": ""
+    },
+    {
+      "opcode": "revert",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OffFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CRevertOpcode,OffFlag,OffFlag,OffFlag\u003E",
+      "disabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CBadInstructionOpcode,OffFlag,OffFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "revert",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OffFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CRevertOpcode,OffFlag,OnFlag,OffFlag\u003E",
+      "disabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CBadInstructionOpcode,OffFlag,OnFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "revert",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OffFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CRevertOpcode,OnFlag,OffFlag,OffFlag\u003E",
+      "disabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CBadInstructionOpcode,OnFlag,OffFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "revert",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OffFlag",
+      "enabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CRevertOpcode,OnFlag,OnFlag,OffFlag\u003E",
+      "disabledRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CBadInstructionOpcode,OnFlag,OnFlag,OffFlag\u003E"
+    }
+  ],
+  "forkLineage": [
+    "Olympic",
+    "Frontier",
+    "Homestead",
+    "Dao",
+    "TangerineWhistle",
+    "SpuriousDragon",
+    "Byzantium",
+    "Constantinople",
+    "ConstantinopleFix",
+    "Istanbul",
+    "MuirGlacier",
+    "Berlin",
+    "London",
+    "ArrowGlacier",
+    "GrayGlacier",
+    "Paris",
+    "Shanghai",
+    "Cancun",
+    "Prague",
+    "Osaka",
+    "BPO1",
+    "BPO2",
+    "Amsterdam"
+  ],
+  "semanticBindings": [
+    "8 opcodes times 4 trace/cancellation tables yield exactly 32 enabled Amsterdam roots",
+    "SLOTNUM and REVERT disabled gates share exactly 4 BadInstruction roots",
+    "instruction trace starts before PC/opcode-count increment and closes at the admitted handler/RunByteCode boundary",
+    "all 8 descriptors have false instruction-trace ownership; generic bodies inherit IOpcodeBody.EndsInstructionTrace false while JUMPI uses its dedicated close",
+    "trace projection preserves distinct callback order, bottom-first logical stack snapshots, and 4-byte PC / 8-byte SLOTNUM push payloads without claiming concrete tracer adapter representation",
+    "jump validity is independently scanned from source-admitted STOP, JUMPDEST, PUSH1, and PUSH32 facts and rejects PUSH immediate bytes and destinations above Int32.MaxValue",
+    "untraced taken JUMP/JUMPI fuse the landed JUMPDEST count, PC advance, and one-gas charge",
+    "RETURN/REVERT pop atomically, charge expansion before TryLoad installs logical memory size, and stage an owned output on success",
+    "failed execution-gas charges leave gas zero while non-OOG failures preserve the preceding handler-local debit and mutation residue"
+  ],
+  "openExtractionObligations": [
+    "Roslyn source/member admission does not prove C# compilation, CLR/JIT/AOT execution, function-pointer tail calls, unsafe memory safety, or hardware behavior.",
+    "Trace proofs use an explicit semantic projection; concrete ExecutionEnvironment, TraceMemory, TraceStack, and tracer implementation representations remain open.",
+    "The admitted UInt256 and unsafe EvmStack representation is assumed to match the Lean top-first bounded stack without corruption.",
+    "The generated jump scanner is independent; admitted scalar/SIMD bitmap implementations are assumed extensionally equal to its PUSH-aware instruction-boundary predicate on production-reachable code of signed-int length.",
+    "EvmPooledMemory allocation, pooling, zero initialization, bounds, and ReadOnlyMemory ownership are assumed to implement the modeled byte memory.",
+    "Handler-entry states are restricted to the production RunByteCode invariant that staged ReturnData is null; terminal RETURN/REVERT are the only covered handlers that install it.",
+    "Fault PC and stack residues describe the dispatcher-local programCounter and EvmStack head; RunByteCode does not commit those locals to VmState on exceptional failure.",
+    "Cancellation token state, polling, and OperationCanceledException propagation remain outside one-handler semantics; all four compiled roots are admitted.",
+    "Frame rollback, caller returndata installation, transaction/block settlement, persistence, alternate gas policies, and zkEVM execution remain outside this package."
+  ]
+}

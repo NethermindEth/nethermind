@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 3,
+  "extractorVersion": "1.2.0",
+  "compilerVersion": "5.6.0.0",
+  "languageVersion": "14.0",
+  "root": "Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingKernel",
+  "methodSignature": "Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingResult Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingKernel.Accumulate(ulong previousExecutionGas, ulong previousStateGas, ulong previousReceiptGas, ulong transactionExecutionGas, ulong transactionStateGas, ulong transactionPaidGas)",
+  "rootSignatures": [
+    "Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingResult Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingKernel.Accumulate(ulong previousExecutionGas, ulong previousStateGas, ulong previousReceiptGas, ulong transactionExecutionGas, ulong transactionStateGas, ulong transactionPaidGas)",
+    "Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingResult Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingKernel.FromTotals(ulong cumulativeExecutionGas, ulong cumulativeStateGas, ulong cumulativeReceiptGas)"
+  ],
+  "source": {
+    "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptGasAccountingKernel.cs",
+    "sha256": "0882c798e6ffb2243735a9ec0cec5d442b20d51277feeba95e5b68ecfaf89e32"
+  },
+  "artifact": {
+    "path": "BlockReceiptGasAccountingKernel.ir.json",
+    "sha256": "5278c354453a3adab99df5a68b4475d9feab798eba1e4df42ee80bf34a259c41"
+  },
+  "leanArtifact": {
+    "path": "tools/Evm/Lean/Eip803x/Generated/BlockReceiptGasAccountingKernel.lean",
+    "sha256": "5d7851084945d5263dd87bcda4ae9e60ce7b779473a7c37617a96cf0e91026f2"
+  },
+  "extractedMethods": [
+    "Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingResult Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingKernel.Accumulate(ulong previousExecutionGas, ulong previousStateGas, ulong previousReceiptGas, ulong transactionExecutionGas, ulong transactionStateGas, ulong transactionPaidGas)",
+    "Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingResult Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingKernel.FromTotals(ulong cumulativeExecutionGas, ulong cumulativeStateGas, ulong cumulativeReceiptGas)"
+  ],
+  "supportingSources": [
+    {
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+      "sha256": "d4504f54b50dd43e2ab5bc7172ce2cf9e48453fcede990e5e667e743146262ff"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "sha256": "3c31ba40c24a78bf11243b38859168350f02934806124e913da0560bc1a4350f"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/TransactionGasInitializationKernel.cs",
+      "sha256": "65ab0742596ea7ebf49d2c79601eae00152d8d039ac8e417076bf63123be1e82"
+    }
+  ]
+}

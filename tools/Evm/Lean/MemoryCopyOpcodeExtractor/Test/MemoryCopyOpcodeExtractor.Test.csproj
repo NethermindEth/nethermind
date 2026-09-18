@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="../../../../../src/Nethermind/tests.props" />
+
+  <PropertyGroup>
+    <AssemblyName>Nethermind.Evm.Lean.MemoryCopyOpcodeExtractor.Test</AssemblyName>
+    <RootNamespace>Nethermind.Evm.Lean.MemoryCopyOpcodeExtractor.Test</RootNamespace>
+    <Nullable>enable</Nullable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../MemoryCopyOpcodeExtractor.csproj" />
+  </ItemGroup>
+
+</Project>

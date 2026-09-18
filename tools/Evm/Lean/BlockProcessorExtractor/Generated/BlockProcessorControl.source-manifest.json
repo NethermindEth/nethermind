@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "sourceIdentityAuthority": "Current source SHA-256 identities are authoritative; admission templates are reviewed syntax allowlists, not baseline revision identities.",
+  "sources": [
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "sha256": "e2db419219184150c979cd6a081c83ba758c5024a15f996b510806bd1303deda"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs",
+      "sha256": "451ad7a9cbb283351519623dcf358e7d3efdb69db2a0e5a452614cbe1d3dc369"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs",
+      "sha256": "fc76d8d4dcf30093fb2e52262e8cd90d71493c2dc3ce04a1f314dd8f24f3a8cb"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/BlockHeader.cs",
+      "sha256": "f354ddd2d45afc8774739ac46a10535b915871ce4ad11d996d0ab972cf9e7349"
+    }
+  ],
+  "admittedMethods": [
+    {
+      "key": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs:Nethermind.Consensus.Processing:Nethermind.Evm.Lean.BlockProcessorExtractor.Admission.BlockProcessor.cs.txt:compilation-unit/0:owner:BlockProcessor/0:method:ProcessOne/5",
+      "templateSha256": "6df2afe5f99c21a8acf35f55fb1e200ffb6b80918f9ef73d2f8199c1c11f9f03",
+      "sourceSyntaxSha256": "6df2afe5f99c21a8acf35f55fb1e200ffb6b80918f9ef73d2f8199c1c11f9f03"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs:Nethermind.Consensus.Processing:Nethermind.Evm.Lean.BlockProcessorExtractor.Admission.BlockProcessor.cs.txt:compilation-unit/0:owner:BlockProcessor/0:method:ValidateProcessedBlock/4",
+      "templateSha256": "d118fd3eef01374753aca92989a5a609abfee3c4bf1c914df7882fb32d612477",
+      "sourceSyntaxSha256": "d118fd3eef01374753aca92989a5a609abfee3c4bf1c914df7882fb32d612477"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs:Nethermind.Consensus.Processing:Nethermind.Evm.Lean.BlockProcessorExtractor.Admission.BlockProcessor.cs.txt:compilation-unit/0:owner:BlockProcessor/0:method:PostValidation/4",
+      "templateSha256": "5d6f8279148d0a9be692a14f033b37c6ab1f967ab524e70db3650b1e7d5354e8",
+      "sourceSyntaxSha256": "5d6f8279148d0a9be692a14f033b37c6ab1f967ab524e70db3650b1e7d5354e8"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs:Nethermind.Consensus.Processing:Nethermind.Evm.Lean.BlockProcessorExtractor.Admission.BlockProcessor.cs.txt:compilation-unit/0:owner:BlockProcessor/0:method:ShouldComputeStateRoot/1",
+      "templateSha256": "77e2a33c3428bde4e2f8e056ddd3c3f892d0092ed008d5f56a4957cd0ec13bca",
+      "sourceSyntaxSha256": "77e2a33c3428bde4e2f8e056ddd3c3f892d0092ed008d5f56a4957cd0ec13bca"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs:Nethermind.Consensus.Processing:Nethermind.Evm.Lean.BlockProcessorExtractor.Admission.BlockProcessor.cs.txt:compilation-unit/0:owner:BlockProcessor/0:method:CreateBlockExecutionContext/2",
+      "templateSha256": "c6061361cfaaa61961b114b89dc835d8b91697fd45c55d9633c8d02b113bb456",
+      "sourceSyntaxSha256": "c6061361cfaaa61961b114b89dc835d8b91697fd45c55d9633c8d02b113bb456"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs:Nethermind.Consensus.Processing:Nethermind.Evm.Lean.BlockProcessorExtractor.Admission.BlockProcessor.cs.txt:compilation-unit/0:owner:BlockProcessor/0:method:ProcessBlock/5",
+      "templateSha256": "a5ab61515cd25804ad267b556e0a21686f8f037c2163f16b94fb8874aea96d3b",
+      "sourceSyntaxSha256": "a5ab61515cd25804ad267b556e0a21686f8f037c2163f16b94fb8874aea96d3b"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs:Nethermind.Consensus.Processing:Nethermind.Evm.Lean.BlockProcessorExtractor.Admission.BlockProcessor.cs.txt:compilation-unit/0:owner:BlockProcessor/0:method:CommitState/1",
+      "templateSha256": "7cd46a953aa3d5524db0883358b8e629b0741c548ee1e1e7f5e609a68c523d82",
+      "sourceSyntaxSha256": "7cd46a953aa3d5524db0883358b8e629b0741c548ee1e1e7f5e609a68c523d82"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs:Nethermind.Consensus.Processing:Nethermind.Evm.Lean.BlockProcessorExtractor.Admission.BlockProcessor.cs.txt:compilation-unit/0:owner:BlockProcessor/0:method:CommitStateAndStorageRoots/1",
+      "templateSha256": "f366476bb0490f6c788bce0ba7f1ea1bed830427716029b16cddd3f4eebc90f6",
+      "sourceSyntaxSha256": "f366476bb0490f6c788bce0ba7f1ea1bed830427716029b16cddd3f4eebc90f6"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs:Nethermind.Consensus.Processing:Nethermind.Evm.Lean.BlockProcessorExtractor.Admission.BlockProcessor.cs.txt:compilation-unit/0:owner:BlockProcessor/0:method:ComputeStateRoot/1",
+      "templateSha256": "f2b6c4f3eed0f57f712d044a55154259ed680ae03a3bfd6605cd4136cb42a219",
+      "sourceSyntaxSha256": "f2b6c4f3eed0f57f712d044a55154259ed680ae03a3bfd6605cd4136cb42a219"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs:Nethermind.Consensus.Processing:Nethermind.Evm.Lean.BlockProcessorExtractor.Admission.BlockProcessor.cs.txt:compilation-unit/0:owner:BlockProcessor/0:method:SetAccountChanges/1",
+      "templateSha256": "8ec2b585964311e79203d574baf4ce92d5e9a436b6b8955eb8741652f5af5843",
+      "sourceSyntaxSha256": "8ec2b585964311e79203d574baf4ce92d5e9a436b6b8955eb8741652f5af5843"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs:Nethermind.Consensus.Processing:Nethermind.Evm.Lean.BlockProcessorExtractor.Admission.BlockProcessor.cs.txt:compilation-unit/0:owner:BlockProcessor/0:method:PrepareBlockForProcessing/1",
+      "templateSha256": "7bb1958aeb270a812cc1cba63ffcc18141132470e2d4a688c32153489acae151",
+      "sourceSyntaxSha256": "7bb1958aeb270a812cc1cba63ffcc18141132470e2d4a688c32153489acae151"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs:Nethermind.Consensus.Processing:Nethermind.Evm.Lean.BlockProcessorExtractor.Admission.BranchProcessor.cs.txt:compilation-unit/0:owner:BranchProcessor/0:field:MaxUncommittedBlocks",
+      "templateSha256": "6bcd7bcd61fad7167ed7b442d45d4295dba4de799e5da2baa8d6f8d080d133f2",
+      "sourceSyntaxSha256": "6bcd7bcd61fad7167ed7b442d45d4295dba4de799e5da2baa8d6f8d080d133f2"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs:Nethermind.Consensus.Processing:Nethermind.Evm.Lean.BlockProcessorExtractor.Admission.BranchProcessor.cs.txt:compilation-unit/0:owner:BranchProcessor/0:method:PreCommitBlock/1",
+      "templateSha256": "f0dcbb3a7e6a8a4a8928564f437cbc2e1966050cd5156d1291fcd6bf72c75c1f",
+      "sourceSyntaxSha256": "f0dcbb3a7e6a8a4a8928564f437cbc2e1966050cd5156d1291fcd6bf72c75c1f"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Consensus/Processing/BranchProcessor.cs:Nethermind.Consensus.Processing:Nethermind.Evm.Lean.BlockProcessorExtractor.Admission.BranchProcessor.cs.txt:compilation-unit/0:owner:BranchProcessor/0:method:Process/5",
+      "templateSha256": "76f57eb21ee3425e5c21275d0467a487231efe07307195c1a5f57dbe2eb88ef5",
+      "sourceSyntaxSha256": "76f57eb21ee3425e5c21275d0467a487231efe07307195c1a5f57dbe2eb88ef5"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs:Nethermind.Consensus.Processing:Nethermind.Evm.Lean.BlockProcessorExtractor.Admission.BlockchainProcessor.cs.txt:compilation-unit/0:owner:BlockchainProcessor/0:method:Process/4",
+      "templateSha256": "f7e39188e20c75b9102094e0d7fea11b36548a4698fcc843d0ab1043139d34ef",
+      "sourceSyntaxSha256": "f7e39188e20c75b9102094e0d7fea11b36548a4698fcc843d0ab1043139d34ef"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs:Nethermind.Consensus.Processing:Nethermind.Evm.Lean.BlockProcessorExtractor.Admission.BlockchainProcessor.cs.txt:compilation-unit/0:owner:BlockchainProcessor/0:method:Process/5",
+      "templateSha256": "98337a6fab2aee4775be3161db8d5492a46930ef3f8d17601afd6bd85d1c91cc",
+      "sourceSyntaxSha256": "98337a6fab2aee4775be3161db8d5492a46930ef3f8d17601afd6bd85d1c91cc"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs:Nethermind.Consensus.Processing:Nethermind.Evm.Lean.BlockProcessorExtractor.Admission.BlockchainProcessor.cs.txt:compilation-unit/0:owner:BlockchainProcessor/0:method:ProcessBranch/5",
+      "templateSha256": "52417333ebfcfa46a84a06b6038da9bdf6aceccc4da1f2cd61b4f7002aea7c80",
+      "sourceSyntaxSha256": "52417333ebfcfa46a84a06b6038da9bdf6aceccc4da1f2cd61b4f7002aea7c80"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Core/BlockHeader.cs:Nethermind.Core:Nethermind.Evm.Lean.BlockProcessorExtractor.Admission.BlockHeader.cs.txt:compilation-unit/0:owner:BlockHeader/0:method:CloneForProcessing/0",
+      "templateSha256": "b38860dbe79d2a40242f26e05923239c13adcbaf981def748bd8efd42bb76ee2",
+      "sourceSyntaxSha256": "b38860dbe79d2a40242f26e05923239c13adcbaf981def748bd8efd42bb76ee2"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Core/BlockHeader.cs:Nethermind.Core:Nethermind.Evm.Lean.BlockProcessorExtractor.Admission.BlockHeader.cs.txt:compilation-unit/0:owner:BlockHeader/0:method:CopyProcessingFields/1",
+      "templateSha256": "401517243858e41f7f17883f9ef78efa054d532643c24a7346495df0df589f9c",
+      "sourceSyntaxSha256": "401517243858e41f7f17883f9ef78efa054d532643c24a7346495df0df589f9c"
+    }
+  ],
+  "irSha256": "b1ec3e5e069d7638d3fdb972f9d9653188b2f0afaa8c55ff50c6aae084457f04",
+  "leanSha256": "16f4b7e1de21cc7676e0b9d5c3d1ac7b709d1103d9ddd83c99c4851882018512"
+}

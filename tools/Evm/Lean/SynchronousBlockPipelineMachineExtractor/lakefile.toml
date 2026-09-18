@@ -1,0 +1,12 @@
+name = "SynchronousBlockPipelineMachineExtractor"
+version = "0.1.0"
+defaultTargets = [
+  "SynchronousBlockPipelineMachineExtractor.Specification.BlockPipelineState",
+  "SynchronousBlockPipelineMachineExtractor.Specification.BlockPipelinePlan",
+  "SynchronousBlockPipelineMachineExtractor.Specification.CompositionBoundary",
+  "SynchronousBlockPipelineMachineExtractor.Specification.MetadataMirror"
+]
+
+[[lean_lib]]
+name = "SynchronousBlockPipelineMachineExtractor"
+srcDir = ".."

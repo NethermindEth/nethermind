@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.0.0",
+  "compilerVersion": "5.6.0.0",
+  "languageVersion": "14.0",
+  "ancestorBaselineCommit": "b2478235e71e6a7ec2a509aa0155e25d5fdfff80",
+  "sourceIdentityAuthority": "The source-manifest SHA-256 identities are authoritative for the admitted current source; the ancestor baseline records lineage only.",
+  "kernel": "Nethermind.Evm.TransactionProcessing.EthereumTransactionProcessor ordinary lifecycle control",
+  "sources": [
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+      "sha256": "0374c6f35a9a23361f37b41162ac281ca83b09846ab4295d5a592db6315c99cc"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ExecutionOptions.cs",
+      "sha256": "014a2598e1def284b7b98dc97185b6dbbc45ca04be4ab159e330a0675ac24f10"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "sha256": "3c31ba40c24a78bf11243b38859168350f02934806124e913da0560bc1a4350f"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+      "sha256": "fce65ce5bb523c56fc8aa6ee0e4d092c940a5a90b174c820ffe262eeb5241c60"
+    }
+  ],
+  "admissions": [
+    {
+      "key": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs:compilation-unit/0:complete-source",
+      "sourceSha256": "0374c6f35a9a23361f37b41162ac281ca83b09846ab4295d5a592db6315c99cc"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ExecutionOptions.cs:compilation-unit/0:complete-source",
+      "sourceSha256": "014a2598e1def284b7b98dc97185b6dbbc45ca04be4ab159e330a0675ac24f10"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs:compilation-unit/0:complete-source",
+      "sourceSha256": "3c31ba40c24a78bf11243b38859168350f02934806124e913da0560bc1a4350f"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs:compilation-unit/0:complete-source",
+      "sourceSha256": "fce65ce5bb523c56fc8aa6ee0e4d092c940a5a90b174c820ffe262eeb5241c60"
+    }
+  ],
+  "ir": {
+    "path": "TransactionProcessorLifecycle.ir.json",
+    "sha256": "6e9314e343e68ee881a6d4877c67bd56f3676706d50f70e129b893e9bc7c163e"
+  },
+  "lean": {
+    "path": "tools/Evm/Lean/TransactionProcessorExtractor/Generated/TransactionProcessorLifecycle.lean",
+    "sha256": "fa1fef73c8eb344c2ec62f85f82c12bbdb228ac36ddc2b72512a4c2a7d71ed02"
+  },
+  "combinedSha256": "d3b37ff644d10fded01970693b8ba398c468685adfd4314dab8c2b1d89c35254",
+  "semanticBindings": [
+    "BlockProcessingModule.AddScoped\u003CITransactionProcessor, EthereumTransactionProcessor\u003E",
+    "EthereumTransactionProcessor -\u003E EthereumTransactionProcessorBase -\u003E TransactionProcessorBase\u003CEthereumGasPolicy\u003E",
+    "ordinary Execute overload -\u003E validation/gas/nonce gates -\u003E simple-transfer or EVM dispatch",
+    "ExecuteSimpleTransfer and ExecuteEvmTransaction -\u003E refund/fee/finalization tail ordering",
+    "ExecuteEvmCall -\u003E snapshot/value/VM/rollback-or-deploy/refund partial-order anchors",
+    "FinalizeTransaction -\u003E gas observation, state finalization, receipt projection, TransactionResult projection"
+  ]
+}

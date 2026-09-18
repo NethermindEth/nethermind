@@ -62,6 +62,196 @@ public class StorageProviderTests(bool useFlat)
 
     private WorldState BuildStorageProvider(Context ctx) => ctx.StateProvider;
 
+    [TestCase(false, false, false, TestName = "Uncommitted_write_is_visible")]
+    [TestCase(true, false, false, TestName = "Uncommitted_write_after_clear_is_visible")]
+    [TestCase(false, true, true, TestName = "Uncommitted_write_reverted_to_zero_stays_empty")]
+    [TestCase(true, true, true, TestName = "Clear_then_write_reverted_to_zero_stays_empty")]
+    public void IsCreateCollision_sees_unmerkleized_storage_change(bool clearFirst, bool zeroAfterwards, bool expectedEmpty)
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        IWorldState provider = BuildStorageProvider(ctx);
+
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccountIfNotExists(TestItem.AddressA, 100);
+            if (clearFirst)
+            {
+                provider.ClearStorage(TestItem.AddressA);
+            }
+
+            StorageCell cell = new(TestItem.AddressA, 1);
+            provider.Set(cell, [0x2a]);
+            if (zeroAfterwards)
+            {
+                provider.Set(cell, StorageTree.ZeroBytes);
+            }
+
+            provider.Commit(Frontier.Instance, commitRoots: false);
+
+            bool collision = provider.IsCreateCollision(
+                TestItem.AddressA,
+                includeStorageCollision: true,
+                out _,
+                out _);
+
+            Assert.That(collision, Is.EqualTo(!expectedEmpty));
+        }
+    }
+
+    [Test]
+    public void IsCreateCollision_does_not_infer_empty_from_a_zero_only_overlay()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        IWorldState provider = BuildStorageProvider(ctx);
+        StorageCell cleared = new(TestItem.AddressA, 1);
+        StorageCell retained = new(TestItem.AddressA, 2);
+
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(TestItem.AddressA, 1);
+            provider.Set(cleared, [0x2a]);
+            provider.Set(retained, [0x2b]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            provider.Set(cleared, StorageTree.ZeroBytes);
+            provider.Commit(Frontier.Instance, commitRoots: false);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.IsCreateCollision(
+                    TestItem.AddressA,
+                    includeStorageCollision: true,
+                    out _,
+                    out _), Is.True);
+                Assert.That(provider.Get(retained).ToArray(), Is.EqualTo([0x2b]));
+            }
+        }
+    }
+
+    [TestCase(false, false, TestName = "Legacy_storage_only_state_is_not_a_pre_Eip8037_creation_collision")]
+    [TestCase(true, true, TestName = "Legacy_storage_only_state_is_an_Eip8037_creation_collision")]
+    public void Legacy_storage_only_state_creation_collision_follows_fork(
+        bool includeStorage,
+        bool expectedCollision)
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        IWorldState provider = BuildStorageProvider(ctx);
+
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(TestItem.AddressA, 0);
+            provider.Set(new StorageCell(TestItem.AddressA, 1), [0x2a]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            bool collision = provider.IsCreateCollision(
+                TestItem.AddressA,
+                includeStorageCollision: includeStorage,
+                out bool physicalLeafExists,
+                out bool logicalAccountExists);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(physicalLeafExists, Is.True);
+                Assert.That(logicalAccountExists, Is.False);
+                Assert.That(collision, Is.EqualTo(expectedCollision));
+            }
+        }
+    }
+
+    [Test]
+    public void Eip161_reaped_legacy_storage_only_state_is_not_an_Eip8037_creation_collision()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        IWorldState provider = BuildStorageProvider(ctx);
+
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(TestItem.AddressA, 0);
+            provider.Set(new StorageCell(TestItem.AddressA, 1), [0x2a]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            bool untouchedCollision = provider.IsCreateCollision(
+                TestItem.AddressA,
+                includeStorageCollision: true,
+                out bool untouchedPhysicalLeafExists,
+                out bool untouchedLogicalAccountExists);
+            bool untouchedPreEip8037Collision = provider.IsCreateCollision(
+                TestItem.AddressA,
+                includeStorageCollision: false,
+                out _,
+                out _);
+            bool untouchedHasEmptyLeaf = provider.HasEmptyAccountLeaf(TestItem.AddressA);
+
+            provider.AddToBalance(TestItem.AddressA, UInt256.Zero, SpuriousDragon.Instance, out _);
+            provider.Commit(SpuriousDragon.Instance, commitRoots: false);
+
+            bool reapedCollision = provider.IsCreateCollision(
+                TestItem.AddressA,
+                includeStorageCollision: true,
+                out bool reapedPhysicalLeafExists,
+                out bool reapedLogicalAccountExists);
+            bool reapedPreEip8037Collision = provider.IsCreateCollision(
+                TestItem.AddressA,
+                includeStorageCollision: false,
+                out _,
+                out _);
+            bool reapedHasEmptyLeaf = provider.HasEmptyAccountLeaf(TestItem.AddressA);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(untouchedPhysicalLeafExists, Is.True);
+                Assert.That(untouchedLogicalAccountExists, Is.False);
+                Assert.That(untouchedCollision, Is.True);
+                Assert.That(untouchedPreEip8037Collision, Is.False);
+                Assert.That(untouchedHasEmptyLeaf, Is.True);
+                Assert.That(provider.AccountExists(TestItem.AddressA), Is.False);
+                Assert.That(reapedPhysicalLeafExists, Is.False);
+                Assert.That(reapedLogicalAccountExists, Is.False);
+                Assert.That(reapedCollision, Is.False);
+                Assert.That(reapedPreEip8037Collision, Is.False);
+                Assert.That(reapedHasEmptyLeaf, Is.False);
+            }
+        }
+    }
+
+    [Test]
+    public void Reap_empty_account_clears_loaded_storage_reversibly()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(TestItem.AddressA, 1);
+
+        using (provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(TestItem.AddressA, 0);
+            provider.Set(cell, [0x2a]);
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+
+            Assert.That(provider.Get(cell).ToArray(), Is.EqualTo([0x2a]));
+
+            Snapshot snapshot = provider.TakeSnapshot(newTransactionStart: true);
+            provider.AddToBalance(TestItem.AddressA, UInt256.Zero, SpuriousDragon.Instance, out _);
+            provider.ReapEmptyAccounts();
+
+            bool emptyLeafAfterReap = provider.HasEmptyAccountLeaf(TestItem.AddressA);
+            byte[] storageAfterReap = provider.Get(cell).ToArray();
+
+            provider.Restore(snapshot);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(emptyLeafAfterReap, Is.False);
+                Assert.That(storageAfterReap, Is.EqualTo(StorageTree.ZeroBytes));
+                Assert.That(provider.HasEmptyAccountLeaf(TestItem.AddressA), Is.True);
+                Assert.That(provider.Get(cell).ToArray(), Is.EqualTo([0x2a]));
+            }
+        }
+    }
+
     [Test]
     public void Storage_access_after_scope_disposal_throws()
     {

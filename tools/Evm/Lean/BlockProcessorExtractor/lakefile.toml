@@ -1,0 +1,23 @@
+name = "BlockProcessorExtractor"
+version = "0.1.0"
+defaultTargets = ["BlockProcessorExtractor.Refinement.BlockProcessorControl", "BlockProcessorExtractor.Refinement.BranchAcceptedIteration", "BlockProcessorExtractor.Vectors.BranchAcceptedIterationVectors", "BlockProcessorExtractor.Refinement.NormalFiniteBranchCompletion", "BlockProcessorExtractor.Refinement.BlockchainPublication", "BlockProcessorExtractor.Vectors.OuterBlockVectors"]
+
+[[lean_lib]]
+name = "Eip803x"
+srcDir = ".."
+
+[[lean_lib]]
+name = "BlockProcessorExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "SequentialBlockPostTransactionFinalizationExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "SequentialBlockTransactionFoldExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "ReceiptTerminalFoldExtractor"
+srcDir = ".."

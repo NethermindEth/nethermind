@@ -1,0 +1,20 @@
+name = "OrdinaryTransactionRefundAdapterExtractor"
+version = "0.1.0"
+
+defaultTargets = [
+  "OrdinaryTransactionRefundAdapterExtractor.Generated.OrdinaryTransactionRefund",
+  "OrdinaryTransactionRefundAdapterExtractor.Specification.OrdinaryTransactionRefund",
+  "OrdinaryTransactionRefundAdapterExtractor.Refinement.OrdinaryTransactionRefund",
+  "OrdinaryTransactionRefundAdapterExtractor.Vectors.OrdinaryTransactionRefundVectors",
+  "Eip803x.TransactionSettlementVectors",
+  "Eip803x.StateGasTransitionVectors",
+  "Eip803x.StateGasTransitionAdapterVectors",
+]
+
+[[lean_lib]]
+name = "OrdinaryTransactionRefundAdapterExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "Eip803x"
+srcDir = ".."

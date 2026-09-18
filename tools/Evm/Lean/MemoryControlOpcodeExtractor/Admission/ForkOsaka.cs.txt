@@ -1,0 +1,22 @@
+namespace Nethermind.Specs.Forks;
+
+public class Osaka() : NamedReleaseSpec<Osaka>(Prague.Instance)
+{
+    public override void Apply(NamedReleaseSpec spec)
+    {
+        spec.Name = "Osaka";
+        spec.IsEip7594Enabled = true;
+        spec.IsEip7823Enabled = true;
+        spec.IsEip7825Enabled = true;
+        spec.IsEip7883Enabled = true;
+        spec.IsEip7918Enabled = true;
+        spec.IsEip7934Enabled = true;
+        spec.IsEip7939Enabled = true;
+        spec.IsEip7951Enabled = true;
+        // newPayload version inherits V4 from Prague
+        spec.EngineApiGetPayloadVersion = EngineApiVersions.GetPayload.V5;
+        // forkchoice version inherits V3 from Cancun
+        // bodies versions inherit V1 from Shanghai
+    }
+}
+

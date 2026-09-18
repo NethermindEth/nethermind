@@ -17,8 +17,8 @@ public enum AccountAccessKind : byte
 
     /// <summary>
     /// SELFDESTRUCT beneficiary access.
-    /// Cold access charges full cost to StorageAccess (no Computation split);
-    /// warm access charges nothing.
+    /// Before EIP-8038, cold non-precompile access charges the cold account cost and
+    /// warm/precompile access is free; EIP-8038 charges the selected cold or warm cost.
     /// </summary>
     SelfDestructBeneficiary = 1
 }

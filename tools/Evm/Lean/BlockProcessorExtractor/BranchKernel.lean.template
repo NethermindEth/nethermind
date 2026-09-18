@@ -1,0 +1,218 @@
+-- SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+-- SPDX-License-Identifier: LGPL-3.0-only
+
+import SequentialBlockPostTransactionFinalizationExtractor.Generated.ProcessOneValidatedPublication
+
+namespace BlockProcessorExtractor.Generated.BranchAcceptedIteration
+
+namespace U
+export SequentialBlockPostTransactionFinalizationExtractor.Generated.ProcessOneValidatedPublication
+  (PublicationInput PublicationResult Outcome run acceptanceState)
+end U
+
+def acceptanceState : String := "source-admitted"
+def semanticIrSha256 : String := "{{IR_SHA256}}"
+def sourceClosureSha256 : String := "{{SOURCE_SHA256}}"
+
+inductive Route where
+  | normalSequential | balRetry | parallel | externallyOwnedGenesis
+  deriving DecidableEq, Repr
+
+inductive Site where
+  | cancel | inclusion | queueClear | waitPrewarm | commitTree | blockEvent
+  | checkpointDispose | checkpointReopen | reset | scheduleHashes
+  | unsubscribe | disposeFinally | completionEvent
+  deriving DecidableEq, Repr
+
+inductive Op where
+  | cancel | assignSlot | inclusion | queueClear | waitPrewarm | commitTree | countSuccess
+  | blockEvent | checkpointDispose | checkpointReopen | nextBase | clearPrefetch | reset
+  | scheduleHashes | unsubscribe | disposeFinally | completionEvent | «return»
+  deriving DecidableEq, Repr
+
+def program : List Op := [{{PROGRAM}}]
+
+structure Input where
+  publication : U.PublicationInput
+  route : Route
+  ownedScope : Bool
+  index : Nat
+  prefixCount : Nat
+  suggestedBlocks : List Nat
+  processedSlots : List (Option Nat)
+  originalList : Nat
+  header : Nat → Nat
+  blockNumber : Nat → Nat
+  scope : Nat
+  reopenedScope : Nat
+  readOnly : Bool
+  hasTransactions : Nat → Bool
+  preWarmerPresent : Bool
+  prewarmTask : Option Nat
+  cancellation : Option Nat
+  prefetch : Option Nat
+  inclusionSignal : Bool
+  normal : Site → Bool
+
+def terminal (i : Input) : Bool := i.index + 1 == i.suggestedBlocks.length
+def suggestedHeader (i : Input) : Nat := i.header i.publication.suggestedBlock
+def suggestedNumber (i : Input) : Nat := i.blockNumber (suggestedHeader i)
+def checkpoint (i : Input) : Bool :=
+  !i.readOnly && i.index > 0 && i.index + 1 < i.suggestedBlocks.length && i.index % {{MODULUS}} == 0
+
+def boundaryValid (i : Input) : Bool :=
+  U.acceptanceState == "source-admitted" &&
+  i.route == .normalSequential && i.ownedScope &&
+  i.index < i.suggestedBlocks.length && i.suggestedBlocks.length ≤ 2147483647 &&
+  i.prefixCount == i.index && i.processedSlots.length == i.suggestedBlocks.length &&
+  (i.processedSlots.take i.index).all Option.isSome &&
+  i.suggestedBlocks[i.index]? == some i.publication.suggestedBlock &&
+  suggestedNumber i < 18446744073709551616
+
+def callsNormal (i : Input) : Bool :=
+  i.normal .cancel && (i.publication.noValidation || i.normal .inclusion) &&
+  i.normal .queueClear && i.normal .waitPrewarm && i.normal .commitTree &&
+  (i.readOnly || i.normal .blockEvent) &&
+  (!checkpoint i || (i.normal .checkpointDispose && i.normal .checkpointReopen)) &&
+  i.normal .reset && (!i.hasTransactions i.publication.suggestedBlock || i.normal .scheduleHashes) &&
+  (!terminal i || (i.normal .unsubscribe && i.normal .disposeFinally && i.normal .completionEvent))
+
+inductive Event where
+  | acceptedPublication (block receipts : Nat)
+  | cancelInvoked (source : Option Nat)
+  | slotAssigned (index block : Nat)
+  | inclusionChecked (processed suggested : Nat)
+  | processedSignalAssigned (block : Nat) (signal : Bool)
+  | suggestedSignalAssigned (block : Nat) (signal : Bool)
+  | clearQueueInvoked (task : Nat)
+  | clearInlineInvoked | noClearWork
+  | prewarmWaitInvoked (task : Option Nat)
+  | preCommitInvoked (header : Nat)
+  | commitTreeInvoked (scope blockNumber : Nat)
+  | successfulPrefixAssigned (count : Nat)
+  | blockEventEvaluated (block receipts : Nat)
+  | checkpointDisposeInvoked (scope : Nat)
+  | checkpointReopenInvoked (header : Nat)
+  | nextBaseAssigned (header : Nat)
+  | prefetchCleared | resetInvoked
+  | hashScheduleInvoked (suggested : Nat)
+  | returnPrepared | unsubscribeInvoked
+  | finalDisposeInvoked (scope : Nat)
+  | completionEvaluated (originalList count : Nat)
+  | returnedArray | nextIteration
+  | escaped (site : Site)
+  deriving DecidableEq, Repr
+
+structure State where
+  processedBlock : Nat
+  receipts : Nat
+  slots : List (Option Nat)
+  count : Nat
+  processedSignal : Option Bool
+  suggestedSignal : Option Bool
+  scope : Nat
+  scopeClosed : Bool
+  nextBase : Option Nat
+  prewarmTask : Option Nat
+  cancellation : Option Nat
+  prefetch : Option Nat
+  commitCompleted : Bool
+  resetCompleted : Bool
+  deriving DecidableEq, Repr
+
+inductive Outcome where
+  | running | nextIteration | returnedBranch | outsideBoundary | escaped (site : Site)
+  deriving DecidableEq, Repr
+
+structure Result where
+  publication : U.PublicationResult
+  outcome : Outcome
+  state : Option State
+  observedPrefix : Nat
+  events : List Event
+  returnedSlots : Option (List (Option Nat))
+  deriving DecidableEq, Repr
+
+def initial (i : Input) (p : U.PublicationResult) (block receipts : Nat) : Result :=
+  { publication := p, outcome := .running, observedPrefix := i.prefixCount,
+    state := some {
+      processedBlock := block, receipts := receipts, slots := i.processedSlots,
+      count := i.prefixCount, processedSignal := none, suggestedSignal := none,
+      scope := i.scope, scopeClosed := false, nextBase := none, prewarmTask := i.prewarmTask,
+      cancellation := i.cancellation, prefetch := i.prefetch, commitCompleted := false,
+      resetCompleted := false }, events := [.acceptedPublication block receipts], returnedSlots := none }
+
+def update (r : Result) (s : State) (events : List Event) : Result :=
+  { r with state := some s, observedPrefix := s.count, events := r.events ++ events }
+
+-- An escaping hook has no invented post-state. The local prefix counter remains observed evidence.
+def escape (r : Result) (site : Site) (events : List Event) : Result :=
+  { r with
+    outcome := .escaped site, state := none,
+    events := r.events ++ events ++ [.escaped site], returnedSlots := none }
+
+def call (i : Input) (r : Result) (site : Site) (s : State) (events : List Event) : Result :=
+  if i.normal site then update r s events else escape r site events
+
+def step (i : Input) (r : Result) (op : Op) : Result :=
+  match r.outcome, r.state with
+  | .running, some s =>
+    match op with
+    | .cancel => call i r .cancel { s with cancellation := none } [.cancelInvoked s.cancellation]
+    | .assignSlot => update r { s with slots := s.slots.set i.index (some s.processedBlock) }
+        [.slotAssigned i.index s.processedBlock]
+    | .inclusion =>
+      let signal := i.publication.noValidation || i.inclusionSignal
+      let checked := if i.publication.noValidation then []
+        else [.inclusionChecked s.processedBlock i.publication.suggestedBlock]
+      if !i.publication.noValidation && !i.normal .inclusion then escape r .inclusion checked
+      else update r { s with processedSignal := some signal, suggestedSignal := some signal }
+        (checked ++ [.processedSignalAssigned s.processedBlock signal,
+          .suggestedSignalAssigned i.publication.suggestedBlock signal])
+    | .queueClear => call i r .queueClear s
+        (match i.prewarmTask with
+         | some task => [.clearQueueInvoked task]
+         | none => if i.preWarmerPresent then [.clearInlineInvoked] else [.noClearWork])
+    | .waitPrewarm => call i r .waitPrewarm { s with prewarmTask := none } [.prewarmWaitInvoked s.prewarmTask]
+    | .commitTree => if i.normal .commitTree then
+        update r { s with commitCompleted := true }
+          [.preCommitInvoked (suggestedHeader i), .commitTreeInvoked s.scope (suggestedNumber i)]
+      else escape r .commitTree [.preCommitInvoked (suggestedHeader i)]
+    | .countSuccess => update r { s with count := i.index + 1 } [.successfulPrefixAssigned (i.index + 1)]
+    | .blockEvent => if i.readOnly then r else call i r .blockEvent s [.blockEventEvaluated s.processedBlock s.receipts]
+    | .checkpointDispose => if checkpoint i then
+        call i r .checkpointDispose { s with scopeClosed := true } [.checkpointDisposeInvoked s.scope] else r
+    | .checkpointReopen => if checkpoint i then
+        call i r .checkpointReopen { s with scope := i.reopenedScope, scopeClosed := false }
+          [.checkpointReopenInvoked (suggestedHeader i)] else r
+    | .nextBase => update r { s with nextBase := some (i.header s.processedBlock) } [.nextBaseAssigned (i.header s.processedBlock)]
+    | .clearPrefetch => update r { s with prefetch := none } [.prefetchCleared]
+    | .reset => call i r .reset { s with resetCompleted := true } [.resetInvoked]
+    | .scheduleHashes => if i.hasTransactions i.publication.suggestedBlock then
+        call i r .scheduleHashes s [.hashScheduleInvoked i.publication.suggestedBlock] else r
+    | .unsubscribe => if terminal i then call i r .unsubscribe s [.returnPrepared, .unsubscribeInvoked] else r
+    | .disposeFinally => if terminal i then
+        call i r .disposeFinally { s with scopeClosed := true } [.finalDisposeInvoked s.scope] else r
+    | .completionEvent => if terminal i then
+        call i r .completionEvent s [.completionEvaluated i.originalList s.count] else r
+    | .«return» => if terminal i then
+        { r with outcome := .returnedBranch, returnedSlots := some s.slots, events := r.events ++ [.returnedArray] }
+      else { r with outcome := .nextIteration, events := r.events ++ [.nextIteration] }
+  | _, _ => r
+
+def execute (i : Input) : List Op → Result → Result
+  | [], r => r
+  | op :: rest, r => execute i rest (step i r op)
+
+def run (i : Input) : Result :=
+  let p := U.run i.publication
+  let refused : Result :=
+    { publication := p, outcome := .outsideBoundary, state := none,
+      observedPrefix := i.prefixCount, events := [], returnedSlots := none }
+  if !boundaryValid i then refused
+  else if p.outcome != .completed then refused
+  else match p.returnedTuple with
+    | none => refused
+    | some (block, receipts) => execute i program (initial i p block receipts)
+
+end BlockProcessorExtractor.Generated.BranchAcceptedIteration

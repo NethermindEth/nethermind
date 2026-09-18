@@ -1098,7 +1098,7 @@ public partial class VirtualMachine<TGasPolicy>(
         // For non-creation calls, report the action end using the current available gas and the standard return data.
         else
         {
-            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(currentState.Gas), ReturnDataBuffer);
+            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(currentState.Gas), outputBytes);
         }
     }
 
@@ -1346,7 +1346,10 @@ public partial class VirtualMachine<TGasPolicy>(
 
         if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert or EvmExceptionType.Suspend)
         {
-            if (TTracingInst.IsActive)
+            if (TTracingInst.IsActive && exceptionType != EvmExceptionType.None &&
+                (exceptionType != EvmExceptionType.Suspend ||
+                 ReturnData is not VmState<TGasPolicy> childState ||
+                 !childState.ExecutionType.IsAnyCreate()))
                 EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
             int stackHead = (int)stack.Head;
             VmState<TGasPolicy> state = VmState;

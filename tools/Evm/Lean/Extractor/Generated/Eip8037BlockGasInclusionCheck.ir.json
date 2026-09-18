@@ -1,0 +1,303 @@
+{
+  "schemaVersion": 3,
+  "kernel": "Nethermind.Evm.GasPolicy.Eip8037BlockGasInclusionCheck",
+  "roots": [
+    {
+      "name": "Validate",
+      "signature": "Nethermind.Evm.GasPolicy.Eip8037BlockGasInclusionCheck.Outcome Nethermind.Evm.GasPolicy.Eip8037BlockGasInclusionCheck.Validate(ulong blockGasLimit, ulong cumulativeBlockExecution, ulong cumulativeBlockState, ulong txGas)"
+    },
+    {
+      "name": "CalculateBlockExecutionGas",
+      "signature": "ulong Nethermind.Evm.GasPolicy.Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(ulong preRefundGas, ulong blockStateGas, ulong calldataFloor)"
+    }
+  ],
+  "program": {
+    "txGasLimitCap": "16777216",
+    "outcomeCases": [
+      "ok",
+      "executionDimensionExceeded",
+      "stateDimensionExceeded"
+    ],
+    "functions": [
+      {
+        "name": "validate",
+        "signature": "Nethermind.Evm.GasPolicy.Eip8037BlockGasInclusionCheck.Outcome Nethermind.Evm.GasPolicy.Eip8037BlockGasInclusionCheck.Validate(ulong blockGasLimit, ulong cumulativeBlockExecution, ulong cumulativeBlockState, ulong txGas)",
+        "returnType": "Outcome",
+        "parameters": [
+          {
+            "ordinal": 0,
+            "name": "blockGasLimit",
+            "type": "Nat"
+          },
+          {
+            "ordinal": 1,
+            "name": "cumulativeBlockExecution",
+            "type": "Nat"
+          },
+          {
+            "ordinal": 2,
+            "name": "cumulativeBlockState",
+            "type": "Nat"
+          },
+          {
+            "ordinal": 3,
+            "name": "txGas",
+            "type": "Nat"
+          }
+        ],
+        "body": {
+          "kind": "if",
+          "type": "Outcome",
+          "children": [
+            {
+              "kind": "gt",
+              "type": "Bool",
+              "children": [
+                {
+                  "kind": "parameter",
+                  "type": "Nat",
+                  "value": "cumulativeBlockExecution",
+                  "children": []
+                },
+                {
+                  "kind": "parameter",
+                  "type": "Nat",
+                  "value": "blockGasLimit",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "kind": "outcome",
+              "type": "Outcome",
+              "value": "executionDimensionExceeded",
+              "children": []
+            },
+            {
+              "kind": "if",
+              "type": "Outcome",
+              "children": [
+                {
+                  "kind": "gt",
+                  "type": "Bool",
+                  "children": [
+                    {
+                      "kind": "parameter",
+                      "type": "Nat",
+                      "value": "cumulativeBlockState",
+                      "children": []
+                    },
+                    {
+                      "kind": "parameter",
+                      "type": "Nat",
+                      "value": "blockGasLimit",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "outcome",
+                  "type": "Outcome",
+                  "value": "stateDimensionExceeded",
+                  "children": []
+                },
+                {
+                  "kind": "let",
+                  "type": "Outcome",
+                  "value": "executionAvailable",
+                  "children": [
+                    {
+                      "kind": "subUInt64",
+                      "type": "Nat",
+                      "children": [
+                        {
+                          "kind": "parameter",
+                          "type": "Nat",
+                          "value": "blockGasLimit",
+                          "children": []
+                        },
+                        {
+                          "kind": "parameter",
+                          "type": "Nat",
+                          "value": "cumulativeBlockExecution",
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "let",
+                      "type": "Outcome",
+                      "value": "stateAvailable",
+                      "children": [
+                        {
+                          "kind": "subUInt64",
+                          "type": "Nat",
+                          "children": [
+                            {
+                              "kind": "parameter",
+                              "type": "Nat",
+                              "value": "blockGasLimit",
+                              "children": []
+                            },
+                            {
+                              "kind": "parameter",
+                              "type": "Nat",
+                              "value": "cumulativeBlockState",
+                              "children": []
+                            }
+                          ]
+                        },
+                        {
+                          "kind": "let",
+                          "type": "Outcome",
+                          "value": "worstCaseExecution",
+                          "children": [
+                            {
+                              "kind": "minUInt64",
+                              "type": "Nat",
+                              "children": [
+                                {
+                                  "kind": "cap",
+                                  "type": "Nat",
+                                  "children": []
+                                },
+                                {
+                                  "kind": "parameter",
+                                  "type": "Nat",
+                                  "value": "txGas",
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "if",
+                              "type": "Outcome",
+                              "children": [
+                                {
+                                  "kind": "gt",
+                                  "type": "Bool",
+                                  "children": [
+                                    {
+                                      "kind": "local",
+                                      "type": "Nat",
+                                      "value": "worstCaseExecution",
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "local",
+                                      "type": "Nat",
+                                      "value": "executionAvailable",
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "outcome",
+                                  "type": "Outcome",
+                                  "value": "executionDimensionExceeded",
+                                  "children": []
+                                },
+                                {
+                                  "kind": "if",
+                                  "type": "Outcome",
+                                  "children": [
+                                    {
+                                      "kind": "gt",
+                                      "type": "Bool",
+                                      "children": [
+                                        {
+                                          "kind": "parameter",
+                                          "type": "Nat",
+                                          "value": "txGas",
+                                          "children": []
+                                        },
+                                        {
+                                          "kind": "local",
+                                          "type": "Nat",
+                                          "value": "stateAvailable",
+                                          "children": []
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "kind": "outcome",
+                                      "type": "Outcome",
+                                      "value": "stateDimensionExceeded",
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "outcome",
+                                      "type": "Outcome",
+                                      "value": "ok",
+                                      "children": []
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "calculateBlockExecutionGas",
+        "signature": "ulong Nethermind.Evm.GasPolicy.Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(ulong preRefundGas, ulong blockStateGas, ulong calldataFloor)",
+        "returnType": "Nat",
+        "parameters": [
+          {
+            "ordinal": 0,
+            "name": "preRefundGas",
+            "type": "Nat"
+          },
+          {
+            "ordinal": 1,
+            "name": "blockStateGas",
+            "type": "Nat"
+          },
+          {
+            "ordinal": 2,
+            "name": "calldataFloor",
+            "type": "Nat"
+          }
+        ],
+        "body": {
+          "kind": "maxUInt64",
+          "type": "Nat",
+          "children": [
+            {
+              "kind": "saturatingSubUInt64",
+              "type": "Nat",
+              "children": [
+                {
+                  "kind": "parameter",
+                  "type": "Nat",
+                  "value": "preRefundGas",
+                  "children": []
+                },
+                {
+                  "kind": "parameter",
+                  "type": "Nat",
+                  "value": "blockStateGas",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "kind": "parameter",
+              "type": "Nat",
+              "value": "calldataFloor",
+              "children": []
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

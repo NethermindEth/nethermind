@@ -1,0 +1,1246 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.0.0",
+  "roslynVersion": "5.6.0.0",
+  "languageVersion": "CSharp14",
+  "kernel": "Nethermind standard-mainnet Amsterdam KECCAK256 immediate-handler slice",
+  "sources": [
+    {
+      "path": "src/Nethermind/Nethermind.Core/Crypto/KeccakCache.std.cs",
+      "sha256": "24f83fb87217b33d3f6f53111ba52c24cb8b2626c80b898ea49531a3554c1103"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/GasCostOf.cs",
+      "sha256": "10f1f1a29e7bf10a8220422a6f7571af60df4f05ad4075268e3b26559a73c6f5"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/TypeFlags.cs",
+      "sha256": "33d8404d3ec39fffbc9f665126255f9799a0ba433206a141f480f8144be95747"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/DispatchFlags.std.cs",
+      "sha256": "99c58367e5b90fa5904484f6e2fbf10745a54f6cd7d07275810c27028ad0eb2b"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "sha256": "853f8f9b46e5deef1c655442694dfbb1f862de80d0ecdbee2d66e7282f974e84"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/EvmStack.cs",
+      "sha256": "561520be4f0fe1d533ddea9cfea7ff48edb2745b1f3adf1b45c24e6c0bed02ad"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "sha256": "3c31ba40c24a78bf11243b38859168350f02934806124e913da0560bc1a4350f"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/IGasPolicy.cs",
+      "sha256": "b4d26db87723243514f2f6b8a5e48d1176139105c3b012ad0f3956e59afc98a8"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instruction.cs",
+      "sha256": "6895d06277ac4f9369d7bdc748976576bf384f6f3a5a348a2e4fd3767a46a030"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmCalculations.cs",
+      "sha256": "1912ef2add71990f29ab0cb7ef1de745b44f76bd201d4ac76c3032d5f60dc244"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Crypto.cs",
+      "sha256": "c86a9c3219b12b5838cf6a8d4ca973bc9d101926a859cf88b8a7b544c6787c94"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Tracing/TracerExtensions.cs",
+      "sha256": "4704eb408436ecb82614bbf1db26f11fcfcfa65ef613146e37a31f7e30a8d662"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "sha256": "4f36bb20057caec9c85bcd3621372563f4d47ba36a9cbf01be267af4e379bca1"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+      "sha256": "5148dd594e40ebb976179b1048f233914f54acc8d033d358cf3e2e7594e112b6"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "sha256": "45edba3691e09185e749485785990662ddea1af849bc6e4564f92b68a5137a6b"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.std.cs",
+      "sha256": "357fbd35369424a379c8c29338f491627512d40a12199d7a3d9aac44c87ca92a"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+      "sha256": "fce65ce5bb523c56fc8aa6ee0e4d092c940a5a90b174c820ffe262eeb5241c60"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/00_Olympic.cs",
+      "sha256": "8874f5ed3ae7bf5a0e0d1d127babd258393abcc3093b98abc296a1a347d61246"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/01_Frontier.cs",
+      "sha256": "28318120065dc43c084c998b4cdef83669fa7b036ebe850802f0f9ff860df075"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/02_Homestead.cs",
+      "sha256": "52dae1ff91fcc53fc95e4dc9adab9ce9686411620b88135a408728d56d6b0ad2"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/03_Dao.cs",
+      "sha256": "9354856fe91fde3d1394828e94bb700b6c765b9d42425221b6e1554898c34455"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/04_TangerineWhistle.cs",
+      "sha256": "82a6ea651cb884be41e1105d73cf726e1f095195322bf3293f663658da40939f"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/05_SpuriousDragon.cs",
+      "sha256": "7fb950f37739ad6435c4dc5bcd3bf9b9566d3a6137479675276cea5a07196af5"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/06_Byzantium.cs",
+      "sha256": "c47fcc9740483de8081c4591aa6b2994271602dacc0a0fb590e63e39f0288e73"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/07_Constantinople.cs",
+      "sha256": "a0ee60c7fb44400a18e1b5d6cc3fe324de557023c34f5c7427ecaf72da17cfbe"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/08_ConstantinopleFix.cs",
+      "sha256": "1a0336f8a06e64f40cdfbba3ecac79158ddf9f38d9694df346916c819819a6a5"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/09_Istanbul.cs",
+      "sha256": "911764bbfd46d09c055d8a5a0a699c62b65ac96a528f76c294044a4c84b84714"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/10_MuirGlacier.cs",
+      "sha256": "76508e7a64c3bf94a8da0145fedb4f277c1d06e75454a53d1c2d036fc9e9f5e8"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/11_Berlin.cs",
+      "sha256": "b02b45deb5dedddc9df19283c7491ffc3ab10ab0aaae313e44cdafca9ee547b0"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/12_London.cs",
+      "sha256": "06ea8bd017ccff59759026a801138bd794919e8493d49f8ef05385276662f8ef"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/13_ArrowGlacier.cs",
+      "sha256": "267c4b5529156e692ac1d1827f189b988f07d398bda986befef9561234c94491"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/14_GrayGlacier.cs",
+      "sha256": "a3904920bc25153c271057fe3b990b183c9cf93bba3a393c1f7561c750907a2e"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/15_Paris.cs",
+      "sha256": "90c0f08765e2b50a8fadc2fdfcbe43965b9352e0a17ac692676403eb95972abd"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/16_Shanghai.cs",
+      "sha256": "dcbfdacf3b6c7a8db0e8d5abc1ad3c388d407ae989395d52f1725721a5cc767e"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/17_Cancun.cs",
+      "sha256": "29b93ca43e919352495a0406242d7b49ce9423117aeec2e1bb94427fff20aa79"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/18_Prague.cs",
+      "sha256": "949248f5f22162433e7f4e17a7e5a35b4cf54416836738831edd3b1c0e5a6b8c"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/19_Osaka.cs",
+      "sha256": "24da07f0c85e3c5822c10f010c4b35a5ca21046ac6b21f5bb26397de2ef5cf77"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/20_BPO1.cs",
+      "sha256": "6fc6d2c0fc7159882c03ad44006da8aad1354d68d2d1fe750ef8a551b43bbad8"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/21_BPO2.cs",
+      "sha256": "4788ce812f73163686b2b419970d70bdae4de73523fe6ad426a618dd1f1d40d9"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/25_Amsterdam.cs",
+      "sha256": "4dfbf9079e9dce30423327ae4433f32e49388d403a8fedfcf253f94f79450c6a"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/NamedReleaseSpec.cs",
+      "sha256": "ea9400ed44270fb18766a5dbd20d4dd7e7ee95b1bb7ab7ee6d5406cca03a46cc"
+    }
+  ],
+  "rawSources": [
+    {
+      "path": "src/Nethermind/Directory.Build.targets",
+      "sha256": "0598cebaef1df41102a18a3f9ace810bed1e4e64b8471d055724b4a394dccec6"
+    }
+  ],
+  "admissions": [
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Instruction.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "Instruction",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "EnumDeclaration",
+      "sha256": "711a9a9e715ec14a301bfa797cafa90c5edb45896a6be9657f208af0950f7e0e"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/GasCostOf.cs",
+      "namespace": "Nethermind.Core",
+      "ownerPath": "GasCostOf\u00600",
+      "memberKind": "field",
+      "memberName": "Memory",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "FieldDeclaration",
+      "sha256": "186c8fa0f801e0d359c5afbf17d76c2743f01b24f32ae141a664c247989abca1"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/GasCostOf.cs",
+      "namespace": "Nethermind.Core",
+      "ownerPath": "GasCostOf\u00600",
+      "memberKind": "field",
+      "memberName": "Sha3",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "FieldDeclaration",
+      "sha256": "8ea390107751a2671356bf7996cf794bda6a03b1f33a1dc91e337bc194bb2c99"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/GasCostOf.cs",
+      "namespace": "Nethermind.Core",
+      "ownerPath": "GasCostOf\u00600",
+      "memberKind": "field",
+      "memberName": "Sha3Word",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "FieldDeclaration",
+      "sha256": "e3a84879e9503d803a8ae8695a044ea05e422eaa444da24b6ca7a9258a3848b4"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/TypeFlags.cs",
+      "namespace": "Nethermind.Core",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "IFlag",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "InterfaceDeclaration",
+      "sha256": "fc07b156384dfbfbf109a7040bf2f11786dcbc50e57635de31e9344d46d3a069"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/TypeFlags.cs",
+      "namespace": "Nethermind.Core",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "OffFlag",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "StructDeclaration",
+      "sha256": "837798a144835ad9e52d59074387712c4a0f8bcec6be7c51cde55609fcf70103"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/TypeFlags.cs",
+      "namespace": "Nethermind.Core",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "OnFlag",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "StructDeclaration",
+      "sha256": "add37b85db306767de5712b3032ac4a9052f293dd03d5ce4e4f21d8640da9849"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Crypto.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmInstructions\u00600",
+      "memberKind": "method",
+      "memberName": "InstructionKeccak256",
+      "memberGenericArity": 2,
+      "parameterTypes": "EvmStack,TGasPolicy,VirtualMachine\u003CTGasPolicy\u003E",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "91727a4afe7e7eb0189e9c3aced1798e4bdfdc88fbe3d9140283547e7153d0ff"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Instructions/EvmCalculations.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmCalculations\u00600",
+      "memberKind": "method",
+      "memberName": "Div32Ceiling",
+      "memberGenericArity": 0,
+      "parameterTypes": "UInt256,bool",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "1a35c64cc2a93a5947c56091bd9815b7cc412410e57cc7a33a50a9d4ed26af19"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Instructions/EvmCalculations.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmCalculations\u00600",
+      "memberKind": "method",
+      "memberName": "Div32Ceiling",
+      "memberGenericArity": 0,
+      "parameterTypes": "ulong,bool",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "9470f09d7ee09e06bd520e18612ba34d170f4073ea384e69c4f4f650a608cf4d"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/IGasPolicy.cs",
+      "namespace": "Nethermind.Evm.GasPolicy",
+      "ownerPath": "IGasPolicy\u00601",
+      "memberKind": "method",
+      "memberName": "TryConsumeKeccak",
+      "memberGenericArity": 0,
+      "parameterTypes": "TSelf,ulong",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "21727d6f199bf3a442f544d86461f89c803cd41531ab120a7e66d27bf1b8f37d"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/IGasPolicy.cs",
+      "namespace": "Nethermind.Evm.GasPolicy",
+      "ownerPath": "IGasPolicy\u00601",
+      "memberKind": "method",
+      "memberName": "UpdateMemoryCost",
+      "memberGenericArity": 0,
+      "parameterTypes": "TSelf,UInt256,UInt256,EvmPooledMemory",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "63c9263a32d7733c6d440ed40714e92802e483ce119e4390cdf6b911d8b483a7"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/IGasPolicy.cs",
+      "namespace": "Nethermind.Evm.GasPolicy",
+      "ownerPath": "IGasPolicy\u00601",
+      "memberKind": "method",
+      "memberName": "UpdateGas",
+      "memberGenericArity": 0,
+      "parameterTypes": "TSelf,ulong",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "1964249d61021f4199701ead2eab741de8970035430529ce3bc906b067350ba2"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "namespace": "Nethermind.Evm.GasPolicy",
+      "ownerPath": "EthereumGasPolicy\u00600",
+      "memberKind": "field",
+      "memberName": "Value",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "FieldDeclaration",
+      "sha256": "8b0dca644a5059c8b7647ca6bce5d6ac05a9cfbc25a1ba8995c58a7a672e5d43"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "namespace": "Nethermind.Evm.GasPolicy",
+      "ownerPath": "EthereumGasPolicy\u00600",
+      "memberKind": "field",
+      "memberName": "StateReservoir",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "FieldDeclaration",
+      "sha256": "c6bbef4512e94b64ccde209e4ee37fbeef7b9a535d1954fcfb54662037c338f5"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "namespace": "Nethermind.Evm.GasPolicy",
+      "ownerPath": "EthereumGasPolicy\u00600",
+      "memberKind": "field",
+      "memberName": "StateGasUsed",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "FieldDeclaration",
+      "sha256": "d2568296f9d0812aedac0a09d026ffe7992ff7fe26b248c71f3d3e8ea88c2b74"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "namespace": "Nethermind.Evm.GasPolicy",
+      "ownerPath": "EthereumGasPolicy\u00600",
+      "memberKind": "field",
+      "memberName": "StateGasSpill",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "FieldDeclaration",
+      "sha256": "0b9377b26502c708c677ed838688f407cce7a61b4d6df8edc0f9e030bd114443"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "namespace": "Nethermind.Evm.GasPolicy",
+      "ownerPath": "EthereumGasPolicy\u00600",
+      "memberKind": "field",
+      "memberName": "StateGasSpillRefunded",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "FieldDeclaration",
+      "sha256": "a78c87d243fcf0db967b7e754589ab0c88b0aade7d4225339de1e5627a6493a9"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "namespace": "Nethermind.Evm.GasPolicy",
+      "ownerPath": "EthereumGasPolicy\u00600",
+      "memberKind": "method",
+      "memberName": "GetRemainingGas",
+      "memberGenericArity": 0,
+      "parameterTypes": "EthereumGasPolicy",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "bbf1839beae4849581235e1dfef8499fa63b755d934e9eff831281b6171327e2"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "namespace": "Nethermind.Evm.GasPolicy",
+      "ownerPath": "EthereumGasPolicy\u00600",
+      "memberKind": "method",
+      "memberName": "ConsumeRaw",
+      "memberGenericArity": 0,
+      "parameterTypes": "EthereumGasPolicy,ulong",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "485e64b9acbaad49810a5cc5cbebecddb853d1217f50a762126865d17aaa2057"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "namespace": "Nethermind.Evm.GasPolicy",
+      "ownerPath": "EthereumGasPolicy\u00600",
+      "memberKind": "method",
+      "memberName": "UpdateMemoryCost",
+      "memberGenericArity": 0,
+      "parameterTypes": "EthereumGasPolicy,UInt256,UInt256,EvmPooledMemory",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "4eb4437c9c80c8e8e388f0cf6f930cb5b7a1bec14ca697dbab7cf91c1348438e"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "namespace": "Nethermind.Evm.GasPolicy",
+      "ownerPath": "EthereumGasPolicy\u00600",
+      "memberKind": "method",
+      "memberName": "UpdateGas",
+      "memberGenericArity": 0,
+      "parameterTypes": "EthereumGasPolicy,ulong",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "40d3c1827005de750f566096cdde91462e8a517b33616fc9a294583934ea6b73"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmPooledMemory\u00600",
+      "memberKind": "field",
+      "memberName": "WordSize",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "FieldDeclaration",
+      "sha256": "5cdd4cde5546f289daea1a411a921562c08d53c6a74b6247b9e831bf09550382"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmPooledMemory\u00600",
+      "memberKind": "field",
+      "memberName": "MaxMemorySize",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "FieldDeclaration",
+      "sha256": "0811ed8e92e677061531d6e02984b6b1740a2087e0912d00af25a8b1bb9fb439"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmPooledMemory\u00600",
+      "memberKind": "property",
+      "memberName": "Size",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "PropertyDeclaration",
+      "sha256": "7593c27346c3059372e6ef46dade37354e5a476dceca059265e62b9805c4a5de"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmPooledMemory\u00600",
+      "memberKind": "method",
+      "memberName": "CheckMemoryAccessViolation",
+      "memberGenericArity": 0,
+      "parameterTypes": "UInt256,UInt256,ulong,bool",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "53272a676adc4561660d53cbb41a0f8eb09f3b15a39a6c34cea6ea5afcbca381"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmPooledMemory\u00600",
+      "memberKind": "method",
+      "memberName": "CalculateMemoryCost",
+      "memberGenericArity": 0,
+      "parameterTypes": "UInt256,UInt256,bool",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "26f85879a9bf25dd06ea38fe9cfe6a2e3e29654614609c7ce9f2c49eb213e620"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmPooledMemory\u00600",
+      "memberKind": "method",
+      "memberName": "ComputeMemoryExpansionCost",
+      "memberGenericArity": 0,
+      "parameterTypes": "ulong",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "77e21ae6431f38b86a48ba1f62cf4ff2448e4564c441f0148a47fa354e712fb7"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmPooledMemory\u00600",
+      "memberKind": "method",
+      "memberName": "TryLoadSpan",
+      "memberGenericArity": 0,
+      "parameterTypes": "UInt256,UInt256,Span\u003Cbyte\u003E",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "051779f3a3078fbfb8d153e3cf60cc20b04b31937d825edc23ada830f9a4457f"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmPooledMemory\u00600",
+      "memberKind": "method",
+      "memberName": "LoadSpan",
+      "memberGenericArity": 0,
+      "parameterTypes": "ulong,int,int",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "6046a7c703fcef82518095028d0fa1551b829a421e0c544c8898ceddad5a9900"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmPooledMemory\u00600",
+      "memberKind": "method",
+      "memberName": "UpdateSize",
+      "memberGenericArity": 0,
+      "parameterTypes": "ulong,bool",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "c6d29c8c3d22bae79ab7809587ebd83f073d97cb2f9755a43d068d307fba4aa4"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmPooledMemory\u00600",
+      "memberKind": "method",
+      "memberName": "EnsureRented",
+      "memberGenericArity": 0,
+      "parameterTypes": "ulong",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "bcaf317a52160264b63dfe52e8a2d9b37c1671d7d1139d325fe1d88a868ebcb6"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmPooledMemory\u00600",
+      "memberKind": "method",
+      "memberName": "RentSlow",
+      "memberGenericArity": 0,
+      "parameterTypes": "ulong",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "aee357292419cdd1a1c2fa265b4d6c5438feea26b90909240b7e654a190c8688"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmPooledMemory\u00600",
+      "memberKind": "method",
+      "memberName": "MaterializeArray",
+      "memberGenericArity": 0,
+      "parameterTypes": "ulong",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "04cc04ec38ffa8a50e6f909074fea437fae1ee8331afc2580338eefffcef7f10"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmStack.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmStack\u00600",
+      "memberKind": "field",
+      "memberName": "Head",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "FieldDeclaration",
+      "sha256": "6617446b2ed31e23f5959ae5b801ed2a2714a6f0bfa8d608ce4f573e48491dae"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmStack.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmStack\u00600",
+      "memberKind": "method",
+      "memberName": "ReadUInt256FromSlot",
+      "memberGenericArity": 0,
+      "parameterTypes": "byte,UInt256",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "1aa3995e0e1532c55ac2ab4fa72e456c57d170c85b436f769de1ed8eb2b18377"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmStack.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmStack\u00600",
+      "memberKind": "method",
+      "memberName": "ReadMemoryPositionFromSlot",
+      "memberGenericArity": 0,
+      "parameterTypes": "byte,UInt256",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "b74af73a2b2805e82e82b8c488a94452a05d37bd4e11bec0c587b556100d3d0d"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmStack.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmStack\u00600",
+      "memberKind": "method",
+      "memberName": "PopMemoryPositionAndUInt256",
+      "memberGenericArity": 0,
+      "parameterTypes": "UInt256,UInt256",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "fd85f4a7897838cf631088531e2787e47dc0395f771bc4052d78715f7fba363c"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmStack.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmStack\u00600",
+      "memberKind": "method",
+      "memberName": "Push32Bytes",
+      "memberGenericArity": 2,
+      "parameterTypes": "byte",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "d02e5da318805b3f0d268ed65c6c3f0cf12ef0776f0127208531c17ae9738744"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/EvmStack.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "EvmStack\u00600",
+      "memberKind": "method",
+      "memberName": "Push32Bytes",
+      "memberGenericArity": 2,
+      "parameterTypes": "ValueHash256",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "a5ad0f7e24a1d35a2780045bc7bc46f7a2909da210b2cad961f32f3d21f1711e"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601",
+      "memberKind": "type",
+      "memberName": "IOpcodeBody",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "InterfaceDeclaration",
+      "sha256": "f866119a5b1f6c8190be70e2fdd66ecc5820696623310db9e37f5a081b56185c"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601",
+      "memberKind": "method",
+      "memberName": "OpcodeHandler",
+      "memberGenericArity": 3,
+      "parameterTypes": "",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "ea9dc570ad183461562fb0a5b0f29569850de65bcb585621d37addbff58817a5"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601",
+      "memberKind": "method",
+      "memberName": "GenerateOpcodeHandlers",
+      "memberGenericArity": 2,
+      "parameterTypes": "IReleaseSpec",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "2a7f84d9ca5adea81b2d2c483ffc996e3fe42bda792bbea648aec674d826fe29"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601.KeccakOpcode\u00601",
+      "memberKind": "method",
+      "memberName": "Execute",
+      "memberGenericArity": 0,
+      "parameterTypes": "EvmStack,TGasPolicy,VirtualMachine\u003CTGasPolicy\u003E,nint",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "71ab89880b6e82401021d0b41a3b7b10551927ba793684d824b6b798bcbb852f"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601",
+      "memberKind": "method",
+      "memberName": "GetOpcodeHandlers",
+      "memberGenericArity": 2,
+      "parameterTypes": "",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "75b75d65b636bb96fa1ae4640255cc1e23b1c3015882d7475fcc54d6dac1487b"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601",
+      "memberKind": "method",
+      "memberName": "PrepareOpcodes",
+      "memberGenericArity": 1,
+      "parameterTypes": "",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "c44cee886ad0274aaf70b3ce0ff953775d85ce071c95a247f0b33f368d5575c9"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601",
+      "memberKind": "method",
+      "memberName": "PrepareOpcodes",
+      "memberGenericArity": 2,
+      "parameterTypes": "",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "c9c7727aba6a582656f44004d907026c1f19a2fe16e5ef93ef0bd293bf9c5c4f"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601",
+      "memberKind": "method",
+      "memberName": "RunDispatchLoop",
+      "memberGenericArity": 2,
+      "parameterTypes": "EvmStack,TGasPolicy,nint",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "a49f1e30c2c935cfef7e9e7405443e07c2a73a950cdaebf9a00499bba8faa407"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601",
+      "memberKind": "method",
+      "memberName": "ExecuteOpcode",
+      "memberGenericArity": 4,
+      "parameterTypes": "EvmStack,TGasPolicy,DispatchState,nint,int",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "e19f009aacb4d39744b48d2201135255405303e62ee507038676672b514bb305"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601",
+      "memberKind": "method",
+      "memberName": "ExitCheckedOpcode",
+      "memberGenericArity": 0,
+      "parameterTypes": "DispatchState,nint,int,EvmExceptionType",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "a714a325afb85e760c40e8a202eea2bdc234b5de4006775b002123fca0bf865e"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601.OpcodeTable\u00600",
+      "memberKind": "field",
+      "memberName": "NoTrace",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "FieldDeclaration",
+      "sha256": "f4445df4e4aa1687917dd66b5220cf76fdd2b01e81f86cf7e761ebfe4e8c9d7a"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601.OpcodeTable\u00600",
+      "memberKind": "field",
+      "memberName": "NoTraceCancelable",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "FieldDeclaration",
+      "sha256": "7d76c46c9d29c614abea4af280cd6a3a9250998564b9d9649cbd1ff230592fc2"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601.OpcodeTable\u00600",
+      "memberKind": "field",
+      "memberName": "Traced",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "FieldDeclaration",
+      "sha256": "52535c11a3546230fca09cf47222db5605dfc00f62edcf5a7410258485dc9575"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601.OpcodeTable\u00600",
+      "memberKind": "field",
+      "memberName": "TracedCancelable",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "FieldDeclaration",
+      "sha256": "0f53153b187bc228e6d4f9fa5ee16b72ca8bc6d0ab2a1431cc898016e665f406"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601.OpcodeTable\u00600",
+      "memberKind": "method",
+      "memberName": "GetHandlers",
+      "memberGenericArity": 2,
+      "parameterTypes": "IReleaseSpec",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "ca8dc69d3c02595055222987f55eb1d625ca82a0f9f6e0b94382fcacf53ebae6"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "EthereumVirtualMachine",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "2a36ed0c3e9cccf0f25b6752f1a5df5a9c912816a67d33c783f4d646979ff44a"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601",
+      "memberKind": "property",
+      "memberName": "VmState",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "PropertyDeclaration",
+      "sha256": "8ea2b141f677e578123de47b9d789e7aa277bfd837892072e384313a3aaecb01"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601",
+      "memberKind": "method",
+      "memberName": "StartInstructionTrace",
+      "memberGenericArity": 0,
+      "parameterTypes": "Instruction,ulong,int,EvmStack",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "862df1cdde4e3b57fd7b41b8041186b6e1faed7e7275528fba1806baf116d7b6"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601",
+      "memberKind": "method",
+      "memberName": "EndInstructionTrace",
+      "memberGenericArity": 0,
+      "parameterTypes": "ulong",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "9261d5cd80a318791064f07403b3359a4609f4fb9bdf380cf48b40f71cc8429c"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601",
+      "memberKind": "method",
+      "memberName": "RunByteCode",
+      "memberGenericArity": 2,
+      "parameterTypes": "EvmStack,TGasPolicy",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "b113f4b0ce8585a5e86f46fef5e8e596253de763ff1f7dfa1930d5118299f376"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601",
+      "memberKind": "method",
+      "memberName": "GetFailureReturn",
+      "memberGenericArity": 0,
+      "parameterTypes": "ulong,EvmExceptionType",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "5d87c56f75995336e228d3ac503f60370b81228c24c2549c6b18092ece9edd9d"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601",
+      "memberKind": "method",
+      "memberName": "EndInstructionTraceError",
+      "memberGenericArity": 0,
+      "parameterTypes": "ulong,EvmExceptionType",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "97afd538ba5d785e3bd33a21fd8ae116276bc05f08230a601217c6e94ba3da07"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.std.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "VirtualMachine\u00601",
+      "memberKind": "method",
+      "memberName": "GetOpcodeTable",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "01090d180bd50447a703f2a15d644172901b58657734e3d6c952054a834365aa"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/DispatchFlags.std.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "DispatchFlags\u00600",
+      "memberKind": "field",
+      "memberName": "ConstTracing",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "FieldDeclaration",
+      "sha256": "c88a9a02dab591993c94d3d09a00c4b2e4a9e6586052b6ee9ccfd26a9f6732b5"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/DispatchFlags.std.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "DispatchFlags\u00600",
+      "memberKind": "method",
+      "memberName": "Tracing",
+      "memberGenericArity": 0,
+      "parameterTypes": "bool",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "ef9fc06dbfb8a9cf068fea200e16f0ee80b5ef726f68173a5360779426080da6"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/DispatchFlags.std.cs",
+      "namespace": "Nethermind.Evm",
+      "ownerPath": "DispatchFlags\u00600",
+      "memberKind": "method",
+      "memberName": "Cancelable",
+      "memberGenericArity": 0,
+      "parameterTypes": "bool",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "4e7917fc7555440f13bde2f40e3fb3949a8b9bb50bfa0d30ff3cbae42e420a34"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Tracing/TracerExtensions.cs",
+      "namespace": "Nethermind.Evm.Tracing",
+      "ownerPath": "TracerExtensions\u00600",
+      "memberKind": "method",
+      "memberName": "TraceBytes",
+      "memberGenericArity": 0,
+      "parameterTypes": "ITxTracer,byte,int",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "f7f8266b778c2ab8dbdd6f6746a4ce818eb185e3b3bf7d6530ecc94630bd896f"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Crypto/KeccakCache.std.cs",
+      "namespace": "Nethermind.Core.Crypto",
+      "ownerPath": "KeccakCache\u00600",
+      "memberKind": "method",
+      "memberName": "ComputeTo",
+      "memberGenericArity": 0,
+      "parameterTypes": "ReadOnlySpan\u003Cbyte\u003E,ValueHash256",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "9de5531a0fd5ba82c0b7b6e9a09de85bd5c3e59139ae83f3cbbd5f02f0a7a469"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+      "namespace": "Nethermind.Init.Modules",
+      "ownerPath": "BlockProcessingModule\u00600",
+      "memberKind": "method",
+      "memberName": "Load",
+      "memberGenericArity": 0,
+      "parameterTypes": "ContainerBuilder",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "94a0b9d89711080715bf075fca6130dcdb2b18335590f3e120b4b90ccc8037de"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/NamedReleaseSpec.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "NamedReleaseSpec",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "c67d05aba92862851bc6b4971a6a94be69a6eb0d411b06c18cfa893d8183019f"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/NamedReleaseSpec.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "NamedReleaseSpec",
+      "memberGenericArity": 1,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "c453ca758e14070d8b8475161d6953f0262998d395fa8de49c535ddfcb8079c0"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/NamedReleaseSpec.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "NamedReleaseSpec\u00600",
+      "memberKind": "method",
+      "memberName": "ReplayAncestors",
+      "memberGenericArity": 0,
+      "parameterTypes": "NamedReleaseSpec?",
+      "syntaxKind": "MethodDeclaration",
+      "sha256": "197348583bf442d5c5a9fc0177a324406a7d26193cee86b4672328303b7bae3b"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/00_Olympic.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "Olympic",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "a89568d2b17c9a24e4ba0f8194d3d74fb9538484c688a44988cb2d7585eccdc6"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/01_Frontier.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "Frontier",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "ed95c3a8b896340bd42595aec1fae40f0a8a902619f25cd3698eeec2803dee76"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/02_Homestead.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "Homestead",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "eb82fdf0780624aa35fb644dd53b1bede3074a498875c455b550a9aea0a4a850"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/03_Dao.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "Dao",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "f1d1de4a9a3c3d6fd51d5427ac6d015485000448b490aace37a449b9e2d5fc4a"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/04_TangerineWhistle.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "TangerineWhistle",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "00bcad52ae07d3aa925f06626cbd043d0b9e78e4f383f2117e50f4683ff857f5"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/05_SpuriousDragon.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "SpuriousDragon",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "5ea6253e1a8208afbd38b5900855c88b71e2d04b02ccf575f81dbaa3ad5a645e"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/06_Byzantium.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "Byzantium",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "2e24aed2e4cf9c05f21823c8fe003723be06d8bc4b4bcd8d01f42abc14b754d2"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/07_Constantinople.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "Constantinople",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "8ba5dd8f3ec2eb4a77f76e5eb57d567ad587d4ad951348e7c516a2fc304b6e71"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/08_ConstantinopleFix.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "ConstantinopleFix",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "e23ac39b8c412592a2aeff00b18f002d59d151314bc4e809606a102e33dffe29"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/09_Istanbul.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "Istanbul",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "224221efe334f9e699eb5c8e6cc3478818ddfff6aba09a2e323a85886ac67efd"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/10_MuirGlacier.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "MuirGlacier",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "9a10850435d4a3a1f2a73d42e8777cc558fb41e5dfbb3f58e8afb821b3b7f64a"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/11_Berlin.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "Berlin",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "1c69da72f7e816a1021a4bf8ecfc67f018bf9e5819732f9527d0ee859170ecb8"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/12_London.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "London",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "b0f1f4ebc46356b95beb0262b0f06e6d4763d10b04b50a04233dd3a74f79058b"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/13_ArrowGlacier.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "ArrowGlacier",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "f5762388f9dbd722ca578639303281c9c285f59b1f166a5bd65bef0bacb05620"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/14_GrayGlacier.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "GrayGlacier",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "12232e6411e07c2d051d9d4e444f936c5cb748ad01ed968b78650bae78449f9c"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/15_Paris.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "Paris",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "1999e99205f08d7f2325969af1807376e33b026c7f4fddddce36aea315e349b6"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/16_Shanghai.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "Shanghai",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "824ecc1d55639196688d258b1f9549749b4f0c1280375488c1a4a811f15517e7"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/17_Cancun.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "Cancun",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "b52061355dfd32dfbbf74752b5f06ec2e38f83ef637c56295d0198b164df0415"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/18_Prague.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "Prague",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "0e7cf6a83a30bd3f5f59c45a48130e081598e7211dd46a608e7b0a87b6e7d294"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/19_Osaka.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "Osaka",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "c7830661156611c43438d6d5dabb368146d76da1bbd3a53ea5972a5e974a681e"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/20_BPO1.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "BPO1",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "b19c992ab216c1cca976caac1bdc09c5b1976ff93c2145f5c95363c20d215d8b"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/21_BPO2.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "BPO2",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "5b88d37530f1a93543efd2f3d71d9211c1527624941a485578ed36b888b29309"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/25_Amsterdam.cs",
+      "namespace": "Nethermind.Specs.Forks",
+      "ownerPath": "namespace",
+      "memberKind": "type",
+      "memberName": "Amsterdam",
+      "memberGenericArity": 0,
+      "parameterTypes": "",
+      "syntaxKind": "ClassDeclaration",
+      "sha256": "f0cd0162f76382e33cf5799b6544d7d30f8bf427d80b943d1f29a7f6d71ed5fd"
+    }
+  ],
+  "ir": {
+    "path": "Keccak256OpcodeKernel.ir.json",
+    "sha256": "6d32c82548c9768a084893c0401a83105d95f5eed6aa5714d8dfa64ecfa14667"
+  },
+  "lean": {
+    "path": "tools/Evm/Lean/Keccak256OpcodeExtractor/Generated/Keccak256OpcodeKernel.lean",
+    "sha256": "93172be78521facdfb03fb6be61d94ad4890ce18352e4cc92eb978baaa2e0f78"
+  },
+  "combinedSourceSha256": "91020ccf6f718b948c79e8e57ce6bfa0b3ed2362fb3d0d691398da777e766534",
+  "semanticBindings": [
+    "IVirtualMachine=\u003EEthereumVirtualMachine",
+    "EthereumVirtualMachine=\u003EVirtualMachine\u003CEthereumGasPolicy\u003E",
+    "fork=\u003EAmsterdam.Instance",
+    "opcode=\u003EInstruction.KECCAK256:0x20",
+    "handler=\u003EKeccakOpcode\u003CTTracingInst\u003E",
+    "target=\u003EEvmInstructions.InstructionKeccak256\u003CTGasPolicy,TTracingInst\u003E",
+    "hash=\u003EKeccakCache.ComputeTo:oracle-only",
+    "dispatch=\u003ENoTrace,NoTraceCancelable,Traced,TracedCancelable",
+    "build=\u003EEnableZkEvm!=true selects *.std.cs"
+  ]
+}

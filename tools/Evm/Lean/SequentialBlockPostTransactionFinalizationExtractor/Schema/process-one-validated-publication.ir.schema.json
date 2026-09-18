@@ -1,0 +1,1584 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ProcessOne validated-publication suffix IR",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "extractorVersion",
+    "kernel",
+    "acceptanceState",
+    "sourceClosureSha256",
+    "sources",
+    "compilerClosure",
+    "synchronousCallables",
+    "anchors",
+    "controlFlows",
+    "dataFlows",
+    "adapterPremises",
+    "orderedEvents",
+    "forbiddenEffects",
+    "dependencies",
+    "mutationChecks",
+    "openObligations"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 2
+    },
+    "extractorVersion": {
+      "const": "1.0.0"
+    },
+    "kernel": {
+      "const": "standard exact-base sequential BAL-disabled ProcessOne validated-publication suffix"
+    },
+    "acceptanceState": {
+      "const": "source-admitted"
+    },
+    "sourceClosureSha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 8,
+      "items": false,
+      "maxItems": 8,
+      "prefixItems": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/source"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs"
+                },
+                "role": {
+                  "const": "ProcessOne caller and suffix"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/source"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Validators/BlockValidator.cs"
+                },
+                "role": {
+                  "const": "validator side-effect observation"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/source"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Validators/IBlockValidator.cs"
+                },
+                "role": {
+                  "const": "validator contract"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/source"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Processing/ProcessingOptions.cs"
+                },
+                "role": {
+                  "const": "option guard closure"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/source"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.std.cs"
+                },
+                "role": {
+                  "const": "partial standard closure"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/source"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Processing/IBlockProcessor.cs"
+                },
+                "role": {
+                  "const": "processor interface closure"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/source"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs"
+                },
+                "role": {
+                  "const": "standard executor closure"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/source"
+            },
+            {
+              "properties": {
+                "path": {
+                  "const": "src/Nethermind/Nethermind.Blockchain/Receipts/IReceiptStorage.cs"
+                },
+                "role": {
+                  "const": "receipt storage contract"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "compilerClosure": {
+      "$ref": "#/$defs/compilerClosure"
+    },
+    "synchronousCallables": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "prefixItems": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/synchronousCallable"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "validateProcessedBlock"
+                },
+                "isVirtual": {
+                  "const": false
+                },
+                "bodyKind": {
+                  "const": "block"
+                },
+                "accessibility": {
+                  "const": "Private"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/synchronousCallable"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "postValidation"
+                },
+                "isVirtual": {
+                  "const": true
+                },
+                "bodyKind": {
+                  "const": "block"
+                },
+                "accessibility": {
+                  "const": "Protected"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/synchronousCallable"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "storeTxReceipts"
+                },
+                "isVirtual": {
+                  "const": false
+                },
+                "bodyKind": {
+                  "const": "expression"
+                },
+                "accessibility": {
+                  "const": "Private"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "items": false
+    },
+    "anchors": {
+      "type": "array",
+      "minItems": 21,
+      "maxItems": 21,
+      "prefixItems": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "processOne.processBlock-return"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "processOne.processed-commit"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "processOne.retry-access-list-catch"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "processOne.retry-parallel-catch"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "processOne.disposal-finally"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "processOne.validate-call"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "processOne.validation-guard"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "processOne.validator-call"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "processOne.validation-dispose"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "processOne.invalid-block-throw"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "processOne.post-validation-call"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "processOne.store-guard"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "processOne.insert-deferred"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "processOne.return-tuple"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "postValidation.accountChanges"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "postValidation.executionRequests"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "postValidation.generatedBlockAccessList"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "postValidation.encodedBlockAccessList-fallback"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "validator.generatedBlockAccessList-observation"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "options.NoValidation"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/anchor"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "options.StoreReceipts"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "items": false
+    },
+    "controlFlows": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "prefixItems": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/controlFlow"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "processOne"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/controlFlow"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "validateProcessedBlock"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/controlFlow"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "postValidation"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/controlFlow"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "validator"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/controlFlow"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "storeTxReceipts"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "items": false
+    },
+    "dataFlows": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "prefixItems": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/dataFlow"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "processOne.receipts"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/dataFlow"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "processOne.processed"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/dataFlow"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "processOne.suggestedGeneratedBal"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/dataFlow"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "postValidation.encodedBal"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "items": false
+    },
+    "adapterPremises": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "prefixItems": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/adapterPremise"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "exactBase"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/adapterPremise"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "standardSequential"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/adapterPremise"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "balDisabled"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/adapterPremise"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "nonparallel"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/adapterPremise"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "processBlockNormalReturn"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/adapterPremise"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "validatorObservation"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/adapterPremise"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "rejectionCleanupNormalReturn"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/adapterPremise"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "postValidationNormalReturn"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/adapterPremise"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "storeNormalReturn"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/adapterPremise"
+            },
+            {
+              "properties": {
+                "id": {
+                  "const": "noAdditionalEffects"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "items": false
+    },
+    "orderedEvents": {
+      "type": "array",
+      "const": [
+        "processBlockReturned",
+        "validatedOrNoValidation",
+        "postValidation.accountChanges",
+        "postValidation.executionRequests",
+        "postValidation.generatedBlockAccessList",
+        "postValidation.encodedBlockAccessListCoalesce",
+        "publishedExecutionArtifacts",
+        "receiptStorage.InsertDeferred",
+        "returnedProcessedBlockAndReceipts"
+      ]
+    },
+    "forbiddenEffects": {
+      "type": "array",
+      "const": [
+        "WorldState.CommitTree",
+        "WorldState.Reset",
+        "BlockTree head update",
+        "BlockchainProcessor head publication"
+      ]
+    },
+    "dependencies": {
+      "type": "array",
+      "minItems": 52,
+      "maxItems": 52,
+      "prefixItems": [
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/LeanEmitter.cs"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Specification/SequentialBlockPostTransactionFinalization.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Refinement/SequentialBlockPostTransactionFinalization.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Vectors/SequentialBlockPostTransactionFinalizationVectors.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/EXPORTED_THEOREMS.txt"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Verify-Axioms.ps1"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Verify-MutationGates.ps1"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PROMOTION_PINS.json"
+        },
+        {
+          "const": "src/Nethermind/Nethermind.Core/Metric/MetricsTimer.cs"
+        },
+        {
+          "const": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.SystemContractHandler.cs"
+        },
+        {
+          "const": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockAccessListSystemContractHandler.cs"
+        },
+        {
+          "const": "src/Nethermind/Nethermind.Consensus/Processing/TransactionProcessorAdapterExtensions.cs"
+        },
+        {
+          "const": "src/Nethermind/Nethermind.Consensus/Processing/IBlockAccessListManager.cs"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/SOURCE_PINS.json"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.ir.json"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.source-manifest.json"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Specification/SequentialBlockTransactionFold.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Refinement/SequentialBlockTransactionFold.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Vectors/SequentialBlockTransactionFoldVectors.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/EXPORTED_THEOREMS.txt"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Verify-Axioms.ps1"
+        },
+        {
+          "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/SOURCE_PINS.json"
+        },
+        {
+          "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json"
+        },
+        {
+          "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.ir.json"
+        },
+        {
+          "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.source-manifest.json"
+        },
+        {
+          "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Specification/ReceiptTerminalFold.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Refinement/ReceiptTerminalFold.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Vectors/ReceiptTerminalFoldVectors.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/EXPORTED_THEOREMS.txt"
+        },
+        {
+          "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Verify-Axioms.ps1"
+        },
+        {
+          "const": "tools/Evm/Lean/Eip803x/BlockReceiptGas.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/Eip803x/TransactionGas.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/Eip803x/Generated/BlockReceiptGasAccountingKernel.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/Eip803x/Generated/TransactionGasInitializationKernel.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/Eip803x/Refinement/BlockReceiptGasAccounting.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/Eip803x/Refinement/TransactionGasInitialization.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Specification/ProcessOneValidatedPublication.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Refinement/ProcessOneValidatedPublication.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Vectors/ProcessOneValidatedPublicationVectors.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PROCESS_ONE_PUBLICATION_SOURCE_PINS.json"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PUBLICATION_PROMOTION_PINS.json"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PUBLICATION_EXPORTED_THEOREMS.txt"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Verify-PublicationAxioms.ps1"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Verify-PublicationMutationGates.ps1"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Schema/process-one-validated-publication.ir.schema.json"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Schema/process-one-validated-publication.source-manifest.schema.json"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/SequentialBlockPostTransactionFinalization.lean"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/SequentialBlockPostTransactionFinalization.ir.json"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/SequentialBlockPostTransactionFinalization.source-manifest.json"
+        },
+        {
+          "const": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PublicationKernel.lean.template"
+        }
+      ],
+      "items": false
+    },
+    "mutationChecks": {
+      "type": "array",
+      "const": [
+        "move or remove ProcessBlock normal-result binding",
+        "move validation before the ProcessBlock result or after publication",
+        "remove or invert the NoValidation guard",
+        "swap validator arguments or hide the out error local",
+        "admit either BAL/parallel retry catch under the nonparallel premise",
+        "omit finally disposal or dispose on the normal validator path",
+        "replace validator rejection with a normal return or a generic escape",
+        "omit, reorder, or redirect any of the four PostValidation copies",
+        "replace encoded-BAL null-coalescing fallback with overwrite or reverse fallback",
+        "store before publication, duplicate InsertDeferred, or change its guard/arguments",
+        "return suggestedBlock or a different receipts local",
+        "hide or remove the validator-side GeneratedBlockAccessList observation",
+        "add CommitTree, reset, or head effects to the ProcessOne boundary",
+        "change source/FQN/symbol identity, CFG region, dataflow, or source digest",
+        "accept a stale upstream ReceiptTerminal or finalization artifact dependency"
+      ]
+    },
+    "openObligations": {
+      "type": "array",
+      "const": [
+        "The adapter supplies exact-base BlockProcessor.ProcessOne and exact-base PostValidation dispatch.",
+        "The adapter supplies the standard BlockValidationTransactionsExecutor result as a normal ProcessBlock result.",
+        "The adapter supplies standard sequential, BAL-disabled, and nonparallel premises; BAL retry catches are excluded.",
+        "Validator observation includes normal return, Boolean acceptance, and the proposed GeneratedBlockAccessList post-call value; NoValidation requires before=after.",
+        "The validator's root/hash/BAL-size diagnostics and all external validator implementations remain outside this suffix.",
+        "Rejection disposal/diagnostics, PostValidation, and IReceiptStorage.InsertDeferred normal return are separate adapter premises.",
+        "InsertDeferred is observed as synchronous visibility only; durable receipt write and canonical publication remain outside.",
+        "No CommitTree, reset, or chain-head effect is admitted; BranchProcessor and BlockchainProcessor remain downstream.",
+        "Opaque identifiers preserve block and receipt-array identity, not mutable receipt contents. External calls have no other modeled effect on normal return.",
+        "Serialized artifact acceptance requires fresh matching ReceiptTerminal and normal-tail artifacts; stale checked outputs are rejected."
+      ]
+    }
+  },
+  "$defs": {
+    "compilerClosure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inventoryPath",
+        "count",
+        "aggregateSha256",
+        "inventorySha256",
+        "supportSources"
+      ],
+      "properties": {
+        "inventoryPath": {
+          "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json"
+        },
+        "count": {
+          "const": 434
+        },
+        "aggregateSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "inventorySha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "supportSources": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "prefixItems": [
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/dependencyIdentity"
+                },
+                {
+                  "properties": {
+                    "path": {
+                      "const": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.SystemContractHandler.cs"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/dependencyIdentity"
+                },
+                {
+                  "properties": {
+                    "path": {
+                      "const": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockAccessListSystemContractHandler.cs"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/dependencyIdentity"
+                },
+                {
+                  "properties": {
+                    "path": {
+                      "const": "src/Nethermind/Nethermind.Consensus/Processing/TransactionProcessorAdapterExtensions.cs"
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/dependencyIdentity"
+                },
+                {
+                  "properties": {
+                    "path": {
+                      "const": "src/Nethermind/Nethermind.Consensus/Processing/IBlockAccessListManager.cs"
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "items": false
+        }
+      }
+    },
+    "synchronousCallable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "symbol",
+        "methodKind",
+        "bodyKind",
+        "accessibility",
+        "declaringType",
+        "declaringAssembly",
+        "returnsVoid",
+        "isAsync",
+        "isIterator",
+        "isPartial",
+        "isExtern",
+        "isAbstract",
+        "hasConditionalAttribute",
+        "isStatic",
+        "isVirtual",
+        "isOverride",
+        "hasInheritedConditionalAttribute",
+        "attributes",
+        "baseTypes",
+        "interfaces",
+        "implementedInterfaceMethods",
+        "overriddenMethods",
+        "inheritedAttributes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1
+        },
+        "methodKind": {
+          "const": "Ordinary"
+        },
+        "bodyKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "accessibility": {
+          "type": "string",
+          "minLength": 1
+        },
+        "declaringType": {
+          "const": "global::Nethermind.Consensus.Processing.BlockProcessor"
+        },
+        "declaringAssembly": {
+          "const": "Nethermind.Consensus"
+        },
+        "returnsVoid": {
+          "const": true
+        },
+        "isAsync": {
+          "const": false
+        },
+        "isIterator": {
+          "const": false
+        },
+        "isPartial": {
+          "const": false
+        },
+        "isExtern": {
+          "const": false
+        },
+        "isAbstract": {
+          "const": false
+        },
+        "hasConditionalAttribute": {
+          "const": false
+        },
+        "isStatic": {
+          "const": false
+        },
+        "isVirtual": {
+          "type": "boolean"
+        },
+        "isOverride": {
+          "const": false
+        },
+        "hasInheritedConditionalAttribute": {
+          "const": false
+        },
+        "attributes": {
+          "type": "array",
+          "const": []
+        },
+        "baseTypes": {
+          "type": "array",
+          "const": [
+            "object|System.Private.CoreLib"
+          ]
+        },
+        "interfaces": {
+          "type": "array",
+          "const": [
+            "global::Nethermind.Consensus.Processing.IBlockProcessor|Nethermind.Consensus"
+          ]
+        },
+        "implementedInterfaceMethods": {
+          "type": "array",
+          "const": []
+        },
+        "overriddenMethods": {
+          "type": "array",
+          "const": []
+        },
+        "inheritedAttributes": {
+          "type": "array",
+          "const": []
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "role",
+        "sha256",
+        "syntaxSha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "syntaxSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "ownerFqn",
+        "symbolFqn",
+        "nodeKind",
+        "canonicalSyntax",
+        "startLine",
+        "endLine",
+        "cfgRegion",
+        "dataFlow",
+        "isReachable",
+        "sourceSyntaxSha256",
+        "position",
+        "controlFlowBlock",
+        "operationKind"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerFqn": {
+          "type": "string",
+          "minLength": 1
+        },
+        "symbolFqn": {
+          "type": "string",
+          "minLength": 1
+        },
+        "nodeKind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "canonicalSyntax": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "endLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "cfgRegion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dataFlow": {
+          "type": "string",
+          "minLength": 1
+        },
+        "isReachable": {
+          "const": true
+        },
+        "sourceSyntaxSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "position": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "controlFlowBlock": {
+          "type": "integer",
+          "minimum": -1
+        },
+        "operationKind": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "dataFlow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "symbolFqn",
+        "definition",
+        "reads",
+        "writes",
+        "reachingDefinitions",
+        "dataFlowSucceeded"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "symbolFqn": {
+          "type": "string",
+          "minLength": 1
+        },
+        "definition": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reads": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "writes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "reachingDefinitions": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dataFlowSucceeded": {
+          "const": true
+        }
+      }
+    },
+    "controlFlow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "ownerFqn",
+        "startLine",
+        "endLine",
+        "reachableRegions",
+        "edges",
+        "normalExits",
+        "exceptionalExits",
+        "shapeSha256",
+        "blockMemberships"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ownerFqn": {
+          "type": "string",
+          "minLength": 1
+        },
+        "startLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "endLine": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "reachableRegions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "edges": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "normalExits": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "exceptionalExits": {
+          "type": "array",
+          "minItems": 0,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "shapeSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "blockMemberships": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "ordinal",
+              "syntaxStarts"
+            ],
+            "properties": {
+              "ordinal": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "syntaxStarts": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "adapterPremise": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "statement"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "statement": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "dependencyIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

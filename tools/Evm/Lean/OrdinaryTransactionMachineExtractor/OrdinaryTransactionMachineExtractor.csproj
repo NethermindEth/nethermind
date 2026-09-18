@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Nethermind.Evm.Lean.OrdinaryTransactionMachineExtractor</AssemblyName>
+    <RootNamespace>Nethermind.Evm.Lean.OrdinaryTransactionMachineExtractor</RootNamespace>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="Test/**/*.cs" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+  </ItemGroup>
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Nethermind.Evm.Lean.OrdinaryTransactionMachineExtractor.Test</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>

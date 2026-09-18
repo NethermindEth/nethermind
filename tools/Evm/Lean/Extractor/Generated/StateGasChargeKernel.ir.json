@@ -1,0 +1,1723 @@
+{
+  "schemaVersion": 3,
+  "root": "Nethermind.Evm.GasPolicy.StateGasChargeKernel.TryCharge",
+  "rootSignature": "Nethermind.Evm.GasPolicy.StateGasChargeResult Nethermind.Evm.GasPolicy.StateGasChargeKernel.TryCharge(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long stateGasCost)",
+  "dataTypes": [
+    {
+      "type": "Nethermind.Evm.GasPolicy.StateGasChargeResult",
+      "constructor": "Nethermind.Evm.GasPolicy.StateGasChargeResult.StateGasChargeResult(Nethermind.Evm.GasPolicy.StateGasChargeOutcome outcome, ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded)",
+      "fields": [
+        {
+          "name": "Outcome",
+          "type": "Nethermind.Evm.GasPolicy.StateGasChargeOutcome",
+          "parameterOrdinal": 0
+        },
+        {
+          "name": "Value",
+          "type": "ulong",
+          "parameterOrdinal": 1
+        },
+        {
+          "name": "StateReservoir",
+          "type": "long",
+          "parameterOrdinal": 2
+        },
+        {
+          "name": "StateGasUsed",
+          "type": "long",
+          "parameterOrdinal": 3
+        },
+        {
+          "name": "StateGasSpill",
+          "type": "long",
+          "parameterOrdinal": 4
+        },
+        {
+          "name": "StateGasSpillRefunded",
+          "type": "long",
+          "parameterOrdinal": 5
+        }
+      ]
+    }
+  ],
+  "methods": [
+    {
+      "signature": "Nethermind.Evm.GasPolicy.StateGasChargeResult Nethermind.Evm.GasPolicy.StateGasChargeKernel.TryCharge(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long stateGasCost)",
+      "returnType": "Nethermind.Evm.GasPolicy.StateGasChargeResult",
+      "parameters": [
+        {
+          "ordinal": 0,
+          "name": "value",
+          "type": "ulong"
+        },
+        {
+          "ordinal": 1,
+          "name": "stateReservoir",
+          "type": "long"
+        },
+        {
+          "ordinal": 2,
+          "name": "stateGasUsed",
+          "type": "long"
+        },
+        {
+          "ordinal": 3,
+          "name": "stateGasSpill",
+          "type": "long"
+        },
+        {
+          "ordinal": 4,
+          "name": "stateGasSpillRefunded",
+          "type": "long"
+        },
+        {
+          "ordinal": 5,
+          "name": "stateGasCost",
+          "type": "long"
+        }
+      ],
+      "blocks": [
+        {
+          "ordinal": 0,
+          "kind": "Entry",
+          "conditionKind": "None",
+          "predecessors": [],
+          "operations": [],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 1
+          }
+        },
+        {
+          "ordinal": 1,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 0,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "Binary",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "checked",
+                "value": "false"
+              },
+              {
+                "name": "lifted",
+                "value": "false"
+              },
+              {
+                "name": "operator",
+                "value": "GreaterThanOrEqual"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "long",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": []
+              },
+              {
+                "kind": "ParameterReference",
+                "type": "long",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "5"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 2
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 3
+          }
+        },
+        {
+          "ordinal": 2,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 1,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "ObjectCreation",
+            "type": "Nethermind.Evm.GasPolicy.StateGasChargeResult",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "constructor",
+                "value": "Nethermind.Evm.GasPolicy.StateGasChargeResult.StateGasChargeResult(Nethermind.Evm.GasPolicy.StateGasChargeOutcome outcome, ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded)"
+              }
+            ],
+            "children": [
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FieldReference",
+                    "type": "Nethermind.Evm.GasPolicy.StateGasChargeOutcome",
+                    "constant": "0",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "field",
+                        "value": "Nethermind.Evm.GasPolicy.StateGasChargeOutcome.Success"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "ParameterReference",
+                    "type": "ulong",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "parameter",
+                        "value": "0"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": true,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "2"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "Binary",
+                    "type": "long",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "checked",
+                        "value": "false"
+                      },
+                      {
+                        "name": "lifted",
+                        "value": "false"
+                      },
+                      {
+                        "name": "operator",
+                        "value": "Subtract"
+                      }
+                    ],
+                    "children": [
+                      {
+                        "kind": "ParameterReference",
+                        "type": "long",
+                        "isImplicit": false,
+                        "properties": [
+                          {
+                            "name": "parameter",
+                            "value": "1"
+                          }
+                        ],
+                        "children": []
+                      },
+                      {
+                        "kind": "ParameterReference",
+                        "type": "long",
+                        "isImplicit": false,
+                        "properties": [
+                          {
+                            "name": "parameter",
+                            "value": "5"
+                          }
+                        ],
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": true,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "3"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "Binary",
+                    "type": "long",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "checked",
+                        "value": "false"
+                      },
+                      {
+                        "name": "lifted",
+                        "value": "false"
+                      },
+                      {
+                        "name": "operator",
+                        "value": "Add"
+                      }
+                    ],
+                    "children": [
+                      {
+                        "kind": "ParameterReference",
+                        "type": "long",
+                        "isImplicit": false,
+                        "properties": [
+                          {
+                            "name": "parameter",
+                            "value": "2"
+                          }
+                        ],
+                        "children": []
+                      },
+                      {
+                        "kind": "ParameterReference",
+                        "type": "long",
+                        "isImplicit": false,
+                        "properties": [
+                          {
+                            "name": "parameter",
+                            "value": "5"
+                          }
+                        ],
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "4"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "ParameterReference",
+                    "type": "long",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "parameter",
+                        "value": "3"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "5"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "ParameterReference",
+                    "type": "long",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "parameter",
+                        "value": "4"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Return",
+            "destinationOrdinal": 6
+          }
+        },
+        {
+          "ordinal": 3,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 1,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "SimpleAssignment",
+              "type": "ulong",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "ulong",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "spillAmount@1521"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "Invocation",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "target",
+                      "value": "ulong Nethermind.Evm.GasPolicy.StateGasChargeKernel.CalculateSpill(long stateReservoir, long stateGasCost)"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Argument",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "argumentKind",
+                          "value": "Explicit"
+                        },
+                        {
+                          "name": "parameter",
+                          "value": "0"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "ParameterReference",
+                          "type": "long",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "parameter",
+                              "value": "1"
+                            }
+                          ],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Argument",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "argumentKind",
+                          "value": "Explicit"
+                        },
+                        {
+                          "name": "parameter",
+                          "value": "1"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "ParameterReference",
+                          "type": "long",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "parameter",
+                              "value": "5"
+                            }
+                          ],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "branchValue": {
+            "kind": "Binary",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "checked",
+                "value": "false"
+              },
+              {
+                "name": "lifted",
+                "value": "false"
+              },
+              {
+                "name": "operator",
+                "value": "LessThan"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "ulong",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": []
+              },
+              {
+                "kind": "LocalReference",
+                "type": "ulong",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "local",
+                    "value": "spillAmount@1521"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 4
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 5
+          }
+        },
+        {
+          "ordinal": 4,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 3,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "ObjectCreation",
+            "type": "Nethermind.Evm.GasPolicy.StateGasChargeResult",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "constructor",
+                "value": "Nethermind.Evm.GasPolicy.StateGasChargeResult.StateGasChargeResult(Nethermind.Evm.GasPolicy.StateGasChargeOutcome outcome, ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded)"
+              }
+            ],
+            "children": [
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FieldReference",
+                    "type": "Nethermind.Evm.GasPolicy.StateGasChargeOutcome",
+                    "constant": "1",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "field",
+                        "value": "Nethermind.Evm.GasPolicy.StateGasChargeOutcome.OutOfGas"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "ParameterReference",
+                    "type": "ulong",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "parameter",
+                        "value": "0"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "2"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "ParameterReference",
+                    "type": "long",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "parameter",
+                        "value": "1"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "3"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "ParameterReference",
+                    "type": "long",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "parameter",
+                        "value": "2"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "4"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "ParameterReference",
+                    "type": "long",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "parameter",
+                        "value": "3"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "5"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "ParameterReference",
+                    "type": "long",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "parameter",
+                        "value": "4"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Return",
+            "destinationOrdinal": 6
+          }
+        },
+        {
+          "ordinal": 5,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 3,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "ObjectCreation",
+            "type": "Nethermind.Evm.GasPolicy.StateGasChargeResult",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "constructor",
+                "value": "Nethermind.Evm.GasPolicy.StateGasChargeResult.StateGasChargeResult(Nethermind.Evm.GasPolicy.StateGasChargeOutcome outcome, ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded)"
+              }
+            ],
+            "children": [
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FieldReference",
+                    "type": "Nethermind.Evm.GasPolicy.StateGasChargeOutcome",
+                    "constant": "0",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "field",
+                        "value": "Nethermind.Evm.GasPolicy.StateGasChargeOutcome.Success"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "Binary",
+                    "type": "ulong",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "checked",
+                        "value": "false"
+                      },
+                      {
+                        "name": "lifted",
+                        "value": "false"
+                      },
+                      {
+                        "name": "operator",
+                        "value": "Subtract"
+                      }
+                    ],
+                    "children": [
+                      {
+                        "kind": "ParameterReference",
+                        "type": "ulong",
+                        "isImplicit": false,
+                        "properties": [
+                          {
+                            "name": "parameter",
+                            "value": "0"
+                          }
+                        ],
+                        "children": []
+                      },
+                      {
+                        "kind": "LocalReference",
+                        "type": "ulong",
+                        "isImplicit": false,
+                        "properties": [
+                          {
+                            "name": "local",
+                            "value": "spillAmount@1521"
+                          }
+                        ],
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "2"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "Invocation",
+                    "type": "long",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "target",
+                        "value": "long System.Math.Min(long val1, long val2)"
+                      }
+                    ],
+                    "children": [
+                      {
+                        "kind": "Argument",
+                        "isImplicit": false,
+                        "properties": [
+                          {
+                            "name": "argumentKind",
+                            "value": "Explicit"
+                          },
+                          {
+                            "name": "parameter",
+                            "value": "0"
+                          }
+                        ],
+                        "children": [
+                          {
+                            "kind": "Conversion",
+                            "type": "long",
+                            "constant": "0",
+                            "isImplicit": true,
+                            "properties": [
+                              {
+                                "name": "checked",
+                                "value": "false"
+                              },
+                              {
+                                "name": "conversion",
+                                "value": "exists,nonidentity,numeric,nonreference,implicit,nonnullable,builtin"
+                              }
+                            ],
+                            "children": [
+                              {
+                                "kind": "Literal",
+                                "type": "int",
+                                "constant": "0",
+                                "isImplicit": false,
+                                "properties": [],
+                                "children": []
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "kind": "Argument",
+                        "isImplicit": false,
+                        "properties": [
+                          {
+                            "name": "argumentKind",
+                            "value": "Explicit"
+                          },
+                          {
+                            "name": "parameter",
+                            "value": "1"
+                          }
+                        ],
+                        "children": [
+                          {
+                            "kind": "ParameterReference",
+                            "type": "long",
+                            "isImplicit": false,
+                            "properties": [
+                              {
+                                "name": "parameter",
+                                "value": "1"
+                              }
+                            ],
+                            "children": []
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": true,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "3"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "Binary",
+                    "type": "long",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "checked",
+                        "value": "false"
+                      },
+                      {
+                        "name": "lifted",
+                        "value": "false"
+                      },
+                      {
+                        "name": "operator",
+                        "value": "Add"
+                      }
+                    ],
+                    "children": [
+                      {
+                        "kind": "ParameterReference",
+                        "type": "long",
+                        "isImplicit": false,
+                        "properties": [
+                          {
+                            "name": "parameter",
+                            "value": "2"
+                          }
+                        ],
+                        "children": []
+                      },
+                      {
+                        "kind": "ParameterReference",
+                        "type": "long",
+                        "isImplicit": false,
+                        "properties": [
+                          {
+                            "name": "parameter",
+                            "value": "5"
+                          }
+                        ],
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": true,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "4"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "Binary",
+                    "type": "long",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "checked",
+                        "value": "false"
+                      },
+                      {
+                        "name": "lifted",
+                        "value": "false"
+                      },
+                      {
+                        "name": "operator",
+                        "value": "Add"
+                      }
+                    ],
+                    "children": [
+                      {
+                        "kind": "ParameterReference",
+                        "type": "long",
+                        "isImplicit": false,
+                        "properties": [
+                          {
+                            "name": "parameter",
+                            "value": "3"
+                          }
+                        ],
+                        "children": []
+                      },
+                      {
+                        "kind": "Conversion",
+                        "type": "long",
+                        "isImplicit": false,
+                        "properties": [
+                          {
+                            "name": "checked",
+                            "value": "false"
+                          },
+                          {
+                            "name": "conversion",
+                            "value": "exists,nonidentity,numeric,nonreference,explicit,nonnullable,builtin"
+                          }
+                        ],
+                        "children": [
+                          {
+                            "kind": "LocalReference",
+                            "type": "ulong",
+                            "isImplicit": false,
+                            "properties": [
+                              {
+                                "name": "local",
+                                "value": "spillAmount@1521"
+                              }
+                            ],
+                            "children": []
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "5"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "ParameterReference",
+                    "type": "long",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "parameter",
+                        "value": "4"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Return",
+            "destinationOrdinal": 6
+          }
+        },
+        {
+          "ordinal": 6,
+          "kind": "Exit",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 2,
+              "semantics": "Return"
+            },
+            {
+              "sourceOrdinal": 4,
+              "semantics": "Return"
+            },
+            {
+              "sourceOrdinal": 5,
+              "semantics": "Return"
+            }
+          ],
+          "operations": []
+        }
+      ]
+    },
+    {
+      "signature": "ulong Nethermind.Evm.GasPolicy.StateGasChargeKernel.CalculateSpill(long stateReservoir, long stateGasCost)",
+      "returnType": "ulong",
+      "parameters": [
+        {
+          "ordinal": 0,
+          "name": "stateReservoir",
+          "type": "long"
+        },
+        {
+          "ordinal": 1,
+          "name": "stateGasCost",
+          "type": "long"
+        }
+      ],
+      "blocks": [
+        {
+          "ordinal": 0,
+          "kind": "Entry",
+          "conditionKind": "None",
+          "predecessors": [],
+          "operations": [],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 1
+          }
+        },
+        {
+          "ordinal": 1,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 0,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "Binary",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "checked",
+                "value": "false"
+              },
+              {
+                "name": "lifted",
+                "value": "false"
+              },
+              {
+                "name": "operator",
+                "value": "LessThanOrEqual"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "long",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": []
+              },
+              {
+                "kind": "Conversion",
+                "type": "long",
+                "constant": "0",
+                "isImplicit": true,
+                "properties": [
+                  {
+                    "name": "checked",
+                    "value": "false"
+                  },
+                  {
+                    "name": "conversion",
+                    "value": "exists,nonidentity,numeric,nonreference,implicit,nonnullable,builtin"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "Literal",
+                    "type": "int",
+                    "constant": "0",
+                    "isImplicit": false,
+                    "properties": [],
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 2
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 3
+          }
+        },
+        {
+          "ordinal": 2,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 1,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "Conversion",
+            "type": "ulong",
+            "constant": "0",
+            "isImplicit": true,
+            "properties": [
+              {
+                "name": "checked",
+                "value": "false"
+              },
+              {
+                "name": "conversion",
+                "value": "exists,nonidentity,nonnumeric,nonreference,implicit,nonnullable,builtin"
+              }
+            ],
+            "children": [
+              {
+                "kind": "Literal",
+                "type": "int",
+                "constant": "0",
+                "isImplicit": false,
+                "properties": [],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Return",
+            "destinationOrdinal": 9
+          }
+        },
+        {
+          "ordinal": 3,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 1,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "Binary",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "checked",
+                "value": "false"
+              },
+              {
+                "name": "lifted",
+                "value": "false"
+              },
+              {
+                "name": "operator",
+                "value": "LessThanOrEqual"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "long",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": []
+              },
+              {
+                "kind": "Conversion",
+                "type": "long",
+                "constant": "0",
+                "isImplicit": true,
+                "properties": [
+                  {
+                    "name": "checked",
+                    "value": "false"
+                  },
+                  {
+                    "name": "conversion",
+                    "value": "exists,nonidentity,numeric,nonreference,implicit,nonnullable,builtin"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "Literal",
+                    "type": "int",
+                    "constant": "0",
+                    "isImplicit": false,
+                    "properties": [],
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 4
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 5
+          }
+        },
+        {
+          "ordinal": 4,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 3,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "Conversion",
+            "type": "ulong",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "checked",
+                "value": "false"
+              },
+              {
+                "name": "conversion",
+                "value": "exists,nonidentity,numeric,nonreference,explicit,nonnullable,builtin"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "long",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Return",
+            "destinationOrdinal": 9
+          }
+        },
+        {
+          "ordinal": 5,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 3,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "Binary",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "checked",
+                "value": "false"
+              },
+              {
+                "name": "lifted",
+                "value": "false"
+              },
+              {
+                "name": "operator",
+                "value": "GreaterThan"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "long",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": []
+              },
+              {
+                "kind": "ParameterReference",
+                "type": "long",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 6
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 7
+          }
+        },
+        {
+          "ordinal": 6,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 5,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "Conversion",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "conversion",
+                      "value": "exists,nonidentity,numeric,nonreference,explicit,nonnullable,builtin"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Binary",
+                      "type": "long",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "checked",
+                          "value": "false"
+                        },
+                        {
+                          "name": "lifted",
+                          "value": "false"
+                        },
+                        {
+                          "name": "operator",
+                          "value": "Subtract"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "ParameterReference",
+                          "type": "long",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "parameter",
+                              "value": "1"
+                            }
+                          ],
+                          "children": []
+                        },
+                        {
+                          "kind": "ParameterReference",
+                          "type": "long",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "parameter",
+                              "value": "0"
+                            }
+                          ],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 8
+          }
+        },
+        {
+          "ordinal": 7,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 5,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "Conversion",
+                  "type": "ulong",
+                  "constant": "0",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "conversion",
+                      "value": "exists,nonidentity,nonnumeric,nonreference,implicit,nonnullable,builtin"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Literal",
+                      "type": "int",
+                      "constant": "0",
+                      "isImplicit": false,
+                      "properties": [],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 8
+          }
+        },
+        {
+          "ordinal": 8,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 6,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 7,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "FlowCaptureReference",
+            "type": "ulong",
+            "isImplicit": true,
+            "properties": [
+              {
+                "name": "capture",
+                "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+              }
+            ],
+            "children": []
+          },
+          "fallThrough": {
+            "semantics": "Return",
+            "destinationOrdinal": 9
+          }
+        },
+        {
+          "ordinal": 9,
+          "kind": "Exit",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 2,
+              "semantics": "Return"
+            },
+            {
+              "sourceOrdinal": 4,
+              "semantics": "Return"
+            },
+            {
+              "sourceOrdinal": 8,
+              "semantics": "Return"
+            }
+          ],
+          "operations": []
+        }
+      ]
+    }
+  ]
+}

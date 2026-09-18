@@ -1,0 +1,20 @@
+using System.Runtime.CompilerServices;
+using Nethermind.Core.Extensions;
+using Nethermind.Int256;
+
+namespace Nethermind.Evm;
+
+public ref partial struct EvmStack
+{
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static UInt256 ReadBeWord(ref byte bytes)
+    {
+        ulong u3 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref bytes));
+        ulong u2 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, sizeof(ulong))));
+        ulong u1 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 2 * sizeof(ulong))));
+        ulong u0 = Bytes.Bswap64(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref bytes, 3 * sizeof(ulong))));
+
+        return new UInt256(u0, u1, u2, u3);
+    }
+}

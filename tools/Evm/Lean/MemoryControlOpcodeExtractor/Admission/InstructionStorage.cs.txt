@@ -1,0 +1,237 @@
+namespace Nethermind.Evm;
+
+partial class EvmInstructions
+{
+/// <summary>
+    /// Executes the memory store (MSTORE) instruction.
+    /// <para>
+    /// Pops an offset and a 32-byte word from the stack, updates the memory cost if needed,
+    /// and then writes the word into memory.
+    /// </para>
+    /// </summary>
+    /// <typeparam name="TTracingInst">A flag type indicating whether tracing is active.</typeparam>
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="stack">The EVM stack.</param>
+    /// <param name="gasAvailable">The remaining gas, which is decremented by both the base and memory extension costs.</param>
+    /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionMStore<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+
+        // Single bounds check covering both the offset and the word.
+        if (!stack.PopMemoryPositionAndWord256(out UInt256 result, out Span<byte> bytes)) goto StackUnderflow;
+
+        VmState<TGasPolicy> vmState = vm.VmState;
+
+        // Update the memory cost for a 32-byte store; if insufficient gas, signal out-of-gas.
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 32UL, ref vmState.Memory))
+        {
+            goto OutOfGas;
+        }
+
+        vmState.Memory.StoreWordAfterGas(in result, bytes);
+
+        // Report memory changes if tracing is active.
+        if (TTracingInst.IsActive)
+        {
+            vm.TxTracer.ReportMemoryChange((long)result.u0, bytes);
+        }
+
+        return EvmExceptionType.None;
+        // Jump forward to be unpredicted by the branch predictor.
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    }
+
+/// <summary>
+    /// Executes the memory store byte (MSTORE8) instruction.
+    /// <para>
+    /// Pops an offset and a byte from the stack, updates the memory cost accordingly,
+    /// and then stores the single byte at the specified memory location.
+    /// </para>
+    /// </summary>
+    /// <typeparam name="TTracingInst">A flag type indicating whether tracing is active.</typeparam>
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="stack">The EVM stack.</param>
+    /// <param name="gasAvailable">The remaining gas, reduced by the operation cost and any memory extension costs.</param>
+    /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionMStore8<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+
+        if (!stack.EnsureDepth(2)) goto StackUnderflow;
+        ref byte word = ref stack.Pop2BytesByRefUnchecked();
+        EvmStack.ReadMemoryPositionFromSlot(ref Unsafe.Add(ref word, EvmStack.WordSize), out UInt256 result);
+        byte data = (byte)(Unsafe.As<byte, ulong>(ref Unsafe.Add(ref word, EvmStack.WordSize - sizeof(ulong))) >> 56);
+
+        VmState<TGasPolicy> vmState = vm.VmState;
+
+        // Update the memory cost for a single-byte extension; if insufficient, signal out-of-gas.
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 1UL, ref vmState.Memory))
+        {
+            goto OutOfGas;
+        }
+
+        vmState.Memory.StoreByteAfterGas(in result, data);
+
+        // Report the memory change if tracing is active.
+        if (TTracingInst.IsActive)
+            vm.TxTracer.ReportMemoryChange(result, data);
+
+        return EvmExceptionType.None;
+        // Jump forward to be unpredicted by the branch predictor.
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    }
+
+/// <summary>
+    /// Executes the memory load (MLOAD) instruction.
+    /// <para>
+    /// Pops an offset from the stack, updates the memory cost for a 32-byte load,
+    /// retrieves the corresponding memory word, and pushes it onto the stack.
+    /// </para>
+    /// </summary>
+    /// <typeparam name="TTracingInst">A flag type indicating whether tracing is active.</typeparam>
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="stack">The EVM stack.</param>
+    /// <param name="gasAvailable">The remaining gas, adjusted for memory access.</param>
+    /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionMLoad<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+
+        if (!stack.EnsureDepth(1)) goto StackUnderflow;
+        EvmStack.ReadMemoryPositionFromSlot(ref stack.PeekBytesByRefUnchecked(), out UInt256 result);
+
+        VmState<TGasPolicy> vmState = vm.VmState;
+
+        // Update memory cost for a 32-byte load.
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in result, 32UL, ref vmState.Memory))
+            goto OutOfGas;
+
+        ref byte wordBytes = ref vmState.Memory.Load32BytesAfterGas(in result);
+
+        // Report the memory load if tracing is active.
+        if (TTracingInst.IsActive)
+        {
+            vm.TxTracer.ReportMemoryChange(result, MemoryMarshal.CreateReadOnlySpan(ref wordBytes, EvmPooledMemory.WordSize));
+        }
+
+        return stack.WriteRightPaddedBytes<TTracingInst>(ref stack.PeekBytesByRefUnchecked(), ref wordBytes, EvmStack.WordSize);
+        // Jump forward to be unpredicted by the branch predictor.
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    }
+
+/// <summary>
+    /// Executes the memory copy (MCOPY) instruction.
+    /// <para>
+    /// Pops destination offset, source offset, and length from the stack, then copies the specified
+    /// memory region from the source to the destination after verifying that enough gas is available.
+    /// </para>
+    /// </summary>
+    /// <typeparam name="TTracingInst">A flag type indicating whether tracing is active.</typeparam>
+    /// <param name="vm">The virtual machine instance.</param>
+    /// <param name="stack">The EVM stack.</param>
+    /// <param name="gasAvailable">The available gas, reduced by both the base cost and the dynamic cost calculated from the length.</param>
+    /// <returns>An <see cref="EvmExceptionType"/> result.</returns>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionMCopy<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        // Pop destination, source, and length values; if any are missing, signal a stack underflow.
+        if (!stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 c)) goto StackUnderflow;
+
+        // Calculate additional gas cost based on the length (using a division rounding-up method) and deduct the total cost.
+        ulong words = EvmCalculations.Div32Ceiling(c, out bool outOfGas);
+        if (!TGasPolicy.TryConsumeMemoryCopy(ref gas, words)) return EvmExceptionType.OutOfGas;
+        if (outOfGas) goto OutOfGas;
+
+        if (c.IsZero)
+        {
+            return EvmExceptionType.None;
+        }
+
+        VmState<TGasPolicy> vmState = vm.VmState;
+
+        // Update memory cost for the destination area (largest offset among source and destination) over the specified length.
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, UInt256.Max(b, a), c, ref vmState.Memory))
+        {
+            goto OutOfGas;
+        }
+
+        ulong length = c.u0;
+
+        if (TTracingInst.IsActive)
+        {
+            Span<byte> source = vmState.Memory.LoadSpanAfterGas(in b, length);
+            vm.TxTracer.ReportMemoryChange(b, source);
+            vmState.Memory.CopyAfterGas(in a, in b, length);
+            Span<byte> destination = vmState.Memory.LoadSpanAfterGas(in a, length);
+            vm.TxTracer.ReportMemoryChange(a, destination);
+        }
+        else
+        {
+            vmState.Memory.CopyAfterGas(in a, in b, length);
+        }
+
+        return EvmExceptionType.None;
+        // Jump forward to be unpredicted by the branch predictor.
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    }
+
+/// <summary>
+    /// Implements the CALLDATALOAD opcode.
+    /// Loads 32 bytes of call data starting from a position specified on the stack,
+    /// zero-padding if necessary.
+    /// </summary>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static EvmExceptionType CallDataLoadCore<TGasPolicy, TTracingInst>(ref EvmStack stack, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        ref byte slot = ref stack.PeekBytesByRefUnchecked();
+        EvmStack.ReadMemoryPositionFromSlot(ref slot, out UInt256 result);
+
+        ReadOnlySpan<byte> inputData = vm.VmState.Env.InputData.Span;
+
+        ulong offset = result.u0;
+        if (!result.IsUint64 || offset >= (uint)inputData.Length)
+        {
+            Unsafe.InitBlockUnaligned(ref slot, 0, EvmStack.WordSize);
+            if (TTracingInst.IsActive) vm.TxTracer.ReportStackPush(Bytes.ZeroByteSpan);
+            return EvmExceptionType.None;
+        }
+
+        uint available = (uint)inputData.Length - (uint)offset;
+        uint copiedLength = available >= 32 ? 32u : available;
+        return stack.WriteRightPaddedBytes<TTracingInst>(ref slot,
+            ref Unsafe.Add(ref MemoryMarshal.GetReference(inputData), (nint)offset),
+            copiedLength);
+    }
+
+}

@@ -1,0 +1,551 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nethermind.io/formal/evm-frame-machine-ir.schema.json",
+  "title": "Amsterdam standard-build EVM frame-machine extraction IR",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "extractorVersion",
+    "kernel",
+    "acceptanceState",
+    "boundary",
+    "frameDriver",
+    "sources",
+    "admissions",
+    "opcodePackages",
+    "opcodeRoutes",
+    "precompileRoutes",
+    "semanticBindings",
+    "openExtractionObligations",
+    "incompleteGates"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "extractorVersion": { "type": "string", "minLength": 1 },
+    "kernel": { "const": "standard-mainnet-amsterdam-evm-frame-machine" },
+    "acceptanceState": { "enum": ["pending", "stage-a-admitted"] },
+    "boundary": { "$ref": "#/$defs/boundary" },
+    "frameDriver": { "$ref": "#/$defs/frameDriver" },
+    "sources": {
+      "type": "array",
+      "minItems": 114,
+      "maxItems": 114,
+      "items": { "$ref": "#/$defs/source" }
+    },
+    "admissions": {
+      "type": "array",
+      "minItems": 181,
+      "maxItems": 181,
+      "items": { "$ref": "#/$defs/admission" }
+    },
+    "opcodePackages": {
+      "type": "array",
+      "minItems": 14,
+      "maxItems": 14,
+      "items": { "$ref": "#/$defs/opcodePackage" },
+      "allOf": [
+        {
+          "contains": {
+            "properties": {
+              "name": { "const": "EnvironmentOpcodeExtractor" },
+              "manifestSha256": { "const": "5713dd4a50e7dcb139519b4656b9b82582823894c11f24722c41986ad7d04ab7" },
+              "leanModule": { "const": "Eip803x.Refinement.EnvironmentOpcode" },
+              "proofModulePath": { "const": "tools/Evm/Lean/Eip803x/Refinement/EnvironmentOpcode.lean" },
+              "proofModuleSha256": { "const": "d9461ae1535c877e1625295421aafe2f8bc4bf1b37d0310cd1dfaeac2801a357" },
+              "requiredTheorems": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "properties": {
+                      "fullyQualifiedName": { "const": "Eip803x.Refinement.EnvironmentOpcode.closed_amsterdam_refines" },
+                      "signatureSha256": { "const": "7664bcb6bbbc57d48d1d209b875f2c3099ffcd37a3a845f15bb17ebbccf62738" }
+                    },
+                    "required": ["fullyQualifiedName", "signatureSha256"]
+                  }
+                ],
+                "minItems": 1,
+                "maxItems": 1
+              },
+              "admitted": { "const": true }
+            },
+            "required": ["name", "manifestSha256", "leanModule", "proofModulePath", "proofModuleSha256", "requiredTheorems", "admitted"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "properties": {
+              "name": { "const": "CallCreateOpcodeExtractor" },
+              "manifestSha256": { "const": "a8ad6c834d521ba0b55e3ef28ce994663c0099ba78046d5970830cd11a526164" },
+              "leanModule": { "const": "CallCreateOpcodeExtractor.Refinement.CallCreateOpcode" },
+              "proofModulePath": { "const": "tools/Evm/Lean/CallCreateOpcodeExtractor/Refinement/CallCreateOpcode.lean" },
+              "proofModuleSha256": { "const": "9f14f31975a4b50cddf577d308b841cc4a8e7a21d2f12ec00173c45b814f1ad0" },
+              "requiredTheorems": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "properties": {
+                      "fullyQualifiedName": { "const": "Eip803x.Generated.CallCreateOpcodeRefinement.closed_amsterdam_refines" },
+                      "signatureSha256": { "const": "a8cc7dc3fb82698e33b1ced5ef93bb55de5cd1d3f5262c0582c189ea782b10a0" }
+                    },
+                    "required": ["fullyQualifiedName", "signatureSha256"]
+                  }
+                ],
+                "minItems": 1,
+                "maxItems": 1
+              },
+              "admitted": { "const": true }
+            },
+            "required": ["name", "manifestSha256", "leanModule", "proofModulePath", "proofModuleSha256", "requiredTheorems", "admitted"]
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ]
+    },
+    "opcodeRoutes": {
+      "type": "array",
+      "minItems": 1024,
+      "maxItems": 1024,
+      "items": { "$ref": "#/$defs/opcodeRoute" }
+    },
+    "precompileRoutes": {
+      "type": "array",
+      "minItems": 18,
+      "maxItems": 18,
+      "items": { "$ref": "#/$defs/precompileRoute" }
+    },
+    "semanticBindings": { "$ref": "#/$defs/nonEmptyStrings" },
+    "openExtractionObligations": { "$ref": "#/$defs/nonEmptyStrings" },
+    "incompleteGates": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "sha256OrNull": {
+      "oneOf": [
+        { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        { "type": "null" }
+      ]
+    },
+    "nonEmptyStrings": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "frameExits": {
+      "type": "array",
+      "prefixItems": [
+        { "const": "success" },
+        { "const": "revert" },
+        { "const": "exception" }
+      ],
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transactionRoot",
+        "closedGasPolicy",
+        "fork",
+        "dispatchTables",
+        "framePhases",
+        "childExitKinds",
+        "topLevelExitKinds"
+      ],
+      "properties": {
+        "transactionRoot": {
+          "const": "Nethermind.Evm.VirtualMachine<Nethermind.Evm.GasPolicy.EthereumGasPolicy>.ExecuteTransaction<TTracingInst>(Nethermind.Evm.VmState<Nethermind.Evm.GasPolicy.EthereumGasPolicy>,Nethermind.Evm.State.IWorldState,Nethermind.Evm.Tracing.ITxTracer)"
+        },
+        "closedGasPolicy": { "const": "Nethermind.Evm.GasPolicy.EthereumGasPolicy" },
+        "fork": { "const": "Nethermind.Specs.Forks.Amsterdam" },
+        "dispatchTables": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "NoTrace" },
+            { "const": "NoTraceCancelable" },
+            { "const": "Traced" },
+            { "const": "TracedCancelable" }
+          ],
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "framePhases": {
+          "type": "array",
+          "prefixItems": [{ "const": "fresh" }, { "const": "continuation" }, { "const": "running" }],
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "childExitKinds": { "$ref": "#/$defs/frameExits" },
+        "topLevelExitKinds": { "$ref": "#/$defs/frameExits" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "role", "isRaw", "expectedSha256", "expectedRoslynSyntaxSha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "role": { "type": "string", "minLength": 1 },
+        "isRaw": { "type": "boolean" },
+        "expectedSha256": { "$ref": "#/$defs/sha256OrNull" },
+        "expectedRoslynSyntaxSha256": { "$ref": "#/$defs/sha256OrNull" }
+      }
+    },
+    "frameDriver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dispatchOrder",
+        "freshFrameEntryOrder",
+        "parentDiscipline",
+        "childExitBindings",
+        "topLevelCloseOrder",
+        "settlementDiscriminants",
+        "transactionWideFields",
+        "failureOrigins",
+        "successSettlementOrder",
+        "revertSettlementOrder",
+        "handleExceptionOrder",
+        "handleFailureOrder",
+        "nestedPrecompileFailureOrder",
+        "directPrecompileFailureOrder",
+        "codeDepositFailureOrder"
+      ],
+      "properties": {
+        "dispatchOrder": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "clearFreshReturnData" },
+            { "const": "selectPrecompileOrBytecode" },
+            { "const": "execute" },
+            { "const": "classifyStep" }
+          ],
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "freshFrameEntryOrder": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "traceActionStart" },
+            { "const": "addTransferLog" },
+            { "const": "runFrame" }
+          ],
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "parentDiscipline": { "const": "lifo" },
+        "childExitBindings": {
+          "type": "array",
+          "prefixItems": [
+            { "allOf": [{ "$ref": "#/$defs/childExitBinding" }, { "properties": { "exitKind": { "const": "success" }, "mergeOperation": { "const": "mergeSuccess" } } }] },
+            { "allOf": [{ "$ref": "#/$defs/childExitBinding" }, { "properties": { "exitKind": { "const": "revert" }, "mergeOperation": { "const": "mergeRevert" } } }] },
+            { "allOf": [{ "$ref": "#/$defs/childExitBinding" }, { "properties": { "exitKind": { "const": "exception" }, "mergeOperation": { "const": "mergeException" } } }] }
+          ],
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "topLevelCloseOrder": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "traceActionEnd" },
+            { "const": "prepareTopLevelSubstate" },
+            { "const": "disposeFrames" }
+          ],
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "settlementDiscriminants": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "ExecutionType" },
+            { "const": "IsCreateOnPreExistingAccount" },
+            { "const": "IsCreateStateGasCharged" },
+            { "const": "NewAccountCharged" },
+            { "const": "InitialStateGasUsed" },
+            { "const": "StateGasRefundAdvanced" },
+            { "const": "Snapshot" },
+            { "const": "_shouldRestoreRipemdTouch" }
+          ],
+          "minItems": 8,
+          "maxItems": 8
+        },
+        "transactionWideFields": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "_previousCallResult" },
+            { "const": "_previousCallOutputDestination" },
+            { "const": "previousCallOutputLength" },
+            { "const": "ReturnDataBuffer" },
+            { "const": "_shouldRestoreRipemdTouch" }
+          ],
+          "minItems": 5,
+          "maxItems": 5
+        },
+        "failureOrigins": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "ordinary" },
+            { "const": "handleException" },
+            { "const": "handleFailure" },
+            { "const": "nestedPrecompileSoftFailure" },
+            { "const": "directPrecompileSoftFailure" }
+          ],
+          "minItems": 5,
+          "maxItems": 5
+        },
+        "successSettlementOrder": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "popParent" },
+            { "const": "markContinuation" },
+            { "const": "classifyCreate" },
+            { "const": "incorporateAdvancedRefundBeforeGasForNonCreate" },
+            { "const": "refundChildGas" },
+            { "const": "finishReturnOrCodeDeposit" },
+            { "const": "commitChildOnSuccess" },
+            { "const": "incorporateAdvancedRefundAfterCommitForCreate" },
+            { "const": "repayStateGasSpill" }
+          ],
+          "minItems": 9,
+          "maxItems": 9
+        },
+        "revertSettlementOrder": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "popParent" },
+            { "const": "markContinuation" },
+            { "const": "returnExecutionGas" },
+            { "const": "removeAdvancedRefund" },
+            { "const": "restoreChildStateGas" },
+            { "const": "creditCreateOrNewAccount" },
+            { "const": "restoreSnapshot" },
+            { "const": "restoreRipemdTouch" },
+            { "const": "prepareRevertReturn" }
+          ],
+          "minItems": 9,
+          "maxItems": 9
+        },
+        "handleExceptionOrder": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "traceActionError" },
+            { "const": "restoreSnapshot" },
+            { "const": "restoreRipemdTouch" },
+            { "const": "classifyTopLevel" },
+            { "const": "clearReturnState" },
+            { "const": "popParent" },
+            { "const": "removeAdvancedRefund" },
+            { "const": "restoreChildStateGasOnHalt" },
+            { "const": "creditCreateOrNewAccount" }
+          ],
+          "minItems": 9,
+          "maxItems": 9
+        },
+        "handleFailureOrder": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "restoreSnapshot" },
+            { "const": "restoreRipemdTouch" },
+            { "const": "traceOperationRemainingGasZero" },
+            { "const": "traceOperationError" },
+            { "const": "traceActionError" },
+            { "const": "classifyTopLevel" },
+            { "const": "clearReturnState" },
+            { "const": "popParent" },
+            { "const": "removeAdvancedRefund" },
+            { "const": "restoreChildStateGasOnHalt" },
+            { "const": "creditCreateOrNewAccount" }
+          ],
+          "minItems": 11,
+          "maxItems": 11
+        },
+        "nestedPrecompileFailureOrder": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "clearExecutionGas" },
+            { "const": "classifyShouldRevert" },
+            { "const": "popParent" },
+            { "const": "markContinuation" },
+            { "const": "returnExecutionGas" },
+            { "const": "removeAdvancedRefund" },
+            { "const": "restoreChildStateGas" },
+            { "const": "creditCreateOrNewAccount" },
+            { "const": "restoreSnapshot" },
+            { "const": "restoreRipemdTouch" },
+            { "const": "prepareRevertReturn" }
+          ],
+          "minItems": 11,
+          "maxItems": 11
+        },
+        "directPrecompileFailureOrder": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "runInlinePrecompile" },
+            { "const": "classifyManagedException" },
+            { "const": "pushFailureToCurrentFrame" },
+            { "const": "continueCurrentFrame" }
+          ],
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "codeDepositFailureOrder": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "calculateDepositCost" },
+            { "const": "checkInvalidCode" },
+            { "const": "chargeParent" },
+            { "const": "revertRefundToHalt" },
+            { "const": "creditCreateStateGas" },
+            { "const": "removeAdvancedRefund" },
+            { "const": "restoreSnapshot" },
+            { "const": "deletePhysicalNewAccountIfNeeded" },
+            { "const": "restoreRipemdTouch" },
+            { "const": "reportActionError" }
+          ],
+          "minItems": 10,
+          "maxItems": 10
+        }
+      }
+    },
+    "childExitBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["exitKind", "mergeOperation"],
+      "properties": {
+        "exitKind": {
+          "enum": ["success", "revert", "exception"]
+        },
+        "mergeOperation": {
+          "enum": [
+            "mergeSuccess",
+            "mergeRevert",
+            "mergeException"
+          ]
+        }
+      }
+    },
+    "admission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourcePath",
+        "namespace",
+        "ownerPath",
+        "memberKind",
+        "memberName",
+        "memberGenericArity",
+        "parameterTypes",
+        "expectedSyntaxKind",
+        "expectedSha256"
+      ],
+      "properties": {
+        "sourcePath": { "type": "string", "minLength": 1 },
+        "namespace": { "type": "string", "minLength": 1 },
+        "ownerPath": { "type": "string", "minLength": 1 },
+        "memberKind": { "enum": ["type", "constructor", "method", "property", "field", "operator"] },
+        "memberName": { "type": "string", "minLength": 1 },
+        "memberGenericArity": { "type": "integer", "minimum": 0 },
+        "parameterTypes": { "type": "string" },
+        "expectedSyntaxKind": {
+          "oneOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+        },
+        "expectedSha256": { "$ref": "#/$defs/sha256OrNull" }
+      }
+    },
+    "opcodePackage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "manifestPath",
+        "leanModule",
+        "proofModulePath",
+        "requiredTheorems",
+        "proofModuleSha256",
+        "declaredOpcodeCount",
+        "admitted",
+        "manifestSha256"
+      ],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "manifestPath": { "type": "string", "minLength": 1 },
+        "leanModule": { "type": "string", "minLength": 1 },
+        "proofModulePath": { "type": "string", "minLength": 1 },
+        "requiredTheorems": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/proofTheoremIdentity" }
+        },
+        "proofModuleSha256": { "$ref": "#/$defs/sha256OrNull" },
+        "declaredOpcodeCount": { "type": "integer", "minimum": 1, "maximum": 256 },
+        "admitted": { "type": "boolean" },
+        "manifestSha256": { "$ref": "#/$defs/sha256OrNull" }
+      }
+    },
+    "proofTheoremIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fullyQualifiedName", "signatureSha256"],
+      "properties": {
+        "fullyQualifiedName": { "type": "string", "minLength": 1 },
+        "signatureSha256": { "$ref": "#/$defs/sha256OrNull" }
+      }
+    },
+    "opcodeRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dispatchTable",
+        "byte",
+        "instruction",
+        "routeKind",
+        "activationRule",
+        "package",
+        "closedHandlerRoot",
+        "admitted"
+      ],
+      "properties": {
+        "dispatchTable": { "enum": ["NoTrace", "NoTraceCancelable", "Traced", "TracedCancelable"] },
+        "byte": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "instruction": { "type": "string", "minLength": 1 },
+        "routeKind": { "enum": ["unresolved", "enabled", "disabled", "badInstruction"] },
+        "activationRule": { "type": "string", "minLength": 1 },
+        "package": { "type": "string", "minLength": 1 },
+        "closedHandlerRoot": { "type": "string", "minLength": 1 },
+        "admitted": { "type": "boolean" }
+      }
+    },
+    "precompileRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "address",
+        "activationRule",
+        "providerRoot",
+        "wrapperManifestPath",
+        "leanModule",
+        "fullyQualifiedTheorem",
+        "admitted",
+        "wrapperManifestSha256"
+      ],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "address": { "type": "integer", "minimum": 1, "maximum": 256 },
+        "activationRule": { "type": "string", "minLength": 1 },
+        "providerRoot": { "type": "string", "minLength": 1 },
+        "wrapperManifestPath": { "type": "string", "minLength": 1 },
+        "leanModule": { "type": "string", "minLength": 1 },
+        "fullyQualifiedTheorem": { "type": "null" },
+        "admitted": { "type": "boolean" },
+        "wrapperManifestSha256": { "$ref": "#/$defs/sha256OrNull" }
+      }
+    }
+  }
+}

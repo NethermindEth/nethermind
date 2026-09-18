@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "extractorVersion", "roslynVersion", "languageVersion", "kernel", "sources", "members", "dependencies", "ir", "lean", "combinedSourceSha256", "combinedMemberSha256", "reviewedOperationalBindings"],
+  "properties": {
+    "schemaVersion": {"const": 1}, "extractorVersion": {"type": "string"}, "roslynVersion": {"type": "string"},
+    "languageVersion": {"const": "CSharp14"}, "kernel": {"type": "string"},
+    "sources": {"type": "array", "minItems": 80, "items": {"$ref": "#/definitions/source"}},
+    "members": {"type": "array", "minItems": 70, "items": {"$ref": "#/definitions/member"}},
+    "dependencies": {"type": "array", "minItems": 10, "items": {"$ref": "#/definitions/dependency"}},
+    "ir": {"$ref": "#/definitions/artifact"}, "lean": {"$ref": "#/definitions/artifact"},
+    "combinedSourceSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "combinedMemberSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "reviewedOperationalBindings": {"type": "array", "minItems": 10, "items": {"type": "string", "minLength": 1}}
+  },
+  "definitions": {
+    "artifact": {"type": "object", "additionalProperties": false, "required": ["path", "sha256"], "properties": {"path": {"type": "string", "minLength": 1}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}},
+    "source": {"type": "object", "additionalProperties": false, "required": ["role", "path", "sha256", "syntaxSha256"], "properties": {"role": {"type": "string"}, "path": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "syntaxSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}},
+    "member": {"type": "object", "additionalProperties": false, "required": ["sourcePath", "owner", "member", "syntaxKind", "signature"], "properties": {"sourcePath": {"type": "string"}, "owner": {"type": "string"}, "member": {"type": "string"}, "syntaxKind": {"type": "string"}, "signature": {"type": "string"}}},
+    "dependency": {"type": "object", "additionalProperties": false, "required": ["kind", "name", "path", "sha256", "binding", "theorems"], "properties": {"kind": {"type": "string"}, "name": {"type": "string"}, "path": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "binding": {"type": "string"}, "theorems": {"type": "array", "minItems": 1, "items": {"type": "string"}}}}
+  }
+}

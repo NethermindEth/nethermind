@@ -1,0 +1,14 @@
+name = "ReceiptTerminalFoldExtractor"
+version = "0.1.0"
+defaultTargets = [
+  "ReceiptTerminalFoldExtractor.Refinement.ReceiptTerminalFold",
+  "ReceiptTerminalFoldExtractor.Vectors.ReceiptTerminalFoldVectors"
+]
+
+[[lean_lib]]
+name = "Eip803x"
+srcDir = ".."
+
+[[lean_lib]]
+name = "ReceiptTerminalFoldExtractor"
+srcDir = ".."

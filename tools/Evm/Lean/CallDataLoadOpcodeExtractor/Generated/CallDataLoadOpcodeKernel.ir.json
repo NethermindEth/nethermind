@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.0.0",
+  "kernel": "standard-mainnet-amsterdam-calldataload-operational",
+  "closedVm": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E",
+  "gasPolicy": "Nethermind.Evm.GasPolicy.EthereumGasPolicy",
+  "fork": "Nethermind.Specs.Forks.Amsterdam",
+  "standardBuildSelector": "Directory.Build.targets: EnableZkEvm != true selects *.std.cs and excludes *.zkevm.cs",
+  "schedule": {
+    "veryLow": 3,
+    "wordBytes": 32,
+    "maxInt32": 2147483647,
+    "maxUInt64": 18446744073709551615,
+    "uInt256Modulus": "115792089237316195423570985008687907853269984665640564039457584007913129639936"
+  },
+  "outerFailure": {
+    "clearGasOnOutOfGas": true,
+    "retainChargedGasOnUnderflow": true,
+    "finishBeforeError": true,
+    "decrementFaultPc": true
+  },
+  "dispatchTables": [
+    {
+      "name": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag"
+    },
+    {
+      "name": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag"
+    },
+    {
+      "name": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag"
+    },
+    {
+      "name": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag"
+    }
+  ],
+  "opcodes": [
+    {
+      "name": "calldataload",
+      "instruction": "CALLDATALOAD",
+      "opcodeByte": 53,
+      "handlerBody": "CallDataLoadOpcode\u003CTTracingInst\u003E",
+      "handlerTarget": "EvmInstructions.CallDataLoadCore\u003CTGasPolicy,TTracingInst\u003E",
+      "stackInputs": 1,
+      "stackOutputs": 1,
+      "stackGrowth": 0,
+      "pushSize": -1,
+      "hasCheckedBody": true,
+      "usesVm": true,
+      "replacesTop": true,
+      "endsInstructionTrace": false,
+      "activation": "unconditional since Frontier",
+      "semantics": {
+        "operation": "loadCallDataWord",
+        "gasClass": "veryLow",
+        "accessWidth": 32,
+        "offsetRule": "uint64OrZero",
+        "paddingRule": "rightZero",
+        "stackTraceOrder": "bottomFirst",
+        "traceRule": "one zero byte for inaccessible offsets; raw 32-byte word for in-range offsets"
+      },
+      "effectOrder": [
+        "traceStart",
+        "traceStackBottomFirst",
+        "advanceDispatchPc",
+        "incrementOpcodeCount",
+        "chargeVeryLow",
+        "checkDepthOne",
+        "peekTopSlot",
+        "decodeUInt256Offset",
+        "rejectAboveUInt64OrAtEnd",
+        "zeroTopAndTraceZeroByte",
+        "otherwiseCopyAtMost32",
+        "rightZeroPadAndReplaceTop",
+        "traceRawWord",
+        "closeSuccessTrace",
+        "tailDispatchOrCancelableBoundary"
+      ]
+    }
+  ],
+  "specializations": [
+    {
+      "opcode": "calldataload",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCallDataLoadOpcode\u003COffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "calldataload",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCallDataLoadOpcode\u003COffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "calldataload",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCallDataLoadOpcode\u003COnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "calldataload",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CCallDataLoadOpcode\u003COnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    }
+  ],
+  "forkLineage": [
+    "Olympic",
+    "Frontier",
+    "Homestead",
+    "Dao",
+    "TangerineWhistle",
+    "SpuriousDragon",
+    "Byzantium",
+    "Constantinople",
+    "ConstantinopleFix",
+    "Istanbul",
+    "MuirGlacier",
+    "Berlin",
+    "London",
+    "ArrowGlacier",
+    "GrayGlacier",
+    "Paris",
+    "Shanghai",
+    "Cancun",
+    "Prague",
+    "Osaka",
+    "BPO1",
+    "BPO2",
+    "Amsterdam"
+  ],
+  "openExtractionObligations": [
+    "Roslyn exact-syntax admission does not prove C# compilation, CLR/JIT/AOT execution, function-pointer tail calls, or hardware behavior.",
+    "The model assumes the external UInt256 IsUint64/u0 contract matches the shared Lean word modulo 2^256.",
+    "The model assumes the admitted unsafe EvmWord stack slot, native endian conversion, unaligned reads/writes, vector lanes, and Span aliasing implement the modeled big-endian 32-byte word without corruption.",
+    "The instruction-start stack event reverses the model\u0027s top-first words to match the admitted physical bottom-first VmState.MemoryStacks and TraceStack.ToRawBytes copy; per-word byte decoding remains under the EvmWord representation premise.",
+    "Tracing callbacks are assumed total and non-throwing; capability-dependent memory, bottom-first stack, and return-data event order and modeled payloads are explicit, while the StartOperation environment object is abstracted.",
+    "Cancellation is modeled only at the post-opcode boundary; token state, scheduling, CLR/JIT/AOT, function-pointer tail calls, and hardware behavior remain open.",
+    "The outer closure covers OOG gas clearing, charged underflow residue, finish-before-error, and retention of the frame PC on fault; transaction rollback, persistence, and state-gas settlement are outside this slice."
+  ]
+}

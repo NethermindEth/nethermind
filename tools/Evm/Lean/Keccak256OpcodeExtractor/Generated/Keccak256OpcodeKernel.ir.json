@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.0.0",
+  "kernel": "Nethermind standard-mainnet Amsterdam KECCAK256 immediate-handler slice",
+  "reachability": {
+    "service": "Nethermind.Evm.IVirtualMachine",
+    "implementation": "Nethermind.Evm.EthereumVirtualMachine",
+    "closedVm": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E",
+    "gasPolicy": "Nethermind.Evm.GasPolicy.EthereumGasPolicy",
+    "fork": "Nethermind.Specs.Forks.Amsterdam",
+    "dispatchRoot": "VirtualMachine\u003CTGasPolicy\u003E.RunDispatchLoop\u003CTTracingInst,TCancelable\u003E",
+    "buildSelection": "Directory.Build.targets:EnableZkEvm!=true",
+    "hashBoundary": "Nethermind.Core.Crypto.KeccakCache.ComputeTo:oracle-only"
+  },
+  "opcode": {
+    "name": "keccak256",
+    "instruction": "KECCAK256",
+    "opcodeByte": 32,
+    "handlerBody": "KeccakOpcode\u003CTTracingInst\u003E",
+    "handlerTarget": "EvmInstructions.InstructionKeccak256\u003CTGasPolicy,TTracingInst\u003E",
+    "programCounterDelta": 1,
+    "opcodeCountDelta": 1,
+    "stackInputs": 2,
+    "stackOutputs": 1,
+    "hasCheckedBody": false,
+    "pushDepthFlag": "OnFlag",
+    "effectOrder": [
+      "traceStartIfInstructionTracing",
+      "incrementProgramCounter",
+      "incrementOpcodeCount",
+      "popOffsetLengthAtomically",
+      "calculateCheckedCeilingWords",
+      "chargeBaseAndWords",
+      "rejectWordOverflowAfterCharge",
+      "installLogicalMemoryExpansion",
+      "chargeMemoryExpansion",
+      "loadExactZeroExtendedSlice",
+      "callHashOracle",
+      "checkPushDepth",
+      "traceHashPushIfInstructionTracing",
+      "replaceTwoStackInputsWithHash",
+      "traceEndIfInstructionTracing",
+      "dispatchContinue"
+    ]
+  },
+  "schedule": {
+    "base": 30,
+    "word": 6,
+    "memoryLinear": 3,
+    "memoryQuadraticDivisor": 512,
+    "maxMemorySize": 2147483616,
+    "maxUInt64": 18446744073709551615,
+    "maxUInt32": 4294967295
+  },
+  "dispatchTables": [
+    {
+      "name": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag"
+    },
+    {
+      "name": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag"
+    },
+    {
+      "name": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag"
+    },
+    {
+      "name": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag"
+    }
+  ],
+  "specializations": [
+    {
+      "opcode": "keccak256",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CKeccakOpcode\u003COffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "keccak256",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CKeccakOpcode\u003COffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "keccak256",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CKeccakOpcode\u003COnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "keccak256",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E.ExecuteOpcode\u003CKeccakOpcode\u003COnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    }
+  ],
+  "forkLineage": [
+    "Olympic",
+    "Frontier",
+    "Homestead",
+    "Dao",
+    "TangerineWhistle",
+    "SpuriousDragon",
+    "Byzantium",
+    "Constantinople",
+    "ConstantinopleFix",
+    "Istanbul",
+    "MuirGlacier",
+    "Berlin",
+    "London",
+    "ArrowGlacier",
+    "GrayGlacier",
+    "Paris",
+    "Shanghai",
+    "Cancun",
+    "Prague",
+    "Osaka",
+    "BPO1",
+    "BPO2",
+    "Amsterdam"
+  ],
+  "openExtractionObligations": [
+    "The hash is an oracle: no equivalence claim covers Keccak, ValueKeccak, KeccakCache, cache synchronization, native code, or CLR representation.",
+    "Roslyn syntax admission does not prove C# compilation, CLR/JIT/AOT execution, function-pointer tail calls, or hardware behavior.",
+    "The logical model assumes the admitted UInt256, ValueHash256, unsafe stack, and memory adapters represent the shared Lean words and zero-extended bytes.",
+    "Backing allocation, pooling, fresh-array initialization, aliasing, allocation failure, and optional trace payload callbacks or exceptions remain outside this immediate opcode step.",
+    "Cancellation polling, counter overflow, outer terminal-opcode and error trace closure, exceptional-frame settlement, rollback, transaction composition, and persistence remain outside this projection."
+  ]
+}

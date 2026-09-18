@@ -483,6 +483,124 @@ public class BlockAccessListBasedWorldStateTests
     }
 
     /// <summary>
+    /// EIP-7928 retains the target account but does not encode which earlier transaction merely
+    /// touched it. A legacy storage-only leaf may consequently have been reaped by EIP-161 before
+    /// this CREATE. Parallel replay must request sequential execution instead of treating the
+    /// parent storage root as an unconditional collision.
+    /// </summary>
+    [Test]
+    public void IsCreateCollision_for_legacy_storage_only_parent_requires_sequential_replay()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 2,
+            suggestedBal: bal,
+            genesisSetup: ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, 0);
+                ws.Set(new StorageCell(TestItem.AddressA, 1), [0x2a]);
+            });
+
+        using (scope)
+        {
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+                () => bws.IsCreateCollision(TestItem.AddressA, includeStorageCollision: true, out _, out _));
+        }
+    }
+
+    [Test]
+    public void IsCreateCollision_for_prior_reaped_parent_account_requires_sequential_replay()
+    {
+        StorageCell cell = new(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithBalanceChanges(new BalanceChange(1, 0))
+                .WithStorageChanges(cell.Index, new StorageChange(1, 0u))
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 2,
+            suggestedBal: bal,
+            genesisSetup: ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, 1);
+                ws.Set(cell, [0x2a]);
+            });
+
+        using (scope)
+        {
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+                () => bws.IsCreateCollision(TestItem.AddressA, includeStorageCollision: true, out _, out _));
+        }
+    }
+
+    [Test]
+    public void IsCreateCollision_uses_prior_nonzero_storage_overlay()
+    {
+        StorageCell cell = new(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageChanges(cell.Index, new StorageChange(1, 1u))
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 2,
+            suggestedBal: bal);
+
+        using (scope)
+        {
+            bool collision = bws.IsCreateCollision(
+                TestItem.AddressA,
+                includeStorageCollision: true,
+                out bool physicalLeafExists,
+                out bool logicalAccountExists);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(collision, Is.True);
+                Assert.That(physicalLeafExists, Is.True);
+                Assert.That(logicalAccountExists, Is.False);
+            }
+        }
+    }
+
+    [Test]
+    public void IsCreateCollision_for_zero_only_prior_storage_over_parent_storage_requires_sequential_replay()
+    {
+        StorageCell cell = new(TestItem.AddressA, 1);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges
+                .WithAddress(TestItem.AddressA)
+                .WithStorageChanges(cell.Index, new StorageChange(1, 0u))
+                .TestObject)
+            .TestObject;
+
+        (BlockAccessListBasedWorldState bws, IDisposable scope) = CreateBlockAccessListState(
+            blockAccessIndex: 2,
+            suggestedBal: bal,
+            genesisSetup: ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, 1);
+                ws.Set(cell, [0x2a]);
+            });
+
+        using (scope)
+        {
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+                () => bws.IsCreateCollision(TestItem.AddressA, includeStorageCollision: true, out _, out _));
+        }
+    }
+
+    /// <summary>
     /// An account missing from parent state but introduced by a prior-tx balance change must
     /// report as existing — the existence overlay covers all three change families (balance,
     /// nonce, code), not just code. Pairs with the code-only test

@@ -6,8 +6,10 @@ using Nethermind.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
+using System;
 using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Test;
 
@@ -16,6 +18,26 @@ namespace Nethermind.Evm.Test;
 /// </summary>
 internal class Eip1153Tests : VirtualMachineTestsBase
 {
+    private sealed class TransientStorageObservationTracer : TestAllTracerWithOutput
+    {
+        public int Writes { get; private set; }
+        public byte[]? NewValue { get; private set; }
+        public byte[]? CurrentValue { get; private set; }
+
+        public override bool IsTracingInstructions => false;
+
+        public override void SetOperationTransientStorage(
+            Address address,
+            UInt256 storageIndex,
+            ReadOnlySpan<byte> newValue,
+            ReadOnlySpan<byte> currentValue)
+        {
+            Writes++;
+            NewValue = newValue.ToArray();
+            CurrentValue = currentValue.ToArray();
+        }
+    }
+
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
@@ -116,6 +138,26 @@ internal class Eip1153Tests : VirtualMachineTestsBase
         Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success));
 
         Assert.That((int)result.ReturnValue.ToUInt256(), Is.EqualTo(8));
+    }
+
+    [Test]
+    public void tstore_traces_value_from_before_write()
+    {
+        byte[] code = Prepare.EvmCode
+            .StoreDataInTransientStorage(1, 8)
+            .StoreDataInTransientStorage(1, 9)
+            .Done;
+        TransientStorageObservationTracer tracer = new();
+
+        Execute(tracer, code);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.Writes, Is.EqualTo(2));
+            Assert.That(tracer.NewValue!.ToUInt256(), Is.EqualTo((UInt256)9));
+            Assert.That(tracer.CurrentValue!.ToUInt256(), Is.EqualTo((UInt256)8));
+        }
     }
 
     /// <summary>

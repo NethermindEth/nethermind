@@ -1,0 +1,28 @@
+namespace Nethermind.Evm.GasPolicy;
+
+partial class IGasPolicy<TSelf>
+{
+[MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool UpdateGas<TCost>(ref TSelf gas) where TCost : struct, IGasCost =>
+        TSelf.UpdateGas(ref gas, TCost.GasCost);
+
+[MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool TryConsumeMemoryCopy(ref TSelf gas, ulong words) =>
+        TSelf.UpdateGas(ref gas, GasCostOf.VeryLow + GasCostOf.VeryLow * words);
+
+static abstract bool UpdateMemoryCost(ref TSelf gas, in UInt256 position, in UInt256 length, ref EvmPooledMemory memory);
+
+[MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static virtual bool UpdateMemoryCost(ref TSelf gas, in UInt256 position, ulong length, ref EvmPooledMemory memory)
+    {
+        UInt256 uint256Length = new(length);
+        return TSelf.UpdateMemoryCost(ref gas, in position, in uint256Length, ref memory);
+    }
+
+/// <summary>Charges execution gas, returning false and exhausting it when the cost is unaffordable.</summary>
+    static abstract bool UpdateGas(ref TSelf gas, ulong gasCost);
+
+// EXTCODECOPY may need different categorization (state trie access) for some policies.
+    static abstract bool TryConsumeDataCopyGas(ref TSelf gas, IReleaseSpec spec, bool isExternalCode, ulong words);
+
+}

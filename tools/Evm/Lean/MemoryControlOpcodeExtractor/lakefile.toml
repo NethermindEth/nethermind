@@ -1,0 +1,11 @@
+name = "MemoryControlOpcodeExtractor"
+version = "0.1.0"
+defaultTargets = ["MemoryControlOpcodeExtractor.Refinement.MemoryControlOpcode"]
+
+[[lean_lib]]
+name = "Eip803x"
+srcDir = ".."
+
+[[lean_lib]]
+name = "MemoryControlOpcodeExtractor"
+srcDir = ".."

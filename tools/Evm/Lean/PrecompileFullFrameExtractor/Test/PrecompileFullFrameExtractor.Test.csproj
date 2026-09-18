@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsTestProject>true</IsTestProject>
+    <EnableNUnitRunner>true</EnableNUnitRunner>
+    <AssemblyName>Nethermind.Evm.Lean.PrecompileFullFrameExtractor.Test</AssemblyName>
+    <RootNamespace>Nethermind.Evm.Lean.PrecompileFullFrameExtractor.Test</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../PrecompileFullFrameExtractor.csproj" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="NJsonSchema" />
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnit3TestAdapter" />
+  </ItemGroup>
+</Project>

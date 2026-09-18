@@ -412,3 +412,219 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
         }
     }
 }
+
+[TestFixture]
+public class TransactionSettlementKernelTests
+{
+    [TestCase(7L, 0, 0UL, 3UL, 90UL, 10UL, TestName = "refund counter and code refund")]
+    [TestCase(30L, 0, 0UL, 0UL, 80UL, 20UL, TestName = "refund is capped")]
+    [TestCase(0L, 2, 7UL, 1UL, 85UL, 15UL, TestName = "destroy refund is included")]
+    [TestCase(0L, 0, 0UL, 0UL, 100UL, 0UL, TestName = "zero refund")]
+    [TestCase(-7L, 0, 0UL, 0UL, 107UL, 0UL, TestName = "negative refund increases gas")]
+    public void Success_applies_signed_refund_and_cap(
+        long refundCounter,
+        int destroyCount,
+        ulong destroyRefund,
+        ulong codeInsertExecutionRefund,
+        ulong expectedOperationGas,
+        ulong expectedGasRefund)
+    {
+        TransactionSettlementResult result = TransactionSettlementKernel.Calculate(
+            transactionGasLimit: 120,
+            preRefundGas: 100,
+            refundCounter,
+            destroyCount,
+            destroyRefund,
+            codeInsertExecutionRefund,
+            calldataFloorGas: 0,
+            stateGasUsed: 0,
+            refundQuotient: 5,
+            isError: false,
+            shouldRevert: false,
+            isEip8037Enabled: true,
+            isEip7778Enabled: true);
+
+        AssertSettlement(
+            result,
+            expectedOperationGas,
+            expectedOperationGas,
+            blockGas: 100,
+            blockStateGas: 0,
+            maxUsedGas: 100,
+            expectedGasRefund);
+    }
+
+    [TestCase(false, true, 100UL, 90UL, 100UL, TestName = "revert uses pre-refund gas")]
+    [TestCase(true, false, 120UL, 110UL, 120UL, TestName = "legacy error uses transaction gas limit")]
+    public void Revert_and_legacy_error_ignore_substate_and_destroy_refunds(
+        bool isError,
+        bool shouldRevert,
+        ulong expectedGasUsedBeforeRefund,
+        ulong expectedOperationGas,
+        ulong expectedBlockGas)
+    {
+        TransactionSettlementResult result = TransactionSettlementKernel.Calculate(
+            transactionGasLimit: 120,
+            preRefundGas: 100,
+            refundCounter: 1_000,
+            destroyCount: 10,
+            destroyRefund: 50,
+            codeInsertExecutionRefund: 10,
+            calldataFloorGas: 0,
+            stateGasUsed: 99,
+            refundQuotient: 5,
+            isError,
+            shouldRevert,
+            isEip8037Enabled: false,
+            isEip7778Enabled: true);
+
+        AssertSettlement(
+            result,
+            expectedOperationGas,
+            expectedOperationGas,
+            expectedBlockGas,
+            blockStateGas: 0,
+            maxUsedGas: expectedGasUsedBeforeRefund,
+            gasRefund: 10);
+    }
+
+    [TestCase(20L, 20L, 90UL, 90UL, 90UL, 100UL, TestName = "calldata floor dominates refund and execution dimension")]
+    [TestCase(20L, 90L, 0UL, 80UL, 10UL, 100UL, TestName = "state dimension dominates execution dimension")]
+    [TestCase(20L, 150L, 0UL, 80UL, 0UL, 100UL, TestName = "state subtraction saturates")]
+    [TestCase(20L, 20L, 120UL, 120UL, 120UL, 120UL, TestName = "calldata floor dominates max-used gas")]
+    public void Eip8037_projects_transaction_and_block_gas_dimensions(
+        long refundCounter,
+        long stateGasUsed,
+        ulong calldataFloorGas,
+        ulong expectedSpentGas,
+        ulong expectedBlockGas,
+        ulong expectedMaxUsedGas)
+    {
+        TransactionSettlementResult result = TransactionSettlementKernel.Calculate(
+            transactionGasLimit: 150,
+            preRefundGas: 100,
+            refundCounter,
+            destroyCount: 0,
+            destroyRefund: 0,
+            codeInsertExecutionRefund: 0,
+            calldataFloorGas,
+            stateGasUsed,
+            refundQuotient: 5,
+            isError: false,
+            shouldRevert: false,
+            isEip8037Enabled: true,
+            isEip7778Enabled: true);
+
+        AssertSettlement(
+            result,
+            expectedSpentGas,
+            operationGas: 80,
+            expectedBlockGas,
+            blockStateGas: (ulong)stateGasUsed,
+            expectedMaxUsedGas,
+            gasRefund: 20);
+    }
+
+    [TestCase(false, 0UL, TestName = "pre-EIP-7778 has no block execution projection")]
+    [TestCase(true, 110UL, TestName = "EIP-7778 projects pre-refund calldata floor")]
+    public void PreEip8037_projection_preserves_Eip7778_branch(bool isEip7778Enabled, ulong expectedBlockGas)
+    {
+        TransactionSettlementResult result = TransactionSettlementKernel.Calculate(
+            transactionGasLimit: 150,
+            preRefundGas: 100,
+            refundCounter: 20,
+            destroyCount: 0,
+            destroyRefund: 0,
+            codeInsertExecutionRefund: 0,
+            calldataFloorGas: 110,
+            stateGasUsed: long.MaxValue,
+            refundQuotient: 5,
+            isError: false,
+            shouldRevert: false,
+            isEip8037Enabled: false,
+            isEip7778Enabled);
+
+        AssertSettlement(
+            result,
+            spentGas: 110,
+            operationGas: 80,
+            expectedBlockGas,
+            blockStateGas: 0,
+            maxUsedGas: 110,
+            gasRefund: 20);
+    }
+
+    [Test]
+    public void Maximum_values_preserve_fixed_width_refund_semantics()
+    {
+        TransactionSettlementResult result = TransactionSettlementKernel.Calculate(
+            transactionGasLimit: ulong.MaxValue,
+            preRefundGas: ulong.MaxValue,
+            refundCounter: long.MaxValue,
+            destroyCount: 0,
+            destroyRefund: 0,
+            codeInsertExecutionRefund: 0,
+            calldataFloorGas: 0,
+            stateGasUsed: long.MaxValue,
+            refundQuotient: 2,
+            isError: false,
+            shouldRevert: false,
+            isEip8037Enabled: true,
+            isEip7778Enabled: true);
+
+        AssertSettlement(
+            result,
+            spentGas: 1UL << 63,
+            operationGas: 1UL << 63,
+            blockGas: 1UL << 63,
+            blockStateGas: long.MaxValue,
+            maxUsedGas: ulong.MaxValue,
+            gasRefund: long.MaxValue);
+    }
+
+    [TestCase(ulong.MaxValue, 0L, 0UL, TestName = "unsigned code refund casts to minus one and addition wraps")]
+    [TestCase(0UL, long.MinValue, 1UL << 63, TestName = "minimum signed refund negation retains its bit pattern")]
+    public void Signed_refund_machine_boundaries_are_unchecked(
+        ulong codeInsertExecutionRefund,
+        long refundCounter,
+        ulong expectedOperationGas)
+    {
+        TransactionSettlementResult result = TransactionSettlementKernel.Calculate(
+            transactionGasLimit: ulong.MaxValue,
+            preRefundGas: codeInsertExecutionRefund == ulong.MaxValue ? ulong.MaxValue : 0,
+            refundCounter,
+            destroyCount: 0,
+            destroyRefund: 0,
+            codeInsertExecutionRefund,
+            calldataFloorGas: 0,
+            stateGasUsed: 0,
+            refundQuotient: 5,
+            isError: false,
+            shouldRevert: false,
+            isEip8037Enabled: true,
+            isEip7778Enabled: true);
+
+        Assert.That(result.OperationGas, Is.EqualTo(expectedOperationGas));
+        Assert.That(result.GasRefund, Is.Zero);
+    }
+
+    private static void AssertSettlement(
+        TransactionSettlementResult actual,
+        ulong spentGas,
+        ulong operationGas,
+        ulong blockGas,
+        ulong blockStateGas,
+        ulong maxUsedGas,
+        ulong gasRefund)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.SpentGas, Is.EqualTo(spentGas), "spent gas");
+            Assert.That(actual.OperationGas, Is.EqualTo(operationGas), "operation gas");
+            Assert.That(actual.BlockGas, Is.EqualTo(blockGas), "block execution gas");
+            Assert.That(actual.BlockStateGas, Is.EqualTo(blockStateGas), "block state gas");
+            Assert.That(actual.MaxUsedGas, Is.EqualTo(maxUsedGas), "max-used gas");
+            Assert.That(actual.GasRefund, Is.EqualTo(gasRefund), "positive gas refund");
+        }
+    }
+}

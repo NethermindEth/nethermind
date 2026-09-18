@@ -265,7 +265,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         Debug.Assert(state.Vm.ReturnData is null,
             "A handler that stages ReturnData must report a non-None status, or dispatch will continue past the halt");
 
-        if (TTracingInst.IsActive)
+        if (TTracingInst.IsActive && !TOpcode.EndsInstructionTrace)
             state.Vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
 
         // Reaching here means the halt check passed, so the status is None and gas is valid: the exit

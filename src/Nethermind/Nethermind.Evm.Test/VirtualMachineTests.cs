@@ -20,6 +20,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Test.Tracing;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -55,9 +56,77 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         new TestCaseData("60016005575b", 21016UL, 4).SetName("JumpDest_charge_out_of_gas_after_JumpI"),
     ];
 
+    private static readonly Instruction[] PureWordTraceOpcodes =
+    [
+        Instruction.ISZERO,
+        Instruction.NOT,
+        Instruction.EQ,
+        Instruction.AND,
+        Instruction.OR,
+        Instruction.XOR,
+        Instruction.SIGNEXTEND,
+        Instruction.CLZ,
+    ];
+
+    private static readonly Instruction[] PureWordTwoInputTraceOpcodes =
+    [
+        Instruction.EQ,
+        Instruction.AND,
+        Instruction.OR,
+        Instruction.XOR,
+        Instruction.SIGNEXTEND,
+    ];
+
+    private static readonly TestCaseData[] PureWordOpcodeTraceCases =
+    [
+        PureWordOpcodeTraceCase(Instruction.ISZERO, [(byte)Instruction.PUSH1, 0x00], Word(0x01)),
+        PureWordOpcodeTraceCase(Instruction.NOT, [(byte)Instruction.PUSH1, 0x00], Word(0xff, 0xff)),
+        PureWordOpcodeTraceCase(Instruction.EQ, [(byte)Instruction.PUSH1, 0x07, (byte)Instruction.PUSH1, 0x07], Word(0x01)),
+        PureWordOpcodeTraceCase(Instruction.AND, [(byte)Instruction.PUSH1, 0xf0, (byte)Instruction.PUSH1, 0x0f], Word(0x00)),
+        PureWordOpcodeTraceCase(Instruction.OR, [(byte)Instruction.PUSH1, 0xf0, (byte)Instruction.PUSH1, 0x0f], Word(0xff)),
+        PureWordOpcodeTraceCase(Instruction.XOR, [(byte)Instruction.PUSH1, 0xf0, (byte)Instruction.PUSH1, 0x0f], Word(0xff)),
+        PureWordOpcodeTraceCase(Instruction.SIGNEXTEND, [(byte)Instruction.PUSH1, 0x80, (byte)Instruction.PUSH1, 0x00], Word(0x80, 0xff)),
+        PureWordOpcodeTraceCase(Instruction.SIGNEXTEND, [(byte)Instruction.PUSH1, 0x80, (byte)Instruction.PUSH1, 0x20], Word(0x80)),
+        PureWordOpcodeTraceCase(Instruction.CLZ, [(byte)Instruction.PUSH1, 0x01], Word(0xff)),
+    ];
+
+    private static readonly TestCaseData[] PureWordOpcodeTraceGasCases =
+    [
+        PureWordOpcodeTraceGasCase(Instruction.ISZERO, [(byte)Instruction.PUSH1, 0x01], GasCostOf.VeryLow),
+        PureWordOpcodeTraceGasCase(Instruction.NOT, [(byte)Instruction.PUSH1, 0x01], GasCostOf.VeryLow),
+        PureWordOpcodeTraceGasCase(Instruction.EQ, [(byte)Instruction.PUSH1, 0x01, (byte)Instruction.PUSH1, 0x01], GasCostOf.VeryLow),
+        PureWordOpcodeTraceGasCase(Instruction.AND, [(byte)Instruction.PUSH1, 0x01, (byte)Instruction.PUSH1, 0x01], GasCostOf.VeryLow),
+        PureWordOpcodeTraceGasCase(Instruction.OR, [(byte)Instruction.PUSH1, 0x01, (byte)Instruction.PUSH1, 0x01], GasCostOf.VeryLow),
+        PureWordOpcodeTraceGasCase(Instruction.XOR, [(byte)Instruction.PUSH1, 0x01, (byte)Instruction.PUSH1, 0x01], GasCostOf.VeryLow),
+        PureWordOpcodeTraceGasCase(Instruction.SIGNEXTEND, [(byte)Instruction.PUSH1, 0x01, (byte)Instruction.PUSH1, 0x01], GasCostOf.Low),
+        PureWordOpcodeTraceGasCase(Instruction.CLZ, [(byte)Instruction.PUSH1, 0x01], GasCostOf.Low),
+    ];
+
+    private static TestCaseData PureWordOpcodeTraceCase(Instruction opcode, byte[] operandSetup, byte[] expected) =>
+        new TestCaseData(opcode, operandSetup, expected).SetName($"{opcode}_reports_exact_vm_trace_push");
+
+    private static TestCaseData PureWordOpcodeTraceGasCase(Instruction opcode, byte[] operandSetup, ulong opcodeCost) =>
+        new TestCaseData(opcode, operandSetup, opcodeCost).SetName($"{opcode}_out_of_gas_reports_no_vm_trace_push");
+
+    private static byte[] Word(byte leastSignificantByte, byte fill = 0)
+    {
+        byte[] word = new byte[32];
+        Array.Fill(word, fill);
+        word[^1] = leastSignificantByte;
+        return word;
+    }
+
     private sealed class NoInstructionTracer : TestAllTracerWithOutput
     {
         public override bool IsTracingInstructions => false;
+    }
+
+    private sealed class ActionOutputTracer : TestAllTracerWithOutput
+    {
+        public List<byte[]> ActionOutputs { get; } = [];
+
+        public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) =>
+            ActionOutputs.Add(output.ToArray());
     }
 
     private sealed class CountingCancellationTracer(int cancelAtPoll = int.MaxValue) : TestAllTracerWithOutput, ITxTracer
@@ -71,11 +140,93 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         bool ITxTracer.IsCancelled => ++PollCount >= cancelAtPoll;
     }
 
+    private sealed class OpcodePushTracer(Instruction target) : TestAllTracerWithOutput
+    {
+        private Instruction _currentOpcode;
+
+        public List<byte[]> Pushes { get; } = [];
+
+        public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
+            _currentOpcode = opcode;
+
+        public override void ReportStackPush(in ReadOnlySpan<byte> stackItem)
+        {
+            if (_currentOpcode == target)
+                Pushes.Add(stackItem.ToArray());
+        }
+    }
+
+    private sealed class InstructionBoundaryTracer : TestAllTracerWithOutput
+    {
+        private Instruction _currentOpcode;
+
+        public int Started { get; private set; }
+        public int Ended { get; private set; }
+        public List<ulong> CreateStartingGas { get; } = [];
+        public List<ulong> CreateRemainingGas { get; } = [];
+
+        public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
+        {
+            _currentOpcode = opcode;
+            if (_currentOpcode is Instruction.CREATE or Instruction.CREATE2)
+                CreateStartingGas.Add(gas);
+            Started++;
+        }
+
+        public override void ReportOperationRemainingGas(ulong gas)
+        {
+            if (_currentOpcode is Instruction.CREATE or Instruction.CREATE2)
+                CreateRemainingGas.Add(gas);
+            Ended++;
+        }
+    }
+
     [Test]
     public void Stop()
     {
         TestAllTracerWithOutput receipt = Execute((byte)Instruction.STOP);
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction));
+    }
+
+    [Test]
+    public void Continuable_opcode_at_end_of_code_reports_one_instruction_boundary()
+    {
+        InstructionBoundaryTracer tracer = new();
+
+        Execute(tracer,
+            [(byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.KECCAK256],
+            MainnetSpecProvider.OsakaActivation);
+
+        Assert.That(tracer.Started, Is.EqualTo(3));
+        Assert.That(tracer.Ended, Is.EqualTo(tracer.Started));
+    }
+
+    [Test]
+    public void Create_paths_preserve_pre_child_trace_without_duplicate_boundary([Values] bool collision)
+    {
+        byte[] initCode = [(byte)Instruction.STOP];
+        byte[] salt = [0x01];
+        if (collision)
+        {
+            Address contractAddress = ContractAddress.From(Recipient, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
+            TestState.CreateAccount(contractAddress, UInt256.Zero);
+            TestState.InsertCode(contractAddress, initCode, SpecProvider.GenesisSpec);
+        }
+
+        InstructionBoundaryTracer tracer = new();
+        (Block block, Transaction transaction) = PrepareTx(
+            MainnetSpecProvider.AmsterdamActivation,
+            1_000_000,
+            Prepare.EvmCode.Create2(initCode, salt, UInt256.Zero).Op(Instruction.STOP).Done);
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        ulong createCost = Eip8038Constants.CreateAccess + GasCostOf.InitCodeWord + GasCostOf.Sha3Word +
+                           (collision ? 0UL : (ulong)GasCostOf.CreateState);
+        Assert.That(tracer.CreateStartingGas, Has.Count.EqualTo(1));
+        Assert.That(tracer.CreateRemainingGas,
+            Is.EqualTo(new[] { tracer.CreateStartingGas.Single() - createCost }));
+        Assert.That(tracer.Ended, Is.EqualTo(tracer.Started + (collision ? 0 : 1)));
     }
 
     [Test]
@@ -439,6 +590,56 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             Assert.That(tracer.GasSpent, Is.EqualTo(gasLimit));
             Assert.That(Machine.OpCodeCount, Is.EqualTo(pushes + 1 + (appendStop && expectedError is null ? 1 : 0)));
         }
+    }
+
+    [TestCaseSource(nameof(PureWordOpcodeTraceCases))]
+    public void Pure_word_opcode_reports_exact_vm_trace_push(Instruction opcode, byte[] operandSetup, byte[] expected)
+    {
+        OpcodePushTracer tracer = new(opcode);
+        byte[] code = [.. operandSetup, (byte)opcode];
+
+        Execute(tracer, code, MainnetSpecProvider.OsakaActivation);
+
+        Assert.That(tracer.Error, Is.Null);
+        Assert.That(tracer.Pushes, Has.Count.EqualTo(1));
+        Assert.That(tracer.Pushes[0], Is.EqualTo(expected));
+    }
+
+    [TestCaseSource(nameof(PureWordTraceOpcodes))]
+    public void Pure_word_opcode_underflow_does_not_report_vm_trace_push(Instruction opcode)
+    {
+        OpcodePushTracer tracer = new(opcode);
+
+        Execute(tracer, [(byte)opcode], MainnetSpecProvider.OsakaActivation);
+
+        Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.StackUnderflow)));
+        Assert.That(tracer.Pushes, Is.Empty);
+    }
+
+    [TestCaseSource(nameof(PureWordTwoInputTraceOpcodes))]
+    public void Pure_word_opcode_partial_underflow_does_not_report_vm_trace_push(Instruction opcode)
+    {
+        OpcodePushTracer tracer = new(opcode);
+
+        Execute(tracer, [(byte)Instruction.PUSH1, 0x01, (byte)opcode], MainnetSpecProvider.OsakaActivation);
+
+        Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.StackUnderflow)));
+        Assert.That(tracer.Pushes, Is.Empty);
+    }
+
+    [TestCaseSource(nameof(PureWordOpcodeTraceGasCases))]
+    public void Pure_word_opcode_out_of_gas_does_not_report_vm_trace_push(
+        Instruction opcode, byte[] operandSetup, ulong opcodeCost)
+    {
+        OpcodePushTracer tracer = new(opcode);
+        byte[] code = [.. operandSetup, (byte)opcode];
+        ulong gasLimit = GasCostOf.Transaction + (ulong)(operandSetup.Length / 2) * GasCostOf.VeryLow + opcodeCost - 1;
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.OsakaActivation, gasLimit, code);
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.OutOfGas)));
+        Assert.That(tracer.Pushes, Is.Empty);
     }
 
     /// <remarks>
@@ -1350,10 +1551,9 @@ public class VirtualMachineTests : VirtualMachineTestsBase
 
     // Top-level call straight to a precompile exercises the precompile output path, where the backing array may be
     // a whole array that is forwarded without copying.
-    [Test]
-    public void Top_level_precompile_output_reaches_receipt_tracer_verbatim()
+    [TestCaseSource(nameof(TopLevelOutputCases))]
+    public void Top_level_precompile_output_reaches_action_and_receipt_tracers_verbatim(byte[] input)
     {
-        byte[] input = Bytes.FromHexString("0x00112233445566778899aabbccddeeff");
         EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
         Transaction tx = Build.A.Transaction
             .WithTo(IdentityPrecompile.Address)
@@ -1362,12 +1562,17 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             .SignedAndResolved(ecdsa, SenderKey)
             .TestObject;
 
-        TestAllTracerWithOutput receipt = Execute(tx);
+        (Block block, _) = PrepareTx(Activation, 100_000UL, null);
+        ActionOutputTracer tracer = new();
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        Assert.That(tracer.ActionOutputs, Has.Count.EqualTo(1));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(receipt.ReturnValue, Is.EqualTo(input));
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.ReturnValue, Is.EqualTo(input));
+            Assert.That(tracer.ActionOutputs[0], Is.EqualTo(input));
         }
     }
 }

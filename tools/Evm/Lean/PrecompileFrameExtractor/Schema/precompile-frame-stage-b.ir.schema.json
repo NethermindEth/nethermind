@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "precompile-frame-stage-b.ir.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "extractorVersion", "kernel", "acceptanceState", "stageA", "scope", "operational", "oracleBindings", "sources", "members", "reference", "refinement", "mutationChecks", "semanticBindings"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "extractorVersion": { "const": "precompile-frame-stage-b-1" },
+    "kernel": { "const": "standard-mainnet-amsterdam-precompile-direct-stage-b" },
+    "acceptanceState": { "const": "stage-b-universal-oracle-bounded-operational-refinement" },
+    "stageA": { "$ref": "#/definitions/stageA" },
+    "scope": { "$ref": "#/definitions/scope" },
+    "operational": { "$ref": "#/definitions/operational" },
+    "oracleBindings": { "type": "array", "minItems": 18, "maxItems": 18, "items": { "$ref": "#/definitions/oracle" } },
+    "sources": { "type": "array", "minItems": 10, "maxItems": 10, "items": { "$ref": "#/definitions/source" } },
+    "members": { "type": "array", "minItems": 24, "maxItems": 24, "items": { "$ref": "#/definitions/member" } },
+    "reference": { "$ref": "#/definitions/proof" },
+    "refinement": { "$ref": "#/definitions/proof" },
+    "mutationChecks": { "type": "array", "minItems": 28, "maxItems": 28, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "semanticBindings": { "type": "array", "minItems": 8, "maxItems": 8, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+  },
+  "definitions": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": { "path": { "type": "string", "minLength": 1 }, "sha256": { "$ref": "#/definitions/sha256" } }
+    },
+    "stageA": {
+      "type": "object", "additionalProperties": false,
+      "required": ["ir", "manifest", "lean", "combinedSourceSha256", "combinedMemberSha256", "sourceCount", "memberCount", "dependencyCount", "routeCount"],
+      "properties": {
+        "ir": { "$ref": "#/definitions/artifact" }, "manifest": { "$ref": "#/definitions/artifact" }, "lean": { "$ref": "#/definitions/artifact" },
+        "combinedSourceSha256": { "$ref": "#/definitions/sha256" }, "combinedMemberSha256": { "$ref": "#/definitions/sha256" },
+        "sourceCount": { "const": 122 }, "memberCount": { "const": 154 }, "dependencyCount": { "const": 23 }, "routeCount": { "const": 18 }
+      }
+    },
+    "scope": {
+      "type": "object", "additionalProperties": false,
+      "required": ["claim", "included", "excluded", "assumptions"],
+      "properties": {
+        "claim": { "type": "string", "minLength": 1 },
+        "included": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "excluded": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "assumptions": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "operational": {
+      "type": "object", "additionalProperties": false,
+      "required": ["entryMember", "directEligibility", "cancellationBoundary", "pricingRule", "oracleRule", "outputCopyRule", "branches"],
+      "properties": {
+        "entryMember": { "const": "EvmInstructions.TryInlineStaticPrecompileCall" },
+        "directEligibility": { "type": "string", "minLength": 1 }, "cancellationBoundary": { "type": "string", "pattern": "completedWithoutException" },
+        "pricingRule": { "type": "string", "minLength": 1 }, "oracleRule": { "type": "string", "minLength": 1 }, "outputCopyRule": { "type": "string", "minLength": 1 },
+        "branches": { "type": "array", "minItems": 9, "maxItems": 9, "items": { "$ref": "#/definitions/branch" } }
+      }
+    },
+    "status": { "enum": ["notStarted", "declined", "inputMemoryOutOfGas", "pricingOverflow", "pricingOutOfGas", "returnedFailure", "managedException", "outputCopyOutOfGas", "success"] },
+    "result": { "enum": ["cancelled", "declined", "outOfGas", "stackFailure", "stackSuccess"] },
+    "effect": { "enum": ["preDispatchCancellationPoll", "inputLoad", "childCreate", "pricing", "runOracle", "executionGasClear", "stateGasRestore", "accountTouch", "childRefund", "returnDataClear", "returnDataSet", "outputCopy", "returnOutOfGas", "stackFailure", "stackSuccess", "boundaryCancellationPoll"] },
+    "branch": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "status", "result", "effects", "invokesOracle", "refundsChildGas", "writesOutput", "pushesStack"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 }, "status": { "$ref": "#/definitions/status" }, "result": { "$ref": "#/definitions/result" },
+        "effects": { "type": "array", "items": { "$ref": "#/definitions/effect" } },
+        "invokesOracle": { "type": "boolean" }, "refundsChildGas": { "type": "boolean" }, "writesOutput": { "type": "boolean" }, "pushesStack": { "type": "boolean" }
+      }
+    },
+    "oracle": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "address", "dependencyPath", "dependencySha256", "namespace", "entrySymbol"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 }, "address": { "type": "integer", "minimum": 1 }, "dependencyPath": { "type": "string", "minLength": 1 },
+        "dependencySha256": { "$ref": "#/definitions/sha256" }, "namespace": { "type": "string", "minLength": 1 }, "entrySymbol": { "const": "run" }
+      }
+    },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "role", "sha256", "roslynSyntaxSha256", "isRaw", "includedInStandardBuild"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 }, "role": { "type": "string", "minLength": 1 }, "sha256": { "$ref": "#/definitions/sha256" },
+        "roslynSyntaxSha256": { "$ref": "#/definitions/sha256" }, "isRaw": { "const": false }, "includedInStandardBuild": { "const": true }
+      }
+    },
+    "member": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sourcePath", "owner", "member", "signature", "syntaxKind", "sha256"],
+      "properties": {
+        "sourcePath": { "type": "string", "minLength": 1 }, "owner": { "type": "string", "minLength": 1 }, "member": { "type": "string", "minLength": 1 },
+        "signature": { "type": "string", "minLength": 1 }, "syntaxKind": { "const": "MethodDeclaration" }, "sha256": { "$ref": "#/definitions/sha256" }
+      }
+    },
+    "proof": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "path", "sha256", "namespace", "types", "definition", "theorem"],
+      "properties": {
+        "kind": { "enum": ["independentReference", "refinementProof"] }, "path": { "type": "string", "minLength": 1 }, "sha256": { "$ref": "#/definitions/sha256" },
+        "namespace": { "type": "string", "minLength": 1 }, "types": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "definition": { "type": "string", "minLength": 1 }, "theorem": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

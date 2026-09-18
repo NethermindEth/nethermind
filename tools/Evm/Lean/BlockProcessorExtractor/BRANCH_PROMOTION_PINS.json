@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "status": "accepted-upstream",
+  "publicationSchemaVersion": 2,
+  "publicationExtractorVersion": "1.0.0",
+  "artifacts": [
+    { "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/ProcessOneValidatedPublication.source-manifest.json", "sha256": "547dbea87c2c26539a11b4e3db1f2d22db4d7590a6a68c1695a46f70518bdf3d" },
+    { "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/ProcessOneValidatedPublication.ir.json", "sha256": "201d8d2e6163d3a75b439cebf0e5fa7754792c3ba63de70b246939bc9d4cad3a" },
+    { "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/ProcessOneValidatedPublication.lean", "sha256": "7f47700c2f38717b37c6f8bb7e187021d9af8e6a641389fa0bd27865122eec5d" }
+  ]
+}

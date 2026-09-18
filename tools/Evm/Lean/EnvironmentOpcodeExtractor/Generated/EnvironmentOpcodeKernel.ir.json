@@ -1,0 +1,873 @@
+{
+  "schemaVersion": 2,
+  "extractorVersion": "1.1.0",
+  "ancestorBaselineCommit": "b2478235e71e6a7ec2a509aa0155e25d5fdfff80",
+  "kernel": "Nethermind standard-mainnet Amsterdam context/environment opcode slice",
+  "reachability": {
+    "service": "IVirtualMachine",
+    "concreteVm": "EthereumVirtualMachine",
+    "closedVm": "VirtualMachine\u003CEthereumGasPolicy\u003E",
+    "gasPolicy": "EthereumGasPolicy",
+    "fork": "Amsterdam",
+    "dispatchRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode",
+    "enabledForkFlags": [
+      "IsEip211Enabled",
+      "IsEip1344Enabled",
+      "IsEip1884Enabled",
+      "IsEip3198Enabled",
+      "IsEip4844Enabled",
+      "IsEip7843Enabled"
+    ]
+  },
+  "opcodes": [
+    {
+      "name": "address",
+      "instruction": "ADDRESS",
+      "opcodeByte": 48,
+      "handlerRoute": "EnvAddressOpcode\u003CEvmInstructions.OpAddress\u003CTGasPolicy\u003E,TTracingInst\u003E",
+      "activationGate": "unconditional",
+      "valueSelector": "executingAccount",
+      "fixedGas": 2,
+      "dispatchStackInputs": 0,
+      "dispatchStackGrowth": 1,
+      "semanticPops": 0,
+      "semanticPushes": 1,
+      "checksAvailabilityBeforeGas": false
+    },
+    {
+      "name": "origin",
+      "instruction": "ORIGIN",
+      "opcodeByte": 50,
+      "handlerRoute": "Env32BytesOpcode\u003CEvmInstructions.OpOrigin\u003CTGasPolicy\u003E,TTracingInst\u003E",
+      "activationGate": "unconditional",
+      "valueSelector": "origin",
+      "fixedGas": 2,
+      "dispatchStackInputs": 0,
+      "dispatchStackGrowth": 1,
+      "semanticPops": 0,
+      "semanticPushes": 1,
+      "checksAvailabilityBeforeGas": false
+    },
+    {
+      "name": "caller",
+      "instruction": "CALLER",
+      "opcodeByte": 51,
+      "handlerRoute": "EnvAddressOpcode\u003CEvmInstructions.OpCaller\u003CTGasPolicy\u003E,TTracingInst\u003E",
+      "activationGate": "unconditional",
+      "valueSelector": "caller",
+      "fixedGas": 2,
+      "dispatchStackInputs": 0,
+      "dispatchStackGrowth": 1,
+      "semanticPops": 0,
+      "semanticPushes": 1,
+      "checksAvailabilityBeforeGas": false
+    },
+    {
+      "name": "callvalue",
+      "instruction": "CALLVALUE",
+      "opcodeByte": 52,
+      "handlerRoute": "EnvUInt256Opcode\u003CEvmInstructions.OpCallValue\u003CTGasPolicy\u003E,TTracingInst\u003E",
+      "activationGate": "unconditional",
+      "valueSelector": "callValue",
+      "fixedGas": 2,
+      "dispatchStackInputs": 0,
+      "dispatchStackGrowth": 1,
+      "semanticPops": 0,
+      "semanticPushes": 1,
+      "checksAvailabilityBeforeGas": false
+    },
+    {
+      "name": "calldatasize",
+      "instruction": "CALLDATASIZE",
+      "opcodeByte": 54,
+      "handlerRoute": "EnvUInt32Opcode\u003CEvmInstructions.OpCallDataSize\u003CTGasPolicy\u003E,TTracingInst\u003E",
+      "activationGate": "unconditional",
+      "valueSelector": "calldataSize",
+      "fixedGas": 2,
+      "dispatchStackInputs": 0,
+      "dispatchStackGrowth": 1,
+      "semanticPops": 0,
+      "semanticPushes": 1,
+      "checksAvailabilityBeforeGas": false
+    },
+    {
+      "name": "codesize",
+      "instruction": "CODESIZE",
+      "opcodeByte": 56,
+      "handlerRoute": "CodeSizeOpcode\u003CTTracingInst\u003E",
+      "activationGate": "unconditional",
+      "valueSelector": "codeSize",
+      "fixedGas": 2,
+      "dispatchStackInputs": 0,
+      "dispatchStackGrowth": 1,
+      "semanticPops": 0,
+      "semanticPushes": 1,
+      "checksAvailabilityBeforeGas": false
+    },
+    {
+      "name": "gasprice",
+      "instruction": "GASPRICE",
+      "opcodeByte": 58,
+      "handlerRoute": "BlkUInt256Opcode\u003CEvmInstructions.OpGasPrice\u003CTGasPolicy\u003E,TTracingInst\u003E",
+      "activationGate": "unconditional",
+      "valueSelector": "gasPrice",
+      "fixedGas": 2,
+      "dispatchStackInputs": 0,
+      "dispatchStackGrowth": 1,
+      "semanticPops": 0,
+      "semanticPushes": 1,
+      "checksAvailabilityBeforeGas": false
+    },
+    {
+      "name": "returndatasize",
+      "instruction": "RETURNDATASIZE",
+      "opcodeByte": 61,
+      "handlerRoute": "ReturnDataSizeOpcode\u003CTTracingInst\u003E",
+      "activationGate": "spec.ReturnDataOpcodesEnabled",
+      "valueSelector": "returnDataSize",
+      "fixedGas": 2,
+      "dispatchStackInputs": 0,
+      "dispatchStackGrowth": 1,
+      "semanticPops": 0,
+      "semanticPushes": 1,
+      "checksAvailabilityBeforeGas": false
+    },
+    {
+      "name": "blockhash",
+      "instruction": "BLOCKHASH",
+      "opcodeByte": 64,
+      "handlerRoute": "BlockHashOpcode\u003CTTracingInst\u003E",
+      "activationGate": "unconditional",
+      "valueSelector": "blockHash",
+      "fixedGas": 20,
+      "dispatchStackInputs": 0,
+      "dispatchStackGrowth": 0,
+      "semanticPops": 1,
+      "semanticPushes": 1,
+      "checksAvailabilityBeforeGas": false
+    },
+    {
+      "name": "coinbase",
+      "instruction": "COINBASE",
+      "opcodeByte": 65,
+      "handlerRoute": "BlkAddressOpcode\u003CEvmInstructions.OpCoinbase\u003CTGasPolicy\u003E,TTracingInst\u003E",
+      "activationGate": "unconditional",
+      "valueSelector": "coinbase",
+      "fixedGas": 2,
+      "dispatchStackInputs": 0,
+      "dispatchStackGrowth": 1,
+      "semanticPops": 0,
+      "semanticPushes": 1,
+      "checksAvailabilityBeforeGas": false
+    },
+    {
+      "name": "timestamp",
+      "instruction": "TIMESTAMP",
+      "opcodeByte": 66,
+      "handlerRoute": "BlkUInt64Opcode\u003CEvmInstructions.OpTimestamp\u003CTGasPolicy\u003E,TTracingInst\u003E",
+      "activationGate": "unconditional",
+      "valueSelector": "timestamp",
+      "fixedGas": 2,
+      "dispatchStackInputs": 0,
+      "dispatchStackGrowth": 1,
+      "semanticPops": 0,
+      "semanticPushes": 1,
+      "checksAvailabilityBeforeGas": false
+    },
+    {
+      "name": "number",
+      "instruction": "NUMBER",
+      "opcodeByte": 67,
+      "handlerRoute": "BlkUInt64Opcode\u003CEvmInstructions.OpNumber\u003CTGasPolicy\u003E,TTracingInst\u003E",
+      "activationGate": "unconditional",
+      "valueSelector": "number",
+      "fixedGas": 2,
+      "dispatchStackInputs": 0,
+      "dispatchStackGrowth": 1,
+      "semanticPops": 0,
+      "semanticPushes": 1,
+      "checksAvailabilityBeforeGas": false
+    },
+    {
+      "name": "prevrandao",
+      "instruction": "PREVRANDAO",
+      "opcodeByte": 68,
+      "handlerRoute": "PrevRandaoOpcode\u003CTTracingInst\u003E",
+      "activationGate": "unconditional",
+      "valueSelector": "prevRandao",
+      "fixedGas": 2,
+      "dispatchStackInputs": 0,
+      "dispatchStackGrowth": 1,
+      "semanticPops": 0,
+      "semanticPushes": 1,
+      "checksAvailabilityBeforeGas": false
+    },
+    {
+      "name": "gaslimit",
+      "instruction": "GASLIMIT",
+      "opcodeByte": 69,
+      "handlerRoute": "BlkUInt64Opcode\u003CEvmInstructions.OpGasLimit\u003CTGasPolicy\u003E,TTracingInst\u003E",
+      "activationGate": "unconditional",
+      "valueSelector": "gasLimit",
+      "fixedGas": 2,
+      "dispatchStackInputs": 0,
+      "dispatchStackGrowth": 1,
+      "semanticPops": 0,
+      "semanticPushes": 1,
+      "checksAvailabilityBeforeGas": false
+    },
+    {
+      "name": "chainid",
+      "instruction": "CHAINID",
+      "opcodeByte": 70,
+      "handlerRoute": "Env32BytesOpcode\u003CEvmInstructions.OpChainId\u003CTGasPolicy\u003E,TTracingInst\u003E",
+      "activationGate": "spec.ChainIdOpcodeEnabled",
+      "valueSelector": "chainId",
+      "fixedGas": 2,
+      "dispatchStackInputs": 0,
+      "dispatchStackGrowth": 1,
+      "semanticPops": 0,
+      "semanticPushes": 1,
+      "checksAvailabilityBeforeGas": false
+    },
+    {
+      "name": "selfbalance",
+      "instruction": "SELFBALANCE",
+      "opcodeByte": 71,
+      "handlerRoute": "SelfBalanceOpcode\u003CTTracingInst\u003E",
+      "activationGate": "spec.SelfBalanceOpcodeEnabled",
+      "valueSelector": "selfBalance",
+      "fixedGas": 5,
+      "dispatchStackInputs": 0,
+      "dispatchStackGrowth": 1,
+      "semanticPops": 0,
+      "semanticPushes": 1,
+      "checksAvailabilityBeforeGas": false
+    },
+    {
+      "name": "basefee",
+      "instruction": "BASEFEE",
+      "opcodeByte": 72,
+      "handlerRoute": "BlkUInt256Opcode\u003CEvmInstructions.OpBaseFee\u003CTGasPolicy\u003E,TTracingInst\u003E",
+      "activationGate": "spec.BaseFeeEnabled",
+      "valueSelector": "baseFee",
+      "fixedGas": 2,
+      "dispatchStackInputs": 0,
+      "dispatchStackGrowth": 1,
+      "semanticPops": 0,
+      "semanticPushes": 1,
+      "checksAvailabilityBeforeGas": false
+    },
+    {
+      "name": "blobhash",
+      "instruction": "BLOBHASH",
+      "opcodeByte": 73,
+      "handlerRoute": "BlobHashOpcode\u003CTTracingInst\u003E",
+      "activationGate": "spec.IsEip4844Enabled",
+      "valueSelector": "blobHash",
+      "fixedGas": 3,
+      "dispatchStackInputs": 0,
+      "dispatchStackGrowth": 0,
+      "semanticPops": 1,
+      "semanticPushes": 1,
+      "checksAvailabilityBeforeGas": false
+    },
+    {
+      "name": "blobbasefee",
+      "instruction": "BLOBBASEFEE",
+      "opcodeByte": 74,
+      "handlerRoute": "BlobBaseFeeOpcode\u003CTTracingInst\u003E",
+      "activationGate": "spec.BlobBaseFeeEnabled",
+      "valueSelector": "blobBaseFee",
+      "fixedGas": 2,
+      "dispatchStackInputs": 0,
+      "dispatchStackGrowth": 0,
+      "semanticPops": 0,
+      "semanticPushes": 1,
+      "checksAvailabilityBeforeGas": true
+    },
+    {
+      "name": "slotnum",
+      "instruction": "SLOTNUM",
+      "opcodeByte": 75,
+      "handlerRoute": "SlotNumOpcode\u003CTTracingInst\u003E",
+      "activationGate": "spec.IsEip7843Enabled",
+      "valueSelector": "slotNumber",
+      "fixedGas": 2,
+      "dispatchStackInputs": 0,
+      "dispatchStackGrowth": 0,
+      "semanticPops": 0,
+      "semanticPushes": 1,
+      "checksAvailabilityBeforeGas": true
+    }
+  ],
+  "specializations": [
+    {
+      "opcode": "address",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnvAddressOpcode\u003CEvmInstructions.OpAddress\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "address",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnvAddressOpcode\u003CEvmInstructions.OpAddress\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "address",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnvAddressOpcode\u003CEvmInstructions.OpAddress\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "address",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnvAddressOpcode\u003CEvmInstructions.OpAddress\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "origin",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnv32BytesOpcode\u003CEvmInstructions.OpOrigin\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "origin",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnv32BytesOpcode\u003CEvmInstructions.OpOrigin\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "origin",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnv32BytesOpcode\u003CEvmInstructions.OpOrigin\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "origin",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnv32BytesOpcode\u003CEvmInstructions.OpOrigin\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "caller",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnvAddressOpcode\u003CEvmInstructions.OpCaller\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "caller",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnvAddressOpcode\u003CEvmInstructions.OpCaller\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "caller",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnvAddressOpcode\u003CEvmInstructions.OpCaller\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "caller",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnvAddressOpcode\u003CEvmInstructions.OpCaller\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "callvalue",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnvUInt256Opcode\u003CEvmInstructions.OpCallValue\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "callvalue",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnvUInt256Opcode\u003CEvmInstructions.OpCallValue\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "callvalue",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnvUInt256Opcode\u003CEvmInstructions.OpCallValue\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "callvalue",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnvUInt256Opcode\u003CEvmInstructions.OpCallValue\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "calldatasize",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnvUInt32Opcode\u003CEvmInstructions.OpCallDataSize\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "calldatasize",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnvUInt32Opcode\u003CEvmInstructions.OpCallDataSize\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "calldatasize",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnvUInt32Opcode\u003CEvmInstructions.OpCallDataSize\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "calldatasize",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnvUInt32Opcode\u003CEvmInstructions.OpCallDataSize\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "codesize",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CCodeSizeOpcode\u003COffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "codesize",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CCodeSizeOpcode\u003COffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "codesize",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CCodeSizeOpcode\u003COnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "codesize",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CCodeSizeOpcode\u003COnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "gasprice",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkUInt256Opcode\u003CEvmInstructions.OpGasPrice\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "gasprice",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkUInt256Opcode\u003CEvmInstructions.OpGasPrice\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "gasprice",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkUInt256Opcode\u003CEvmInstructions.OpGasPrice\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "gasprice",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkUInt256Opcode\u003CEvmInstructions.OpGasPrice\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "returndatasize",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CReturnDataSizeOpcode\u003COffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "returndatasize",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CReturnDataSizeOpcode\u003COffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "returndatasize",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CReturnDataSizeOpcode\u003COnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "returndatasize",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CReturnDataSizeOpcode\u003COnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "blockhash",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlockHashOpcode\u003COffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "blockhash",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlockHashOpcode\u003COffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "blockhash",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlockHashOpcode\u003COnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "blockhash",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlockHashOpcode\u003COnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "coinbase",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkAddressOpcode\u003CEvmInstructions.OpCoinbase\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "coinbase",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkAddressOpcode\u003CEvmInstructions.OpCoinbase\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "coinbase",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkAddressOpcode\u003CEvmInstructions.OpCoinbase\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "coinbase",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkAddressOpcode\u003CEvmInstructions.OpCoinbase\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "timestamp",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkUInt64Opcode\u003CEvmInstructions.OpTimestamp\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "timestamp",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkUInt64Opcode\u003CEvmInstructions.OpTimestamp\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "timestamp",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkUInt64Opcode\u003CEvmInstructions.OpTimestamp\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "timestamp",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkUInt64Opcode\u003CEvmInstructions.OpTimestamp\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "number",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkUInt64Opcode\u003CEvmInstructions.OpNumber\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "number",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkUInt64Opcode\u003CEvmInstructions.OpNumber\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "number",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkUInt64Opcode\u003CEvmInstructions.OpNumber\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "number",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkUInt64Opcode\u003CEvmInstructions.OpNumber\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "prevrandao",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPrevRandaoOpcode\u003COffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "prevrandao",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPrevRandaoOpcode\u003COffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "prevrandao",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPrevRandaoOpcode\u003COnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "prevrandao",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPrevRandaoOpcode\u003COnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "gaslimit",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkUInt64Opcode\u003CEvmInstructions.OpGasLimit\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "gaslimit",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkUInt64Opcode\u003CEvmInstructions.OpGasLimit\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "gaslimit",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkUInt64Opcode\u003CEvmInstructions.OpGasLimit\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "gaslimit",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkUInt64Opcode\u003CEvmInstructions.OpGasLimit\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "chainid",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnv32BytesOpcode\u003CEvmInstructions.OpChainId\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "chainid",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnv32BytesOpcode\u003CEvmInstructions.OpChainId\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "chainid",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnv32BytesOpcode\u003CEvmInstructions.OpChainId\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "chainid",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CEnv32BytesOpcode\u003CEvmInstructions.OpChainId\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "selfbalance",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CSelfBalanceOpcode\u003COffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "selfbalance",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CSelfBalanceOpcode\u003COffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "selfbalance",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CSelfBalanceOpcode\u003COnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "selfbalance",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CSelfBalanceOpcode\u003COnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "basefee",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkUInt256Opcode\u003CEvmInstructions.OpBaseFee\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "basefee",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkUInt256Opcode\u003CEvmInstructions.OpBaseFee\u003CEthereumGasPolicy\u003E,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "basefee",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkUInt256Opcode\u003CEvmInstructions.OpBaseFee\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "basefee",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlkUInt256Opcode\u003CEvmInstructions.OpBaseFee\u003CEthereumGasPolicy\u003E,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "blobhash",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlobHashOpcode\u003COffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "blobhash",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlobHashOpcode\u003COffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "blobhash",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlobHashOpcode\u003COnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "blobhash",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlobHashOpcode\u003COnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "blobbasefee",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlobBaseFeeOpcode\u003COffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "blobbasefee",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlobBaseFeeOpcode\u003COffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "blobbasefee",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlobBaseFeeOpcode\u003COnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "blobbasefee",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBlobBaseFeeOpcode\u003COnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "slotnum",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CSlotNumOpcode\u003COffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "slotnum",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CSlotNumOpcode\u003COffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "slotnum",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CSlotNumOpcode\u003COnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "slotnum",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CSlotNumOpcode\u003COnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    }
+  ],
+  "externalObligations": [
+    "C# language, Roslyn binding, CLR/JIT, unsafe function-pointer dispatch, and hardware correctness remain outside the theorem.",
+    "Address, ValueHash256, UInt256, byte order, EvmStack storage, and push/pop method representation are explicit adapter premises.",
+    "IBlockhashProvider correctness and its 256-block rule are provider premises; the extracted model consumes the admitted provider table.",
+    "World-state balance lookup, transaction/block context construction, blob arrays, and cached blob-base-fee calculation are provider premises.",
+    "Tracing and cancellation callbacks are admitted for route preservation but their side effects and exception behavior are outside this slice."
+  ]
+}

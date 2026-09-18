@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Nethermind.Evm.Lean.AuthorizationStateGasFoldExtractor</AssemblyName>
+    <RootNamespace>Nethermind.Evm.Lean.AuthorizationStateGasFoldExtractor</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Test/**/*.cs" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Nethermind.Evm.Lean.AuthorizationStateGasFoldExtractor.Test</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

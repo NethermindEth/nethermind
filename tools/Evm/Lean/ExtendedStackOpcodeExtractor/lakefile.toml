@@ -1,0 +1,11 @@
+name = "ExtendedStackOpcodeExtractor"
+version = "0.1.0"
+defaultTargets = ["ExtendedStackOpcodeExtractor.Refinement.ExtendedStackOpcode"]
+
+[[lean_lib]]
+name = "Eip803x"
+srcDir = ".."
+
+[[lean_lib]]
+name = "ExtendedStackOpcodeExtractor"
+srcDir = ".."

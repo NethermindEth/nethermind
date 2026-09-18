@@ -48,6 +48,28 @@ jobs:
         working-directory: tools
         run: dotnet build ./${{ matrix.project }} -c ${{ matrix.config }}
 
+      - name: Fetch formal verification baseline
+        if: matrix.project == 'Evm/Evm.slnx'
+        run: |
+          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+            git fetch --no-tags --unshallow --filter=blob:none
+          fi
+
+      - name: Set up Lean
+        if: matrix.project == 'Evm/Evm.slnx'
+        run: |
+          curl -sSfL https://github.com/leanprover/elan/releases/download/v4.2.3/elan-x86_64-unknown-linux-gnu.tar.gz -o /tmp/elan.tar.gz
+          echo "df0b2b3a439961ffcbb3985214365ffe40f49bc871df04dff268c7d8e21ca8b2  /tmp/elan.tar.gz" | sha256sum --check
+          tar -xzf /tmp/elan.tar.gz -C /tmp
+          /tmp/elan-init -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Verify formal EVM refinement
+        if: matrix.project == 'Evm/Evm.slnx'
+        working-directory: tools/Evm/Lean
+        shell: pwsh
+        run: ./Verify.ps1
+
       - name: Test Bootnode
         if: matrix.project == 'Bootnode/Bootnode.slnx'
         working-directory: tools

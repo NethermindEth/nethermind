@@ -1,0 +1,2578 @@
+{
+  "schemaVersion": 3,
+  "kernel": "Nethermind.Evm.GasPolicy.SStorePricingKernel",
+  "roots": [
+    {
+      "name": "Price",
+      "signature": "Nethermind.Evm.GasPolicy.SStorePricingResult Nethermind.Evm.GasPolicy.SStorePricingKernel.Price(Nethermind.Evm.GasPolicy.SStorePricingInput input, Nethermind.Evm.GasPolicy.SStoreAccessStatus accessStatus, Nethermind.Evm.GasPolicy.SStoreAccessPricingSchedule accessSchedule, Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule postAccessSchedule)"
+    }
+  ],
+  "dataTypes": [
+    {
+      "type": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingResult",
+      "constructor": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingResult.SStorePostAccessPricingResult(ulong executionWriteGas, long storageClearRefund, long storageClearRefundReversal, long restoreOriginalRefund, long stateGasCharge, long stateGasRefund)",
+      "fields": [
+        {
+          "name": "ExecutionWriteGas",
+          "type": "ulong",
+          "parameterOrdinal": 0
+        },
+        {
+          "name": "StorageClearRefund",
+          "type": "long",
+          "parameterOrdinal": 1
+        },
+        {
+          "name": "StorageClearRefundReversal",
+          "type": "long",
+          "parameterOrdinal": 2
+        },
+        {
+          "name": "RestoreOriginalRefund",
+          "type": "long",
+          "parameterOrdinal": 3
+        },
+        {
+          "name": "StateGasCharge",
+          "type": "long",
+          "parameterOrdinal": 4
+        },
+        {
+          "name": "StateGasRefund",
+          "type": "long",
+          "parameterOrdinal": 5
+        }
+      ]
+    },
+    {
+      "type": "Nethermind.Evm.GasPolicy.SStorePricingResult",
+      "constructor": "Nethermind.Evm.GasPolicy.SStorePricingResult.SStorePricingResult(ulong accessGas, Nethermind.Evm.GasPolicy.SStorePostAccessPricingResult postAccess)",
+      "fields": [
+        {
+          "name": "AccessGas",
+          "type": "ulong",
+          "parameterOrdinal": 0
+        },
+        {
+          "name": "PostAccess",
+          "type": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingResult",
+          "parameterOrdinal": 1
+        }
+      ]
+    }
+  ],
+  "methods": [
+    {
+      "signature": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingResult Nethermind.Evm.GasPolicy.SStorePricingKernel.PriceAfterAccess(Nethermind.Evm.GasPolicy.SStorePricingInput input, Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule schedule)",
+      "returnType": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingResult",
+      "parameters": [
+        {
+          "ordinal": 0,
+          "name": "input",
+          "type": "Nethermind.Evm.GasPolicy.SStorePricingInput"
+        },
+        {
+          "ordinal": 1,
+          "name": "schedule",
+          "type": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule"
+        }
+      ],
+      "blocks": [
+        {
+          "ordinal": 0,
+          "kind": "Entry",
+          "conditionKind": "None",
+          "predecessors": [],
+          "operations": [],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 1
+          }
+        },
+        {
+          "ordinal": 1,
+          "kind": "Block",
+          "conditionKind": "WhenTrue",
+          "predecessors": [
+            {
+              "sourceOrdinal": 0,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "FieldReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "field",
+                "value": "bool Nethermind.Evm.GasPolicy.SStorePricingInput.NewSameAsCurrent"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "Nethermind.Evm.GasPolicy.SStorePricingInput",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 2
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 3
+          }
+        },
+        {
+          "ordinal": 2,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 1,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "FieldReference",
+                  "type": "bool",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "field",
+                      "value": "bool Nethermind.Evm.GasPolicy.SStorePricingInput.CurrentSameAsOriginal"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "ParameterReference",
+                      "type": "Nethermind.Evm.GasPolicy.SStorePricingInput",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "parameter",
+                          "value": "0"
+                        }
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 4
+          }
+        },
+        {
+          "ordinal": 3,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 1,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "Literal",
+                  "type": "bool",
+                  "constant": "false",
+                  "isImplicit": true,
+                  "properties": [],
+                  "children": []
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 4
+          }
+        },
+        {
+          "ordinal": 4,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 2,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 3,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "SimpleAssignment",
+              "type": "bool",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "bool",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "writesFirstValue@4199"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "FlowCaptureReference",
+                  "type": "bool",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "capture",
+                      "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 5
+          }
+        },
+        {
+          "ordinal": 5,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 4,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "FieldReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "field",
+                "value": "bool Nethermind.Evm.GasPolicy.SStorePricingInput.NewSameAsOriginal"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "Nethermind.Evm.GasPolicy.SStorePricingInput",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 6
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 8
+          }
+        },
+        {
+          "ordinal": 6,
+          "kind": "Block",
+          "conditionKind": "WhenTrue",
+          "predecessors": [
+            {
+              "sourceOrdinal": 5,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "FieldReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "field",
+                "value": "bool Nethermind.Evm.GasPolicy.SStorePricingInput.NewSameAsCurrent"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "Nethermind.Evm.GasPolicy.SStorePricingInput",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 7
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 8
+          }
+        },
+        {
+          "ordinal": 7,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 6,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "Conversion",
+                  "type": "long",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "conversion",
+                      "value": "exists,nonidentity,numeric,nonreference,explicit,nonnullable,builtin"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "FieldReference",
+                      "type": "ulong",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "field",
+                          "value": "ulong Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule.StorageWriteGas"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "ParameterReference",
+                          "type": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "parameter",
+                              "value": "1"
+                            }
+                          ],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 9
+          }
+        },
+        {
+          "ordinal": 8,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 5,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 6,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "Conversion",
+                  "type": "long",
+                  "constant": "0",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "conversion",
+                      "value": "exists,nonidentity,numeric,nonreference,implicit,nonnullable,builtin"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Literal",
+                      "type": "int",
+                      "constant": "0",
+                      "isImplicit": false,
+                      "properties": [],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 9
+          }
+        },
+        {
+          "ordinal": 9,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 7,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 8,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "SimpleAssignment",
+              "type": "long",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "long",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "restoreOriginalRefund@4287"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "FlowCaptureReference",
+                  "type": "long",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "capture",
+                      "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 10
+          }
+        },
+        {
+          "ordinal": 10,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 9,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "LocalReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "local",
+                "value": "writesFirstValue@4199"
+              }
+            ],
+            "children": []
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 11
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 12
+          }
+        },
+        {
+          "ordinal": 11,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 10,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "FieldReference",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "field",
+                      "value": "ulong Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule.StorageWriteGas"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "ParameterReference",
+                      "type": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "parameter",
+                          "value": "1"
+                        }
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 13
+          }
+        },
+        {
+          "ordinal": 12,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 10,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "Conversion",
+                  "type": "ulong",
+                  "constant": "0",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "conversion",
+                      "value": "exists,nonidentity,nonnumeric,nonreference,implicit,nonnullable,builtin"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Literal",
+                      "type": "int",
+                      "constant": "0",
+                      "isImplicit": false,
+                      "properties": [],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 13
+          }
+        },
+        {
+          "ordinal": 13,
+          "kind": "Block",
+          "conditionKind": "WhenTrue",
+          "predecessors": [
+            {
+              "sourceOrdinal": 11,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 12,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "FieldReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "field",
+                "value": "bool Nethermind.Evm.GasPolicy.SStorePricingInput.OriginalIsZero"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "Nethermind.Evm.GasPolicy.SStorePricingInput",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 14
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 17
+          }
+        },
+        {
+          "ordinal": 14,
+          "kind": "Block",
+          "conditionKind": "WhenTrue",
+          "predecessors": [
+            {
+              "sourceOrdinal": 13,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "FieldReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "field",
+                "value": "bool Nethermind.Evm.GasPolicy.SStorePricingInput.CurrentIsZero"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "Nethermind.Evm.GasPolicy.SStorePricingInput",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 15
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 17
+          }
+        },
+        {
+          "ordinal": 15,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 14,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "FieldReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "field",
+                "value": "bool Nethermind.Evm.GasPolicy.SStorePricingInput.NewIsZero"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "Nethermind.Evm.GasPolicy.SStorePricingInput",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 16
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 17
+          }
+        },
+        {
+          "ordinal": 16,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 15,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "FieldReference",
+                  "type": "long",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "field",
+                      "value": "long Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule.StorageClearRefund"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "ParameterReference",
+                      "type": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "parameter",
+                          "value": "1"
+                        }
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 18
+          }
+        },
+        {
+          "ordinal": 17,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 13,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 14,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 15,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "Conversion",
+                  "type": "long",
+                  "constant": "0",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "conversion",
+                      "value": "exists,nonidentity,numeric,nonreference,implicit,nonnullable,builtin"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Literal",
+                      "type": "int",
+                      "constant": "0",
+                      "isImplicit": false,
+                      "properties": [],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 18
+          }
+        },
+        {
+          "ordinal": 18,
+          "kind": "Block",
+          "conditionKind": "WhenTrue",
+          "predecessors": [
+            {
+              "sourceOrdinal": 16,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 17,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "FieldReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "field",
+                "value": "bool Nethermind.Evm.GasPolicy.SStorePricingInput.OriginalIsZero"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "Nethermind.Evm.GasPolicy.SStorePricingInput",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 19
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 22
+          }
+        },
+        {
+          "ordinal": 19,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 18,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "FieldReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "field",
+                "value": "bool Nethermind.Evm.GasPolicy.SStorePricingInput.CurrentIsZero"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "Nethermind.Evm.GasPolicy.SStorePricingInput",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 20
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 22
+          }
+        },
+        {
+          "ordinal": 20,
+          "kind": "Block",
+          "conditionKind": "WhenTrue",
+          "predecessors": [
+            {
+              "sourceOrdinal": 19,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "FieldReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "field",
+                "value": "bool Nethermind.Evm.GasPolicy.SStorePricingInput.NewIsZero"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "Nethermind.Evm.GasPolicy.SStorePricingInput",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 21
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 22
+          }
+        },
+        {
+          "ordinal": 21,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 20,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "Unary",
+                  "type": "long",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "operator",
+                      "value": "Minus"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "FieldReference",
+                      "type": "long",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "field",
+                          "value": "long Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule.StorageClearRefund"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "ParameterReference",
+                          "type": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "parameter",
+                              "value": "1"
+                            }
+                          ],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 23
+          }
+        },
+        {
+          "ordinal": 22,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 18,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 19,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 20,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "Conversion",
+                  "type": "long",
+                  "constant": "0",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "conversion",
+                      "value": "exists,nonidentity,numeric,nonreference,implicit,nonnullable,builtin"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Literal",
+                      "type": "int",
+                      "constant": "0",
+                      "isImplicit": false,
+                      "properties": [],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 23
+          }
+        },
+        {
+          "ordinal": 23,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 21,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 22,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "long",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "restoreOriginalRefund@4287"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ],
+          "branchValue": {
+            "kind": "FieldReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "field",
+                "value": "bool Nethermind.Evm.GasPolicy.SStorePricingInput.OriginalIsZero"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "Nethermind.Evm.GasPolicy.SStorePricingInput",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 24
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 27
+          }
+        },
+        {
+          "ordinal": 24,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 23,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "FieldReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "field",
+                "value": "bool Nethermind.Evm.GasPolicy.SStorePricingInput.CurrentIsZero"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "Nethermind.Evm.GasPolicy.SStorePricingInput",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 25
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 27
+          }
+        },
+        {
+          "ordinal": 25,
+          "kind": "Block",
+          "conditionKind": "WhenTrue",
+          "predecessors": [
+            {
+              "sourceOrdinal": 24,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "FieldReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "field",
+                "value": "bool Nethermind.Evm.GasPolicy.SStorePricingInput.NewIsZero"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "Nethermind.Evm.GasPolicy.SStorePricingInput",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 26
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 27
+          }
+        },
+        {
+          "ordinal": 26,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 25,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "FieldReference",
+                  "type": "long",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "field",
+                      "value": "long Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule.StorageSetStateGas"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "ParameterReference",
+                      "type": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "parameter",
+                          "value": "1"
+                        }
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 28
+          }
+        },
+        {
+          "ordinal": 27,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 23,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 24,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 25,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "Conversion",
+                  "type": "long",
+                  "constant": "0",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "conversion",
+                      "value": "exists,nonidentity,numeric,nonreference,implicit,nonnullable,builtin"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Literal",
+                      "type": "int",
+                      "constant": "0",
+                      "isImplicit": false,
+                      "properties": [],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 28
+          }
+        },
+        {
+          "ordinal": 28,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 26,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 27,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "FieldReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "field",
+                "value": "bool Nethermind.Evm.GasPolicy.SStorePricingInput.OriginalIsZero"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "Nethermind.Evm.GasPolicy.SStorePricingInput",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 29
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 32
+          }
+        },
+        {
+          "ordinal": 29,
+          "kind": "Block",
+          "conditionKind": "WhenTrue",
+          "predecessors": [
+            {
+              "sourceOrdinal": 28,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "FieldReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "field",
+                "value": "bool Nethermind.Evm.GasPolicy.SStorePricingInput.CurrentIsZero"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "Nethermind.Evm.GasPolicy.SStorePricingInput",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 30
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 32
+          }
+        },
+        {
+          "ordinal": 30,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 29,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "FieldReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "field",
+                "value": "bool Nethermind.Evm.GasPolicy.SStorePricingInput.NewIsZero"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "Nethermind.Evm.GasPolicy.SStorePricingInput",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 31
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 32
+          }
+        },
+        {
+          "ordinal": 31,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 30,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "FieldReference",
+                  "type": "long",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "field",
+                      "value": "long Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule.StorageSetStateGas"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "ParameterReference",
+                      "type": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "parameter",
+                          "value": "1"
+                        }
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 33
+          }
+        },
+        {
+          "ordinal": 32,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 28,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 29,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 30,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "Conversion",
+                  "type": "long",
+                  "constant": "0",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "conversion",
+                      "value": "exists,nonidentity,numeric,nonreference,implicit,nonnullable,builtin"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Literal",
+                      "type": "int",
+                      "constant": "0",
+                      "isImplicit": false,
+                      "properties": [],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 33
+          }
+        },
+        {
+          "ordinal": 33,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 31,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 32,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "ObjectCreation",
+            "type": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingResult",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "constructor",
+                "value": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingResult.SStorePostAccessPricingResult(ulong executionWriteGas, long storageClearRefund, long storageClearRefundReversal, long restoreOriginalRefund, long stateGasCharge, long stateGasRefund)"
+              }
+            ],
+            "children": [
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FlowCaptureReference",
+                    "type": "ulong",
+                    "isImplicit": true,
+                    "properties": [
+                      {
+                        "name": "capture",
+                        "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FlowCaptureReference",
+                    "type": "long",
+                    "isImplicit": true,
+                    "properties": [
+                      {
+                        "name": "capture",
+                        "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "2"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FlowCaptureReference",
+                    "type": "long",
+                    "isImplicit": true,
+                    "properties": [
+                      {
+                        "name": "capture",
+                        "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "3"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FlowCaptureReference",
+                    "type": "long",
+                    "isImplicit": true,
+                    "properties": [
+                      {
+                        "name": "capture",
+                        "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "4"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FlowCaptureReference",
+                    "type": "long",
+                    "isImplicit": true,
+                    "properties": [
+                      {
+                        "name": "capture",
+                        "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "5"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FlowCaptureReference",
+                    "type": "long",
+                    "isImplicit": true,
+                    "properties": [
+                      {
+                        "name": "capture",
+                        "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Return",
+            "destinationOrdinal": 34
+          }
+        },
+        {
+          "ordinal": 34,
+          "kind": "Exit",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 33,
+              "semantics": "Return"
+            }
+          ],
+          "operations": []
+        }
+      ]
+    },
+    {
+      "signature": "Nethermind.Evm.GasPolicy.SStorePricingResult Nethermind.Evm.GasPolicy.SStorePricingKernel.Price(Nethermind.Evm.GasPolicy.SStorePricingInput input, Nethermind.Evm.GasPolicy.SStoreAccessStatus accessStatus, Nethermind.Evm.GasPolicy.SStoreAccessPricingSchedule accessSchedule, Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule postAccessSchedule)",
+      "returnType": "Nethermind.Evm.GasPolicy.SStorePricingResult",
+      "parameters": [
+        {
+          "ordinal": 0,
+          "name": "input",
+          "type": "Nethermind.Evm.GasPolicy.SStorePricingInput"
+        },
+        {
+          "ordinal": 1,
+          "name": "accessStatus",
+          "type": "Nethermind.Evm.GasPolicy.SStoreAccessStatus"
+        },
+        {
+          "ordinal": 2,
+          "name": "accessSchedule",
+          "type": "Nethermind.Evm.GasPolicy.SStoreAccessPricingSchedule"
+        },
+        {
+          "ordinal": 3,
+          "name": "postAccessSchedule",
+          "type": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule"
+        }
+      ],
+      "blocks": [
+        {
+          "ordinal": 0,
+          "kind": "Entry",
+          "conditionKind": "None",
+          "predecessors": [],
+          "operations": [],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 1
+          }
+        },
+        {
+          "ordinal": 1,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 0,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "Binary",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "checked",
+                "value": "false"
+              },
+              {
+                "name": "lifted",
+                "value": "false"
+              },
+              {
+                "name": "operator",
+                "value": "Equals"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "Nethermind.Evm.GasPolicy.SStoreAccessStatus",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": []
+              },
+              {
+                "kind": "FieldReference",
+                "type": "Nethermind.Evm.GasPolicy.SStoreAccessStatus",
+                "constant": "0",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "field",
+                    "value": "Nethermind.Evm.GasPolicy.SStoreAccessStatus.Cold"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 2
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 3
+          }
+        },
+        {
+          "ordinal": 2,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 1,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "FieldReference",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "field",
+                      "value": "ulong Nethermind.Evm.GasPolicy.SStoreAccessPricingSchedule.ColdStorageAccessGas"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "ParameterReference",
+                      "type": "Nethermind.Evm.GasPolicy.SStoreAccessPricingSchedule",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "parameter",
+                          "value": "2"
+                        }
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 4
+          }
+        },
+        {
+          "ordinal": 3,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 1,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "FlowCapture",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "capture",
+                  "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "FieldReference",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "field",
+                      "value": "ulong Nethermind.Evm.GasPolicy.SStoreAccessPricingSchedule.WarmAccessGas"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "ParameterReference",
+                      "type": "Nethermind.Evm.GasPolicy.SStoreAccessPricingSchedule",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "parameter",
+                          "value": "2"
+                        }
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 4
+          }
+        },
+        {
+          "ordinal": 4,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 2,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 3,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "SimpleAssignment",
+              "type": "ulong",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "ulong",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "accessGas@5673"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "FlowCaptureReference",
+                  "type": "ulong",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "capture",
+                      "value": "Microsoft.CodeAnalysis.FlowAnalysis.CaptureId"
+                    }
+                  ],
+                  "children": []
+                }
+              ]
+            }
+          ],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 5
+          }
+        },
+        {
+          "ordinal": 5,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 4,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "SimpleAssignment",
+              "type": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingResult",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingResult",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "postAccess@5857"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "Invocation",
+                  "type": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingResult",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "target",
+                      "value": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingResult Nethermind.Evm.GasPolicy.SStorePricingKernel.PriceAfterAccess(Nethermind.Evm.GasPolicy.SStorePricingInput input, Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule schedule)"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "Argument",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "argumentKind",
+                          "value": "Explicit"
+                        },
+                        {
+                          "name": "parameter",
+                          "value": "0"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "ParameterReference",
+                          "type": "Nethermind.Evm.GasPolicy.SStorePricingInput",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "parameter",
+                              "value": "0"
+                            }
+                          ],
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "Argument",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "argumentKind",
+                          "value": "Explicit"
+                        },
+                        {
+                          "name": "parameter",
+                          "value": "1"
+                        }
+                      ],
+                      "children": [
+                        {
+                          "kind": "ParameterReference",
+                          "type": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingSchedule",
+                          "isImplicit": false,
+                          "properties": [
+                            {
+                              "name": "parameter",
+                              "value": "3"
+                            }
+                          ],
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "branchValue": {
+            "kind": "ObjectCreation",
+            "type": "Nethermind.Evm.GasPolicy.SStorePricingResult",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "constructor",
+                "value": "Nethermind.Evm.GasPolicy.SStorePricingResult.SStorePricingResult(ulong accessGas, Nethermind.Evm.GasPolicy.SStorePostAccessPricingResult postAccess)"
+              }
+            ],
+            "children": [
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "LocalReference",
+                    "type": "ulong",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "local",
+                        "value": "accessGas@5673"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "LocalReference",
+                    "type": "Nethermind.Evm.GasPolicy.SStorePostAccessPricingResult",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "local",
+                        "value": "postAccess@5857"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Return",
+            "destinationOrdinal": 6
+          }
+        },
+        {
+          "ordinal": 6,
+          "kind": "Exit",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 5,
+              "semantics": "Return"
+            }
+          ],
+          "operations": []
+        }
+      ]
+    }
+  ],
+  "program": {
+    "inputFields": [
+      {
+        "name": "originalIsZero",
+        "type": "Bool",
+        "constructorParameterOrdinal": 0
+      },
+      {
+        "name": "currentIsZero",
+        "type": "Bool",
+        "constructorParameterOrdinal": 1
+      },
+      {
+        "name": "newIsZero",
+        "type": "Bool",
+        "constructorParameterOrdinal": 2
+      },
+      {
+        "name": "currentSameAsOriginal",
+        "type": "Bool",
+        "constructorParameterOrdinal": 3
+      },
+      {
+        "name": "newSameAsCurrent",
+        "type": "Bool",
+        "constructorParameterOrdinal": 4
+      },
+      {
+        "name": "newSameAsOriginal",
+        "type": "Bool",
+        "constructorParameterOrdinal": 5
+      }
+    ],
+    "accessScheduleFields": [
+      {
+        "name": "coldStorageAccessGas",
+        "type": "Nat",
+        "constructorParameterOrdinal": 0
+      },
+      {
+        "name": "warmAccessGas",
+        "type": "Nat",
+        "constructorParameterOrdinal": 1
+      }
+    ],
+    "postAccessScheduleFields": [
+      {
+        "name": "storageWriteGas",
+        "type": "Nat",
+        "constructorParameterOrdinal": 0
+      },
+      {
+        "name": "storageClearRefund",
+        "type": "Int",
+        "constructorParameterOrdinal": 1
+      },
+      {
+        "name": "storageSetStateGas",
+        "type": "Int",
+        "constructorParameterOrdinal": 2
+      }
+    ],
+    "postAccessResultFields": [
+      {
+        "name": "executionWriteGas",
+        "type": "Nat",
+        "constructorParameterOrdinal": 0
+      },
+      {
+        "name": "storageClearRefund",
+        "type": "Int",
+        "constructorParameterOrdinal": 1
+      },
+      {
+        "name": "storageClearRefundReversal",
+        "type": "Int",
+        "constructorParameterOrdinal": 2
+      },
+      {
+        "name": "restoreOriginalRefund",
+        "type": "Int",
+        "constructorParameterOrdinal": 3
+      },
+      {
+        "name": "stateGasCharge",
+        "type": "Int",
+        "constructorParameterOrdinal": 4
+      },
+      {
+        "name": "stateGasRefund",
+        "type": "Int",
+        "constructorParameterOrdinal": 5
+      }
+    ],
+    "resultFields": [
+      {
+        "name": "accessGas",
+        "type": "Nat",
+        "constructorParameterOrdinal": 0
+      },
+      {
+        "name": "postAccess",
+        "type": "PostAccessResult",
+        "constructorParameterOrdinal": 1
+      }
+    ],
+    "accessStatuses": [
+      "cold",
+      "warm"
+    ]
+  },
+  "adapter": {
+    "method": "InstructionSStoreMetered",
+    "activeGate": "Eip8038.IsActive\u0026\u0026TEip8037.IsActive",
+    "accessCharge": "TGasPolicy.TryConsumeStorageAccessGas\u003CEip2929,Eip8038\u003E(refgas,invmState.AccessTracker,vm.IsTracingAccess,instorageCell,StorageAccessType.SSTORE,spec)",
+    "currentRead": "vm.WorldState.Get(instorageCell)",
+    "pricingDelegation": "SStorePricingKernel.PriceAfterAccess(input,schedule)",
+    "stateAndExecutionCharge": "TGasPolicy.TryConsumeStateAndExecutionGas(refgas,pricing.StateGasCharge,pricing.ExecutionWriteGas)",
+    "postChargeSteps": [
+      "ApplySStoreRefund(vm,vmState,pricing.StorageClearRefund)",
+      "ApplySStoreRefund(vm,vmState,pricing.StorageClearRefundReversal)",
+      "vm.CreditStateGasRefund\u003CTEip8037\u003E(refgas,pricing.StateGasRefund)",
+      "ApplySStoreRefund(vm,vmState,pricing.RestoreOriginalRefund)"
+    ],
+    "accessPrecedesSlotRead": true,
+    "changedBranchSuppliesNoOpFact": true,
+    "refundHelperReportsEachNonzeroComponent": true
+  }
+}

@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "nethermind://eip803x/precompile-frame-stage-a-ir",
+  "title": "Precompile frame Stage A typed IR",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "extractorVersion", "kernel", "acceptanceState", "scope", "registry", "cache", "pricing", "precompileBindings", "routes", "worldRelation", "mutationChecks", "sources", "members", "dependencies", "trySaveBounds", "semanticBindings"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "extractorVersion": { "type": "string", "minLength": 1 },
+    "kernel": { "const": "standard-mainnet-amsterdam-precompile-frame-stage-a" },
+    "acceptanceState": { "const": "stage-a-admitted-routing-and-classification" },
+    "scope": { "$ref": "#/definitions/scope" },
+    "registry": { "$ref": "#/definitions/registry" },
+    "cache": { "$ref": "#/definitions/cache" },
+    "pricing": { "$ref": "#/definitions/pricing" },
+    "precompileBindings": { "type": "array", "minItems": 18, "maxItems": 18, "items": { "$ref": "#/definitions/binding" } },
+    "routes": { "type": "array", "minItems": 18, "maxItems": 18, "items": { "$ref": "#/definitions/route" } },
+    "worldRelation": { "$ref": "#/definitions/worldRelation" },
+    "mutationChecks": { "type": "array", "minItems": 26, "maxItems": 26, "items": { "$ref": "#/definitions/mutation" } },
+    "sources": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/source" } },
+    "members": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/member" } },
+    "dependencies": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/dependency" } },
+    "trySaveBounds": { "$ref": "#/definitions/trySaveBounds" },
+    "semanticBindings": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+  },
+  "definitions": {
+    "activation": { "enum": ["always", "eip198", "eip196And197", "eip152", "eip4844", "eip2537", "eip7212Or7951"] },
+    "routeMode": { "enum": ["inactiveCode", "fullFrame", "directStaticCall", "delegatedPrecompileSuppressed"] },
+    "scope": {
+      "type": "object", "additionalProperties": false,
+      "required": ["build", "fork", "claim", "includedSurfaces", "excludedSurfaces", "openCompositionGates", "assumptions"],
+      "properties": {
+        "build": { "type": "string" }, "fork": { "type": "string" }, "claim": { "type": "string" },
+        "includedSurfaces": { "type": "array", "items": { "type": "string" } },
+        "excludedSurfaces": { "type": "array", "items": { "type": "string" } },
+        "openCompositionGates": { "type": "array", "items": { "type": "string" } },
+        "assumptions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "registry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["providerType", "providerProperty", "addressType", "releaseSpecType", "releaseSpecMembershipMethod", "mainnetProviderType", "forkScheduleProviderType", "amsterdamForkType", "lowLookupMaximum", "providerEntries", "addressEntries", "activationAncestry", "activationSteps", "standardBuildSteps", "inactiveBehavior"],
+      "properties": {
+        "providerType": { "type": "string" }, "providerProperty": { "type": "string" }, "addressType": { "type": "string" },
+        "releaseSpecType": { "type": "string" }, "releaseSpecMembershipMethod": { "type": "string" },
+        "mainnetProviderType": { "type": "string" }, "forkScheduleProviderType": { "type": "string" }, "amsterdamForkType": { "type": "string" },
+        "lowLookupMaximum": { "const": 256 },
+        "providerEntries": { "type": "array", "minItems": 18, "maxItems": 18, "items": { "$ref": "#/definitions/providerEntry" } },
+        "addressEntries": { "type": "array", "minItems": 18, "maxItems": 18, "items": { "$ref": "#/definitions/addressEntry" } },
+        "activationAncestry": { "type": "array", "minItems": 20, "items": { "$ref": "#/definitions/activationStep" } },
+        "activationSteps": { "type": "array", "items": { "type": "string" } },
+        "standardBuildSteps": { "type": "array", "items": { "type": "string" } },
+        "inactiveBehavior": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "providerEntry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "address", "typeName", "activation", "providerMember", "isStandardBuild"],
+      "properties": { "name": { "type": "string" }, "address": { "type": "integer", "minimum": 1 }, "typeName": { "type": "string" }, "activation": { "$ref": "#/definitions/activation" }, "providerMember": { "type": "string" }, "isStandardBuild": { "const": true } }
+    },
+    "addressEntry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "address"],
+      "properties": { "name": { "type": "string" }, "address": { "type": "integer", "minimum": 0 } }
+    },
+    "activationStep": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fork", "parent", "sourcePath", "enabledProperties"],
+      "properties": { "fork": { "type": "string" }, "parent": { "type": "string" }, "sourcePath": { "type": "string" }, "enabledProperties": { "type": "array", "items": { "type": "string" } } }
+    },
+    "cache": {
+      "type": "object", "additionalProperties": false,
+      "required": ["codeInfoRepositoryType", "cachedRepositoryType", "providerSnapshotOperation", "cacheKeyShape", "normalizationOperation", "inputToRunOperation", "invalidInputOperation", "uncachedEffects", "cachedEffects", "premises", "key", "branches"],
+      "properties": {
+        "codeInfoRepositoryType": { "type": "string" }, "cachedRepositoryType": { "type": "string" }, "providerSnapshotOperation": { "type": "string" },
+        "cacheKeyShape": { "type": "string" }, "normalizationOperation": { "type": "string" }, "inputToRunOperation": { "type": "string" }, "invalidInputOperation": { "type": "string" },
+        "uncachedEffects": { "type": "array", "items": { "type": "string" } }, "cachedEffects": { "type": "array", "items": { "type": "string" } }, "premises": { "type": "array", "items": { "type": "string" } },
+        "key": { "$ref": "#/definitions/cacheKey" }, "branches": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/definitions/cacheBranch" } }
+      }
+    },
+    "cacheKey": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fields", "usesReferenceEqualReleaseSpec", "usesNormalizedInput", "usesOriginalInputForRun"],
+      "properties": { "fields": { "type": "array", "minItems": 3, "items": { "type": "string" } }, "usesReferenceEqualReleaseSpec": { "type": "boolean" }, "usesNormalizedInput": { "type": "boolean" }, "usesOriginalInputForRun": { "type": "boolean" } }
+    },
+    "cacheBranch": {
+      "type": "object", "additionalProperties": false,
+      "required": ["outcome", "effects", "returnedFromCache", "runsLeaf", "cacheUpdated"],
+      "properties": { "outcome": { "enum": ["uncached", "hit", "miss", "invalidInput"] }, "effects": { "type": "array", "items": { "enum": ["returnUncached", "normalizeInput", "buildKey", "lookup", "returnCached", "runOriginalInput", "updateCache", "skipCacheUpdate"] } }, "returnedFromCache": { "type": "boolean" }, "runsLeaf": { "type": "boolean" }, "cacheUpdated": { "type": "boolean" } }
+    },
+    "pricing": {
+      "type": "object", "additionalProperties": false,
+      "required": ["gasPolicyType", "gasMethod", "localGasRule", "overflowRule", "outOfGasRule", "runOrdering", "outcomes", "assumptions"],
+      "properties": {
+        "gasPolicyType": { "type": "string" }, "gasMethod": { "type": "string" }, "localGasRule": { "type": "string" }, "overflowRule": { "type": "string" }, "outOfGasRule": { "type": "string" }, "runOrdering": { "type": "string" },
+        "outcomes": { "type": "array", "items": { "enum": ["success", "baseDataOverflow", "outOfGas"] } }, "assumptions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "address", "typeName", "baseSourcePath", "standardSourcePaths", "activation", "addressField", "providerMember", "baseGasMember", "dataGasMember", "runMember", "normalizeMember", "oracleModule", "oracleNamespace", "oracleEntrySymbol", "oracleSymbol", "inputRules", "outputRules", "failureRules"],
+      "properties": {
+        "name": { "type": "string" }, "address": { "type": "integer", "minimum": 1 }, "typeName": { "type": "string" }, "baseSourcePath": { "type": "string" }, "standardSourcePaths": { "type": "array", "items": { "type": "string" } }, "activation": { "$ref": "#/definitions/activation" }, "addressField": { "type": "string" }, "providerMember": { "type": "string" }, "baseGasMember": { "type": "string" }, "dataGasMember": { "type": "string" }, "runMember": { "type": "string" }, "normalizeMember": { "type": "string" }, "oracleModule": { "type": "string" }, "oracleNamespace": { "type": "string" }, "oracleEntrySymbol": { "type": "string" }, "oracleSymbol": { "type": "string" }, "inputRules": { "type": "array", "items": { "type": "string" } }, "outputRules": { "type": "array", "items": { "type": "string" } }, "failureRules": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "route": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "address", "activationRule", "fullFrameCallers", "directCallers", "delegatedMode", "directGuard", "fullFrameEntry", "fullFramePreRunOrder", "fullFrameResultOrder", "directSuccessOrder", "directFailureOrder", "worldEffects", "openEffects", "callKinds", "callTargets", "cancellation", "fullFrameActionTraceConditional", "fullFrameOutcomes", "directOutcomes"],
+      "properties": {
+        "name": { "type": "string" }, "address": { "type": "integer", "minimum": 1 }, "activationRule": { "type": "string" }, "fullFrameCallers": { "type": "array", "items": { "type": "string" } }, "directCallers": { "type": "array", "items": { "type": "string" } }, "delegatedMode": { "$ref": "#/definitions/routeMode" }, "directGuard": { "type": "string" }, "fullFrameEntry": { "type": "string" }, "fullFramePreRunOrder": { "type": "string" }, "fullFrameResultOrder": { "type": "string" }, "directSuccessOrder": { "type": "string" }, "directFailureOrder": { "type": "string" }, "worldEffects": { "type": "array", "items": { "type": "string" } }, "openEffects": { "type": "array", "items": { "type": "string" } }, "callKinds": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/definitions/callKind" } }, "callTargets": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/definitions/callTarget" } }, "cancellation": { "$ref": "#/definitions/cancellation" }, "fullFrameActionTraceConditional": { "type": "boolean" }, "fullFrameOutcomes": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "$ref": "#/definitions/frameOutcome" } }, "directOutcomes": { "type": "array", "minItems": 5, "maxItems": 5, "items": { "$ref": "#/definitions/directFrameOutcome" } }
+      }
+    },
+    "callKind": { "enum": ["call", "callCode", "delegateCall", "staticCall"] },
+    "callTarget": { "enum": ["codeSource", "executingAccount"] },
+    "cancellation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["specialized", "checkMask", "checksBeforeDispatch", "checksAtBoundary", "boundaryPredicate", "preDispatchPoll", "boundaryPoll", "pollOrder"],
+      "properties": { "specialized": { "type": "boolean" }, "checkMask": { "type": "integer", "minimum": 0 }, "checksBeforeDispatch": { "type": "boolean" }, "checksAtBoundary": { "type": "boolean" }, "boundaryPredicate": { "type": "string", "pattern": "completedWithoutException" }, "preDispatchPoll": { "type": "string" }, "boundaryPoll": { "type": "string" }, "pollOrder": { "type": "string" } }
+    },
+    "frameEffect": { "enum": ["actionTrace", "transferLog", "accountTouchOrCreate", "ripemdTouchLatch", "pricing", "run", "childRefund", "childCommit", "stateGasRestore", "snapshotRestore", "executionGasClear", "returnDataClear", "handleRevert", "handleReturn", "returnData", "returnOutOfGas", "outputCopy", "stackSuccess", "stackFailure"] },
+    "frameOutcome": {
+      "type": "object", "additionalProperties": false,
+      "required": ["outcome", "effects", "runsLeaf", "touchesAccount", "returnsRefund", "clearsReturnData", "pushesSuccess", "restoresSnapshot"],
+      "properties": { "outcome": { "enum": ["pricingHardFailure", "returnedLeafHardFailure", "managedNestedSoftRevert", "success"] }, "effects": { "type": "array", "items": { "$ref": "#/definitions/frameEffect" } }, "runsLeaf": { "type": "boolean" }, "touchesAccount": { "type": "boolean" }, "returnsRefund": { "type": "boolean" }, "clearsReturnData": { "type": "boolean" }, "pushesSuccess": { "type": "boolean" }, "restoresSnapshot": { "type": "boolean" } }
+    },
+    "directFrameOutcome": {
+      "type": "object", "additionalProperties": false,
+      "required": ["outcome", "result", "effects", "runsLeaf", "touchesAccount", "returnsRefund", "clearsReturnData", "pushesSuccess", "restoresSnapshot"],
+      "properties": { "outcome": { "enum": ["pricingHardFailure", "returnedLeafHardFailure", "managedNestedSoftRevert", "outputCopyOutOfGas", "success"] }, "result": { "enum": ["stackFailure", "outOfGas", "stackSuccess"] }, "effects": { "type": "array", "items": { "$ref": "#/definitions/frameEffect" } }, "runsLeaf": { "type": "boolean" }, "touchesAccount": { "type": "boolean" }, "returnsRefund": { "type": "boolean" }, "clearsReturnData": { "type": "boolean" }, "pushesSuccess": { "type": "boolean" }, "restoresSnapshot": { "type": "boolean" } }
+    },
+    "worldRelation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["relationName", "callbackType", "inputs", "outputs", "preconditions", "effects", "compositionGateOpen"],
+      "properties": { "relationName": { "type": "string" }, "callbackType": { "type": "string" }, "inputs": { "type": "array", "items": { "type": "string" } }, "outputs": { "type": "array", "items": { "type": "string" } }, "preconditions": { "type": "array", "items": { "type": "string" } }, "effects": { "type": "array", "items": { "type": "string" } }, "compositionGateOpen": { "const": true } }
+    },
+    "mutation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "subject", "requiredRejectionOrDifference"],
+      "properties": { "name": { "type": "string" }, "subject": { "type": "string" }, "requiredRejectionOrDifference": { "type": "string" } }
+    },
+    "trySaveBounds": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sourcePath", "owner", "member", "validationHelper", "failureFlag", "failureEffects", "boundsFailurePrecedesMutation"],
+      "properties": {
+        "sourcePath": { "const": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs" },
+        "owner": { "const": "EvmPooledMemory" },
+        "member": { "const": "TrySave" },
+        "validationHelper": { "const": "CheckMemoryAccessViolation" },
+        "failureFlag": { "const": "isViolation" },
+        "failureEffects": {
+          "type": "array", "minItems": 5, "maxItems": 5,
+          "items": { "enum": ["returnFalse", "noUpdateSize", "noSaveAfterGas", "noMemoryMutation", "noOutputWrite"] }
+        },
+        "boundsFailurePrecedesMutation": { "const": true }
+      }
+    },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "role", "sha256", "roslynSyntaxSha256", "isRaw", "includedInStandardBuild"],
+      "properties": { "path": { "type": "string" }, "role": { "type": "string" }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }, "roslynSyntaxSha256": { "type": "string" }, "isRaw": { "type": "boolean" }, "includedInStandardBuild": { "type": "boolean" } }
+    },
+    "member": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sourcePath", "owner", "member", "signature", "syntaxKind", "sha256"],
+      "properties": { "sourcePath": { "type": "string" }, "owner": { "type": "string" }, "member": { "type": "string" }, "signature": { "type": "string" }, "syntaxKind": { "type": "string" }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" } }
+    },
+    "dependency": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "name", "path", "sha256", "binding", "oracleOnly"],
+      "properties": { "kind": { "type": "string" }, "name": { "type": "string" }, "path": { "type": "string" }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }, "binding": { "type": "string" }, "oracleOnly": { "type": "boolean" } }
+    }
+  }
+}

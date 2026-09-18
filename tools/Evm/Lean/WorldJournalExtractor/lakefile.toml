@@ -1,0 +1,7 @@
+name = "WorldJournalExtractor"
+version = "0.1.0"
+defaultTargets = ["WorldJournalExtractor.Refinement.WorldJournal", "WorldJournalExtractor.Vectors.WorldJournalVectors"]
+
+[[lean_lib]]
+name = "WorldJournalExtractor"
+srcDir = ".."

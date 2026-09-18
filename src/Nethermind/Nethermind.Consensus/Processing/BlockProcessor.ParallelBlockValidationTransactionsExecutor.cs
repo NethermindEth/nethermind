@@ -92,7 +92,7 @@ public partial class BlockProcessor
                     BlockAccessListManager.CheckPerTxInclusion(block, (int)i, currentTx, spec, totalExecutionGas, totalStateGas);
                 }
 
-                ProcessTransaction(txProcessor, stateProvider, block, currentTx, (int)i, receiptsTracer, processingOptions, inner);
+                ProcessTransaction(txProcessor, stateProvider, block, currentTx, (int)i, receiptsTracer, processingOptions, inner, transactionProcessedEventHandler);
                 totalExecutionGas = receiptsTracer.CumulativeExecutionGasUsed;
                 totalStateGas = receiptsTracer.BlockStateGasUsed;
 
@@ -198,7 +198,8 @@ public partial class BlockProcessor
                                             txIndex,
                                             state.receiptsTracers[txIndex],
                                             state.processingOptions,
-                                            state.inner);
+                                            state.inner,
+                                            null);
                                     }
                                     state.gasResults[txIndex].TrySetResult(new GasValidationResult(tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, null));
                                 }
@@ -371,6 +372,7 @@ public partial class BlockProcessor
                 ReadOnlySpan<TxReceipt> receipts = perTxTracers[i].TxReceipts;
                 if (receipts.IsEmpty) continue;
                 TxReceipt receipt = receipts[0];
+                receipt.Index = i;
                 cumulativeGas += receipt.GasUsed;
                 receipt.GasUsedTotal = cumulativeGas;
                 outer.SetReceipt(i, receipt);
@@ -400,7 +402,8 @@ public partial class BlockProcessor
             int index,
             BlockReceiptsTracer receiptsTracer,
             ProcessingOptions processingOptions,
-            IBlockProcessor.IBlockTransactionsExecutor inner)
+            IBlockProcessor.IBlockTransactionsExecutor inner,
+            BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler)
         {
             long txStart = inner.StartTxTimer();
             TransactionResult result;
@@ -414,6 +417,7 @@ public partial class BlockProcessor
                 inner.StopTxTimer(index, txStart);
             }
             if (!result) BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(result, block.Header, currentTx, index);
+            transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
         }
 
         /// <summary>Stable, allocation-free sort key for the tx-tail schedule. Sorts heaviest

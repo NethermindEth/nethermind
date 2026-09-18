@@ -1,0 +1,861 @@
+{
+  "schemaVersion": 1,
+  "methods": [
+    {
+      "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.Execute(global::Nethermind.Core.Transaction tx, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, in global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E intrinsicGas)",
+      "parameters": [
+        {
+          "name": "tx",
+          "ordinal": 0,
+          "type": "global::Nethermind.Core.Transaction",
+          "refKind": "None"
+        },
+        {
+          "name": "tracer",
+          "ordinal": 1,
+          "type": "global::Nethermind.Evm.Tracing.ITxTracer",
+          "refKind": "None"
+        },
+        {
+          "name": "opts",
+          "ordinal": 2,
+          "type": "global::Nethermind.Evm.TransactionProcessing.ExecutionOptions",
+          "refKind": "None"
+        },
+        {
+          "name": "header",
+          "ordinal": 3,
+          "type": "global::Nethermind.Core.BlockHeader",
+          "refKind": "None"
+        },
+        {
+          "name": "spec",
+          "ordinal": 4,
+          "type": "global::Nethermind.Core.Specs.IReleaseSpec",
+          "refKind": "None"
+        },
+        {
+          "name": "intrinsicGas",
+          "ordinal": 5,
+          "type": "global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E",
+          "refKind": "In"
+        }
+      ]
+    },
+    {
+      "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.ExecuteEvmTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E intrinsicGas, TGasPolicy gasAvailable, in global::Nethermind.Int256.UInt256 opcodeGasPrice, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, in global::Nethermind.Int256.UInt256 blobBaseFee, global::Nethermind.Evm.CodeAnalysis.CodeInfo preloadedCodeInfo, global::Nethermind.Core.Address preloadedDelegationAddress)",
+      "parameters": [
+        {
+          "name": "tx",
+          "ordinal": 0,
+          "type": "global::Nethermind.Core.Transaction",
+          "refKind": "None"
+        },
+        {
+          "name": "header",
+          "ordinal": 1,
+          "type": "global::Nethermind.Core.BlockHeader",
+          "refKind": "None"
+        },
+        {
+          "name": "spec",
+          "ordinal": 2,
+          "type": "global::Nethermind.Core.Specs.IReleaseSpec",
+          "refKind": "None"
+        },
+        {
+          "name": "tracer",
+          "ordinal": 3,
+          "type": "global::Nethermind.Evm.Tracing.ITxTracer",
+          "refKind": "None"
+        },
+        {
+          "name": "opts",
+          "ordinal": 4,
+          "type": "global::Nethermind.Evm.TransactionProcessing.ExecutionOptions",
+          "refKind": "None"
+        },
+        {
+          "name": "restore",
+          "ordinal": 5,
+          "type": "bool",
+          "refKind": "None"
+        },
+        {
+          "name": "commit",
+          "ordinal": 6,
+          "type": "bool",
+          "refKind": "None"
+        },
+        {
+          "name": "deleteCallerAccount",
+          "ordinal": 7,
+          "type": "bool",
+          "refKind": "None"
+        },
+        {
+          "name": "intrinsicGas",
+          "ordinal": 8,
+          "type": "global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E",
+          "refKind": "In"
+        },
+        {
+          "name": "gasAvailable",
+          "ordinal": 9,
+          "type": "TGasPolicy",
+          "refKind": "None"
+        },
+        {
+          "name": "opcodeGasPrice",
+          "ordinal": 10,
+          "type": "global::Nethermind.Int256.UInt256",
+          "refKind": "In"
+        },
+        {
+          "name": "premiumPerGas",
+          "ordinal": 11,
+          "type": "global::Nethermind.Int256.UInt256",
+          "refKind": "In"
+        },
+        {
+          "name": "senderReservedGasPayment",
+          "ordinal": 12,
+          "type": "global::Nethermind.Int256.UInt256",
+          "refKind": "In"
+        },
+        {
+          "name": "blobBaseFee",
+          "ordinal": 13,
+          "type": "global::Nethermind.Int256.UInt256",
+          "refKind": "In"
+        },
+        {
+          "name": "preloadedCodeInfo",
+          "ordinal": 14,
+          "type": "global::Nethermind.Evm.CodeAnalysis.CodeInfo",
+          "refKind": "None"
+        },
+        {
+          "name": "preloadedDelegationAddress",
+          "ordinal": 15,
+          "type": "global::Nethermind.Core.Address",
+          "refKind": "None"
+        }
+      ]
+    },
+    {
+      "symbol": "int global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.ExecuteEvmCall\u003CTTracingInst\u003E(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, long delegationRefunds, global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E gas, long postIntrinsicStateReservoir, in global::Nethermind.Evm.StackAccessTracker accessedItems, TGasPolicy gasAvailable, global::Nethermind.Evm.ExecutionEnvironment env, bool topFrameOutOfGas, out global::Nethermind.Evm.TransactionSubstate substate, out global::Nethermind.Evm.TransactionProcessing.GasConsumed gasConsumed)",
+      "parameters": [
+        {
+          "name": "tx",
+          "ordinal": 0,
+          "type": "global::Nethermind.Core.Transaction",
+          "refKind": "None"
+        },
+        {
+          "name": "header",
+          "ordinal": 1,
+          "type": "global::Nethermind.Core.BlockHeader",
+          "refKind": "None"
+        },
+        {
+          "name": "spec",
+          "ordinal": 2,
+          "type": "global::Nethermind.Core.Specs.IReleaseSpec",
+          "refKind": "None"
+        },
+        {
+          "name": "tracer",
+          "ordinal": 3,
+          "type": "global::Nethermind.Evm.Tracing.ITxTracer",
+          "refKind": "None"
+        },
+        {
+          "name": "opts",
+          "ordinal": 4,
+          "type": "global::Nethermind.Evm.TransactionProcessing.ExecutionOptions",
+          "refKind": "None"
+        },
+        {
+          "name": "delegationRefunds",
+          "ordinal": 5,
+          "type": "long",
+          "refKind": "None"
+        },
+        {
+          "name": "gas",
+          "ordinal": 6,
+          "type": "global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E",
+          "refKind": "None"
+        },
+        {
+          "name": "postIntrinsicStateReservoir",
+          "ordinal": 7,
+          "type": "long",
+          "refKind": "None"
+        },
+        {
+          "name": "accessedItems",
+          "ordinal": 8,
+          "type": "global::Nethermind.Evm.StackAccessTracker",
+          "refKind": "In"
+        },
+        {
+          "name": "gasAvailable",
+          "ordinal": 9,
+          "type": "TGasPolicy",
+          "refKind": "None"
+        },
+        {
+          "name": "env",
+          "ordinal": 10,
+          "type": "global::Nethermind.Evm.ExecutionEnvironment",
+          "refKind": "None"
+        },
+        {
+          "name": "topFrameOutOfGas",
+          "ordinal": 11,
+          "type": "bool",
+          "refKind": "None"
+        },
+        {
+          "name": "substate",
+          "ordinal": 12,
+          "type": "global::Nethermind.Evm.TransactionSubstate",
+          "refKind": "Out"
+        },
+        {
+          "name": "gasConsumed",
+          "ordinal": 13,
+          "type": "global::Nethermind.Evm.TransactionProcessing.GasConsumed",
+          "refKind": "Out"
+        }
+      ]
+    },
+    {
+      "symbol": "void global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.UpdateHeaderGasUsedAndPayFees(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, in global::Nethermind.Evm.TransactionSubstate substate, in global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 effectiveGasPrice, in global::Nethermind.Int256.UInt256 blobBaseFee, int statusCode)",
+      "parameters": [
+        {
+          "name": "tx",
+          "ordinal": 0,
+          "type": "global::Nethermind.Core.Transaction",
+          "refKind": "None"
+        },
+        {
+          "name": "header",
+          "ordinal": 1,
+          "type": "global::Nethermind.Core.BlockHeader",
+          "refKind": "None"
+        },
+        {
+          "name": "spec",
+          "ordinal": 2,
+          "type": "global::Nethermind.Core.Specs.IReleaseSpec",
+          "refKind": "None"
+        },
+        {
+          "name": "tracer",
+          "ordinal": 3,
+          "type": "global::Nethermind.Evm.Tracing.ITxTracer",
+          "refKind": "None"
+        },
+        {
+          "name": "opts",
+          "ordinal": 4,
+          "type": "global::Nethermind.Evm.TransactionProcessing.ExecutionOptions",
+          "refKind": "None"
+        },
+        {
+          "name": "substate",
+          "ordinal": 5,
+          "type": "global::Nethermind.Evm.TransactionSubstate",
+          "refKind": "In"
+        },
+        {
+          "name": "spentGas",
+          "ordinal": 6,
+          "type": "global::Nethermind.Evm.TransactionProcessing.GasConsumed",
+          "refKind": "In"
+        },
+        {
+          "name": "premiumPerGas",
+          "ordinal": 7,
+          "type": "global::Nethermind.Int256.UInt256",
+          "refKind": "In"
+        },
+        {
+          "name": "effectiveGasPrice",
+          "ordinal": 8,
+          "type": "global::Nethermind.Int256.UInt256",
+          "refKind": "In"
+        },
+        {
+          "name": "blobBaseFee",
+          "ordinal": 9,
+          "type": "global::Nethermind.Int256.UInt256",
+          "refKind": "In"
+        },
+        {
+          "name": "statusCode",
+          "ordinal": 10,
+          "type": "int",
+          "refKind": "None"
+        }
+      ]
+    },
+    {
+      "symbol": "void global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.PayFees(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, in global::Nethermind.Evm.TransactionSubstate substate, ulong spentGas, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 effectiveGasPrice, in global::Nethermind.Int256.UInt256 blobBaseFee, int statusCode)",
+      "parameters": [
+        {
+          "name": "tx",
+          "ordinal": 0,
+          "type": "global::Nethermind.Core.Transaction",
+          "refKind": "None"
+        },
+        {
+          "name": "header",
+          "ordinal": 1,
+          "type": "global::Nethermind.Core.BlockHeader",
+          "refKind": "None"
+        },
+        {
+          "name": "spec",
+          "ordinal": 2,
+          "type": "global::Nethermind.Core.Specs.IReleaseSpec",
+          "refKind": "None"
+        },
+        {
+          "name": "tracer",
+          "ordinal": 3,
+          "type": "global::Nethermind.Evm.Tracing.ITxTracer",
+          "refKind": "None"
+        },
+        {
+          "name": "substate",
+          "ordinal": 4,
+          "type": "global::Nethermind.Evm.TransactionSubstate",
+          "refKind": "In"
+        },
+        {
+          "name": "spentGas",
+          "ordinal": 5,
+          "type": "ulong",
+          "refKind": "None"
+        },
+        {
+          "name": "premiumPerGas",
+          "ordinal": 6,
+          "type": "global::Nethermind.Int256.UInt256",
+          "refKind": "In"
+        },
+        {
+          "name": "effectiveGasPrice",
+          "ordinal": 7,
+          "type": "global::Nethermind.Int256.UInt256",
+          "refKind": "In"
+        },
+        {
+          "name": "blobBaseFee",
+          "ordinal": 8,
+          "type": "global::Nethermind.Int256.UInt256",
+          "refKind": "In"
+        },
+        {
+          "name": "statusCode",
+          "ordinal": 9,
+          "type": "int",
+          "refKind": "None"
+        }
+      ]
+    },
+    {
+      "symbol": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)",
+      "parameters": [
+        {
+          "name": "tx",
+          "ordinal": 0,
+          "type": "global::Nethermind.Core.Transaction",
+          "refKind": "None"
+        },
+        {
+          "name": "spec",
+          "ordinal": 1,
+          "type": "global::Nethermind.Core.Specs.IReleaseSpec",
+          "refKind": "None"
+        },
+        {
+          "name": "tracer",
+          "ordinal": 2,
+          "type": "global::Nethermind.Evm.Tracing.ITxTracer",
+          "refKind": "None"
+        },
+        {
+          "name": "opts",
+          "ordinal": 3,
+          "type": "global::Nethermind.Evm.TransactionProcessing.ExecutionOptions",
+          "refKind": "None"
+        },
+        {
+          "name": "restore",
+          "ordinal": 4,
+          "type": "bool",
+          "refKind": "None"
+        },
+        {
+          "name": "commit",
+          "ordinal": 5,
+          "type": "bool",
+          "refKind": "None"
+        },
+        {
+          "name": "deleteCallerAccount",
+          "ordinal": 6,
+          "type": "bool",
+          "refKind": "None"
+        },
+        {
+          "name": "senderReservedGasPayment",
+          "ordinal": 7,
+          "type": "global::Nethermind.Int256.UInt256",
+          "refKind": "In"
+        },
+        {
+          "name": "executingAccount",
+          "ordinal": 8,
+          "type": "global::Nethermind.Core.Address",
+          "refKind": "None"
+        },
+        {
+          "name": "substate",
+          "ordinal": 9,
+          "type": "global::Nethermind.Evm.TransactionSubstate",
+          "refKind": "In"
+        },
+        {
+          "name": "spentGas",
+          "ordinal": 10,
+          "type": "global::Nethermind.Evm.TransactionProcessing.GasConsumed",
+          "refKind": "None"
+        },
+        {
+          "name": "statusCode",
+          "ordinal": 11,
+          "type": "int",
+          "refKind": "None"
+        }
+      ]
+    },
+    {
+      "symbol": "global::Nethermind.Evm.VmState\u003CTGasPolicy\u003E global::Nethermind.Evm.VmState\u003CTGasPolicy\u003E.RentTopLevel(TGasPolicy gas, global::Nethermind.Evm.ExecutionType executionType, global::Nethermind.Evm.ExecutionEnvironment env, in global::Nethermind.Evm.StackAccessTracker accessedItems, in global::Nethermind.Evm.State.Snapshot snapshot)",
+      "parameters": [
+        {
+          "name": "gas",
+          "ordinal": 0,
+          "type": "TGasPolicy",
+          "refKind": "None"
+        },
+        {
+          "name": "executionType",
+          "ordinal": 1,
+          "type": "global::Nethermind.Evm.ExecutionType",
+          "refKind": "None"
+        },
+        {
+          "name": "env",
+          "ordinal": 2,
+          "type": "global::Nethermind.Evm.ExecutionEnvironment",
+          "refKind": "None"
+        },
+        {
+          "name": "accessedItems",
+          "ordinal": 3,
+          "type": "global::Nethermind.Evm.StackAccessTracker",
+          "refKind": "In"
+        },
+        {
+          "name": "snapshot",
+          "ordinal": 4,
+          "type": "global::Nethermind.Evm.State.Snapshot",
+          "refKind": "In"
+        }
+      ]
+    },
+    {
+      "symbol": "void global::Nethermind.Evm.VmState\u003CTGasPolicy\u003E.Initialize(TGasPolicy gas, long outputDestination, long outputLength, global::Nethermind.Evm.ExecutionType executionType, bool isTopLevel, bool isStatic, bool isCreateOnPreExistingAccount, bool isCreateStateGasCharged, bool newAccountCharged, global::Nethermind.Evm.ExecutionEnvironment env, in global::Nethermind.Evm.StackAccessTracker stateForAccessLists, in global::Nethermind.Evm.State.Snapshot snapshot)",
+      "parameters": [
+        {
+          "name": "gas",
+          "ordinal": 0,
+          "type": "TGasPolicy",
+          "refKind": "None"
+        },
+        {
+          "name": "outputDestination",
+          "ordinal": 1,
+          "type": "long",
+          "refKind": "None"
+        },
+        {
+          "name": "outputLength",
+          "ordinal": 2,
+          "type": "long",
+          "refKind": "None"
+        },
+        {
+          "name": "executionType",
+          "ordinal": 3,
+          "type": "global::Nethermind.Evm.ExecutionType",
+          "refKind": "None"
+        },
+        {
+          "name": "isTopLevel",
+          "ordinal": 4,
+          "type": "bool",
+          "refKind": "None"
+        },
+        {
+          "name": "isStatic",
+          "ordinal": 5,
+          "type": "bool",
+          "refKind": "None"
+        },
+        {
+          "name": "isCreateOnPreExistingAccount",
+          "ordinal": 6,
+          "type": "bool",
+          "refKind": "None"
+        },
+        {
+          "name": "isCreateStateGasCharged",
+          "ordinal": 7,
+          "type": "bool",
+          "refKind": "None"
+        },
+        {
+          "name": "newAccountCharged",
+          "ordinal": 8,
+          "type": "bool",
+          "refKind": "None"
+        },
+        {
+          "name": "env",
+          "ordinal": 9,
+          "type": "global::Nethermind.Evm.ExecutionEnvironment",
+          "refKind": "None"
+        },
+        {
+          "name": "stateForAccessLists",
+          "ordinal": 10,
+          "type": "global::Nethermind.Evm.StackAccessTracker",
+          "refKind": "In"
+        },
+        {
+          "name": "snapshot",
+          "ordinal": 11,
+          "type": "global::Nethermind.Evm.State.Snapshot",
+          "refKind": "In"
+        }
+      ]
+    },
+    {
+      "symbol": "ulong global::Nethermind.Evm.GasPolicy.EthereumGasPolicy.CombineBlockGas(ulong blockExecutionGas, ulong blockStateGas)",
+      "parameters": [
+        {
+          "name": "blockExecutionGas",
+          "ordinal": 0,
+          "type": "ulong",
+          "refKind": "None"
+        },
+        {
+          "name": "blockStateGas",
+          "ordinal": 1,
+          "type": "ulong",
+          "refKind": "None"
+        }
+      ]
+    },
+    {
+      "symbol": "bool global::Nethermind.Evm.TransactionProcessing.SystemTransactionRoutingKernel.ParticipatesInNormalBlockCounters(global::Nethermind.Evm.TransactionProcessing.ExecutionOptions options, bool parallel)",
+      "parameters": [
+        {
+          "name": "options",
+          "ordinal": 0,
+          "type": "global::Nethermind.Evm.TransactionProcessing.ExecutionOptions",
+          "refKind": "None"
+        },
+        {
+          "name": "parallel",
+          "ordinal": 1,
+          "type": "bool",
+          "refKind": "None"
+        }
+      ]
+    }
+  ],
+  "sites": [
+    {
+      "role": "caller.restore",
+      "owner": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.Execute(global::Nethermind.Core.Transaction tx, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, in global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E intrinsicGas)",
+      "operationSha256": "5287afdb1e3fc1830c6b5bca9e4b80df797bf71d40aa172ba12eb5cd780e4286"
+    },
+    {
+      "role": "caller.commit",
+      "owner": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.Execute(global::Nethermind.Core.Transaction tx, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, in global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E intrinsicGas)",
+      "operationSha256": "4a745f780425c84a5b2b2105f21a018cfea8b1cf29647c9b400541c0242fb086"
+    },
+    {
+      "role": "caller.entry",
+      "owner": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.Execute(global::Nethermind.Core.Transaction tx, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, in global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E intrinsicGas)",
+      "operationSha256": "6a80641499dba26b2f5e461951f271de1431cc5faafef067419ac5a93733ee02"
+    },
+    {
+      "role": "prepared.standard-and-floor",
+      "owner": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.ExecuteEvmTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E intrinsicGas, TGasPolicy gasAvailable, in global::Nethermind.Int256.UInt256 opcodeGasPrice, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, in global::Nethermind.Int256.UInt256 blobBaseFee, global::Nethermind.Evm.CodeAnalysis.CodeInfo preloadedCodeInfo, global::Nethermind.Core.Address preloadedDelegationAddress)",
+      "operationSha256": "727f11f17f42037ef28d32da347a85ad18c7b67b3e2dbf64c82f8983dc0235ec"
+    },
+    {
+      "role": "prepared.call.off",
+      "owner": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.ExecuteEvmTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E intrinsicGas, TGasPolicy gasAvailable, in global::Nethermind.Int256.UInt256 opcodeGasPrice, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, in global::Nethermind.Int256.UInt256 blobBaseFee, global::Nethermind.Evm.CodeAnalysis.CodeInfo preloadedCodeInfo, global::Nethermind.Core.Address preloadedDelegationAddress)",
+      "operationSha256": "5a68646591a4682c08c120f6ca6a6516abf68258504665aba592ba3fd3d4dc6e"
+    },
+    {
+      "role": "prepared.call.on",
+      "owner": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.ExecuteEvmTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E intrinsicGas, TGasPolicy gasAvailable, in global::Nethermind.Int256.UInt256 opcodeGasPrice, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, in global::Nethermind.Int256.UInt256 blobBaseFee, global::Nethermind.Evm.CodeAnalysis.CodeInfo preloadedCodeInfo, global::Nethermind.Core.Address preloadedDelegationAddress)",
+      "operationSha256": "87f97b5bd8cd11403760c11829a745b40978b734775228d692f20450c16f604b"
+    },
+    {
+      "role": "frame.entry",
+      "owner": "int global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.ExecuteEvmCall\u003CTTracingInst\u003E(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, long delegationRefunds, global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E gas, long postIntrinsicStateReservoir, in global::Nethermind.Evm.StackAccessTracker accessedItems, TGasPolicy gasAvailable, global::Nethermind.Evm.ExecutionEnvironment env, bool topFrameOutOfGas, out global::Nethermind.Evm.TransactionSubstate substate, out global::Nethermind.Evm.TransactionProcessing.GasConsumed gasConsumed)",
+      "operationSha256": "1d18c424163c6027be03a2d52f3edcb12d676dd858a1a299d3613298f193d8ec"
+    },
+    {
+      "role": "vm.off",
+      "owner": "int global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.ExecuteEvmCall\u003CTTracingInst\u003E(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, long delegationRefunds, global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E gas, long postIntrinsicStateReservoir, in global::Nethermind.Evm.StackAccessTracker accessedItems, TGasPolicy gasAvailable, global::Nethermind.Evm.ExecutionEnvironment env, bool topFrameOutOfGas, out global::Nethermind.Evm.TransactionSubstate substate, out global::Nethermind.Evm.TransactionProcessing.GasConsumed gasConsumed)",
+      "operationSha256": "672ffd1fd943aa416d13d53becc88e7fe57e813e2c7871161b385d4fb8d63d47"
+    },
+    {
+      "role": "vm.on",
+      "owner": "int global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.ExecuteEvmCall\u003CTTracingInst\u003E(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, long delegationRefunds, global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E gas, long postIntrinsicStateReservoir, in global::Nethermind.Evm.StackAccessTracker accessedItems, TGasPolicy gasAvailable, global::Nethermind.Evm.ExecutionEnvironment env, bool topFrameOutOfGas, out global::Nethermind.Evm.TransactionSubstate substate, out global::Nethermind.Evm.TransactionProcessing.GasConsumed gasConsumed)",
+      "operationSha256": "555bef0d7d744be054c4c14a3cfc7f05ea36ba960945563cef521b69dd37e1c9"
+    },
+    {
+      "role": "vm.metrics",
+      "owner": "int global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.ExecuteEvmCall\u003CTTracingInst\u003E(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, long delegationRefunds, global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E gas, long postIntrinsicStateReservoir, in global::Nethermind.Evm.StackAccessTracker accessedItems, TGasPolicy gasAvailable, global::Nethermind.Evm.ExecutionEnvironment env, bool topFrameOutOfGas, out global::Nethermind.Evm.TransactionSubstate substate, out global::Nethermind.Evm.TransactionProcessing.GasConsumed gasConsumed)",
+      "operationSha256": "e3e8c64d6e1ff659772f35cc119c5b9a795ca2628b27f8307c2f797f447dc55b"
+    },
+    {
+      "role": "vm.flush",
+      "owner": "int global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.ExecuteEvmCall\u003CTTracingInst\u003E(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, long delegationRefunds, global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E gas, long postIntrinsicStateReservoir, in global::Nethermind.Evm.StackAccessTracker accessedItems, TGasPolicy gasAvailable, global::Nethermind.Evm.ExecutionEnvironment env, bool topFrameOutOfGas, out global::Nethermind.Evm.TransactionSubstate substate, out global::Nethermind.Evm.TransactionProcessing.GasConsumed gasConsumed)",
+      "operationSha256": "d6c6e2238f58a44dac3fad9af5392cd576b4ec3135eef2a9a902a0c5e9d7130e"
+    },
+    {
+      "role": "vm.gas-copy",
+      "owner": "int global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.ExecuteEvmCall\u003CTTracingInst\u003E(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, long delegationRefunds, global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E gas, long postIntrinsicStateReservoir, in global::Nethermind.Evm.StackAccessTracker accessedItems, TGasPolicy gasAvailable, global::Nethermind.Evm.ExecutionEnvironment env, bool topFrameOutOfGas, out global::Nethermind.Evm.TransactionSubstate substate, out global::Nethermind.Evm.TransactionProcessing.GasConsumed gasConsumed)",
+      "operationSha256": "8264903810ea95033344c5d843b185402e89cf7b3834366cb422f71b205419a9"
+    },
+    {
+      "role": "vm.access",
+      "owner": "int global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.ExecuteEvmCall\u003CTTracingInst\u003E(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, long delegationRefunds, global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E gas, long postIntrinsicStateReservoir, in global::Nethermind.Evm.StackAccessTracker accessedItems, TGasPolicy gasAvailable, global::Nethermind.Evm.ExecutionEnvironment env, bool topFrameOutOfGas, out global::Nethermind.Evm.TransactionSubstate substate, out global::Nethermind.Evm.TransactionProcessing.GasConsumed gasConsumed)",
+      "operationSha256": "faabc46f319a78ebca1b7d94c23e1714d4059ffed9b729626046e66364888e56"
+    },
+    {
+      "role": "vm.failed",
+      "owner": "int global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.ExecuteEvmCall\u003CTTracingInst\u003E(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, long delegationRefunds, global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E gas, long postIntrinsicStateReservoir, in global::Nethermind.Evm.StackAccessTracker accessedItems, TGasPolicy gasAvailable, global::Nethermind.Evm.ExecutionEnvironment env, bool topFrameOutOfGas, out global::Nethermind.Evm.TransactionSubstate substate, out global::Nethermind.Evm.TransactionProcessing.GasConsumed gasConsumed)",
+      "operationSha256": "7a413dee715a5a0ea619d13e4e8380bb4860fc10a6a994506b45170664b76de6"
+    },
+    {
+      "role": "vm.restore",
+      "owner": "int global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.ExecuteEvmCall\u003CTTracingInst\u003E(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, long delegationRefunds, global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E gas, long postIntrinsicStateReservoir, in global::Nethermind.Evm.StackAccessTracker accessedItems, TGasPolicy gasAvailable, global::Nethermind.Evm.ExecutionEnvironment env, bool topFrameOutOfGas, out global::Nethermind.Evm.TransactionSubstate substate, out global::Nethermind.Evm.TransactionProcessing.GasConsumed gasConsumed)",
+      "operationSha256": "c9a1dd295bbe95b5080323f2756fb935cf04fd98c6a3a9e75f2861e07c56078c"
+    },
+    {
+      "role": "vm.ripemd",
+      "owner": "int global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.ExecuteEvmCall\u003CTTracingInst\u003E(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, long delegationRefunds, global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E gas, long postIntrinsicStateReservoir, in global::Nethermind.Evm.StackAccessTracker accessedItems, TGasPolicy gasAvailable, global::Nethermind.Evm.ExecutionEnvironment env, bool topFrameOutOfGas, out global::Nethermind.Evm.TransactionSubstate substate, out global::Nethermind.Evm.TransactionProcessing.GasConsumed gasConsumed)",
+      "operationSha256": "d6f1d12e685ab64862ae7e95ec15f47df133bbbb09ceea52dda62f5e2a2b3e2b"
+    },
+    {
+      "role": "refund.input",
+      "owner": "int global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.ExecuteEvmCall\u003CTTracingInst\u003E(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, long delegationRefunds, global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E gas, long postIntrinsicStateReservoir, in global::Nethermind.Evm.StackAccessTracker accessedItems, TGasPolicy gasAvailable, global::Nethermind.Evm.ExecutionEnvironment env, bool topFrameOutOfGas, out global::Nethermind.Evm.TransactionSubstate substate, out global::Nethermind.Evm.TransactionProcessing.GasConsumed gasConsumed)",
+      "operationSha256": "899d94a8cbe6abcd383a04052c454dc61fa139fb98d3b3b6cd35fbb46cca13d7"
+    },
+    {
+      "role": "processor.route",
+      "owner": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.ExecuteEvmTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E intrinsicGas, TGasPolicy gasAvailable, in global::Nethermind.Int256.UInt256 opcodeGasPrice, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, in global::Nethermind.Int256.UInt256 blobBaseFee, global::Nethermind.Evm.CodeAnalysis.CodeInfo preloadedCodeInfo, global::Nethermind.Core.Address preloadedDelegationAddress)",
+      "operationSha256": "ba511e770f7022f57a70a10fa01edda0e60fa2d6c2a42bf4c1da6ac4bb0996b0"
+    },
+    {
+      "role": "processor.participation",
+      "owner": "void global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.UpdateHeaderGasUsedAndPayFees(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, in global::Nethermind.Evm.TransactionSubstate substate, in global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 effectiveGasPrice, in global::Nethermind.Int256.UInt256 blobBaseFee, int statusCode)",
+      "operationSha256": "b2493ebe829f1e007546bea48c48432158c4b2ad3dea073e7368736b15e24f5b"
+    },
+    {
+      "role": "processor.execution",
+      "owner": "void global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.UpdateHeaderGasUsedAndPayFees(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, in global::Nethermind.Evm.TransactionSubstate substate, in global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 effectiveGasPrice, in global::Nethermind.Int256.UInt256 blobBaseFee, int statusCode)",
+      "operationSha256": "e484e8401bd4b171cd64cd4635acb35e4d3c99230d18f645e63049c65f729e54"
+    },
+    {
+      "role": "processor.state",
+      "owner": "void global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.UpdateHeaderGasUsedAndPayFees(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, in global::Nethermind.Evm.TransactionSubstate substate, in global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 effectiveGasPrice, in global::Nethermind.Int256.UInt256 blobBaseFee, int statusCode)",
+      "operationSha256": "fd4d3386212f201d3f91170bba265edea8ceb3ef397567f3c6aa0c7bbf4512cb"
+    },
+    {
+      "role": "processor.header",
+      "owner": "void global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.UpdateHeaderGasUsedAndPayFees(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, in global::Nethermind.Evm.TransactionSubstate substate, in global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 effectiveGasPrice, in global::Nethermind.Int256.UInt256 blobBaseFee, int statusCode)",
+      "operationSha256": "d2f46ac950d90dd54064eee79b0b1c1de5123e1ced1f8c4c65730225c283de2e"
+    },
+    {
+      "role": "processor.fees",
+      "owner": "void global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.UpdateHeaderGasUsedAndPayFees(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, in global::Nethermind.Evm.TransactionSubstate substate, in global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 effectiveGasPrice, in global::Nethermind.Int256.UInt256 blobBaseFee, int statusCode)",
+      "operationSha256": "5d837f34ef48269b8d8ca4d9bdfc5def05c16bcd6955a3a75beff6199543e734"
+    },
+    {
+      "role": "fees.premium",
+      "owner": "void global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.PayFees(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, in global::Nethermind.Evm.TransactionSubstate substate, ulong spentGas, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 effectiveGasPrice, in global::Nethermind.Int256.UInt256 blobBaseFee, int statusCode)",
+      "operationSha256": "67dc0bafbaba500959b750c48960e945a096460191cbffd5e09c95cd082f96aa"
+    },
+    {
+      "role": "fees.beneficiary",
+      "owner": "void global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.PayFees(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, in global::Nethermind.Evm.TransactionSubstate substate, ulong spentGas, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 effectiveGasPrice, in global::Nethermind.Int256.UInt256 blobBaseFee, int statusCode)",
+      "operationSha256": "04eef1e2a62c387b63a8ce38b9dd2d7760c5e46eb7a1c33cb31ed977094f6f5f"
+    },
+    {
+      "role": "fees.beneficiary-credit",
+      "owner": "void global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.PayFees(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, in global::Nethermind.Evm.TransactionSubstate substate, ulong spentGas, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 effectiveGasPrice, in global::Nethermind.Int256.UInt256 blobBaseFee, int statusCode)",
+      "operationSha256": "7e6b8738fdc376a88c3ba19bb59610b5340076722c9926bbc7ea16e63c9b384c"
+    },
+    {
+      "role": "fees.base",
+      "owner": "void global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.PayFees(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, in global::Nethermind.Evm.TransactionSubstate substate, ulong spentGas, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 effectiveGasPrice, in global::Nethermind.Int256.UInt256 blobBaseFee, int statusCode)",
+      "operationSha256": "255b662c2c606987606fc8a24bc84c6e8ee9aa042f044b0ad60301ff401a2392"
+    },
+    {
+      "role": "fees.free",
+      "owner": "void global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.PayFees(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, in global::Nethermind.Evm.TransactionSubstate substate, ulong spentGas, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 effectiveGasPrice, in global::Nethermind.Int256.UInt256 blobBaseFee, int statusCode)",
+      "operationSha256": "1e1fe017224b8df061df7085141bd9189c9d07d40991471569f71378290f85d1"
+    },
+    {
+      "role": "fees.enabled",
+      "owner": "void global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.PayFees(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, in global::Nethermind.Evm.TransactionSubstate substate, ulong spentGas, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 effectiveGasPrice, in global::Nethermind.Int256.UInt256 blobBaseFee, int statusCode)",
+      "operationSha256": "35ce7de2f144d9726a56e1c57b118deec2e935491018c2c0e45e9e140014b623"
+    },
+    {
+      "role": "fees.blob",
+      "owner": "void global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.PayFees(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, in global::Nethermind.Evm.TransactionSubstate substate, ulong spentGas, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 effectiveGasPrice, in global::Nethermind.Int256.UInt256 blobBaseFee, int statusCode)",
+      "operationSha256": "d6d026908e5a524296babb8a46d71ea6b3c2e03c57d59e17899217594d28c6c2"
+    },
+    {
+      "role": "fees.blob-add",
+      "owner": "void global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.PayFees(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, in global::Nethermind.Evm.TransactionSubstate substate, ulong spentGas, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 effectiveGasPrice, in global::Nethermind.Int256.UInt256 blobBaseFee, int statusCode)",
+      "operationSha256": "f48da3bed707f533d7af35295543f2bbccdde9e30acbf913522456cf3b5b4fbc"
+    },
+    {
+      "role": "fees.collector",
+      "owner": "void global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.PayFees(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, in global::Nethermind.Evm.TransactionSubstate substate, ulong spentGas, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 effectiveGasPrice, in global::Nethermind.Int256.UInt256 blobBaseFee, int statusCode)",
+      "operationSha256": "6389e547ebfa6677a3163f25b3f4a0ca85458d737f8da761c2e5f36a51e3e1fc"
+    },
+    {
+      "role": "fees.collector-credit",
+      "owner": "void global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.PayFees(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, in global::Nethermind.Evm.TransactionSubstate substate, ulong spentGas, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 effectiveGasPrice, in global::Nethermind.Int256.UInt256 blobBaseFee, int statusCode)",
+      "operationSha256": "f5fd662b50e39ab7a516d8f6c5bf480a2d85b3a2bdf0ca0d917b01234d56a20c"
+    },
+    {
+      "role": "fees.report",
+      "owner": "void global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.PayFees(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, in global::Nethermind.Evm.TransactionSubstate substate, ulong spentGas, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 effectiveGasPrice, in global::Nethermind.Int256.UInt256 blobBaseFee, int statusCode)",
+      "operationSha256": "11ce9ffad48706ed044d6ff5b292a3e98fb494b9c1bd86f3c14b61d5ad67120c"
+    },
+    {
+      "role": "finalize.route",
+      "owner": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.ExecuteEvmTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.BlockHeader header, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Evm.GasPolicy.IntrinsicGas\u003CTGasPolicy\u003E intrinsicGas, TGasPolicy gasAvailable, in global::Nethermind.Int256.UInt256 opcodeGasPrice, in global::Nethermind.Int256.UInt256 premiumPerGas, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, in global::Nethermind.Int256.UInt256 blobBaseFee, global::Nethermind.Evm.CodeAnalysis.CodeInfo preloadedCodeInfo, global::Nethermind.Core.Address preloadedDelegationAddress)",
+      "operationSha256": "8f2ac4643fccee957c4e43e513caa018f03e6a0faf460360ff3b7c0b2b8254e9"
+    },
+    {
+      "role": "finalize.block-gas",
+      "owner": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)",
+      "operationSha256": "5b3a8e7245c2eb5efa7c103ad9076282a39445f076088d07c5a4c3c1b7f682aa"
+    },
+    {
+      "role": "finalize.spent-gas",
+      "owner": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)",
+      "operationSha256": "5a67ee3e7695a14ec652028f97a690867b575ead32015b790111233a446e17cd"
+    },
+    {
+      "role": "finalize.commit",
+      "owner": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)",
+      "operationSha256": "9876242b9118d70cd250afff023855b95de8f598c7ef7bcd4b0b8f5872dc87ce"
+    },
+    {
+      "role": "finalize.failed",
+      "owner": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)",
+      "operationSha256": "c152381e19f871aa698a81a151b6c2d69e9885405886f48dfaa690f165703077"
+    },
+    {
+      "role": "finalize.failed-output",
+      "owner": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)",
+      "operationSha256": "998e107e9793f24b1af3df45d4dc9debfc73fd8dae2b90ac0fb469e228cd004a"
+    },
+    {
+      "role": "receipt.failed",
+      "owner": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)",
+      "operationSha256": "2714f6734b52def79c11202d5b0c0cb2f8f81439ec9def8ca8ee2fc582370b41"
+    },
+    {
+      "role": "receipt.success",
+      "owner": "global::Nethermind.Evm.TransactionProcessing.TransactionResult global::Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CTGasPolicy\u003E.FinalizeTransaction(global::Nethermind.Core.Transaction tx, global::Nethermind.Core.Specs.IReleaseSpec spec, global::Nethermind.Evm.Tracing.ITxTracer tracer, global::Nethermind.Evm.TransactionProcessing.ExecutionOptions opts, bool restore, bool commit, bool deleteCallerAccount, in global::Nethermind.Int256.UInt256 senderReservedGasPayment, global::Nethermind.Core.Address executingAccount, in global::Nethermind.Evm.TransactionSubstate substate, global::Nethermind.Evm.TransactionProcessing.GasConsumed spentGas, int statusCode)",
+      "operationSha256": "a79f839c62a15a213360443ce56073ef8a9e88aec7e487cd6556ab831ea46124"
+    },
+    {
+      "role": "frame.initial-state-gas",
+      "owner": "void global::Nethermind.Evm.VmState\u003CTGasPolicy\u003E.Initialize(TGasPolicy gas, long outputDestination, long outputLength, global::Nethermind.Evm.ExecutionType executionType, bool isTopLevel, bool isStatic, bool isCreateOnPreExistingAccount, bool isCreateStateGasCharged, bool newAccountCharged, global::Nethermind.Evm.ExecutionEnvironment env, in global::Nethermind.Evm.StackAccessTracker stateForAccessLists, in global::Nethermind.Evm.State.Snapshot snapshot)",
+      "operationSha256": "c8f592259949423bfa7cc04aa5bc56e5679242e87f49bfdf354fd8dcc7b6fbd5"
+    }
+  ],
+  "operationKinds": [
+    "Argument",
+    "ArrayElementReference",
+    "Binary",
+    "Block",
+    "Branch",
+    "CollectionExpression",
+    "CompoundAssignment",
+    "Conditional",
+    "ConditionalAccess",
+    "ConditionalAccessInstance",
+    "ConstantPattern",
+    "Conversion",
+    "DeclarationExpression",
+    "DefaultValue",
+    "ExpressionStatement",
+    "FieldReference",
+    "FlowCapture",
+    "FlowCaptureReference",
+    "Increment",
+    "InstanceReference",
+    "InterpolatedString",
+    "InterpolatedStringText",
+    "Interpolation",
+    "Invocation",
+    "IsNull",
+    "IsPattern",
+    "Labeled",
+    "Literal",
+    "LocalFunction",
+    "LocalReference",
+    "Loop",
+    "MethodBodyOperation",
+    "NegatedPattern",
+    "ObjectCreation",
+    "ObjectOrCollectionInitializer",
+    "ParameterReference",
+    "PropertyReference",
+    "Return",
+    "SimpleAssignment",
+    "Throw",
+    "Unary",
+    "Using",
+    "UsingDeclaration",
+    "VariableDeclaration",
+    "VariableDeclarationGroup",
+    "VariableDeclarator",
+    "VariableInitializer"
+  ]
+}

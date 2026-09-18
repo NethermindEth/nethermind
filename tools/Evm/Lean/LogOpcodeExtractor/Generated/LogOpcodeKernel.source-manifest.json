@@ -1,0 +1,752 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.0.0",
+  "irSha256": "df5f09ca0a1d49a01bbc72c015f65a1658ea9e5e5c362d74c175a10761069920",
+  "leanSha256": "f93eb104d780608f9ea51d5f9f5123bc1c6262a4ac1ff3386e860e95a2627a99",
+  "combinedSourceSha256": "3f948be61b30a6d1250526962596dc2d5c60eeb49bb153d21e7a968e3221cb6f",
+  "sources": [
+    {
+      "path": "src/Nethermind/Nethermind.Core/Collections/JournalCollection.cs",
+      "sha256": "5c1395b025da5a03749a5b64da804e53c6ff0a7aec4c02d30fd4b1c0e059c720",
+      "roslynSyntaxSha256": "c16c8a92d20585a8336f56bc076d81033547085c5ba5fef3dc8a345fa8e7e083"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Crypto/Hash256.cs",
+      "sha256": "ce570ece3b5cd5b8abf9d99491c03340fe32e235a6ad15c65b98e6dbddab18f1",
+      "roslynSyntaxSha256": "cd6fc640fb030f11e9f578bd13824e5a8091f071928e750aeeb9d74365764197"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/GasCostOf.cs",
+      "sha256": "10f1f1a29e7bf10a8220422a6f7571af60df4f05ad4075268e3b26559a73c6f5",
+      "roslynSyntaxSha256": "45a6c68f8d97b19ceaab26a7f0e3cb8185e72324141604ae4fe74cd11f62f450"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/LogEntry.cs",
+      "sha256": "e57411211976798af161df83a2cc338972d5846336603004f9eecc5e862a748a",
+      "roslynSyntaxSha256": "9dafe2e24da65c79d590d870547cb6d6358bde16e714b2518d8c908431673a62"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/TypeFlags.cs",
+      "sha256": "33d8404d3ec39fffbc9f665126255f9799a0ba433206a141f480f8144be95747",
+      "roslynSyntaxSha256": "cd12aa0fe2180b2aa3a7192272db4f0bd2289a7c08822b35e0f5c7b0f74ed47c"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/DispatchFlags.std.cs",
+      "sha256": "99c58367e5b90fa5904484f6e2fbf10745a54f6cd7d07275810c27028ad0eb2b",
+      "roslynSyntaxSha256": "23cfc5252927471be76176a53cc278f152e9a73d3bd8366116e577eeb10c39e1"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+      "sha256": "853f8f9b46e5deef1c655442694dfbb1f862de80d0ecdbee2d66e7282f974e84",
+      "roslynSyntaxSha256": "ad14cf6d31c8a486687b5f94b08f44cd587dabad49080d720ff70b67672b091c"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/EvmStack.cs",
+      "sha256": "561520be4f0fe1d533ddea9cfea7ff48edb2745b1f3adf1b45c24e6c0bed02ad",
+      "roslynSyntaxSha256": "48183012ad06c9caa60d2d8043472c5cf3f5f8e6db4751c4cc354ea42b2347c6"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/EvmStack.std.cs",
+      "sha256": "01a1b26ce105fa69fff94b8df171dcf11b85fe5462318a3ff9da3889ff41577e",
+      "roslynSyntaxSha256": "ce7c4493203e949c15acecbfa7bb12ec519f74e6037e8e88bde5093061873319"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/ExecutionEnvironment.cs",
+      "sha256": "c076225b688b1e04ed83cddc90a2ddbda69862333dc927945eb32d376e43e1db",
+      "roslynSyntaxSha256": "9e84b0cfe14d566c0a8f3136c57ade706c297df49c190ff618e77455242d3327"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "sha256": "3c31ba40c24a78bf11243b38859168350f02934806124e913da0560bc1a4350f",
+      "roslynSyntaxSha256": "e105a2bd215a48970e2dcc052d86fbaf58fe6240ba33f81059e9ec908d4d5daa"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/IGasPolicy.cs",
+      "sha256": "b4d26db87723243514f2f6b8a5e48d1176139105c3b012ad0f3956e59afc98a8",
+      "roslynSyntaxSha256": "11dd7afe2012838f3d2a90e0a958d8fe4679d332071e31038f8524664791d0ab"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instruction.cs",
+      "sha256": "6895d06277ac4f9369d7bdc748976576bf384f6f3a5a348a2e4fd3767a46a030",
+      "roslynSyntaxSha256": "44a0ca2a3b062f20418fab6426c442e63f8910ceae5b539a149d96ecad1cfa5f"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Stack.cs",
+      "sha256": "e44274b07b1a130045664718fad215e2a3dfd247f06421863573196d4c58f531",
+      "roslynSyntaxSha256": "1a013a9d4249a2e1d62f4d78fa47839944658d5910815da72946bc4d4d719a8f"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs",
+      "sha256": "ed5cdfdfe2ebf4d8c9f651572927efe7bdb5c75107db63a40577c5ec3ec2882f",
+      "roslynSyntaxSha256": "e061a255c2f2cb02f637841d6d187eede4a9a0ff3d07f4f30235f64eab2d1fa2"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Tracing/ITxTracer.cs",
+      "sha256": "9f2550f8c3407f494452386699040feab8aa597437b1cd4180d038d9fd0a9169",
+      "roslynSyntaxSha256": "569a95fb757ac9e3c5d155957b3d439ff10eb6dcd795586c73d7c33b7c7045b1"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "sha256": "4f36bb20057caec9c85bcd3621372563f4d47ba36a9cbf01be267af4e379bca1",
+      "roslynSyntaxSha256": "f3f48ff470c536908811ba208e43aa0a9ecd62ee1c91ba966099bd8d9044e7ff"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+      "sha256": "5148dd594e40ebb976179b1048f233914f54acc8d033d358cf3e2e7594e112b6",
+      "roslynSyntaxSha256": "30c7c88f7415d92edf7199f3c296c17c00e013b107910d62a812b573ea5fcc14"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "sha256": "45edba3691e09185e749485785990662ddea1af849bc6e4564f92b68a5137a6b",
+      "roslynSyntaxSha256": "c963717fad1ca1a279f30e2cb523f8536532557709d79e0be6d29bd088fb2164"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.std.cs",
+      "sha256": "357fbd35369424a379c8c29338f491627512d40a12199d7a3d9aac44c87ca92a",
+      "roslynSyntaxSha256": "b3e5598103b49014dc036ce6e05969b48558e1c2ba1d2b07c9fd1e28c4e2fa48"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "sha256": "7b7b6ddb753118b426d14976a3fe8e79f808320d6a09ea9cace9df19197f9f23",
+      "roslynSyntaxSha256": "6b9dc7d33d9c3b55a0f21bdbdee0cd9ef461984802ce95faba924d667b579c8b"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+      "sha256": "fce65ce5bb523c56fc8aa6ee0e4d092c940a5a90b174c820ffe262eeb5241c60",
+      "roslynSyntaxSha256": "4d51318303583f767b1f038db6b4412a602fc91592d97442f3ef1d8ff71f19a6"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/00_Olympic.cs",
+      "sha256": "8874f5ed3ae7bf5a0e0d1d127babd258393abcc3093b98abc296a1a347d61246",
+      "roslynSyntaxSha256": "0e0a1b93990ff702a29513ca8787a36a0bb658c800a365111b12189905b79ed2"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/01_Frontier.cs",
+      "sha256": "28318120065dc43c084c998b4cdef83669fa7b036ebe850802f0f9ff860df075",
+      "roslynSyntaxSha256": "b9de0e1a6d491bb87d5b553e0e4d86d85f9a2100a0136ec29bab67577bc46f89"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/02_Homestead.cs",
+      "sha256": "52dae1ff91fcc53fc95e4dc9adab9ce9686411620b88135a408728d56d6b0ad2",
+      "roslynSyntaxSha256": "0d5cdc988404eff3c692595d9e45414846b9c69ae606961ac3eea915a917dbc1"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/03_Dao.cs",
+      "sha256": "9354856fe91fde3d1394828e94bb700b6c765b9d42425221b6e1554898c34455",
+      "roslynSyntaxSha256": "d5839dfcaf2aecd067fa7d71ea7cc6adfe81afae76b2fbfd1b34c9c66e99b386"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/04_TangerineWhistle.cs",
+      "sha256": "82a6ea651cb884be41e1105d73cf726e1f095195322bf3293f663658da40939f",
+      "roslynSyntaxSha256": "e0b128fb283f2ebb6c8ccdb2790a840164a5ff85cdc86172c3921db21bda6874"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/05_SpuriousDragon.cs",
+      "sha256": "7fb950f37739ad6435c4dc5bcd3bf9b9566d3a6137479675276cea5a07196af5",
+      "roslynSyntaxSha256": "2648b8b20276cb8c3548157e78264a9f5607e8b71e2b1ba3aff65ef8974a8ab6"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/06_Byzantium.cs",
+      "sha256": "c47fcc9740483de8081c4591aa6b2994271602dacc0a0fb590e63e39f0288e73",
+      "roslynSyntaxSha256": "942dc79860f5e8a1146e29ed4322d1d2c6fef0fe4f9145680de7ea7a6b266ba0"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/07_Constantinople.cs",
+      "sha256": "a0ee60c7fb44400a18e1b5d6cc3fe324de557023c34f5c7427ecaf72da17cfbe",
+      "roslynSyntaxSha256": "6b453af68490a8ebbe1d375d3fba9ff46894d872b05f3ec9886af637986b7652"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/08_ConstantinopleFix.cs",
+      "sha256": "1a0336f8a06e64f40cdfbba3ecac79158ddf9f38d9694df346916c819819a6a5",
+      "roslynSyntaxSha256": "0a076a911378263af859281f99260f7c69a9a6af27c4a36f2889eab8eae3cea8"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/09_Istanbul.cs",
+      "sha256": "911764bbfd46d09c055d8a5a0a699c62b65ac96a528f76c294044a4c84b84714",
+      "roslynSyntaxSha256": "5e8125c4999b2383925d4ba3d2d08c6250cbf014b083b1e7b91e1db88e64812d"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/10_MuirGlacier.cs",
+      "sha256": "76508e7a64c3bf94a8da0145fedb4f277c1d06e75454a53d1c2d036fc9e9f5e8",
+      "roslynSyntaxSha256": "abefedb13f3256641b14b797d1d9368265b4ee6a7eb2929007664ddd9985fb60"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/11_Berlin.cs",
+      "sha256": "b02b45deb5dedddc9df19283c7491ffc3ab10ab0aaae313e44cdafca9ee547b0",
+      "roslynSyntaxSha256": "7d01b723d94d97bcf356e76fb9b40ab8c143658b3ff31269a4df15df3fa5ff12"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/12_London.cs",
+      "sha256": "06ea8bd017ccff59759026a801138bd794919e8493d49f8ef05385276662f8ef",
+      "roslynSyntaxSha256": "e513c4159beb54885b350c23529367cf396aa39c5c1f9eb2cb910a5dfb278598"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/13_ArrowGlacier.cs",
+      "sha256": "267c4b5529156e692ac1d1827f189b988f07d398bda986befef9561234c94491",
+      "roslynSyntaxSha256": "1f09b08af1150303eac29ced91f3f32f9b58626028b79c29b7b8d3e920a09f64"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/14_GrayGlacier.cs",
+      "sha256": "a3904920bc25153c271057fe3b990b183c9cf93bba3a393c1f7561c750907a2e",
+      "roslynSyntaxSha256": "5bc5272562dd40637d6cab51e17fb2d603686cebd60521e31a9cd82b469ed295"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/15_Paris.cs",
+      "sha256": "90c0f08765e2b50a8fadc2fdfcbe43965b9352e0a17ac692676403eb95972abd",
+      "roslynSyntaxSha256": "4357bd9fb50e8de001933552d8fef4f84745fd514fecd13762794ce79eb7db46"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/16_Shanghai.cs",
+      "sha256": "dcbfdacf3b6c7a8db0e8d5abc1ad3c388d407ae989395d52f1725721a5cc767e",
+      "roslynSyntaxSha256": "f5b06f1307bd7cc2f86f8356eef606fda6d9b741d8f77b98973372ddab7b97cf"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/17_Cancun.cs",
+      "sha256": "29b93ca43e919352495a0406242d7b49ce9423117aeec2e1bb94427fff20aa79",
+      "roslynSyntaxSha256": "d617713f6b487f514cf69316e62110c649a3bee2392b625a376ecfe618d5a8d8"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/18_Prague.cs",
+      "sha256": "949248f5f22162433e7f4e17a7e5a35b4cf54416836738831edd3b1c0e5a6b8c",
+      "roslynSyntaxSha256": "f213102152f9ee08ff624410edf92ef4ba2f4e2f80352fe163fecc467bdf0f74"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/19_Osaka.cs",
+      "sha256": "24da07f0c85e3c5822c10f010c4b35a5ca21046ac6b21f5bb26397de2ef5cf77",
+      "roslynSyntaxSha256": "c9185d854f0a99da987d2340ca719f4f34d37f3ed01a6acbd2b5272317d885e2"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/20_BPO1.cs",
+      "sha256": "6fc6d2c0fc7159882c03ad44006da8aad1354d68d2d1fe750ef8a551b43bbad8",
+      "roslynSyntaxSha256": "8ee69ebcbe8db9c8750355c5977addf30fe8f91bdad6ee8c21553b3c23c3e6b9"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/21_BPO2.cs",
+      "sha256": "4788ce812f73163686b2b419970d70bdae4de73523fe6ad426a618dd1f1d40d9",
+      "roslynSyntaxSha256": "38d4dd78bf32e7efd93ca1e60958e0bc3bcf2ee86117b3d968013c308ea2811e"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/25_Amsterdam.cs",
+      "sha256": "4dfbf9079e9dce30423327ae4433f32e49388d403a8fedfcf253f94f79450c6a",
+      "roslynSyntaxSha256": "4108819fdd39711cca0fa7a55bf41af53925d4784cc66abbb4cee04a12350d8c"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/NamedReleaseSpec.cs",
+      "sha256": "ea9400ed44270fb18766a5dbd20d4dd7e7ee95b1bb7ab7ee6d5406cca03a46cc",
+      "roslynSyntaxSha256": "9791e97d5e08917a12d2ef900e300f1887a51fd429d10418d9636785e8e0ad36"
+    }
+  ],
+  "rawSources": [
+    {
+      "path": "src/Nethermind/Directory.Build.targets",
+      "sha256": "0598cebaef1df41102a18a3f9ace810bed1e4e64b8471d055724b4a394dccec6"
+    }
+  ],
+  "admissions": [
+    {
+      "key": "src/Nethermind/Nethermind.Core/GasCostOf.cs:GasCostOf:GasCostOf/0:field:Memory/0/0/",
+      "templateSha256": "186c8fa0f801e0d359c5afbf17d76c2743f01b24f32ae141a664c247989abca1",
+      "sourceSyntaxSha256": "186c8fa0f801e0d359c5afbf17d76c2743f01b24f32ae141a664c247989abca1"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Core/GasCostOf.cs:GasCostOfLog:GasCostOf/0:field:Log/0/0/",
+      "templateSha256": "dc8f5ec49870adf845b42441d1a4ea6eb68c5da87f1e093490281c4f26a58292",
+      "sourceSyntaxSha256": "dc8f5ec49870adf845b42441d1a4ea6eb68c5da87f1e093490281c4f26a58292"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Core/GasCostOf.cs:GasCostOfLog:GasCostOf/0:field:LogTopic/0/0/",
+      "templateSha256": "24919077430d8e3b1276b1da7c0ea0c337db585da0b49e4f52b28e4a064ac637",
+      "sourceSyntaxSha256": "24919077430d8e3b1276b1da7c0ea0c337db585da0b49e4f52b28e4a064ac637"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Core/GasCostOf.cs:GasCostOfLog:GasCostOf/0:field:LogData/0/0/",
+      "templateSha256": "8716dafbce566ed3f7fbaaca6e9c6dfb433772120ae3f314c42b5c82af263b68",
+      "sourceSyntaxSha256": "8716dafbce566ed3f7fbaaca6e9c6dfb433772120ae3f314c42b5c82af263b68"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Core/TypeFlags.cs:TypeFlags:compilation-unit/0:type:IFlag/0/0/",
+      "templateSha256": "fc07b156384dfbfbf109a7040bf2f11786dcbc50e57635de31e9344d46d3a069",
+      "sourceSyntaxSha256": "fc07b156384dfbfbf109a7040bf2f11786dcbc50e57635de31e9344d46d3a069"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Core/TypeFlags.cs:TypeFlags:compilation-unit/0:type:OffFlag/0/0/",
+      "templateSha256": "837798a144835ad9e52d59074387712c4a0f8bcec6be7c51cde55609fcf70103",
+      "sourceSyntaxSha256": "837798a144835ad9e52d59074387712c4a0f8bcec6be7c51cde55609fcf70103"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Core/TypeFlags.cs:TypeFlags:compilation-unit/0:type:OnFlag/0/0/",
+      "templateSha256": "add37b85db306767de5712b3032ac4a9052f293dd03d5ce4e4f21d8640da9849",
+      "sourceSyntaxSha256": "add37b85db306767de5712b3032ac4a9052f293dd03d5ce4e4f21d8640da9849"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/Instruction.cs:Instruction:compilation-unit/0:type:Instruction/0/0/",
+      "templateSha256": "711a9a9e715ec14a301bfa797cafa90c5edb45896a6be9657f208af0950f7e0e",
+      "sourceSyntaxSha256": "711a9a9e715ec14a301bfa797cafa90c5edb45896a6be9657f208af0950f7e0e"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/EvmStack.cs:EvmStackLog:EvmStack/0:method:ReadUInt256FromSlot/0/2/byte,UInt256",
+      "templateSha256": "1aa3995e0e1532c55ac2ab4fa72e456c57d170c85b436f769de1ed8eb2b18377",
+      "sourceSyntaxSha256": "1aa3995e0e1532c55ac2ab4fa72e456c57d170c85b436f769de1ed8eb2b18377"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/EvmStack.cs:EvmStackLog:EvmStack/0:method:ReadMemoryPositionFromSlot/0/2/byte,UInt256",
+      "templateSha256": "b74af73a2b2805e82e82b8c488a94452a05d37bd4e11bec0c587b556100d3d0d",
+      "sourceSyntaxSha256": "b74af73a2b2805e82e82b8c488a94452a05d37bd4e11bec0c587b556100d3d0d"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/EvmStack.cs:EvmStackLog:EvmStack/0:method:PopMemoryPositionAndUInt256/0/2/UInt256,UInt256",
+      "templateSha256": "fd85f4a7897838cf631088531e2787e47dc0395f771bc4052d78715f7fba363c",
+      "sourceSyntaxSha256": "fd85f4a7897838cf631088531e2787e47dc0395f771bc4052d78715f7fba363c"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/EvmStack.cs:EvmStackLog:EvmStack/0:method:PopWord256/0/1/Span\u003Cbyte\u003E",
+      "templateSha256": "fefe83fa59804dc547ba240d48155196c5dc391b9b2aa60ca1f916f75ee1a684",
+      "sourceSyntaxSha256": "fefe83fa59804dc547ba240d48155196c5dc391b9b2aa60ca1f916f75ee1a684"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/EvmStack.std.cs:EvmStackStandardLog:EvmStack/0:method:ReadBeWord/0/1/byte",
+      "templateSha256": "d8eaa4d2d12ff721cd39a419ac77d29173f08c3476d31a7958adf06c3a63df7d",
+      "sourceSyntaxSha256": "d8eaa4d2d12ff721cd39a419ac77d29173f08c3476d31a7958adf06c3a63df7d"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs:EvmPooledMemory:EvmPooledMemory/0:field:WordSize/0/0/",
+      "templateSha256": "5cdd4cde5546f289daea1a411a921562c08d53c6a74b6247b9e831bf09550382",
+      "sourceSyntaxSha256": "5cdd4cde5546f289daea1a411a921562c08d53c6a74b6247b9e831bf09550382"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs:EvmPooledMemory:EvmPooledMemory/0:field:MaxMemorySize/0/0/",
+      "templateSha256": "0811ed8e92e677061531d6e02984b6b1740a2087e0912d00af25a8b1bb9fb439",
+      "sourceSyntaxSha256": "0811ed8e92e677061531d6e02984b6b1740a2087e0912d00af25a8b1bb9fb439"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs:EvmPooledMemory:EvmPooledMemory/0:property:Size/0/0/",
+      "templateSha256": "7593c27346c3059372e6ef46dade37354e5a476dceca059265e62b9805c4a5de",
+      "sourceSyntaxSha256": "7593c27346c3059372e6ef46dade37354e5a476dceca059265e62b9805c4a5de"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs:EvmPooledMemory:EvmPooledMemory/0:method:CheckMemoryAccessViolation/0/4/UInt256,UInt256,ulong,bool",
+      "templateSha256": "53272a676adc4561660d53cbb41a0f8eb09f3b15a39a6c34cea6ea5afcbca381",
+      "sourceSyntaxSha256": "53272a676adc4561660d53cbb41a0f8eb09f3b15a39a6c34cea6ea5afcbca381"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs:EvmPooledMemory:EvmPooledMemory/0:method:CheckMemoryAccessViolation/0/4/UInt256,ulong,ulong,bool",
+      "templateSha256": "e898097a524d56afc1ccf2951039aab9463f3144f6a70b2c38692aa56383a784",
+      "sourceSyntaxSha256": "e898097a524d56afc1ccf2951039aab9463f3144f6a70b2c38692aa56383a784"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs:EvmPooledMemory:EvmPooledMemory/0:method:CalculateMemoryCost/0/3/UInt256,UInt256,bool",
+      "templateSha256": "26f85879a9bf25dd06ea38fe9cfe6a2e3e29654614609c7ce9f2c49eb213e620",
+      "sourceSyntaxSha256": "26f85879a9bf25dd06ea38fe9cfe6a2e3e29654614609c7ce9f2c49eb213e620"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs:EvmPooledMemory:EvmPooledMemory/0:method:ComputeMemoryExpansionCost/0/1/",
+      "templateSha256": "77e21ae6431f38b86a48ba1f62cf4ff2448e4564c441f0148a47fa354e712fb7",
+      "sourceSyntaxSha256": "77e21ae6431f38b86a48ba1f62cf4ff2448e4564c441f0148a47fa354e712fb7"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs:EvmPooledMemory:EvmPooledMemory/0:method:UpdateSize/0/2/",
+      "templateSha256": "c6d29c8c3d22bae79ab7809587ebd83f073d97cb2f9755a43d068d307fba4aa4",
+      "sourceSyntaxSha256": "c6d29c8c3d22bae79ab7809587ebd83f073d97cb2f9755a43d068d307fba4aa4"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs:EvmPooledMemoryLog:EvmPooledMemory/0:method:TryLoad/0/3/UInt256,UInt256,ReadOnlyMemory\u003Cbyte\u003E",
+      "templateSha256": "e81272ff12c8dc03d405eb2e8d31ffd95f3a8066987b8e6210b039c1870cd1dc",
+      "sourceSyntaxSha256": "e81272ff12c8dc03d405eb2e8d31ffd95f3a8066987b8e6210b039c1870cd1dc"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs:EvmPooledMemoryLog:EvmPooledMemory/0:method:GetBackingMemory/0/2/int,int",
+      "templateSha256": "b18488d5f449ef0e3b3766ca02b80c949860616c6605e06b0b4fedd290c19d09",
+      "sourceSyntaxSha256": "b18488d5f449ef0e3b3766ca02b80c949860616c6605e06b0b4fedd290c19d09"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/GasPolicy/IGasPolicy.cs:IGasPolicy:IGasPolicy/1:method:UpdateMemoryCost/0/4/TSelf,UInt256,UInt256,EvmPooledMemory",
+      "templateSha256": "63c9263a32d7733c6d440ed40714e92802e483ce119e4390cdf6b911d8b483a7",
+      "sourceSyntaxSha256": "63c9263a32d7733c6d440ed40714e92802e483ce119e4390cdf6b911d8b483a7"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/GasPolicy/IGasPolicy.cs:IGasPolicyLog:IGasPolicy/1:method:TryConsumeLogEmission/0/3/",
+      "templateSha256": "540cb2864d72c991976e25b3e92ed4833e3aed2c79afeaa245c881414955c32f",
+      "sourceSyntaxSha256": "540cb2864d72c991976e25b3e92ed4833e3aed2c79afeaa245c881414955c32f"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs:EthereumGasPolicy:EthereumGasPolicy/0:method:GetRemainingGas/0/1/",
+      "templateSha256": "bbf1839beae4849581235e1dfef8499fa63b755d934e9eff831281b6171327e2",
+      "sourceSyntaxSha256": "bbf1839beae4849581235e1dfef8499fa63b755d934e9eff831281b6171327e2"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs:EthereumGasPolicy:EthereumGasPolicy/0:method:ConsumeRaw/0/2/",
+      "templateSha256": "485e64b9acbaad49810a5cc5cbebecddb853d1217f50a762126865d17aaa2057",
+      "sourceSyntaxSha256": "485e64b9acbaad49810a5cc5cbebecddb853d1217f50a762126865d17aaa2057"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs:EthereumGasPolicy:EthereumGasPolicy/0:method:UpdateMemoryCost/0/4/EthereumGasPolicy,UInt256,UInt256,EvmPooledMemory",
+      "templateSha256": "4eb4437c9c80c8e8e388f0cf6f930cb5b7a1bec14ca697dbab7cf91c1348438e",
+      "sourceSyntaxSha256": "4eb4437c9c80c8e8e388f0cf6f930cb5b7a1bec14ca697dbab7cf91c1348438e"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs:EthereumGasPolicy:EthereumGasPolicy/0:method:UpdateGas/0/2/",
+      "templateSha256": "40d3c1827005de750f566096cdde91462e8a517b33616fc9a294583934ea6b73",
+      "sourceSyntaxSha256": "40d3c1827005de750f566096cdde91462e8a517b33616fc9a294583934ea6b73"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs:EthereumGasPolicyLog:EthereumGasPolicy/0:method:TryConsumeLogEmission/0/3/",
+      "templateSha256": "a1674b4c9803f1cdce549348d9cda4faced853efe1510bd809c6a4b949863212",
+      "sourceSyntaxSha256": "a1674b4c9803f1cdce549348d9cda4faced853efe1510bd809c6a4b949863212"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Stack.cs:InstructionStack:EvmInstructions/0:type:IOpCount/0/0/",
+      "templateSha256": "269f5b114bab039fc0fc84f0b2d3db997ed28d4ca6afbc43a2eb3001335eb3ca",
+      "sourceSyntaxSha256": "269f5b114bab039fc0fc84f0b2d3db997ed28d4ca6afbc43a2eb3001335eb3ca"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Stack.cs:InstructionStack:EvmInstructions/0:type:Op0/0/0/",
+      "templateSha256": "fb9142eba96e1fe1a5f32567ae293eff1142baebcd5c90f4692719748a53ca5d",
+      "sourceSyntaxSha256": "fb9142eba96e1fe1a5f32567ae293eff1142baebcd5c90f4692719748a53ca5d"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Stack.cs:InstructionStack:EvmInstructions/0:type:Op1/0/0/",
+      "templateSha256": "2a06cdd3de085f2a48874916868ca6649a50d2455baa9d017d4a441112393637",
+      "sourceSyntaxSha256": "2a06cdd3de085f2a48874916868ca6649a50d2455baa9d017d4a441112393637"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Stack.cs:InstructionStack:EvmInstructions/0:type:Op2/0/0/",
+      "templateSha256": "a6c046106230348c0c77ceabed3411c3a1d815adf639c2f5e224d488c3c278e7",
+      "sourceSyntaxSha256": "a6c046106230348c0c77ceabed3411c3a1d815adf639c2f5e224d488c3c278e7"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Stack.cs:InstructionStack:EvmInstructions/0:type:Op3/0/0/",
+      "templateSha256": "d4d0f198769cf929ae1b69e725808d22c46987fcd6677b9bc6bb7d8b735a1e4e",
+      "sourceSyntaxSha256": "d4d0f198769cf929ae1b69e725808d22c46987fcd6677b9bc6bb7d8b735a1e4e"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Stack.cs:InstructionStack:EvmInstructions/0:type:Op4/0/0/",
+      "templateSha256": "d892c0bc01565ee98e2711eab3741bb69f5e9453f8be9e138188b0ea17c983b2",
+      "sourceSyntaxSha256": "d892c0bc01565ee98e2711eab3741bb69f5e9453f8be9e138188b0ea17c983b2"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Stack.cs:InstructionLog:EvmInstructions/0:method:InstructionLog/2/3/",
+      "templateSha256": "96597737b1264866568ed0c63c7153c5152cd0eac30ae8db217fe424b79e538b",
+      "sourceSyntaxSha256": "96597737b1264866568ed0c63c7153c5152cd0eac30ae8db217fe424b79e538b"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/DispatchFlags.std.cs:DispatchFlags:compilation-unit/0:type:DispatchFlags/0/0/",
+      "templateSha256": "c37971f331d3cb3a89de8159c08d98d360dd47ae386ae909e7b6c80d3e06e586",
+      "sourceSyntaxSha256": "c37971f331d3cb3a89de8159c08d98d360dd47ae386ae909e7b6c80d3e06e586"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs:EthereumVirtualMachine:compilation-unit/0:type:EthereumVirtualMachine/0/0/",
+      "templateSha256": "2a36ed0c3e9cccf0f25b6752f1a5df5a9c912816a67d33c783f4d646979ff44a",
+      "sourceSyntaxSha256": "2a36ed0c3e9cccf0f25b6752f1a5df5a9c912816a67d33c783f4d646979ff44a"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs:VirtualMachineLog:VirtualMachine/1:property:TxTracer/0/0/",
+      "templateSha256": "4dc3d7ef1c8374ab28ac160c3be550d8c09eaa36c3f952d14df586f180955d48",
+      "sourceSyntaxSha256": "4dc3d7ef1c8374ab28ac160c3be550d8c09eaa36c3f952d14df586f180955d48"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs:VirtualMachineLog:VirtualMachine/1:property:VmState/0/0/",
+      "templateSha256": "8ea2b141f677e578123de47b9d789e7aa277bfd837892072e384313a3aaecb01",
+      "sourceSyntaxSha256": "8ea2b141f677e578123de47b9d789e7aa277bfd837892072e384313a3aaecb01"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs:VirtualMachineLog:VirtualMachine/1:method:AddLog/0/1/",
+      "templateSha256": "9f3be3485110074978b38ec15d51cd549204000e8819d3a84ca46258fbfc09b0",
+      "sourceSyntaxSha256": "9f3be3485110074978b38ec15d51cd549204000e8819d3a84ca46258fbfc09b0"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.std.cs:VirtualMachineStandard:VirtualMachine/1:field:_opcodeTablesBySpec/0/0/",
+      "templateSha256": "8e81321812880dba0162856918add6d15b66f356bf02eb99c4af5f98066bf369",
+      "sourceSyntaxSha256": "8e81321812880dba0162856918add6d15b66f356bf02eb99c4af5f98066bf369"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.std.cs:VirtualMachineStandard:VirtualMachine/1:field:OpcodeRefreshInterval/0/0/",
+      "templateSha256": "45de813f3f902cd809bc8f54ccf95e36c17e67a6cabb182fe9797115e3b06cac",
+      "sourceSyntaxSha256": "45de813f3f902cd809bc8f54ccf95e36c17e67a6cabb182fe9797115e3b06cac"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.std.cs:VirtualMachineStandard:VirtualMachine/1:field:OpcodeRefreshLimit/0/0/",
+      "templateSha256": "4f5a7ca0dfe7c45f68e358d774ad78118ef551e93cf984427a961c8fdd32c452",
+      "sourceSyntaxSha256": "4f5a7ca0dfe7c45f68e358d774ad78118ef551e93cf984427a961c8fdd32c452"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.std.cs:VirtualMachineStandard:VirtualMachine/1:field:_txCount/0/0/",
+      "templateSha256": "20ea52bc1bf0d976e05b15e44473504c0ccbe2581d3b6a2f5beb4fea68591961",
+      "sourceSyntaxSha256": "20ea52bc1bf0d976e05b15e44473504c0ccbe2581d3b6a2f5beb4fea68591961"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.std.cs:VirtualMachineStandard:VirtualMachine/1:method:GetOpcodeTable/0/0/",
+      "templateSha256": "01090d180bd50447a703f2a15d644172901b58657734e3d6c952054a834365aa",
+      "sourceSyntaxSha256": "01090d180bd50447a703f2a15d644172901b58657734e3d6c952054a834365aa"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.std.cs:VirtualMachineStandard:VirtualMachine/1:method:ShouldRefreshOpcodes/0/0/",
+      "templateSha256": "ea7faefcf0e2304fe5947146c39f14046f825b17aeb5c7894181c605e9184f89",
+      "sourceSyntaxSha256": "ea7faefcf0e2304fe5947146c39f14046f825b17aeb5c7894181c605e9184f89"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs:VirtualMachineDispatch:VirtualMachine/1:method:GetOpcodeHandlers/2/0/",
+      "templateSha256": "75b75d65b636bb96fa1ae4640255cc1e23b1c3015882d7475fcc54d6dac1487b",
+      "sourceSyntaxSha256": "75b75d65b636bb96fa1ae4640255cc1e23b1c3015882d7475fcc54d6dac1487b"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs:VirtualMachineDispatch:VirtualMachine/1:method:PrepareOpcodes/1/0/",
+      "templateSha256": "c44cee886ad0274aaf70b3ce0ff953775d85ce071c95a247f0b33f368d5575c9",
+      "sourceSyntaxSha256": "c44cee886ad0274aaf70b3ce0ff953775d85ce071c95a247f0b33f368d5575c9"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs:VirtualMachineDispatch:VirtualMachine/1:method:PrepareOpcodes/2/0/",
+      "templateSha256": "c9c7727aba6a582656f44004d907026c1f19a2fe16e5ef93ef0bd293bf9c5c4f",
+      "sourceSyntaxSha256": "c9c7727aba6a582656f44004d907026c1f19a2fe16e5ef93ef0bd293bf9c5c4f"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs:VirtualMachineDispatch:VirtualMachine/1:type:OpcodeTable/0/0/",
+      "templateSha256": "daf0e50bec3d62ced040e395477f458e51d689ead1c56f602c7a18dca4fb06f9",
+      "sourceSyntaxSha256": "daf0e50bec3d62ced040e395477f458e51d689ead1c56f602c7a18dca4fb06f9"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs:VirtualMachineDispatch:VirtualMachine/1:method:RunDispatchLoop/2/3/",
+      "templateSha256": "a49f1e30c2c935cfef7e9e7405443e07c2a73a950cdaebf9a00499bba8faa407",
+      "sourceSyntaxSha256": "a49f1e30c2c935cfef7e9e7405443e07c2a73a950cdaebf9a00499bba8faa407"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs:VirtualMachineDispatch:VirtualMachine/1:method:ExecuteOpcode/4/5/",
+      "templateSha256": "e19f009aacb4d39744b48d2201135255405303e62ee507038676672b514bb305",
+      "sourceSyntaxSha256": "e19f009aacb4d39744b48d2201135255405303e62ee507038676672b514bb305"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs:VirtualMachineDispatch:VirtualMachine/1:method:ExitCheckedOpcode/0/4/",
+      "templateSha256": "a714a325afb85e760c40e8a202eea2bdc234b5de4006775b002123fca0bf865e",
+      "sourceSyntaxSha256": "a714a325afb85e760c40e8a202eea2bdc234b5de4006775b002123fca0bf865e"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs:VirtualMachineOpcodeHandlers:VirtualMachine/1:type:IOpcodeBody/0/0/",
+      "templateSha256": "f866119a5b1f6c8190be70e2fdd66ecc5820696623310db9e37f5a081b56185c",
+      "sourceSyntaxSha256": "f866119a5b1f6c8190be70e2fdd66ecc5820696623310db9e37f5a081b56185c"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs:VirtualMachineOpcodeHandlers:VirtualMachine/1:method:OpcodeHandler/3/0/",
+      "templateSha256": "ea9dc570ad183461562fb0a5b0f29569850de65bcb585621d37addbff58817a5",
+      "sourceSyntaxSha256": "ea9dc570ad183461562fb0a5b0f29569850de65bcb585621d37addbff58817a5"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs:VirtualMachineOpcodeHandlers:VirtualMachine/1:method:GenerateOpcodeHandlers/2/1/IReleaseSpec",
+      "templateSha256": "2a7f84d9ca5adea81b2d2c483ffc996e3fe42bda792bbea648aec674d826fe29",
+      "sourceSyntaxSha256": "2a7f84d9ca5adea81b2d2c483ffc996e3fe42bda792bbea648aec674d826fe29"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs:LogOpcode:VirtualMachine/1:type:LogOpcode/1/0/",
+      "templateSha256": "7c4981d22cfeacc9b7710aa3722b5a46973e9e166b8310f0f8333d15a9a689c5",
+      "sourceSyntaxSha256": "7c4981d22cfeacc9b7710aa3722b5a46973e9e166b8310f0f8333d15a9a689c5"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VmState.cs:VmStateLog:VmState/1:property:IsStatic/0/0/",
+      "templateSha256": "c2503f6939fede3f362f41fe6f80fd54eb9c53c760703a347e7509944e368101",
+      "sourceSyntaxSha256": "c2503f6939fede3f362f41fe6f80fd54eb9c53c760703a347e7509944e368101"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VmState.cs:VmStateLog:VmState/1:property:AccessTracker/0/0/",
+      "templateSha256": "2272b401b16286adbd7cedb1f09ae425e94e61b8ec007393750b1fd2fbe72aca",
+      "sourceSyntaxSha256": "2272b401b16286adbd7cedb1f09ae425e94e61b8ec007393750b1fd2fbe72aca"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VmState.cs:VmStateLog:VmState/1:property:Env/0/0/",
+      "templateSha256": "dd5c07cde7e8ffe618c962200203b16b238e9f9471b86f6801305523c3b0f117",
+      "sourceSyntaxSha256": "dd5c07cde7e8ffe618c962200203b16b238e9f9471b86f6801305523c3b0f117"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/VmState.cs:VmStateLog:VmState/1:property:Memory/0/0/",
+      "templateSha256": "8d124859156c092006ab9838225c0a41709a8582930f804155e0b295b00dd662",
+      "sourceSyntaxSha256": "8d124859156c092006ab9838225c0a41709a8582930f804155e0b295b00dd662"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/ExecutionEnvironment.cs:ExecutionEnvironmentLog:ExecutionEnvironment/0:property:ExecutingAccount/0/0/",
+      "templateSha256": "397fd728142b238ac829114677f8d1a7b3dd5e822203271ab374d9a94830f221",
+      "sourceSyntaxSha256": "397fd728142b238ac829114677f8d1a7b3dd5e822203271ab374d9a94830f221"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs:StackAccessTrackerLog:StackAccessTracker/0:property:Logs/0/0/",
+      "templateSha256": "ee23e0a83463e13566ef08527498addfabf2bbdd3c74617bd7583c8c03cbc987",
+      "sourceSyntaxSha256": "ee23e0a83463e13566ef08527498addfabf2bbdd3c74617bd7583c8c03cbc987"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs:TrackingStateLog:TrackingState/0:property:Logs/0/0/",
+      "templateSha256": "ccb9dad9042639e45ae9742891c18b4097b0f6abe9592dc37097fe431b32a832",
+      "sourceSyntaxSha256": "ccb9dad9042639e45ae9742891c18b4097b0f6abe9592dc37097fe431b32a832"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Core/Collections/JournalCollection.cs:JournalCollectionLog:JournalCollection/1:field:_list/0/0/",
+      "templateSha256": "eab8cfadb5e068ea144ffe0797f6cd8eeaf046244aa00f35264047ee77488800",
+      "sourceSyntaxSha256": "eab8cfadb5e068ea144ffe0797f6cd8eeaf046244aa00f35264047ee77488800"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Core/Collections/JournalCollection.cs:JournalCollectionLog:JournalCollection/1:method:Add/0/1/",
+      "templateSha256": "e134bc39030d67c67ad55eb47cfb05d9f9dfea22b1bb64a84590693ce9ff6da5",
+      "sourceSyntaxSha256": "e134bc39030d67c67ad55eb47cfb05d9f9dfea22b1bb64a84590693ce9ff6da5"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Core/LogEntry.cs:LogEntry:compilation-unit/0:type:LogEntry/0/0/",
+      "templateSha256": "eecbaf1329756bb92bd2556d5a22f5b040c253c9579fc42ffecd5e3e266125a7",
+      "sourceSyntaxSha256": "eecbaf1329756bb92bd2556d5a22f5b040c253c9579fc42ffecd5e3e266125a7"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Core/Crypto/Hash256.cs:Hash256Log:Hash256/0:field:Size/0/0/",
+      "templateSha256": "8f7ec9866f5284d3e91b076046005f6f7dbd2f1f08500867464e93f4ab16e4ff",
+      "sourceSyntaxSha256": "8f7ec9866f5284d3e91b076046005f6f7dbd2f1f08500867464e93f4ab16e4ff"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Core/Crypto/Hash256.cs:Hash256Log:Hash256/0:field:_hash256/0/0/",
+      "templateSha256": "040931689d3f7909e9d7075d39cf449df86fbf5127db15e2973c81bea9589229",
+      "sourceSyntaxSha256": "040931689d3f7909e9d7075d39cf449df86fbf5127db15e2973c81bea9589229"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Core/Crypto/Hash256.cs:Hash256Log:Hash256/0:property:Bytes/0/0/",
+      "templateSha256": "1afba80d858d25d2b45941d2ee752e67dc8ae88971378e0b12abeeceaa1b8c89",
+      "sourceSyntaxSha256": "1afba80d858d25d2b45941d2ee752e67dc8ae88971378e0b12abeeceaa1b8c89"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Core/Crypto/Hash256.cs:Hash256Log:Hash256/0:constructor:Hash256/0/1/ReadOnlySpan\u003Cbyte\u003E",
+      "templateSha256": "153951e686b73e8e32c85536fcd4e594d8d834cfe81effd5a0f9df452e0af927",
+      "sourceSyntaxSha256": "153951e686b73e8e32c85536fcd4e594d8d834cfe81effd5a0f9df452e0af927"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/Tracing/ITxTracer.cs:ITxTracerLog:ITxTracer/0:property:IsTracingLogs/0/0/",
+      "templateSha256": "92e52ed3b1d7d2d342092f524b131164729089aa21af1ccd4d5877fe3cea85ec",
+      "sourceSyntaxSha256": "92e52ed3b1d7d2d342092f524b131164729089aa21af1ccd4d5877fe3cea85ec"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/Tracing/ITxTracer.cs:ITxTracerLog:ITxTracer/0:method:ReportLog/0/1/",
+      "templateSha256": "df62d7948473ecd2008200580a05f3d013486d8714977508db1c0f90dacf56d6",
+      "sourceSyntaxSha256": "df62d7948473ecd2008200580a05f3d013486d8714977508db1c0f90dacf56d6"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs:BlockProcessingModule:BlockProcessingModule/0:method:Load/0/1/ContainerBuilder",
+      "templateSha256": "94a0b9d89711080715bf075fca6130dcdb2b18335590f3e120b4b90ccc8037de",
+      "sourceSyntaxSha256": "94a0b9d89711080715bf075fca6130dcdb2b18335590f3e120b4b90ccc8037de"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/NamedReleaseSpec.cs:NamedReleaseSpec:compilation-unit/0:type:NamedReleaseSpec/0/0/",
+      "templateSha256": "c67d05aba92862851bc6b4971a6a94be69a6eb0d411b06c18cfa893d8183019f",
+      "sourceSyntaxSha256": "c67d05aba92862851bc6b4971a6a94be69a6eb0d411b06c18cfa893d8183019f"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/NamedReleaseSpec.cs:NamedReleaseSpec:compilation-unit/0:type:NamedReleaseSpec/1/0/",
+      "templateSha256": "c453ca758e14070d8b8475161d6953f0262998d395fa8de49c535ddfcb8079c0",
+      "sourceSyntaxSha256": "c453ca758e14070d8b8475161d6953f0262998d395fa8de49c535ddfcb8079c0"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/00_Olympic.cs:ForkOlympic:compilation-unit/0:type:Olympic/0/0/",
+      "templateSha256": "a89568d2b17c9a24e4ba0f8194d3d74fb9538484c688a44988cb2d7585eccdc6",
+      "sourceSyntaxSha256": "a89568d2b17c9a24e4ba0f8194d3d74fb9538484c688a44988cb2d7585eccdc6"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/01_Frontier.cs:ForkFrontier:compilation-unit/0:type:Frontier/0/0/",
+      "templateSha256": "ed95c3a8b896340bd42595aec1fae40f0a8a902619f25cd3698eeec2803dee76",
+      "sourceSyntaxSha256": "ed95c3a8b896340bd42595aec1fae40f0a8a902619f25cd3698eeec2803dee76"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/02_Homestead.cs:ForkHomestead:compilation-unit/0:type:Homestead/0/0/",
+      "templateSha256": "eb82fdf0780624aa35fb644dd53b1bede3074a498875c455b550a9aea0a4a850",
+      "sourceSyntaxSha256": "eb82fdf0780624aa35fb644dd53b1bede3074a498875c455b550a9aea0a4a850"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/03_Dao.cs:ForkDao:compilation-unit/0:type:Dao/0/0/",
+      "templateSha256": "f1d1de4a9a3c3d6fd51d5427ac6d015485000448b490aace37a449b9e2d5fc4a",
+      "sourceSyntaxSha256": "f1d1de4a9a3c3d6fd51d5427ac6d015485000448b490aace37a449b9e2d5fc4a"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/04_TangerineWhistle.cs:ForkTangerineWhistle:compilation-unit/0:type:TangerineWhistle/0/0/",
+      "templateSha256": "00bcad52ae07d3aa925f06626cbd043d0b9e78e4f383f2117e50f4683ff857f5",
+      "sourceSyntaxSha256": "00bcad52ae07d3aa925f06626cbd043d0b9e78e4f383f2117e50f4683ff857f5"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/05_SpuriousDragon.cs:ForkSpuriousDragon:compilation-unit/0:type:SpuriousDragon/0/0/",
+      "templateSha256": "5ea6253e1a8208afbd38b5900855c88b71e2d04b02ccf575f81dbaa3ad5a645e",
+      "sourceSyntaxSha256": "5ea6253e1a8208afbd38b5900855c88b71e2d04b02ccf575f81dbaa3ad5a645e"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/06_Byzantium.cs:ForkByzantium:compilation-unit/0:type:Byzantium/0/0/",
+      "templateSha256": "2e24aed2e4cf9c05f21823c8fe003723be06d8bc4b4bcd8d01f42abc14b754d2",
+      "sourceSyntaxSha256": "2e24aed2e4cf9c05f21823c8fe003723be06d8bc4b4bcd8d01f42abc14b754d2"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/07_Constantinople.cs:ForkConstantinople:compilation-unit/0:type:Constantinople/0/0/",
+      "templateSha256": "8ba5dd8f3ec2eb4a77f76e5eb57d567ad587d4ad951348e7c516a2fc304b6e71",
+      "sourceSyntaxSha256": "8ba5dd8f3ec2eb4a77f76e5eb57d567ad587d4ad951348e7c516a2fc304b6e71"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/08_ConstantinopleFix.cs:ForkConstantinopleFix:compilation-unit/0:type:ConstantinopleFix/0/0/",
+      "templateSha256": "e23ac39b8c412592a2aeff00b18f002d59d151314bc4e809606a102e33dffe29",
+      "sourceSyntaxSha256": "e23ac39b8c412592a2aeff00b18f002d59d151314bc4e809606a102e33dffe29"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/09_Istanbul.cs:ForkIstanbul:compilation-unit/0:type:Istanbul/0/0/",
+      "templateSha256": "224221efe334f9e699eb5c8e6cc3478818ddfff6aba09a2e323a85886ac67efd",
+      "sourceSyntaxSha256": "224221efe334f9e699eb5c8e6cc3478818ddfff6aba09a2e323a85886ac67efd"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/10_MuirGlacier.cs:ForkMuirGlacier:compilation-unit/0:type:MuirGlacier/0/0/",
+      "templateSha256": "9a10850435d4a3a1f2a73d42e8777cc558fb41e5dfbb3f58e8afb821b3b7f64a",
+      "sourceSyntaxSha256": "9a10850435d4a3a1f2a73d42e8777cc558fb41e5dfbb3f58e8afb821b3b7f64a"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/11_Berlin.cs:ForkBerlin:compilation-unit/0:type:Berlin/0/0/",
+      "templateSha256": "1c69da72f7e816a1021a4bf8ecfc67f018bf9e5819732f9527d0ee859170ecb8",
+      "sourceSyntaxSha256": "1c69da72f7e816a1021a4bf8ecfc67f018bf9e5819732f9527d0ee859170ecb8"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/12_London.cs:ForkLondon:compilation-unit/0:type:London/0/0/",
+      "templateSha256": "b0f1f4ebc46356b95beb0262b0f06e6d4763d10b04b50a04233dd3a74f79058b",
+      "sourceSyntaxSha256": "b0f1f4ebc46356b95beb0262b0f06e6d4763d10b04b50a04233dd3a74f79058b"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/13_ArrowGlacier.cs:ForkArrowGlacier:compilation-unit/0:type:ArrowGlacier/0/0/",
+      "templateSha256": "f5762388f9dbd722ca578639303281c9c285f59b1f166a5bd65bef0bacb05620",
+      "sourceSyntaxSha256": "f5762388f9dbd722ca578639303281c9c285f59b1f166a5bd65bef0bacb05620"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/14_GrayGlacier.cs:ForkGrayGlacier:compilation-unit/0:type:GrayGlacier/0/0/",
+      "templateSha256": "12232e6411e07c2d051d9d4e444f936c5cb748ad01ed968b78650bae78449f9c",
+      "sourceSyntaxSha256": "12232e6411e07c2d051d9d4e444f936c5cb748ad01ed968b78650bae78449f9c"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/15_Paris.cs:ForkParis:compilation-unit/0:type:Paris/0/0/",
+      "templateSha256": "1999e99205f08d7f2325969af1807376e33b026c7f4fddddce36aea315e349b6",
+      "sourceSyntaxSha256": "1999e99205f08d7f2325969af1807376e33b026c7f4fddddce36aea315e349b6"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/16_Shanghai.cs:ForkShanghai:compilation-unit/0:type:Shanghai/0/0/",
+      "templateSha256": "824ecc1d55639196688d258b1f9549749b4f0c1280375488c1a4a811f15517e7",
+      "sourceSyntaxSha256": "824ecc1d55639196688d258b1f9549749b4f0c1280375488c1a4a811f15517e7"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/17_Cancun.cs:ForkCancun:compilation-unit/0:type:Cancun/0/0/",
+      "templateSha256": "b52061355dfd32dfbbf74752b5f06ec2e38f83ef637c56295d0198b164df0415",
+      "sourceSyntaxSha256": "b52061355dfd32dfbbf74752b5f06ec2e38f83ef637c56295d0198b164df0415"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/18_Prague.cs:ForkPrague:compilation-unit/0:type:Prague/0/0/",
+      "templateSha256": "0e7cf6a83a30bd3f5f59c45a48130e081598e7211dd46a608e7b0a87b6e7d294",
+      "sourceSyntaxSha256": "0e7cf6a83a30bd3f5f59c45a48130e081598e7211dd46a608e7b0a87b6e7d294"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/19_Osaka.cs:ForkOsaka:compilation-unit/0:type:Osaka/0/0/",
+      "templateSha256": "c7830661156611c43438d6d5dabb368146d76da1bbd3a53ea5972a5e974a681e",
+      "sourceSyntaxSha256": "c7830661156611c43438d6d5dabb368146d76da1bbd3a53ea5972a5e974a681e"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/20_BPO1.cs:ForkBPO1:compilation-unit/0:type:BPO1/0/0/",
+      "templateSha256": "b19c992ab216c1cca976caac1bdc09c5b1976ff93c2145f5c95363c20d215d8b",
+      "sourceSyntaxSha256": "b19c992ab216c1cca976caac1bdc09c5b1976ff93c2145f5c95363c20d215d8b"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/21_BPO2.cs:ForkBPO2:compilation-unit/0:type:BPO2/0/0/",
+      "templateSha256": "5b88d37530f1a93543efd2f3d71d9211c1527624941a485578ed36b888b29309",
+      "sourceSyntaxSha256": "5b88d37530f1a93543efd2f3d71d9211c1527624941a485578ed36b888b29309"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Specs/Forks/25_Amsterdam.cs:ForkAmsterdam:compilation-unit/0:type:Amsterdam/0/0/",
+      "templateSha256": "f0cd0162f76382e33cf5799b6544d7d30f8bf427d80b943d1f29a7f6d71ed5fd",
+      "sourceSyntaxSha256": "f0cd0162f76382e33cf5799b6544d7d30f8bf427d80b943d1f29a7f6d71ed5fd"
+    }
+  ]
+}

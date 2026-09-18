@@ -1,0 +1,14 @@
+using System.Runtime.CompilerServices;
+using Nethermind.Core;
+
+namespace Nethermind.Evm.GasPolicy;
+
+public struct EthereumGasPolicy
+{
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryConsumeLogEmission(ref EthereumGasPolicy gas, ulong topicCount, ulong dataSize)
+    {
+        ulong cost = GasCostOf.Log + topicCount * GasCostOf.LogTopic + dataSize * GasCostOf.LogData;
+        return UpdateGas(ref gas, cost);
+    }
+}

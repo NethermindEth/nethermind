@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="../../../../../src/Nethermind/tests.props" />
+
+  <PropertyGroup>
+    <AssemblyName>Nethermind.Evm.Lean.CallCreateOpcodeExtractor.Test</AssemblyName>
+    <RootNamespace>Nethermind.Evm.Lean.CallCreateOpcodeExtractor.Test</RootNamespace>
+    <Nullable>enable</Nullable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../CallCreateOpcodeExtractor.csproj" />
+  </ItemGroup>
+
+</Project>

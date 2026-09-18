@@ -42,6 +42,7 @@ namespace Nethermind.State
         private readonly ILogger _logger;
         private readonly EventHandler<IWorldStateScopeProvider.AccountUpdated> _onAccountUpdated;
         private readonly Func<IWorldStateScopeProvider.IBlockChangeSnapshot> _takeBlockChangeSnapshot;
+        private int _transactionStartStateSnapshot = Snapshot.EmptyPosition;
 
         public Hash256 StateRoot
         {
@@ -136,6 +137,7 @@ namespace Nethermind.State
         public void Reset(bool resetBlockChanges = true)
         {
             DebugGuardInScope();
+            _transactionStartStateSnapshot = Snapshot.EmptyPosition;
             _stateProvider.Reset(resetBlockChanges);
             _persistentStorageProvider.Reset(resetBlockChanges);
             _transientStorageProvider.Reset(resetBlockChanges);
@@ -339,12 +341,25 @@ namespace Nethermind.State
             return _stateProvider.AccountExists(address);
         }
 
-        public bool IsNonZeroAccount(Address address, out bool accountExists)
+        public bool IsCreateCollision(
+            Address address,
+            bool includeStorageCollision,
+            out bool physicalLeafExists,
+            out bool logicalAccountExists)
         {
             DebugGuardInScope();
             Account? account = _stateProvider.GetThroughCache(address);
-            accountExists = account is not null;
-            return account is not null && (account.IsContract || account.Nonce != 0);
+            if (account is null)
+            {
+                physicalLeafExists = false;
+                logicalAccountExists = false;
+                return false;
+            }
+
+            physicalLeafExists = true;
+            logicalAccountExists = !account.IsEmpty;
+            return account.IsContract || account.Nonce != 0 ||
+                (includeStorageCollision && !_persistentStorageProvider.IsStorageEmpty(address));
         }
 
         public bool IsDeadAccount(Address address)
@@ -359,6 +374,10 @@ namespace Nethermind.State
         {
             GuardInScope();
             _transientStorageProvider.Commit(tracer);
+            if (releaseSpec.IsEip8037Enabled && !isGenesis)
+            {
+                ReapEmptyAccounts();
+            }
             _persistentStorageProvider.Commit(tracer);
             _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
 
@@ -382,6 +401,10 @@ namespace Nethermind.State
             int transientSnapshot = _transientStorageProvider.TakeSnapshot(newTransactionStart);
             Snapshot.Storage storageSnapshot = new(persistentSnapshot, transientSnapshot);
             int stateSnapshot = _stateProvider.TakeSnapshot();
+            if (newTransactionStart)
+            {
+                _transactionStartStateSnapshot = stateSnapshot;
+            }
             return new Snapshot(storageSnapshot, stateSnapshot, -1);
         }
 
@@ -421,6 +444,32 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             _transientStorageProvider.Reset();
+        }
+
+        /// <inheritdoc/>
+        public void ReapEmptyAccounts()
+        {
+            DebugGuardInScope();
+            List<Address>? accountsToReap = _stateProvider.GetEmptyAccountsToReap(_transactionStartStateSnapshot);
+            if (accountsToReap is null)
+            {
+                return;
+            }
+
+            foreach (Address address in accountsToReap)
+            {
+                // EIP-161 removes the storage root with the account leaf, so an EIP-8037 recreation
+                // must not reuse its loaded tree.
+                _persistentStorageProvider.ClearStorage(address);
+                _stateProvider.DeleteAccount(address);
+            }
+        }
+
+        /// <inheritdoc/>
+        public bool HasEmptyAccountLeaf(Address address)
+        {
+            DebugGuardInScope();
+            return _stateProvider.GetThroughCache(address)?.IsEmpty == true;
         }
 
         /// <inheritdoc cref="IWorldStateScopeProvider.IBlockChangeSnapshot"/>

@@ -1,0 +1,435 @@
+{
+  "schemaVersion": 3,
+  "kernel": "Nethermind.Evm.GasPolicy.TransactionGasInitializationKernel",
+  "roots": [
+    {
+      "name": "TryCreate",
+      "signature": "Nethermind.Evm.GasPolicy.TransactionGasInitializationResult Nethermind.Evm.GasPolicy.TransactionGasInitializationKernel.TryCreate(ulong gasLimit, ulong intrinsicExecutionGas, long intrinsicStateGas, bool eip8037Enabled, ulong executionGasLimitCap)"
+    },
+    {
+      "name": "Combine",
+      "signature": "ulong Nethermind.Evm.GasPolicy.BlockGasAccountingKernel.Combine(ulong blockExecutionGas, ulong blockStateGas)"
+    }
+  ],
+  "program": {
+    "outcomeCases": [
+      "success",
+      "intrinsicGasExceedsLimit"
+    ],
+    "resultFields": [
+      {
+        "name": "outcome",
+        "type": "TransactionGasInitializationOutcome",
+        "constructorParameterOrdinal": 0
+      },
+      {
+        "name": "value",
+        "type": "Nat",
+        "constructorParameterOrdinal": 1
+      },
+      {
+        "name": "stateReservoir",
+        "type": "Int",
+        "constructorParameterOrdinal": 2
+      },
+      {
+        "name": "stateGasUsed",
+        "type": "Int",
+        "constructorParameterOrdinal": 3
+      },
+      {
+        "name": "stateGasSpill",
+        "type": "Int",
+        "constructorParameterOrdinal": 4
+      },
+      {
+        "name": "stateGasSpillRefunded",
+        "type": "Int",
+        "constructorParameterOrdinal": 5
+      }
+    ],
+    "functions": [
+      {
+        "name": "TryCreate",
+        "signature": "Nethermind.Evm.GasPolicy.TransactionGasInitializationResult Nethermind.Evm.GasPolicy.TransactionGasInitializationKernel.TryCreate(ulong gasLimit, ulong intrinsicExecutionGas, long intrinsicStateGas, bool eip8037Enabled, ulong executionGasLimitCap)",
+        "returnType": "Nethermind.Evm.GasPolicy.TransactionGasInitializationResult",
+        "parameters": [
+          {
+            "ordinal": 0,
+            "name": "gasLimit",
+            "type": "ulong"
+          },
+          {
+            "ordinal": 1,
+            "name": "intrinsicExecutionGas",
+            "type": "ulong"
+          },
+          {
+            "ordinal": 2,
+            "name": "intrinsicStateGas",
+            "type": "long"
+          },
+          {
+            "ordinal": 3,
+            "name": "eip8037Enabled",
+            "type": "bool"
+          },
+          {
+            "ordinal": 4,
+            "name": "executionGasLimitCap",
+            "type": "ulong"
+          }
+        ],
+        "body": {
+          "kind": "let",
+          "type": "Nethermind.Evm.GasPolicy.TransactionGasInitializationResult",
+          "value": "intrinsicTotal",
+          "auxiliary": "ulong",
+          "children": [
+            {
+              "kind": "uint64Add",
+              "type": "ulong",
+              "children": [
+                {
+                  "kind": "variable",
+                  "type": "ulong",
+                  "value": "intrinsicExecutionGas",
+                  "children": []
+                },
+                {
+                  "kind": "int64ToUInt64",
+                  "type": "ulong",
+                  "children": [
+                    {
+                      "kind": "variable",
+                      "type": "long",
+                      "value": "intrinsicStateGas",
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "kind": "if",
+              "type": "Nethermind.Evm.GasPolicy.TransactionGasInitializationResult",
+              "children": [
+                {
+                  "kind": "compare",
+                  "type": "bool",
+                  "value": "\u003C",
+                  "children": [
+                    {
+                      "kind": "variable",
+                      "type": "ulong",
+                      "value": "gasLimit",
+                      "children": []
+                    },
+                    {
+                      "kind": "variable",
+                      "type": "ulong",
+                      "value": "intrinsicTotal",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "construct",
+                  "type": "Nethermind.Evm.GasPolicy.TransactionGasInitializationResult",
+                  "children": [
+                    {
+                      "kind": "outcome",
+                      "type": "Nethermind.Evm.GasPolicy.TransactionGasInitializationOutcome",
+                      "value": "intrinsicGasExceedsLimit",
+                      "children": []
+                    },
+                    {
+                      "kind": "literal",
+                      "type": "ulong",
+                      "value": "0",
+                      "children": []
+                    },
+                    {
+                      "kind": "literal",
+                      "type": "long",
+                      "value": "0",
+                      "children": []
+                    },
+                    {
+                      "kind": "literal",
+                      "type": "long",
+                      "value": "0",
+                      "children": []
+                    },
+                    {
+                      "kind": "literal",
+                      "type": "long",
+                      "value": "0",
+                      "children": []
+                    },
+                    {
+                      "kind": "literal",
+                      "type": "long",
+                      "value": "0",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "let",
+                  "type": "Nethermind.Evm.GasPolicy.TransactionGasInitializationResult",
+                  "value": "availableGas",
+                  "auxiliary": "ulong",
+                  "children": [
+                    {
+                      "kind": "uint64Sub",
+                      "type": "ulong",
+                      "children": [
+                        {
+                          "kind": "variable",
+                          "type": "ulong",
+                          "value": "gasLimit",
+                          "children": []
+                        },
+                        {
+                          "kind": "variable",
+                          "type": "ulong",
+                          "value": "intrinsicTotal",
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "let",
+                      "type": "Nethermind.Evm.GasPolicy.TransactionGasInitializationResult",
+                      "value": "gasLeft",
+                      "auxiliary": "ulong",
+                      "children": [
+                        {
+                          "kind": "variable",
+                          "type": "ulong",
+                          "value": "availableGas",
+                          "children": []
+                        },
+                        {
+                          "kind": "let",
+                          "type": "Nethermind.Evm.GasPolicy.TransactionGasInitializationResult",
+                          "value": "gasLeftAfterEip8037",
+                          "auxiliary": "ulong",
+                          "children": [
+                            {
+                              "kind": "if",
+                              "type": "ulong",
+                              "children": [
+                                {
+                                  "kind": "variable",
+                                  "type": "bool",
+                                  "value": "eip8037Enabled",
+                                  "children": []
+                                },
+                                {
+                                  "kind": "let",
+                                  "type": "ulong",
+                                  "value": "executionGasAfterIntrinsicCap",
+                                  "auxiliary": "ulong",
+                                  "children": [
+                                    {
+                                      "kind": "if",
+                                      "type": "ulong",
+                                      "children": [
+                                        {
+                                          "kind": "compare",
+                                          "type": "bool",
+                                          "value": "\u003E=",
+                                          "children": [
+                                            {
+                                              "kind": "variable",
+                                              "type": "ulong",
+                                              "value": "intrinsicExecutionGas",
+                                              "children": []
+                                            },
+                                            {
+                                              "kind": "variable",
+                                              "type": "ulong",
+                                              "value": "executionGasLimitCap",
+                                              "children": []
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "kind": "literal",
+                                          "type": "ulong",
+                                          "value": "0",
+                                          "children": []
+                                        },
+                                        {
+                                          "kind": "uint64Sub",
+                                          "type": "ulong",
+                                          "children": [
+                                            {
+                                              "kind": "variable",
+                                              "type": "ulong",
+                                              "value": "executionGasLimitCap",
+                                              "children": []
+                                            },
+                                            {
+                                              "kind": "variable",
+                                              "type": "ulong",
+                                              "value": "intrinsicExecutionGas",
+                                              "children": []
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "kind": "minUInt64",
+                                      "type": "ulong",
+                                      "children": [
+                                        {
+                                          "kind": "variable",
+                                          "type": "ulong",
+                                          "value": "availableGas",
+                                          "children": []
+                                        },
+                                        {
+                                          "kind": "variable",
+                                          "type": "ulong",
+                                          "value": "executionGasAfterIntrinsicCap",
+                                          "children": []
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "variable",
+                                  "type": "ulong",
+                                  "value": "gasLeft",
+                                  "children": []
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "let",
+                              "type": "Nethermind.Evm.GasPolicy.TransactionGasInitializationResult",
+                              "value": "stateReservoir",
+                              "auxiliary": "ulong",
+                              "children": [
+                                {
+                                  "kind": "uint64Sub",
+                                  "type": "ulong",
+                                  "children": [
+                                    {
+                                      "kind": "variable",
+                                      "type": "ulong",
+                                      "value": "availableGas",
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "variable",
+                                      "type": "ulong",
+                                      "value": "gasLeftAfterEip8037",
+                                      "children": []
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "construct",
+                                  "type": "Nethermind.Evm.GasPolicy.TransactionGasInitializationResult",
+                                  "children": [
+                                    {
+                                      "kind": "outcome",
+                                      "type": "Nethermind.Evm.GasPolicy.TransactionGasInitializationOutcome",
+                                      "value": "success",
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "variable",
+                                      "type": "ulong",
+                                      "value": "gasLeftAfterEip8037",
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "uint64ToInt64",
+                                      "type": "long",
+                                      "children": [
+                                        {
+                                          "kind": "variable",
+                                          "type": "ulong",
+                                          "value": "stateReservoir",
+                                          "children": []
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "kind": "variable",
+                                      "type": "long",
+                                      "value": "intrinsicStateGas",
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "literal",
+                                      "type": "long",
+                                      "value": "0",
+                                      "children": []
+                                    },
+                                    {
+                                      "kind": "literal",
+                                      "type": "long",
+                                      "value": "0",
+                                      "children": []
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "Combine",
+        "signature": "ulong Nethermind.Evm.GasPolicy.BlockGasAccountingKernel.Combine(ulong blockExecutionGas, ulong blockStateGas)",
+        "returnType": "ulong",
+        "parameters": [
+          {
+            "ordinal": 0,
+            "name": "blockExecutionGas",
+            "type": "ulong"
+          },
+          {
+            "ordinal": 1,
+            "name": "blockStateGas",
+            "type": "ulong"
+          }
+        ],
+        "body": {
+          "kind": "maxUInt64",
+          "type": "ulong",
+          "children": [
+            {
+              "kind": "variable",
+              "type": "ulong",
+              "value": "blockExecutionGas",
+              "children": []
+            },
+            {
+              "kind": "variable",
+              "type": "ulong",
+              "value": "blockStateGas",
+              "children": []
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,45 @@
+namespace Nethermind.Evm;
+
+partial class EvmInstructions
+{
+/// <summary>
+    /// Executes the RETURN opcode.
+    /// Pops a memory offset and a length from the stack, updates memory cost, and sets the return data.
+    /// Returns an error if the opcode is executed in an invalid context.
+    /// </summary>
+    /// <param name="vm">The current virtual machine instance.</param>
+    /// <param name="stack">The EVM stack from which the offset and length are popped.</param>
+    /// <param name="gas">The gas which is updated by the operation's cost.</param>
+    /// <returns>
+    /// <see cref="EvmExceptionType.Stop"/> on success, with the frame's output staged in
+    /// <see cref="VirtualMachine{TGasPolicy}.ReturnData"/>; otherwise, an error such as
+    /// <see cref="EvmExceptionType.StackUnderflow"/> or <see cref="EvmExceptionType.OutOfGas"/>.
+    /// </returns>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionReturn<TGasPolicy>(
+        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        // Pop memory position and length for the return data.
+        if (!stack.PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 length))
+            goto StackUnderflow;
+
+        // Update the memory cost for the region being returned.
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory) ||
+            !vm.VmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
+        {
+            goto OutOfGas;
+        }
+
+        vm.ReturnData = returnData.ToArray();
+
+        return EvmExceptionType.Stop;
+        // Jump forward to be unpredicted by the branch predictor.
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    }
+
+}

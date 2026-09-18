@@ -1,0 +1,257 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.0.0",
+  "kernel": "Nethermind standard-mainnet pre-commit extensional world journal",
+  "scope": {
+    "worldState": "BlockProcessingModule IWorldState -\u003E WorldState",
+    "executionMode": "normal execution with StackAccessTracker.isTracingAccess=false",
+    "frameScope": "one active journal stack; nested snapshots are LIFO positions, not extracted VM recursion",
+    "commitBoundary": "before WorldState.Commit / CommitTree / RecalculateStateRoot",
+    "exclusions": [
+      "ClearStorage",
+      "code insertion and deposit",
+      "MarkStorageDestroyed",
+      "account reaping",
+      "provider commit and tree/root computation",
+      "TracedAccessWorldState",
+      "BlockAccessListBasedWorldState and BAL snapshots",
+      "WasCreated mutation and CREATE child initialization"
+    ],
+    "unextractedPremises": [
+      "Dictionary and HashSet implement extensional lookup and uniqueness for immutable keys.",
+      "List and CollectionsMarshal suffix truncation preserves the admitted prefix and ordering.",
+      "byte arrays admitted as storage values or log payloads are not mutated after admission.",
+      "Address, UInt256, Hash256, and nonce values satisfy their production fixed-width domains.",
+      "Initial account and persistent maps agree with the backing tree and storage backend at trace entry.",
+      "Pinned Keccak empty-input computations equal the explicit Lean empty-root and empty-code constants.",
+      "Persistent writes execute inside an active scope; metrics and advisory slot/account warm hints do not mutate the admitted journal projection."
+    ]
+  },
+  "snapshot": {
+    "restoredSurfaces": [
+      "persistent",
+      "transient",
+      "accounts",
+      "warmAccounts",
+      "warmCells",
+      "destroySet",
+      "logs"
+    ],
+    "transactionWideSurfaces": [
+      "persistentOriginals",
+      "createdThisTx"
+    ],
+    "positionConvention": "production stores Count - 1 with -1 as the empty position; restoring truncates each surface independently",
+    "leanPositionNormalization": "Lean uses the successor encoding: Nat position = production position \u002B 1 = retained journal length",
+    "restoreOrder": "persistent, transient, accounts, warmAccounts, warmCells, destroySet, logs"
+  },
+  "operations": [
+    {
+      "name": "readAccount",
+      "surface": "accounts",
+      "observation": "physical Option account; a backing hit journals raw JustCache while the semantic projection stutters",
+      "journaled": true,
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "GetThroughCache",
+      "signature": "Account? GetThroughCache(Address)",
+      "orderedEffects": [
+        "frontCache",
+        "journalHead",
+        "backingState",
+        "pushJustCache"
+      ]
+    },
+    {
+      "name": "createAccount",
+      "surface": "accounts",
+      "observation": "none",
+      "journaled": true,
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "CreateAccount",
+      "signature": "void CreateAccount(Address,in UInt256,in ulong)",
+      "orderedEffects": [
+        "constructPhysicalAccount",
+        "pushNew"
+      ]
+    },
+    {
+      "name": "updateAccount",
+      "surface": "accounts",
+      "observation": "none",
+      "journaled": true,
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "PushUpdate",
+      "signature": "void PushUpdate(Address,Account)",
+      "orderedEffects": [
+        "pushUpdate"
+      ]
+    },
+    {
+      "name": "deleteAccount",
+      "surface": "accounts",
+      "observation": "none",
+      "journaled": true,
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "DeleteAccount",
+      "signature": "void DeleteAccount(Address)",
+      "orderedEffects": [
+        "pushDelete"
+      ]
+    },
+    {
+      "name": "readPersistent",
+      "surface": "persistentOriginals",
+      "observation": "current bytes and transaction original",
+      "journaled": false,
+      "sourcePath": "src/Nethermind/Nethermind.State/PartialStorageProviderBase.cs",
+      "containingType": "PartialStorageProviderBase",
+      "member": "Get",
+      "signature": "ReadOnlySpan\u003Cbyte\u003E Get(in StorageCell)",
+      "orderedEffects": [
+        "cacheOrTreeRead",
+        "captureOriginalOnce"
+      ]
+    },
+    {
+      "name": "writePersistent",
+      "surface": "persistent",
+      "observation": "none; active-scope, metrics, and advisory warm-hint effects are projected away; standard EVM traces read before write",
+      "journaled": true,
+      "sourcePath": "src/Nethermind/Nethermind.State/PersistentStorageProvider.cs",
+      "containingType": "PersistentStorageProvider",
+      "member": "Set",
+      "signature": "void Set(in StorageCell,byte[])",
+      "orderedEffects": [
+        "resolveActiveScope",
+        "incrementMetrics",
+        "registerContract",
+        "baseSet",
+        "pushUpdate",
+        "hintSlot",
+        "hintAccountOnce"
+      ]
+    },
+    {
+      "name": "readTransient",
+      "surface": "transient",
+      "observation": "current bytes; missing is zero",
+      "journaled": false,
+      "sourcePath": "src/Nethermind/Nethermind.State/TransientStorageProvider.cs",
+      "containingType": "TransientStorageProvider",
+      "member": "GetCurrentValue",
+      "signature": "ReadOnlySpan\u003Cbyte\u003E GetCurrentValue(in StorageCell)",
+      "orderedEffects": [
+        "cacheRead",
+        "zeroDefault"
+      ]
+    },
+    {
+      "name": "writeTransient",
+      "surface": "transient",
+      "observation": "none",
+      "journaled": true,
+      "sourcePath": "src/Nethermind/Nethermind.State/PartialStorageProviderBase.cs",
+      "containingType": "PartialStorageProviderBase",
+      "member": "Set",
+      "signature": "void Set(in StorageCell,byte[])",
+      "orderedEffects": [
+        "pushUpdate",
+        "replaceHead"
+      ]
+    },
+    {
+      "name": "warmAccount",
+      "surface": "warmAccounts",
+      "observation": "true only on first insertion",
+      "journaled": true,
+      "sourcePath": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs",
+      "containingType": "StackAccessTracker",
+      "member": "WarmUp",
+      "signature": "bool WarmUp(Address)",
+      "orderedEffects": [
+        "setAdd",
+        "journalAppendIfNew"
+      ]
+    },
+    {
+      "name": "warmCell",
+      "surface": "warmCells",
+      "observation": "true only on first insertion",
+      "journaled": true,
+      "sourcePath": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs",
+      "containingType": "StackAccessTracker",
+      "member": "WarmUp",
+      "signature": "bool WarmUp(in StorageCell)",
+      "orderedEffects": [
+        "setAdd",
+        "journalAppendIfNew"
+      ]
+    },
+    {
+      "name": "appendLog",
+      "surface": "logs",
+      "observation": "none",
+      "journaled": true,
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "containingType": "VirtualMachine",
+      "member": "AddLog",
+      "signature": "void AddLog(LogEntry)",
+      "orderedEffects": [
+        "orderedAppend"
+      ]
+    },
+    {
+      "name": "addDestroy",
+      "surface": "destroySet",
+      "observation": "none",
+      "journaled": true,
+      "sourcePath": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs",
+      "containingType": "StackAccessTracker",
+      "member": "ToBeDestroyed",
+      "signature": "void ToBeDestroyed(Address)",
+      "orderedEffects": [
+        "setAdd",
+        "journalAppendIfNew"
+      ]
+    },
+    {
+      "name": "takeSnapshot",
+      "surface": "snapshotStack",
+      "observation": "seven independent positions",
+      "journaled": false,
+      "sourcePath": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "containingType": "WorldState",
+      "member": "TakeSnapshot",
+      "signature": "Snapshot TakeSnapshot(bool)",
+      "orderedEffects": [
+        "persistent",
+        "transient",
+        "accounts",
+        "trackerPositions"
+      ]
+    },
+    {
+      "name": "restoreSnapshot",
+      "surface": "snapshotStack",
+      "observation": "failure when no snapshot exists",
+      "journaled": false,
+      "sourcePath": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "containingType": "WorldState",
+      "member": "Restore",
+      "signature": "void Restore(Snapshot)",
+      "orderedEffects": [
+        "persistent",
+        "transient",
+        "accounts",
+        "warmAccounts",
+        "warmCells",
+        "destroySet",
+        "logs"
+      ]
+    }
+  ]
+}

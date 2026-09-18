@@ -1,0 +1,10 @@
+namespace Nethermind.Evm;
+
+public sealed class EthereumVirtualMachine(
+    IBlockhashProvider? blockHashProvider,
+    ISpecProvider? specProvider,
+    ILogManager? logManager
+) : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager), IVirtualMachine
+{
+}
+

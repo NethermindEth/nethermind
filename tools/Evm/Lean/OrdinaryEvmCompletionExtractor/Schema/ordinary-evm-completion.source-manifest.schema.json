@@ -1,0 +1,3518 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Conditional ordinary EVM completion source manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "extractorVersion",
+    "acceptanceState",
+    "sourceClosure",
+    "dependencies",
+    "sources",
+    "ir",
+    "lean"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "extractorVersion": {
+      "const": "1.0.0"
+    },
+    "acceptanceState": {
+      "const": "accepted-conditional-source-audited-refinement"
+    },
+    "sourceClosure": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "dependencies": {
+      "type": "array",
+      "minItems": 131,
+      "maxItems": 131,
+      "prefixItems": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "Directory.Build.props"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "597c468a790b1f0b0b92ad18bcd5fa943d7b62fa2e8c181f56db080cdcbf1812"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "Directory.Build.targets"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "cb41efa7d75b48d919d1acf5e2e67cd9445838b95847d11b8a97860a2f3961df"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "global.json"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "73edba3e46e9794dfcfdeddaf43a8436c56b510dda9a7515a50b0d2784e26cc7"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Directory.Build.props"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "ad544425af1b0ec60334511abf79896a77843088457ef81b98a06b56d13e4e3c"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Directory.Build.targets"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "0598cebaef1df41102a18a3f9ace810bed1e4e64b8471d055724b4a394dccec6"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Blockchain/Nethermind.Blockchain.csproj"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "3c4b3ebba3d8255c5fc40ba4c544da0e16762ae4a829a655e88db2d59e774939"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptGasAccountingKernel.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "0882c798e6ffb2243735a9ec0cec5d442b20d51277feeba95e5b68ecfaf89e32"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "d4504f54b50dd43e2ab5bc7172ce2cf9e48453fcede990e5e667e743146262ff"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Core/BlockHeader.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "f354ddd2d45afc8774739ac46a10535b915871ce4ad11d996d0ab972cf9e7349"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Core/Specs/IReleaseSpec.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "3f44b3da5614c94d59eae2e4a6266a9e698614f75a7b5a9894a4828b0021b18a"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Core/Transaction.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "3fdf94805739c6ccdfa8b4617c5d4cfa6bee9e9565f16d667b22106c434d6596"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Core/TransactionReceipt.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "55b62b4e0708e590a001916e9a73d07ac70e225b16f711574e811c98e540cc63"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/DispatchFlags.std.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "99c58367e5b90fa5904484f6e2fbf10745a54f6cd7d07275810c27028ad0eb2b"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/EvmException.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "8c503bfbe0c60c41597e64c96b5d823dc98b934b4511730217eceaaf13837450"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/ExecutionEnvironment.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "c076225b688b1e04ed83cddc90a2ddbda69862333dc927945eb32d376e43e1db"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/ExecutionType.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "b6689c7c928182f6d115ca57cc8ac45bb9312359a026704f2eec77b921028013"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "3c31ba40c24a78bf11243b38859168350f02934806124e913da0560bc1a4350f"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/GasPolicy/IGasPolicy.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "b4d26db87723243514f2f6b8a5e48d1176139105c3b012ad0f3956e59afc98a8"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/IVirtualMachine.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "330da5f31bd7aca4f4212a42c912c33cf0ac5b3def0689b7f9985cd6510aa56d"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/Nethermind.Evm.csproj"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "6170fea1cb0363f603e599d057164e2db26f22309cb1f3ecdcac7ea84fc92eec"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/RefundHelper.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "5ed45f3f67513b53e0c090e90cf6a41026ab7e4ea35343cdcbe4da65d431874e"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "ed5cdfdfe2ebf4d8c9f651572927efe7bdb5c75107db63a40577c5ec3ec2882f"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/State/IWorldState.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "0680ebc7168472645d93df58d2b3240508c177361815c85cceb09cf960f189c7"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/State/Snapshot.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "47625d60a8315bbc3afd26eca85780b0ab894d7401d913cbec00ed89b51f46c8"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/StatusCode.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "e896f55406c9fc1ce99199d80bea69b87fa8891c23afef59712b87cadb971190"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/Tracing/ITxTracer.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "9f2550f8c3407f494452386699040feab8aa597437b1cd4180d038d9fd0a9169"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ExecutionOptions.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "014a2598e1def284b7b98dc97185b6dbbc45ca04be4ab159e330a0675ac24f10"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/TransactionProcessing/GasConsumed.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "1dc4e78d5a17056dcb00d496136a32a899245f3a7b3e5a9eef74c4760ef68686"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ITransactionProcessor.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "3cae1430ba38d54f9867b714efdc823f9db126b1bbf0e45eae59439701459e95"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionRoutingKernel.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "b884bb49ad7c109b907f4dfcac56a5eb13283d964310d45eb9ca85177ff5e5c1"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "0374c6f35a9a23361f37b41162ac281ca83b09846ab4295d5a592db6315c99cc"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionSettlementKernel.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "37add297aaaf07a4260b45c05c5f866a48f92eef2ac6fb16ef2bfd96103f8c44"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/TransactionSubstate.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "1312a5f1a9990976670914fcc0a6ad2c77dd92d768d92fd91b28f27fefe66a00"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/TxExecutionContext.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "b1dea501cdf6577967aa3a73ba4ca1b77dc96fedb3d5bbb3c0ca8dd14c65c4b0"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/VirtualMachine.CallResult.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "d21bebbb4caea938c42d369083d922f6e18d01eb797b1c534fb1541c242ca073"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "45edba3691e09185e749485785990662ddea1af849bc6e4564f92b68a5137a6b"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/VirtualMachine.std.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "357fbd35369424a379c8c29338f491627512d40a12199d7a3d9aac44c87ca92a"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Evm/VmState.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "7b7b6ddb753118b426d14976a3fe8e79f808320d6a09ea9cace9df19197f9f23"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "fce65ce5bb523c56fc8aa6ee0e4d092c940a5a90b174c820ffe262eeb5241c60"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Specs/Forks/25_Amsterdam.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "4dfbf9079e9dce30423327ae4433f32e49388d403a8fedfcf253f94f79450c6a"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "src/Nethermind/Nethermind.Specs/Forks/NamedReleaseSpec.cs"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "ea9400ed44270fb18766a5dbd20d4dd7e7ee95b1bb7ab7ee6d5406cca03a46cc"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/AuthorizationStateGasFoldExtractor/Generated/AuthorizationStateGasFold.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "562a288d1ce8538310287867dd1346e74431693c1d5b4bef7e83103a22a790be"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/AuthorizationStateGasFoldExtractor/Refinement/AuthorizationStateGasFold.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "8340d14520ac44e4b8e542373be1bbcda6b215fb381c2f879f3bc872075e950d"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/BlockReceiptGas.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "51f1df6a272adf776aac2cea085e6d063e25997310eb77c29e99fe5970b62a6e"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Gas.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "9de536802dec28031f51a6c4321fe1fd4ce7652b3426a43e1256ae4cc39c075b"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Generated/BlockReceiptGasAccountingKernel.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "5d7851084945d5263dd87bcda4ae9e60ce7b779473a7c37617a96cf0e91026f2"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Generated/StateGasChargeKernel.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "d6a09be29c449e3f005d84cde988a619e03c4d2b0a69fcf0989f879b2fc87337"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Generated/StateGasTransitionAdapterKernel.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "95a3e2fadce28e7a98a666f4d57d82a7d174f05e4492979968708843b752091a"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Generated/StateGasTransitionKernel.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "f284d83951b94cbfaf10ad8b5a58b0015b2c96f4ac86e97c9de8b3865dee1dce"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Generated/TransactionGasInitializationKernel.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "83ce996d6dcc93a588114e73737a25a14cb21689e9e8900e6dc68a07fb170b6f"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Generated/TransactionSettlementKernel.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "21e4c3ef135618a96bd5e7d2111e0be0bb272840b7d9ca427f17ef7777e2401c"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Production.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "4bc54d28101015c6ada5df75f9bc083468804536446b8e9f90efeb3f3026a66c"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Refinement/BlockReceiptGasAccounting.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "6d8a1c1de3f99c43f24576a6358e083fcce43cfe23037bd54cfececfbda5dfe5"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Refinement/StateGasCharge.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "4cb359f611ef04300618f9109ac89ca6b32c857c8e9e6c2305e11a0323d57ead"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Refinement/StateGasTransition.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "a3d3beb8004c1431e2550a702f84d816751657ad90c8320ddc5809956da41cec"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Refinement/StateGasTransitionAdapter.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "77fb2fce964efc1203658d96dc7e977d3c9ede587ab21c1ea13d2a33f716bb0c"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Refinement/StateGasTransitionAdapterKernel.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "b72895f08007be0481b12bd38560f4dde3a059f30c23595e9cd060f35ab34b29"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Refinement/TransactionGasInitialization.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "8986504ad786cc621dcb0c74400980366847c43d832830973f52a5d38c290578"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Refinement/TransactionSettlement.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "bb34d4962f22231ae1d466dfe0302ebaa40ba07624e6f43e28f282b9700b0f25"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/Schedule.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "84f5f3bf4d6f570e1fb3c2ccc560336c845baafa81c5e1db828e433654524868"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/TransactionGas.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "2e87721125c6430eab9c76dc8f32a11f4898db0dec68b57a48043c18cbdeefcd"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/Eip803x/TransactionSettlement.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "db349833a4caa046083b37e3b796a0a8cb631e561741dfff27e78757d29f9be2"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/EvmTransactionPreparationExtractor/EXPORTED_THEOREMS.txt"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "cfe2d2125a53f8aa80a0fd43b9cb97b5742ef97062a2c7e39505394a89a73f50"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Generated/EvmTransactionPreparation.ir.json"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "e0f24be598e3bf88505fe6b5550e5c46dd504c9e69115e3c7a18f95a5bdc5a7e"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Generated/EvmTransactionPreparation.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "471e789607e8a294c6deb2148291578a185c77d970360e16e1fa0958f3987930"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Generated/EvmTransactionPreparation.source-manifest.json"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "b3f88923311ec963d40768bf34f22a0e15ca6807a12ade85a846d2815eafb9c1"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/EvmTransactionPreparationExtractor/IMPORTED_THEOREMS.txt"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "8c64b43a0debfcd071a31b9b4d8772f021d60ff369f59a3dfebc31105eb79bc3"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Reference/EvmTransactionPreparationReference.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "609b9574b00effbd5b74e6a6ca3254ecd5c7f4e84cd1455cb90436ab42b77b0d"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Refinement/Admission.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "38c975e1b04275ea6e0a7af9ecc2a439f150ba2e71a8cd43995582d4a9409af7"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Refinement/EvmTransactionPreparation.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "fad9d554c59d4d92ddde7dfd51b06fb6a9486d7391dd6c1e7b9a097dca7d6415"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Refinement/Maps.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "5720c76db2b127cb0c0dc94228e847b6ec1903656b3969cbf0489c9eaa1e9b24"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Verify-Axioms.ps1"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "59bf8d4e749fbfd72dfcd037b14e35a34f65b3aa4070abd390cc4bdabae99863"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Verify-ClosureAxioms.ps1"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "8c468b5d0fb584c58a0fdbbbf4336659964e3675917de186705b36c74d856c26"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Admission/REVIEWED_BINDINGS.json"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Artifacts.cs"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/CompilerReferences.cs"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/CompletionKernel.lean.template"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/IMPORTED_DECLARATIONS.txt"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/LeanEmitter.cs"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Models.cs"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/OperationLowering.cs"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/OrdinaryEvmCompletionExtractor.csproj"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/PlanBuilder.cs"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Program.cs"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Refinement/OrdinaryEvmCompletion.lean"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Refinement/SourceAttachedOrdinaryEvmCompletion.lean"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Schema/ordinary-evm-completion.ir.schema.json"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Schema/ordinary-evm-completion.source-manifest.schema.json"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/SemanticBindings.cs"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/SourceAdmission.cs"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Specification/OrdinaryEvmCompletion.lean"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Test/ArtifactTests.cs"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Test/OrdinaryEvmCompletionExtractor.Test.csproj"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Test/SourceAdmissionTests.cs"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Vectors/OrdinaryEvmCompletionVectors.lean"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Verify-Candidate.ps1"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Verify-CandidateSchemas.ps1"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Verify-ClosureAxioms.ps1"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Verify-Draft.ps1"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Verify-DraftSchemas.ps1"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Verify-SemanticMutations.ps1"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/lakefile.toml"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/lean-toolchain"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/source-map.json"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/source-map.schema.json"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/stage-dependencies.json"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/stage-dependencies.schema.json"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/upstream-artifacts.json"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/upstream-artifacts.schema.json"
+            },
+            "role": {
+              "const": "candidate-tool-or-proof"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryPostNonceDispatchExtractor/Generated/OrdinaryPostNonceDispatch.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "645ee68e4edf2e4d81d3e27da202a588d57b9f8ffdc883f035e3c55a0c1f475c"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryPostNonceDispatchExtractor/Reference/OrdinaryPostNonceDispatchReference.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "2d9347ad22562e3f2430455fc035c580458e0754060d46f1ec43c58f5caeea1b"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryPostNonceDispatchExtractor/Refinement/OrdinaryPostNonceDispatch.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "7352ca6fd6124edeb8f622ef6272a825d9e71b8cd17c454304aa5924e256d256"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryStatefulAdmissionPrefixExtractor/Generated/OrdinaryStatefulAdmissionPrefix.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "52126602fc36539573b9b53ddf4623b80611fec72c7c1849d12749ef11ed93f9"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Admission/COMPILER_REFERENCE_PINS.json"
+            },
+            "role": {
+              "const": "accepted-compiler-input"
+            },
+            "sha256": {
+              "const": "751d3ffff1427c2d751c8baaa023220cc847d88c839ec41792800f1c9fe57796"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Admission/SOURCE_PINS.json"
+            },
+            "role": {
+              "const": "accepted-compiler-input"
+            },
+            "sha256": {
+              "const": "2339453e6f2ff64e9de71bf9d022c3aa27869dd3dc1e21b38a4731d2df57f6db"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/EXPORTED_THEOREMS.txt"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "b6cf921d99722cc15ddcac3f54b32ae07c9035b18692d96091fa266763805396"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Generated/OrdinaryTransactionRefund.ir.json"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "53f6a24671a917e2675a1a45eb1b49e812b91283fc1c78bf49014f2ad08a1666"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Generated/OrdinaryTransactionRefund.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "b7b21ec284183b073ff1a3f603471b156c07624de3270bc63189b7f7d6600f23"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Generated/OrdinaryTransactionRefund.source-manifest.json"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "527ee805b9be85e57898863fd618fa1ede84862a0cd78ef02083c37ed88278bb"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Refinement/OrdinaryTransactionRefund.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "8f0a67d6da67a3068cc96cba94f77df24ad3a3dfe07b13b22bc21ec6ed76a13d"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Specification/OrdinaryTransactionRefund.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "e793fb500728ab024b3879407bd235ea52ec98a8fccf7a00d27be1f62b9576a2"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Verify-Axioms.ps1"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "201bf63c5b53f71db843400abec61f2dae548b86cb59f0aac955b5bcb3d5199f"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/DECLARED_THEOREMS.txt"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "07a89b290a1b551d7a9203d878b39ee7e4d5ffd73496bfcc28bce7b1a675544d"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/EXPORTED_THEOREMS.txt"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "6edd082b554fff37b231b5c7e2ea8538423e0d75f17df4b79da86f0517b0012f"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.ir.json"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "0bf061d43d54e3eb9bdc7ccff4d0541d6dee189ac1ccea7f139095d3e1b7945a"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "028d11a14e031aaedce27c71b26e2c69cf16e759ff3ac870373ead10f6971180"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.source-manifest.json"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "3d1ec03bce750645bc29d8fb51ac94321508364735b9a65a987043100f74bd8e"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Refinement/ReceiptTerminalFold.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "bd4a3556a98ec40875960ff2180523d16221b05cd6cf9a0b6ce1fc46a8cb3e93"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Specification/ReceiptTerminalFold.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "d48c07020ea58c5bdc97f9b51e8b82bf70bfa670410d77675288fba75b317e86"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Verify-Axioms.ps1"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "f019aebcd67b0299c3ab1049fda475dad4e15a010e4962439cd25e9b34a9a485"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "role",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "const": "tools/Evm/Lean/TransactionProcessorExtractor/Generated/TransactionProcessorLifecycle.lean"
+            },
+            "role": {
+              "const": "pinned-boundary-or-stage"
+            },
+            "sha256": {
+              "const": "fa1fef73c8eb344c2ec62f85f82c12bbdb228ac36ddc2b72512a4c2a7d71ed02"
+            }
+          }
+        }
+      ],
+      "items": false
+    },
+    "sources": {
+      "const": [
+        {
+          "path": "Directory.Build.props",
+          "role": "selection-or-projection",
+          "sha256": "597c468a790b1f0b0b92ad18bcd5fa943d7b62fa2e8c181f56db080cdcbf1812"
+        },
+        {
+          "path": "Directory.Build.targets",
+          "role": "selection-or-projection",
+          "sha256": "cb41efa7d75b48d919d1acf5e2e67cd9445838b95847d11b8a97860a2f3961df"
+        },
+        {
+          "path": "src/Nethermind/artifacts/obj/Nethermind.Evm/release/Nethermind.Evm.GlobalUsings.g.cs",
+          "role": "compiler-generated",
+          "sha256": "b76397ea9c4e94f6bb10590d774fcc38c4c64977318a81b30322d62b71863cd1"
+        },
+        {
+          "path": "src/Nethermind/Directory.Build.props",
+          "role": "selection-or-projection",
+          "sha256": "ad544425af1b0ec60334511abf79896a77843088457ef81b98a06b56d13e4e3c"
+        },
+        {
+          "path": "src/Nethermind/Directory.Build.targets",
+          "role": "selection-or-projection",
+          "sha256": "0598cebaef1df41102a18a3f9ace810bed1e4e64b8471d055724b4a394dccec6"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Eip7702Constants.cs",
+          "role": "selection-or-projection",
+          "sha256": "d4faf8a117484a7cdbe05c75e4c05f039039c290404fb10282bab8f601772499"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Eip7825Constants.cs",
+          "role": "selection-or-projection",
+          "sha256": "5f79dcccbab06167bb591814318957e4ffcf6c8d4c760a069f10cae0a7bc48da"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/GasCostOf.cs",
+          "role": "selection-or-projection",
+          "sha256": "10f1f1a29e7bf10a8220422a6f7571af60df4f05ad4075268e3b26559a73c6f5"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Transaction.cs",
+          "role": "selection-or-projection",
+          "sha256": "3fdf94805739c6ccdfa8b4617c5d4cfa6bee9e9565f16d667b22106c434d6596"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Transaction.std.cs",
+          "role": "selection-or-projection",
+          "sha256": "b08ebdcf7fb167cf028488d393037278e9dc33b8f2c927f96440ea28572530d9"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/AccountOverride.cs",
+          "role": "compiler-support",
+          "sha256": "d81ca468761e668cccbda4c4942e4f408f7aba7c5361c55fd6fee7af365d4ccf"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/BlobGasCalculator.cs",
+          "role": "compiler-support",
+          "sha256": "082f53dda7202af0dd9e63b523a8628a5f84780710e68d83276983a26c36ec68"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/BlockExecutionContext.cs",
+          "role": "compiler-support",
+          "sha256": "cf1fe40026055a51233f9832f7b8ba7ce8ee381405f36074ce8d7b957b169792"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/BlockOverride.cs",
+          "role": "compiler-support",
+          "sha256": "b470b1fdaff9da5bb36a5217ba309afa2f81c552e1babba774ad4e814a7841b2"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/BlockOverrideExtensions.cs",
+          "role": "compiler-support",
+          "sha256": "6d25461a59f655a4cfd74ea87d68895bea45dfdcd02405b62feb415cbdeface2"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/BytecodeBuilder.cs",
+          "role": "compiler-support",
+          "sha256": "6f832072ad765dddd6e598aa8d1e948a73cb244d9440c3d19509a6eed4834436"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/CacheCodeInfoRepository.cs",
+          "role": "compiler-support",
+          "sha256": "498e32be24e098f1540273f9780e548b52fbbbbc8cb55fbf7b8335eb7743d0f3"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/CodeAnalysis/CodeInfo.cs",
+          "role": "compiler-support",
+          "sha256": "41e5e0316853f5970b5f868a6a47e24105dcb6eeb9be9608378482d74bcbd254"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/CodeAnalysis/CodeInfoFactory.cs",
+          "role": "compiler-support",
+          "sha256": "ef71341adb0d8d5691392359e7e2b0a1c1b483edf8963f205877a89b39ab7c7c"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/CodeAnalysis/JumpDestinationAnalyzer.cs",
+          "role": "compiler-support",
+          "sha256": "7347218843f5e110c943753763cf6a962c5bde347d59c2e025dda30b8633a751"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/CodeAnalysis/JumpDestinationAnalyzer.std.cs",
+          "role": "compiler-support",
+          "sha256": "7a90ac0ea3718878fd1d6a36bb5ec7a8ff23a4c2e4629ce660e9b96e6f95c0f2"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/CodeDepositHandler.cs",
+          "role": "compiler-support",
+          "sha256": "72248ff72f65f545d723bc75e3703ccc05333b165944d95905f310294be3cfc7"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/CodeInfoRepository.cs",
+          "role": "compiler-support",
+          "sha256": "76734fad45dd415deaf016b1b9ce6670580042e09f5493253b06c7a9c9f622b7"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/ContractAddress.cs",
+          "role": "compiler-support",
+          "sha256": "d21b1b6b2965a7b38bf51c6c2b11133e4308031e30e1a74eacf258665cb618b3"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/DispatchFlags.std.cs",
+          "role": "compiler-support",
+          "sha256": "99c58367e5b90fa5904484f6e2fbf10745a54f6cd7d07275810c27028ad0eb2b"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Eip8038Flag.cs",
+          "role": "compiler-support",
+          "sha256": "414749009fddc3f5f227746155dad28b15b6bc2adbc45b6d5797a87a593305da"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/EvmException.cs",
+          "role": "compiler-support",
+          "sha256": "8c503bfbe0c60c41597e64c96b5d823dc98b934b4511730217eceaaf13837450"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/EvmExceptionExtensions.cs",
+          "role": "compiler-support",
+          "sha256": "b878117cc51475cde321293dab3d50f24b279368848c86c704662fbd2c6027ac"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/EvmFrameMemory.cs",
+          "role": "compiler-support",
+          "sha256": "4bef331a3b36589c51e0560b3b288cacf2c85e582deb79f9c2f25284ccb56507"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/EvmObjectPool.std.cs",
+          "role": "compiler-support",
+          "sha256": "e38caf1904887b647b11b63bfe241c184958796b9fc3f1446c456a9373daadd8"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+          "role": "compiler-support",
+          "sha256": "853f8f9b46e5deef1c655442694dfbb1f862de80d0ecdbee2d66e7282f974e84"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/EvmStack.cs",
+          "role": "compiler-support",
+          "sha256": "561520be4f0fe1d533ddea9cfea7ff48edb2745b1f3adf1b45c24e6c0bed02ad"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/EvmStack.std.cs",
+          "role": "compiler-support",
+          "sha256": "01a1b26ce105fa69fff94b8df171dcf11b85fe5462318a3ff9da3889ff41577e"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/EvmStackOverflowException.cs",
+          "role": "compiler-support",
+          "sha256": "916124eccd44f0789905b5acdcde66398eeefff8279807157e51d9631ef28ba0"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/EvmStackUnderflowException.cs",
+          "role": "compiler-support",
+          "sha256": "51248da06386f679827c0bbd279345c9881cc6e2ca3c6450031a1fb04f2d6d76"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/ExecutionEnvironment.cs",
+          "role": "compiler-support",
+          "sha256": "c076225b688b1e04ed83cddc90a2ddbda69862333dc927945eb32d376e43e1db"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/ExecutionEnvironmentExtensions.cs",
+          "role": "compiler-support",
+          "sha256": "a520ff36435c0b5c518f1292778013357922c44e955387532b45dae55ee5afd1"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/ExecutionMetricsCounters.cs",
+          "role": "compiler-support",
+          "sha256": "5be92cec0649ceb96fb5f2f167db3986e0d0b55316ed13d94dc407c704aba7a5"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/ExecutionType.cs",
+          "role": "compiler-support",
+          "sha256": "b6689c7c928182f6d115ca57cc8ac45bb9312359a026704f2eec77b921028013"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/AccountAccessKind.cs",
+          "role": "compiler-support",
+          "sha256": "a61bc07a6ca4077bf47206799304c8335a901d22bba5e77b3403c92a52eb5462"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/AccountAccessPricingKernel.cs",
+          "role": "compiler-support",
+          "sha256": "1988faefb55bb65bf4e915e77e99966f43b88675dec47689e04378bde4f31c92"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/Eip8037BlockGasInclusionCheck.cs",
+          "role": "semantic",
+          "sha256": "79e4c84096c72bd0241553f114f08973279eb841cfa469f944566fb9490afe4e"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+          "role": "semantic",
+          "sha256": "3c31ba40c24a78bf11243b38859168350f02934806124e913da0560bc1a4350f"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/IGasCost.cs",
+          "role": "compiler-support",
+          "sha256": "16289cdc2f777a76fda3ad8ff4ce4275c30513aee04c9cf42d314cc6e1ec48c0"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/IGasPolicy.cs",
+          "role": "semantic",
+          "sha256": "b4d26db87723243514f2f6b8a5e48d1176139105c3b012ad0f3956e59afc98a8"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/PrecompileGasPricingKernel.cs",
+          "role": "compiler-support",
+          "sha256": "dd23b8bd461a13c75ec203b1dbe853a885f61640edf4d47287c1dadd0d9ff576"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/SStorePricingKernel.cs",
+          "role": "compiler-support",
+          "sha256": "6eb99aee5247c9d5d7c35659c41628d758b672923d0fc5ec76e7d5cb9a30a125"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasChargeKernel.cs",
+          "role": "compiler-support",
+          "sha256": "ec3276958cbc6b0255fadedf15dbe49691195aa95570b332937f8d1703b103fd"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasTransitionAdapterKernel.cs",
+          "role": "semantic",
+          "sha256": "ca16429e4cb1b728619b7fa0113b2302ca75600b0a32d9345e38721c7c2d7368"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasTransitionKernel.cs",
+          "role": "semantic",
+          "sha256": "4a31dc76fb8284a8ea5994de9a63810abe0fd7efbe6add4aa8b3d6cb564a75cc"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/TransactionGasInitializationKernel.cs",
+          "role": "compiler-support",
+          "sha256": "65ab0742596ea7ebf49d2c79601eae00152d8d039ac8e417076bf63123be1e82"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/IBlockhashProvider.cs",
+          "role": "compiler-support",
+          "sha256": "39b392db0a8804b1a2e2afd02614549a46b1241159cc797a83e4edd61fe9537d"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/ICodeCache.cs",
+          "role": "compiler-support",
+          "sha256": "3a4451bb3dc9051e79a80427df4298af3c2fe14fc6ccc1ab09fd6c6dbde4a4a5"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/ICodeInfoRepository.cs",
+          "role": "compiler-support",
+          "sha256": "e0669f612f31fe4a353a60896f40325e493e1ff925a92614ad73f49bf1435015"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instruction.cs",
+          "role": "compiler-support",
+          "sha256": "6895d06277ac4f9369d7bdc748976576bf384f6f3a5a348a2e4fd3767a46a030"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmCalculations.cs",
+          "role": "compiler-support",
+          "sha256": "1912ef2add71990f29ab0cb7ef1de745b44f76bd201d4ac76c3032d5f60dc244"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Bitwise.cs",
+          "role": "compiler-support",
+          "sha256": "50dabd327c137ae8b4cb1bdeca89039c487d7a95f4fb1aed266dbd31ea4ed509"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Call.cs",
+          "role": "compiler-support",
+          "sha256": "cfc87832eb304f8f8dccfb27b6b89605f6c74e88522f02b13c775834d14948a5"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Call.std.cs",
+          "role": "compiler-support",
+          "sha256": "42954af1ac17ea3a973d9ca57a01432637bd92ebc98857838ddafa8e7aef93d6"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.CodeCopy.cs",
+          "role": "compiler-support",
+          "sha256": "fd948f4f4ab64699c496e320019ff69d7dd58b0a33e906a5579c46240605c104"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.ControlFlow.cs",
+          "role": "compiler-support",
+          "sha256": "282ba75f60c1ddd03fd51460b0e3273c0113430d02faee3abff991fe5f920c6c"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Create.cs",
+          "role": "compiler-support",
+          "sha256": "23927529d13488932ec47b57972ab7084566a28deae83805d69a1fe977576719"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Crypto.cs",
+          "role": "compiler-support",
+          "sha256": "c86a9c3219b12b5838cf6a8d4ca973bc9d101926a859cf88b8a7b544c6787c94"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Environment.cs",
+          "role": "compiler-support",
+          "sha256": "1174827863b40d80b974c361815a3ab5de0d37e184049c977ddf1716180d09f9"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Math1Param.cs",
+          "role": "compiler-support",
+          "sha256": "e12cf862c766846a61203f9e2eafab1c8de3d14325db3c012ef239b176996b87"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Math2Param.cs",
+          "role": "compiler-support",
+          "sha256": "49bdb1954d92ee90e9a705f0f92d0be5b5f52d8b7fbb0be6cd09d8f80e97db71"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Math3Param.cs",
+          "role": "compiler-support",
+          "sha256": "bf24c4d7fd63bcbf3da9c2d0669f1c3a713bb253d51021f57383891bddb201f5"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Shifts.cs",
+          "role": "compiler-support",
+          "sha256": "c5d43d9f71582743b8f518734759c0f3d1be0097799aaaf1e874e6cba3658774"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Spec.cs",
+          "role": "compiler-support",
+          "sha256": "2aee227767f2adf6d04f02a2d2d3ada8028d84dac60192678630b6af9212ae97"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Stack.cs",
+          "role": "compiler-support",
+          "sha256": "e44274b07b1a130045664718fad215e2a3dfd247f06421863573196d4c58f531"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Storage.cs",
+          "role": "compiler-support",
+          "sha256": "0101effa0c71c4a602021f18de7075e047974b75b37b9d672364499db0bf390d"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/ExtendedStackDecoderKernel.cs",
+          "role": "compiler-support",
+          "sha256": "3a7bb91ec7ff267e2cb4aaa4de4c8ea03279cc1d7a9fdf4dff57e34a80b963ce"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Instructions/StorageAccessType.cs",
+          "role": "compiler-support",
+          "sha256": "74e886f06c42aaaf70498a45e11dc1f3a04b2406a6f788063df0b9a54f221e12"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/IntrinsicGasCalculator.cs",
+          "role": "compiler-support",
+          "sha256": "886772dce848f566ba97a112a9b12b9f535a2d951dace63647136ababd822909"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/IOverridableCodeInfoRepository.cs",
+          "role": "compiler-support",
+          "sha256": "ac422f3c34fdf61816465def5602a82976ce845349d38b7155aa2d957481e9cf"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/IPrecompileProvider.cs",
+          "role": "compiler-support",
+          "sha256": "b75187a431b4ae89f48a212cf680025593bd28aa208f41653d9507a11283596b"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/IVirtualMachine.cs",
+          "role": "compiler-support",
+          "sha256": "330da5f31bd7aca4f4212a42c912c33cf0ac5b3def0689b7f9985cd6510aa56d"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/MemoryAllowance.cs",
+          "role": "compiler-support",
+          "sha256": "34fd2aea2a82a1382002e9b97228b46a7fc099152b12b2dc008498d4b9d143a3"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Metrics.cs",
+          "role": "compiler-support",
+          "sha256": "f056b9138021c4875f5a16893b243aac12f535c71ae88281987094fb6bcc2b90"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Metrics.std.cs",
+          "role": "compiler-support",
+          "sha256": "e36b3f0f33db29043d820db99cf0577a3c7010bf1b93193ebeb92e954a54300e"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Nethermind.Evm.csproj",
+          "role": "selection-or-projection",
+          "sha256": "6170fea1cb0363f603e599d057164e2db26f22309cb1f3ecdcac7ea84fc92eec"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/NoopCodeCache.cs",
+          "role": "compiler-support",
+          "sha256": "df4b2d08b09e26657eae8c033d09205552cbe46c5a4580decca0b516259e5012"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/OpcodeResult.cs",
+          "role": "compiler-support",
+          "sha256": "b7a3344ad10991ac6710620a7ff6de8242a210aead41028ac0c354f81f8571f3"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/OutOfGasException.cs",
+          "role": "compiler-support",
+          "sha256": "6c8fdabccf23afe536d4841c5e40ca4511149684eddbcb569613f3747b23e297"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/PoppedAddressCache.cs",
+          "role": "compiler-support",
+          "sha256": "c659d08a7683d78e4ea8b7dd91ffd0bc0f53b13f32e6a5042e120d3fe06e1e7b"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/PrecompileExecutionFailureException.cs",
+          "role": "compiler-support",
+          "sha256": "4624e0cc4c99721a68434b2b7b916008f699041d0309748064e85d16893a8e20"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Precompiles/IPrecompile.cs",
+          "role": "compiler-support",
+          "sha256": "601e075c3f89ebdeab2a30e684cdd654cb129fc2bea78ab93097a2915d0f2191"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Prepare.cs",
+          "role": "compiler-support",
+          "sha256": "c1470efdafb5803ebb53d3113e60d30e9c9954592c77a54346d224f91ad5a1e8"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/ReadOnlyMemoryExtensions.cs",
+          "role": "compiler-support",
+          "sha256": "d5dec0389767197fffde80a3aa86e139b38722a5d9343519ef1235e1fdac1bf9"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/RecentRootStore.cs",
+          "role": "compiler-support",
+          "sha256": "54c04edafb6a338cb82941a0a907c1ad7609faff965b3d4ed7fe0392f4d6b253"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/RefundHelper.cs",
+          "role": "semantic",
+          "sha256": "5ed45f3f67513b53e0c090e90cf6a41026ab7e4ea35343cdcbe4da65d431874e"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/ReleaseSpecExtensions.cs",
+          "role": "compiler-support",
+          "sha256": "f840174612cdb8fc48ae8adfb9b0af7bfb97cbb2c077e6d7a16c20249dae92a7"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/SpecFlags.std.cs",
+          "role": "compiler-support",
+          "sha256": "653891cfe2289e874dcdd98c9401b3b319637d5241fd9a4d6cd7ef1c146ee5a8"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs",
+          "role": "compiler-support",
+          "sha256": "ed5cdfdfe2ebf4d8c9f651572927efe7bdb5c75107db63a40577c5ec3ec2882f"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/StackPool.cs",
+          "role": "compiler-support",
+          "sha256": "4fa29adf34149fc192f9fc13140b8c8bdc3a8fa7b0f0b2aec94717670d6131c4"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/StackPool.std.cs",
+          "role": "compiler-support",
+          "sha256": "62042951d6b5cf767cce1a1929dbf82ce26127b8884c784ab6708320f418c8f2"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/IBlockAccessListSource.cs",
+          "role": "compiler-support",
+          "sha256": "189016dfde474c27c6bd61340f5239361226e8bd8c2456d83e3b0df46ef197ec"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/IReadOnlyStateProvider.cs",
+          "role": "compiler-support",
+          "sha256": "2bab0038c33735b330e25f6300384450835c092a5ff137935a1fd6c5ab58be68"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/IReadOnlyStateProviderExtensions.cs",
+          "role": "compiler-support",
+          "sha256": "5110f3112fda1748bbf76e55117393a284f9564c33c7caee2bc5cd2b978d9f6a"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/IWorldState.cs",
+          "role": "compiler-support",
+          "sha256": "0680ebc7168472645d93df58d2b3240508c177361815c85cceb09cf960f189c7"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/IWorldStateScopeProvider.cs",
+          "role": "compiler-support",
+          "sha256": "8c68c7561effd7e00f11985d36464d7ec97e8cd4e20b68ea48a66ccfd3702c86"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/LocalMetrics.cs",
+          "role": "compiler-support",
+          "sha256": "c646617c6bfeb451d38c9a74c42d3e45da684f731068d96931e9b286d73a3f3c"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/PreBlockCaches.cs",
+          "role": "compiler-support",
+          "sha256": "659417fcac588957cd5fda4a472d65c95b846d254a72094a2ad522f4dd3234bc"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/PrecompileCaches.cs",
+          "role": "compiler-support",
+          "sha256": "6a30dc79f7930ec1297ab9dbd81ed22b3f5ae7bc5cb9877ca342979226233524"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/PrewarmerState.cs",
+          "role": "compiler-support",
+          "sha256": "9847276d5f466066a52f4f88365170c1ed4bf31bf8b2803cbdbf4f92b029d2c3"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/Snapshot.cs",
+          "role": "compiler-support",
+          "sha256": "47625d60a8315bbc3afd26eca85780b0ab894d7401d913cbec00ed89b51f46c8"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/WorldStateExtensions.cs",
+          "role": "compiler-support",
+          "sha256": "4c0a66d1de95b4340bc9a190f6bef29b6e4068ebffa19ebe9cce3f789131fc62"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/StateOverridesExtensions.cs",
+          "role": "compiler-support",
+          "sha256": "c15ca881ac2c49b0ee843d79823dd8d3c21d2ba2f52b34dd9e707a3c306e4fbc"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/StaticCodeCache.cs",
+          "role": "compiler-support",
+          "sha256": "e7e3b892ae7624ef27ccef5c76f2946b8d50f4d8bd9261edca73c4524522e828"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/StatusCode.cs",
+          "role": "compiler-support",
+          "sha256": "e896f55406c9fc1ce99199d80bea69b87fa8891c23afef59712b87cadb971190"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/CancellationBlockTracer.cs",
+          "role": "compiler-support",
+          "sha256": "fa3c90421ec0a047c00536828e9b1fddfe90d5c69b6a36e43ff416ac31d7366f"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/CancellationTxTracer.cs",
+          "role": "compiler-support",
+          "sha256": "ccda2ccda79e804bf778c57498a24887b358e4c69f623ec2b3a6ca4d82ecd359"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/CompositeTxTracer.cs",
+          "role": "compiler-support",
+          "sha256": "999e2fefdd6db614b15e82dddeb2b931100aa1fb8b59825bf788d6682ef40698"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/FeesTracer.cs",
+          "role": "compiler-support",
+          "sha256": "be3365c0dc9feefc390ce076ab56050ea1105790741189e851e3c8032f08146d"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/IBlockTracer.cs",
+          "role": "compiler-support",
+          "sha256": "6e6f14e4b8d1ba044e4ef5523ca2bdeb73284bf6e3863909d35daa5d43a156ac"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/ITxTracer.cs",
+          "role": "compiler-support",
+          "sha256": "9f2550f8c3407f494452386699040feab8aa597437b1cd4180d038d9fd0a9169"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/ITxTracerWrapper.cs",
+          "role": "compiler-support",
+          "sha256": "b892bed034c5c14dd50837b69f1fe7dd47bc325421545fb1d8ab859e95ece36d"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/NullTxTracer.cs",
+          "role": "compiler-support",
+          "sha256": "fc5da81812866c5f0814729a14ed8cb2d7c669b7179e41cdc3d6f2ceaa7ba224"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/State/IStateTracer.cs",
+          "role": "compiler-support",
+          "sha256": "4b75958ac4d921126364d9ddbbf3c1fce9490ec046a3bb43f2b5a673c53dddc2"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/State/IStorageTracer.cs",
+          "role": "compiler-support",
+          "sha256": "d0ba6ca8c1a2c99fa6b3c5ff6d8ff6d6db84340d090a5d50816ba7f1b2077be0"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/State/IWorldStateTracer.cs",
+          "role": "compiler-support",
+          "sha256": "d4e95b993245b751fc97f71f3d47bc93bc477d79662ed17755e426d49e76335f"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/State/NullStateTracer.cs",
+          "role": "compiler-support",
+          "sha256": "dde2127d6fd6bc4f8b9a2009517be1e3c1eeae8ed63351c14551ccfb01590eab"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/TraceMemory.cs",
+          "role": "compiler-support",
+          "sha256": "0e8bda869acd599a94a8cd6a9a79a7ff457c4acf1534a0c7f4ebd39939b8fca6"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/TracerExtensions.cs",
+          "role": "compiler-support",
+          "sha256": "4704eb408436ecb82614bbf1db26f11fcfcfa65ef613146e37a31f7e30a8d662"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/TraceStack.cs",
+          "role": "compiler-support",
+          "sha256": "a2e06210112f3a47bca6f95e4b3a89433c78f4d39b5ec4cbafe485f21191acb8"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/TxTracer.cs",
+          "role": "compiler-support",
+          "sha256": "02cead9095a0cd5da4879bef2299dca35d3d4bbef2835d30448f03ef3f9e3d2d"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionExtensions.cs",
+          "role": "compiler-support",
+          "sha256": "c168c6d86ef5449123d2ee6ece097510e69e4c3a133ea57cf2730c841449c9b3"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/BuildUpTransactionProcessorAdapter.cs",
+          "role": "compiler-support",
+          "sha256": "11439d91578dc70334c69bf4df3913596c719ef831f6d494e395e260c460071d"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ChangeableTransactionProcessorAdapter.cs",
+          "role": "compiler-support",
+          "sha256": "4aa849b2584f2b7ff9cafc04006a3172ca75955d5f4d20f57dd7b994b245abe0"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ExecuteTransactionProcessorAdapter.cs",
+          "role": "compiler-support",
+          "sha256": "fe303008683a0eef964e9a346d6ae0e21e2fe419970c45ee0df6ab480cd86883"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ExecutionOptions.cs",
+          "role": "semantic",
+          "sha256": "014a2598e1def284b7b98dc97185b6dbbc45ca04be4ab159e330a0675ac24f10"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/GasConsumed.cs",
+          "role": "semantic",
+          "sha256": "1dc4e78d5a17056dcb00d496136a32a899245f3a7b3e5a9eef74c4760ef68686"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ITransactionProcessor.cs",
+          "role": "compiler-support",
+          "sha256": "3cae1430ba38d54f9867b714efdc823f9db126b1bbf0e45eae59439701459e95"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ITransactionProcessorAdapter.cs",
+          "role": "compiler-support",
+          "sha256": "0b777370dee8da9a6519b26d4446eae11962f61ad09f82d91e931ce9a65b16f9"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ITransactionProcessorFactory.cs",
+          "role": "compiler-support",
+          "sha256": "c02f25408dce7d378533fb85803906ca18e3dc7d1d884400669a3ac201591a7b"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/KeyedNonceManager.cs",
+          "role": "compiler-support",
+          "sha256": "49634ffafb158bd1c2827e7b8f3ba9c40c087eab8b5ca1b0963e858ff4440220"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionProcessor.cs",
+          "role": "compiler-support",
+          "sha256": "10c7370e5f6d5ca25e4cd0801967083f97f432e211314dc40126a18fbea48a95"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionRoutingKernel.cs",
+          "role": "compiler-support",
+          "sha256": "b884bb49ad7c109b907f4dfcac56a5eb13283d964310d45eb9ca85177ff5e5c1"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TraceTransactionProcessorAdapter.cs",
+          "role": "compiler-support",
+          "sha256": "ce271cae93b7689408446f0253780c7d6e72281cb78874f002a2c431c006678f"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+          "role": "semantic",
+          "sha256": "0374c6f35a9a23361f37b41162ac281ca83b09846ab4295d5a592db6315c99cc"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessorAdapterFactory.cs",
+          "role": "compiler-support",
+          "sha256": "1912fa7722b5d0dcd8f5a081b4b6b68fbe86d594838d7d2093fa8a38430e8bc2"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionSettlementKernel.cs",
+          "role": "semantic",
+          "sha256": "37add297aaaf07a4260b45c05c5f866a48f92eef2ac6fb16ef2bfd96103f8c44"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionSubstate.cs",
+          "role": "semantic",
+          "sha256": "1312a5f1a9990976670914fcc0a6ad2c77dd92d768d92fd91b28f27fefe66a00"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransferLog.cs",
+          "role": "compiler-support",
+          "sha256": "4449d807777bf8eb49e4e1a7355c37998ca57c1bf7cea2542461028879aba315"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TxExecutionContext.cs",
+          "role": "compiler-support",
+          "sha256": "b1dea501cdf6577967aa3a73ba4ca1b77dc96fedb3d5bbb3c0ca8dd14c65c4b0"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.CallResult.cs",
+          "role": "compiler-support",
+          "sha256": "d21bebbb4caea938c42d369083d922f6e18d01eb797b1c534fb1541c242ca073"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+          "role": "compiler-support",
+          "sha256": "45edba3691e09185e749485785990662ddea1af849bc6e4564f92b68a5137a6b"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+          "role": "compiler-support",
+          "sha256": "4f36bb20057caec9c85bcd3621372563f4d47ba36a9cbf01be267af4e379bca1"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.ExecutionHandlers.cs",
+          "role": "compiler-support",
+          "sha256": "62714bd459a38cc13e7b7bd2d5cfc7bc2ffdcb50743eeb565fdc2ee2966e286a"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+          "role": "compiler-support",
+          "sha256": "5148dd594e40ebb976179b1048f233914f54acc8d033d358cf3e2e7594e112b6"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.std.cs",
+          "role": "compiler-support",
+          "sha256": "357fbd35369424a379c8c29338f491627512d40a12199d7a3d9aac44c87ca92a"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.warmup.cs",
+          "role": "compiler-support",
+          "sha256": "73d9888b6f3aa62dd9d206e1d69608f9d643b61e8c874b91a9e3432d28c7672c"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/VmState.cs",
+          "role": "compiler-support",
+          "sha256": "7b7b6ddb753118b426d14976a3fe8e79f808320d6a09ea9cace9df19197f9f23"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/VmStateStack.cs",
+          "role": "compiler-support",
+          "sha256": "dd0591223138a1604e423466eee4489c05aa52f6d0a7d20426dad7aea3664515"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+          "role": "selection-or-projection",
+          "sha256": "fce65ce5bb523c56fc8aa6ee0e4d092c940a5a90b174c820ffe262eeb5241c60"
+        },
+        {
+          "path": "src/Nethermind/artifacts/obj/Nethermind.Evm/release/Nethermind.Evm.AssemblyInfo.cs",
+          "role": "compiler-generated",
+          "sha256": "1b09e0a9a99a509f7d03a928cc5c2d010b58d81ba1fc8d7bf68f7f08c5f8c52a"
+        },
+        {
+          "path": "src/Nethermind/artifacts/obj/Nethermind.Evm/release/.NETCoreApp,Version=v10.0.AssemblyAttributes.cs",
+          "role": "compiler-generated",
+          "sha256": "93d67476196ebfc80d1d7d8844b91146cfd678d105f5ce635eb900ca40610c9b"
+        }
+      ]
+    },
+    "ir": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "const": "OrdinaryEvmCompletion.ir.json"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "lean": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "const": "OrdinaryEvmCompletion.lean"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+namespace Nethermind.Specs.Forks;
+
+public class Berlin() : NamedReleaseSpec<Berlin>(MuirGlacier.Instance)
+{
+    public override void Apply(NamedReleaseSpec spec)
+    {
+        spec.Name = "Berlin";
+        spec.IsEip2565Enabled = true;
+        spec.IsEip2929Enabled = true;
+        spec.IsEip2930Enabled = true;
+    }
+}
+

@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "status": "process-one-publication-source-pinned",
+  "sources": [
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "role": "ProcessOne caller and suffix",
+      "sha256": "e2db419219184150c979cd6a081c83ba758c5024a15f996b510806bd1303deda"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Validators/BlockValidator.cs",
+      "role": "validator side-effect observation",
+      "sha256": "7cc7b515c3001ba4f36ea16b74216f84216556c95d87585a192979e8c4f195d6"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Validators/IBlockValidator.cs",
+      "role": "validator contract",
+      "sha256": "38cb507befc9695e522b16260b713b0b7b84efa226b857f7e5f410be0fd4e4c3"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/ProcessingOptions.cs",
+      "role": "option guard closure",
+      "sha256": "145c5bec2a5e70e01dc448a887cd17bb1b81277605a487e437971882a5b0421a"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.std.cs",
+      "role": "partial standard closure",
+      "sha256": "7ec6d0f975f36958f83b002ca53404620427a756cab70a037c0988ed75567ed4"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/IBlockProcessor.cs",
+      "role": "processor interface closure",
+      "sha256": "df79a2a24ca0ad79918cf10bce5b9d74cb4ad1b7542185b41076a0f3758a940e"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+      "role": "standard executor closure",
+      "sha256": "d520090e2adde45bced4b6af6f9add35ea77ed288060d09fdf05cae3b28bdf56"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Blockchain/Receipts/IReceiptStorage.cs",
+      "role": "receipt storage contract",
+      "sha256": "bccf3716b8bc0be5112cfba522ce58d2b51a6865a0bed20563b090bee62e1328"
+    }
+  ]
+}

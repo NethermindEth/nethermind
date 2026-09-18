@@ -1,0 +1,15 @@
+name = "PrecompileFullFrameExtractor"
+version = "0.1.0"
+defaultTargets = ["PrecompileFullFrameExtractor.Refinement.PrecompileFullFrame"]
+
+[[lean_lib]]
+name = "Eip803x"
+srcDir = ".."
+
+[[lean_lib]]
+name = "EvmFrameMachineExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "PrecompileFullFrameExtractor"
+srcDir = ".."

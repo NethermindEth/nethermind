@@ -141,6 +141,22 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void ResetTransient()
         => State.ResetTransient();
 
+    /// <inheritdoc/>
+    public virtual void ReapEmptyAccounts()
+        => State.ReapEmptyAccounts();
+
+    /// <inheritdoc/>
+    public virtual bool HasEmptyAccountLeaf(Address address)
+        => State.HasEmptyAccountLeaf(address);
+
+    /// <inheritdoc/>
+    public virtual bool IsCreateCollision(
+        Address address,
+        bool includeStorageCollision,
+        out bool physicalLeafExists,
+        out bool logicalAccountExists)
+        => State.IsCreateCollision(address, includeStorageCollision, out physicalLeafExists, out logicalAccountExists);
+
     public virtual void AddAccountRead(Address address)
         => State.AddAccountRead(address);
 

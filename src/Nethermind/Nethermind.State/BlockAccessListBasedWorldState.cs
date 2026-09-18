@@ -239,6 +239,58 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     public override bool IsContract(Address address)
         => GetCodeHash(address) != Keccak.OfAnEmptyString;
 
+    /// <inheritdoc/>
+    public override bool IsCreateCollision(
+        Address address,
+        bool includeStorageCollision,
+        out bool physicalLeafExists,
+        out bool logicalAccountExists)
+    {
+        bool hasContract = IsContract(address);
+        ulong nonce = GetNonce(address);
+        logicalAccountExists = !GetBalance(address).IsZero || nonce != 0 || hasContract;
+        physicalLeafExists = logicalAccountExists;
+        if (hasContract || nonce != 0 || !includeStorageCollision)
+        {
+            return hasContract || nonce != 0;
+        }
+
+        (IWorldState parentReader, ReadOnlyAccountChanges accountChanges) = ResolveContext(address);
+        GetPriorStorageChangeKinds(
+            accountChanges,
+            _blockAccessIndex,
+            out bool hasPriorNonZeroStorageChange,
+            out bool hasPriorZeroStorageChange);
+        physicalLeafExists |= hasPriorNonZeroStorageChange;
+        bool parentCodeOrNonceCollision = parentReader.IsCreateCollision(
+            address,
+            includeStorageCollision: false,
+            out _,
+            out _);
+        bool parentCollision = parentReader.IsCreateCollision(
+            address,
+            includeStorageCollision: true,
+            out _,
+            out _);
+        bool parentStorageCollision = parentCollision && !parentCodeOrNonceCollision;
+
+        if (hasPriorNonZeroStorageChange)
+        {
+            return true;
+        }
+
+        // EIP-7928 cannot say whether an effective empty account was reaped by a preceding
+        // EIP-161 transaction or whether zero-only slot writes cleared every parent leaf.
+        // Parallel replay must retry sequentially rather than choose a collision outcome from
+        // the parent storage root.
+        if (parentStorageCollision && (!logicalAccountExists || hasPriorZeroStorageChange))
+        {
+            ThrowAmbiguousStorageCollision(address);
+        }
+
+        return parentStorageCollision;
+    }
+
     public override bool IsDeadAccount(Address address)
         => !AccountExists(address) ||
                 (GetBalance(address) == 0 &&
@@ -280,6 +332,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public override void ResetTransient()
         => _transientStorageProvider.Reset();
+
+    /// <inheritdoc/>
+    public override void ReapEmptyAccounts() { }
 
     [MemberNotNull(nameof(_suggestedBlockAccessList), nameof(_suggestedBlockHeader))]
     private void CheckInitialized()
@@ -382,6 +437,33 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
         return false;
     }
 
+    private static void GetPriorStorageChangeKinds(
+        ReadOnlyAccountChanges accountChanges,
+        uint blockAccessIndex,
+        out bool hasNonZeroStorageChange,
+        out bool hasZeroStorageChange)
+    {
+        hasNonZeroStorageChange = false;
+        hasZeroStorageChange = false;
+        foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
+        {
+            if (!slotChanges.TryGetLastBefore(blockAccessIndex, out StorageChange storageChange))
+            {
+                continue;
+            }
+
+            if (storageChange.Value.Equals(default))
+            {
+                hasZeroStorageChange = true;
+            }
+            else
+            {
+                hasNonZeroStorageChange = true;
+                return;
+            }
+        }
+    }
+
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowNotInitialized(string fieldName)
         => throw new InvalidOperationException($"{fieldName} was not initialized.");
@@ -397,4 +479,9 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     [DoesNotReturn, StackTraceHidden]
     private void ThrowMissingStorage(in StorageCell storageCell)
         => throw new InvalidBlockLevelAccessListException(SuggestedBlockHeader, $"Storage access for {storageCell.Address} not in block access list at index {_blockAccessIndex}.");
+
+    [DoesNotReturn, StackTraceHidden]
+    internal void ThrowAmbiguousStorageCollision(Address address)
+        => throw new InvalidBlockLevelAccessListException(SuggestedBlockHeader,
+            $"Storage state for {address} requires sequential processing before an EIP-8037 CREATE collision.");
 }

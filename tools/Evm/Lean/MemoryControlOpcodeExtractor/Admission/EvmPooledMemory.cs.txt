@@ -1,0 +1,120 @@
+namespace Nethermind.Evm;
+
+partial class EvmPooledMemory
+{
+public const int WordSize = 32;
+
+internal const ulong MaxMemorySize = int.MaxValue - WordSize + 1;
+
+public ulong Size { get; private set; }
+
+public ulong CalculateMemoryCost(in UInt256 location, ulong length, out bool outOfGas)
+    {
+        if (length == 0)
+        {
+            outOfGas = false;
+            return 0;
+        }
+
+        CheckMemoryAccessViolation(in location, length, out ulong newSize, out outOfGas);
+        if (outOfGas) return 0;
+
+        return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0;
+    }
+
+public ulong CalculateMemoryCost(in UInt256 location, in UInt256 length, out bool outOfGas)
+    {
+        if (length.IsZero)
+        {
+            outOfGas = false;
+            return 0;
+        }
+
+        CheckMemoryAccessViolation(in location, in length, out ulong newSize, out outOfGas);
+        if (outOfGas) return 0;
+
+        return newSize > Size ? ComputeMemoryExpansionCost(newSize) : 0;
+    }
+
+[MethodImpl(MethodImplOptions.NoInlining)]
+    private ulong ComputeMemoryExpansionCost(ulong newSize)
+    {
+        // CheckMemoryAccessViolation has already capped newSize at MaxMemorySize (< 2^31), so the
+        // ceiling division cannot overflow uint and the squared terms stay below 2^52. Size is
+        // maintained as a word-aligned invariant by UpdateSize, so no ceiling is required there.
+        Debug.Assert(newSize <= MaxMemorySize);
+        Debug.Assert(Size % WordSize == 0);
+
+        ulong newActiveWords = (newSize + (WordSize - 1UL)) >> 5;
+        ulong activeWords = Size >> 5;
+        Size = newActiveWords << 5;
+
+        // Full Yellow Paper memory cost is bounded above by ~8.8e12 gas, which fits comfortably
+        // in ulong -- so the outOfGas propagation that older revisions carried is unreachable.
+        // newActiveWords >= activeWords by the caller's gating condition, so the subtractions are safe.
+        ulong cost = (newActiveWords - activeWords) * GasCostOf.Memory +
+            ((newActiveWords * newActiveWords) >> 9) -
+            ((activeWords * activeWords) >> 9);
+
+        return cost;
+    }
+
+[MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void CheckMemoryAccessViolation(in UInt256 location, ulong length, out ulong newLength, out bool isViolation)
+    {
+        // First pass: bail if length exceeds the aligned-memory cap or the location isn't a u64.
+        // Checking length first lets the compiler drop this branch entirely at call sites with a
+        // constant length (MSTORE/MSTORE8/MLOAD pass 32 or 1).
+        if (length > MaxMemorySize || !location.IsUint64)
+        {
+            isViolation = true;
+            newLength = 0;
+            return;
+        }
+
+        // length <= MaxMemorySize, so (MaxMemorySize - length) does not underflow. This single
+        // comparison subsumes both the unsigned-overflow check and the final bounds check that the
+        // original code wrote as two separate branches.
+        ulong offset = location.u0;
+        if (offset > MaxMemorySize - length)
+        {
+            isViolation = true;
+            newLength = 0;
+            return;
+        }
+
+        // locU0 + length <= MaxMemorySize < 2^31, no overflow possible.
+        isViolation = false;
+        newLength = offset + length;
+    }
+
+[MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void CheckMemoryAccessViolation(in UInt256 location, in UInt256 length, out ulong newLength, out bool isViolation)
+    {
+        if (!length.IsUint64)
+        {
+            isViolation = true;
+            newLength = 0;
+            return;
+        }
+
+        CheckMemoryAccessViolation(in location, length.u0, out newLength, out isViolation);
+    }
+
+private void UpdateSize(ulong length, bool rentIfNeeded = true)
+    {
+        // CheckMemoryAccessViolation has already proven length <= MaxMemorySize, so
+        // (length + 31) cannot overflow. Branchless align-up replaces the original
+        // "modulo + conditional" pair: one AND and one ADD, no jumps.
+        if (length > Size)
+        {
+            Size = (length + (WordSize - 1UL)) & ~(WordSize - 1UL);
+        }
+
+        if (rentIfNeeded)
+        {
+            EnsureRented(length);
+        }
+    }
+
+}

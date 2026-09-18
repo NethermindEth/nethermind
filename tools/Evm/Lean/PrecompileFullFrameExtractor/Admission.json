@@ -1,0 +1,489 @@
+{
+  "schemaVersion": 1,
+  "files": [
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "sha256": "45edba3691e09185e749485785990662ddea1af849bc6e4564f92b68a5137a6b",
+      "role": "production",
+      "symbols": [
+        "ExecuteTransaction:2",
+        "ExecutePrecompile",
+        "RunPrecompile:2",
+        "ExecutePrecompileCall",
+        "HandleFailure",
+        "HandleRegularReturn",
+        "HandleRevert",
+        "PrepareTopLevelSubstate",
+        "TraceTransactionActionEnd",
+        "PopAndRestoreParentState",
+        "IncorporateChildStateGasRefunds",
+        "RemoveAdvancedStateGasRefund",
+        "GetErrorString"
+      ]
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.ExecutionHandlers.cs",
+      "sha256": "62714bd459a38cc13e7b7bd2d5cfc7bc2ffdcb50743eeb565fdc2ee2966e286a",
+      "role": "production",
+      "symbols": [
+        "RunPrecompileCore",
+        "GetExecutionHandlers"
+      ]
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.CallResult.cs",
+      "sha256": "d21bebbb4caea938c42d369083d922f6e18d01eb797b1c534fb1541c242ca073",
+      "role": "production",
+      "symbols": [
+        "IsException",
+        "PrecompileSuccess",
+        "ShouldRevert",
+        "SubstateError"
+      ]
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "sha256": "7b7b6ddb753118b426d14976a3fe8e79f808320d6a09ea9cace9df19197f9f23",
+      "role": "production",
+      "symbols": [
+        "To",
+        "CommitToParent"
+      ]
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/ExecutionType.cs",
+      "sha256": "b6689c7c928182f6d115ca57cc8ac45bb9312359a026704f2eec77b921028013",
+      "role": "production",
+      "symbols": [
+        "GetBalanceCredit",
+        "CreditsBalance",
+        "IsAnyCreate"
+      ]
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/PrecompileExecutionFailureException.cs",
+      "sha256": "4624e0cc4c99721a68434b2b7b916008f699041d0309748064e85d16893a8e20",
+      "role": "production",
+      "symbols": [
+        "ExceptionType"
+      ]
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "sha256": "3c31ba40c24a78bf11243b38859168350f02934806124e913da0560bc1a4350f",
+      "role": "production",
+      "symbols": [
+        "ClearExecutionGas",
+        "TryConsumePrecompileGas",
+        "Refund",
+        "RepayStateGasSpill",
+        "RestoreChildStateGas",
+        "RestoreChildStateGasOnHalt",
+        "DiscardStateGas",
+        "RemoveStateGasRefundFromReservoir"
+      ]
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/PrecompileGasPricingKernel.cs",
+      "sha256": "dd23b8bd461a13c75ec203b1dbe853a885f61640edf4d47287c1dadd0d9ff576",
+      "role": "production",
+      "symbols": [
+        "TryConsume"
+      ]
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasTransitionAdapterKernel.cs",
+      "sha256": "ca16429e4cb1b728619b7fa0113b2302ca75600b0a32d9345e38721c7c2d7368",
+      "role": "production",
+      "symbols": [
+        "Refund",
+        "RepayStateGasSpill",
+        "RestoreChildStateGas",
+        "RestoreChildStateGasOnHalt",
+        "DiscardStateGas",
+        "RemoveStateGasRefundFromReservoir"
+      ]
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasTransitionKernel.cs",
+      "sha256": "4a31dc76fb8284a8ea5994de9a63810abe0fd7efbe6add4aa8b3d6cb564a75cc",
+      "role": "production",
+      "symbols": [
+        "Refund",
+        "RepayStateGasSpill",
+        "RestoreChildStateGas",
+        "RestoreChildStateGasOnHalt",
+        "DiscardStateGas",
+        "RemoveStateGasRefundFromReservoir"
+      ]
+    },
+    {
+      "path": "tools/Evm/Lean/PrecompileFrameExtractor/Generated/precompile-frame-stage-a.ir.json",
+      "sha256": "29b6e2bdd5e2b2782e6c44498f356b698ee592b1668ef0cf7663bb0ce8d67be8",
+      "role": "stageA",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/PrecompileFrameExtractor/Generated/precompile-frame-stage-a.source-manifest.json",
+      "sha256": "205affc3199397f707109d7e2ccb167affed0e4116f6a4256b03fe09894c30ae",
+      "role": "stageA",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/PrecompileFrameExtractor/Generated/PrecompileFrameStageA.lean",
+      "sha256": "dbb86e469b6f46b6abb07315757ba2b66ee568d084981dbf934a2d4b3bf0b92e",
+      "role": "stageA",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Refinement/PrecompileGasPricing.lean",
+      "sha256": "8ba4eeb00a7858e65dd2e338119c3f60319716c7283d1d18aa2ced6b6f6d8c43",
+      "role": "proof",
+      "symbols": [
+        "tryConsume_refines_wrapper"
+      ]
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Generated/PrecompileGasPricingKernel.lean",
+      "sha256": "a80078403d7d7018e9743ad7a84b146d8371dea8512691088f00a13b19c1f04e",
+      "role": "artifact",
+      "symbols": [
+        "tryConsume"
+      ]
+    },
+    {
+      "path": "tools/Evm/Lean/Extractor/Generated/PrecompileGasPricingKernel.ir.json",
+      "sha256": "a972e120172c64fa5ec1012fc098e5c9f23d0f2cc1fbc2fce53b6a7bfbfcb485",
+      "role": "artifact",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Extractor/Generated/PrecompileGasPricingKernel.source-manifest.json",
+      "sha256": "6586179cdc3274d772f998ef2a9eb35f389754cd97a2a5e059ba8a953179bb2f",
+      "role": "artifact",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Refinement/StateGasTransitionAdapterKernel.lean",
+      "sha256": "b72895f08007be0481b12bd38560f4dde3a059f30c23595e9cd060f35ab34b29",
+      "role": "proof",
+      "symbols": [
+        "generated_refund_outcome_eq_spec",
+        "generated_repayStateGasSpill_outcome_eq_spec",
+        "generated_restoreChildStateGas_outcome_eq_spec",
+        "generated_restoreChildStateGasOnHalt_outcome_eq_spec",
+        "generated_discardStateGas_outcome_eq_spec",
+        "generated_remove_nonnegative_outcome_eq_spec"
+      ]
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Refinement/StateGasTransitionAdapter.lean",
+      "sha256": "77fb2fce964efc1203658d96dc7e977d3c9ede587ab21c1ea13d2a33f716bb0c",
+      "role": "proof",
+      "symbols": [
+        "generated_refund_refines_adapter",
+        "generated_repayStateGasSpill_refines_adapter",
+        "generated_restoreChildStateGas_refines_adapter",
+        "generated_restoreChildStateGasOnHalt_refines_adapter",
+        "generated_discardStateGas_refines_adapter",
+        "generated_removeStateGasRefundFromReservoir_refines_adapter"
+      ]
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Generated/StateGasTransitionKernel.lean",
+      "sha256": "f284d83951b94cbfaf10ad8b5a58b0015b2c96f4ac86e97c9de8b3865dee1dce",
+      "role": "artifact",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Generated/StateGasTransitionAdapterKernel.lean",
+      "sha256": "95a3e2fadce28e7a98a666f4d57d82a7d174f05e4492979968708843b752091a",
+      "role": "artifact",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Extractor/Generated/StateGasTransitionKernel.ir.json",
+      "sha256": "d3a920f44b72d22500d8184f79843b38c02840bc86d671b33c6ad7b79cd03583",
+      "role": "artifact",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Extractor/Generated/StateGasTransitionKernel.source-manifest.json",
+      "sha256": "362031db8ef6bbfdcab657694f69a810369273f2ca41b7e1a233465e05c4cf85",
+      "role": "artifact",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Extractor/Generated/StateGasTransitionAdapterKernel.ir.json",
+      "sha256": "f51fa70f1d202f3c7fc8c009c83f9cedb353a49fd214e3285bdbbb18b45b51cf",
+      "role": "artifact",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Extractor/Generated/StateGasTransitionAdapterKernel.source-manifest.json",
+      "sha256": "b1f8c6fc051aa910953f5b98b38086ac04dbafeff509dd74bee39095fc59ae19",
+      "role": "artifact",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/FrameJournalExtractor/Refinement/FrameJournal.lean",
+      "sha256": "36fbd6da282c88a590b038d8824a4149f03c1b9d2abcce61b1ed498524948737",
+      "role": "proof",
+      "symbols": [
+        "transition_refines",
+        "finite_trace_refines",
+        "restore_preserves_ripemd_touch_latch"
+      ]
+    },
+    {
+      "path": "tools/Evm/Lean/FrameJournalExtractor/Generated/FrameJournalKernel.lean",
+      "sha256": "232951813100d23c1d593fde8fb0955888f373049df6cba8512afc8c9de6ccf2",
+      "role": "artifact",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/FrameJournalExtractor/Generated/FrameJournalKernel.ir.json",
+      "sha256": "117f5a45dd65488c6c66af504d7b293b2af965379e25c0a58fb6d92054a20b57",
+      "role": "artifact",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/FrameJournalExtractor/Generated/FrameJournalKernel.source-manifest.json",
+      "sha256": "6ae823dfaaafb9d6b6d180bfd7eaae858e01acf339a15693c76194a54e394183",
+      "role": "artifact",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/CallCreateOpcodeExtractor/Refinement/CallCreateOpcode.lean",
+      "sha256": "9f14f31975a4b50cddf577d308b841cc4a8e7a21d2f12ec00173c45b814f1ad0",
+      "role": "proof",
+      "symbols": [
+        "closed_amsterdam_refines"
+      ]
+    },
+    {
+      "path": "tools/Evm/Lean/CallCreateOpcodeExtractor/Generated/CallCreateOpcodeKernel.lean",
+      "sha256": "180665faeb11ec96337392b66906ad8e2d04cd6536d2ae22d977c57acc13def7",
+      "role": "artifact",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/CallCreateOpcodeExtractor/Generated/CallCreateOpcodeKernel.ir.json",
+      "sha256": "b74a9454441980789ee625402d8d37dae750c7767614e100f5502c20208b3aa5",
+      "role": "artifact",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/CallCreateOpcodeExtractor/Generated/CallCreateOpcodeKernel.source-manifest.json",
+      "sha256": "a8ad6c834d521ba0b55e3ef28ce994663c0099ba78046d5970830cd11a526164",
+      "role": "artifact",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/EvmFrameMachineExtractor/Specification/FrameMachineExecution.lean",
+      "sha256": "95dd6c9f13edf77a75334296f8ae00b1c8c00906ea83b4febb372e1a4526dbd8",
+      "role": "target",
+      "symbols": [
+        "settleChild"
+      ]
+    },
+    {
+      "path": "tools/Evm/Lean/EvmFrameMachineExtractor/Specification/FrameMachineState.lean",
+      "sha256": "f9cbb6135c97f3aaca8919a7bed988114c76be6ae32807996ccda3edf0745930",
+      "role": "target",
+      "symbols": [
+        "FrameResult",
+        "SettlementPrimitives"
+      ]
+    },
+    {
+      "path": "tools/Evm/Lean/PrecompileFullFrameExtractor/Specification/Types.lean",
+      "sha256": "91585fe2aaa8ed1f1478ecd5afdc21f0b86c825c7e625c8daaed95f1eab1914c",
+      "role": "local",
+      "symbols": [
+        "Input",
+        "FrontOperations",
+        "RawResult",
+        "Entry.Admitted",
+        "AdmittedPrecompileBoundary"
+      ]
+    },
+    {
+      "path": "tools/Evm/Lean/PrecompileFullFrameExtractor/Specification/Reference.lean",
+      "sha256": "ad88070ba4391285cc96fa0eb2b7e1bc32febae0b8c59a6c2d93bbb60e01bf4b",
+      "role": "local",
+      "symbols": [
+        "select",
+        "project",
+        "executePrecompile",
+        "settle"
+      ]
+    },
+    {
+      "path": "tools/Evm/Lean/PrecompileFullFrameExtractor/Refinement/PrecompileFullFrame.lean",
+      "sha256": "505cc7f5d31c9a9d8055be3f957d1625bcc71d5e8aaded4a9efee4fad977b27a",
+      "role": "local",
+      "symbols": [
+        "FrontPreservesParents",
+        "generated_execute_is_raw_admitted",
+        "source_execute_precompile_refines_reference",
+        "source_full_frame_refines_reference",
+        "settlement_refines_target"
+      ]
+    },
+    {
+      "path": "tools/Evm/Lean/PrecompileFullFrameExtractor/Templates/PrecompileFullFrame.lean",
+      "sha256": "5415690b59edf78b558654eeaac63698e01da4ac0ad48ebd9844663b1bdaab63",
+      "role": "local",
+      "symbols": [
+        "executePrecompile",
+        "softSettlement",
+        "fullFrame"
+      ]
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Precompiles/Ecrecover.lean",
+      "sha256": "5507ec834348c7c0086988a8836a34ee35aef60610cb1d4b19903f66d2643f82",
+      "role": "oracle",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Precompiles/Sha256.lean",
+      "sha256": "48240bd3798bc3353513a255d8dc68a8afeecc51d6a9946cf5eac60a44b6db82",
+      "role": "oracle",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Precompiles/Ripemd160.lean",
+      "sha256": "01a9c69e71dddf414324601c3fd4e7581f6deee6e2d67b20b954c853e84ed994",
+      "role": "oracle",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Precompiles/Identity.lean",
+      "sha256": "4197ab0373811604468d2dfeac5be097be34bc835bc84df7ade3aba2ba4ea72c",
+      "role": "oracle",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Precompiles/ModExp.lean",
+      "sha256": "3b4e47c7160939b7876a66f68821f8943954f5b05af473faf5a8556f67992dd3",
+      "role": "oracle",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Precompiles/Bn254Add.lean",
+      "sha256": "815251f36b324d68ae6c1712cd320bbfc429fd7e74e06f9cb8c639bd67fa6c2e",
+      "role": "oracle",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Precompiles/Bn254Mul.lean",
+      "sha256": "921a5fc256aa751ef9fb972d8a1a4de01ea3513ce94af6ab5678be63251f3dab",
+      "role": "oracle",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Precompiles/Bn254Pairing.lean",
+      "sha256": "c64c1bc15f6698b184481553c94d0509cdae90ea2debd49a8299de682bd74c2a",
+      "role": "oracle",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Precompiles/Blake2F.lean",
+      "sha256": "bc01b6ec11e8e8199bc34f2a9a5f8b57f7c80fe785f3d11fec8002b84499bb7a",
+      "role": "oracle",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Precompiles/KzgPointEvaluation.lean",
+      "sha256": "16b4a422347cf385d9687afcb6893fe476e919c57d2a29288aa263f6c71a6777",
+      "role": "oracle",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Precompiles/Bls12381G1Add.lean",
+      "sha256": "38e6d343ea317a197db7e7900592d34211ec27f5e42bcc67d51bbe51dbff63da",
+      "role": "oracle",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Precompiles/Bls12381G1Msm.lean",
+      "sha256": "cfe07c846c43bdd10fe361f4e33a7f0ef8a6fe7049e2d2a50f90dd2dad26b1a0",
+      "role": "oracle",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Precompiles/Bls12381G2Add.lean",
+      "sha256": "b68ae2e8bcf1c7fb76a134a51ae6d9cf59bee5eb7d269c8457ebc332e94b7a06",
+      "role": "oracle",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Precompiles/Bls12381G2Msm.lean",
+      "sha256": "6b229b91d1336f08b7e167d5c62ff9fb6c73bfa971a92adcb871852d5b7736bb",
+      "role": "oracle",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Precompiles/Bls12381Pairing.lean",
+      "sha256": "afc5bb1ef8ed19920dd4fc140da56afc985d29136804736988039b9f1a46132f",
+      "role": "oracle",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Precompiles/Bls12381FpToG1.lean",
+      "sha256": "4d0057859242d8def25b50af449f8403c642eb1ea89d5f3ba10a3ac0a0ab7e66",
+      "role": "oracle",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Precompiles/Bls12381Fp2ToG2.lean",
+      "sha256": "da7af6e856d7c272d217b0ff38c739a96ca8c5a084592c34fa3f3dacf7616f3b",
+      "role": "oracle",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Precompiles/P256Verify.lean",
+      "sha256": "15cc67bc4e725805c1aabc4076420f8f6ba4f774d09927222febfb2fde0589f2",
+      "role": "oracle",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/PrecompileFullFrameExtractor/Models.cs",
+      "sha256": "c47433455f68c951af96d6f80cec262aaf8cac96a65f8ba3535c2770945f9d89",
+      "role": "local",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/PrecompileFullFrameExtractor/Profile.cs",
+      "sha256": "97edf9b39b03ba026d13e90a118f58eb043e5f170c44197c3e844aff4f529f82",
+      "role": "local",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/PrecompileFullFrameExtractor/Program.cs",
+      "sha256": "a7d2dea2fa2f9b0ee7ac5f239e4f86cffa1da59476cf87ec393ca9f3869bbda5",
+      "role": "local",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/PrecompileFullFrameExtractor/PrecompileFullFrameExtractor.csproj",
+      "sha256": "9e669e4f4b18715a34166158967ae29d12e7c8d53b5270e4b820bd1f4f697ba8",
+      "role": "local",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/PrecompileFullFrameExtractor/Schema/ir.schema.json",
+      "sha256": "bca707bade883868068de4ca78d826e9b36185ba4e36c503ed5fb1d522baa09d",
+      "role": "local",
+      "symbols": []
+    },
+    {
+      "path": "tools/Evm/Lean/PrecompileFullFrameExtractor/Schema/source-manifest.schema.json",
+      "sha256": "c37e42a9ce08d3dafa28247630b457ca5c1ef8a3d75ab2762c3b3cefee6007fc",
+      "role": "local",
+      "symbols": []
+    }
+  ]
+}

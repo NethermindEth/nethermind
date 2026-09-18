@@ -1,0 +1,20 @@
+name = "OrdinaryPostNonceDispatchExtractor"
+version = "0.1.0"
+defaultTargets = ["OrdinaryPostNonceDispatchExtractor.Refinement.OrdinaryPostNonceDispatch"]
+
+# The upstream modules are identities/erasures only. Their source hashes are
+# pinned in Admission/ProductionClosure.txt; no upstream semantic value is
+# consumed by the generated lowering. As with the other extractor packages,
+# each library uses the shared Lean root so its module path includes its package
+# directory (for example, OrdinaryStatefulAdmissionPrefixExtractor.Generated).
+[[lean_lib]]
+name = "OrdinaryStatefulAdmissionPrefixExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "TransactionProcessorExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "OrdinaryPostNonceDispatchExtractor"
+srcDir = ".."

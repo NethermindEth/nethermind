@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 3,
+  "sources": [
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+      "role": "executor",
+      "sha256": "d520090e2adde45bced4b6af6f9add35ea77ed288060d09fdf05cae3b28bdf56"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "role": "caller",
+      "sha256": "e2db419219184150c979cd6a081c83ba758c5024a15f996b510806bd1303deda"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.std.cs",
+      "role": "partial-standard-source",
+      "sha256": "7ec6d0f975f36958f83b002ca53404620427a756cab70a037c0988ed75567ed4"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/IBlockProcessor.cs",
+      "role": "interface-closure",
+      "sha256": "df79a2a24ca0ad79918cf10bce5b9d74cb4ad1b7542185b41076a0f3758a940e"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/ProcessingOptions.cs",
+      "role": "flag-closure",
+      "sha256": "145c5bec2a5e70e01dc448a887cd17bb1b81277605a487e437971882a5b0421a"
+    }
+  ],
+  "auxiliarySources": [
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/TransactionProcessorAdapterExtensions.cs",
+      "role": "transaction-adapter-order",
+      "sha256": "910820a7e8bba91c30b052f5818707c46d625a2fbf12727e2aa869512120aa9e"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+      "role": "exact-base-tracer-lifecycle",
+      "sha256": "d4504f54b50dd43e2ab5bc7172ce2cf9e48453fcede990e5e667e743146262ff"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockAccessListManager.cs",
+      "role": "bal-enabled-derivation",
+      "sha256": "5d4d3b106c33935f05c63f33cc010b8fcec83106f9f0244fbea360be6dfbc770"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/IBlockAccessListManager.cs",
+      "role": "bal-manager-interface",
+      "sha256": "0ed401a074b32a35fb3de497a516d8b717802c55ffdac3f1cd773a7f4e6be273"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.ParallelBlockValidationTransactionsExecutor.cs",
+      "role": "bal-dispatch-and-sequential-fallback",
+      "sha256": "e8177dd7a2fd42d0fb1046012a9f18fc3e92a07265702b05203f20e12eba7090"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+      "role": "standard-mainnet-di-registration",
+      "sha256": "fce65ce5bb523c56fc8aa6ee0e4d092c940a5a90b174c820ffe262eeb5241c60"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ITransactionProcessorAdapter.cs",
+      "role": "transaction-adapter-interface",
+      "sha256": "0b777370dee8da9a6519b26d4446eae11962f61ad09f82d91e931ce9a65b16f9"
+    }
+  ],
+  "supportSources": [
+    {
+      "path": "src/Nethermind/Directory.Build.props",
+      "role": "complete-partial-compilation-support",
+      "sha256": "ad544425af1b0ec60334511abf79896a77843088457ef81b98a06b56d13e4e3c"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/ExecutionFlags.std.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "2676517bfe6c4b216ecf3fdc793bc65843d36817ff0583d5dfc7c64f0ef87f51"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockAccessListValidationIndex.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "60dae0a348c62202eaac748955722770eeaa43a11d27589427fecdd0fd7f68dc"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockAccessListValidationIndex.LaneStore.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "3930f8d13bc1677e400527838664850a676c63ee1985aa576fc15aab2107632c"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockCachePreWarmer.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "38b00b992bbe5e846f0c459bc0a4280dfb64c0aba9375087f4eab260a47568c7"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.SystemContractHandler.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "a069ba0962027b068e388544d3f338a47990f11e5085d381238231607758128b"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockAccessListSystemContractHandler.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "07342dde345dcec7b34569e8cb9f447f9d4abe3a640cd127559db77f2e1981fe"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockAccessListManager.Validation.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "dfe402bf91f381ef217b5a316cbc160b9b22a6589895577ae4c76e83bd77dbfc"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockAccessListManager.StateChanges.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "8142a49f7b612bcb903ffbb6463202f58775ad2804a4f6a18c09833a25d29b17"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockAccessListManager.SystemContracts.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "b8cf81651b1b417ae1899e9fb14b616fa7d40f58befa2cfed1ac44c7b2df5bf4"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockAccessListManager.TxProcessorPool.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "0d9796e91aa5dce08dd525e1493ca6ae7cc35440b524cc0d8f485c113cb00213"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptGasAccountingKernel.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "0882c798e6ffb2243735a9ec0cec5d442b20d51277feeba95e5b68ecfaf89e32"
+    }
+  ]
+}

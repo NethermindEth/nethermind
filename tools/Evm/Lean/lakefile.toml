@@ -1,0 +1,81 @@
+name = "Eip803x"
+version = "0.1.0"
+defaultTargets = ["Eip803x", "eip803x-reference", "eip803x-charge-state", "eip803x-state-gas-transition"]
+
+[[lean_lib]]
+name = "Eip803x"
+
+[[lean_lib]]
+name = "AuthorizationStateGasFoldExtractor"
+
+[[lean_lib]]
+name = "ExtendedStackOpcodeExtractor"
+
+[[lean_lib]]
+name = "Keccak256OpcodeExtractor"
+
+[[lean_lib]]
+name = "MemoryCopyOpcodeExtractor"
+
+[[lean_lib]]
+name = "PersistentStorageOpcodeExtractor"
+
+[[lean_lib]]
+name = "TransientStorageOpcodeExtractor"
+
+[[lean_lib]]
+name = "ControlFlowOpcodeExtractor"
+
+[[lean_lib]]
+name = "CallDataLoadOpcodeExtractor"
+
+[[lean_lib]]
+name = "EvmFrameMachineExtractor"
+
+[[lean_lib]]
+name = "EvmFrameControlSettlementExtractor"
+
+[[lean_lib]]
+name = "EvmFrameDriverExtractor"
+
+[[lean_lib]]
+name = "OrdinaryStaticAdmissionExtractor"
+
+[[lean_lib]]
+name = "OrdinaryStatefulAdmissionPrefixExtractor"
+
+[[lean_lib]]
+name = "CallCreateOpcodeExtractor"
+
+[[lean_lib]]
+name = "LogOpcodeExtractor"
+
+[[lean_lib]]
+name = "WorldJournalExtractor"
+
+[[lean_lib]]
+name = "FrameJournalExtractor"
+
+[[lean_lib]]
+name = "PrecompileFrameExtractor"
+
+[[lean_lib]]
+name = "PrecompileFullFrameExtractor"
+
+[[lean_lib]]
+name = "SynchronousBlockPipelineMachineExtractor"
+
+[[lean_lib]]
+name = "PushOpcodeExtractor"
+
+[[lean_exe]]
+name = "eip803x-reference"
+root = "Main"
+
+[[lean_exe]]
+name = "eip803x-charge-state"
+root = "ChargeStateMain"
+
+[[lean_exe]]
+name = "eip803x-state-gas-transition"
+root = "StateGasTransitionMain"

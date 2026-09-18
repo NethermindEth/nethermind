@@ -1,0 +1,1660 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.0.0",
+  "kernel": "Amsterdam standard-mainnet PUSH0 and PUSH1-PUSH32 dispatch and operational semantics",
+  "reachability": {
+    "service": "IVirtualMachine",
+    "concreteVm": "EthereumVirtualMachine",
+    "closedVm": "VirtualMachine\u003CEthereumGasPolicy\u003E",
+    "gasPolicy": "EthereumGasPolicy",
+    "fork": "Amsterdam",
+    "push0Activation": "Shanghai.IsEip3855Enabled inherited through the complete named-mainnet ancestry",
+    "buildSelection": "Directory.Build.targets selects *.std.cs when EnableZkEvm != true",
+    "dispatchRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode"
+  },
+  "opcodes": [
+    {
+      "name": "push0",
+      "instruction": "PUSH0",
+      "opcodeByte": 95,
+      "immediateBytes": 0,
+      "handler": "Push0Opcode\u003CTTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush0\u003CTGasPolicy,TTracingInst\u003E",
+      "fixedGas": 2,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeBase",
+        "checkStackOverflow",
+        "terminalElisionOrPushZero"
+      ]
+    },
+    {
+      "name": "push1",
+      "instruction": "PUSH1",
+      "opcodeByte": 96,
+      "immediateBytes": 1,
+      "handler": "PushOpcode\u003CEvmInstructions.Op1,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op1,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push2",
+      "instruction": "PUSH2",
+      "opcodeByte": 97,
+      "immediateBytes": 2,
+      "handler": "Push2Opcode\u003CTTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush2\u003CTGasPolicy,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": false,
+      "terminalPushElisionWhenUntraced": false,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflowWhenUntraced",
+        "terminalElisionOrFusionOrPush",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push3",
+      "instruction": "PUSH3",
+      "opcodeByte": 98,
+      "immediateBytes": 3,
+      "handler": "PushOpcode\u003CEvmInstructions.Op3,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op3,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push4",
+      "instruction": "PUSH4",
+      "opcodeByte": 99,
+      "immediateBytes": 4,
+      "handler": "PushOpcode\u003CEvmInstructions.Op4,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op4,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push5",
+      "instruction": "PUSH5",
+      "opcodeByte": 100,
+      "immediateBytes": 5,
+      "handler": "PushOpcode\u003CEvmInstructions.Op5,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op5,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push6",
+      "instruction": "PUSH6",
+      "opcodeByte": 101,
+      "immediateBytes": 6,
+      "handler": "PushOpcode\u003CEvmInstructions.Op6,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op6,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push7",
+      "instruction": "PUSH7",
+      "opcodeByte": 102,
+      "immediateBytes": 7,
+      "handler": "PushOpcode\u003CEvmInstructions.Op7,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op7,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push8",
+      "instruction": "PUSH8",
+      "opcodeByte": 103,
+      "immediateBytes": 8,
+      "handler": "PushOpcode\u003CEvmInstructions.Op8,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op8,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push9",
+      "instruction": "PUSH9",
+      "opcodeByte": 104,
+      "immediateBytes": 9,
+      "handler": "PushOpcode\u003CEvmInstructions.Op9,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op9,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push10",
+      "instruction": "PUSH10",
+      "opcodeByte": 105,
+      "immediateBytes": 10,
+      "handler": "PushOpcode\u003CEvmInstructions.Op10,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op10,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push11",
+      "instruction": "PUSH11",
+      "opcodeByte": 106,
+      "immediateBytes": 11,
+      "handler": "PushOpcode\u003CEvmInstructions.Op11,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op11,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push12",
+      "instruction": "PUSH12",
+      "opcodeByte": 107,
+      "immediateBytes": 12,
+      "handler": "PushOpcode\u003CEvmInstructions.Op12,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op12,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push13",
+      "instruction": "PUSH13",
+      "opcodeByte": 108,
+      "immediateBytes": 13,
+      "handler": "PushOpcode\u003CEvmInstructions.Op13,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op13,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push14",
+      "instruction": "PUSH14",
+      "opcodeByte": 109,
+      "immediateBytes": 14,
+      "handler": "PushOpcode\u003CEvmInstructions.Op14,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op14,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push15",
+      "instruction": "PUSH15",
+      "opcodeByte": 110,
+      "immediateBytes": 15,
+      "handler": "PushOpcode\u003CEvmInstructions.Op15,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op15,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push16",
+      "instruction": "PUSH16",
+      "opcodeByte": 111,
+      "immediateBytes": 16,
+      "handler": "PushOpcode\u003CEvmInstructions.Op16,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op16,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push17",
+      "instruction": "PUSH17",
+      "opcodeByte": 112,
+      "immediateBytes": 17,
+      "handler": "PushOpcode\u003CEvmInstructions.Op17,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op17,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push18",
+      "instruction": "PUSH18",
+      "opcodeByte": 113,
+      "immediateBytes": 18,
+      "handler": "PushOpcode\u003CEvmInstructions.Op18,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op18,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push19",
+      "instruction": "PUSH19",
+      "opcodeByte": 114,
+      "immediateBytes": 19,
+      "handler": "PushOpcode\u003CEvmInstructions.Op19,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op19,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push20",
+      "instruction": "PUSH20",
+      "opcodeByte": 115,
+      "immediateBytes": 20,
+      "handler": "PushOpcode\u003CEvmInstructions.Op20,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op20,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push21",
+      "instruction": "PUSH21",
+      "opcodeByte": 116,
+      "immediateBytes": 21,
+      "handler": "PushOpcode\u003CEvmInstructions.Op21,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op21,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push22",
+      "instruction": "PUSH22",
+      "opcodeByte": 117,
+      "immediateBytes": 22,
+      "handler": "PushOpcode\u003CEvmInstructions.Op22,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op22,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push23",
+      "instruction": "PUSH23",
+      "opcodeByte": 118,
+      "immediateBytes": 23,
+      "handler": "PushOpcode\u003CEvmInstructions.Op23,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op23,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push24",
+      "instruction": "PUSH24",
+      "opcodeByte": 119,
+      "immediateBytes": 24,
+      "handler": "PushOpcode\u003CEvmInstructions.Op24,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op24,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push25",
+      "instruction": "PUSH25",
+      "opcodeByte": 120,
+      "immediateBytes": 25,
+      "handler": "PushOpcode\u003CEvmInstructions.Op25,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op25,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push26",
+      "instruction": "PUSH26",
+      "opcodeByte": 121,
+      "immediateBytes": 26,
+      "handler": "PushOpcode\u003CEvmInstructions.Op26,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op26,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push27",
+      "instruction": "PUSH27",
+      "opcodeByte": 122,
+      "immediateBytes": 27,
+      "handler": "PushOpcode\u003CEvmInstructions.Op27,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op27,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push28",
+      "instruction": "PUSH28",
+      "opcodeByte": 123,
+      "immediateBytes": 28,
+      "handler": "PushOpcode\u003CEvmInstructions.Op28,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op28,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push29",
+      "instruction": "PUSH29",
+      "opcodeByte": 124,
+      "immediateBytes": 29,
+      "handler": "PushOpcode\u003CEvmInstructions.Op29,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op29,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push30",
+      "instruction": "PUSH30",
+      "opcodeByte": 125,
+      "immediateBytes": 30,
+      "handler": "PushOpcode\u003CEvmInstructions.Op30,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op30,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push31",
+      "instruction": "PUSH31",
+      "opcodeByte": 126,
+      "immediateBytes": 31,
+      "handler": "PushOpcode\u003CEvmInstructions.Op31,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op31,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    },
+    {
+      "name": "push32",
+      "instruction": "PUSH32",
+      "opcodeByte": 127,
+      "immediateBytes": 32,
+      "handler": "PushOpcode\u003CEvmInstructions.Op32,TTracingInst\u003E",
+      "wrapper": "EvmInstructions.InstructionPush\u003CTGasPolicy,EvmInstructions.Op32,TTracingInst\u003E",
+      "fixedGas": 3,
+      "stackInputs": 0,
+      "stackGrowth": 1,
+      "hasCheckedBodyWhenUntraced": true,
+      "terminalPushElisionWhenUntraced": true,
+      "orderedEffects": [
+        "advanceOpcodePc",
+        "chargeVeryLow",
+        "checkStackOverflow",
+        "terminalElisionOrPushZeroPaddedImmediate",
+        "advanceImmediatePc"
+      ]
+    }
+  ],
+  "specializations": [
+    {
+      "opcode": "push0",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPush0Opcode\u003COffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push1",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op1,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push2",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPush2Opcode\u003COffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push3",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op3,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push4",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op4,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push5",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op5,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push6",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op6,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push7",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op7,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push8",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op8,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push9",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op9,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push10",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op10,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push11",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op11,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push12",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op12,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push13",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op13,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push14",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op14,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push15",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op15,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push16",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op16,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push17",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op17,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push18",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op18,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push19",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op19,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push20",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op20,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push21",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op21,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push22",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op22,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push23",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op23,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push24",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op24,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push25",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op25,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push26",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op26,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push27",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op27,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push28",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op28,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push29",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op29,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push30",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op30,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push31",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op31,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push32",
+      "table": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op32,OffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push0",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPush0Opcode\u003COffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push1",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op1,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push2",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPush2Opcode\u003COffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push3",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op3,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push4",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op4,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push5",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op5,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push6",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op6,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push7",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op7,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push8",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op8,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push9",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op9,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push10",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op10,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push11",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op11,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push12",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op12,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push13",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op13,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push14",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op14,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push15",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op15,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push16",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op16,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push17",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op17,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push18",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op18,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push19",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op19,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push20",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op20,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push21",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op21,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push22",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op22,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push23",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op23,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push24",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op24,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push25",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op25,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push26",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op26,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push27",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op27,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push28",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op28,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push29",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op29,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push30",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op30,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push31",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op31,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push32",
+      "table": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op32,OffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push0",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPush0Opcode\u003COnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push1",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op1,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push2",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPush2Opcode\u003COnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push3",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op3,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push4",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op4,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push5",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op5,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push6",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op6,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push7",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op7,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push8",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op8,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push9",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op9,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push10",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op10,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push11",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op11,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push12",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op12,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push13",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op13,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push14",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op14,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push15",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op15,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push16",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op16,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push17",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op17,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push18",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op18,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push19",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op19,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push20",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op20,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push21",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op21,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push22",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op22,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push23",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op23,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push24",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op24,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push25",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op25,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push26",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op26,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push27",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op27,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push28",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op28,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push29",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op29,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push30",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op30,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push31",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op31,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push32",
+      "table": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OffFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op32,OnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push0",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPush0Opcode\u003COnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push1",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op1,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push2",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPush2Opcode\u003COnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push3",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op3,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push4",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op4,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push5",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op5,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push6",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op6,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push7",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op7,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push8",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op8,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push9",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op9,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push10",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op10,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push11",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op11,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push12",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op12,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push13",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op13,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push14",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op14,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push15",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op15,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push16",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op16,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push17",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op17,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push18",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op18,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push19",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op19,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push20",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op20,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push21",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op21,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push22",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op22,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push23",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op23,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push24",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op24,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push25",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op25,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push26",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op26,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push27",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op27,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push28",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op28,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push29",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op29,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push30",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op30,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push31",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op31,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    },
+    {
+      "opcode": "push32",
+      "table": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancellationFlag": "OnFlag",
+      "closedRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CPushOpcode\u003CEvmInstructions.Op32,OnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E"
+    }
+  ],
+  "stackLimit": 1024,
+  "push2Fusion": {
+    "jumpOpcodeByte": 86,
+    "jumpiOpcodeByte": 87,
+    "jumpdestOpcodeByte": 91,
+    "jumpGas": 8,
+    "jumpiGas": 10,
+    "jumpdestGas": 1,
+    "eligibility": "untraced PUSH2 with at least two immediate bytes followed by JUMP or JUMPI",
+    "stackLimitPrecheck": "stack overflow is checked after PUSH2 gas and before terminal/fusion selection",
+    "terminalRule": "remaining immediate bytes \u003C= 2 advances PC by 2 without a push after the overflow check",
+    "jumpRule": "charge JUMP, validate the big-endian immediate destination, skip JUMPDEST, charge JUMPDEST",
+    "jumpiRule": "charge JUMPI, pop condition, zero falls through past PUSH2 immediate and JUMPI; nonzero follows JUMP",
+    "destinationRule": "JumpDestination accepts only a valid JUMPDEST and returns its code offset",
+    "orderedEffects": [
+      "chargePush2",
+      "checkOverflow",
+      "detectTerminalOrNextOpcode",
+      "incrementFusedOpcodeCount",
+      "chargeJumpOrJumpi",
+      "popJumpiCondition",
+      "validateDestination",
+      "skipAndChargeJumpdest"
+    ]
+  },
+  "forkLineage": [
+    "Olympic",
+    "Frontier",
+    "Homestead",
+    "Dao",
+    "TangerineWhistle",
+    "SpuriousDragon",
+    "Byzantium",
+    "Constantinople",
+    "ConstantinopleFix",
+    "Istanbul",
+    "MuirGlacier",
+    "Berlin",
+    "London",
+    "ArrowGlacier",
+    "GrayGlacier",
+    "Paris",
+    "Shanghai",
+    "Cancun",
+    "Prague",
+    "Osaka",
+    "BPO1",
+    "BPO2",
+    "Amsterdam"
+  ],
+  "openExtractionObligations": [
+    "Unsafe code-buffer reads and the production sentinel allocation satisfy the admitted bounds assumptions",
+    "EthereumGasPolicy fixed-width representation and CLR arithmetic implement the modeled Nat gas transitions",
+    "EvmStack byte-lane layout and optimized PushN writers implement big-endian UInt256 values",
+    "JumpDestination and PrefetchCodeAtDestination implement the supplied valid-destination relation without side effects beyond prefetch",
+    "Tracing callbacks and cancellation boundaries preserve the modeled opcode state projection",
+    "Tail-call function pointers, JIT specialization, and CLR execution implement the admitted standard dispatch roots"
+  ]
+}

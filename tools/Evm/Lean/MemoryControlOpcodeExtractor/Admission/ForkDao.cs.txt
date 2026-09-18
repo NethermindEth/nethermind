@@ -1,0 +1,7 @@
+namespace Nethermind.Specs.Forks;
+
+public class Dao() : NamedReleaseSpec<Dao>(Homestead.Instance)
+{
+    public override void Apply(NamedReleaseSpec spec) => spec.Name = "DAO";
+}
+

@@ -157,6 +157,25 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         accountChanges.NonceChange = new NonceChange(Index, newNonce);
     }
 
+    internal void SetPhysicalAccountExists(Address address, bool exists)
+    {
+        AccountChangesAtIndex accountChanges = GetOrAddAccountChanges(address);
+        bool? previous = accountChanges.PhysicalAccountExists;
+        if (previous == exists)
+        {
+            return;
+        }
+
+        _changes.Add(new Change
+        {
+            Account = accountChanges,
+            Type = ChangeType.PhysicalAccountExistence,
+            HasPrevious = previous.HasValue,
+            PreviousValue = new ChangeValue(previous == true ? UInt256.One : UInt256.Zero),
+        });
+        accountChanges.PhysicalAccountExists = exists;
+    }
+
     public void AddAccountRead(Address address) => RecordReadAndGet(address);
 
     /// <summary>Records an account read and returns its entry; one-slot cache skips repeat same-address probes.</summary>
@@ -335,6 +354,11 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
                         accountChanges.AddStorageRead(slot);
                     }
                     break;
+                case ChangeType.PhysicalAccountExistence:
+                    accountChanges.PhysicalAccountExists = change.HasPrevious
+                        ? !change.PreviousValue.Balance.IsZero
+                        : null;
+                    break;
             }
         }
         CollectionsMarshal.SetCount(_changes, snapshot);
@@ -384,6 +408,7 @@ public class BlockAccessListAtIndex : IJournal<int>, IResettable
         CodeChange = 1,
         NonceChange = 2,
         StorageChange = 3,
+        PhysicalAccountExistence = 4,
     }
 
     private readonly struct Change

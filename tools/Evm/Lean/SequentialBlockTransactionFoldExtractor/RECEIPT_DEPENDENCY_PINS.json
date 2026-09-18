@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "status": "source-attached",
+  "artifacts": [
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/SOURCE_PINS.json",
+      "sha256": "0223aadf196cc74051d632260693eeb607fde202fa612caee59d3ddaca886c6f"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.source-manifest.json",
+      "sha256": "3d1ec03bce750645bc29d8fb51ac94321508364735b9a65a987043100f74bd8e"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json",
+      "sha256": "1f73a3800a957dd02d9d7b06b3b955c81bb92fd9eb8d2831920905394bfc1d5c"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.ir.json",
+      "sha256": "0bf061d43d54e3eb9bdc7ccff4d0541d6dee189ac1ccea7f139095d3e1b7945a"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.lean",
+      "sha256": "028d11a14e031aaedce27c71b26e2c69cf16e759ff3ac870373ead10f6971180"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Specification/ReceiptTerminalFold.lean",
+      "sha256": "d48c07020ea58c5bdc97f9b51e8b82bf70bfa670410d77675288fba75b317e86"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Refinement/ReceiptTerminalFold.lean",
+      "sha256": "bd4a3556a98ec40875960ff2180523d16221b05cd6cf9a0b6ce1fc46a8cb3e93"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/ReceiptTerminalFoldProfile.cs",
+      "sha256": "8551ebadad7e9ca9e3f92bf76f911a6d4319ee53a946d6430cba06657f3f6494"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/ReceiptTerminalFoldControlFlow.cs",
+      "sha256": "327a88541a2a75ec876c7a837cf8f10e762996c284bf94ce9bae84786a301396"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/ReceiptTerminalFoldEffects.cs",
+      "sha256": "a5596f7159807337d70ea0bd651a91d9f0b17f6ec7e1500b339786de354b4ec8"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/ReceiptTerminalFoldArtifacts.cs",
+      "sha256": "df19e33197070a421a0ac359934a6a02509f448b30b4dc574709ddae49d6fcdc"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Program.cs",
+      "sha256": "5500be3c342acda8047e675911d47a503762668f23ed6a0f3560d5062b31dd9a"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Models.cs",
+      "sha256": "dbdd88e08dd1db1ea09dea45bd2aaab140f1d5a70afea5814e453a3d0bcadbbc"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/ReceiptTerminalFoldLeanEmitter.cs",
+      "sha256": "55c91ed1a5054ef498a65088bcbbb3ce979e0ecbf09726ec8c683e15670de8a8"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/ReceiptTerminalFoldExtractor.csproj",
+      "sha256": "7690888011c2d34e80bfa3475dd29b51c8d480cd2abd0e130b1c2cd4c05b1575"
+    },
+    {
+      "path": "tools/Evm/Lean/Extractor/Generated/BlockReceiptGasAccountingKernel.ir.json",
+      "sha256": "5278c354453a3adab99df5a68b4475d9feab798eba1e4df42ee80bf34a259c41"
+    },
+    {
+      "path": "tools/Evm/Lean/Extractor/Generated/BlockReceiptGasAccountingKernel.source-manifest.json",
+      "sha256": "1bc07122e230b88e69f5444f526d6c3654f4788c4479ea114185982471bdc2aa"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/BlockReceiptGas.lean",
+      "sha256": "51f1df6a272adf776aac2cea085e6d063e25997310eb77c29e99fe5970b62a6e"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Generated/BlockReceiptGasAccountingKernel.lean",
+      "sha256": "5d7851084945d5263dd87bcda4ae9e60ce7b779473a7c37617a96cf0e91026f2"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Generated/TransactionGasInitializationKernel.lean",
+      "sha256": "83ce996d6dcc93a588114e73737a25a14cb21689e9e8900e6dc68a07fb170b6f"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Refinement/BlockReceiptGasAccounting.lean",
+      "sha256": "6d8a1c1de3f99c43f24576a6358e083fcce43cfe23037bd54cfececfbda5dfe5"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Refinement/TransactionGasInitialization.lean",
+      "sha256": "8986504ad786cc621dcb0c74400980366847c43d832830973f52a5d38c290578"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/TransactionGas.lean",
+      "sha256": "2e87721125c6430eab9c76dc8f32a11f4898db0dec68b57a48043c18cbdeefcd"
+    }
+  ]
+}

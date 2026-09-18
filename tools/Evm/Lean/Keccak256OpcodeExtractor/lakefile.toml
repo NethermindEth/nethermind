@@ -1,0 +1,11 @@
+name = "Keccak256OpcodeExtractor"
+version = "0.1.0"
+defaultTargets = ["Keccak256OpcodeExtractor.Refinement.Keccak256Opcode"]
+
+[[lean_lib]]
+name = "Eip803x"
+srcDir = ".."
+
+[[lean_lib]]
+name = "Keccak256OpcodeExtractor"
+srcDir = ".."

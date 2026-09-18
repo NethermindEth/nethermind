@@ -366,6 +366,31 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         PushDelete(address);
     }
 
+    /// <summary>
+    /// Finds EIP-161-empty accounts changed after the transaction-start snapshot.
+    /// </summary>
+    internal List<Address>? GetEmptyAccountsToReap(int transactionStart)
+    {
+        List<Address>? accountsToReap = null;
+        ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
+        for (int i = transactionStart + 1; i < changes.Length; i++)
+        {
+            ref readonly Change change = ref changes[i];
+            if (_intraTxCache[change.Address] != i)
+            {
+                continue;
+            }
+
+            if (change.ChangeType is ChangeType.Touch or ChangeType.Update or ChangeType.New
+                && change.Account?.IsEmpty == true)
+            {
+                (accountsToReap ??= []).Add(change.Address);
+            }
+        }
+
+        return accountsToReap;
+    }
+
     public int TakeSnapshot()
     {
         int currentPosition = _changes.Count - 1;

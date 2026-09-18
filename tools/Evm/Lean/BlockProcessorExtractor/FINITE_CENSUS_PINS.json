@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "name": "NormalFiniteBranchCompletion",
+  "count": 2317,
+  "inventory": {
+    "path": "tools/Evm/Lean/BlockProcessorExtractor/EXPORTED_FINITE_THEOREMS.txt",
+    "sha256": "1d8110918a0f1941835508532155a84724aa93d8b63238da8cfab278617e4317"
+  }
+}

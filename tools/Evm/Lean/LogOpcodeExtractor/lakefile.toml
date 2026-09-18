@@ -1,0 +1,11 @@
+name = "LogOpcodeExtractor"
+version = "0.1.0"
+defaultTargets = ["LogOpcodeExtractor.Refinement.LogOpcode"]
+
+[[lean_lib]]
+name = "Eip803x"
+srcDir = ".."
+
+[[lean_lib]]
+name = "LogOpcodeExtractor"
+srcDir = ".."

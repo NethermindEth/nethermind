@@ -1,0 +1,61 @@
+namespace Nethermind.Evm.GasPolicy;
+
+partial class EthereumGasPolicy
+{
+[MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ulong GetRemainingGas(in EthereumGasPolicy gas) => gas.Value;
+
+/// <summary>Subtracts <paramref name="cost"/> from the execution gas budget with no affordability check.</summary>
+    /// <remarks>The caller must have already proven <c>gas.Value &gt;= cost</c>; otherwise the value underflows.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ConsumeRaw(ref EthereumGasPolicy gas, ulong cost) => gas.Value -= cost;
+
+[MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool UpdateMemoryCost(ref EthereumGasPolicy gas,
+        in UInt256 position,
+        in UInt256 length, ref EvmPooledMemory memory)
+    {
+        ulong size = memory.Size;
+        if (length.IsUint64 && length.u0 <= size && position.IsUint64 && position.u0 <= size - length.u0)
+            return true;
+
+        ulong memoryCost = memory.CalculateMemoryCost(in position, length, out bool outOfGas);
+        if (memoryCost == 0L)
+            return !outOfGas;
+        return UpdateGas(ref gas, memoryCost);
+    }
+
+[MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool UpdateMemoryCost(ref EthereumGasPolicy gas,
+        in UInt256 position,
+        ulong length, ref EvmPooledMemory memory)
+    {
+        ulong size = memory.Size;
+        if (length <= size && position.IsUint64 && position.u0 <= size - length)
+            return true;
+
+        ulong memoryCost = memory.CalculateMemoryCost(in position, length, out bool outOfGas);
+        if (memoryCost == 0)
+            return !outOfGas;
+        return UpdateGas(ref gas, memoryCost);
+    }
+
+[MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool UpdateGas(ref EthereumGasPolicy gas,
+        ulong gasCost)
+    {
+        if (GetRemainingGas(in gas) < gasCost)
+        {
+            gas.Value = 0;
+            return false;
+        }
+
+        ConsumeRaw(ref gas, gasCost);
+        return true;
+    }
+
+[MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryConsumeDataCopyGas(ref EthereumGasPolicy gas, IReleaseSpec spec, bool isExternalCode, ulong words)
+        => UpdateGas(ref gas, (isExternalCode ? spec.GasCosts.ExtCodeCost : GasCostOf.VeryLow) + GasCostOf.Memory * words);
+
+}

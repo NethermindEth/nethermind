@@ -1,0 +1,214 @@
+{
+  "schemaVersion": 1,
+  "package": "OrdinaryEvmCompletionExtractor",
+  "acceptanceState": "static-draft-unreviewed",
+  "closureKind": "bounded-behavior-map-not-compiler-closure",
+  "files": [
+    {
+      "path": "Directory.Build.props",
+      "sha256": "597c468a790b1f0b0b92ad18bcd5fa943d7b62fa2e8c181f56db080cdcbf1812",
+      "role": "selection"
+    },
+    {
+      "path": "Directory.Build.targets",
+      "sha256": "cb41efa7d75b48d919d1acf5e2e67cd9445838b95847d11b8a97860a2f3961df",
+      "role": "selection"
+    },
+    {
+      "path": "global.json",
+      "sha256": "73edba3e46e9794dfcfdeddaf43a8436c56b510dda9a7515a50b0d2784e26cc7",
+      "role": "selection"
+    },
+    {
+      "path": "src/Nethermind/Directory.Build.props",
+      "sha256": "ad544425af1b0ec60334511abf79896a77843088457ef81b98a06b56d13e4e3c",
+      "role": "selection"
+    },
+    {
+      "path": "src/Nethermind/Directory.Build.targets",
+      "sha256": "0598cebaef1df41102a18a3f9ace810bed1e4e64b8471d055724b4a394dccec6",
+      "role": "selection"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Blockchain/Nethermind.Blockchain.csproj",
+      "sha256": "3c4b3ebba3d8255c5fc40ba4c544da0e16762ae4a829a655e88db2d59e774939",
+      "role": "selection"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptGasAccountingKernel.cs",
+      "sha256": "0882c798e6ffb2243735a9ec0cec5d442b20d51277feeba95e5b68ecfaf89e32",
+      "role": "accepted-dependency"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+      "sha256": "d4504f54b50dd43e2ab5bc7172ce2cf9e48453fcede990e5e667e743146262ff",
+      "role": "accepted-dependency"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/BlockHeader.cs",
+      "sha256": "f354ddd2d45afc8774739ac46a10535b915871ce4ad11d996d0ab972cf9e7349",
+      "role": "projection"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Specs/IReleaseSpec.cs",
+      "sha256": "3f44b3da5614c94d59eae2e4a6266a9e698614f75a7b5a9894a4828b0021b18a",
+      "role": "contract"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Transaction.cs",
+      "sha256": "3fdf94805739c6ccdfa8b4617c5d4cfa6bee9e9565f16d667b22106c434d6596",
+      "role": "projection"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/TransactionReceipt.cs",
+      "sha256": "55b62b4e0708e590a001916e9a73d07ac70e225b16f711574e811c98e540cc63",
+      "role": "projection"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/DispatchFlags.std.cs",
+      "sha256": "99c58367e5b90fa5904484f6e2fbf10745a54f6cd7d07275810c27028ad0eb2b",
+      "role": "selection"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/EvmException.cs",
+      "sha256": "8c503bfbe0c60c41597e64c96b5d823dc98b934b4511730217eceaaf13837450",
+      "role": "projection"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/ExecutionEnvironment.cs",
+      "sha256": "c076225b688b1e04ed83cddc90a2ddbda69862333dc927945eb32d376e43e1db",
+      "role": "contract"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/ExecutionType.cs",
+      "sha256": "b6689c7c928182f6d115ca57cc8ac45bb9312359a026704f2eec77b921028013",
+      "role": "projection"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "sha256": "3c31ba40c24a78bf11243b38859168350f02934806124e913da0560bc1a4350f",
+      "role": "accepted-dependency"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/IGasPolicy.cs",
+      "sha256": "b4d26db87723243514f2f6b8a5e48d1176139105c3b012ad0f3956e59afc98a8",
+      "role": "accepted-dependency"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/IVirtualMachine.cs",
+      "sha256": "330da5f31bd7aca4f4212a42c912c33cf0ac5b3def0689b7f9985cd6510aa56d",
+      "role": "contract"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Nethermind.Evm.csproj",
+      "sha256": "6170fea1cb0363f603e599d057164e2db26f22309cb1f3ecdcac7ea84fc92eec",
+      "role": "selection"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/RefundHelper.cs",
+      "sha256": "5ed45f3f67513b53e0c090e90cf6a41026ab7e4ea35343cdcbe4da65d431874e",
+      "role": "accepted-dependency"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs",
+      "sha256": "ed5cdfdfe2ebf4d8c9f651572927efe7bdb5c75107db63a40577c5ec3ec2882f",
+      "role": "contract"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/State/IWorldState.cs",
+      "sha256": "0680ebc7168472645d93df58d2b3240508c177361815c85cceb09cf960f189c7",
+      "role": "contract"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/State/Snapshot.cs",
+      "sha256": "47625d60a8315bbc3afd26eca85780b0ab894d7401d913cbec00ed89b51f46c8",
+      "role": "projection"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/StatusCode.cs",
+      "sha256": "e896f55406c9fc1ce99199d80bea69b87fa8891c23afef59712b87cadb971190",
+      "role": "projection"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Tracing/ITxTracer.cs",
+      "sha256": "9f2550f8c3407f494452386699040feab8aa597437b1cd4180d038d9fd0a9169",
+      "role": "contract"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ExecutionOptions.cs",
+      "sha256": "014a2598e1def284b7b98dc97185b6dbbc45ca04be4ab159e330a0675ac24f10",
+      "role": "projection"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/GasConsumed.cs",
+      "sha256": "1dc4e78d5a17056dcb00d496136a32a899245f3a7b3e5a9eef74c4760ef68686",
+      "role": "projection"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ITransactionProcessor.cs",
+      "sha256": "3cae1430ba38d54f9867b714efdc823f9db126b1bbf0e45eae59439701459e95",
+      "role": "contract"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionRoutingKernel.cs",
+      "sha256": "b884bb49ad7c109b907f4dfcac56a5eb13283d964310d45eb9ca85177ff5e5c1",
+      "role": "projection"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+      "sha256": "0374c6f35a9a23361f37b41162ac281ca83b09846ab4295d5a592db6315c99cc",
+      "role": "control"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionSettlementKernel.cs",
+      "sha256": "37add297aaaf07a4260b45c05c5f866a48f92eef2ac6fb16ef2bfd96103f8c44",
+      "role": "accepted-dependency"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionSubstate.cs",
+      "sha256": "1312a5f1a9990976670914fcc0a6ad2c77dd92d768d92fd91b28f27fefe66a00",
+      "role": "projection"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TxExecutionContext.cs",
+      "sha256": "b1dea501cdf6577967aa3a73ba4ca1b77dc96fedb3d5bbb3c0ca8dd14c65c4b0",
+      "role": "contract"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.CallResult.cs",
+      "sha256": "d21bebbb4caea938c42d369083d922f6e18d01eb797b1c534fb1541c242ca073",
+      "role": "contract"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "sha256": "45edba3691e09185e749485785990662ddea1af849bc6e4564f92b68a5137a6b",
+      "role": "contract"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.std.cs",
+      "sha256": "357fbd35369424a379c8c29338f491627512d40a12199d7a3d9aac44c87ca92a",
+      "role": "contract"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "sha256": "7b7b6ddb753118b426d14976a3fe8e79f808320d6a09ea9cace9df19197f9f23",
+      "role": "contract"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+      "sha256": "fce65ce5bb523c56fc8aa6ee0e4d092c940a5a90b174c820ffe262eeb5241c60",
+      "role": "selection"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/25_Amsterdam.cs",
+      "sha256": "4dfbf9079e9dce30423327ae4433f32e49388d403a8fedfcf253f94f79450c6a",
+      "role": "fork"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/NamedReleaseSpec.cs",
+      "sha256": "ea9400ed44270fb18766a5dbd20d4dd7e7ee95b1bb7ab7ee6d5406cca03a46cc",
+      "role": "fork"
+    }
+  ]
+}
+

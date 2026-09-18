@@ -1,0 +1,4583 @@
+{
+  "schemaVersion": 1,
+  "claim": "standard-mainnet-dispatch-and-precompile-inventory",
+  "scope": "reachability-and-inventory-only",
+  "target": {
+    "chain": "mainnet",
+    "release": "Amsterdam",
+    "activation": "synthetic timestamp 0 / block 0",
+    "nethermindCommit": "b2478235e71e6a7ec2a509aa0155e25d5fdfff80"
+  },
+  "opcodes": {
+    "byteCount": 256,
+    "enabledCount": 153,
+    "disabledCount": 0,
+    "invalidCount": 103,
+    "entries": [
+      {
+        "byte": 0,
+        "hex": "0x00",
+        "name": "STOP",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "TerminatingOpcodeHandler\u003CStopOpcode, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "StopOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 76
+          }
+        }
+      },
+      {
+        "byte": 1,
+        "hex": "0x01",
+        "name": "ADD",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CMath2Opcode\u003CEvmInstructions.OpAdd, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpAdd"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 82
+          }
+        }
+      },
+      {
+        "byte": 2,
+        "hex": "0x02",
+        "name": "MUL",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CMath2Opcode\u003CEvmInstructions.OpMul, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpMul"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 83
+          }
+        }
+      },
+      {
+        "byte": 3,
+        "hex": "0x03",
+        "name": "SUB",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CMath2Opcode\u003CEvmInstructions.OpSub, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpSub"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 84
+          }
+        }
+      },
+      {
+        "byte": 4,
+        "hex": "0x04",
+        "name": "DIV",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CMath2Opcode\u003CEvmInstructions.OpDiv, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpDiv"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 85
+          }
+        }
+      },
+      {
+        "byte": 5,
+        "hex": "0x05",
+        "name": "SDIV",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CMath2Opcode\u003CEvmInstructions.OpSDiv, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpSDiv"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 86
+          }
+        }
+      },
+      {
+        "byte": 6,
+        "hex": "0x06",
+        "name": "MOD",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CMath2Opcode\u003CEvmInstructions.OpMod, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpMod"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 87
+          }
+        }
+      },
+      {
+        "byte": 7,
+        "hex": "0x07",
+        "name": "SMOD",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CMath2Opcode\u003CEvmInstructions.OpSMod, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpSMod"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 88
+          }
+        }
+      },
+      {
+        "byte": 8,
+        "hex": "0x08",
+        "name": "ADDMOD",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CMath3Opcode\u003CEvmInstructions.OpAddMod, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpAddMod"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 89
+          }
+        }
+      },
+      {
+        "byte": 9,
+        "hex": "0x09",
+        "name": "MULMOD",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CMath3Opcode\u003CEvmInstructions.OpMulMod, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpMulMod"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 90
+          }
+        }
+      },
+      {
+        "byte": 10,
+        "hex": "0x0A",
+        "name": "EXP",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "SpecFlags.Eip160(spec) ? OpcodeHandler\u003CExpOpcode\u003CTTracingInst, OnFlag\u003E, TTracingInst, TCancelable\u003E() : OpcodeHandler\u003CExpOpcode\u003CTTracingInst, OffFlag\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "ExpOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 91
+          }
+        }
+      },
+      {
+        "byte": 11,
+        "hex": "0x0B",
+        "name": "SIGNEXTEND",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSignExtendOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "SignExtendOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 94
+          }
+        }
+      },
+      {
+        "byte": 12,
+        "hex": "0x0C",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 13,
+        "hex": "0x0D",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 14,
+        "hex": "0x0E",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 15,
+        "hex": "0x0F",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 16,
+        "hex": "0x10",
+        "name": "LT",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CMath2Opcode\u003CEvmInstructions.OpLt, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpLt"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 96
+          }
+        }
+      },
+      {
+        "byte": 17,
+        "hex": "0x11",
+        "name": "GT",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CMath2Opcode\u003CEvmInstructions.OpGt, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpGt"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 97
+          }
+        }
+      },
+      {
+        "byte": 18,
+        "hex": "0x12",
+        "name": "SLT",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CMath2Opcode\u003CEvmInstructions.OpSLt, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpSLt"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 98
+          }
+        }
+      },
+      {
+        "byte": 19,
+        "hex": "0x13",
+        "name": "SGT",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CMath2Opcode\u003CEvmInstructions.OpSGt, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpSGt"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 99
+          }
+        }
+      },
+      {
+        "byte": 20,
+        "hex": "0x14",
+        "name": "EQ",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CBitwiseOpcode\u003CEvmInstructions.OpBitwiseEq, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpBitwiseEq"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 100
+          }
+        }
+      },
+      {
+        "byte": 21,
+        "hex": "0x15",
+        "name": "ISZERO",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CMath1Opcode\u003CEvmInstructions.OpIsZero, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpIsZero"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 101
+          }
+        }
+      },
+      {
+        "byte": 22,
+        "hex": "0x16",
+        "name": "AND",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CBitwiseOpcode\u003CEvmInstructions.OpBitwiseAnd, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpBitwiseAnd"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 102
+          }
+        }
+      },
+      {
+        "byte": 23,
+        "hex": "0x17",
+        "name": "OR",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CBitwiseOpcode\u003CEvmInstructions.OpBitwiseOr, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpBitwiseOr"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 103
+          }
+        }
+      },
+      {
+        "byte": 24,
+        "hex": "0x18",
+        "name": "XOR",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CBitwiseOpcode\u003CEvmInstructions.OpBitwiseXor, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpBitwiseXor"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 104
+          }
+        }
+      },
+      {
+        "byte": 25,
+        "hex": "0x19",
+        "name": "NOT",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CMath1Opcode\u003CEvmInstructions.OpNot, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpNot"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 105
+          }
+        }
+      },
+      {
+        "byte": 26,
+        "hex": "0x1A",
+        "name": "BYTE",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CByteOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "ByteOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 106
+          }
+        }
+      },
+      {
+        "byte": 27,
+        "hex": "0x1B",
+        "name": "SHL",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CShiftOpcode\u003CEvmInstructions.OpShl, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpShl"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 110
+          }
+        }
+      },
+      {
+        "byte": 28,
+        "hex": "0x1C",
+        "name": "SHR",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CShiftOpcode\u003CEvmInstructions.OpShr, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpShr"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 111
+          }
+        }
+      },
+      {
+        "byte": 29,
+        "hex": "0x1D",
+        "name": "SAR",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSarOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "SarOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 112
+          }
+        }
+      },
+      {
+        "byte": 30,
+        "hex": "0x1E",
+        "name": "CLZ",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CCountLeadingZerosOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "CountLeadingZerosOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 116
+          }
+        }
+      },
+      {
+        "byte": 31,
+        "hex": "0x1F",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 32,
+        "hex": "0x20",
+        "name": "KECCAK256",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CKeccakOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "KeccakOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 118
+          }
+        }
+      },
+      {
+        "byte": 33,
+        "hex": "0x21",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 34,
+        "hex": "0x22",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 35,
+        "hex": "0x23",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 36,
+        "hex": "0x24",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 37,
+        "hex": "0x25",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 38,
+        "hex": "0x26",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 39,
+        "hex": "0x27",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 40,
+        "hex": "0x28",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 41,
+        "hex": "0x29",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 42,
+        "hex": "0x2A",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 43,
+        "hex": "0x2B",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 44,
+        "hex": "0x2C",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 45,
+        "hex": "0x2D",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 46,
+        "hex": "0x2E",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 47,
+        "hex": "0x2F",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 48,
+        "hex": "0x30",
+        "name": "ADDRESS",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CEnvAddressOpcode\u003CEvmInstructions.OpAddress\u003CTGasPolicy\u003E, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpAddress"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 120
+          }
+        }
+      },
+      {
+        "byte": 49,
+        "hex": "0x31",
+        "name": "BALANCE",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CBalanceOpcode\u003CTTracingInst, EvmInstructions.AccessSpec\u003CEip2929, Eip8038\u003E\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "BalanceOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 425
+          }
+        }
+      },
+      {
+        "byte": 50,
+        "hex": "0x32",
+        "name": "ORIGIN",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CEnv32BytesOpcode\u003CEvmInstructions.OpOrigin\u003CTGasPolicy\u003E, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpOrigin"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 122
+          }
+        }
+      },
+      {
+        "byte": 51,
+        "hex": "0x33",
+        "name": "CALLER",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CEnvAddressOpcode\u003CEvmInstructions.OpCaller\u003CTGasPolicy\u003E, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpCaller"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 123
+          }
+        }
+      },
+      {
+        "byte": 52,
+        "hex": "0x34",
+        "name": "CALLVALUE",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CEnvUInt256Opcode\u003CEvmInstructions.OpCallValue\u003CTGasPolicy\u003E, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpCallValue"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 124
+          }
+        }
+      },
+      {
+        "byte": 53,
+        "hex": "0x35",
+        "name": "CALLDATALOAD",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CCallDataLoadOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "CallDataLoadOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 125
+          }
+        }
+      },
+      {
+        "byte": 54,
+        "hex": "0x36",
+        "name": "CALLDATASIZE",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CEnvUInt32Opcode\u003CEvmInstructions.OpCallDataSize\u003CTGasPolicy\u003E, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpCallDataSize"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 126
+          }
+        }
+      },
+      {
+        "byte": 55,
+        "hex": "0x37",
+        "name": "CALLDATACOPY",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CCallDataCopyOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "CallDataCopyOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 127
+          }
+        }
+      },
+      {
+        "byte": 56,
+        "hex": "0x38",
+        "name": "CODESIZE",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CCodeSizeOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "CodeSizeOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 128
+          }
+        }
+      },
+      {
+        "byte": 57,
+        "hex": "0x39",
+        "name": "CODECOPY",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CCodeCopyOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "CodeCopyOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 129
+          }
+        }
+      },
+      {
+        "byte": 58,
+        "hex": "0x3A",
+        "name": "GASPRICE",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CBlkUInt256Opcode\u003CEvmInstructions.OpGasPrice\u003CTGasPolicy\u003E, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpGasPrice"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 130
+          }
+        }
+      },
+      {
+        "byte": 59,
+        "hex": "0x3B",
+        "name": "EXTCODESIZE",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CExtCodeSizeOpcode\u003CTTracingInst, Eip8038, Eip2929\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "ExtCodeSizeOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 426
+          }
+        }
+      },
+      {
+        "byte": 60,
+        "hex": "0x3C",
+        "name": "EXTCODECOPY",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CExtCodeCopyOpcode\u003CTTracingInst, Eip8038, Eip2929\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "ExtCodeCopyOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 427
+          }
+        }
+      },
+      {
+        "byte": 61,
+        "hex": "0x3D",
+        "name": "RETURNDATASIZE",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CReturnDataSizeOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "ReturnDataSizeOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 134
+          }
+        }
+      },
+      {
+        "byte": 62,
+        "hex": "0x3E",
+        "name": "RETURNDATACOPY",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CReturnDataCopyOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "ReturnDataCopyOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 135
+          }
+        }
+      },
+      {
+        "byte": 63,
+        "hex": "0x3F",
+        "name": "EXTCODEHASH",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CExtCodeHashOpcode\u003CTTracingInst, EvmInstructions.AccessSpec\u003CEip2929, Eip8038\u003E\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "ExtCodeHashOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 429
+          }
+        }
+      },
+      {
+        "byte": 64,
+        "hex": "0x40",
+        "name": "BLOCKHASH",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CBlockHashOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "BlockHashOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 138
+          }
+        }
+      },
+      {
+        "byte": 65,
+        "hex": "0x41",
+        "name": "COINBASE",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CBlkAddressOpcode\u003CEvmInstructions.OpCoinbase\u003CTGasPolicy\u003E, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpCoinbase"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 139
+          }
+        }
+      },
+      {
+        "byte": 66,
+        "hex": "0x42",
+        "name": "TIMESTAMP",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CBlkUInt64Opcode\u003CEvmInstructions.OpTimestamp\u003CTGasPolicy\u003E, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpTimestamp"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 140
+          }
+        }
+      },
+      {
+        "byte": 67,
+        "hex": "0x43",
+        "name": "NUMBER",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CBlkUInt64Opcode\u003CEvmInstructions.OpNumber\u003CTGasPolicy\u003E, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpNumber"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 141
+          }
+        }
+      },
+      {
+        "byte": 68,
+        "hex": "0x44",
+        "name": "PREVRANDAO",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPrevRandaoOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "PrevRandaoOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 142
+          }
+        }
+      },
+      {
+        "byte": 69,
+        "hex": "0x45",
+        "name": "GASLIMIT",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CBlkUInt64Opcode\u003CEvmInstructions.OpGasLimit\u003CTGasPolicy\u003E, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpGasLimit"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 143
+          }
+        }
+      },
+      {
+        "byte": 70,
+        "hex": "0x46",
+        "name": "CHAINID",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CEnv32BytesOpcode\u003CEvmInstructions.OpChainId\u003CTGasPolicy\u003E, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpChainId"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 146
+          }
+        }
+      },
+      {
+        "byte": 71,
+        "hex": "0x47",
+        "name": "SELFBALANCE",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSelfBalanceOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "SelfBalanceOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 148
+          }
+        }
+      },
+      {
+        "byte": 72,
+        "hex": "0x48",
+        "name": "BASEFEE",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CBlkUInt256Opcode\u003CEvmInstructions.OpBaseFee\u003CTGasPolicy\u003E, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpBaseFee"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 150
+          }
+        }
+      },
+      {
+        "byte": 73,
+        "hex": "0x49",
+        "name": "BLOBHASH",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CBlobHashOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "BlobHashOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 152
+          }
+        }
+      },
+      {
+        "byte": 74,
+        "hex": "0x4A",
+        "name": "BLOBBASEFEE",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CBlobBaseFeeOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "BlobBaseFeeOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 154
+          }
+        }
+      },
+      {
+        "byte": 75,
+        "hex": "0x4B",
+        "name": "SLOTNUM",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSlotNumOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "SlotNumOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 156
+          }
+        }
+      },
+      {
+        "byte": 76,
+        "hex": "0x4C",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 77,
+        "hex": "0x4D",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 78,
+        "hex": "0x4E",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 79,
+        "hex": "0x4F",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 80,
+        "hex": "0x50",
+        "name": "POP",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPopOpcode, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "PopOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 158
+          }
+        }
+      },
+      {
+        "byte": 81,
+        "hex": "0x51",
+        "name": "MLOAD",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CMLoadOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "MLoadOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 159
+          }
+        }
+      },
+      {
+        "byte": 82,
+        "hex": "0x52",
+        "name": "MSTORE",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CMStoreOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "MStoreOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 160
+          }
+        }
+      },
+      {
+        "byte": 83,
+        "hex": "0x53",
+        "name": "MSTORE8",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CMStore8Opcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "MStore8Opcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 161
+          }
+        }
+      },
+      {
+        "byte": 84,
+        "hex": "0x54",
+        "name": "SLOAD",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSLoadOpcode\u003CTTracingInst, Eip8038, Eip2929\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "SLoadOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 430
+          }
+        }
+      },
+      {
+        "byte": 85,
+        "hex": "0x55",
+        "name": "SSTORE",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "SStoreOpcodeHandler\u003CTTracingInst, TCancelable, Eip8038, Eip2929\u003E(spec)",
+          "semanticTargets": [
+            "SStoreOpcodeHandler"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 431
+          }
+        }
+      },
+      {
+        "byte": 86,
+        "hex": "0x56",
+        "name": "JUMP",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CJumpOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "JumpOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 163
+          }
+        }
+      },
+      {
+        "byte": 87,
+        "hex": "0x57",
+        "name": "JUMPI",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "JumpIfOpcodeHandler\u003CTTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "JumpIfOpcodeHandler"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 164
+          }
+        }
+      },
+      {
+        "byte": 88,
+        "hex": "0x58",
+        "name": "PC",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CProgramCounterOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "ProgramCounterOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 165
+          }
+        }
+      },
+      {
+        "byte": 89,
+        "hex": "0x59",
+        "name": "MSIZE",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CEnvUInt64Opcode\u003CEvmInstructions.OpMSize\u003CTGasPolicy\u003E, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "OpMSize"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 166
+          }
+        }
+      },
+      {
+        "byte": 90,
+        "hex": "0x5A",
+        "name": "GAS",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CGasOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "GasOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 167
+          }
+        }
+      },
+      {
+        "byte": 91,
+        "hex": "0x5B",
+        "name": "JUMPDEST",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CJumpDestOpcode, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "JumpDestOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 168
+          }
+        }
+      },
+      {
+        "byte": 92,
+        "hex": "0x5C",
+        "name": "TLOAD",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CTLoadOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "TLoadOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 172
+          }
+        }
+      },
+      {
+        "byte": 93,
+        "hex": "0x5D",
+        "name": "TSTORE",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CTStoreOpcode, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "TStoreOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 173
+          }
+        }
+      },
+      {
+        "byte": 94,
+        "hex": "0x5E",
+        "name": "MCOPY",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CMCopyOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "MCopyOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 176
+          }
+        }
+      },
+      {
+        "byte": 95,
+        "hex": "0x5F",
+        "name": "PUSH0",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPush0Opcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Push0Opcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 178
+          }
+        }
+      },
+      {
+        "byte": 96,
+        "hex": "0x60",
+        "name": "PUSH1",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op1, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op1"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 180
+          }
+        }
+      },
+      {
+        "byte": 97,
+        "hex": "0x61",
+        "name": "PUSH2",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPush2Opcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Push2Opcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 181
+          }
+        }
+      },
+      {
+        "byte": 98,
+        "hex": "0x62",
+        "name": "PUSH3",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op3, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op3"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 182
+          }
+        }
+      },
+      {
+        "byte": 99,
+        "hex": "0x63",
+        "name": "PUSH4",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op4, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op4"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 183
+          }
+        }
+      },
+      {
+        "byte": 100,
+        "hex": "0x64",
+        "name": "PUSH5",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op5, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op5"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 184
+          }
+        }
+      },
+      {
+        "byte": 101,
+        "hex": "0x65",
+        "name": "PUSH6",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op6, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op6"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 185
+          }
+        }
+      },
+      {
+        "byte": 102,
+        "hex": "0x66",
+        "name": "PUSH7",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op7, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op7"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 186
+          }
+        }
+      },
+      {
+        "byte": 103,
+        "hex": "0x67",
+        "name": "PUSH8",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op8, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op8"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 187
+          }
+        }
+      },
+      {
+        "byte": 104,
+        "hex": "0x68",
+        "name": "PUSH9",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op9, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op9"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 188
+          }
+        }
+      },
+      {
+        "byte": 105,
+        "hex": "0x69",
+        "name": "PUSH10",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op10, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op10"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 189
+          }
+        }
+      },
+      {
+        "byte": 106,
+        "hex": "0x6A",
+        "name": "PUSH11",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op11, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op11"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 190
+          }
+        }
+      },
+      {
+        "byte": 107,
+        "hex": "0x6B",
+        "name": "PUSH12",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op12, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op12"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 191
+          }
+        }
+      },
+      {
+        "byte": 108,
+        "hex": "0x6C",
+        "name": "PUSH13",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op13, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op13"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 192
+          }
+        }
+      },
+      {
+        "byte": 109,
+        "hex": "0x6D",
+        "name": "PUSH14",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op14, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op14"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 193
+          }
+        }
+      },
+      {
+        "byte": 110,
+        "hex": "0x6E",
+        "name": "PUSH15",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op15, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op15"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 194
+          }
+        }
+      },
+      {
+        "byte": 111,
+        "hex": "0x6F",
+        "name": "PUSH16",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op16, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op16"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 195
+          }
+        }
+      },
+      {
+        "byte": 112,
+        "hex": "0x70",
+        "name": "PUSH17",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op17, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op17"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 196
+          }
+        }
+      },
+      {
+        "byte": 113,
+        "hex": "0x71",
+        "name": "PUSH18",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op18, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op18"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 197
+          }
+        }
+      },
+      {
+        "byte": 114,
+        "hex": "0x72",
+        "name": "PUSH19",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op19, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op19"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 198
+          }
+        }
+      },
+      {
+        "byte": 115,
+        "hex": "0x73",
+        "name": "PUSH20",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op20, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op20"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 199
+          }
+        }
+      },
+      {
+        "byte": 116,
+        "hex": "0x74",
+        "name": "PUSH21",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op21, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op21"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 200
+          }
+        }
+      },
+      {
+        "byte": 117,
+        "hex": "0x75",
+        "name": "PUSH22",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op22, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op22"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 201
+          }
+        }
+      },
+      {
+        "byte": 118,
+        "hex": "0x76",
+        "name": "PUSH23",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op23, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op23"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 202
+          }
+        }
+      },
+      {
+        "byte": 119,
+        "hex": "0x77",
+        "name": "PUSH24",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op24, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op24"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 203
+          }
+        }
+      },
+      {
+        "byte": 120,
+        "hex": "0x78",
+        "name": "PUSH25",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op25, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op25"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 204
+          }
+        }
+      },
+      {
+        "byte": 121,
+        "hex": "0x79",
+        "name": "PUSH26",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op26, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op26"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 205
+          }
+        }
+      },
+      {
+        "byte": 122,
+        "hex": "0x7A",
+        "name": "PUSH27",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op27, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op27"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 206
+          }
+        }
+      },
+      {
+        "byte": 123,
+        "hex": "0x7B",
+        "name": "PUSH28",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op28, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op28"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 207
+          }
+        }
+      },
+      {
+        "byte": 124,
+        "hex": "0x7C",
+        "name": "PUSH29",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op29, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op29"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 208
+          }
+        }
+      },
+      {
+        "byte": 125,
+        "hex": "0x7D",
+        "name": "PUSH30",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op30, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op30"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 209
+          }
+        }
+      },
+      {
+        "byte": 126,
+        "hex": "0x7E",
+        "name": "PUSH31",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op31, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op31"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 210
+          }
+        }
+      },
+      {
+        "byte": 127,
+        "hex": "0x7F",
+        "name": "PUSH32",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CPushOpcode\u003CEvmInstructions.Op32, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op32"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 211
+          }
+        }
+      },
+      {
+        "byte": 128,
+        "hex": "0x80",
+        "name": "DUP1",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CDupOpcode\u003CEvmInstructions.Op1, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op1"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 213
+          }
+        }
+      },
+      {
+        "byte": 129,
+        "hex": "0x81",
+        "name": "DUP2",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CDupOpcode\u003CEvmInstructions.Op2, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op2"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 214
+          }
+        }
+      },
+      {
+        "byte": 130,
+        "hex": "0x82",
+        "name": "DUP3",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CDupOpcode\u003CEvmInstructions.Op3, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op3"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 215
+          }
+        }
+      },
+      {
+        "byte": 131,
+        "hex": "0x83",
+        "name": "DUP4",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CDupOpcode\u003CEvmInstructions.Op4, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op4"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 216
+          }
+        }
+      },
+      {
+        "byte": 132,
+        "hex": "0x84",
+        "name": "DUP5",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CDupOpcode\u003CEvmInstructions.Op5, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op5"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 217
+          }
+        }
+      },
+      {
+        "byte": 133,
+        "hex": "0x85",
+        "name": "DUP6",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CDupOpcode\u003CEvmInstructions.Op6, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op6"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 218
+          }
+        }
+      },
+      {
+        "byte": 134,
+        "hex": "0x86",
+        "name": "DUP7",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CDupOpcode\u003CEvmInstructions.Op7, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op7"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 219
+          }
+        }
+      },
+      {
+        "byte": 135,
+        "hex": "0x87",
+        "name": "DUP8",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CDupOpcode\u003CEvmInstructions.Op8, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op8"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 220
+          }
+        }
+      },
+      {
+        "byte": 136,
+        "hex": "0x88",
+        "name": "DUP9",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CDupOpcode\u003CEvmInstructions.Op9, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op9"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 221
+          }
+        }
+      },
+      {
+        "byte": 137,
+        "hex": "0x89",
+        "name": "DUP10",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CDupOpcode\u003CEvmInstructions.Op10, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op10"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 222
+          }
+        }
+      },
+      {
+        "byte": 138,
+        "hex": "0x8A",
+        "name": "DUP11",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CDupOpcode\u003CEvmInstructions.Op11, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op11"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 223
+          }
+        }
+      },
+      {
+        "byte": 139,
+        "hex": "0x8B",
+        "name": "DUP12",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CDupOpcode\u003CEvmInstructions.Op12, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op12"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 224
+          }
+        }
+      },
+      {
+        "byte": 140,
+        "hex": "0x8C",
+        "name": "DUP13",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CDupOpcode\u003CEvmInstructions.Op13, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op13"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 225
+          }
+        }
+      },
+      {
+        "byte": 141,
+        "hex": "0x8D",
+        "name": "DUP14",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CDupOpcode\u003CEvmInstructions.Op14, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op14"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 226
+          }
+        }
+      },
+      {
+        "byte": 142,
+        "hex": "0x8E",
+        "name": "DUP15",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CDupOpcode\u003CEvmInstructions.Op15, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op15"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 227
+          }
+        }
+      },
+      {
+        "byte": 143,
+        "hex": "0x8F",
+        "name": "DUP16",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CDupOpcode\u003CEvmInstructions.Op16, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op16"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 228
+          }
+        }
+      },
+      {
+        "byte": 144,
+        "hex": "0x90",
+        "name": "SWAP1",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSwapOpcode\u003CEvmInstructions.Op1, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op1"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 230
+          }
+        }
+      },
+      {
+        "byte": 145,
+        "hex": "0x91",
+        "name": "SWAP2",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSwapOpcode\u003CEvmInstructions.Op2, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op2"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 231
+          }
+        }
+      },
+      {
+        "byte": 146,
+        "hex": "0x92",
+        "name": "SWAP3",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSwapOpcode\u003CEvmInstructions.Op3, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op3"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 232
+          }
+        }
+      },
+      {
+        "byte": 147,
+        "hex": "0x93",
+        "name": "SWAP4",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSwapOpcode\u003CEvmInstructions.Op4, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op4"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 233
+          }
+        }
+      },
+      {
+        "byte": 148,
+        "hex": "0x94",
+        "name": "SWAP5",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSwapOpcode\u003CEvmInstructions.Op5, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op5"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 234
+          }
+        }
+      },
+      {
+        "byte": 149,
+        "hex": "0x95",
+        "name": "SWAP6",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSwapOpcode\u003CEvmInstructions.Op6, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op6"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 235
+          }
+        }
+      },
+      {
+        "byte": 150,
+        "hex": "0x96",
+        "name": "SWAP7",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSwapOpcode\u003CEvmInstructions.Op7, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op7"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 236
+          }
+        }
+      },
+      {
+        "byte": 151,
+        "hex": "0x97",
+        "name": "SWAP8",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSwapOpcode\u003CEvmInstructions.Op8, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op8"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 237
+          }
+        }
+      },
+      {
+        "byte": 152,
+        "hex": "0x98",
+        "name": "SWAP9",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSwapOpcode\u003CEvmInstructions.Op9, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op9"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 238
+          }
+        }
+      },
+      {
+        "byte": 153,
+        "hex": "0x99",
+        "name": "SWAP10",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSwapOpcode\u003CEvmInstructions.Op10, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op10"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 239
+          }
+        }
+      },
+      {
+        "byte": 154,
+        "hex": "0x9A",
+        "name": "SWAP11",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSwapOpcode\u003CEvmInstructions.Op11, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op11"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 240
+          }
+        }
+      },
+      {
+        "byte": 155,
+        "hex": "0x9B",
+        "name": "SWAP12",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSwapOpcode\u003CEvmInstructions.Op12, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op12"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 241
+          }
+        }
+      },
+      {
+        "byte": 156,
+        "hex": "0x9C",
+        "name": "SWAP13",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSwapOpcode\u003CEvmInstructions.Op13, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op13"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 242
+          }
+        }
+      },
+      {
+        "byte": 157,
+        "hex": "0x9D",
+        "name": "SWAP14",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSwapOpcode\u003CEvmInstructions.Op14, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op14"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 243
+          }
+        }
+      },
+      {
+        "byte": 158,
+        "hex": "0x9E",
+        "name": "SWAP15",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSwapOpcode\u003CEvmInstructions.Op15, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op15"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 244
+          }
+        }
+      },
+      {
+        "byte": 159,
+        "hex": "0x9F",
+        "name": "SWAP16",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSwapOpcode\u003CEvmInstructions.Op16, TTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op16"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 245
+          }
+        }
+      },
+      {
+        "byte": 160,
+        "hex": "0xA0",
+        "name": "LOG0",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CLogOpcode\u003CEvmInstructions.Op0\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op0"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 247
+          }
+        }
+      },
+      {
+        "byte": 161,
+        "hex": "0xA1",
+        "name": "LOG1",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CLogOpcode\u003CEvmInstructions.Op1\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op1"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 248
+          }
+        }
+      },
+      {
+        "byte": 162,
+        "hex": "0xA2",
+        "name": "LOG2",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CLogOpcode\u003CEvmInstructions.Op2\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op2"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 249
+          }
+        }
+      },
+      {
+        "byte": 163,
+        "hex": "0xA3",
+        "name": "LOG3",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CLogOpcode\u003CEvmInstructions.Op3\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op3"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 250
+          }
+        }
+      },
+      {
+        "byte": 164,
+        "hex": "0xA4",
+        "name": "LOG4",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CLogOpcode\u003CEvmInstructions.Op4\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "Op4"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 251
+          }
+        }
+      },
+      {
+        "byte": 165,
+        "hex": "0xA5",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 166,
+        "hex": "0xA6",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 167,
+        "hex": "0xA7",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 168,
+        "hex": "0xA8",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 169,
+        "hex": "0xA9",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 170,
+        "hex": "0xAA",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 171,
+        "hex": "0xAB",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 172,
+        "hex": "0xAC",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 173,
+        "hex": "0xAD",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 174,
+        "hex": "0xAE",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 175,
+        "hex": "0xAF",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 176,
+        "hex": "0xB0",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 177,
+        "hex": "0xB1",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 178,
+        "hex": "0xB2",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 179,
+        "hex": "0xB3",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 180,
+        "hex": "0xB4",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 181,
+        "hex": "0xB5",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 182,
+        "hex": "0xB6",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 183,
+        "hex": "0xB7",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 184,
+        "hex": "0xB8",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 185,
+        "hex": "0xB9",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 186,
+        "hex": "0xBA",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 187,
+        "hex": "0xBB",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 188,
+        "hex": "0xBC",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 189,
+        "hex": "0xBD",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 190,
+        "hex": "0xBE",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 191,
+        "hex": "0xBF",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 192,
+        "hex": "0xC0",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 193,
+        "hex": "0xC1",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 194,
+        "hex": "0xC2",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 195,
+        "hex": "0xC3",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 196,
+        "hex": "0xC4",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 197,
+        "hex": "0xC5",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 198,
+        "hex": "0xC6",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 199,
+        "hex": "0xC7",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 200,
+        "hex": "0xC8",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 201,
+        "hex": "0xC9",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 202,
+        "hex": "0xCA",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 203,
+        "hex": "0xCB",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 204,
+        "hex": "0xCC",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 205,
+        "hex": "0xCD",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 206,
+        "hex": "0xCE",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 207,
+        "hex": "0xCF",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 208,
+        "hex": "0xD0",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 209,
+        "hex": "0xD1",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 210,
+        "hex": "0xD2",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 211,
+        "hex": "0xD3",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 212,
+        "hex": "0xD4",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 213,
+        "hex": "0xD5",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 214,
+        "hex": "0xD6",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 215,
+        "hex": "0xD7",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 216,
+        "hex": "0xD8",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 217,
+        "hex": "0xD9",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 218,
+        "hex": "0xDA",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 219,
+        "hex": "0xDB",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 220,
+        "hex": "0xDC",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 221,
+        "hex": "0xDD",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 222,
+        "hex": "0xDE",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 223,
+        "hex": "0xDF",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 224,
+        "hex": "0xE0",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 225,
+        "hex": "0xE1",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 226,
+        "hex": "0xE2",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 227,
+        "hex": "0xE3",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 228,
+        "hex": "0xE4",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 229,
+        "hex": "0xE5",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 230,
+        "hex": "0xE6",
+        "name": "DUPN",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CDupNOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "DupNOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 255
+          }
+        }
+      },
+      {
+        "byte": 231,
+        "hex": "0xE7",
+        "name": "SWAPN",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CSwapNOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "SwapNOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 256
+          }
+        }
+      },
+      {
+        "byte": 232,
+        "hex": "0xE8",
+        "name": "EXCHANGE",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "OpcodeHandler\u003CExchangeOpcode\u003CTTracingInst\u003E, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "ExchangeOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 257
+          }
+        }
+      },
+      {
+        "byte": 233,
+        "hex": "0xE9",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 234,
+        "hex": "0xEA",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 235,
+        "hex": "0xEB",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 236,
+        "hex": "0xEC",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 237,
+        "hex": "0xED",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 238,
+        "hex": "0xEE",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 239,
+        "hex": "0xEF",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 240,
+        "hex": "0xF0",
+        "name": "CREATE",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "GetCreateHandler\u003CEvmInstructions.OpCreate, TTracingInst, TCancelable\u003E(spec)",
+          "semanticTargets": [
+            "OpCreate"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 260
+          }
+        }
+      },
+      {
+        "byte": 241,
+        "hex": "0xF1",
+        "name": "CALL",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "GetCallHandler\u003CEvmInstructions.OpCall, TTracingInst, TCancelable\u003E(spec)",
+          "semanticTargets": [
+            "OpCall"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 261
+          }
+        }
+      },
+      {
+        "byte": 242,
+        "hex": "0xF2",
+        "name": "CALLCODE",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "GetCallHandler\u003CEvmInstructions.OpCallCode, TTracingInst, TCancelable\u003E(spec)",
+          "semanticTargets": [
+            "OpCallCode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 262
+          }
+        }
+      },
+      {
+        "byte": 243,
+        "hex": "0xF3",
+        "name": "RETURN",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "TerminatingOpcodeHandler\u003CReturnOpcode, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "ReturnOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 263
+          }
+        }
+      },
+      {
+        "byte": 244,
+        "hex": "0xF4",
+        "name": "DELEGATECALL",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "GetCallHandler\u003CEvmInstructions.OpDelegateCall, TTracingInst, TCancelable\u003E(spec)",
+          "semanticTargets": [
+            "OpDelegateCall"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 265
+          }
+        }
+      },
+      {
+        "byte": 245,
+        "hex": "0xF5",
+        "name": "CREATE2",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "GetCreateHandler\u003CEvmInstructions.OpCreate2, TTracingInst, TCancelable\u003E(spec)",
+          "semanticTargets": [
+            "OpCreate2"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 268
+          }
+        }
+      },
+      {
+        "byte": 246,
+        "hex": "0xF6",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 247,
+        "hex": "0xF7",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 248,
+        "hex": "0xF8",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 249,
+        "hex": "0xF9",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 250,
+        "hex": "0xFA",
+        "name": "STATICCALL",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "GetCallHandler\u003CEvmInstructions.OpStaticCall, TTracingInst, TCancelable\u003E(spec)",
+          "semanticTargets": [
+            "OpStaticCall"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 271
+          }
+        }
+      },
+      {
+        "byte": 251,
+        "hex": "0xFB",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 252,
+        "hex": "0xFC",
+        "name": null,
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "badInstruction",
+          "semanticTargets": [
+            "BadInstructionOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 74
+          }
+        }
+      },
+      {
+        "byte": 253,
+        "hex": "0xFD",
+        "name": "REVERT",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "TerminatingOpcodeHandler\u003CRevertOpcode, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "RevertOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 273
+          }
+        }
+      },
+      {
+        "byte": 254,
+        "hex": "0xFE",
+        "name": "INVALID",
+        "status": "invalid",
+        "handler": {
+          "dispatchExpression": "TerminatingOpcodeHandler\u003CInvalidOpcode, TTracingInst, TCancelable\u003E()",
+          "semanticTargets": [
+            "InvalidOpcode"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 275
+          }
+        }
+      },
+      {
+        "byte": 255,
+        "hex": "0xFF",
+        "name": "SELFDESTRUCT",
+        "status": "enabled",
+        "handler": {
+          "dispatchExpression": "GetSelfDestructHandler\u003CTTracingInst, TCancelable, EvmInstructions.AccessSpec\u003CEip2929, Eip8038\u003E, Eip8038\u003E(spec)",
+          "semanticTargets": [
+            "GetSelfDestructHandler"
+          ],
+          "source": {
+            "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+            "line": 432
+          }
+        }
+      }
+    ]
+  },
+  "precompiles": {
+    "registeredCount": 18,
+    "activeCount": 18,
+    "enabledCount": 18,
+    "allRegisteredEntriesResolved": true,
+    "activeEntriesRegistered": true,
+    "entries": [
+      {
+        "address": "0x0000000000000000000000000000000000000001",
+        "name": "ECREC",
+        "status": "enabled",
+        "implementationType": "Nethermind.Evm.Precompiles.ECRecoverPrecompile",
+        "implementationSources": [
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/ECRecoverPrecompile.cs",
+            "line": 15
+          }
+        ]
+      },
+      {
+        "address": "0x0000000000000000000000000000000000000002",
+        "name": "SHA256",
+        "status": "enabled",
+        "implementationType": "Nethermind.Evm.Precompiles.Sha256Precompile",
+        "implementationSources": [
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/Sha256Precompile.cs",
+            "line": 10
+          },
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Sha256Precompile.cs",
+            "line": 11
+          }
+        ]
+      },
+      {
+        "address": "0x0000000000000000000000000000000000000003",
+        "name": "RIPEMD160",
+        "status": "enabled",
+        "implementationType": "Nethermind.Evm.Precompiles.Ripemd160Precompile",
+        "implementationSources": [
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/Ripemd160Precompile.cs",
+            "line": 10
+          },
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Ripemd160Precompile.cs",
+            "line": 11
+          }
+        ]
+      },
+      {
+        "address": "0x0000000000000000000000000000000000000004",
+        "name": "ID",
+        "status": "enabled",
+        "implementationType": "Nethermind.Evm.Precompiles.IdentityPrecompile",
+        "implementationSources": [
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/IdentityPrecompile.cs",
+            "line": 10
+          }
+        ]
+      },
+      {
+        "address": "0x0000000000000000000000000000000000000005",
+        "name": "MODEXP",
+        "status": "enabled",
+        "implementationType": "Nethermind.Evm.Precompiles.ModExpPrecompile",
+        "implementationSources": [
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/ModExpPrecompile.cs",
+            "line": 20
+          },
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/ModExpPrecompile.cs",
+            "line": 13
+          }
+        ]
+      },
+      {
+        "address": "0x0000000000000000000000000000000000000006",
+        "name": "BN254_ADD",
+        "status": "enabled",
+        "implementationType": "Nethermind.Evm.Precompiles.BN254AddPrecompile",
+        "implementationSources": [
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/BN254AddPrecompile.cs",
+            "line": 14
+          },
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/BN254AddPrecompile.cs",
+            "line": 9
+          }
+        ]
+      },
+      {
+        "address": "0x0000000000000000000000000000000000000007",
+        "name": "BN254_MUL",
+        "status": "enabled",
+        "implementationType": "Nethermind.Evm.Precompiles.BN254MulPrecompile",
+        "implementationSources": [
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/BN254MulPrecompile.cs",
+            "line": 14
+          },
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/BN254MulPrecompile.cs",
+            "line": 9
+          }
+        ]
+      },
+      {
+        "address": "0x0000000000000000000000000000000000000008",
+        "name": "BN254_PAIRING",
+        "status": "enabled",
+        "implementationType": "Nethermind.Evm.Precompiles.BN254PairingCheckPrecompile",
+        "implementationSources": [
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/BN254PairingCheckPrecompile.cs",
+            "line": 13
+          },
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/BN254PairingCheckPrecompile.cs",
+            "line": 10
+          }
+        ]
+      },
+      {
+        "address": "0x0000000000000000000000000000000000000009",
+        "name": "BLAKE2F",
+        "status": "enabled",
+        "implementationType": "Nethermind.Evm.Precompiles.Blake2FPrecompile",
+        "implementationSources": [
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/Blake2FPrecompile.cs",
+            "line": 16
+          },
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Blake2FPrecompile.cs",
+            "line": 11
+          }
+        ]
+      },
+      {
+        "address": "0x000000000000000000000000000000000000000a",
+        "name": "KZG_POINT_EVALUATION",
+        "status": "enabled",
+        "implementationType": "Nethermind.Evm.Precompiles.KzgPointEvaluationPrecompile",
+        "implementationSources": [
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/KzgPointEvaluationPrecompile.cs",
+            "line": 15
+          },
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/KzgPointEvaluationPrecompile.cs",
+            "line": 10
+          }
+        ]
+      },
+      {
+        "address": "0x000000000000000000000000000000000000000b",
+        "name": "BLS12_G1ADD",
+        "status": "enabled",
+        "implementationType": "Nethermind.Evm.Precompiles.Bls12381G1AddPrecompile",
+        "implementationSources": [
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/Bls12381G1AddPrecompile.cs",
+            "line": 13
+          },
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Bls12381G1AddPrecompile.cs",
+            "line": 12
+          }
+        ]
+      },
+      {
+        "address": "0x000000000000000000000000000000000000000c",
+        "name": "BLS12_G1MSM",
+        "status": "enabled",
+        "implementationType": "Nethermind.Evm.Precompiles.Bls12381G1MsmPrecompile",
+        "implementationSources": [
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/Bls12381G1MsmPrecompile.cs",
+            "line": 13
+          },
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Bls12381G1MsmPrecompile.cs",
+            "line": 15
+          }
+        ]
+      },
+      {
+        "address": "0x000000000000000000000000000000000000000d",
+        "name": "BLS12_G2ADD",
+        "status": "enabled",
+        "implementationType": "Nethermind.Evm.Precompiles.Bls12381G2AddPrecompile",
+        "implementationSources": [
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/Bls12381G2AddPrecompile.cs",
+            "line": 13
+          },
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Bls12381G2AddPrecompile.cs",
+            "line": 12
+          }
+        ]
+      },
+      {
+        "address": "0x000000000000000000000000000000000000000e",
+        "name": "BLS12_G2MSM",
+        "status": "enabled",
+        "implementationType": "Nethermind.Evm.Precompiles.Bls12381G2MsmPrecompile",
+        "implementationSources": [
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/Bls12381G2MsmPrecompile.cs",
+            "line": 13
+          },
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Bls12381G2MsmPrecompile.cs",
+            "line": 15
+          }
+        ]
+      },
+      {
+        "address": "0x000000000000000000000000000000000000000f",
+        "name": "BLS12_PAIRING_CHECK",
+        "status": "enabled",
+        "implementationType": "Nethermind.Evm.Precompiles.Bls12381PairingCheckPrecompile",
+        "implementationSources": [
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/Bls12381PairingCheckPrecompile.cs",
+            "line": 13
+          },
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Bls12381PairingCheckPrecompile.cs",
+            "line": 16
+          }
+        ]
+      },
+      {
+        "address": "0x0000000000000000000000000000000000000010",
+        "name": "BLS12_MAP_FP_TO_G1",
+        "status": "enabled",
+        "implementationType": "Nethermind.Evm.Precompiles.Bls12381FpToG1Precompile",
+        "implementationSources": [
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/Bls12381FpToG1Precompile.cs",
+            "line": 13
+          },
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Bls12381FpToG1Precompile.cs",
+            "line": 12
+          }
+        ]
+      },
+      {
+        "address": "0x0000000000000000000000000000000000000011",
+        "name": "BLS12_MAP_FP2_TO_G2",
+        "status": "enabled",
+        "implementationType": "Nethermind.Evm.Precompiles.Bls12381Fp2ToG2Precompile",
+        "implementationSources": [
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/Bls12381Fp2ToG2Precompile.cs",
+            "line": 13
+          },
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Bls12381Fp2ToG2Precompile.cs",
+            "line": 12
+          }
+        ]
+      },
+      {
+        "address": "0x0000000000000000000000000000000000000100",
+        "name": "P256VERIFY",
+        "status": "enabled",
+        "implementationType": "Nethermind.Evm.Precompiles.SecP256r1Precompile",
+        "implementationSources": [
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/SecP256r1Precompile.cs",
+            "line": 13
+          },
+          {
+            "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/SecP256r1Precompile.cs",
+            "line": 11
+          }
+        ]
+      }
+    ]
+  },
+  "sources": [
+    {
+      "path": "Directory.Build.props",
+      "sha256": "597c468a790b1f0b0b92ad18bcd5fa943d7b62fa2e8c181f56db080cdcbf1812"
+    },
+    {
+      "path": "src/Nethermind/Directory.Build.targets",
+      "sha256": "0598cebaef1df41102a18a3f9ace810bed1e4e64b8471d055724b4a394dccec6"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Blockchain/EthereumPrecompileProvider.cs",
+      "sha256": "2c2e523e32c5f9c2936a0d07af36a1194fc6001d5eddfb52b7ef31b6dfa883ad"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/BN254AddPrecompile.cs",
+      "sha256": "a9fa306cf179a43c67f96ed90b386f905cd8056cc89ad4ef8ddf69fa69850110"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/BN254MulPrecompile.cs",
+      "sha256": "8aad59de1eb4bba1d5d9e371d7b40e9211b9c5aa36ebf4cfeb2ca957d6fa9d53"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/BN254PairingCheckPrecompile.cs",
+      "sha256": "baabf056a6b86ad7ea0fa6c89f79277e407819f051986d91fa36c4aa52d8ba0d"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/Blake2FPrecompile.cs",
+      "sha256": "482aa0e1a5b9695b9ab401031369b91aa036b978e04c35f3b4556ed573bd814a"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/Bls12381Fp2ToG2Precompile.cs",
+      "sha256": "bdcf9858babd06e81e25c4e3e66ad665a8c21557f2355b8fa1307671947e46f8"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/Bls12381FpToG1Precompile.cs",
+      "sha256": "40deadbd561b0c2ae602899c68eb42d1ab1cb0bf5b9ff39979b5006ad48a1a3b"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/Bls12381G1AddPrecompile.cs",
+      "sha256": "a3aa30e2bab73897ee1282043376297ae949dbf8f03242012867fbc78c68f182"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/Bls12381G1MsmPrecompile.cs",
+      "sha256": "601c87baf11e2712febb4bf21b84e8d6b392d5012943459f69470d8a0368bc51"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/Bls12381G2AddPrecompile.cs",
+      "sha256": "7a88ecd3dc7f1f13f5fd33893dae965725f1280ee84ce8eaee0abcb229a77c9e"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/Bls12381G2MsmPrecompile.cs",
+      "sha256": "5529a2d4984447b73d3be838616cd72b1722fcd355b76118ab25e460f4b0ebde"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/Bls12381PairingCheckPrecompile.cs",
+      "sha256": "7a15792c4e7ce39b5e0656c59b17e45bcff6b466dfca5126e94ccb666595d3ec"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/ECRecoverPrecompile.cs",
+      "sha256": "695266e993209afc08ab04f48a5f51f0aa0f8ce5c0e5e07a164eaf7ed4af217e"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/IdentityPrecompile.cs",
+      "sha256": "e5ba8e49ebe122906c36bc7419de7bb7b4d435bb5adbfbb2be7faef7dc509850"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/KzgPointEvaluationPrecompile.cs",
+      "sha256": "2a3d70aafe7a5b47988a5dc6069a760462e617f20fee3a38407921029e757ca3"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/ModExpPrecompile.cs",
+      "sha256": "136c73f6b333835be2b5d0a60123d35955f82474380468b11879f5df0e599a70"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj",
+      "sha256": "7e2413aac7af0067717b0a37cccb0b51e230e07576f055a4a0b67abf8e77e200"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/Ripemd160Precompile.cs",
+      "sha256": "bfc2c559aa2cb9bb2496c307f68b8529c48556f5fd718c0e1ca3c9f432a297ad"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/SecP256r1Precompile.cs",
+      "sha256": "2df6da5f0e19f9d466ddb16b3d60f79fc0cacec99eaf83c450ba9ef136ecebeb"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/Sha256Precompile.cs",
+      "sha256": "32836e9d9824aecc3c34a108e1b7ca2f7e243ea52e266594c9edeb36409d56be"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/BN254AddPrecompile.cs",
+      "sha256": "e77de34065688a8ffe28d5e3d2da196627719d5bca8d938a782f44cb0d00d954"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/BN254MulPrecompile.cs",
+      "sha256": "17cdeaae9b905947335a3cafe1b6b9c91e35a89962a51b695eafa1ece9da3d5b"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/BN254PairingCheckPrecompile.cs",
+      "sha256": "9a5de6006368c7e5a90b7afc4b96fbc411f69a4e07de4d1cac358ab42d79a6c8"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Blake2FPrecompile.cs",
+      "sha256": "0b2991a47ad0eb792326adec6c748f1fee43ba05171884976c6e58da3a9ad50a"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Bls12381Fp2ToG2Precompile.cs",
+      "sha256": "d9e76b4b6599f281146bf741188640f080c4a70241a3f1868674226e27694a0f"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Bls12381FpToG1Precompile.cs",
+      "sha256": "c23ef9d1f5bf6db22d1619542f639d159427cd39b9094bf4968bfcd5bbddc98d"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Bls12381G1AddPrecompile.cs",
+      "sha256": "59a23b3ffbab6e93168ce8ebf4493fa52165ccfbee6992e94e7cb29c3a843cf8"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Bls12381G1MsmPrecompile.cs",
+      "sha256": "cb1cfaf7fc4884d72696da815373d86333fc6fec6e0675f854c7a7207376ce72"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Bls12381G2AddPrecompile.cs",
+      "sha256": "e6b4643dcf9a234b3255fe71e6a136f1c1617fada57b818d325a8e76d3718bf6"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Bls12381G2MsmPrecompile.cs",
+      "sha256": "3e84b9ada4dc7c5cd118529dd232d3cd8958d5fe55c9823ddeb718540ee865ef"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Bls12381PairingCheckPrecompile.cs",
+      "sha256": "df01725bb8edef204d5f916d47e15ccdd8482710c7062a2158670cdf917fd321"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/KzgPointEvaluationPrecompile.cs",
+      "sha256": "f398448078622ba9433be497005686e9c87549623c5a6902deea2bfa2e6a9a60"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/ModExpPrecompile.cs",
+      "sha256": "32274556751a9b27e27ed7e4362911450466e67d1263fa640bfc1a6ecc7c656d"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Ripemd160Precompile.cs",
+      "sha256": "03e069ec4a98c5b4ff98084f5506f33c1ab10856afb2ba865915c540228d6ec4"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/SecP256r1Precompile.cs",
+      "sha256": "f41a10e35f0c0ff5c109f814b0eacef8b4ed95c88de2afd449a18419e3510eda"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Sha256Precompile.cs",
+      "sha256": "53abcf2bfd0678ca2c9fa6304f2be83358632902ace542c43f474b481fd2b0d0"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs",
+      "sha256": "5148dd594e40ebb976179b1048f233914f54acc8d033d358cf3e2e7594e112b6"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/25_Amsterdam.cs",
+      "sha256": "4dfbf9079e9dce30423327ae4433f32e49388d403a8fedfcf253f94f79450c6a"
+    },
+    {
+      "path": "tools/Evm/Evm.slnx",
+      "sha256": "28889caccd61c9a97b7ba884d2cdf6ec25c774132807d5e53a10ba0dff602284"
+    }
+  ],
+  "checks": {
+    "allOpcodeBytesEnumerated": true,
+    "opcodeBytesContiguous": true,
+    "enabledOpcodesHaveHandlers": true,
+    "activePrecompilesRegistered": true,
+    "registeredPrecompilesResolved": true
+  },
+  "limitations": [
+    "This is a source-anchored inventory and reachability check, not a semantic proof of opcode or precompile behavior.",
+    "Precompile source locations follow the standard Evm.slnx compile selection (standard (EnableZkEvm=false)); zkEVM alternate partials are excluded.",
+    "The pinned Amsterdam spec is enabled at synthetic timestamp 0 / block 0; this is not a claim about currently scheduled live-mainnet activation.",
+    "Frame, transaction, block, cryptographic, state-root, and parallel-execution refinement remain outside this gate."
+  ]
+}

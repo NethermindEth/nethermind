@@ -1,0 +1,17 @@
+namespace Nethermind.Core;
+
+partial class GasCostOf
+{
+public const ulong Base = 2;
+
+public const ulong VeryLow = 3;
+
+public const ulong Mid = 8;
+
+public const ulong High = 10;
+
+public const ulong JumpDest = 1;
+
+public const ulong Memory = 3;
+
+}

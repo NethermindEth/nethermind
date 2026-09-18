@@ -1,0 +1,8 @@
+{
+  "acceptanceState": "accepted-upstream",
+  "finalizationSchemaVersion": 8,
+  "finalizationExtractorVersion": "1.14.0",
+  "finalizationIrSha256": "1d599ef71c083c5aa4a80fbc0e44d99f807d09dc0fa17f9e2d5b94047e45145a",
+  "finalizationManifestSha256": "99823606ef2143b4fb00aeb6af02994d4f707dc757ae719d9df6ccdb34ce0e7b",
+  "finalizationLeanSha256": "f84cd3be1182df43429d6ea75ec8df360059c2fc4a183270748118cc78a8064b"
+}

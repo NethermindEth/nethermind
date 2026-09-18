@@ -1,0 +1,720 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.0.0",
+  "compilerVersion": "5.6.0.0",
+  "languageVersion": "14.0",
+  "kernel": "Nethermind standard-mainnet pre-commit extensional world journal",
+  "sources": [
+    {
+      "path": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "sha256": "2dec74bcc5748a1850d1bed1e8fe0221aed8c904bf2ba0c0827e76e603a71f18"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/State/IWorldState.cs",
+      "sha256": "0680ebc7168472645d93df58d2b3240508c177361815c85cceb09cf960f189c7"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/State/IWorldStateScopeProvider.cs",
+      "sha256": "8c68c7561effd7e00f11985d36464d7ec97e8cd4e20b68ea48a66ccfd3702c86"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/State/LocalMetrics.cs",
+      "sha256": "c646617c6bfeb451d38c9a74c42d3e45da684f731068d96931e9b286d73a3f3c"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "sha256": "93eab6702f4e3ef6c52afb0f595ff2b0c17cdeabbce1de3f0507f2aa0e6f6858"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.State/PartialStorageProviderBase.cs",
+      "sha256": "0ade22ba2312b9ac665ca03afa2547f6f884232f20d3a58867b2c00402daa085"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.State/PersistentStorageProvider.cs",
+      "sha256": "fd04e010e7088473b3a007f2cb8d688cf1d389f42866c60af8baa8860202683a"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.State/TransientStorageProvider.cs",
+      "sha256": "d9731e1bae54aeb296c7a3a22baae18c35a043167623149888b1cfa5f098ba4d"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs",
+      "sha256": "ed5cdfdfe2ebf4d8c9f651572927efe7bdb5c75107db63a40577c5ec3ec2882f"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/State/Snapshot.cs",
+      "sha256": "47625d60a8315bbc3afd26eca85780b0ab894d7401d913cbec00ed89b51f46c8"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Collections/JournalSet.cs",
+      "sha256": "1ec1cff208a23cbde6f4352663061a3c3ecd517ebf1c96e789ab6ce97a150397"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Collections/JournalCollection.cs",
+      "sha256": "5c1395b025da5a03749a5b64da804e53c6ff0a7aec4c02d30fd4b1c0e059c720"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "sha256": "7b7b6ddb753118b426d14976a3fe8e79f808320d6a09ea9cace9df19197f9f23"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "sha256": "45edba3691e09185e749485785990662ddea1af849bc6e4564f92b68a5137a6b"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+      "sha256": "fce65ce5bb523c56fc8aa6ee0e4d092c940a5a90b174c820ffe262eeb5241c60"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Account.cs",
+      "sha256": "3a94d972388a4c5d46d744bf0733b80fb6575a148bf32123d64a0a51abddd749"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Resettables/Resettable.cs",
+      "sha256": "6217e574a6018462d7df5d337304c1dd75014a1d6f27646da98bbd46a38251d2"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.State/StorageTree.cs",
+      "sha256": "bf54dcfe7216eb73dc8c40fde911b1376e0868e9cff43dced0fe603ba29e179b"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Crypto/Keccak.cs",
+      "sha256": "86617536dfc7d4c040f047ed1477fc639a38f0f42f2857c354c24d585568782e"
+    }
+  ],
+  "members": [
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "containingType": "WorldState",
+      "member": "GetAccount",
+      "signature": "Account GetAccount(Address)",
+      "canonicalSha256": "15d49d77486a1048be4aa9b3cefdc7250dad6235600a7eb270b37f2ab73d89e6"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "containingType": "WorldState",
+      "member": "TryGetAccount",
+      "signature": "bool TryGetAccount(Address,out AccountStruct)",
+      "canonicalSha256": "0705576e35db9e9c4fe89a7f6d3a6c0a4281a1208088452d56955c4d3e7f8a7f"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "containingType": "WorldState",
+      "member": "HasEmptyAccountLeaf",
+      "signature": "bool HasEmptyAccountLeaf(Address)",
+      "canonicalSha256": "963c6132bcb4005cdeca7b8868efafed5e74d91bc40f707b1c94eb78b60faa45"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "containingType": "WorldState",
+      "member": "GetOriginal",
+      "signature": "ReadOnlySpan\u003Cbyte\u003E GetOriginal(in StorageCell)",
+      "canonicalSha256": "222d6e041552a2fb36f20ad1295c3edc23a8164a2ee97b204f200f40d0f65a7a"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "containingType": "WorldState",
+      "member": "Get",
+      "signature": "ReadOnlySpan\u003Cbyte\u003E Get(in StorageCell)",
+      "canonicalSha256": "78a9122964437e1035a20e234772376e3b05ec1e2dff4182f7e9ac87b13237d2"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "containingType": "WorldState",
+      "member": "Set",
+      "signature": "void Set(in StorageCell,byte[])",
+      "canonicalSha256": "72c4845247132f5f5e6c4ee9b8e1d492a249e34b5e68df2e28c5e42b431af312"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "containingType": "WorldState",
+      "member": "GetTransientState",
+      "signature": "ReadOnlySpan\u003Cbyte\u003E GetTransientState(in StorageCell)",
+      "canonicalSha256": "b57633a15ec2c35133d96cb4ca57611b4bcfd6cfcec5f2c52dba615c72d6e641"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "containingType": "WorldState",
+      "member": "SetTransientState",
+      "signature": "void SetTransientState(in StorageCell,byte[])",
+      "canonicalSha256": "cce48bcbbb961752bb6b73bf56af4f4c7bfda1db68ae06c27c25b416ba3358a1"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "containingType": "WorldState",
+      "member": "CreateAccount",
+      "signature": "void CreateAccount(Address,in UInt256,in ulong)",
+      "canonicalSha256": "fffbc03b1be27eeb7e9b847d78f4733e95aa1c0f6ae6d1a9545cd5a82dfdf31f"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "containingType": "WorldState",
+      "member": "DeleteAccount",
+      "signature": "void DeleteAccount(Address)",
+      "canonicalSha256": "d6dd395f720b742ebb1c87940b0dfa3e55410a25b595f76683666a0a04742636"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "GetAccount",
+      "signature": "Account GetAccount(Address)",
+      "canonicalSha256": "5c17eba66dab5476de9633e78fd0ef50137600e23c335d104168e9b528fbfd55"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "GetThroughCache",
+      "signature": "Account? GetThroughCache(Address)",
+      "canonicalSha256": "a28af3c23781f05ff90a3be5f7585396d78e94ed39715cd053b64a4f59b2544b"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "IsFrontCacheHit",
+      "signature": "bool IsFrontCacheHit(Address)",
+      "canonicalSha256": "50549c15079abd35c87c7e79010052853f2cc6ffac689bcc98522e165cd623fb"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "GetAndAddToCache",
+      "signature": "Account? GetAndAddToCache(Address)",
+      "canonicalSha256": "f0f9ea22380d7217b7354d15a4006de148340f372ac33a25ab3644ca951430ed"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "GetState",
+      "signature": "Account? GetState(Address)",
+      "canonicalSha256": "1be0a4faa155e581fac9cb202828b4a7e7849df42f87fe927eba894c085f51f8"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "GetOrAddBlockChange",
+      "signature": "ref ChangeTrace GetOrAddBlockChange(AddressAsKey,out bool)",
+      "canonicalSha256": "9eb880f146498bdf03b57328474c14dfe4f29308ee1926f91e004d2266ac375e"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "PushJustCache",
+      "signature": "void PushJustCache(Address,Account)",
+      "canonicalSha256": "732cf5f8c4a5abb7994f7195439f7a1b1f5da5dd325207dffae75085a7d935e4"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "CreateAccount",
+      "signature": "void CreateAccount(Address,in UInt256,in ulong)",
+      "canonicalSha256": "b63604b67cb769f515e0d3235b42e5a75e0a99a47ecb5cb85968d7b56ad52d11"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "PushNew",
+      "signature": "void PushNew(Address,Account)",
+      "canonicalSha256": "e5495e37e62a144853d11cde5edeb65e57e0bb84961fb1c71b595385efc9ea33"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "PushUpdate",
+      "signature": "void PushUpdate(Address,Account)",
+      "canonicalSha256": "dbbf2a48fab5ac11ced5233e4e4f438629825670d4e35bb768ac7a6b6ebe5d66"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "DeleteAccount",
+      "signature": "void DeleteAccount(Address)",
+      "canonicalSha256": "140f1875399aa18abd309e89a2c4428c751d5ef7d4fede6b7950ab479bc1f0df"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "PushDelete",
+      "signature": "void PushDelete(Address)",
+      "canonicalSha256": "756fcd442268ab1cbf409697bd77785a3ab5288a07c126773bd03ff482e33059"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "Push",
+      "signature": "void Push(Address,Account?,ChangeType)",
+      "canonicalSha256": "1021369355952b676e4981f94959d2880b23737ff9821fdc4fb8cab47fb9c91b"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "TakeSnapshot",
+      "signature": "int TakeSnapshot()",
+      "canonicalSha256": "83ec4c16b47da04be5140f58252040de1a37746cb6fa2b40a5556d5cd3229ba0"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "Restore",
+      "signature": "void Restore(int)",
+      "canonicalSha256": "1c7fab11d0b11b15050e7d7cd88915daf12079856cfa16836dd73641040b6524"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "InvalidateFrontCache",
+      "signature": "void InvalidateFrontCache()",
+      "canonicalSha256": "1d5108fef9aaef465bf030ce21b355683008dfab0280a870f392d6176048275d"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/PartialStorageProviderBase.cs",
+      "containingType": "PartialStorageProviderBase",
+      "member": "Get",
+      "signature": "ReadOnlySpan\u003Cbyte\u003E Get(in StorageCell)",
+      "canonicalSha256": "0376a4f924a7922026c1ccafb3de7b9440232e36f70d0f0e08e7e64e7bfaf2d8"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/PartialStorageProviderBase.cs",
+      "containingType": "PartialStorageProviderBase",
+      "member": "Set",
+      "signature": "void Set(in StorageCell,byte[])",
+      "canonicalSha256": "98a7c595fe14a93e24d146340d066dd9e7f283ff0da432cf4910421d800af835"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/PartialStorageProviderBase.cs",
+      "containingType": "PartialStorageProviderBase",
+      "member": "TryGetCachedValue",
+      "signature": "bool TryGetCachedValue(in StorageCell,out byte[]?)",
+      "canonicalSha256": "60f9806b597842fa1cc31a8ced180b29529d30450a7f3d439ad24891baec3052"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/PartialStorageProviderBase.cs",
+      "containingType": "PartialStorageProviderBase",
+      "member": "TakeSnapshot",
+      "signature": "int TakeSnapshot(bool)",
+      "canonicalSha256": "33a9ccae484a854a8bb90831aac90fc968f5f2c2dee11dad75757215050a1f1a"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/PartialStorageProviderBase.cs",
+      "containingType": "PartialStorageProviderBase",
+      "member": "Restore",
+      "signature": "void Restore(int)",
+      "canonicalSha256": "535c3cd95ccde93a26cc86a28647a37545d7f827e7fa1ad38ce8e5540afdfb2a"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/PartialStorageProviderBase.cs",
+      "containingType": "PartialStorageProviderBase",
+      "member": "PushUpdate",
+      "signature": "void PushUpdate(in StorageCell,byte[])",
+      "canonicalSha256": "522d9fd480bc292396296e20d24a1b34989c33fc9d0c06cfbcd0668281c1db27"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/PersistentStorageProvider.cs",
+      "containingType": "PersistentStorageProvider",
+      "member": "CurrentScope",
+      "signature": "IWorldStateScopeProvider.IScope CurrentScope",
+      "canonicalSha256": "b645c609aa843732efbe6ec0cee1a4fd7b327dbd82fb46c5ebf137d8fa5c20a0"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/PersistentStorageProvider.cs",
+      "containingType": "PersistentStorageProvider",
+      "member": "Set",
+      "signature": "void Set(in StorageCell,byte[])",
+      "canonicalSha256": "6010be0591b416b8d6e9e29c442b4bda8215a4dac2a3365cb932c895e371bb93"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/PersistentStorageProvider.cs",
+      "containingType": "PersistentStorageProvider",
+      "member": "GetCurrentValue",
+      "signature": "ReadOnlySpan\u003Cbyte\u003E GetCurrentValue(in StorageCell)",
+      "canonicalSha256": "6d5adf5f7b820172e6f444d1cd67902a578682ef75963c966d81fbe09684e38c"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/PersistentStorageProvider.cs",
+      "containingType": "PersistentStorageProvider",
+      "member": "LoadFromTree",
+      "signature": "ReadOnlySpan\u003Cbyte\u003E LoadFromTree(in StorageCell)",
+      "canonicalSha256": "279cbf019103fa623538b3e76fe93ed8b440393742e3576505749942e7df943b"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/PersistentStorageProvider.cs",
+      "containingType": "PersistentStorageProvider",
+      "member": "GetOrCreateStorage",
+      "signature": "PerContractState GetOrCreateStorage(Address)",
+      "canonicalSha256": "912b652a13b4d45955d12fe753e0fad2abf31d059ae5b8aa4db4270d588f913f"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/PersistentStorageProvider.cs",
+      "containingType": "PersistentStorageProvider",
+      "member": "CaptureOriginalValue",
+      "signature": "void CaptureOriginalValue(in StorageCell,byte[])",
+      "canonicalSha256": "887a23f8e2b46e47148e7a82fe6d17a5266a89a3c4dc3a39f17ac924d2863071"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/PersistentStorageProvider.cs",
+      "containingType": "PerContractState",
+      "member": "LoadFromTree",
+      "signature": "ReadOnlySpan\u003Cbyte\u003E LoadFromTree(in StorageCell)",
+      "canonicalSha256": "a7bfdb1a45726dfb090add8767d94ca1dd952b5d1fbdf2fb1ada26d13141019e"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/PersistentStorageProvider.cs",
+      "containingType": "PerContractState",
+      "member": "LoadFromTreeStorage",
+      "signature": "byte[] LoadFromTreeStorage(StorageCell)",
+      "canonicalSha256": "195d272b7c5fcda7a4b92cb43e70c8a412c706564d72c431b0bdf8bc3a9c7a0b"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/PersistentStorageProvider.cs",
+      "containingType": "PersistentStorageProvider",
+      "member": "GetOriginal",
+      "signature": "ReadOnlySpan\u003Cbyte\u003E GetOriginal(in StorageCell)",
+      "canonicalSha256": "0a300f298436262297edc95faa7feb8d74d3eaa13684945c004ae9fc13deccd4"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/PersistentStorageProvider.cs",
+      "containingType": "PersistentStorageProvider",
+      "member": "GetStorageRoot",
+      "signature": "Hash256 GetStorageRoot(Address)",
+      "canonicalSha256": "763d5fa9b3341c427badaeb01e40f931eb60b2d8b364fe6da15725c9567c974b"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/PersistentStorageProvider.cs",
+      "containingType": "PerContractState",
+      "member": "StorageRoot",
+      "signature": "Hash256 StorageRoot",
+      "canonicalSha256": "39240ad5b50970e6557025f723d1c6cb7666bd55368f116799d3a7335137fc18"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/PersistentStorageProvider.cs",
+      "containingType": "PerContractState",
+      "member": "TakeAccountWarmHint",
+      "signature": "bool TakeAccountWarmHint()",
+      "canonicalSha256": "836daadd2b011a8f46bf7378bc2071451c9095f36b9a3ce7e0d695890ca788ed"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/TransientStorageProvider.cs",
+      "containingType": "TransientStorageProvider",
+      "member": "GetCurrentValue",
+      "signature": "ReadOnlySpan\u003Cbyte\u003E GetCurrentValue(in StorageCell)",
+      "canonicalSha256": "83a37394e70c6403e988aa95a9cca8f52c7bd0b5280d9463d588a01a0d493a68"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/State/IWorldStateScopeProvider.cs",
+      "containingType": "IScope",
+      "member": "HintWarmAccount",
+      "signature": "void HintWarmAccount(in ValueAddress)",
+      "canonicalSha256": "455c84904904d8d7e24ec33e6ce22f1de072c927d51c6adb0c29ff30bad0acd8"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/State/IWorldStateScopeProvider.cs",
+      "containingType": "IScope",
+      "member": "HintWarmSlot",
+      "signature": "void HintWarmSlot(in ValueAddress,in UInt256)",
+      "canonicalSha256": "9683ce12722ebb77b9cfea219133990387472dfbd1686d268181a7cd42371377"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/State/LocalMetrics.cs",
+      "containingType": "LocalMetrics",
+      "member": "IncrementStorageWrites",
+      "signature": "void IncrementStorageWrites()",
+      "canonicalSha256": "978842ce42fdcce24c4e737022ede3a1abd1c45981b8d90bab2e47f0a9be86d2"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs",
+      "containingType": "StackAccessTracker",
+      "member": "WarmUp",
+      "signature": "bool WarmUp(Address)",
+      "canonicalSha256": "4d20cee9064dd7e9ed712848bbb50c01844263fdc25a92f5ef63823769d68ef6"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs",
+      "containingType": "StackAccessTracker",
+      "member": "WarmUp",
+      "signature": "bool WarmUp(in StorageCell)",
+      "canonicalSha256": "cfc90fbc9f192ad148eb2d9f6ae55b34811a310da2bb6684d9d641ea2010babc"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs",
+      "containingType": "StackAccessTracker",
+      "member": "ToBeDestroyed",
+      "signature": "void ToBeDestroyed(Address)",
+      "canonicalSha256": "6e8d64fbd7605fcf86f485dd75cede2369925b992d837774bf3c8f8eec089f41"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs",
+      "containingType": "StackAccessTracker",
+      "member": "WasCreated",
+      "signature": "void WasCreated(Address)",
+      "canonicalSha256": "000a3032aabbb683e0bdf35cf97d47d7a5d633db15f5ccc74785eac5e8eb3a94"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs",
+      "containingType": "StackAccessTracker",
+      "member": "TakeSnapshot",
+      "signature": "void TakeSnapshot()",
+      "canonicalSha256": "1040e496fe4749686641b712f1cd57a36b10bbd2763eed0bf0a120e545f88ec8"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs",
+      "containingType": "StackAccessTracker",
+      "member": "Restore",
+      "signature": "void Restore()",
+      "canonicalSha256": "3ea034b6590dacb2c96a5f0aca8c70bab8bdba7dd02441dfa11810bb23598bb7"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Collections/JournalSet.cs",
+      "containingType": "JournalSet",
+      "member": "TakeSnapshot",
+      "signature": "int TakeSnapshot()",
+      "canonicalSha256": "3b472ff32db7eb3f2824aa3245413fb93cd1d1af01d4bee13780cd7007be4265"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Collections/JournalSet.cs",
+      "containingType": "JournalSet",
+      "member": "Position",
+      "signature": "int Position",
+      "canonicalSha256": "dae665764fba9e028c8f8efcf61b2960b59629ede285cd9c879adef12b0ce416"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Collections/JournalSet.cs",
+      "containingType": "JournalSet",
+      "member": "Restore",
+      "signature": "void Restore(int)",
+      "canonicalSha256": "22f75f77e78bd1a6ab78c9e955c75bc735fc7708f96290be69194692552eef00"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Collections/JournalSet.cs",
+      "containingType": "JournalSet",
+      "member": "Add",
+      "signature": "bool Add(T)",
+      "canonicalSha256": "3e44b4262ec46cb02bcc850a314b47b144b17b744f416394ab2d9f56f5ee8a0c"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Collections/JournalSet.cs",
+      "containingType": "JournalSet",
+      "member": "Count",
+      "signature": "int Count",
+      "canonicalSha256": "7ffb38546f3f578329b5e5ea3627259a02b3797d8fbe67742b5dd82531574aeb"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Collections/JournalCollection.cs",
+      "containingType": "JournalCollection",
+      "member": "TakeSnapshot",
+      "signature": "int TakeSnapshot()",
+      "canonicalSha256": "69df50670d37cf0ce42645ddea6228715f1e80ca7857eaee7d0145e44cf1438a"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Collections/JournalCollection.cs",
+      "containingType": "JournalCollection",
+      "member": "Restore",
+      "signature": "void Restore(int)",
+      "canonicalSha256": "65db85ad88a58dafc254624ad1cab7098f544dd1ec83765c6f12ea116de38ab3"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Collections/JournalCollection.cs",
+      "containingType": "JournalCollection",
+      "member": "Add",
+      "signature": "void Add(T)",
+      "canonicalSha256": "953cf72ffa681e88b4bfbd7fb31056c39d0c380b17ed8abfbb64df91c3858f7e"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Collections/JournalCollection.cs",
+      "containingType": "JournalCollection",
+      "member": "Count",
+      "signature": "int Count",
+      "canonicalSha256": "b64c5056c3727286dacddf3bcc26dd50622be66b118f8fd93a7628d2569e2f60"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "containingType": "WorldState",
+      "member": "TakeSnapshot",
+      "signature": "Snapshot TakeSnapshot(bool)",
+      "canonicalSha256": "b892b47b62b71f2c7869eefc1b9579bbc4e098ad6e60770cce758ae4a57f6380"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "containingType": "WorldState",
+      "member": "Restore",
+      "signature": "void Restore(Snapshot)",
+      "canonicalSha256": "7a65d07c50c579e4451b3396301a75c98b11d2b04e81f73aec790fe7c712e2cd"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "containingType": "VirtualMachine",
+      "member": "AddLog",
+      "signature": "void AddLog(LogEntry)",
+      "canonicalSha256": "3217b019cdb27d464d9444fdd50675db162338c6d3d792e3b461f09464dbfe14"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "containingType": "VmState",
+      "member": "Initialize",
+      "signature": "void Initialize(TGasPolicy,long,long,ExecutionType,bool,bool,bool,bool,bool,ExecutionEnvironment,in StackAccessTracker,in Snapshot)",
+      "canonicalSha256": "85c5e35af8dceaccbbeb444cc689de16ea7860b93877a24a2b08287ddb679d0f"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/State/Snapshot.cs",
+      "containingType": "Snapshot",
+      "member": "EmptyPosition",
+      "signature": "int EmptyPosition",
+      "canonicalSha256": "d544ceb499bf95df91a840c89631f7453b823d489616228ad033ea9a07ee7c89"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Resettables/Resettable.cs",
+      "containingType": "Resettable",
+      "member": "EmptyPosition",
+      "signature": "int EmptyPosition",
+      "canonicalSha256": "d544ceb499bf95df91a840c89631f7453b823d489616228ad033ea9a07ee7c89"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StorageTree.cs",
+      "containingType": "StorageTree",
+      "member": "ZeroBytes",
+      "signature": "byte[] ZeroBytes",
+      "canonicalSha256": "856c599392822feff41fb86d073023836cf96f39c61d8bb4761a1d60ae07527d"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Account.cs",
+      "containingType": "Account",
+      "member": "Account",
+      "signature": "Account()",
+      "canonicalSha256": "809aa78fcaf86b39a192d5c412553c51f3c18bf3b61978e3b1eab58cc2573987"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Account.cs",
+      "containingType": "Account",
+      "member": "Account",
+      "signature": "Account(in ulong,in UInt256)",
+      "canonicalSha256": "a9bd19fb0f95c7f5ba211a6952a2a5fb3a65d34835767d33309cec256deb451e"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Account.cs",
+      "containingType": "Account",
+      "member": "Account",
+      "signature": "Account(Account,Hash256?)",
+      "canonicalSha256": "948448510019c11fc7f6b04bfdd5aca096944c658e55b5dd02f3461bf75c463a"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Account.cs",
+      "containingType": "Account",
+      "member": "TotallyEmpty",
+      "signature": "Account TotallyEmpty",
+      "canonicalSha256": "fe2cc3a72ec7105d9518bd5a04f092aa707b36c9b24588a7a26c1d052bfe0229"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Account.cs",
+      "containingType": "Account",
+      "member": "StorageRoot",
+      "signature": "Hash256 StorageRoot",
+      "canonicalSha256": "647a8d83e70b7042fafb4ac8bfb727bbfa38ddded3aeee29e9dbc6272ebb1ba0"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Account.cs",
+      "containingType": "Account",
+      "member": "CodeHash",
+      "signature": "Hash256 CodeHash",
+      "canonicalSha256": "1855b4830e01590fb0baf18b178cc717972584a28020cc3e7bfc635450b961cd"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Account.cs",
+      "containingType": "Account",
+      "member": "IsTotallyEmpty",
+      "signature": "bool IsTotallyEmpty",
+      "canonicalSha256": "6549d4f4640de408b81bc5875aadfc4bef76a083fa8e1f2e922e8ff6160ed777"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Account.cs",
+      "containingType": "Account",
+      "member": "IsEmpty",
+      "signature": "bool IsEmpty",
+      "canonicalSha256": "6342ce801619431259d8175d77405f0b6cb536f15fba5ac8288a785dd3010799"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Account.cs",
+      "containingType": "Account",
+      "member": "WithChangedStorageRoot",
+      "signature": "Account WithChangedStorageRoot(Hash256)",
+      "canonicalSha256": "1c1a5e2ca013094eb0f14a2dbe9be8dc319d5278fe3d8bac375e2839f1f58821"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Account.cs",
+      "containingType": "Account",
+      "member": "ToStruct",
+      "signature": "AccountStruct ToStruct()",
+      "canonicalSha256": "3ca45763a9c7b3b743e243f9c664b1f0fed20741603eb4abf549d4846c45ca43"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Account.cs",
+      "containingType": "AccountStruct",
+      "member": "AccountStruct",
+      "signature": "AccountStruct(in ulong,in UInt256,in ValueHash256,in ValueHash256)",
+      "canonicalSha256": "0f884687ec70d45bd5f6c082780c0664aaebed7351eeec9e13f217dcf7352a61"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Account.cs",
+      "containingType": "AccountStruct",
+      "member": "IsTotallyEmpty",
+      "signature": "bool IsTotallyEmpty",
+      "canonicalSha256": "738f151c3baf64ac0a1186645bd86b76041e92d44a4c62bba7501e07d66d2fa0"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Account.cs",
+      "containingType": "AccountStruct",
+      "member": "IsEmpty",
+      "signature": "bool IsEmpty",
+      "canonicalSha256": "ac21d2bda5800a293e88c03975ec137115a395f030b93892dd693bfcf362830c"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Account.cs",
+      "containingType": "AccountStruct",
+      "member": "IsStorageEmpty",
+      "signature": "bool IsStorageEmpty",
+      "canonicalSha256": "f86b52c4706afdf218bab2d43b6753a2ff7b4fe39ccba932e3984941df45783e"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Crypto/Keccak.cs",
+      "containingType": "ValueKeccak",
+      "member": "InternalCompute",
+      "signature": "ValueHash256 InternalCompute(byte[])",
+      "canonicalSha256": "8e28e44c4d35443fe3873bdc11c5e53b67a57e3f182a685a045c88b97e319b4b"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Crypto/Keccak.cs",
+      "containingType": "Keccak",
+      "member": "OfAnEmptyString",
+      "signature": "Hash256 OfAnEmptyString",
+      "canonicalSha256": "65148b052b51e83090591e9f2a33be1d2500ec3c31590beaea2a4d46a41360b7"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Crypto/Keccak.cs",
+      "containingType": "Keccak",
+      "member": "EmptyTreeHash",
+      "signature": "Hash256 EmptyTreeHash",
+      "canonicalSha256": "4576febffe39f792af23dfc7fe46b3334527dda4f0713f1dbe9f25ea49a8e106"
+    }
+  ],
+  "ir": {
+    "path": "WorldJournalKernel.ir.json",
+    "sha256": "ad8a410915e602469c52874717127a34d298f4b80a013d6f49ab3f36423bfbc7"
+  },
+  "lean": {
+    "path": "tools/Evm/Lean/WorldJournalExtractor/Generated/WorldJournalKernel.lean",
+    "sha256": "188c1a3d9a2f6c5cdb1a33b1446381b325e769910e8583470ccc5b5684e843a9"
+  },
+  "combinedSourceSha256": "23d44db77d17874555cd319aaf7a95b84d64977252ebddf4d3c692f5e2c0134a",
+  "combinedMemberSha256": "8b10b4ba813118330774681ba20487b687edc134e772e440555220ab7dea8e71",
+  "semanticBindings": [
+    "IWorldState exposes the admitted persistent, transient, account-create/delete, and snapshot boundary.",
+    "WorldState.TryGetAccount plus HasEmptyAccountLeaf distinguishes absent, physical-empty, and storage-only account cases; StateProvider.GetThroughCache supplies the exact option.",
+    "BlockProcessingModule closes IWorldState to WorldState and IVirtualMachine to EthereumVirtualMachine for standard mainnet execution.",
+    "WorldState.TakeSnapshot orders persistent, transient, then account positions; WorldState.Restore applies the same three surfaces in that order.",
+    "StackAccessTracker.Restore restores warm account/cell sets only when isTracingAccess is false, then always restores destroy and ordered log journals.",
+    "StateProvider backing reads append raw JustCache entries; Restore retains and re-appends predecessor-free entries, so snapshot positions use the exact raw count while the semantic account projection stutters.",
+    "Persistent first reads/writes retain transaction-start originals outside frame restoration; transient values use a distinct journal.",
+    "StackAccessTracker.CreateList is a plain HashSet populated by excluded CREATE-frame initialization before its frame snapshot; the projection admits it as transaction-wide input and only claims restore preservation.",
+    "JournalSet is idempotent and suffix-restored; JournalCollection is ordered and suffix-restored.",
+    "Pinned Account and Keccak members close fresh-account construction to the canonical empty storage root and empty code hash represented by the Lean constants.",
+    "Persistent writes resolve an active scope, increment metrics, register the contract, journal through the base Set and PushUpdate path, then issue slot and one-shot account warm hints; scope, metrics, and advisory hints are explicitly projected away.",
+    "The generated kernel is pre-commit only and does not claim trie, state-root, database, code-repository, BAL, or tracing-access refinement."
+  ]
+}

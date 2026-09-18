@@ -1,0 +1,308 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kernel",
+    "acceptanceState",
+    "route",
+    "actionAddress",
+    "balanceAddress",
+    "sources",
+    "members",
+    "dependencies",
+    "oracles",
+    "branches",
+    "assumptions",
+    "exclusions"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "kernel": {
+      "const": "standard-mainnet-amsterdam-precompile-full-frame-stage-c"
+    },
+    "acceptanceState": {
+      "type": "string"
+    },
+    "route": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "actionAddress": {
+      "type": "string"
+    },
+    "balanceAddress": {
+      "type": "string"
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": {
+        "$ref": "#/definitions/pin"
+      }
+    },
+    "members": {
+      "type": "array",
+      "minItems": 48,
+      "maxItems": 48,
+      "items": {
+        "$ref": "#/definitions/member"
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "minItems": 53,
+      "maxItems": 53,
+      "items": {
+        "$ref": "#/definitions/pin"
+      }
+    },
+    "oracles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/oracle"
+      },
+      "minItems": 18,
+      "maxItems": 18
+    },
+    "branches": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/branch"
+      },
+      "minItems": 10,
+      "maxItems": 10
+    },
+    "assumptions": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    },
+    "exclusions": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "uniqueItems": true,
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "definitions": {
+    "pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "role",
+        "symbols"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "role": {
+          "enum": [
+            "production",
+            "stageA",
+            "oracle",
+            "proof",
+            "target",
+            "artifact",
+            "local"
+          ]
+        },
+        "symbols": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "owner",
+        "member",
+        "kind",
+        "sha256",
+        "statementSha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "member": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "statementSha256": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    "oracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "address",
+        "path",
+        "sha256",
+        "namespace",
+        "symbol"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "address": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "symbol": {
+          "type": "string"
+        }
+      }
+    },
+    "branch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "rawControlRoute",
+        "prefix",
+        "topSettlement",
+        "nestedSettlement",
+        "installsGas",
+        "runsOracle",
+        "ordinaryOutcome"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "pricingOverflow",
+            "pricingOutOfGas",
+            "returnedFailure",
+            "managedTopFailure",
+            "managedNestedFailure",
+            "topSuccess",
+            "nestedSuccess",
+            "outerEvmException",
+            "outerOverflow",
+            "missingNativeDependency"
+          ]
+        },
+        "rawControlRoute": {
+          "type": "string"
+        },
+        "prefix": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/effect"
+          }
+        },
+        "topSettlement": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/effect"
+          }
+        },
+        "nestedSettlement": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/effect"
+          }
+        },
+        "installsGas": {
+          "type": "boolean"
+        },
+        "runsOracle": {
+          "type": "boolean"
+        },
+        "ordinaryOutcome": {
+          "type": "boolean"
+        }
+      }
+    },
+    "effect": {
+      "enum": [
+        "actionStart",
+        "transferLog",
+        "touchExecutingAccount",
+        "ripemdLatch",
+        "pricing",
+        "installPricedGas",
+        "runOracle",
+        "restoreSnapshot",
+        "restoreRipemdTouch",
+        "operationRemainingGasZero",
+        "operationError",
+        "actionError",
+        "clearReturnData",
+        "removeAdvancedRefund",
+        "restoreChildStateGasOnHalt",
+        "creditNewAccountStateGas",
+        "parentResume",
+        "topFailureSubstate",
+        "clearExecutionGas",
+        "classifyShouldRevert",
+        "returnChildExecutionGas",
+        "restoreChildStateGas",
+        "handleRevert",
+        "incorporateAdvancedRefund",
+        "refundChildGas",
+        "handleRegularReturn",
+        "commitToParent",
+        "repayStateGasSpill",
+        "traceTransactionActionEnd",
+        "prepareTopLevelSubstate",
+        "processExitExcluded"
+      ]
+    }
+  }
+}

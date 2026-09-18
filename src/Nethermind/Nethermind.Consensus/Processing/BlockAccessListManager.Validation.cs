@@ -41,6 +41,7 @@ public partial class BlockAccessListManager
 
         ulong totalExecutionGas = 0;
         ulong totalStateGas = 0;
+        ulong cumulativeReceiptGas = 0;
         for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
         {
             if (token.IsCancellationRequested)
@@ -66,9 +67,19 @@ public partial class BlockAccessListManager
                 totalStateGas += gasResult.BlockStateGasUsed;
                 SpendGas(gasResult.BlockGasUsed);
 
-                CheckGasUsed(j, block, totalExecutionGas, totalStateGas);
+                ulong effectiveGas = EthereumGasPolicy.CombineBlockGas(totalExecutionGas, totalStateGas);
+                block.Header.GasUsed = effectiveGas;
 
-                transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(j, block.Transactions[j], block.Header, receiptsTracers[j].TxReceipts[0]));
+                if (transactionProcessedEventHandler is not null)
+                {
+                    TxReceipt receipt = receiptsTracers[j].TxReceipts[0];
+                    receipt.Index = j;
+                    cumulativeReceiptGas += receipt.GasUsed;
+                    receipt.GasUsedTotal = cumulativeReceiptGas;
+                    transactionProcessedEventHandler.OnTransactionProcessed(new TxProcessedEventArgs(j, block.Transactions[j], block.Header, receipt));
+                }
+
+                CheckGasUsed(j, block, effectiveGas);
 
                 // Worker for tx (j+1) has stashed its BAL into _perTxBal[j+1] via Return as
                 // soon as the tx finished — no contention with the validator. Merge it into
@@ -83,10 +94,8 @@ public partial class BlockAccessListManager
         // EIP-8037: 2D gas accounting — block gasUsed = max(sum_execution, sum_state)
         _blockExecutionContext.Value.Header.GasUsed = EthereumGasPolicy.CombineBlockGas(totalExecutionGas, totalStateGas);
 
-        static void CheckGasUsed(int index, Block block, ulong totalExecutionGas, ulong totalStateGas)
+        static void CheckGasUsed(int index, Block block, ulong effectiveGas)
         {
-            // EIP-8037: block gasUsed = max(sum_execution, sum_state)
-            ulong effectiveGas = EthereumGasPolicy.CombineBlockGas(totalExecutionGas, totalStateGas);
             if (effectiveGas > block.Header.GasLimit)
             {
                 throw new InvalidBlockException(block, $"Block gas limit exceeded: cumulative gas {effectiveGas} > block gas limit {block.Header.GasLimit} after transaction index {index}.");

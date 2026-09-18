@@ -1,0 +1,2349 @@
+{
+  "schemaVersion": 9,
+  "extractorVersion": "1.8.0",
+  "kernel": "direct-inner sequential BlockValidationTransactionsExecutor transaction fold (BAL disabled premise)",
+  "included": [
+    "direct-inner BlockValidationTransactionsExecutor.ProcessTransactions loop",
+    "direct-inner BlockValidationTransactionsExecutor.ProcessTransaction result and invalid-prefix control",
+    "direct-inner BlockProcessor.ProcessBlock pre-commit, transaction invocation, and post-transaction CommitState(spec)",
+    "typed receipt/gas state chaining from ReceiptTerminalFold finalization observations",
+    "BAL-disabled direct-inner execution premise",
+    "source-closed StartNewBlockTrace reset and exact-base BlockReceiptsTracer lifecycle",
+    "source-closed transaction adapter StartNewTxTrace -\u003E Execute -\u003E EndTxTrace order",
+    "source-closed BlockAccessListManager.Enabled derivation and BAL decorator sequential fallback",
+    "source-closed standard-mainnet base executor registration and parallel decorator registration",
+    "source-closed non-virtual exact-base BlockValidationTransactionsExecutor selection"
+  ],
+  "excluded": [
+    "parallel worker execution and parallel BlockReceiptsTracer semantics",
+    "system, production, simulation, Optimism, Taiko, and other non-standard transaction routes",
+    "EVM execution, gas production, world-state transitions, roots, trie, RLP, hashes, rewards, withdrawals, requests",
+    "runtime DI activation, plugin replacements, receipt persistence, background work, CLR/JIT behavior, and callback implementation"
+  ],
+  "sources": [
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+      "role": "executor",
+      "sha256": "d520090e2adde45bced4b6af6f9add35ea77ed288060d09fdf05cae3b28bdf56",
+      "syntaxSha256": "a9f1064cf4dd1cdbc0a29fc4266064039d8cb575b5cec5037a8de1dd8f04bed0"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "role": "caller",
+      "sha256": "e2db419219184150c979cd6a081c83ba758c5024a15f996b510806bd1303deda",
+      "syntaxSha256": "9f4908b1edb7c698d26b41a2c15c3258601cf2565f6d65f09b81a08ffd19ffd1"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.std.cs",
+      "role": "partial-standard-source",
+      "sha256": "7ec6d0f975f36958f83b002ca53404620427a756cab70a037c0988ed75567ed4",
+      "syntaxSha256": "030f029e8ce38ab353df592d27c50295b66026e801c3152564119d754bfad6c8"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/IBlockProcessor.cs",
+      "role": "interface-closure",
+      "sha256": "df79a2a24ca0ad79918cf10bce5b9d74cb4ad1b7542185b41076a0f3758a940e",
+      "syntaxSha256": "0c261a9d55d33505912c168643268866e3bf692f78754d80b80703ca75882b07"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/ProcessingOptions.cs",
+      "role": "flag-closure",
+      "sha256": "145c5bec2a5e70e01dc448a887cd17bb1b81277605a487e437971882a5b0421a",
+      "syntaxSha256": "d646ef78fdf18df03605e994c93ddb19f72b9edbc35e84fc28f9b39eecffea3f"
+    }
+  ],
+  "auxiliarySources": [
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/TransactionProcessorAdapterExtensions.cs",
+      "role": "transaction-adapter-order",
+      "sha256": "910820a7e8bba91c30b052f5818707c46d625a2fbf12727e2aa869512120aa9e"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+      "role": "exact-base-tracer-lifecycle",
+      "sha256": "d4504f54b50dd43e2ab5bc7172ce2cf9e48453fcede990e5e667e743146262ff"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockAccessListManager.cs",
+      "role": "bal-enabled-derivation",
+      "sha256": "5d4d3b106c33935f05c63f33cc010b8fcec83106f9f0244fbea360be6dfbc770"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/IBlockAccessListManager.cs",
+      "role": "bal-manager-interface",
+      "sha256": "0ed401a074b32a35fb3de497a516d8b717802c55ffdac3f1cd773a7f4e6be273"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.ParallelBlockValidationTransactionsExecutor.cs",
+      "role": "bal-dispatch-and-sequential-fallback",
+      "sha256": "e8177dd7a2fd42d0fb1046012a9f18fc3e92a07265702b05203f20e12eba7090"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+      "role": "standard-mainnet-di-registration",
+      "sha256": "fce65ce5bb523c56fc8aa6ee0e4d092c940a5a90b174c820ffe262eeb5241c60"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ITransactionProcessorAdapter.cs",
+      "role": "transaction-adapter-interface",
+      "sha256": "0b777370dee8da9a6519b26d4446eae11962f61ad09f82d91e931ce9a65b16f9"
+    }
+  ],
+  "supportSources": [
+    {
+      "path": "src/Nethermind/Directory.Build.props",
+      "role": "complete-partial-compilation-support",
+      "sha256": "ad544425af1b0ec60334511abf79896a77843088457ef81b98a06b56d13e4e3c"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/ExecutionFlags.std.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "2676517bfe6c4b216ecf3fdc793bc65843d36817ff0583d5dfc7c64f0ef87f51"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockAccessListValidationIndex.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "60dae0a348c62202eaac748955722770eeaa43a11d27589427fecdd0fd7f68dc"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockAccessListValidationIndex.LaneStore.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "3930f8d13bc1677e400527838664850a676c63ee1985aa576fc15aab2107632c"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockCachePreWarmer.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "38b00b992bbe5e846f0c459bc0a4280dfb64c0aba9375087f4eab260a47568c7"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.SystemContractHandler.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "a069ba0962027b068e388544d3f338a47990f11e5085d381238231607758128b"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockAccessListSystemContractHandler.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "07342dde345dcec7b34569e8cb9f447f9d4abe3a640cd127559db77f2e1981fe"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockAccessListManager.Validation.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "dfe402bf91f381ef217b5a316cbc160b9b22a6589895577ae4c76e83bd77dbfc"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockAccessListManager.StateChanges.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "8142a49f7b612bcb903ffbb6463202f58775ad2804a4f6a18c09833a25d29b17"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockAccessListManager.SystemContracts.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "b8cf81651b1b417ae1899e9fb14b616fa7d40f58befa2cfed1ac44c7b2df5bf4"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockAccessListManager.TxProcessorPool.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "0d9796e91aa5dce08dd525e1493ca6ae7cc35440b524cc0d8f485c113cb00213"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptGasAccountingKernel.cs",
+      "role": "complete-partial-compilation-support",
+      "sha256": "0882c798e6ffb2243735a9ec0cec5d442b20d51277feeba95e5b68ecfaf89e32"
+    }
+  ],
+  "compilerReferences": {
+    "inventoryPath": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json",
+    "inventorySha256": "1f73a3800a957dd02d9d7b06b3b955c81bb92fd9eb8d2831920905394bfc1d5c",
+    "count": 434,
+    "aggregateSha256": "6fdfa102a4190083ae62080355aa6691b5f46acc32d4f9da2212012686d9c2e2"
+  },
+  "members": [
+    {
+      "id": "executor.processTransactions",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+      "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+      "name": "ProcessTransactions",
+      "parameterCount": 4,
+      "signature": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+        "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+        "member": "ProcessTransactions",
+        "nodeKind": "MethodDeclaration",
+        "canonicalSyntax": "publicTxReceipt[]ProcessTransactions(Blockblock,ProcessingOptionsprocessingOptions,BlockReceiptsTracerreceiptsTracer,CancellationTokentoken){Metrics.ResetBlockStats();SetupTxTimingMetrics(block);boolshouldValidate=!processingOptions.ContainsFlag(ProcessingOptions.NoValidation);for(inti=0;i\u003Cblock.Transactions.Length;i\u002B\u002B){TransactioncurrentTx=block.Transactions[i];ProcessTransaction(block,currentTx,i,receiptsTracer,processingOptions);if(shouldValidate\u0026\u0026block.Header.GasUsed\u003Eblock.Header.GasLimit){ThrowInvalidBlockForGasLimit(block);}}Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);Metrics.PublishBlockGasPriceGauges();return[..receiptsTracer.TxReceipts];[DebuggerHidden][DoesNotReturn]staticvoidThrowInvalidBlockForGasLimit(Blockblock)=\u003EthrownewInvalidBlockException(block,Core.Messages.BlockErrorMessages.ExceededGasLimit);}",
+        "syntaxSha256": "d303419cb8db67cd8afa9aea3b06b27f12789307abef342d68cb1985c2825444",
+        "symbolId": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)",
+        "symbolKind": "Method",
+        "operationKind": "MethodBodyOperation",
+        "operationType": "void",
+        "receiverType": "",
+        "containingMember": "ProcessTransactions",
+        "position": 1677,
+        "startLine": 38,
+        "startColumn": 9,
+        "controlFlowBlock": -1,
+        "isReachable": false,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local-method:ThrowInvalidBlockForGasLimit/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:currentTx",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:i",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:shouldValidate",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:-1:this",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:1:processingOptions",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:2:receiptsTracer"
+        ],
+        "writtenInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local-method:ThrowInvalidBlockForGasLimit/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:currentTx",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:i",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:shouldValidate"
+        ],
+        "receiverSymbol": "",
+        "argumentBindings": []
+      }
+    },
+    {
+      "id": "executor.processTransaction",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+      "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+      "name": "ProcessTransaction",
+      "parameterCount": 5,
+      "signature": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+        "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+        "member": "ProcessTransaction",
+        "nodeKind": "MethodDeclaration",
+        "canonicalSyntax": "protectedvirtualvoidProcessTransaction(Blockblock,TransactioncurrentTx,intindex,BlockReceiptsTracerreceiptsTracer,ProcessingOptionsprocessingOptions){longtxStart=StartTxTimer();TransactionResultresult;try{result=transactionProcessor.ProcessTransaction(currentTx,receiptsTracer,processingOptions,_stateProvider);}finally{StopTxTimer(index,txStart);}if(!result)ThrowInvalidTransactionException(result,block.Header,currentTx,index);_transactionProcessedEventHandler?.OnTransactionProcessed(newTxProcessedEventArgs(index,currentTx,block.Header,receiptsTracer.TxReceipts[index]));}",
+        "syntaxSha256": "df003b229164f73b2c15972ce4c0b83214391a73264818a80032e2e7baa44a4f",
+        "symbolId": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)",
+        "symbolKind": "Method",
+        "operationKind": "MethodBodyOperation",
+        "operationType": "void",
+        "receiverType": "",
+        "containingMember": "ProcessTransaction",
+        "position": 2858,
+        "startLine": 67,
+        "startColumn": 9,
+        "controlFlowBlock": -1,
+        "isReachable": false,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.#ctor(Nethermind.Evm.TransactionProcessing.ITransactionProcessorAdapter,Nethermind.Evm.State.IWorldState,Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler)/parameter:0:transactionProcessor",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/local:result",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/local:txStart",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:-1:this",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:1:currentTx",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:2:index",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:3:receiptsTracer",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:4:processingOptions"
+        ],
+        "writtenInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/local:result",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/local:txStart"
+        ],
+        "receiverSymbol": "",
+        "argumentBindings": []
+      }
+    },
+    {
+      "id": "block.processBlock",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "name": "ProcessBlock",
+      "parameterCount": 5,
+      "signature": "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "MethodDeclaration",
+        "canonicalSyntax": "protectedvirtualTxReceipt[]ProcessBlock(Blockblock,IBlockTracerblockTracer,ProcessingOptionsoptions,IReleaseSpecspec,CancellationTokentoken){BlockBodybody=block.Body;BlockHeaderheader=block.Header;ReceiptsTracer.SetOtherTracer(blockTracer);ReceiptsTracer.StartNewBlockTrace(block);_blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header,spec));_balManager.Setup(block);_systemContractHandler.StoreBeaconRoot(block,spec,NullTxTracer.Instance);_systemContractHandler.ApplyBlockhashStateChanges(header,spec);CommitState(spec);TxReceipt[]receipts=_blockTransactionsExecutor.ProcessTransactions(block,options,ReceiptsTracer,token);TransactionsExecuted?.Invoke();CommitState(spec);if(spec.IsEip4844Enabled){header.BlobGasUsed=BlobGasCalculator.CalculateBlobGas(block.Transactions);}Task\u003C(BloomBlockBloom,Hash256ReceiptsRoot)\u003E?bloomsAndReceiptsRootTask=null;if(ShouldCalculateReceiptsInBackground(receipts)){bloomsAndReceiptsRootTask=Task.Run(()=\u003E{CalculateBlooms(receipts);return(AccumulateBlockBloom(receipts),CalculateReceiptsRoot(receipts,spec,block));});}else{CalculateBlooms(receipts);header.ReceiptsRoot=CalculateReceiptsRoot(receipts,spec,block);}try{ApplyMinerRewards(block,blockTracer,spec);_systemContractHandler.ProcessWithdrawals(block,spec);CommitState(spec);_systemContractHandler.ProcessExecutionRequests(block,_stateProvider,receipts,spec);ReceiptsTracer.EndBlockTrace(accumulateBlockBloom:bloomsAndReceiptsRootTaskisnull);CommitStateAndStorageRoots(spec);if(BlockchainProcessor.IsMainProcessingThread){SetAccountChanges(block);}if(ShouldComputeStateRoot(header)){ComputeStateRoot(header);}if(bloomsAndReceiptsRootTaskisnotnull){(header.Bloom,header.ReceiptsRoot)=bloomsAndReceiptsRootTask.GetAwaiter().GetResult();}_balManager.SetBlockAccessList(block);}finally{if(bloomsAndReceiptsRootTaskis{IsCompletedSuccessfully:false}){try{bloomsAndReceiptsRootTask.GetAwaiter().GetResult();}catch{}}}header.Hash=header.CalculateHash();returnreceipts;}",
+        "syntaxSha256": "a5ab61515cd25804ad267b556e0a21686f8f037c2163f16b94fb8874aea96d3b",
+        "symbolId": "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)",
+        "symbolKind": "Method",
+        "operationKind": "MethodBodyOperation",
+        "operationType": "void",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 6513,
+        "startLine": 145,
+        "startColumn": 5,
+        "controlFlowBlock": -1,
+        "isReachable": false,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:bloomsAndReceiptsRootTask",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:header",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:receipts",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:-1:this",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:1:blockTracer",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:2:options",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:3:spec",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:4:token"
+        ],
+        "writtenInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:bloomsAndReceiptsRootTask",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:body",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:header",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:receipts"
+        ],
+        "receiverSymbol": "",
+        "argumentBindings": []
+      }
+    }
+  ],
+  "anchors": [
+    {
+      "id": "executor.metrics-setup",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+      "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+      "canonicalSyntax": "SetupTxTimingMetrics(block)",
+      "relation": "metrics setup precedes the loop",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+        "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+        "member": "ProcessTransactions",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "SetupTxTimingMetrics(block)",
+        "syntaxSha256": "ea4ef18825c36fd79491b4864677e3369d01cfd60121e7c8598b7816f58294cd",
+        "symbolId": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.SetupTxTimingMetrics(Nethermind.Core.Block)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor",
+        "containingMember": "ProcessTransactions",
+        "position": 1888,
+        "startLine": 41,
+        "startColumn": 13,
+        "controlFlowBlock": 1,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local-method:ThrowInvalidBlockForGasLimit/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:currentTx",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:i",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:shouldValidate",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:-1:this",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:1:processingOptions",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:2:receiptsTracer"
+        ],
+        "writtenInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local-method:ThrowInvalidBlockForGasLimit/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:currentTx",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:i",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:shouldValidate"
+        ],
+        "receiverSymbol": "this:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor",
+        "argumentBindings": [
+          "block"
+        ]
+      }
+    },
+    {
+      "id": "executor.validation-mode",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+      "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+      "canonicalSyntax": "shouldValidate=!processingOptions.ContainsFlag(ProcessingOptions.NoValidation)",
+      "relation": "NoValidation controls the gas-limit guard",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+        "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+        "member": "ProcessTransactions",
+        "nodeKind": "VariableDeclarator",
+        "canonicalSyntax": "shouldValidate=!processingOptions.ContainsFlag(ProcessingOptions.NoValidation)",
+        "syntaxSha256": "5e352aefaaa064826e64f52af0951113b0b26c82c40e32b5ac65aec98018f7f6",
+        "symbolId": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:shouldValidate",
+        "symbolKind": "Local",
+        "operationKind": "VariableDeclarator",
+        "operationType": "bool",
+        "receiverType": "",
+        "containingMember": "ProcessTransactions",
+        "position": 1935,
+        "startLine": 43,
+        "startColumn": 18,
+        "controlFlowBlock": 1,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local-method:ThrowInvalidBlockForGasLimit/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:currentTx",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:i",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:shouldValidate",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:-1:this",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:1:processingOptions",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:2:receiptsTracer"
+        ],
+        "writtenInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local-method:ThrowInvalidBlockForGasLimit/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:currentTx",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:i",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:shouldValidate"
+        ],
+        "receiverSymbol": "",
+        "argumentBindings": []
+      }
+    },
+    {
+      "id": "executor.process-transaction-call",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+      "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+      "canonicalSyntax": "ProcessTransaction(block,currentTx,i,receiptsTracer,processingOptions)",
+      "relation": "loop invokes one transaction in source order",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+        "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+        "member": "ProcessTransactions",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "ProcessTransaction(block,currentTx,i,receiptsTracer,processingOptions)",
+        "syntaxSha256": "9eb0f2893bf3743a5c3467e2cbab83ac98bb257afe1ec86885d62a20bed7d3da",
+        "symbolId": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor",
+        "containingMember": "ProcessTransactions",
+        "position": 2176,
+        "startLine": 49,
+        "startColumn": 17,
+        "controlFlowBlock": 4,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local-method:ThrowInvalidBlockForGasLimit/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:currentTx",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:i",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:shouldValidate",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:-1:this",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:1:processingOptions",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:2:receiptsTracer"
+        ],
+        "writtenInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local-method:ThrowInvalidBlockForGasLimit/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:currentTx",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:i",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:shouldValidate"
+        ],
+        "receiverSymbol": "this:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor",
+        "argumentBindings": [
+          "block",
+          "currentTx",
+          "i",
+          "receiptsTracer",
+          "processingOptions"
+        ]
+      }
+    },
+    {
+      "id": "executor.gas-limit-guard",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+      "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+      "canonicalSyntax": "shouldValidate\u0026\u0026block.Header.GasUsed\u003Eblock.Header.GasLimit",
+      "relation": "successful prefix can still reject the block after a receipt",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+        "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+        "member": "ProcessTransactions",
+        "nodeKind": "LogicalAndExpression",
+        "canonicalSyntax": "shouldValidate\u0026\u0026block.Header.GasUsed\u003Eblock.Header.GasLimit",
+        "syntaxSha256": "669951de67d90b1b826b827ec32273913a4779dc516375b9881a9f3d07d11498",
+        "symbolId": "",
+        "symbolKind": "",
+        "operationKind": "Binary",
+        "operationType": "bool",
+        "receiverType": "",
+        "containingMember": "ProcessTransactions",
+        "position": 2273,
+        "startLine": 51,
+        "startColumn": 21,
+        "controlFlowBlock": 4,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local-method:ThrowInvalidBlockForGasLimit/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:currentTx",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:i",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:shouldValidate",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:-1:this",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:1:processingOptions",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:2:receiptsTracer"
+        ],
+        "writtenInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local-method:ThrowInvalidBlockForGasLimit/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:currentTx",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:i",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:shouldValidate"
+        ],
+        "receiverSymbol": "",
+        "argumentBindings": []
+      }
+    },
+    {
+      "id": "executor.invalid-result-throw",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+      "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+      "canonicalSyntax": "ThrowInvalidTransactionException(result,block.Header,currentTx,index)",
+      "relation": "false TransactionResult stops the prefix before the event",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+        "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+        "member": "ProcessTransaction",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "ThrowInvalidTransactionException(result,block.Header,currentTx,index)",
+        "syntaxSha256": "76e5e115c4b8b1d822f48b043001f97bda5adaef1c75df95da3acb005f2c895b",
+        "symbolId": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(Nethermind.Evm.TransactionProcessing.TransactionResult,Nethermind.Core.BlockHeader,Nethermind.Core.Transaction,System.Int32)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "",
+        "containingMember": "ProcessTransaction",
+        "position": 3502,
+        "startLine": 80,
+        "startColumn": 26,
+        "controlFlowBlock": 5,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.#ctor(Nethermind.Evm.TransactionProcessing.ITransactionProcessorAdapter,Nethermind.Evm.State.IWorldState,Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler)/parameter:0:transactionProcessor",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/local:result",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/local:txStart",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:-1:this",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:1:currentTx",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:2:index",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:3:receiptsTracer",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:4:processingOptions"
+        ],
+        "writtenInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/local:result",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/local:txStart"
+        ],
+        "receiverSymbol": "static",
+        "argumentBindings": [
+          "result",
+          "block.Header",
+          "currentTx",
+          "index"
+        ]
+      }
+    },
+    {
+      "id": "executor.transaction-adapter-call",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+      "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+      "canonicalSyntax": "transactionProcessor.ProcessTransaction(currentTx,receiptsTracer,processingOptions,_stateProvider)",
+      "relation": "ordinary transaction execution is an external settled observation",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+        "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+        "member": "ProcessTransaction",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "transactionProcessor.ProcessTransaction(currentTx,receiptsTracer,processingOptions,_stateProvider)",
+        "syntaxSha256": "941bd428ab9ceb33e9d79191acef65ddd48396442514bd56c4dd25573f8f5440",
+        "symbolId": "M:Nethermind.Consensus.Processing.TransactionProcessorAdapterExtensions.ProcessTransaction(Nethermind.Evm.TransactionProcessing.ITransactionProcessorAdapter,Nethermind.Core.Transaction,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Evm.State.IWorldState)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "Nethermind.Evm.TransactionProcessing.TransactionResult",
+        "receiverType": "Nethermind.Evm.TransactionProcessing.ITransactionProcessorAdapter",
+        "containingMember": "ProcessTransaction",
+        "position": 3166,
+        "startLine": 73,
+        "startColumn": 26,
+        "controlFlowBlock": 2,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.#ctor(Nethermind.Evm.TransactionProcessing.ITransactionProcessorAdapter,Nethermind.Evm.State.IWorldState,Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler)/parameter:0:transactionProcessor",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/local:result",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/local:txStart",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:-1:this",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:1:currentTx",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:2:index",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:3:receiptsTracer",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:4:processingOptions"
+        ],
+        "writtenInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/local:result",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/local:txStart"
+        ],
+        "receiverSymbol": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.#ctor(Nethermind.Evm.TransactionProcessing.ITransactionProcessorAdapter,Nethermind.Evm.State.IWorldState,Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler)/parameter:0:transactionProcessor",
+        "argumentBindings": [
+          "currentTx",
+          "receiptsTracer",
+          "processingOptions",
+          "_stateProvider"
+        ]
+      }
+    },
+    {
+      "id": "executor.processed-event",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+      "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+      "canonicalSyntax": "_transactionProcessedEventHandler?.OnTransactionProcessed(newTxProcessedEventArgs(index,currentTx,block.Header,receiptsTracer.TxReceipts[index]))",
+      "relation": "event observes the receipt at the transaction index",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+        "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+        "member": "ProcessTransaction",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "_transactionProcessedEventHandler?.OnTransactionProcessed(newTxProcessedEventArgs(index,currentTx,block.Header,receiptsTracer.TxReceipts[index]))",
+        "syntaxSha256": "565833a6b57f0a1116d10cc728a49e5fbd3805b29d37072dc43b0501113b298c",
+        "symbolId": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler.OnTransactionProcessed(Nethermind.Consensus.Processing.TxProcessedEventArgs)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler",
+        "containingMember": "ProcessTransaction",
+        "position": 3622,
+        "startLine": 81,
+        "startColumn": 47,
+        "controlFlowBlock": 7,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.#ctor(Nethermind.Evm.TransactionProcessing.ITransactionProcessorAdapter,Nethermind.Evm.State.IWorldState,Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler)/parameter:0:transactionProcessor",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/local:result",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/local:txStart",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:-1:this",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:1:currentTx",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:2:index",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:3:receiptsTracer",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:4:processingOptions"
+        ],
+        "writtenInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/local:result",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/local:txStart"
+        ],
+        "receiverSymbol": "F:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor._transactionProcessedEventHandler",
+        "argumentBindings": [
+          "newTxProcessedEventArgs(index,currentTx,block.Header,receiptsTracer.TxReceipts[index])"
+        ]
+      }
+    },
+    {
+      "id": "block.transaction-fold-call",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "_blockTransactionsExecutor.ProcessTransactions(block,options,ReceiptsTracer,token)",
+      "relation": "direct-inner caller enters the transaction executor; BAL is disabled by an explicit model premise",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "_blockTransactionsExecutor.ProcessTransactions(block,options,ReceiptsTracer,token)",
+        "syntaxSha256": "f466e7af7ed3c3f6af679f2e3a15e3598f0b86a4a5c3aebd2228c00a45712c76",
+        "symbolId": "M:Nethermind.Consensus.Processing.IBlockProcessor.IBlockTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "Nethermind.Core.TxReceipt[]",
+        "receiverType": "Nethermind.Consensus.Processing.IBlockProcessor.IBlockTransactionsExecutor",
+        "containingMember": "ProcessBlock",
+        "position": 7259,
+        "startLine": 166,
+        "startColumn": 32,
+        "controlFlowBlock": 1,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:bloomsAndReceiptsRootTask",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:header",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:receipts",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:-1:this",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:1:blockTracer",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:2:options",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:3:spec",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:4:token"
+        ],
+        "writtenInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:bloomsAndReceiptsRootTask",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:body",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:header",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:receipts"
+        ],
+        "receiverSymbol": "F:Nethermind.Consensus.Processing.BlockProcessor._blockTransactionsExecutor",
+        "argumentBindings": [
+          "block",
+          "options",
+          "ReceiptsTracer",
+          "token"
+        ]
+      }
+    },
+    {
+      "id": "block.pre-transaction-commit",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "CommitState(spec)",
+      "relation": "pre-transaction journal boundary",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "CommitState(spec)",
+        "syntaxSha256": "f520c232a3eede1b825548d46c8774e7d06cbe8b55e462afc677ae36f6cc5f76",
+        "symbolId": "M:Nethermind.Consensus.Processing.BlockProcessor.CommitState(Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 7208,
+        "startLine": 164,
+        "startColumn": 9,
+        "controlFlowBlock": 1,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:bloomsAndReceiptsRootTask",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:header",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:receipts",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:-1:this",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:1:blockTracer",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:2:options",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:3:spec",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:4:token"
+        ],
+        "writtenInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:bloomsAndReceiptsRootTask",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:body",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:header",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:receipts"
+        ],
+        "receiverSymbol": "this:Nethermind.Consensus.Processing.BlockProcessor",
+        "argumentBindings": [
+          "spec"
+        ]
+      }
+    },
+    {
+      "id": "block.post-transaction-commit",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "CommitState(spec)",
+      "relation": "post-transaction journal boundary",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "CommitState(spec)",
+        "syntaxSha256": "f520c232a3eede1b825548d46c8774e7d06cbe8b55e462afc677ae36f6cc5f76",
+        "symbolId": "M:Nethermind.Consensus.Processing.BlockProcessor.CommitState(Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 7592,
+        "startLine": 172,
+        "startColumn": 9,
+        "controlFlowBlock": 4,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:bloomsAndReceiptsRootTask",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:header",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:receipts",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:-1:this",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:1:blockTracer",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:2:options",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:3:spec",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:4:token"
+        ],
+        "writtenInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:bloomsAndReceiptsRootTask",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:body",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:header",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:receipts"
+        ],
+        "receiverSymbol": "this:Nethermind.Consensus.Processing.BlockProcessor",
+        "argumentBindings": [
+          "spec"
+        ]
+      }
+    },
+    {
+      "id": "block.transactions-executed-signal",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "TransactionsExecuted?.Invoke()",
+      "relation": "normal executor return precedes the TransactionsExecuted signal",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "TransactionsExecuted?.Invoke()",
+        "syntaxSha256": "12f54485b56c2c3cba96d3b5f8701591e3db9079f05277e7fe805261deb4153a",
+        "symbolId": "M:System.Action.Invoke",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "System.Action",
+        "containingMember": "ProcessBlock",
+        "position": 7572,
+        "startLine": 170,
+        "startColumn": 30,
+        "controlFlowBlock": 3,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:bloomsAndReceiptsRootTask",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:header",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:receipts",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:-1:this",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:1:blockTracer",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:2:options",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:3:spec",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:4:token"
+        ],
+        "writtenInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:bloomsAndReceiptsRootTask",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:body",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:header",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:receipts"
+        ],
+        "receiverSymbol": "E:Nethermind.Consensus.Processing.BlockProcessor.TransactionsExecuted",
+        "argumentBindings": []
+      }
+    }
+  ],
+  "auxiliaryAnchors": [
+    {
+      "id": "block.receipts-tracer-start",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "member": "ProcessBlock",
+      "canonicalSyntax": "ReceiptsTracer.StartNewBlockTrace(block)",
+      "relation": "block tracer reset precedes the pre-transaction commit",
+      "nodeKind": "InvocationExpression",
+      "operationKind": "Invocation",
+      "operationType": "void",
+      "targetSymbol": "M:Nethermind.Blockchain.Tracing.BlockReceiptsTracer.StartNewBlockTrace(Nethermind.Core.Block)",
+      "syntaxSha256": "139a7064ef7ea8413ec8dfc5bdae8cdc05f5475ae8172bdf101874e6273cc584",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 1,
+      "isReachable": true,
+      "containingMember": "ProcessBlock",
+      "receiverType": "Nethermind.Blockchain.Tracing.BlockReceiptsTracer",
+      "receiverSymbol": "P:Nethermind.Consensus.Processing.BlockProcessor.ReceiptsTracer",
+      "argumentBindings": [
+        "block"
+      ],
+      "rightHandSideBindings": []
+    },
+    {
+      "id": "adapter.tx-trace-start",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/TransactionProcessorAdapterExtensions.cs",
+      "owner": "TransactionProcessorAdapterExtensions",
+      "member": "ProcessTransaction",
+      "canonicalSyntax": "receiptsTracer.StartNewTxTrace(currentTx)",
+      "relation": "adapter starts the tx trace before Execute",
+      "nodeKind": "InvocationExpression",
+      "operationKind": "Invocation",
+      "operationType": "Nethermind.Evm.Tracing.ITxTracer",
+      "targetSymbol": "M:Nethermind.Blockchain.Tracing.BlockReceiptsTracer.StartNewTxTrace(Nethermind.Core.Transaction)",
+      "syntaxSha256": "ff7bec50d2f09a84e851eb8666edd1e1c11d39f7f9d753055955d29923cd90c8",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 4,
+      "isReachable": true,
+      "containingMember": "ProcessTransaction",
+      "receiverType": "Nethermind.Blockchain.Tracing.BlockReceiptsTracer",
+      "receiverSymbol": "M:Nethermind.Consensus.Processing.TransactionProcessorAdapterExtensions.ProcessTransaction(Nethermind.Evm.TransactionProcessing.ITransactionProcessorAdapter,Nethermind.Core.Transaction,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Evm.State.IWorldState)/parameter:2:receiptsTracer",
+      "argumentBindings": [
+        "currentTx"
+      ],
+      "rightHandSideBindings": []
+    },
+    {
+      "id": "adapter.execute",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/TransactionProcessorAdapterExtensions.cs",
+      "owner": "TransactionProcessorAdapterExtensions",
+      "member": "ProcessTransaction",
+      "canonicalSyntax": "transactionProcessor.Execute(currentTx,receiptsTracer)",
+      "relation": "adapter executes between trace start and trace end",
+      "nodeKind": "InvocationExpression",
+      "operationKind": "Invocation",
+      "operationType": "Nethermind.Evm.TransactionProcessing.TransactionResult",
+      "targetSymbol": "M:Nethermind.Evm.TransactionProcessing.ITransactionProcessorAdapter.Execute(Nethermind.Core.Transaction,Nethermind.Evm.Tracing.ITxTracer)",
+      "syntaxSha256": "e9412f01f1d2654124d44186d1e48b9b84e51cf208bea1c6a556b626cba7176b",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 5,
+      "isReachable": true,
+      "containingMember": "ProcessTransaction",
+      "receiverType": "Nethermind.Evm.TransactionProcessing.ITransactionProcessorAdapter",
+      "receiverSymbol": "M:Nethermind.Consensus.Processing.TransactionProcessorAdapterExtensions.ProcessTransaction(Nethermind.Evm.TransactionProcessing.ITransactionProcessorAdapter,Nethermind.Core.Transaction,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Evm.State.IWorldState)/parameter:0:transactionProcessor",
+      "argumentBindings": [
+        "currentTx",
+        "receiptsTracer"
+      ],
+      "rightHandSideBindings": []
+    },
+    {
+      "id": "adapter.tx-trace-end",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/TransactionProcessorAdapterExtensions.cs",
+      "owner": "TransactionProcessorAdapterExtensions",
+      "member": "ProcessTransaction",
+      "canonicalSyntax": "receiptsTracer.EndTxTrace()",
+      "relation": "adapter ends the tx trace after Execute",
+      "nodeKind": "InvocationExpression",
+      "operationKind": "Invocation",
+      "operationType": "void",
+      "targetSymbol": "M:Nethermind.Blockchain.Tracing.BlockReceiptsTracer.EndTxTrace",
+      "syntaxSha256": "81ae8742c7ce550c7f98cc073cf877797e11b53bde89797fb313112c8d51d680",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 5,
+      "isReachable": true,
+      "containingMember": "ProcessTransaction",
+      "receiverType": "Nethermind.Blockchain.Tracing.BlockReceiptsTracer",
+      "receiverSymbol": "M:Nethermind.Consensus.Processing.TransactionProcessorAdapterExtensions.ProcessTransaction(Nethermind.Evm.TransactionProcessing.ITransactionProcessorAdapter,Nethermind.Core.Transaction,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Evm.State.IWorldState)/parameter:2:receiptsTracer",
+      "argumentBindings": [],
+      "rightHandSideBindings": []
+    },
+    {
+      "id": "tracer.reset-index",
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+      "owner": "BlockReceiptsTracer",
+      "member": "StartNewBlockTrace",
+      "canonicalSyntax": "_currentIndex=0",
+      "relation": "StartNewBlockTrace resets the receipt index",
+      "nodeKind": "SimpleAssignmentExpression",
+      "operationKind": "SimpleAssignment",
+      "operationType": "int",
+      "targetSymbol": "P:Nethermind.Blockchain.Tracing.BlockReceiptsTracer._currentIndex",
+      "syntaxSha256": "10e413866fc32fceb8d52f635066185a69423f07077cfb4c61a5a5cfe0a24467",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 1,
+      "isReachable": true,
+      "containingMember": "StartNewBlockTrace",
+      "receiverType": "",
+      "receiverSymbol": "",
+      "argumentBindings": [],
+      "rightHandSideBindings": []
+    },
+    {
+      "id": "tracer.reset-receipts",
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+      "owner": "BlockReceiptsTracer",
+      "member": "StartNewBlockTrace",
+      "canonicalSyntax": "_txReceipts.Clear()",
+      "relation": "StartNewBlockTrace clears receipt history",
+      "nodeKind": "InvocationExpression",
+      "operationKind": "Invocation",
+      "operationType": "void",
+      "targetSymbol": "M:System.Collections.Generic.List\u00601.Clear",
+      "syntaxSha256": "5091c82d6957e32c9c4d3e7743d29d5944984ed99cc7b930d857b0a51e5aacc7",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 6,
+      "isReachable": true,
+      "containingMember": "StartNewBlockTrace",
+      "receiverType": "System.Collections.Generic.List\u003CNethermind.Core.TxReceipt\u003E",
+      "receiverSymbol": "F:Nethermind.Blockchain.Tracing.BlockReceiptsTracer._txReceipts",
+      "argumentBindings": [],
+      "rightHandSideBindings": []
+    },
+    {
+      "id": "tracer.reset-block-gas",
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+      "owner": "BlockReceiptsTracer",
+      "member": "StartNewBlockTrace",
+      "canonicalSyntax": "_cumulativeBlockGasPerTx.Clear()",
+      "relation": "StartNewBlockTrace clears block-gas history",
+      "nodeKind": "InvocationExpression",
+      "operationKind": "Invocation",
+      "operationType": "void",
+      "targetSymbol": "M:System.Collections.Generic.List\u00601.Clear",
+      "syntaxSha256": "7b4cc5efaf9d5341d6b05db6c872f233e62a7a35ecc9cea57428b778cabee3a7",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 6,
+      "isReachable": true,
+      "containingMember": "StartNewBlockTrace",
+      "receiverType": "System.Collections.Generic.List\u003CSystem.ValueTuple\u003Culong,ulong\u003E\u003E",
+      "receiverSymbol": "F:Nethermind.Blockchain.Tracing.BlockReceiptsTracer._cumulativeBlockGasPerTx",
+      "argumentBindings": [],
+      "rightHandSideBindings": []
+    },
+    {
+      "id": "tracer.reset-receipt-gas",
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+      "owner": "BlockReceiptsTracer",
+      "member": "StartNewBlockTrace",
+      "canonicalSyntax": "_cumulativeReceiptGas=0",
+      "relation": "StartNewBlockTrace resets cumulative receipt gas",
+      "nodeKind": "SimpleAssignmentExpression",
+      "operationKind": "SimpleAssignment",
+      "operationType": "ulong",
+      "targetSymbol": "F:Nethermind.Blockchain.Tracing.BlockReceiptsTracer._cumulativeReceiptGas",
+      "syntaxSha256": "62ca4925159f86b9c3beba2a4ba268e751cc03cf0cfff1f03719c8adb38a8621",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 6,
+      "isReachable": true,
+      "containingMember": "StartNewBlockTrace",
+      "receiverType": "",
+      "receiverSymbol": "",
+      "argumentBindings": [],
+      "rightHandSideBindings": []
+    },
+    {
+      "id": "tracer.success-append",
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+      "owner": "BlockReceiptsTracer",
+      "member": "MarkAsSuccess",
+      "canonicalSyntax": "_txReceipts.Add(BuildReceipt(recipient,gasSpent,StatusCode.Success,logs,stateRoot))",
+      "relation": "successful receipt is appended before forwarding",
+      "nodeKind": "InvocationExpression",
+      "operationKind": "Invocation",
+      "operationType": "void",
+      "targetSymbol": "M:System.Collections.Generic.List\u00601.Add(\u00600)",
+      "syntaxSha256": "3a3b501d244e5f68e4137b4a1688c5ae030214bf533fd5e9b4452304f766e5c4",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 1,
+      "isReachable": true,
+      "containingMember": "MarkAsSuccess",
+      "receiverType": "System.Collections.Generic.List\u003CNethermind.Core.TxReceipt\u003E",
+      "receiverSymbol": "F:Nethermind.Blockchain.Tracing.BlockReceiptsTracer._txReceipts",
+      "argumentBindings": [
+        "BuildReceipt(recipient,gasSpent,StatusCode.Success,logs,stateRoot)"
+      ],
+      "rightHandSideBindings": []
+    },
+    {
+      "id": "tracer.failure-append",
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+      "owner": "BlockReceiptsTracer",
+      "member": "MarkAsFailed",
+      "canonicalSyntax": "_txReceipts.Add(BuildFailedReceipt(recipient,gasSpent,error,stateRoot))",
+      "relation": "failed receipt is appended before forwarding",
+      "nodeKind": "InvocationExpression",
+      "operationKind": "Invocation",
+      "operationType": "void",
+      "targetSymbol": "M:System.Collections.Generic.List\u00601.Add(\u00600)",
+      "syntaxSha256": "2e2cb00a2da21b03b18af5f7d75d7a2f59a0a64b14a5b0007c4e66cb7ef70fa7",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 1,
+      "isReachable": true,
+      "containingMember": "MarkAsFailed",
+      "receiverType": "System.Collections.Generic.List\u003CNethermind.Core.TxReceipt\u003E",
+      "receiverSymbol": "F:Nethermind.Blockchain.Tracing.BlockReceiptsTracer._txReceipts",
+      "argumentBindings": [
+        "BuildFailedReceipt(recipient,gasSpent,error,stateRoot)"
+      ],
+      "rightHandSideBindings": []
+    },
+    {
+      "id": "tracer.receipt-index",
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+      "owner": "BlockReceiptsTracer",
+      "member": "BuildReceipt",
+      "canonicalSyntax": "Index=_currentIndex",
+      "relation": "receipt index is read before EndTxTrace increments it",
+      "nodeKind": "SimpleAssignmentExpression",
+      "operationKind": "SimpleAssignment",
+      "operationType": "int",
+      "targetSymbol": "P:Nethermind.Core.TxReceipt.Index",
+      "syntaxSha256": "b98c8d3a64d0f9af669c414ca3e2987f70c3b708b01008006ee3c841b3a6ecbd",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 2,
+      "isReachable": true,
+      "containingMember": "BuildReceipt",
+      "receiverType": "",
+      "receiverSymbol": "",
+      "argumentBindings": [],
+      "rightHandSideBindings": [
+        {
+          "operationKind": "PropertyReference",
+          "symbol": "P:Nethermind.Blockchain.Tracing.BlockReceiptsTracer._currentIndex",
+          "type": "int",
+          "receiverType": "Nethermind.Blockchain.Tracing.BlockReceiptsTracer",
+          "receiverSymbol": "this:Nethermind.Blockchain.Tracing.BlockReceiptsTracer",
+          "parameterOrdinal": -1
+        }
+      ]
+    },
+    {
+      "id": "tracer.tx-start-current",
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+      "owner": "BlockReceiptsTracer",
+      "member": "StartNewTxTrace",
+      "canonicalSyntax": "CurrentTx=tx",
+      "relation": "StartNewTxTrace records the current transaction",
+      "nodeKind": "SimpleAssignmentExpression",
+      "operationKind": "SimpleAssignment",
+      "operationType": "Nethermind.Core.Transaction",
+      "targetSymbol": "F:Nethermind.Blockchain.Tracing.BlockReceiptsTracer.CurrentTx",
+      "syntaxSha256": "6a20e512b988626cd6676b07b5c1c8e674f7e5cf9963d858315cd78e96bbcb0f",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 1,
+      "isReachable": true,
+      "containingMember": "StartNewTxTrace",
+      "receiverType": "",
+      "receiverSymbol": "",
+      "argumentBindings": [],
+      "rightHandSideBindings": [
+        {
+          "operationKind": "ParameterReference",
+          "symbol": "M:Nethermind.Blockchain.Tracing.BlockReceiptsTracer.StartNewTxTrace(Nethermind.Core.Transaction)/parameter:0:tx",
+          "type": "Nethermind.Core.Transaction",
+          "receiverType": "",
+          "receiverSymbol": "",
+          "parameterOrdinal": 0
+        }
+      ]
+    },
+    {
+      "id": "tracer.tx-start-delegate",
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+      "owner": "BlockReceiptsTracer",
+      "member": "StartNewTxTrace",
+      "canonicalSyntax": "_currentTxTracer=_otherTracer.StartNewTxTrace(tx)",
+      "relation": "StartNewTxTrace delegates the nested tracer",
+      "nodeKind": "SimpleAssignmentExpression",
+      "operationKind": "SimpleAssignment",
+      "operationType": "Nethermind.Evm.Tracing.ITxTracer",
+      "targetSymbol": "F:Nethermind.Blockchain.Tracing.BlockReceiptsTracer._currentTxTracer",
+      "syntaxSha256": "4bdb77c71e35b8a247cd62a3a9748eebb2c56c2d2709af6497f9f7e597ad9bd7",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 1,
+      "isReachable": true,
+      "containingMember": "StartNewTxTrace",
+      "receiverType": "",
+      "receiverSymbol": "",
+      "argumentBindings": [],
+      "rightHandSideBindings": [
+        {
+          "operationKind": "Invocation",
+          "symbol": "M:Nethermind.Evm.Tracing.IBlockTracer.StartNewTxTrace(Nethermind.Core.Transaction)",
+          "type": "Nethermind.Evm.Tracing.ITxTracer",
+          "receiverType": "Nethermind.Evm.Tracing.IBlockTracer",
+          "receiverSymbol": "F:Nethermind.Blockchain.Tracing.BlockReceiptsTracer._otherTracer",
+          "parameterOrdinal": -1
+        },
+        {
+          "operationKind": "FieldReference",
+          "symbol": "F:Nethermind.Blockchain.Tracing.BlockReceiptsTracer._otherTracer",
+          "type": "Nethermind.Evm.Tracing.IBlockTracer",
+          "receiverType": "Nethermind.Blockchain.Tracing.BlockReceiptsTracer",
+          "receiverSymbol": "this:Nethermind.Blockchain.Tracing.BlockReceiptsTracer",
+          "parameterOrdinal": -1
+        },
+        {
+          "operationKind": "ParameterReference",
+          "symbol": "M:Nethermind.Blockchain.Tracing.BlockReceiptsTracer.StartNewTxTrace(Nethermind.Core.Transaction)/parameter:0:tx",
+          "type": "Nethermind.Core.Transaction",
+          "receiverType": "",
+          "receiverSymbol": "",
+          "parameterOrdinal": 0
+        }
+      ]
+    },
+    {
+      "id": "tracer.tx-end-delegate",
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+      "owner": "BlockReceiptsTracer",
+      "member": "EndTxTrace",
+      "canonicalSyntax": "_otherTracer.EndTxTrace()",
+      "relation": "EndTxTrace delegates before incrementing the index",
+      "nodeKind": "InvocationExpression",
+      "operationKind": "Invocation",
+      "operationType": "void",
+      "targetSymbol": "M:Nethermind.Evm.Tracing.IBlockTracer.EndTxTrace",
+      "syntaxSha256": "ad4343cac13831eb78482a61ee810cecdd26434c03d5c8890139bc64cafbe31d",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 1,
+      "isReachable": true,
+      "containingMember": "EndTxTrace",
+      "receiverType": "Nethermind.Evm.Tracing.IBlockTracer",
+      "receiverSymbol": "F:Nethermind.Blockchain.Tracing.BlockReceiptsTracer._otherTracer",
+      "argumentBindings": [],
+      "rightHandSideBindings": []
+    },
+    {
+      "id": "tracer.tx-end-index",
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+      "owner": "BlockReceiptsTracer",
+      "member": "EndTxTrace",
+      "canonicalSyntax": "_currentIndex\u002B\u002B",
+      "relation": "EndTxTrace advances the next receipt index",
+      "nodeKind": "PostIncrementExpression",
+      "operationKind": "Increment",
+      "operationType": "int",
+      "targetSymbol": "P:Nethermind.Blockchain.Tracing.BlockReceiptsTracer._currentIndex",
+      "syntaxSha256": "a1488d7ba7646f94ff428c28d2b2d698df9ec0b42dc0ba65b55f7bcbe93369cf",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 1,
+      "isReachable": true,
+      "containingMember": "EndTxTrace",
+      "receiverType": "",
+      "receiverSymbol": "",
+      "argumentBindings": [],
+      "rightHandSideBindings": []
+    },
+    {
+      "id": "bal.enabled-spec",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockAccessListManager.cs",
+      "owner": "BlockAccessListManager",
+      "member": "PrepareForProcessing",
+      "canonicalSyntax": "_blockAccessListsEnabled=spec.BlockLevelAccessListsEnabled",
+      "relation": "BAL Enabled derives from the release spec",
+      "nodeKind": "SimpleAssignmentExpression",
+      "operationKind": "SimpleAssignment",
+      "operationType": "bool",
+      "targetSymbol": "F:Nethermind.Consensus.Processing.BlockAccessListManager._blockAccessListsEnabled",
+      "syntaxSha256": "992a15ee3e506911162acc3b1e43ec4f98ccca3bbdad1f269ac2449726f62316",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 1,
+      "isReachable": true,
+      "containingMember": "PrepareForProcessing",
+      "receiverType": "",
+      "receiverSymbol": "",
+      "argumentBindings": [],
+      "rightHandSideBindings": [
+        {
+          "operationKind": "PropertyReference",
+          "symbol": "P:Nethermind.Core.Specs.IReleaseSpec.BlockLevelAccessListsEnabled",
+          "type": "bool",
+          "receiverType": "Nethermind.Core.Specs.IReleaseSpec",
+          "receiverSymbol": "M:Nethermind.Consensus.Processing.BlockAccessListManager.PrepareForProcessing(Nethermind.Core.Block,Nethermind.Core.Specs.IReleaseSpec,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:1:spec",
+          "parameterOrdinal": -1
+        },
+        {
+          "operationKind": "ParameterReference",
+          "symbol": "M:Nethermind.Consensus.Processing.BlockAccessListManager.PrepareForProcessing(Nethermind.Core.Block,Nethermind.Core.Specs.IReleaseSpec,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:1:spec",
+          "type": "Nethermind.Core.Specs.IReleaseSpec",
+          "receiverType": "",
+          "receiverSymbol": "",
+          "parameterOrdinal": 1
+        }
+      ]
+    },
+    {
+      "id": "bal.enabled-derived",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockAccessListManager.cs",
+      "owner": "BlockAccessListManager",
+      "member": "PrepareForProcessing",
+      "canonicalSyntax": "Enabled=_blockAccessListsEnabled\u0026\u0026!suggestedBlock.IsGenesis",
+      "relation": "BAL Enabled excludes genesis blocks",
+      "nodeKind": "SimpleAssignmentExpression",
+      "operationKind": "SimpleAssignment",
+      "operationType": "bool",
+      "targetSymbol": "P:Nethermind.Consensus.Processing.BlockAccessListManager.Enabled",
+      "syntaxSha256": "de11a4af15391a3b9912ec25cc25b3f98f42a6dccb8809e6303bc8c7369f7341",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 2,
+      "isReachable": true,
+      "containingMember": "PrepareForProcessing",
+      "receiverType": "",
+      "receiverSymbol": "",
+      "argumentBindings": [],
+      "rightHandSideBindings": [
+        {
+          "operationKind": "FieldReference",
+          "symbol": "F:Nethermind.Consensus.Processing.BlockAccessListManager._blockAccessListsEnabled",
+          "type": "bool",
+          "receiverType": "Nethermind.Consensus.Processing.BlockAccessListManager",
+          "receiverSymbol": "this:Nethermind.Consensus.Processing.BlockAccessListManager",
+          "parameterOrdinal": -1
+        },
+        {
+          "operationKind": "PropertyReference",
+          "symbol": "P:Nethermind.Core.Block.IsGenesis",
+          "type": "bool",
+          "receiverType": "Nethermind.Core.Block",
+          "receiverSymbol": "M:Nethermind.Consensus.Processing.BlockAccessListManager.PrepareForProcessing(Nethermind.Core.Block,Nethermind.Core.Specs.IReleaseSpec,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:0:suggestedBlock",
+          "parameterOrdinal": -1
+        },
+        {
+          "operationKind": "ParameterReference",
+          "symbol": "M:Nethermind.Consensus.Processing.BlockAccessListManager.PrepareForProcessing(Nethermind.Core.Block,Nethermind.Core.Specs.IReleaseSpec,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:0:suggestedBlock",
+          "type": "Nethermind.Core.Block",
+          "receiverType": "",
+          "receiverSymbol": "",
+          "parameterOrdinal": 0
+        }
+      ]
+    },
+    {
+      "id": "parallel.bal-disabled-gate",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.ParallelBlockValidationTransactionsExecutor.cs",
+      "owner": "BlockProcessor.ParallelBlockValidationTransactionsExecutor",
+      "member": "ProcessTransactions",
+      "canonicalSyntax": "!balManager.Enabled",
+      "relation": "the decorator falls back when BAL is disabled",
+      "nodeKind": "LogicalNotExpression",
+      "operationKind": "Unary",
+      "operationType": "bool",
+      "targetSymbol": "!balManager.Enabled",
+      "syntaxSha256": "8c15caaa5e6070357244d984ab7e8f349934e008d9ef6c1e3193e2202840ee03",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 1,
+      "isReachable": true,
+      "containingMember": "ProcessTransactions",
+      "receiverType": "",
+      "receiverSymbol": "",
+      "argumentBindings": [],
+      "rightHandSideBindings": []
+    },
+    {
+      "id": "parallel.inner-sequential",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.ParallelBlockValidationTransactionsExecutor.cs",
+      "owner": "BlockProcessor.ParallelBlockValidationTransactionsExecutor",
+      "member": "ProcessTransactions",
+      "canonicalSyntax": "inner.ProcessTransactions(block,processingOptions,receiptsTracer,token)",
+      "relation": "the BAL-disabled branch calls the exact inner executor",
+      "nodeKind": "InvocationExpression",
+      "operationKind": "Invocation",
+      "operationType": "Nethermind.Core.TxReceipt[]",
+      "targetSymbol": "M:Nethermind.Consensus.Processing.IBlockProcessor.IBlockTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)",
+      "syntaxSha256": "14ab06c4d893df244a97bae3480a7027923c86d54d5d639a7a4b7b2bb64f9e57",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 2,
+      "isReachable": true,
+      "containingMember": "ProcessTransactions",
+      "receiverType": "Nethermind.Consensus.Processing.IBlockProcessor.IBlockTransactionsExecutor",
+      "receiverSymbol": "M:Nethermind.Consensus.Processing.BlockProcessor.ParallelBlockValidationTransactionsExecutor.#ctor(Nethermind.Consensus.Processing.IBlockProcessor.IBlockTransactionsExecutor,Nethermind.Evm.State.IWorldState,Nethermind.Core.Specs.ISpecProvider,Nethermind.Consensus.Processing.IBlockAccessListManager,Nethermind.Logging.ILogManager,Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler)/parameter:0:inner",
+      "argumentBindings": [
+        "block",
+        "processingOptions",
+        "receiptsTracer",
+        "token"
+      ],
+      "rightHandSideBindings": []
+    },
+    {
+      "id": "parallel.selection",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.ParallelBlockValidationTransactionsExecutor.cs",
+      "owner": "BlockProcessor.ParallelBlockValidationTransactionsExecutor",
+      "member": "ProcessTransactions",
+      "canonicalSyntax": "ExecutionFlags.ParallelExecution\u0026\u0026!block.IsGenesis\u0026\u0026balManager.ParallelExecutionEnabled",
+      "relation": "only the enabled BAL route selects parallel execution",
+      "nodeKind": "LogicalAndExpression",
+      "operationKind": "Binary",
+      "operationType": "bool",
+      "targetSymbol": "ExecutionFlags.ParallelExecution\u0026\u0026!block.IsGenesis\u0026\u0026balManager.ParallelExecutionEnabled",
+      "syntaxSha256": "cbe8978c8ec1dc0927869dab4b47ac98a8e4715fa16b23ef2856c870e155bf45",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 4,
+      "isReachable": true,
+      "containingMember": "ProcessTransactions",
+      "receiverType": "",
+      "receiverSymbol": "",
+      "argumentBindings": [],
+      "rightHandSideBindings": []
+    },
+    {
+      "id": "di.base-executor",
+      "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+      "owner": "BlockProcessingModule.StandardBlockValidationModule",
+      "member": "Load",
+      "canonicalSyntax": "builder.AddScoped\u003CIBlockProcessor.IBlockTransactionsExecutor,BlockProcessor.BlockValidationTransactionsExecutor\u003E()",
+      "relation": "standard validation registers the exact base executor",
+      "nodeKind": "InvocationExpression",
+      "operationKind": "Invocation",
+      "operationType": "Autofac.ContainerBuilder",
+      "targetSymbol": "M:Nethermind.Core.ContainerBuilderExtensions.AddScoped\u0060\u00602(Autofac.ContainerBuilder)",
+      "syntaxSha256": "74fded432eb02bc7dd140df799cfcc36042be02ccba1297575873190e79f690a",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 1,
+      "isReachable": true,
+      "containingMember": "Load",
+      "receiverType": "Autofac.ContainerBuilder",
+      "receiverSymbol": "M:Nethermind.Init.Modules.BlockProcessingModule.StandardBlockValidationModule.Load(Autofac.ContainerBuilder)/parameter:0:builder",
+      "argumentBindings": [
+        "type:Nethermind.Consensus.Processing.IBlockProcessor.IBlockTransactionsExecutor",
+        "type:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor"
+      ],
+      "rightHandSideBindings": []
+    },
+    {
+      "id": "di.parallel-decorator",
+      "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+      "owner": "BlockProcessingModule.StandardBlockValidationModule",
+      "member": "Load",
+      "canonicalSyntax": "builder.AddScoped\u003CIBlockProcessor.IBlockTransactionsExecutor,BlockProcessor.BlockValidationTransactionsExecutor\u003E().AddDecorator\u003CIBlockProcessor.IBlockTransactionsExecutor,BlockProcessor.ParallelBlockValidationTransactionsExecutor\u003E()",
+      "relation": "standard validation decorates the base executor",
+      "nodeKind": "InvocationExpression",
+      "operationKind": "Invocation",
+      "operationType": "Autofac.ContainerBuilder",
+      "targetSymbol": "M:Nethermind.Core.ContainerBuilderExtensions.AddDecorator\u0060\u00602(Autofac.ContainerBuilder)",
+      "syntaxSha256": "2e4452df6c7af764b1a9f5960643822803a4f71daf322e0910d48ba0032929fd",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 1,
+      "isReachable": true,
+      "containingMember": "Load",
+      "receiverType": "Autofac.ContainerBuilder",
+      "receiverSymbol": "M:Nethermind.Init.Modules.BlockProcessingModule.StandardBlockValidationModule.Load(Autofac.ContainerBuilder)/parameter:0:builder",
+      "argumentBindings": [
+        "type:Nethermind.Consensus.Processing.IBlockProcessor.IBlockTransactionsExecutor",
+        "type:Nethermind.Consensus.Processing.BlockProcessor.ParallelBlockValidationTransactionsExecutor"
+      ],
+      "rightHandSideBindings": []
+    },
+    {
+      "id": "di.bal-manager",
+      "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+      "owner": "BlockProcessingModule",
+      "member": "Load",
+      "canonicalSyntax": "builder.AddSingleton\u003CTxValidator,ISpecProvider\u003E((spec)=\u003EnewTxValidator(spec.ChainId)).Bind\u003CITxValidator,TxValidator\u003E().AddKeyedSingleton\u003CITxValidator\u003E(ITxValidator.SpecChangeTxValidatorKey,staticctx=\u003EnewSpecChangeTxValidator(ctx.Resolve\u003CISpecProvider\u003E().ChainId)).AddSingleton\u003CIBlockValidator,BlockValidator\u003E().AddSingleton\u003CIHeaderValidator,HeaderValidator\u003E().AddSingleton\u003CIUnclesValidator,UnclesValidator\u003E().AddLast\u003CITxGossipPolicy,SpecDrivenTxGossipPolicy\u003E().AddFirst\u003CIBlockPreprocessorStep,RecoverSignatures\u003E().AddScoped\u003CITransactionProcessor.IBlobBaseFeeCalculator,BlobBaseFeeCalculator\u003E().AddScoped\u003CITransactionProcessor,EthereumTransactionProcessor\u003E().AddSingleton\u003CITransactionProcessorFactory,TransactionProcessorFactory\u003CEthereumGasPolicy\u003E\u003E().AddScoped\u003CICodeInfoRepository,CacheCodeInfoRepository\u003E().AddSingleton\u003CIPrecompileProvider,EthereumPrecompileProvider\u003E().AddSingleton\u003CICodeCache\u003E(StaticCodeCache.Instance).AddScoped\u003CIWorldState,WorldState\u003E().AddScoped\u003CIVirtualMachine,EthereumVirtualMachine\u003E().AddScoped\u003CIBlockhashProvider,BlockhashProvider\u003E().AddSingleton\u003CIUnresolvedBlockhashPolicy\u003E(ThrowingUnresolvedBlockhashPolicy.Instance).AddSingleton\u003CIBlockhashCache,BlockhashCache\u003E().AddScoped\u003CIBeaconBlockRootHandler,BeaconBlockRootHandler\u003E().AddScoped\u003CIBlockhashStore,BlockhashStore\u003E().AddScoped\u003CIBranchProcessor,BranchProcessor\u003E().AddScoped\u003CIInclusionListSatisfactionChecker,InclusionListSatisfactionChecker\u003E().AddScoped\u003CIBlockProcessor,BlockProcessor\u003E().AddScoped\u003CIWithdrawalProcessor,WithdrawalProcessor\u003E().AddSingleton\u003CIWithdrawalProcessorFactory,WithdrawalProcessorFactory\u003E().AddScoped\u003CIExecutionRequestsProcessor,ExecutionRequestsProcessor\u003E().AddScoped\u003CCodeInfoRepositoryFactory,IPrecompileProvider,ICodeCache\u003E((precompileProvider,codeCache)=\u003EworldState=\u003EnewCacheCodeInfoRepository(worldState,precompileProvider,codeCache)).AddScoped\u003CTransactionProcessorAdapterFactory\u003E(CreateExecuteAdapter).AddScoped\u003CITransactionProcessorAdapter,ITransactionProcessor,TransactionProcessorAdapterFactory\u003E(static(transactionProcessor,adapterFactory)=\u003EadapterFactory(transactionProcessor)).AddScoped\u003CBalTxProcessorFactory\u003E().AddScoped\u003CIBlockAccessListManager,BlockAccessListManager\u003E()",
+      "relation": "standard validation registers the BAL manager",
+      "nodeKind": "InvocationExpression",
+      "operationKind": "Invocation",
+      "operationType": "Autofac.ContainerBuilder",
+      "targetSymbol": "M:Nethermind.Core.ContainerBuilderExtensions.AddScoped\u0060\u00602(Autofac.ContainerBuilder)",
+      "syntaxSha256": "26d5e3b2f9d89e9b47778aa29713d6f4f52e9e5390dc5f1bc1e6c632e102cc52",
+      "hasCandidateSymbols": false,
+      "isErrorSymbol": false,
+      "controlFlowBlock": 1,
+      "isReachable": true,
+      "containingMember": "Load",
+      "receiverType": "Autofac.ContainerBuilder",
+      "receiverSymbol": "M:Nethermind.Init.Modules.BlockProcessingModule.Load(Autofac.ContainerBuilder)/parameter:0:builder",
+      "argumentBindings": [
+        "type:Nethermind.Consensus.Processing.IBlockAccessListManager",
+        "type:Nethermind.Consensus.Processing.BlockAccessListManager"
+      ],
+      "rightHandSideBindings": []
+    }
+  ],
+  "controlFlows": [
+    {
+      "id": "executor.processTransactions",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+      "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+      "member": "ProcessTransactions",
+      "reachableBlocks": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "edges": [
+        "0-\u003E1",
+        "1-\u003E2",
+        "2-\u003E3",
+        "3-\u003E4",
+        "3-\u003E8",
+        "4-\u003E5",
+        "4-\u003E7",
+        "5-\u003E6",
+        "5-\u003E7",
+        "6-\u003E7",
+        "7-\u003E3"
+      ],
+      "normalExitBlocks": [
+        8
+      ],
+      "exceptionalExitBlocks": [],
+      "backEdges": [
+        "7-\u003E3"
+      ],
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+        "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+        "member": "ProcessTransactions",
+        "nodeKind": "MethodDeclaration",
+        "canonicalSyntax": "publicTxReceipt[]ProcessTransactions(Blockblock,ProcessingOptionsprocessingOptions,BlockReceiptsTracerreceiptsTracer,CancellationTokentoken){Metrics.ResetBlockStats();SetupTxTimingMetrics(block);boolshouldValidate=!processingOptions.ContainsFlag(ProcessingOptions.NoValidation);for(inti=0;i\u003Cblock.Transactions.Length;i\u002B\u002B){TransactioncurrentTx=block.Transactions[i];ProcessTransaction(block,currentTx,i,receiptsTracer,processingOptions);if(shouldValidate\u0026\u0026block.Header.GasUsed\u003Eblock.Header.GasLimit){ThrowInvalidBlockForGasLimit(block);}}Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);Metrics.PublishBlockGasPriceGauges();return[..receiptsTracer.TxReceipts];[DebuggerHidden][DoesNotReturn]staticvoidThrowInvalidBlockForGasLimit(Blockblock)=\u003EthrownewInvalidBlockException(block,Core.Messages.BlockErrorMessages.ExceededGasLimit);}",
+        "syntaxSha256": "d303419cb8db67cd8afa9aea3b06b27f12789307abef342d68cb1985c2825444",
+        "symbolId": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)",
+        "symbolKind": "Method",
+        "operationKind": "MethodBodyOperation",
+        "operationType": "void",
+        "receiverType": "",
+        "containingMember": "ProcessTransactions",
+        "position": 1677,
+        "startLine": 38,
+        "startColumn": 9,
+        "controlFlowBlock": -1,
+        "isReachable": false,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local-method:ThrowInvalidBlockForGasLimit/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:currentTx",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:i",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:shouldValidate",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:-1:this",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:1:processingOptions",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:2:receiptsTracer"
+        ],
+        "writtenInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local-method:ThrowInvalidBlockForGasLimit/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:currentTx",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:i",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:shouldValidate"
+        ],
+        "receiverSymbol": "",
+        "argumentBindings": []
+      }
+    },
+    {
+      "id": "executor.processTransaction",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+      "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+      "member": "ProcessTransaction",
+      "reachableBlocks": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "edges": [
+        "0-\u003E1",
+        "1-\u003E2",
+        "2-\u003E4",
+        "4-\u003E5",
+        "4-\u003E6",
+        "5-\u003E6",
+        "6-\u003E7"
+      ],
+      "normalExitBlocks": [
+        6,
+        7
+      ],
+      "exceptionalExitBlocks": [],
+      "backEdges": [],
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+        "owner": "BlockProcessor.BlockValidationTransactionsExecutor",
+        "member": "ProcessTransaction",
+        "nodeKind": "MethodDeclaration",
+        "canonicalSyntax": "protectedvirtualvoidProcessTransaction(Blockblock,TransactioncurrentTx,intindex,BlockReceiptsTracerreceiptsTracer,ProcessingOptionsprocessingOptions){longtxStart=StartTxTimer();TransactionResultresult;try{result=transactionProcessor.ProcessTransaction(currentTx,receiptsTracer,processingOptions,_stateProvider);}finally{StopTxTimer(index,txStart);}if(!result)ThrowInvalidTransactionException(result,block.Header,currentTx,index);_transactionProcessedEventHandler?.OnTransactionProcessed(newTxProcessedEventArgs(index,currentTx,block.Header,receiptsTracer.TxReceipts[index]));}",
+        "syntaxSha256": "df003b229164f73b2c15972ce4c0b83214391a73264818a80032e2e7baa44a4f",
+        "symbolId": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)",
+        "symbolKind": "Method",
+        "operationKind": "MethodBodyOperation",
+        "operationType": "void",
+        "receiverType": "",
+        "containingMember": "ProcessTransaction",
+        "position": 2858,
+        "startLine": 67,
+        "startColumn": 9,
+        "controlFlowBlock": -1,
+        "isReachable": false,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.#ctor(Nethermind.Evm.TransactionProcessing.ITransactionProcessorAdapter,Nethermind.Evm.State.IWorldState,Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler)/parameter:0:transactionProcessor",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/local:result",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/local:txStart",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:-1:this",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:1:currentTx",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:2:index",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:3:receiptsTracer",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:4:processingOptions"
+        ],
+        "writtenInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/local:result",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/local:txStart"
+        ],
+        "receiverSymbol": "",
+        "argumentBindings": []
+      }
+    },
+    {
+      "id": "block.processBlock",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "member": "ProcessBlock",
+      "reachableBlocks": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "edges": [
+        "0-\u003E1",
+        "1-\u003E2",
+        "10-\u003E11",
+        "11-\u003E12",
+        "11-\u003E13",
+        "12-\u003E13",
+        "13-\u003E14",
+        "13-\u003E15",
+        "14-\u003E15",
+        "15-\u003E20",
+        "16-\u003E17",
+        "16-\u003E19",
+        "17-\u003E19",
+        "18-\u003E19",
+        "2-\u003E3",
+        "2-\u003E4",
+        "3-\u003E4",
+        "4-\u003E5",
+        "4-\u003E6",
+        "5-\u003E6",
+        "6-\u003E7",
+        "6-\u003E8",
+        "7-\u003E9",
+        "8-\u003E9",
+        "9-\u003E10",
+        "9-\u003E11"
+      ],
+      "normalExitBlocks": [
+        20
+      ],
+      "exceptionalExitBlocks": [],
+      "backEdges": [],
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "MethodDeclaration",
+        "canonicalSyntax": "protectedvirtualTxReceipt[]ProcessBlock(Blockblock,IBlockTracerblockTracer,ProcessingOptionsoptions,IReleaseSpecspec,CancellationTokentoken){BlockBodybody=block.Body;BlockHeaderheader=block.Header;ReceiptsTracer.SetOtherTracer(blockTracer);ReceiptsTracer.StartNewBlockTrace(block);_blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header,spec));_balManager.Setup(block);_systemContractHandler.StoreBeaconRoot(block,spec,NullTxTracer.Instance);_systemContractHandler.ApplyBlockhashStateChanges(header,spec);CommitState(spec);TxReceipt[]receipts=_blockTransactionsExecutor.ProcessTransactions(block,options,ReceiptsTracer,token);TransactionsExecuted?.Invoke();CommitState(spec);if(spec.IsEip4844Enabled){header.BlobGasUsed=BlobGasCalculator.CalculateBlobGas(block.Transactions);}Task\u003C(BloomBlockBloom,Hash256ReceiptsRoot)\u003E?bloomsAndReceiptsRootTask=null;if(ShouldCalculateReceiptsInBackground(receipts)){bloomsAndReceiptsRootTask=Task.Run(()=\u003E{CalculateBlooms(receipts);return(AccumulateBlockBloom(receipts),CalculateReceiptsRoot(receipts,spec,block));});}else{CalculateBlooms(receipts);header.ReceiptsRoot=CalculateReceiptsRoot(receipts,spec,block);}try{ApplyMinerRewards(block,blockTracer,spec);_systemContractHandler.ProcessWithdrawals(block,spec);CommitState(spec);_systemContractHandler.ProcessExecutionRequests(block,_stateProvider,receipts,spec);ReceiptsTracer.EndBlockTrace(accumulateBlockBloom:bloomsAndReceiptsRootTaskisnull);CommitStateAndStorageRoots(spec);if(BlockchainProcessor.IsMainProcessingThread){SetAccountChanges(block);}if(ShouldComputeStateRoot(header)){ComputeStateRoot(header);}if(bloomsAndReceiptsRootTaskisnotnull){(header.Bloom,header.ReceiptsRoot)=bloomsAndReceiptsRootTask.GetAwaiter().GetResult();}_balManager.SetBlockAccessList(block);}finally{if(bloomsAndReceiptsRootTaskis{IsCompletedSuccessfully:false}){try{bloomsAndReceiptsRootTask.GetAwaiter().GetResult();}catch{}}}header.Hash=header.CalculateHash();returnreceipts;}",
+        "syntaxSha256": "a5ab61515cd25804ad267b556e0a21686f8f037c2163f16b94fb8874aea96d3b",
+        "symbolId": "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)",
+        "symbolKind": "Method",
+        "operationKind": "MethodBodyOperation",
+        "operationType": "void",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 6513,
+        "startLine": 145,
+        "startColumn": 5,
+        "controlFlowBlock": -1,
+        "isReachable": false,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:bloomsAndReceiptsRootTask",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:header",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:receipts",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:-1:this",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:0:block",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:1:blockTracer",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:2:options",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:3:spec",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:4:token"
+        ],
+        "writtenInside": [
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:bloomsAndReceiptsRootTask",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:body",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:header",
+          "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:receipts"
+        ],
+        "receiverSymbol": "",
+        "argumentBindings": []
+      }
+    }
+  ],
+  "transactionsExecuted": {
+    "evaluation": {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "member": "ProcessBlock",
+      "nodeKind": "IdentifierName",
+      "canonicalSyntax": "TransactionsExecuted",
+      "syntaxSha256": "dbed9416aa97b806582cca2aeae0acfdf7cac939b3ef8a9a07e7ff661113654b",
+      "symbolId": "E:Nethermind.Consensus.Processing.BlockProcessor.TransactionsExecuted",
+      "symbolKind": "Event",
+      "operationKind": "EventReference",
+      "operationType": "System.Action",
+      "receiverType": "",
+      "containingMember": "ProcessBlock",
+      "position": 7551,
+      "startLine": 170,
+      "startColumn": 9,
+      "controlFlowBlock": 2,
+      "isReachable": true,
+      "hasCandidateSymbols": false,
+      "candidateReason": "None",
+      "isErrorSymbol": false,
+      "dataFlowSucceeded": true,
+      "readInside": [
+        "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:bloomsAndReceiptsRootTask",
+        "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:header",
+        "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:receipts",
+        "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:-1:this",
+        "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:0:block",
+        "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:1:blockTracer",
+        "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:2:options",
+        "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:3:spec",
+        "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/parameter:4:token"
+      ],
+      "writtenInside": [
+        "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:bloomsAndReceiptsRootTask",
+        "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:body",
+        "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:header",
+        "M:Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)/local:receipts"
+      ],
+      "receiverSymbol": "",
+      "argumentBindings": []
+    },
+    "whenNullBlock": 4,
+    "whenNotNullBlock": 3
+  },
+  "transactionProjection": {
+    "localSymbol": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:currentTx",
+    "transactionType": "Nethermind.Core.Transaction",
+    "transactionAssembly": "Nethermind.Core",
+    "initializerOperation": "ArrayElementReference",
+    "transactionsProperty": "P:Nethermind.Core.Block.Transactions",
+    "blockParameter": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/parameter:0:block",
+    "indexLocal": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:i",
+    "helperParameter": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)/parameter:1:currentTx",
+    "helperArgumentLocal": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local:currentTx",
+    "initializerIdentityConversion": true,
+    "helperArgumentIdentityConversion": true,
+    "initializerOperatorMethod": "",
+    "helperArgumentOperatorMethod": ""
+  },
+  "synchronousCallables": [
+    {
+      "id": "executor.processTransaction",
+      "symbol": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransaction(Nethermind.Core.Block,Nethermind.Core.Transaction,System.Int32,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,Nethermind.Consensus.Processing.ProcessingOptions)",
+      "methodKind": "Ordinary",
+      "bodyKind": "block",
+      "returnsVoid": true,
+      "isAsync": false,
+      "isIterator": false,
+      "isPartial": false,
+      "isExtern": false,
+      "isAbstract": false,
+      "hasConditionalAttribute": false,
+      "attributes": [],
+      "lineage": {
+        "isStatic": false,
+        "isVirtual": true,
+        "isOverride": false,
+        "overriddenMethods": [],
+        "hasInheritedConditionalAttribute": false,
+        "inheritedAttributes": [],
+        "declaringType": {
+          "symbol": "T:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor",
+          "assembly": "Nethermind.Consensus"
+        },
+        "baseTypes": [
+          {
+            "symbol": "T:System.Object",
+            "assembly": "System.Private.CoreLib"
+          }
+        ],
+        "interfaces": [
+          {
+            "symbol": "T:Nethermind.Consensus.Processing.IBlockProcessor.IBlockTransactionsExecutor",
+            "assembly": "Nethermind.Consensus"
+          }
+        ],
+        "implementedInterfaceMethods": []
+      }
+    },
+    {
+      "id": "executor.gas-limit-helper",
+      "symbol": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)/local-method:ThrowInvalidBlockForGasLimit",
+      "methodKind": "LocalFunction",
+      "bodyKind": "expression",
+      "returnsVoid": true,
+      "isAsync": false,
+      "isIterator": false,
+      "isPartial": false,
+      "isExtern": false,
+      "isAbstract": false,
+      "hasConditionalAttribute": false,
+      "attributes": [
+        {
+          "type": "System.Diagnostics.DebuggerHiddenAttribute",
+          "assembly": "System.Private.CoreLib",
+          "hasArguments": false
+        },
+        {
+          "type": "System.Diagnostics.CodeAnalysis.DoesNotReturnAttribute",
+          "assembly": "Microsoft.TestPlatform.Utilities",
+          "hasArguments": false
+        }
+      ],
+      "lineage": {
+        "isStatic": true,
+        "isVirtual": false,
+        "isOverride": false,
+        "overriddenMethods": [],
+        "hasInheritedConditionalAttribute": false,
+        "inheritedAttributes": [],
+        "declaringType": {
+          "symbol": "T:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor",
+          "assembly": "Nethermind.Consensus"
+        },
+        "baseTypes": [
+          {
+            "symbol": "T:System.Object",
+            "assembly": "System.Private.CoreLib"
+          }
+        ],
+        "interfaces": [
+          {
+            "symbol": "T:Nethermind.Consensus.Processing.IBlockProcessor.IBlockTransactionsExecutor",
+            "assembly": "Nethermind.Consensus"
+          }
+        ],
+        "implementedInterfaceMethods": []
+      }
+    },
+    {
+      "id": "executor.invalid-result-helper",
+      "symbol": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(Nethermind.Evm.TransactionProcessing.TransactionResult,Nethermind.Core.BlockHeader,Nethermind.Core.Transaction,System.Int32)",
+      "methodKind": "Ordinary",
+      "bodyKind": "expression",
+      "returnsVoid": true,
+      "isAsync": false,
+      "isIterator": false,
+      "isPartial": false,
+      "isExtern": false,
+      "isAbstract": false,
+      "hasConditionalAttribute": false,
+      "attributes": [
+        {
+          "type": "System.Diagnostics.CodeAnalysis.DoesNotReturnAttribute",
+          "assembly": "System.Private.CoreLib",
+          "hasArguments": false
+        },
+        {
+          "type": "System.Diagnostics.StackTraceHiddenAttribute",
+          "assembly": "System.Private.CoreLib",
+          "hasArguments": false
+        }
+      ],
+      "lineage": {
+        "isStatic": true,
+        "isVirtual": false,
+        "isOverride": false,
+        "overriddenMethods": [],
+        "hasInheritedConditionalAttribute": false,
+        "inheritedAttributes": [],
+        "declaringType": {
+          "symbol": "T:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor",
+          "assembly": "Nethermind.Consensus"
+        },
+        "baseTypes": [
+          {
+            "symbol": "T:System.Object",
+            "assembly": "System.Private.CoreLib"
+          }
+        ],
+        "interfaces": [
+          {
+            "symbol": "T:Nethermind.Consensus.Processing.IBlockProcessor.IBlockTransactionsExecutor",
+            "assembly": "Nethermind.Consensus"
+          }
+        ],
+        "implementedInterfaceMethods": []
+      }
+    }
+  ],
+  "composition": {
+    "generatedReceiptKernel": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.lean",
+    "generatedReceiptKernelSha256": "028d11a14e031aaedce27c71b26e2c69cf16e759ff3ac870373ead10f6971180",
+    "receiptRefinement": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Refinement/ReceiptTerminalFold.lean",
+    "receiptRefinementSha256": "bd4a3556a98ec40875960ff2180523d16221b05cd6cf9a0b6ce1fc46a8cb3e93",
+    "relation": "each settled ordinary terminal observation supplies the next exact receipt/gas state; no terminal is re-executed",
+    "requiredTerminalFields": [
+      "State.receipts",
+      "State.gasHistory",
+      "State.cumulativeReceiptGas",
+      "State.headerGasUsed",
+      "FinalizationObservation.trace.state",
+      "FinalizationObservation.result"
+    ],
+    "receiptTerminalSourceClosure": {
+      "sourcePinsPath": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/SOURCE_PINS.json",
+      "sourcePinsSha256": "0223aadf196cc74051d632260693eeb607fde202fa612caee59d3ddaca886c6f",
+      "sourceManifestPath": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.source-manifest.json",
+      "sourceManifestSha256": "3d1ec03bce750645bc29d8fb51ac94321508364735b9a65a987043100f74bd8e",
+      "compilerReferenceInventoryPath": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json",
+      "compilerReferenceInventorySha256": "1f73a3800a957dd02d9d7b06b3b955c81bb92fd9eb8d2831920905394bfc1d5c",
+      "sources": [
+        {
+          "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+          "role": "exact-base receipt tracer terminal, snapshot owner, and IsTracingReceipt gate",
+          "sha256": "d4504f54b50dd43e2ab5bc7172ce2cf9e48453fcede990e5e667e743146262ff"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptGasAccountingKernel.cs",
+          "role": "delegated fixed-width gas kernel",
+          "sha256": "0882c798e6ffb2243735a9ec0cec5d442b20d51277feeba95e5b68ecfaf89e32"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/GasConsumed.cs",
+          "role": "gas input fields and effective block gas",
+          "sha256": "1dc4e78d5a17056dcb00d496136a32a899245f3a7b3e5a9eef74c4760ef68686"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/TransactionReceipt.cs",
+          "role": "receipt output fields including concrete zero-default diagnostics",
+          "sha256": "55b62b4e0708e590a001916e9a73d07ac70e225b16f711574e811c98e540cc63"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Transaction.cs",
+          "role": "transaction receipt fields",
+          "sha256": "3fdf94805739c6ccdfa8b4617c5d4cfa6bee9e9565f16d667b22106c434d6596"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/TransactionExtensions.cs",
+          "role": "effective price oracle",
+          "sha256": "d3df04cb465668a3dcc842f33e5bc7a16d2420cdc1dcd03edf1c3275c2b24852"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Block.cs",
+          "role": "block identity projections",
+          "sha256": "3cdd12ca52b00b6eefea372be868649653ac57043194aa081d41064d0ed749aa"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/BlockHeader.cs",
+          "role": "header gas and identity fields",
+          "sha256": "f354ddd2d45afc8774739ac46a10535b915871ce4ad11d996d0ab972cf9e7349"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+          "role": "normally returning terminal caller, BuildUp/EIP-8037 account-reap ordering, and separate TransactionResult classification",
+          "sha256": "0374c6f35a9a23361f37b41162ac281ca83b09846ab4295d5a592db6315c99cc"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/StatusCode.cs",
+          "role": "live receipt status constants",
+          "sha256": "e896f55406c9fc1ce99199d80bea69b87fa8891c23afef59712b87cadb971190"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+          "role": "live block-gas combine adapter",
+          "sha256": "3c31ba40c24a78bf11243b38859168350f02934806124e913da0560bc1a4350f"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/TransactionGasInitializationKernel.cs",
+          "role": "live block-gas combine dependency closure",
+          "sha256": "65ab0742596ea7ebf49d2c79601eae00152d8d039ac8e417076bf63123be1e82"
+        }
+      ],
+      "bindingSources": [
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/ITxTracer.cs",
+          "role": "typed nested/current tracer forwarding interface",
+          "sha256": "9f2550f8c3407f494452386699040feab8aa597437b1cd4180d038d9fd0a9169"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/IBlockTracer.cs",
+          "role": "typed block tracer receiver interface",
+          "sha256": "6e6f14e4b8d1ba044e4ef5523ca2bdeb73284bf6e3863909d35daa5d43a156ac"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/ITxTracerWrapper.cs",
+          "role": "typed tracer wrapper closure",
+          "sha256": "b892bed034c5c14dd50837b69f1fe7dd47bc325421545fb1d8ab859e95ece36d"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/State/IWorldStateTracer.cs",
+          "role": "typed ITxTracer base closure",
+          "sha256": "d4e95b993245b751fc97f71f3d47bc93bc477d79662ed17755e426d49e76335f"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/IJournal.cs",
+          "role": "typed block tracer journal closure",
+          "sha256": "065a1fc97bcae6cb3237284af300a907c99bde40960fe84ae01ffb0c86839f91"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionSubstate.cs",
+          "role": "typed finalization substate members",
+          "sha256": "1312a5f1a9990976670914fcc0a6ad2c77dd92d768d92fd91b28f27fefe66a00"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/EvmException.cs",
+          "role": "typed EvmExceptionType.FastToString fallback",
+          "sha256": "8c503bfbe0c60c41597e64c96b5d823dc98b934b4511730217eceaaf13837450"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/ReadOnlyMemoryExtensions.cs",
+          "role": "typed substate output conversion",
+          "sha256": "d5dec0389767197fffde80a3aa86e139b38722a5d9343519ef1235e1fdac1bf9"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ExecutionOptions.cs",
+          "role": "typed finalization option flags",
+          "sha256": "014a2598e1def284b7b98dc97185b6dbbc45ca04be4ab159e330a0675ac24f10"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/IWorldState.cs",
+          "role": "typed finalization world-state receiver",
+          "sha256": "0680ebc7168472645d93df58d2b3240508c177361815c85cceb09cf960f189c7"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/State/IReadOnlyStateProvider.cs",
+          "role": "typed world-state state-root property closure",
+          "sha256": "2bab0038c33735b330e25f6300384450835c092a5ff137935a1fd6c5ab58be68"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Specs/IReleaseSpec.cs",
+          "role": "typed release-spec feature flags",
+          "sha256": "3f44b3da5614c94d59eae2e4a6266a9e698614f75a7b5a9894a4828b0021b18a"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Specs/IReceiptSpec.cs",
+          "role": "typed receipt-spec EIP-658 flag closure",
+          "sha256": "1b1c18dcf5e8c57fd9d19468d59412a822ea3313a800fedcd46798b4af9c4d87"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Specs/IEip1559Spec.cs",
+          "role": "typed release-spec inheritance closure",
+          "sha256": "534bdd465854855f6479e3b1d993b34e5e04156be78e733b2148a7ad18f31f76"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/State/NullStateTracer.cs",
+          "role": "typed null state tracer receiver",
+          "sha256": "dde2127d6fd6bc4f8b9a2009517be1e3c1eeae8ed63351c14551ccfb01590eab"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/State/IStateTracer.cs",
+          "role": "typed IsTracingState property closure",
+          "sha256": "4b75958ac4d921126364d9ddbbf3c1fce9490ec046a3bb43f2b5a673c53dddc2"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Tracing/State/IStorageTracer.cs",
+          "role": "typed world-state tracer inheritance closure",
+          "sha256": "d0ba6ca8c1a2c99fa6b3c5ff6d8ff6d6db84340d090a5d50816ba7f1b2077be0"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Collections/JournalCollection.cs",
+          "role": "typed substate log-count collection closure",
+          "sha256": "5c1395b025da5a03749a5b64da804e53c6ff0a7aec4c02d30fd4b1c0e059c720"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Transaction.std.cs",
+          "role": "standard Transaction partial compiler support",
+          "sha256": "b08ebdcf7fb167cf028488d393037278e9dc33b8f2c927f96440ea28572530d9"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/BlockBody.cs",
+          "role": "Block compilation support preserving the internal Transactions setter",
+          "sha256": "24da28dc4ef55da25c5ac7d14fab929e65b6bf072eb0abcec9d4ae2d33374f73"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionProcessor.cs",
+          "role": "diagnostic-complete compiler support",
+          "sha256": "10c7370e5f6d5ca25e4cd0801967083f97f432e211314dc40126a18fbea48a95"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionRoutingKernel.cs",
+          "role": "diagnostic-complete compiler support",
+          "sha256": "b884bb49ad7c109b907f4dfcac56a5eb13283d964310d45eb9ca85177ff5e5c1"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ITransactionProcessor.cs",
+          "role": "diagnostic-complete compiler support",
+          "sha256": "3cae1430ba38d54f9867b714efdc823f9db126b1bbf0e45eae59439701459e95"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionSettlementKernel.cs",
+          "role": "diagnostic-complete compiler support",
+          "sha256": "37add297aaaf07a4260b45c05c5f866a48f92eef2ac6fb16ef2bfd96103f8c44"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Metrics.cs",
+          "role": "diagnostic-complete compiler support",
+          "sha256": "f056b9138021c4875f5a16893b243aac12f535c71ae88281987094fb6bcc2b90"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/Metrics.std.cs",
+          "role": "diagnostic-complete compiler support",
+          "sha256": "e36b3f0f33db29043d820db99cf0577a3c7010bf1b93193ebeb92e954a54300e"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/DispatchFlags.std.cs",
+          "role": "diagnostic-complete compiler support",
+          "sha256": "99c58367e5b90fa5904484f6e2fbf10745a54f6cd7d07275810c27028ad0eb2b"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/IVirtualMachine.cs",
+          "role": "diagnostic-complete compiler support",
+          "sha256": "330da5f31bd7aca4f4212a42c912c33cf0ac5b3def0689b7f9985cd6510aa56d"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+          "role": "diagnostic-complete compiler support selecting the unchanged VirtualMachineStatics declaration",
+          "sha256": "45edba3691e09185e749485785990662ddea1af849bc6e4564f92b68a5137a6b"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Core/Crypto/Signature.cs",
+          "role": "diagnostic-complete compiler support",
+          "sha256": "8f59fdf1410f37f1cd589283dc800941ea37049fdbe39fe8469d267f091fdb82"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/IGasPolicy.cs",
+          "role": "diagnostic-complete compiler support",
+          "sha256": "b4d26db87723243514f2f6b8a5e48d1176139105c3b012ad0f3956e59afc98a8"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/AccountAccessPricingKernel.cs",
+          "role": "diagnostic-complete compiler support",
+          "sha256": "1988faefb55bb65bf4e915e77e99966f43b88675dec47689e04378bde4f31c92"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/PrecompileGasPricingKernel.cs",
+          "role": "diagnostic-complete compiler support",
+          "sha256": "dd23b8bd461a13c75ec203b1dbe853a885f61640edf4d47287c1dadd0d9ff576"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasChargeKernel.cs",
+          "role": "diagnostic-complete compiler support",
+          "sha256": "ec3276958cbc6b0255fadedf15dbe49691195aa95570b332937f8d1703b103fd"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasTransitionKernel.cs",
+          "role": "diagnostic-complete compiler support",
+          "sha256": "4a31dc76fb8284a8ea5994de9a63810abe0fd7efbe6add4aa8b3d6cb564a75cc"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasTransitionAdapterKernel.cs",
+          "role": "diagnostic-complete compiler support",
+          "sha256": "ca16429e4cb1b728619b7fa0113b2302ca75600b0a32d9345e38721c7c2d7368"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/GasPolicy/Eip8037BlockGasInclusionCheck.cs",
+          "role": "diagnostic-complete compiler support",
+          "sha256": "79e4c84096c72bd0241553f114f08973279eb841cfa469f944566fb9490afe4e"
+        },
+        {
+          "path": "src/Nethermind/Nethermind.Evm/IntrinsicGasCalculator.cs",
+          "role": "diagnostic-complete compiler support",
+          "sha256": "886772dce848f566ba97a112a9b12b9f535a2d951dace63647136ababd822909"
+        }
+      ],
+      "sourcePinsSchemaVersion": 3,
+      "manifestSchemaVersion": 9,
+      "receiptExtractorVersion": "1.9.2",
+      "artifacts": [
+        {
+          "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/SOURCE_PINS.json",
+          "sha256": "0223aadf196cc74051d632260693eeb607fde202fa612caee59d3ddaca886c6f"
+        },
+        {
+          "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.source-manifest.json",
+          "sha256": "3d1ec03bce750645bc29d8fb51ac94321508364735b9a65a987043100f74bd8e"
+        },
+        {
+          "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json",
+          "sha256": "1f73a3800a957dd02d9d7b06b3b955c81bb92fd9eb8d2831920905394bfc1d5c"
+        },
+        {
+          "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.ir.json",
+          "sha256": "0bf061d43d54e3eb9bdc7ccff4d0541d6dee189ac1ccea7f139095d3e1b7945a"
+        },
+        {
+          "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.lean",
+          "sha256": "028d11a14e031aaedce27c71b26e2c69cf16e759ff3ac870373ead10f6971180"
+        },
+        {
+          "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Specification/ReceiptTerminalFold.lean",
+          "sha256": "d48c07020ea58c5bdc97f9b51e8b82bf70bfa670410d77675288fba75b317e86"
+        },
+        {
+          "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Refinement/ReceiptTerminalFold.lean",
+          "sha256": "bd4a3556a98ec40875960ff2180523d16221b05cd6cf9a0b6ce1fc46a8cb3e93"
+        },
+        {
+          "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/ReceiptTerminalFoldProfile.cs",
+          "sha256": "8551ebadad7e9ca9e3f92bf76f911a6d4319ee53a946d6430cba06657f3f6494"
+        },
+        {
+          "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/ReceiptTerminalFoldControlFlow.cs",
+          "sha256": "327a88541a2a75ec876c7a837cf8f10e762996c284bf94ce9bae84786a301396"
+        },
+        {
+          "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/ReceiptTerminalFoldEffects.cs",
+          "sha256": "a5596f7159807337d70ea0bd651a91d9f0b17f6ec7e1500b339786de354b4ec8"
+        },
+        {
+          "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/ReceiptTerminalFoldArtifacts.cs",
+          "sha256": "df19e33197070a421a0ac359934a6a02509f448b30b4dc574709ddae49d6fcdc"
+        },
+        {
+          "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Program.cs",
+          "sha256": "5500be3c342acda8047e675911d47a503762668f23ed6a0f3560d5062b31dd9a"
+        },
+        {
+          "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Models.cs",
+          "sha256": "dbdd88e08dd1db1ea09dea45bd2aaab140f1d5a70afea5814e453a3d0bcadbbc"
+        },
+        {
+          "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/ReceiptTerminalFoldLeanEmitter.cs",
+          "sha256": "55c91ed1a5054ef498a65088bcbbb3ce979e0ecbf09726ec8c683e15670de8a8"
+        },
+        {
+          "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/ReceiptTerminalFoldExtractor.csproj",
+          "sha256": "7690888011c2d34e80bfa3475dd29b51c8d480cd2abd0e130b1c2cd4c05b1575"
+        },
+        {
+          "path": "tools/Evm/Lean/Extractor/Generated/BlockReceiptGasAccountingKernel.ir.json",
+          "sha256": "5278c354453a3adab99df5a68b4475d9feab798eba1e4df42ee80bf34a259c41"
+        },
+        {
+          "path": "tools/Evm/Lean/Extractor/Generated/BlockReceiptGasAccountingKernel.source-manifest.json",
+          "sha256": "1bc07122e230b88e69f5444f526d6c3654f4788c4479ea114185982471bdc2aa"
+        },
+        {
+          "path": "tools/Evm/Lean/Eip803x/BlockReceiptGas.lean",
+          "sha256": "51f1df6a272adf776aac2cea085e6d063e25997310eb77c29e99fe5970b62a6e"
+        },
+        {
+          "path": "tools/Evm/Lean/Eip803x/Generated/BlockReceiptGasAccountingKernel.lean",
+          "sha256": "5d7851084945d5263dd87bcda4ae9e60ce7b779473a7c37617a96cf0e91026f2"
+        },
+        {
+          "path": "tools/Evm/Lean/Eip803x/Generated/TransactionGasInitializationKernel.lean",
+          "sha256": "83ce996d6dcc93a588114e73737a25a14cb21689e9e8900e6dc68a07fb170b6f"
+        },
+        {
+          "path": "tools/Evm/Lean/Eip803x/Refinement/BlockReceiptGasAccounting.lean",
+          "sha256": "6d8a1c1de3f99c43f24576a6358e083fcce43cfe23037bd54cfececfbda5dfe5"
+        },
+        {
+          "path": "tools/Evm/Lean/Eip803x/Refinement/TransactionGasInitialization.lean",
+          "sha256": "8986504ad786cc621dcb0c74400980366847c43d832830973f52a5d38c290578"
+        },
+        {
+          "path": "tools/Evm/Lean/Eip803x/TransactionGas.lean",
+          "sha256": "2e87721125c6430eab9c76dc8f32a11f4898db0dec68b57a48043c18cbdeefcd"
+        }
+      ]
+    }
+  },
+  "sourceRoute": {
+    "executorPath": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+    "executorOwner": "BlockProcessor.BlockValidationTransactionsExecutor",
+    "executorMember": "ProcessTransactions",
+    "executorParameterCount": 4,
+    "executorSignature": "M:Nethermind.Consensus.Processing.BlockProcessor.BlockValidationTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)",
+    "executorIsNonVirtual": true,
+    "balManagerPath": "src/Nethermind/Nethermind.Consensus/Processing/BlockAccessListManager.cs",
+    "balEnabledMember": "BlockAccessListManager.Enabled",
+    "parallelDecoratorPath": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.ParallelBlockValidationTransactionsExecutor.cs",
+    "baseRegistration": "IBlockProcessor.IBlockTransactionsExecutor -\u003E BlockProcessor.BlockValidationTransactionsExecutor",
+    "decoratorRegistration": "IBlockProcessor.IBlockTransactionsExecutor -\u003E BlockProcessor.ParallelBlockValidationTransactionsExecutor"
+  },
+  "openObligations": [
+    "An adapter must establish that every supplied terminal observation is produced by the ordinary non-system source route.",
+    "An adapter must establish receipt/gas-state equality between one observation\u0027s terminal state and the next transaction\u0027s start state.",
+    "An adapter must relate terminal State.headerGasUsed to production block.Header.GasUsed for the guarded gas-limit comparison.",
+    "The source does not prove world-state Commit(spec, commitRoots:false) durability or rollback after InvalidBlockException.",
+    "The invalid-prefix state is a logical prefix projection; production rollback/disposal after InvalidTransactionException is not proved.",
+    "OpenSourceCompositionObligation is explicitly unproved: BAL disabled, ordinary exact-base execution, a fresh sequential tracer, and production observations must be supplied by a separately justified source semantics.",
+    "Source anchors close the BAL Enabled derivation, DI base/decorator registrations, and non-virtual executor declaration; runtime DI activation and virtual/CLR dispatch remain uninterpreted.",
+    "The tracer lifecycle is projected: StartNewBlockTrace seeds currentIndex 0, clears receipts and gas histories, resets cumulative gas, each StartNewTxTrace/EndTxTrace pair emits receipt index i and advances the next currentIndex; the tracer source is not re-executed here.",
+    "No opaque caller-filled proposition or result equality is an exported refinement premise; the conditional model theorem consumes ReceiptTerminalChain only. Production callbacks, executor normal returns and commit behavior remain in the unproved source-composition obligation.",
+    "OnlyOkTerminal and the successful-only input predicate admit only ordinary .ok settled entries; a truthy EvmException or other normal-returning non-.ok result is outside that relation.",
+    "Auxiliary lifecycle anchors must be owned by declared methods on reachable CFG blocks; Start/Execute/End and delegate/index relations require normal-path dominance/postdominance, direct receipt appends, and a BAL-disabled true-arm return. ProcessBlock additionally requires StartNewBlockTrace -\u003E pre-commit -\u003E fold -\u003E TransactionsExecuted -\u003E post-commit on the normal CFG path, and guarded direct actions must be sole true-arm statements.",
+    "The invalid-result source path may run EndTxTrace before throwing; the model treats invalid entries as logical input rejection and does not claim that production false-result poststate.",
+    "The source identities and CFG/IOperation evidence do not establish C# execution, virtual dispatch, DI, or native arithmetic semantics."
+  ]
+}

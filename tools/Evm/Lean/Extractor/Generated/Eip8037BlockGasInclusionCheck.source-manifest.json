@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 3,
+  "extractorVersion": "1.2.0",
+  "compilerVersion": "5.6.0.0",
+  "languageVersion": "14.0",
+  "root": "Nethermind.Evm.GasPolicy.Eip8037BlockGasInclusionCheck",
+  "methodSignature": "Nethermind.Evm.GasPolicy.Eip8037BlockGasInclusionCheck.Outcome Nethermind.Evm.GasPolicy.Eip8037BlockGasInclusionCheck.Validate(ulong blockGasLimit, ulong cumulativeBlockExecution, ulong cumulativeBlockState, ulong txGas)",
+  "rootSignatures": [
+    "Nethermind.Evm.GasPolicy.Eip8037BlockGasInclusionCheck.Outcome Nethermind.Evm.GasPolicy.Eip8037BlockGasInclusionCheck.Validate(ulong blockGasLimit, ulong cumulativeBlockExecution, ulong cumulativeBlockState, ulong txGas)",
+    "ulong Nethermind.Evm.GasPolicy.Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(ulong preRefundGas, ulong blockStateGas, ulong calldataFloor)"
+  ],
+  "source": {
+    "path": "src/Nethermind/Nethermind.Evm/GasPolicy/Eip8037BlockGasInclusionCheck.cs",
+    "sha256": "79e4c84096c72bd0241553f114f08973279eb841cfa469f944566fb9490afe4e"
+  },
+  "artifact": {
+    "path": "Eip8037BlockGasInclusionCheck.ir.json",
+    "sha256": "42e002a586312b8bd704d293caf576c8bcdd299df551b1b0488793c02939e0c9"
+  },
+  "leanArtifact": {
+    "path": "tools/Evm/Lean/Eip803x/Generated/Eip8037BlockGasInclusionCheck.lean",
+    "sha256": "b94d98f42e48476944c11e3b6f79cd2d9da9b0db2f6768dbb1365bb6c125e95f"
+  },
+  "extractedMethods": [
+    "Nethermind.Evm.GasPolicy.Eip8037BlockGasInclusionCheck.Outcome Nethermind.Evm.GasPolicy.Eip8037BlockGasInclusionCheck.Validate(ulong blockGasLimit, ulong cumulativeBlockExecution, ulong cumulativeBlockState, ulong txGas)",
+    "ulong Nethermind.Evm.GasPolicy.Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(ulong preRefundGas, ulong blockStateGas, ulong calldataFloor)"
+  ],
+  "supportingSources": [
+    {
+      "path": "src/Nethermind/Nethermind.Core/Eip7825Constants.cs",
+      "sha256": "5f79dcccbab06167bb591814318957e4ffcf6c8d4c760a069f10cae0a7bc48da"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Extensions/UInt64Extensions.cs",
+      "sha256": "0e2d5004e25261c0bdf2e8a1959da5207425a9b4b2f27f617f5b8b354be1aa24"
+    }
+  ]
+}

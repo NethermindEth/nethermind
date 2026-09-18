@@ -1,0 +1,164 @@
+-- SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+-- SPDX-License-Identifier: LGPL-3.0-only
+
+-- Generated source-attached transition. Object identifiers describe identity, not mutable contents.
+-- Escapes intentionally have no final-state assertion: external calls may partially mutate state.
+namespace SequentialBlockPostTransactionFinalizationExtractor.Generated.ProcessOneValidatedPublication
+
+def acceptanceState : String := "source-admitted"
+def semanticIrSha256 : String := "{{SEMANTIC_IR_SHA256}}"
+def sourceClosureSha256 : String := "{{SOURCE_CLOSURE_SHA256}}"
+
+structure SourceSite where
+  id : String
+  path : String
+  owner : String
+  target : String
+  position : Nat
+  cfgBlock : Int
+  deriving DecidableEq, Repr
+
+def sourceSites : List SourceSite :=
+  [{{SOURCE_SITES}}]
+
+inductive EscapeSite where
+| unsupportedBoundary | validator | rejectionCleanup | postValidation | receiptStorage
+  deriving DecidableEq, Repr
+
+inductive Outcome where
+| completed | rejected | escaped (site : EscapeSite)
+  deriving DecidableEq, Repr
+
+structure ExecutionArtifacts where
+  accountChanges : Option Nat
+  executionRequests : Option Nat
+  generatedBlockAccessList : Option Nat
+  encodedBlockAccessList : Option Nat
+  deriving DecidableEq, Repr
+
+structure ProcessBlockResult where
+  normalReturn : Bool
+  processedBlock : Nat
+  receipts : Nat
+  deriving DecidableEq, Repr
+
+structure ValidatorObservation where
+  ran : Bool
+  normalReturn : Bool
+  accepted : Bool
+  proposedGeneratedBlockAccessListAfter : Option Nat
+  deriving DecidableEq, Repr
+
+structure PublicationInput where
+  suggestedBlock : Nat
+  processBlock : ProcessBlockResult
+  suggestedArtifacts : ExecutionArtifacts
+  processedArtifacts : ExecutionArtifacts
+  exactBase : Bool
+  standardSequential : Bool
+  balEnabled : Bool
+  parallelExecutionEnabled : Bool
+  noValidation : Bool
+  storeReceipts : Bool
+  validator : ValidatorObservation
+  rejectionCleanupNormalReturn : Bool
+  postValidationNormalReturn : Bool
+  insertDeferredNormalReturn : Bool
+  noAdditionalBoundaryEffects : Bool
+  deriving DecidableEq, Repr
+
+structure PublicationState where
+  suggestedBlock : Nat
+  suggestedArtifacts : ExecutionArtifacts
+  processedBlock : Nat
+  receipts : Nat
+  accountChangesDisposed : Bool
+  deriving DecidableEq, Repr
+
+inductive Event where
+| processBlockReturned
+| validationSkipped
+| validatorObserved (proposedGeneratedBlockAccessList : Option Nat)
+| validatorAccepted | validatorRejected
+| accountChangesDisposed | invalidBlockException
+| accountChangesPublished | executionRequestsPublished | generatedBlockAccessListPublished
+| encodedBlockAccessListPublished (usedFallback : Bool)
+| insertDeferred | returnedProcessedBlockAndReceipts
+| escaped (site : EscapeSite)
+  deriving DecidableEq, Repr
+
+structure PublicationResult where
+  outcome : Outcome
+  state : Option PublicationState
+  returnedTuple : Option (Nat × Nat)
+  events : List Event
+  deriving DecidableEq, Repr
+
+def boundaryValid (input : PublicationInput) : Bool :=
+  input.exactBase && input.standardSequential && !input.balEnabled &&
+  !input.parallelExecutionEnabled && input.processBlock.normalReturn &&
+  input.noAdditionalBoundaryEffects
+
+def validatorContractValid (input : PublicationInput) : Bool :=
+  if input.noValidation then
+    !input.validator.ran &&
+    input.validator.proposedGeneratedBlockAccessListAfter == input.suggestedArtifacts.generatedBlockAccessList
+  else input.validator.ran
+
+def initialState (input : PublicationInput) : PublicationState :=
+  { suggestedBlock := input.suggestedBlock
+    suggestedArtifacts := input.suggestedArtifacts
+    processedBlock := input.processBlock.processedBlock
+    receipts := input.processBlock.receipts
+    accountChangesDisposed := false }
+
+def copyPostValidation (input : PublicationInput) : ExecutionArtifacts :=
+  { accountChanges := input.processedArtifacts.accountChanges
+    executionRequests := input.processedArtifacts.executionRequests
+    generatedBlockAccessList := input.processedArtifacts.generatedBlockAccessList
+    encodedBlockAccessList := input.processedArtifacts.encodedBlockAccessList.orElse
+      (fun _ => input.suggestedArtifacts.encodedBlockAccessList) }
+
+def validationEvents (input : PublicationInput) : List Event :=
+  if input.noValidation then [.validationSkipped]
+  else [.validatorObserved input.validator.proposedGeneratedBlockAccessListAfter,
+    (if input.validator.accepted then .validatorAccepted else .validatorRejected)]
+
+def copyEvents (input : PublicationInput) : List Event :=
+  [.accountChangesPublished, .executionRequestsPublished, .generatedBlockAccessListPublished,
+    .encodedBlockAccessListPublished input.processedArtifacts.encodedBlockAccessList.isNone]
+
+def escape (site : EscapeSite) (eventPrefix : List Event) : PublicationResult :=
+  { outcome := .escaped site, state := none, returnedTuple := none,
+    events := eventPrefix ++ [.escaped site] }
+
+def run (input : PublicationInput) : PublicationResult :=
+  if !boundaryValid input then escape .unsupportedBoundary []
+  else if !validatorContractValid input then escape .unsupportedBoundary [.processBlockReturned]
+  else if !input.noValidation && !input.validator.normalReturn then
+    escape .validator [.processBlockReturned]
+  else
+    let validated := [.processBlockReturned] ++ validationEvents input
+    if !input.noValidation && !input.validator.accepted then
+      if !input.rejectionCleanupNormalReturn then escape .rejectionCleanup validated
+      else
+        { outcome := .rejected
+          state := some { initialState input with
+            suggestedArtifacts := { input.suggestedArtifacts with
+              generatedBlockAccessList := input.validator.proposedGeneratedBlockAccessListAfter }
+            accountChangesDisposed := true }
+          returnedTuple := none
+          events := validated ++ [.accountChangesDisposed, .invalidBlockException] }
+    else if !input.postValidationNormalReturn then escape .postValidation validated
+    else
+      let published := validated ++ copyEvents input
+      if input.storeReceipts && !input.insertDeferredNormalReturn then
+        escape .receiptStorage (published ++ [.insertDeferred])
+      else
+        { outcome := .completed
+          state := some { initialState input with suggestedArtifacts := copyPostValidation input }
+          returnedTuple := some (input.processBlock.processedBlock, input.processBlock.receipts)
+          events := published ++ (if input.storeReceipts then [.insertDeferred] else []) ++
+            [.returnedProcessedBlockAndReceipts] }
+
+end SequentialBlockPostTransactionFinalizationExtractor.Generated.ProcessOneValidatedPublication

@@ -1,0 +1,277 @@
+{
+  "schemaVersion": 3,
+  "kernel": "Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingKernel",
+  "roots": [
+    {
+      "name": "Accumulate",
+      "signature": "Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingResult Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingKernel.Accumulate(ulong previousExecutionGas, ulong previousStateGas, ulong previousReceiptGas, ulong transactionExecutionGas, ulong transactionStateGas, ulong transactionPaidGas)"
+    },
+    {
+      "name": "FromTotals",
+      "signature": "Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingResult Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingKernel.FromTotals(ulong cumulativeExecutionGas, ulong cumulativeStateGas, ulong cumulativeReceiptGas)"
+    }
+  ],
+  "program": {
+    "resultFields": [
+      {
+        "name": "CumulativeExecutionGas",
+        "type": "Nat",
+        "constructorParameterOrdinal": 0
+      },
+      {
+        "name": "CumulativeStateGas",
+        "type": "Nat",
+        "constructorParameterOrdinal": 1
+      },
+      {
+        "name": "CumulativeReceiptGas",
+        "type": "Nat",
+        "constructorParameterOrdinal": 2
+      },
+      {
+        "name": "HeaderGasUsed",
+        "type": "Nat",
+        "constructorParameterOrdinal": 3
+      }
+    ],
+    "functions": [
+      {
+        "name": "accumulate",
+        "signature": "Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingResult Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingKernel.Accumulate(ulong previousExecutionGas, ulong previousStateGas, ulong previousReceiptGas, ulong transactionExecutionGas, ulong transactionStateGas, ulong transactionPaidGas)",
+        "returnType": "Result",
+        "parameters": [
+          {
+            "ordinal": 0,
+            "name": "previousExecutionGas",
+            "type": "Nat"
+          },
+          {
+            "ordinal": 1,
+            "name": "previousStateGas",
+            "type": "Nat"
+          },
+          {
+            "ordinal": 2,
+            "name": "previousReceiptGas",
+            "type": "Nat"
+          },
+          {
+            "ordinal": 3,
+            "name": "transactionExecutionGas",
+            "type": "Nat"
+          },
+          {
+            "ordinal": 4,
+            "name": "transactionStateGas",
+            "type": "Nat"
+          },
+          {
+            "ordinal": 5,
+            "name": "transactionPaidGas",
+            "type": "Nat"
+          }
+        ],
+        "body": {
+          "kind": "let",
+          "type": "Result",
+          "value": "cumulativeExecutionGas",
+          "children": [
+            {
+              "kind": "addUInt64",
+              "type": "Nat",
+              "children": [
+                {
+                  "kind": "parameter",
+                  "type": "Nat",
+                  "value": "previousExecutionGas",
+                  "children": []
+                },
+                {
+                  "kind": "parameter",
+                  "type": "Nat",
+                  "value": "transactionExecutionGas",
+                  "children": []
+                }
+              ]
+            },
+            {
+              "kind": "let",
+              "type": "Result",
+              "value": "cumulativeStateGas",
+              "children": [
+                {
+                  "kind": "addUInt64",
+                  "type": "Nat",
+                  "children": [
+                    {
+                      "kind": "parameter",
+                      "type": "Nat",
+                      "value": "previousStateGas",
+                      "children": []
+                    },
+                    {
+                      "kind": "parameter",
+                      "type": "Nat",
+                      "value": "transactionStateGas",
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "kind": "let",
+                  "type": "Result",
+                  "value": "cumulativeReceiptGas",
+                  "children": [
+                    {
+                      "kind": "addUInt64",
+                      "type": "Nat",
+                      "children": [
+                        {
+                          "kind": "parameter",
+                          "type": "Nat",
+                          "value": "previousReceiptGas",
+                          "children": []
+                        },
+                        {
+                          "kind": "parameter",
+                          "type": "Nat",
+                          "value": "transactionPaidGas",
+                          "children": []
+                        }
+                      ]
+                    },
+                    {
+                      "kind": "fromTotals",
+                      "type": "Result",
+                      "children": [
+                        {
+                          "kind": "local",
+                          "type": "Nat",
+                          "value": "cumulativeExecutionGas",
+                          "children": []
+                        },
+                        {
+                          "kind": "local",
+                          "type": "Nat",
+                          "value": "cumulativeStateGas",
+                          "children": []
+                        },
+                        {
+                          "kind": "local",
+                          "type": "Nat",
+                          "value": "cumulativeReceiptGas",
+                          "children": []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "name": "fromTotals",
+        "signature": "Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingResult Nethermind.Blockchain.Tracing.BlockReceiptGasAccountingKernel.FromTotals(ulong cumulativeExecutionGas, ulong cumulativeStateGas, ulong cumulativeReceiptGas)",
+        "returnType": "Result",
+        "parameters": [
+          {
+            "ordinal": 0,
+            "name": "cumulativeExecutionGas",
+            "type": "Nat"
+          },
+          {
+            "ordinal": 1,
+            "name": "cumulativeStateGas",
+            "type": "Nat"
+          },
+          {
+            "ordinal": 2,
+            "name": "cumulativeReceiptGas",
+            "type": "Nat"
+          }
+        ],
+        "body": {
+          "kind": "construct",
+          "type": "Result",
+          "children": [
+            {
+              "kind": "parameter",
+              "type": "Nat",
+              "value": "cumulativeExecutionGas",
+              "children": []
+            },
+            {
+              "kind": "parameter",
+              "type": "Nat",
+              "value": "cumulativeStateGas",
+              "children": []
+            },
+            {
+              "kind": "parameter",
+              "type": "Nat",
+              "value": "cumulativeReceiptGas",
+              "children": []
+            },
+            {
+              "kind": "combineBlockGas",
+              "type": "Nat",
+              "children": [
+                {
+                  "kind": "parameter",
+                  "type": "Nat",
+                  "value": "cumulativeExecutionGas",
+                  "children": []
+                },
+                {
+                  "kind": "parameter",
+                  "type": "Nat",
+                  "value": "cumulativeStateGas",
+                  "children": []
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    "productionDelegations": [
+      {
+        "methodName": "UpdateCumulativeGasTracking",
+        "kernelMethod": "Accumulate",
+        "arguments": [
+          "prevExecution",
+          "prevState",
+          "_cumulativeReceiptGas",
+          "gasConsumed.EffectiveBlockGas",
+          "gasConsumed.BlockStateGas",
+          "gasConsumed.SpentGas"
+        ],
+        "resultFields": [
+          "CumulativeExecutionGas",
+          "CumulativeStateGas",
+          "CumulativeReceiptGas",
+          "HeaderGasUsed"
+        ],
+        "headerUpdateGuard": "!parallel"
+      },
+      {
+        "methodName": "Restore",
+        "kernelMethod": "FromTotals",
+        "arguments": [
+          "cumulativeExecution",
+          "cumulativeState",
+          "cumulativeReceipt"
+        ],
+        "resultFields": [
+          "CumulativeExecutionGas",
+          "CumulativeStateGas",
+          "CumulativeReceiptGas",
+          "HeaderGasUsed"
+        ],
+        "headerUpdateGuard": "always"
+      }
+    ]
+  }
+}

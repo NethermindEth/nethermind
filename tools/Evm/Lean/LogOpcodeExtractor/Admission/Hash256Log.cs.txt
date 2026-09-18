@@ -1,0 +1,24 @@
+using System;
+using System.Runtime.InteropServices;
+using System.Text.Json.Serialization;
+
+namespace Nethermind.Core.Crypto
+{
+    public sealed class Hash256
+    {
+        public const int Size = 32;
+        private readonly ValueHash256 _hash256;
+        [JsonIgnore]
+        public Span<byte> Bytes => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref Unsafe.AsRef(in _hash256), 1));
+
+        public Hash256(ReadOnlySpan<byte> bytes)
+        {
+            if (bytes.Length != Size)
+            {
+                throw new ArgumentException($"{nameof(Hash256)} must be {Size} bytes and was {bytes.Length} bytes", nameof(bytes));
+            }
+
+            _hash256 = new ValueHash256(bytes);
+        }
+    }
+}

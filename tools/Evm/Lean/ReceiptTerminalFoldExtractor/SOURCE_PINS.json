@@ -1,0 +1,295 @@
+{
+  "schemaVersion": 3,
+  "root": "Nethermind.Blockchain.Tracing.BlockReceiptsTracer (exact base; no BuildReceipt override)",
+  "sources": [
+    {
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs",
+      "role": "exact-base receipt tracer terminal, snapshot owner, and IsTracingReceipt gate",
+      "sha256": "d4504f54b50dd43e2ab5bc7172ce2cf9e48453fcede990e5e667e743146262ff"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptGasAccountingKernel.cs",
+      "role": "delegated fixed-width gas kernel",
+      "sha256": "0882c798e6ffb2243735a9ec0cec5d442b20d51277feeba95e5b68ecfaf89e32"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/GasConsumed.cs",
+      "role": "gas input fields and effective block gas",
+      "sha256": "1dc4e78d5a17056dcb00d496136a32a899245f3a7b3e5a9eef74c4760ef68686"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/TransactionReceipt.cs",
+      "role": "receipt output fields including concrete zero-default diagnostics",
+      "sha256": "55b62b4e0708e590a001916e9a73d07ac70e225b16f711574e811c98e540cc63"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Transaction.cs",
+      "role": "transaction receipt fields",
+      "sha256": "3fdf94805739c6ccdfa8b4617c5d4cfa6bee9e9565f16d667b22106c434d6596"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/TransactionExtensions.cs",
+      "role": "effective price oracle",
+      "sha256": "d3df04cb465668a3dcc842f33e5bc7a16d2420cdc1dcd03edf1c3275c2b24852"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Block.cs",
+      "role": "block identity projections",
+      "sha256": "3cdd12ca52b00b6eefea372be868649653ac57043194aa081d41064d0ed749aa"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/BlockHeader.cs",
+      "role": "header gas and identity fields",
+      "sha256": "f354ddd2d45afc8774739ac46a10535b915871ce4ad11d996d0ab972cf9e7349"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+      "role": "normally returning terminal caller, BuildUp/EIP-8037 account-reap ordering, and separate TransactionResult classification",
+      "sha256": "0374c6f35a9a23361f37b41162ac281ca83b09846ab4295d5a592db6315c99cc"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/StatusCode.cs",
+      "role": "live receipt status constants",
+      "sha256": "e896f55406c9fc1ce99199d80bea69b87fa8891c23afef59712b87cadb971190"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs",
+      "role": "live block-gas combine adapter",
+      "sha256": "3c31ba40c24a78bf11243b38859168350f02934806124e913da0560bc1a4350f"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/TransactionGasInitializationKernel.cs",
+      "role": "live block-gas combine dependency closure",
+      "sha256": "65ab0742596ea7ebf49d2c79601eae00152d8d039ac8e417076bf63123be1e82"
+    }
+  ],
+  "bindingSources": [
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Tracing/ITxTracer.cs",
+      "role": "typed nested/current tracer forwarding interface",
+      "sha256": "9f2550f8c3407f494452386699040feab8aa597437b1cd4180d038d9fd0a9169"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Tracing/IBlockTracer.cs",
+      "role": "typed block tracer receiver interface",
+      "sha256": "6e6f14e4b8d1ba044e4ef5523ca2bdeb73284bf6e3863909d35daa5d43a156ac"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Tracing/ITxTracerWrapper.cs",
+      "role": "typed tracer wrapper closure",
+      "sha256": "b892bed034c5c14dd50837b69f1fe7dd47bc325421545fb1d8ab859e95ece36d"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Tracing/State/IWorldStateTracer.cs",
+      "role": "typed ITxTracer base closure",
+      "sha256": "d4e95b993245b751fc97f71f3d47bc93bc477d79662ed17755e426d49e76335f"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/IJournal.cs",
+      "role": "typed block tracer journal closure",
+      "sha256": "065a1fc97bcae6cb3237284af300a907c99bde40960fe84ae01ffb0c86839f91"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionSubstate.cs",
+      "role": "typed finalization substate members",
+      "sha256": "1312a5f1a9990976670914fcc0a6ad2c77dd92d768d92fd91b28f27fefe66a00"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/EvmException.cs",
+      "role": "typed EvmExceptionType.FastToString fallback",
+      "sha256": "8c503bfbe0c60c41597e64c96b5d823dc98b934b4511730217eceaaf13837450"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/ReadOnlyMemoryExtensions.cs",
+      "role": "typed substate output conversion",
+      "sha256": "d5dec0389767197fffde80a3aa86e139b38722a5d9343519ef1235e1fdac1bf9"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ExecutionOptions.cs",
+      "role": "typed finalization option flags",
+      "sha256": "014a2598e1def284b7b98dc97185b6dbbc45ca04be4ab159e330a0675ac24f10"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/State/IWorldState.cs",
+      "role": "typed finalization world-state receiver",
+      "sha256": "0680ebc7168472645d93df58d2b3240508c177361815c85cceb09cf960f189c7"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/State/IReadOnlyStateProvider.cs",
+      "role": "typed world-state state-root property closure",
+      "sha256": "2bab0038c33735b330e25f6300384450835c092a5ff137935a1fd6c5ab58be68"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Specs/IReleaseSpec.cs",
+      "role": "typed release-spec feature flags",
+      "sha256": "3f44b3da5614c94d59eae2e4a6266a9e698614f75a7b5a9894a4828b0021b18a"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Specs/IReceiptSpec.cs",
+      "role": "typed receipt-spec EIP-658 flag closure",
+      "sha256": "1b1c18dcf5e8c57fd9d19468d59412a822ea3313a800fedcd46798b4af9c4d87"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Specs/IEip1559Spec.cs",
+      "role": "typed release-spec inheritance closure",
+      "sha256": "534bdd465854855f6479e3b1d993b34e5e04156be78e733b2148a7ad18f31f76"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Tracing/State/NullStateTracer.cs",
+      "role": "typed null state tracer receiver",
+      "sha256": "dde2127d6fd6bc4f8b9a2009517be1e3c1eeae8ed63351c14551ccfb01590eab"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Tracing/State/IStateTracer.cs",
+      "role": "typed IsTracingState property closure",
+      "sha256": "4b75958ac4d921126364d9ddbbf3c1fce9490ec046a3bb43f2b5a673c53dddc2"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Tracing/State/IStorageTracer.cs",
+      "role": "typed world-state tracer inheritance closure",
+      "sha256": "d0ba6ca8c1a2c99fa6b3c5ff6d8ff6d6db84340d090a5d50816ba7f1b2077be0"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Collections/JournalCollection.cs",
+      "role": "typed substate log-count collection closure",
+      "sha256": "5c1395b025da5a03749a5b64da804e53c6ff0a7aec4c02d30fd4b1c0e059c720"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Transaction.std.cs",
+      "role": "standard Transaction partial compiler support",
+      "sha256": "b08ebdcf7fb167cf028488d393037278e9dc33b8f2c927f96440ea28572530d9"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/BlockBody.cs",
+      "role": "Block compilation support preserving the internal Transactions setter",
+      "sha256": "24da28dc4ef55da25c5ac7d14fab929e65b6bf072eb0abcec9d4ae2d33374f73"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionProcessor.cs",
+      "role": "diagnostic-complete compiler support",
+      "sha256": "10c7370e5f6d5ca25e4cd0801967083f97f432e211314dc40126a18fbea48a95"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionRoutingKernel.cs",
+      "role": "diagnostic-complete compiler support",
+      "sha256": "b884bb49ad7c109b907f4dfcac56a5eb13283d964310d45eb9ca85177ff5e5c1"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ITransactionProcessor.cs",
+      "role": "diagnostic-complete compiler support",
+      "sha256": "3cae1430ba38d54f9867b714efdc823f9db126b1bbf0e45eae59439701459e95"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionSettlementKernel.cs",
+      "role": "diagnostic-complete compiler support",
+      "sha256": "37add297aaaf07a4260b45c05c5f866a48f92eef2ac6fb16ef2bfd96103f8c44"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Metrics.cs",
+      "role": "diagnostic-complete compiler support",
+      "sha256": "f056b9138021c4875f5a16893b243aac12f535c71ae88281987094fb6bcc2b90"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Metrics.std.cs",
+      "role": "diagnostic-complete compiler support",
+      "sha256": "e36b3f0f33db29043d820db99cf0577a3c7010bf1b93193ebeb92e954a54300e"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/DispatchFlags.std.cs",
+      "role": "diagnostic-complete compiler support",
+      "sha256": "99c58367e5b90fa5904484f6e2fbf10745a54f6cd7d07275810c27028ad0eb2b"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/IVirtualMachine.cs",
+      "role": "diagnostic-complete compiler support",
+      "sha256": "330da5f31bd7aca4f4212a42c912c33cf0ac5b3def0689b7f9985cd6510aa56d"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "role": "diagnostic-complete compiler support selecting the unchanged VirtualMachineStatics declaration",
+      "sha256": "45edba3691e09185e749485785990662ddea1af849bc6e4564f92b68a5137a6b"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Crypto/Signature.cs",
+      "role": "diagnostic-complete compiler support",
+      "sha256": "8f59fdf1410f37f1cd589283dc800941ea37049fdbe39fe8469d267f091fdb82"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/IGasPolicy.cs",
+      "role": "diagnostic-complete compiler support",
+      "sha256": "b4d26db87723243514f2f6b8a5e48d1176139105c3b012ad0f3956e59afc98a8"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/AccountAccessPricingKernel.cs",
+      "role": "diagnostic-complete compiler support",
+      "sha256": "1988faefb55bb65bf4e915e77e99966f43b88675dec47689e04378bde4f31c92"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/PrecompileGasPricingKernel.cs",
+      "role": "diagnostic-complete compiler support",
+      "sha256": "dd23b8bd461a13c75ec203b1dbe853a885f61640edf4d47287c1dadd0d9ff576"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasChargeKernel.cs",
+      "role": "diagnostic-complete compiler support",
+      "sha256": "ec3276958cbc6b0255fadedf15dbe49691195aa95570b332937f8d1703b103fd"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasTransitionKernel.cs",
+      "role": "diagnostic-complete compiler support",
+      "sha256": "4a31dc76fb8284a8ea5994de9a63810abe0fd7efbe6add4aa8b3d6cb564a75cc"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasTransitionAdapterKernel.cs",
+      "role": "diagnostic-complete compiler support",
+      "sha256": "ca16429e4cb1b728619b7fa0113b2302ca75600b0a32d9345e38721c7c2d7368"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/Eip8037BlockGasInclusionCheck.cs",
+      "role": "diagnostic-complete compiler support",
+      "sha256": "79e4c84096c72bd0241553f114f08973279eb841cfa469f944566fb9490afe4e"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/IntrinsicGasCalculator.cs",
+      "role": "diagnostic-complete compiler support",
+      "sha256": "886772dce848f566ba97a112a9b12b9f535a2d951dace63647136ababd822909"
+    }
+  ],
+  "delegatedKernel": {
+    "generatedLean": "tools/Evm/Lean/Eip803x/Generated/BlockReceiptGasAccountingKernel.lean",
+    "generatedLeanSha256": "5d7851084945d5263dd87bcda4ae9e60ce7b779473a7c37617a96cf0e91026f2",
+    "refinement": "tools/Evm/Lean/Eip803x/Refinement/BlockReceiptGasAccounting.lean",
+    "refinementSha256": "6d8a1c1de3f99c43f24576a6358e083fcce43cfe23037bd54cfececfbda5dfe5",
+    "ir": "tools/Evm/Lean/Extractor/Generated/BlockReceiptGasAccountingKernel.ir.json",
+    "irSha256": "5278c354453a3adab99df5a68b4475d9feab798eba1e4df42ee80bf34a259c41",
+    "manifest": "tools/Evm/Lean/Extractor/Generated/BlockReceiptGasAccountingKernel.source-manifest.json",
+    "manifestSha256": "1bc07122e230b88e69f5444f526d6c3654f4788c4479ea114185982471bdc2aa",
+    "sourceSha256": "0882c798e6ffb2243735a9ec0cec5d442b20d51277feeba95e5b68ecfaf89e32",
+    "leanDependencies": [
+      {
+        "path": "tools/Evm/Lean/Eip803x/BlockReceiptGas.lean",
+        "sha256": "51f1df6a272adf776aac2cea085e6d063e25997310eb77c29e99fe5970b62a6e"
+      },
+      {
+        "path": "tools/Evm/Lean/Eip803x/Generated/BlockReceiptGasAccountingKernel.lean",
+        "sha256": "5d7851084945d5263dd87bcda4ae9e60ce7b779473a7c37617a96cf0e91026f2"
+      },
+      {
+        "path": "tools/Evm/Lean/Eip803x/Generated/TransactionGasInitializationKernel.lean",
+        "sha256": "83ce996d6dcc93a588114e73737a25a14cb21689e9e8900e6dc68a07fb170b6f"
+      },
+      {
+        "path": "tools/Evm/Lean/Eip803x/Refinement/BlockReceiptGasAccounting.lean",
+        "sha256": "6d8a1c1de3f99c43f24576a6358e083fcce43cfe23037bd54cfececfbda5dfe5"
+      },
+      {
+        "path": "tools/Evm/Lean/Eip803x/Refinement/TransactionGasInitialization.lean",
+        "sha256": "8986504ad786cc621dcb0c74400980366847c43d832830973f52a5d38c290578"
+      },
+      {
+        "path": "tools/Evm/Lean/Eip803x/TransactionGas.lean",
+        "sha256": "2e87721125c6430eab9c76dc8f32a11f4898db0dec68b57a48043c18cbdeefcd"
+      }
+    ]
+  }
+}

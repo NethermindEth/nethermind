@@ -1,0 +1,18 @@
+name = "SimpleTransferCompletionExtractor"
+version = "0.1.0"
+defaultTargets = [
+  "SimpleTransferCompletionExtractor.Generated.SimpleTransferCompletion",
+  "SimpleTransferCompletionExtractor.Reference.SimpleTransferCompletionReference",
+  "SimpleTransferCompletionExtractor.Refinement.SimpleTransferCompletionRefinement",
+  "SimpleTransferCompletionExtractor.Vectors.SimpleTransferCompletionVectors"
+]
+
+# This package owns its manifest and package file. The parent Lean root is deliberately not
+# modified; Eip803x is imported only for the exact settlement/routing identities recorded in IR.
+[[lean_lib]]
+name = "Eip803x"
+srcDir = ".."
+
+[[lean_lib]]
+name = "SimpleTransferCompletionExtractor"
+srcDir = ".."

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 3,
+  "extractorVersion": "1.2.0",
+  "compilerVersion": "5.6.0.0",
+  "languageVersion": "14.0",
+  "root": "Nethermind.Evm.GasPolicy.StateGasTransitionKernel",
+  "methodSignature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.AddStateGasRefundToReservoir(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long amount, bool trackSpillRefund)",
+  "rootSignatures": [
+    "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.AddStateGasRefundToReservoir(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long amount, bool trackSpillRefund)",
+    "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.DiscardStateGas(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long amount, long stateGasFloor)",
+    "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.Refund(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, ulong childValue, long childStateReservoir, long childStateGasUsed, long childStateGasSpill, long childStateGasSpillRefunded)",
+    "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RefundStateGas(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long amount, long stateGasFloor, bool trackSpillRefund)",
+    "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RemoveStateGasRefundFromReservoir(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long amount)",
+    "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RepayStateGasSpill(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded)",
+    "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RestoreChildStateGas(ulong parentValue, long parentStateReservoir, long parentStateGasUsed, long parentStateGasSpill, long parentStateGasSpillRefunded, long childStateReservoir, long childStateGasUsed, long childStateGasSpill, long childStateGasSpillRefunded)",
+    "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RestoreChildStateGasOnHalt(ulong parentValue, long parentStateReservoir, long parentStateGasUsed, long parentStateGasSpill, long parentStateGasSpillRefunded, long childStateReservoir, long childStateGasUsed, long childStateGasSpill, long childStateGasSpillRefunded)",
+    "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RevertRefundToHalt(ulong parentValue, long parentStateReservoir, long parentStateGasUsed, long parentStateGasSpill, long parentStateGasSpillRefunded, long childStateGasUsed, long childStateGasSpill, long childStateGasSpillRefunded)"
+  ],
+  "source": {
+    "path": "src/Nethermind/Nethermind.Evm/GasPolicy/StateGasTransitionKernel.cs",
+    "sha256": "4a31dc76fb8284a8ea5994de9a63810abe0fd7efbe6add4aa8b3d6cb564a75cc"
+  },
+  "artifact": {
+    "path": "StateGasTransitionKernel.ir.json",
+    "sha256": "d3a920f44b72d22500d8184f79843b38c02840bc86d671b33c6ad7b79cd03583"
+  },
+  "leanArtifact": {
+    "path": "tools/Evm/Lean/Eip803x/Generated/StateGasTransitionKernel.lean",
+    "sha256": "f284d83951b94cbfaf10ad8b5a58b0015b2c96f4ac86e97c9de8b3865dee1dce"
+  },
+  "extractedMethods": [
+    "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.AddStateGasRefundToReservoir(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long amount, bool trackSpillRefund)",
+    "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.DiscardStateGas(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long amount, long stateGasFloor)",
+    "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.Refund(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, ulong childValue, long childStateReservoir, long childStateGasUsed, long childStateGasSpill, long childStateGasSpillRefunded)",
+    "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RefundStateGas(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long amount, long stateGasFloor, bool trackSpillRefund)",
+    "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RemoveStateGasRefundFromReservoir(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long amount)",
+    "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RepayStateGasSpill(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded)",
+    "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RestoreChildStateGas(ulong parentValue, long parentStateReservoir, long parentStateGasUsed, long parentStateGasSpill, long parentStateGasSpillRefunded, long childStateReservoir, long childStateGasUsed, long childStateGasSpill, long childStateGasSpillRefunded)",
+    "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RestoreChildStateGasOnHalt(ulong parentValue, long parentStateReservoir, long parentStateGasUsed, long parentStateGasSpill, long parentStateGasSpillRefunded, long childStateReservoir, long childStateGasUsed, long childStateGasSpill, long childStateGasSpillRefunded)",
+    "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.RevertRefundToHalt(ulong parentValue, long parentStateReservoir, long parentStateGasUsed, long parentStateGasSpill, long parentStateGasSpillRefunded, long childStateGasUsed, long childStateGasSpill, long childStateGasSpillRefunded)",
+    "long Nethermind.Evm.GasPolicy.StateGasTransitionKernel.ClampToRefundAmount(long stateReservoir, long amount)",
+    "long Nethermind.Evm.GasPolicy.StateGasTransitionKernel.GetUnrefundedStateGasSpill(long stateGasSpill, long stateGasSpillRefunded)",
+    "long Nethermind.Evm.GasPolicy.StateGasTransitionKernel.PositivePart(long value)"
+  ]
+}

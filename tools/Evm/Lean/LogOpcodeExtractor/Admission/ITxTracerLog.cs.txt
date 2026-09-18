@@ -1,0 +1,9 @@
+using Nethermind.Core;
+
+namespace Nethermind.Evm.Tracing;
+
+public interface ITxTracer
+{
+    bool IsTracingLogs { get; }
+    void ReportLog(LogEntry log);
+}

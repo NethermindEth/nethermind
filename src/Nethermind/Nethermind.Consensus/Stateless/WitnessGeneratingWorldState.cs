@@ -174,6 +174,17 @@ public class WitnessGeneratingWorldState(
         return base.GetNonce(address);
     }
 
+    /// <inheritdoc/>
+    public override bool IsCreateCollision(
+        Address address,
+        bool includeStorageCollision,
+        out bool physicalLeafExists,
+        out bool logicalAccountExists)
+    {
+        RecordEmptySlots(address);
+        return base.IsCreateCollision(address, includeStorageCollision, out physicalLeafExists, out logicalAccountExists);
+    }
+
     public override byte[]? GetCode(Address address)
     {
         RecordEmptySlots(address);

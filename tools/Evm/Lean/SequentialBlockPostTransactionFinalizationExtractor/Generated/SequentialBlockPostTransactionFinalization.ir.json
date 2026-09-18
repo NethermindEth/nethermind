@@ -1,0 +1,5253 @@
+{
+  "schemaVersion": 8,
+  "extractorVersion": "1.14.0",
+  "kernel": "standard exact-base BAL-disabled normal-completion synchronous BlockProcessor post-transaction finalization tail",
+  "included": [
+    "standard exact-base ProcessBlock normal synchronous post-transaction tail",
+    "source-bound CommitState(spec, commitRoots:false) and CommitStateAndStorageRoots(spec, commitRoots:true)",
+    "EIP-4844 blob-gas guard and synchronous bloom/receipts-root branch",
+    "ordered reward, withdrawal, execution-request, tracer, root, account-change, BAL, hash, and receipt-return observables",
+    "independent relational event/header-effect specification and generated refinement theorem",
+    "explicit elementwise bridge premise to a completed SequentialBlockTransactionFold projection",
+    "typed static-layout source-entry adapter and complete ILocalSymbol null-task reaching-definition evidence",
+    "source-bound ComputeStateRoot/SetAccountChanges helper writes and global header write audit",
+    "typed source-local call closure over every pinned executable declaration, including opaque-hook bodies",
+    "typed outer-statement delegate-invocation closure with exact TransactionsExecuted event and normal-path CFG proof",
+    "typed source-owned callable-edge closure with fail-closed constructors, dispatch, operators, conversions, and implicit edges",
+    "whole-five-pinned-tree typed effect and source-implementation activation ledgers",
+    "exact typed CountLogs foreach threshold helper; other source-owned implicit edges fail closed",
+    "exact MetricsTimer wrapper and five complete sink declarations bind implicit constructor/getter/disposal callbacks",
+    "whole-five-tree typed timer activation roster and recursive source-bearing generic callback rejection",
+    "complete ProcessBlock executable-body preservation closes all additional explicit and implicit metadata callback sites",
+    "full CFG edge/exit consistency and normal-tail action dominance",
+    "typed Roslyn symbol, IOperation, CFG, and dataflow evidence"
+  ],
+  "excluded": [
+    "actual blob-gas, bloom, receipt-root, state-root, hash, reward, withdrawal, request, and BAL bodies",
+    "BAL-enabled execution, background receipt work, rollback, durability, validation, storage, DI, CLR/JIT, and persistence",
+    "ProcessOne validation/PostValidation and any downstream package composition",
+    "non-standard, simulation, Optimism, Taiko, parallel, or asynchronous processing paths",
+    "hook failure behavior beyond the normal-return theorem premise"
+  ],
+  "sources": [
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "role": "caller",
+      "sha256": "e2db419219184150c979cd6a081c83ba758c5024a15f996b510806bd1303deda",
+      "syntaxSha256": "9f4908b1edb7c698d26b41a2c15c3258601cf2565f6d65f09b81a08ffd19ffd1"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.std.cs",
+      "role": "partial-standard-source",
+      "sha256": "7ec6d0f975f36958f83b002ca53404620427a756cab70a037c0988ed75567ed4",
+      "syntaxSha256": "030f029e8ce38ab353df592d27c50295b66026e801c3152564119d754bfad6c8"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/IBlockProcessor.cs",
+      "role": "interface-closure",
+      "sha256": "df79a2a24ca0ad79918cf10bce5b9d74cb4ad1b7542185b41076a0f3758a940e",
+      "syntaxSha256": "0c261a9d55d33505912c168643268866e3bf692f78754d80b80703ca75882b07"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/ProcessingOptions.cs",
+      "role": "flag-closure",
+      "sha256": "145c5bec2a5e70e01dc448a887cd17bb1b81277605a487e437971882a5b0421a",
+      "syntaxSha256": "d646ef78fdf18df03605e994c93ddb19f72b9edbc35e84fc28f9b39eecffea3f"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+      "role": "fold-caller-closure",
+      "sha256": "d520090e2adde45bced4b6af6f9add35ea77ed288060d09fdf05cae3b28bdf56",
+      "syntaxSha256": "a9f1064cf4dd1cdbc0a29fc4266064039d8cb575b5cec5037a8de1dd8f04bed0"
+    }
+  ],
+  "compilerClosure": {
+    "inventoryPath": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json",
+    "count": 434,
+    "aggregateSha256": "6fdfa102a4190083ae62080355aa6691b5f46acc32d4f9da2212012686d9c2e2",
+    "inventorySha256": "1f73a3800a957dd02d9d7b06b3b955c81bb92fd9eb8d2831920905394bfc1d5c",
+    "supportSources": [
+      {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.SystemContractHandler.cs",
+        "sha256": "a069ba0962027b068e388544d3f338a47990f11e5085d381238231607758128b"
+      },
+      {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockAccessListSystemContractHandler.cs",
+        "sha256": "07342dde345dcec7b34569e8cb9f447f9d4abe3a640cd127559db77f2e1981fe"
+      },
+      {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/TransactionProcessorAdapterExtensions.cs",
+        "sha256": "910820a7e8bba91c30b052f5818707c46d625a2fbf12727e2aa869512120aa9e"
+      },
+      {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/IBlockAccessListManager.cs",
+        "sha256": "0ed401a074b32a35fb3de497a516d8b717802c55ffdac3f1cd773a7f4e6be273"
+      }
+    ]
+  },
+  "members": [
+    {
+      "id": "block.processBlock",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "name": "ProcessBlock",
+      "parameterCount": 5,
+      "signature": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "MethodDeclaration",
+        "canonicalSyntax": "protectedvirtualTxReceipt[]ProcessBlock(Blockblock,IBlockTracerblockTracer,ProcessingOptionsoptions,IReleaseSpecspec,CancellationTokentoken){...}",
+        "syntaxSha256": "95fbba7b2a802f6a6ec0235c6db28da42a57aec79152381c84c69a420979b0a4",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)",
+        "symbolKind": "Method",
+        "operationKind": "MethodBodyOperation",
+        "operationType": "void",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 6513,
+        "startLine": 145,
+        "startColumn": 5,
+        "controlFlowBlock": -1,
+        "isReachable": false,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.commit-no-roots",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "name": "CommitState",
+      "parameterCount": 1,
+      "signature": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitState(Nethermind.Core.Specs.IReleaseSpec)",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "CommitState",
+        "nodeKind": "MethodDeclaration",
+        "canonicalSyntax": "privatevoidCommitState(IReleaseSpecspec){usingMetricsTimer\u003CCommitTimeSink\u003E_=new();_stateProvider.Commit(spec,commitRoots:false);}",
+        "syntaxSha256": "7cd46a953aa3d5524db0883358b8e629b0741c548ee1e1e7f5e609a68c523d82",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitState(Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "MethodBodyOperation",
+        "operationType": "void",
+        "receiverType": "",
+        "containingMember": "CommitState",
+        "position": 9996,
+        "startLine": 246,
+        "startColumn": 5,
+        "controlFlowBlock": -1,
+        "isReachable": false,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "_",
+          "spec",
+          "this"
+        ],
+        "writtenInside": [
+          "_"
+        ]
+      }
+    },
+    {
+      "id": "block.commit-roots",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "name": "CommitStateAndStorageRoots",
+      "parameterCount": 1,
+      "signature": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitStateAndStorageRoots(Nethermind.Core.Specs.IReleaseSpec)",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "CommitStateAndStorageRoots",
+        "nodeKind": "MethodDeclaration",
+        "canonicalSyntax": "privatevoidCommitStateAndStorageRoots(IReleaseSpecspec){usingMetricsTimer\u003CStorageMerkleTimeSink\u003E_=new();_stateProvider.Commit(spec,commitRoots:true);}",
+        "syntaxSha256": "f366476bb0490f6c788bce0ba7f1ea1bed830427716029b16cddd3f4eebc90f6",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitStateAndStorageRoots(Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "MethodBodyOperation",
+        "operationType": "void",
+        "receiverType": "",
+        "containingMember": "CommitStateAndStorageRoots",
+        "position": 10168,
+        "startLine": 252,
+        "startColumn": 5,
+        "controlFlowBlock": -1,
+        "isReachable": false,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "_",
+          "spec",
+          "this"
+        ],
+        "writtenInside": [
+          "_"
+        ]
+      }
+    },
+    {
+      "id": "block.compute-state-root",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "name": "ComputeStateRoot",
+      "parameterCount": 1,
+      "signature": "global::Nethermind.Consensus.Processing.BlockProcessor.ComputeStateRoot(Nethermind.Core.BlockHeader)",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ComputeStateRoot",
+        "nodeKind": "MethodDeclaration",
+        "canonicalSyntax": "privatevoidComputeStateRoot(BlockHeaderheader){using(MetricsTimer\u003CStateRootTimeSink\u003E_=new()){_stateProvider.RecalculateStateRoot();}header.StateRoot=_stateProvider.StateRoot;}",
+        "syntaxSha256": "f2b6c4f3eed0f57f712d044a55154259ed680ae03a3bfd6605cd4136cb42a219",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ComputeStateRoot(Nethermind.Core.BlockHeader)",
+        "symbolKind": "Method",
+        "operationKind": "MethodBodyOperation",
+        "operationType": "void",
+        "receiverType": "",
+        "containingMember": "ComputeStateRoot",
+        "position": 10361,
+        "startLine": 258,
+        "startColumn": 5,
+        "controlFlowBlock": -1,
+        "isReachable": false,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "_",
+          "header",
+          "this"
+        ],
+        "writtenInside": [
+          "_"
+        ]
+      }
+    },
+    {
+      "id": "block.set-account-changes",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "name": "SetAccountChanges",
+      "parameterCount": 1,
+      "signature": "global::Nethermind.Consensus.Processing.BlockProcessor.SetAccountChanges(Nethermind.Core.Block)",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "SetAccountChanges",
+        "nodeKind": "MethodDeclaration",
+        "canonicalSyntax": "[MethodImpl(MethodImplOptions.NoInlining)]privatevoidSetAccountChanges(Blockblock)=\u003Eblock.AccountChanges=_stateProvider.GetAccountChanges();",
+        "syntaxSha256": "8ec2b585964311e79203d574baf4ce92d5e9a436b6b8955eb8741652f5af5843",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.SetAccountChanges(Nethermind.Core.Block)",
+        "symbolKind": "Method",
+        "operationKind": "MethodBodyOperation",
+        "operationType": "void",
+        "receiverType": "",
+        "containingMember": "SetAccountChanges",
+        "position": 14038,
+        "startLine": 368,
+        "startColumn": 5,
+        "controlFlowBlock": -1,
+        "isReachable": false,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "this"
+        ],
+        "writtenInside": []
+      }
+    }
+  ],
+  "anchors": [
+    {
+      "id": "block.post-transaction-commit",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "CommitState(spec)",
+      "relation": "normal synchronous boundary begins at the second post-transaction CommitState(spec)",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "CommitState(spec)",
+        "syntaxSha256": "f520c232a3eede1b825548d46c8774e7d06cbe8b55e462afc677ae36f6cc5f76",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitState(Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 7592,
+        "startLine": 172,
+        "startColumn": 9,
+        "controlFlowBlock": 4,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.blob-gas-guard",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "spec.IsEip4844Enabled",
+      "relation": "EIP-4844 guard selects blob-gas assignment only when enabled",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "SimpleMemberAccessExpression",
+        "canonicalSyntax": "spec.IsEip4844Enabled",
+        "syntaxSha256": "dfa0412a311368f91ccb55a68240115cea6ac39b77f8ab8cd62521c9156a175f",
+        "symbolId": "global::Nethermind.Core.Specs.IReleaseSpec.IsEip4844Enabled",
+        "symbolKind": "Property",
+        "operationKind": "PropertyReference",
+        "operationType": "bool",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 7624,
+        "startLine": 174,
+        "startColumn": 13,
+        "controlFlowBlock": 4,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.blob-gas-calculation",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "BlobGasCalculator.CalculateBlobGas(block.Transactions)",
+      "relation": "blob-gas calculation receives block.Transactions under the EIP-4844 guard",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "BlobGasCalculator.CalculateBlobGas(block.Transactions)",
+        "syntaxSha256": "0f784de23e15afbb976bdd10dbebd3abb9eb2480848965d9907f721876852949",
+        "symbolId": "global::Nethermind.Evm.BlobGasCalculator.CalculateBlobGas(Nethermind.Core.Transaction[])",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "ulong",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 7690,
+        "startLine": 176,
+        "startColumn": 34,
+        "controlFlowBlock": 5,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.background-task-null",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "bloomsAndReceiptsRootTask=null",
+      "relation": "receipt background task is initialized to null before the guard",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "VariableDeclarator",
+        "canonicalSyntax": "bloomsAndReceiptsRootTask=null",
+        "syntaxSha256": "bd04a32caa81b806e4e424da8380105b8d6065a6e9c8e6f8589f4c00cc5c59fe",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock.bloomsAndReceiptsRootTask",
+        "symbolKind": "Local",
+        "operationKind": "VariableDeclarator",
+        "operationType": "System.Threading.Tasks.Task\u003C(Nethermind.Core.Bloom BlockBloom, Nethermind.Core.Crypto.Hash256 ReceiptsRoot)\u003E",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 7813,
+        "startLine": 179,
+        "startColumn": 57,
+        "controlFlowBlock": 6,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.receipts-background-guard",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "ShouldCalculateReceiptsInBackground(receipts)",
+      "relation": "false background predicate selects the synchronous receipt arm",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "ShouldCalculateReceiptsInBackground(receipts)",
+        "syntaxSha256": "a46f7efba9d9ccfcdb9e0bf4d0df3816e1e0ab627f950942c8383137c684fe27",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ShouldCalculateReceiptsInBackground(Nethermind.Core.TxReceipt[])",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "bool",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 7859,
+        "startLine": 180,
+        "startColumn": 13,
+        "controlFlowBlock": 6,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.sync-blooms",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "CalculateBlooms(receipts)",
+      "relation": "synchronous arm calculates blooms before the receipts root",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "CalculateBlooms(receipts)",
+        "syntaxSha256": "7bfa68b5452237eab92dcaf9b45eaf4de824f599eea35a61172496b5f789915b",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CalculateBlooms(Nethermind.Core.TxReceipt[])",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 8192,
+        "startLine": 190,
+        "startColumn": 13,
+        "controlFlowBlock": 8,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.sync-receipts-root",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "CalculateReceiptsRoot(receipts,spec,block)",
+      "relation": "synchronous arm assigns the receipts root from receipts, spec, and block",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "CalculateReceiptsRoot(receipts,spec,block)",
+        "syntaxSha256": "dd9b8c113ecd14a9e7faf0c05fac7de58fc0b8c103bff1719babbee513d6978e",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CalculateReceiptsRoot(Nethermind.Core.TxReceipt[],Nethermind.Core.Specs.IReleaseSpec,Nethermind.Core.Block)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "Nethermind.Core.Crypto.Hash256",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 8253,
+        "startLine": 191,
+        "startColumn": 35,
+        "controlFlowBlock": 8,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.rewards",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "ApplyMinerRewards(block,blockTracer,spec)",
+      "relation": "opaque miner-reward delegate returns normally before withdrawals",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "ApplyMinerRewards(block,blockTracer,spec)",
+        "syntaxSha256": "9679ad4049c5bfe29732ed79288152c5306b3c5679174a0b2f26510448926211",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ApplyMinerRewards(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 8344,
+        "startLine": 196,
+        "startColumn": 13,
+        "controlFlowBlock": 9,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.withdrawals",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "_systemContractHandler.ProcessWithdrawals(block,spec)",
+      "relation": "opaque withdrawals delegate returns normally before the finalization commit",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "_systemContractHandler.ProcessWithdrawals(block,spec)",
+        "syntaxSha256": "b7596a308311425a3fc221ef7c03607362d86be7b6a6655002fa7e441e274265",
+        "symbolId": "global::Nethermind.Consensus.Withdrawals.IWithdrawalProcessor.ProcessWithdrawals(Nethermind.Core.Block,Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor.ISystemContractHandler",
+        "containingMember": "ProcessBlock",
+        "position": 8401,
+        "startLine": 197,
+        "startColumn": 13,
+        "controlFlowBlock": 9,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.finalization-commit",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "CommitState(spec)",
+      "relation": "second post-transaction CommitState remains before execution requests",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "CommitState(spec)",
+        "syntaxSha256": "f520c232a3eede1b825548d46c8774e7d06cbe8b55e462afc677ae36f6cc5f76",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitState(Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 8709,
+        "startLine": 201,
+        "startColumn": 13,
+        "controlFlowBlock": 9,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.execution-requests",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "_systemContractHandler.ProcessExecutionRequests(block,_stateProvider,receipts,spec)",
+      "relation": "opaque execution-request delegate returns normally before ending the block trace",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "_systemContractHandler.ProcessExecutionRequests(block,_stateProvider,receipts,spec)",
+        "syntaxSha256": "20152068c8aa8c4c463cef04cf4dd168d03eb41ec8724425f07198cdb2a2039f",
+        "symbolId": "global::Nethermind.Consensus.ExecutionRequests.IExecutionRequestsProcessor.ProcessExecutionRequests(Nethermind.Core.Block,Nethermind.Evm.State.IWorldState,Nethermind.Core.TxReceipt[],Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor.ISystemContractHandler",
+        "containingMember": "ProcessBlock",
+        "position": 8741,
+        "startLine": 203,
+        "startColumn": 13,
+        "controlFlowBlock": 9,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.end-block-trace",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "ReceiptsTracer.EndBlockTrace(accumulateBlockBloom:bloomsAndReceiptsRootTaskisnull)",
+      "relation": "normal synchronous arm ends the block trace with accumulateBlockBloom:true",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "ReceiptsTracer.EndBlockTrace(accumulateBlockBloom:bloomsAndReceiptsRootTaskisnull)",
+        "syntaxSha256": "3d88e5860317556657c642eb2fe690f7450f119896fd3050cb9ef8d8b561e072",
+        "symbolId": "global::Nethermind.Blockchain.Tracing.BlockReceiptsTracer.EndBlockTrace(bool)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Blockchain.Tracing.BlockReceiptsTracer",
+        "containingMember": "ProcessBlock",
+        "position": 8842,
+        "startLine": 205,
+        "startColumn": 13,
+        "controlFlowBlock": 9,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.storage-roots-commit",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "CommitStateAndStorageRoots(spec)",
+      "relation": "storage-root commit follows EndBlockTrace",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "CommitStateAndStorageRoots(spec)",
+        "syntaxSha256": "da3bc9e2de3a4624c4788c2b352457643455c8dc98df497b6befacd9a5086513",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitStateAndStorageRoots(Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 8942,
+        "startLine": 207,
+        "startColumn": 13,
+        "controlFlowBlock": 9,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.main-thread-guard",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "BlockchainProcessor.IsMainProcessingThread",
+      "relation": "main-thread guard controls account-change capture",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "SimpleMemberAccessExpression",
+        "canonicalSyntax": "BlockchainProcessor.IsMainProcessingThread",
+        "syntaxSha256": "1232779ddd44ec160cf5ada2dee93a9afc57ad582c7d8fdd286ed0fd94d8f183",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockchainProcessor.IsMainProcessingThread",
+        "symbolKind": "Property",
+        "operationKind": "PropertyReference",
+        "operationType": "bool",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 8993,
+        "startLine": 209,
+        "startColumn": 17,
+        "controlFlowBlock": 9,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.account-changes",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "SetAccountChanges(block)",
+      "relation": "account changes are captured only on the main processing thread",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "SetAccountChanges(block)",
+        "syntaxSha256": "c1182e4489e7a833245d8d7b8e0402ce03447862753e65f8f94390fb17572aa5",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.SetAccountChanges(Nethermind.Core.Block)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 9067,
+        "startLine": 211,
+        "startColumn": 17,
+        "controlFlowBlock": 10,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.state-root-guard",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "ShouldComputeStateRoot(header)",
+      "relation": "state-root guard controls ComputeStateRoot",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "ShouldComputeStateRoot(header)",
+        "syntaxSha256": "ba450fe0871f856a730b6d59527d977c6df412d62583ed0d2c0054c219c867fc",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ShouldComputeStateRoot(Nethermind.Core.BlockHeader)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "bool",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 9124,
+        "startLine": 214,
+        "startColumn": 17,
+        "controlFlowBlock": 11,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.state-root",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "ComputeStateRoot(header)",
+      "relation": "state root is computed only when ShouldComputeStateRoot(header) is true",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "ComputeStateRoot(header)",
+        "syntaxSha256": "a96f54772333d4be573e64e3407482264f7ae2259663ff552cff995da81d5c63",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ComputeStateRoot(Nethermind.Core.BlockHeader)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 9186,
+        "startLine": 216,
+        "startColumn": 17,
+        "controlFlowBlock": 12,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.background-result-guard",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "bloomsAndReceiptsRootTaskisnotnull",
+      "relation": "background result assignment is excluded by the false background premise",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "IsPatternExpression",
+        "canonicalSyntax": "bloomsAndReceiptsRootTaskisnotnull",
+        "syntaxSha256": "a64ef84e68925f38ecb709f9b89c30a9bedcf1ff84c8690d9eb2cfd6d7282f65",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock.bloomsAndReceiptsRootTask",
+        "symbolKind": "Local",
+        "operationKind": "IsPattern",
+        "operationType": "bool",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 9243,
+        "startLine": 219,
+        "startColumn": 17,
+        "controlFlowBlock": 13,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.bal-finalization",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "_balManager.SetBlockAccessList(block)",
+      "relation": "BAL finalization is observed before the header hash",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "_balManager.SetBlockAccessList(block)",
+        "syntaxSha256": "e6503f33cbd1c7478cd5abced7d12be0ca2d7ea4e902fd21da5a32dbbd55081d",
+        "symbolId": "global::Nethermind.Consensus.Processing.IBlockAccessListManager.SetBlockAccessList(Nethermind.Core.Block)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.IBlockAccessListManager",
+        "containingMember": "ProcessBlock",
+        "position": 9429,
+        "startLine": 224,
+        "startColumn": 13,
+        "controlFlowBlock": 15,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.background-finally-guard",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "bloomsAndReceiptsRootTaskis{IsCompletedSuccessfully:false}",
+      "relation": "finally task-observation guard is unreachable under the false background premise",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "IsPatternExpression",
+        "canonicalSyntax": "bloomsAndReceiptsRootTaskis{IsCompletedSuccessfully:false}",
+        "syntaxSha256": "fc163852568f0a7e281dba01f224ef4d9ac95bf800ab4900aaeff00dc6b12678",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock.bloomsAndReceiptsRootTask",
+        "symbolKind": "Local",
+        "operationKind": "IsPattern",
+        "operationType": "bool",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 9520,
+        "startLine": 228,
+        "startColumn": 17,
+        "controlFlowBlock": 16,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.hash",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "header.Hash=header.CalculateHash()",
+      "relation": "header hash assignment follows BAL finalization",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "SimpleAssignmentExpression",
+        "canonicalSyntax": "header.Hash=header.CalculateHash()",
+        "syntaxSha256": "a450d0572fbfc919c796e5795c97f747584a449e1eec7012b62440fc489d40d0",
+        "symbolId": "global::Nethermind.Core.BlockHeader.Hash",
+        "symbolKind": "Property",
+        "operationKind": "SimpleAssignment",
+        "operationType": "Nethermind.Core.Crypto.Hash256",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 9921,
+        "startLine": 241,
+        "startColumn": 9,
+        "controlFlowBlock": 20,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.return-receipts",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "canonicalSyntax": "returnreceipts;",
+      "relation": "normal ProcessBlock return exposes the exact receipts array",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "ReturnStatement",
+        "canonicalSyntax": "returnreceipts;",
+        "syntaxSha256": "7a82e41ffe44752a0892d5daf81dc89dfd1d161eda9edc2eb34b314163aa6a48",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)",
+        "symbolKind": "Method",
+        "operationKind": "Return",
+        "operationType": "Nethermind.Core.TxReceipt[]",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 9975,
+        "startLine": 243,
+        "startColumn": 9,
+        "controlFlowBlock": 20,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    }
+  ],
+  "controlFlows": [
+    {
+      "id": "block.processBlock",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "member": "ProcessBlock",
+      "reachableBlocks": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21
+      ],
+      "edges": [
+        "0-\u003E1",
+        "1-\u003E2",
+        "10-\u003E11",
+        "11-\u003E12",
+        "11-\u003E13",
+        "12-\u003E13",
+        "13-\u003E14",
+        "13-\u003E15",
+        "14-\u003E15",
+        "15-\u003E16",
+        "16-\u003E17",
+        "16-\u003E19",
+        "17-\u003E19",
+        "18-\u003E19",
+        "19-\u003E20",
+        "2-\u003E3",
+        "2-\u003E4",
+        "20-\u003E21",
+        "3-\u003E4",
+        "4-\u003E5",
+        "4-\u003E6",
+        "5-\u003E6",
+        "6-\u003E7",
+        "6-\u003E8",
+        "7-\u003E9",
+        "8-\u003E9",
+        "9-\u003E10",
+        "9-\u003E11"
+      ],
+      "normalExitBlocks": [
+        21
+      ],
+      "exceptionalExitBlocks": [],
+      "exceptionHandlerEntries": [
+        18
+      ],
+      "backEdges": [],
+      "blockMemberships": [
+        {
+          "ordinal": 0,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 1,
+          "syntaxStarts": [
+            6731,
+            6738,
+            6770,
+            6779,
+            6802,
+            6832,
+            6854,
+            6888,
+            6905,
+            6957,
+            6985,
+            6999,
+            7016,
+            7034,
+            7051,
+            7090,
+            7097,
+            7103,
+            7135,
+            7185,
+            7193,
+            7208,
+            7220,
+            7248,
+            7259,
+            7306,
+            7313,
+            7322,
+            7338
+          ]
+        },
+        {
+          "ordinal": 2,
+          "syntaxStarts": [
+            7551
+          ]
+        },
+        {
+          "ordinal": 3,
+          "syntaxStarts": [
+            7572
+          ]
+        },
+        {
+          "ordinal": 4,
+          "syntaxStarts": [
+            7592,
+            7604,
+            7624
+          ]
+        },
+        {
+          "ordinal": 5,
+          "syntaxStarts": [
+            7669,
+            7690,
+            7725
+          ]
+        },
+        {
+          "ordinal": 6,
+          "syntaxStarts": [
+            7813,
+            7841,
+            7859,
+            7895
+          ]
+        },
+        {
+          "ordinal": 7,
+          "syntaxStarts": [
+            7928,
+            7956,
+            7965
+          ]
+        },
+        {
+          "ordinal": 8,
+          "syntaxStarts": [
+            8192,
+            8208,
+            8231,
+            8253,
+            8275,
+            8285,
+            8291
+          ]
+        },
+        {
+          "ordinal": 9,
+          "syntaxStarts": [
+            8344,
+            8362,
+            8369,
+            8382,
+            8401,
+            8443,
+            8450,
+            8709,
+            8721,
+            8741,
+            8789,
+            8796,
+            8812,
+            8822,
+            8842,
+            8871,
+            8893,
+            8922,
+            8942,
+            8969,
+            8993
+          ]
+        },
+        {
+          "ordinal": 10,
+          "syntaxStarts": [
+            9067,
+            9085
+          ]
+        },
+        {
+          "ordinal": 11,
+          "syntaxStarts": [
+            9124,
+            9147
+          ]
+        },
+        {
+          "ordinal": 12,
+          "syntaxStarts": [
+            9186,
+            9203
+          ]
+        },
+        {
+          "ordinal": 13,
+          "syntaxStarts": [
+            9243,
+            9272,
+            9276
+          ]
+        },
+        {
+          "ordinal": 14,
+          "syntaxStarts": [
+            9312,
+            9313,
+            9327,
+            9350
+          ]
+        },
+        {
+          "ordinal": 15,
+          "syntaxStarts": [
+            9429,
+            9460
+          ]
+        },
+        {
+          "ordinal": 16,
+          "syntaxStarts": [
+            9520,
+            9549,
+            9551,
+            9576
+          ]
+        },
+        {
+          "ordinal": 17,
+          "syntaxStarts": [
+            9657
+          ]
+        },
+        {
+          "ordinal": 18,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 19,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 20,
+          "syntaxStarts": [
+            9921,
+            9935,
+            9975
+          ]
+        },
+        {
+          "ordinal": 21,
+          "syntaxStarts": []
+        }
+      ],
+      "transfers": [
+        {
+          "source": 0,
+          "destination": 1,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 1,
+          "destination": 2,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 2,
+          "destination": 3,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 2,
+          "destination": 4,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 3,
+          "destination": 4,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 4,
+          "destination": 5,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 4,
+          "destination": 6,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 5,
+          "destination": 6,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 6,
+          "destination": 7,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 6,
+          "destination": 8,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 7,
+          "destination": 9,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 8,
+          "destination": 9,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 9,
+          "destination": 10,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 9,
+          "destination": 11,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 10,
+          "destination": 11,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 11,
+          "destination": 12,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 11,
+          "destination": 13,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 12,
+          "destination": 13,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 13,
+          "destination": 14,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 13,
+          "destination": 15,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 14,
+          "destination": 15,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 15,
+          "destination": 20,
+          "semantics": "Regular",
+          "finallyEntries": [
+            16
+          ],
+          "finallyExits": [
+            [
+              19
+            ]
+          ]
+        },
+        {
+          "source": 16,
+          "destination": 17,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 16,
+          "destination": 19,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 17,
+          "destination": 19,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 18,
+          "destination": 19,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 19,
+          "destination": -1,
+          "semantics": "StructuredExceptionHandling",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 20,
+          "destination": 21,
+          "semantics": "Return",
+          "finallyEntries": [],
+          "finallyExits": []
+        }
+      ],
+      "shapeSha256": "603a1a4a21ed2a24e13408905f4b3ff2d9a7e692d0097e1a1cf8ebc8656500b8",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "MethodDeclaration",
+        "canonicalSyntax": "protectedvirtualTxReceipt[]ProcessBlock(Blockblock,IBlockTracerblockTracer,ProcessingOptionsoptions,IReleaseSpecspec,CancellationTokentoken){...}",
+        "syntaxSha256": "95fbba7b2a802f6a6ec0235c6db28da42a57aec79152381c84c69a420979b0a4",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)",
+        "symbolKind": "Method",
+        "operationKind": "MethodBodyOperation",
+        "operationType": "void",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 6513,
+        "startLine": 145,
+        "startColumn": 5,
+        "controlFlowBlock": -1,
+        "isReachable": false,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "block.commit-no-roots",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "member": "CommitState",
+      "reachableBlocks": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "edges": [
+        "0-\u003E1",
+        "1-\u003E2",
+        "2-\u003E3",
+        "3-\u003E4"
+      ],
+      "normalExitBlocks": [
+        4
+      ],
+      "exceptionalExitBlocks": [],
+      "exceptionHandlerEntries": [],
+      "backEdges": [],
+      "blockMemberships": [
+        {
+          "ordinal": 0,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 1,
+          "syntaxStarts": [
+            10089,
+            10093
+          ]
+        },
+        {
+          "ordinal": 2,
+          "syntaxStarts": [
+            10108,
+            10130,
+            10136,
+            10149
+          ]
+        },
+        {
+          "ordinal": 3,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 4,
+          "syntaxStarts": []
+        }
+      ],
+      "transfers": [
+        {
+          "source": 0,
+          "destination": 1,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 1,
+          "destination": 2,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 2,
+          "destination": 4,
+          "semantics": "Regular",
+          "finallyEntries": [
+            3
+          ],
+          "finallyExits": [
+            [
+              3
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": -1,
+          "semantics": "StructuredExceptionHandling",
+          "finallyEntries": [],
+          "finallyExits": []
+        }
+      ],
+      "shapeSha256": "9b7bec2e523da6906997400b2aba7ce7137f1551f32a480f069677831cf0c63b",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "CommitState",
+        "nodeKind": "MethodDeclaration",
+        "canonicalSyntax": "privatevoidCommitState(IReleaseSpecspec){usingMetricsTimer\u003CCommitTimeSink\u003E_=new();_stateProvider.Commit(spec,commitRoots:false);}",
+        "syntaxSha256": "7cd46a953aa3d5524db0883358b8e629b0741c548ee1e1e7f5e609a68c523d82",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitState(Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "MethodBodyOperation",
+        "operationType": "void",
+        "receiverType": "",
+        "containingMember": "CommitState",
+        "position": 9996,
+        "startLine": 246,
+        "startColumn": 5,
+        "controlFlowBlock": -1,
+        "isReachable": false,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "_",
+          "spec",
+          "this"
+        ],
+        "writtenInside": [
+          "_"
+        ]
+      }
+    },
+    {
+      "id": "block.commit-roots",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "member": "CommitStateAndStorageRoots",
+      "reachableBlocks": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "edges": [
+        "0-\u003E1",
+        "1-\u003E2",
+        "2-\u003E3",
+        "3-\u003E4"
+      ],
+      "normalExitBlocks": [
+        4
+      ],
+      "exceptionalExitBlocks": [],
+      "exceptionHandlerEntries": [],
+      "backEdges": [],
+      "blockMemberships": [
+        {
+          "ordinal": 0,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 1,
+          "syntaxStarts": [
+            10283,
+            10287
+          ]
+        },
+        {
+          "ordinal": 2,
+          "syntaxStarts": [
+            10302,
+            10324,
+            10330,
+            10343
+          ]
+        },
+        {
+          "ordinal": 3,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 4,
+          "syntaxStarts": []
+        }
+      ],
+      "transfers": [
+        {
+          "source": 0,
+          "destination": 1,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 1,
+          "destination": 2,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 2,
+          "destination": 4,
+          "semantics": "Regular",
+          "finallyEntries": [
+            3
+          ],
+          "finallyExits": [
+            [
+              3
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": -1,
+          "semantics": "StructuredExceptionHandling",
+          "finallyEntries": [],
+          "finallyExits": []
+        }
+      ],
+      "shapeSha256": "810b6213cfbab37d400c259074a6947b0f47912177142bb84cd1dba07128a0d3",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "CommitStateAndStorageRoots",
+        "nodeKind": "MethodDeclaration",
+        "canonicalSyntax": "privatevoidCommitStateAndStorageRoots(IReleaseSpecspec){usingMetricsTimer\u003CStorageMerkleTimeSink\u003E_=new();_stateProvider.Commit(spec,commitRoots:true);}",
+        "syntaxSha256": "f366476bb0490f6c788bce0ba7f1ea1bed830427716029b16cddd3f4eebc90f6",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitStateAndStorageRoots(Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "MethodBodyOperation",
+        "operationType": "void",
+        "receiverType": "",
+        "containingMember": "CommitStateAndStorageRoots",
+        "position": 10168,
+        "startLine": 252,
+        "startColumn": 5,
+        "controlFlowBlock": -1,
+        "isReachable": false,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "_",
+          "spec",
+          "this"
+        ],
+        "writtenInside": [
+          "_"
+        ]
+      }
+    },
+    {
+      "id": "block.compute-state-root",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "member": "ComputeStateRoot",
+      "reachableBlocks": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "edges": [
+        "0-\u003E1",
+        "1-\u003E2",
+        "2-\u003E3",
+        "3-\u003E4",
+        "4-\u003E5"
+      ],
+      "normalExitBlocks": [
+        5
+      ],
+      "exceptionalExitBlocks": [],
+      "exceptionHandlerEntries": [],
+      "backEdges": [],
+      "blockMemberships": [
+        {
+          "ordinal": 0,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 1,
+          "syntaxStarts": [
+            10464,
+            10468
+          ]
+        },
+        {
+          "ordinal": 2,
+          "syntaxStarts": [
+            10497
+          ]
+        },
+        {
+          "ordinal": 3,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 4,
+          "syntaxStarts": [
+            10554,
+            10573
+          ]
+        },
+        {
+          "ordinal": 5,
+          "syntaxStarts": []
+        }
+      ],
+      "transfers": [
+        {
+          "source": 0,
+          "destination": 1,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 1,
+          "destination": 2,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 2,
+          "destination": 4,
+          "semantics": "Regular",
+          "finallyEntries": [
+            3
+          ],
+          "finallyExits": [
+            [
+              3
+            ]
+          ]
+        },
+        {
+          "source": 3,
+          "destination": -1,
+          "semantics": "StructuredExceptionHandling",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 4,
+          "destination": 5,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        }
+      ],
+      "shapeSha256": "deb921d48efc6bed5175e03d9d63475a38a98f9969b3f37870b925306657d02f",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ComputeStateRoot",
+        "nodeKind": "MethodDeclaration",
+        "canonicalSyntax": "privatevoidComputeStateRoot(BlockHeaderheader){using(MetricsTimer\u003CStateRootTimeSink\u003E_=new()){_stateProvider.RecalculateStateRoot();}header.StateRoot=_stateProvider.StateRoot;}",
+        "syntaxSha256": "f2b6c4f3eed0f57f712d044a55154259ed680ae03a3bfd6605cd4136cb42a219",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ComputeStateRoot(Nethermind.Core.BlockHeader)",
+        "symbolKind": "Method",
+        "operationKind": "MethodBodyOperation",
+        "operationType": "void",
+        "receiverType": "",
+        "containingMember": "ComputeStateRoot",
+        "position": 10361,
+        "startLine": 258,
+        "startColumn": 5,
+        "controlFlowBlock": -1,
+        "isReachable": false,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "_",
+          "header",
+          "this"
+        ],
+        "writtenInside": [
+          "_"
+        ]
+      }
+    },
+    {
+      "id": "block.set-account-changes",
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "member": "SetAccountChanges",
+      "reachableBlocks": [
+        0,
+        1,
+        2
+      ],
+      "edges": [
+        "0-\u003E1",
+        "1-\u003E2"
+      ],
+      "normalExitBlocks": [
+        2
+      ],
+      "exceptionalExitBlocks": [],
+      "exceptionHandlerEntries": [],
+      "backEdges": [],
+      "blockMemberships": [
+        {
+          "ordinal": 0,
+          "syntaxStarts": []
+        },
+        {
+          "ordinal": 1,
+          "syntaxStarts": [
+            14140,
+            14163
+          ]
+        },
+        {
+          "ordinal": 2,
+          "syntaxStarts": []
+        }
+      ],
+      "transfers": [
+        {
+          "source": 0,
+          "destination": 1,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        },
+        {
+          "source": 1,
+          "destination": 2,
+          "semantics": "Regular",
+          "finallyEntries": [],
+          "finallyExits": []
+        }
+      ],
+      "shapeSha256": "33ea0843fe3a0b39da410050ee4659b53299e44c38d3d3f91ef650bff48b11bd",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "SetAccountChanges",
+        "nodeKind": "MethodDeclaration",
+        "canonicalSyntax": "[MethodImpl(MethodImplOptions.NoInlining)]privatevoidSetAccountChanges(Blockblock)=\u003Eblock.AccountChanges=_stateProvider.GetAccountChanges();",
+        "syntaxSha256": "8ec2b585964311e79203d574baf4ce92d5e9a436b6b8955eb8741652f5af5843",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.SetAccountChanges(Nethermind.Core.Block)",
+        "symbolKind": "Method",
+        "operationKind": "MethodBodyOperation",
+        "operationType": "void",
+        "receiverType": "",
+        "containingMember": "SetAccountChanges",
+        "position": 14038,
+        "startLine": 368,
+        "startColumn": 5,
+        "controlFlowBlock": -1,
+        "isReachable": false,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "this"
+        ],
+        "writtenInside": []
+      }
+    }
+  ],
+  "commits": [
+    {
+      "id": "post-transaction-no-roots",
+      "invocationAnchorId": "block.post-transaction-commit",
+      "event": "commitNoRoots(0)",
+      "methodId": "block.commit-no-roots",
+      "commitRoots": false,
+      "stateProviderCall": "_stateProvider.Commit(spec,commitRoots:false)",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "CommitState",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "_stateProvider.Commit(spec,commitRoots:false)",
+        "syntaxSha256": "cb77e587776ea5aa4b942fd9b9a75fc3cb5a4a485eaa2193ed8b31f52d6e24e9",
+        "symbolId": "global::Nethermind.Evm.State.WorldStateExtensions.Commit(Nethermind.Evm.State.IWorldState,Nethermind.Core.Specs.IReleaseSpec,bool,bool)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Evm.State.IWorldState",
+        "containingMember": "CommitState",
+        "position": 10108,
+        "startLine": 249,
+        "startColumn": 9,
+        "controlFlowBlock": 2,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "_",
+          "spec",
+          "this"
+        ],
+        "writtenInside": [
+          "_"
+        ]
+      },
+      "invocationBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "CommitState(spec)",
+        "syntaxSha256": "f520c232a3eede1b825548d46c8774e7d06cbe8b55e462afc677ae36f6cc5f76",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitState(Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 7592,
+        "startLine": 172,
+        "startColumn": 9,
+        "controlFlowBlock": 4,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "finalization-no-roots",
+      "invocationAnchorId": "block.finalization-commit",
+      "event": "commitNoRoots(1)",
+      "methodId": "block.commit-no-roots",
+      "commitRoots": false,
+      "stateProviderCall": "_stateProvider.Commit(spec,commitRoots:false)",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "CommitState",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "_stateProvider.Commit(spec,commitRoots:false)",
+        "syntaxSha256": "cb77e587776ea5aa4b942fd9b9a75fc3cb5a4a485eaa2193ed8b31f52d6e24e9",
+        "symbolId": "global::Nethermind.Evm.State.WorldStateExtensions.Commit(Nethermind.Evm.State.IWorldState,Nethermind.Core.Specs.IReleaseSpec,bool,bool)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Evm.State.IWorldState",
+        "containingMember": "CommitState",
+        "position": 10108,
+        "startLine": 249,
+        "startColumn": 9,
+        "controlFlowBlock": 2,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "_",
+          "spec",
+          "this"
+        ],
+        "writtenInside": [
+          "_"
+        ]
+      },
+      "invocationBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "CommitState(spec)",
+        "syntaxSha256": "f520c232a3eede1b825548d46c8774e7d06cbe8b55e462afc677ae36f6cc5f76",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitState(Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 8709,
+        "startLine": 201,
+        "startColumn": 13,
+        "controlFlowBlock": 9,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "storage-roots",
+      "invocationAnchorId": "block.storage-roots-commit",
+      "event": "commitRoots",
+      "methodId": "block.commit-roots",
+      "commitRoots": true,
+      "stateProviderCall": "_stateProvider.Commit(spec,commitRoots:true)",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "CommitStateAndStorageRoots",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "_stateProvider.Commit(spec,commitRoots:true)",
+        "syntaxSha256": "0d87c16ae38cfd654a4b6428e0da9dc0f2b7d2924ab8494c67a0c5b4f3d33490",
+        "symbolId": "global::Nethermind.Evm.State.WorldStateExtensions.Commit(Nethermind.Evm.State.IWorldState,Nethermind.Core.Specs.IReleaseSpec,bool,bool)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Evm.State.IWorldState",
+        "containingMember": "CommitStateAndStorageRoots",
+        "position": 10302,
+        "startLine": 255,
+        "startColumn": 9,
+        "controlFlowBlock": 2,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "_",
+          "spec",
+          "this"
+        ],
+        "writtenInside": [
+          "_"
+        ]
+      },
+      "invocationBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "CommitStateAndStorageRoots(spec)",
+        "syntaxSha256": "da3bc9e2de3a4624c4788c2b352457643455c8dc98df497b6befacd9a5086513",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitStateAndStorageRoots(Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 8942,
+        "startLine": 207,
+        "startColumn": 13,
+        "controlFlowBlock": 9,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    }
+  ],
+  "guards": [
+    {
+      "id": "eip4844",
+      "condition": "spec.IsEip4844Enabled",
+      "expectedPolarity": "true-arm",
+      "selectedArm": "blob-gas",
+      "excludedArm": "none",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "SimpleMemberAccessExpression",
+        "canonicalSyntax": "spec.IsEip4844Enabled",
+        "syntaxSha256": "dfa0412a311368f91ccb55a68240115cea6ac39b77f8ab8cd62521c9156a175f",
+        "symbolId": "global::Nethermind.Core.Specs.IReleaseSpec.IsEip4844Enabled",
+        "symbolKind": "Property",
+        "operationKind": "PropertyReference",
+        "operationType": "bool",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 7624,
+        "startLine": 174,
+        "startColumn": 13,
+        "controlFlowBlock": 4,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "background-receipts",
+      "condition": "ShouldCalculateReceiptsInBackground(receipts)",
+      "expectedPolarity": "false-arm",
+      "selectedArm": "synchronous-blooms-and-root",
+      "excludedArm": "Task.Run",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "ShouldCalculateReceiptsInBackground(receipts)",
+        "syntaxSha256": "a46f7efba9d9ccfcdb9e0bf4d0df3816e1e0ab627f950942c8383137c684fe27",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ShouldCalculateReceiptsInBackground(Nethermind.Core.TxReceipt[])",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "bool",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 7859,
+        "startLine": 180,
+        "startColumn": 13,
+        "controlFlowBlock": 6,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "main-thread",
+      "condition": "BlockchainProcessor.IsMainProcessingThread",
+      "expectedPolarity": "true-arm",
+      "selectedArm": "account-changes",
+      "excludedArm": "none",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "SimpleMemberAccessExpression",
+        "canonicalSyntax": "BlockchainProcessor.IsMainProcessingThread",
+        "syntaxSha256": "1232779ddd44ec160cf5ada2dee93a9afc57ad582c7d8fdd286ed0fd94d8f183",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockchainProcessor.IsMainProcessingThread",
+        "symbolKind": "Property",
+        "operationKind": "PropertyReference",
+        "operationType": "bool",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 8993,
+        "startLine": 209,
+        "startColumn": 17,
+        "controlFlowBlock": 9,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "state-root",
+      "condition": "ShouldComputeStateRoot(header)",
+      "expectedPolarity": "true-arm",
+      "selectedArm": "state-root",
+      "excludedArm": "none",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "ShouldComputeStateRoot(header)",
+        "syntaxSha256": "ba450fe0871f856a730b6d59527d977c6df412d62583ed0d2c0054c219c867fc",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ShouldComputeStateRoot(Nethermind.Core.BlockHeader)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "bool",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 9124,
+        "startLine": 214,
+        "startColumn": 17,
+        "controlFlowBlock": 11,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "background-result",
+      "condition": "bloomsAndReceiptsRootTaskisnotnull",
+      "expectedPolarity": "false-arm",
+      "selectedArm": "none",
+      "excludedArm": "GetResult assignment",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "IsPatternExpression",
+        "canonicalSyntax": "bloomsAndReceiptsRootTaskisnotnull",
+        "syntaxSha256": "a64ef84e68925f38ecb709f9b89c30a9bedcf1ff84c8690d9eb2cfd6d7282f65",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock.bloomsAndReceiptsRootTask",
+        "symbolKind": "Local",
+        "operationKind": "IsPattern",
+        "operationType": "bool",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 9243,
+        "startLine": 219,
+        "startColumn": 17,
+        "controlFlowBlock": 13,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "id": "background-finally",
+      "condition": "bloomsAndReceiptsRootTaskis{IsCompletedSuccessfully:false}",
+      "expectedPolarity": "false-arm",
+      "selectedArm": "none",
+      "excludedArm": "task observation",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "IsPatternExpression",
+        "canonicalSyntax": "bloomsAndReceiptsRootTaskis{IsCompletedSuccessfully:false}",
+        "syntaxSha256": "fc163852568f0a7e281dba01f224ef4d9ac95bf800ab4900aaeff00dc6b12678",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock.bloomsAndReceiptsRootTask",
+        "symbolKind": "Local",
+        "operationKind": "IsPattern",
+        "operationType": "bool",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 9520,
+        "startLine": 228,
+        "startColumn": 17,
+        "controlFlowBlock": 16,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    }
+  ],
+  "steps": [
+    {
+      "ordinal": 0,
+      "id": "post-transaction-commit",
+      "anchorId": "block.post-transaction-commit",
+      "branch": "always",
+      "observable": "commit-no-roots",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "CommitState(spec)",
+        "syntaxSha256": "f520c232a3eede1b825548d46c8774e7d06cbe8b55e462afc677ae36f6cc5f76",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitState(Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 7592,
+        "startLine": 172,
+        "startColumn": 9,
+        "controlFlowBlock": 4,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "ordinal": 1,
+      "id": "blob-gas-if-enabled",
+      "anchorId": "block.blob-gas-calculation",
+      "branch": "spec.IsEip4844Enabled",
+      "observable": "header.BlobGasUsed",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "BlobGasCalculator.CalculateBlobGas(block.Transactions)",
+        "syntaxSha256": "0f784de23e15afbb976bdd10dbebd3abb9eb2480848965d9907f721876852949",
+        "symbolId": "global::Nethermind.Evm.BlobGasCalculator.CalculateBlobGas(Nethermind.Core.Transaction[])",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "ulong",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 7690,
+        "startLine": 176,
+        "startColumn": 34,
+        "controlFlowBlock": 5,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "ordinal": 2,
+      "id": "receipt-task-null",
+      "anchorId": "block.background-task-null",
+      "branch": "always",
+      "observable": "background-task=null",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "VariableDeclarator",
+        "canonicalSyntax": "bloomsAndReceiptsRootTask=null",
+        "syntaxSha256": "bd04a32caa81b806e4e424da8380105b8d6065a6e9c8e6f8589f4c00cc5c59fe",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock.bloomsAndReceiptsRootTask",
+        "symbolKind": "Local",
+        "operationKind": "VariableDeclarator",
+        "operationType": "System.Threading.Tasks.Task\u003C(Nethermind.Core.Bloom BlockBloom, Nethermind.Core.Crypto.Hash256 ReceiptsRoot)\u003E",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 7813,
+        "startLine": 179,
+        "startColumn": 57,
+        "controlFlowBlock": 6,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "ordinal": 3,
+      "id": "synchronous-blooms",
+      "anchorId": "block.sync-blooms",
+      "branch": "background=false",
+      "observable": "receipt-blooms",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "CalculateBlooms(receipts)",
+        "syntaxSha256": "7bfa68b5452237eab92dcaf9b45eaf4de824f599eea35a61172496b5f789915b",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CalculateBlooms(Nethermind.Core.TxReceipt[])",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 8192,
+        "startLine": 190,
+        "startColumn": 13,
+        "controlFlowBlock": 8,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "ordinal": 4,
+      "id": "synchronous-receipts-root",
+      "anchorId": "block.sync-receipts-root",
+      "branch": "background=false",
+      "observable": "header.ReceiptsRoot",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "CalculateReceiptsRoot(receipts,spec,block)",
+        "syntaxSha256": "dd9b8c113ecd14a9e7faf0c05fac7de58fc0b8c103bff1719babbee513d6978e",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CalculateReceiptsRoot(Nethermind.Core.TxReceipt[],Nethermind.Core.Specs.IReleaseSpec,Nethermind.Core.Block)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "Nethermind.Core.Crypto.Hash256",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 8253,
+        "startLine": 191,
+        "startColumn": 35,
+        "controlFlowBlock": 8,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "ordinal": 5,
+      "id": "rewards",
+      "anchorId": "block.rewards",
+      "branch": "normal-return",
+      "observable": "rewards-hook",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "ApplyMinerRewards(block,blockTracer,spec)",
+        "syntaxSha256": "9679ad4049c5bfe29732ed79288152c5306b3c5679174a0b2f26510448926211",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ApplyMinerRewards(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 8344,
+        "startLine": 196,
+        "startColumn": 13,
+        "controlFlowBlock": 9,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "ordinal": 6,
+      "id": "withdrawals",
+      "anchorId": "block.withdrawals",
+      "branch": "normal-return",
+      "observable": "withdrawals-hook",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "_systemContractHandler.ProcessWithdrawals(block,spec)",
+        "syntaxSha256": "b7596a308311425a3fc221ef7c03607362d86be7b6a6655002fa7e441e274265",
+        "symbolId": "global::Nethermind.Consensus.Withdrawals.IWithdrawalProcessor.ProcessWithdrawals(Nethermind.Core.Block,Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor.ISystemContractHandler",
+        "containingMember": "ProcessBlock",
+        "position": 8401,
+        "startLine": 197,
+        "startColumn": 13,
+        "controlFlowBlock": 9,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "ordinal": 7,
+      "id": "finalization-commit",
+      "anchorId": "block.finalization-commit",
+      "branch": "always",
+      "observable": "commit-no-roots",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "CommitState(spec)",
+        "syntaxSha256": "f520c232a3eede1b825548d46c8774e7d06cbe8b55e462afc677ae36f6cc5f76",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitState(Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 8709,
+        "startLine": 201,
+        "startColumn": 13,
+        "controlFlowBlock": 9,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "ordinal": 8,
+      "id": "execution-requests",
+      "anchorId": "block.execution-requests",
+      "branch": "normal-return",
+      "observable": "execution-requests-hook",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "_systemContractHandler.ProcessExecutionRequests(block,_stateProvider,receipts,spec)",
+        "syntaxSha256": "20152068c8aa8c4c463cef04cf4dd168d03eb41ec8724425f07198cdb2a2039f",
+        "symbolId": "global::Nethermind.Consensus.ExecutionRequests.IExecutionRequestsProcessor.ProcessExecutionRequests(Nethermind.Core.Block,Nethermind.Evm.State.IWorldState,Nethermind.Core.TxReceipt[],Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor.ISystemContractHandler",
+        "containingMember": "ProcessBlock",
+        "position": 8741,
+        "startLine": 203,
+        "startColumn": 13,
+        "controlFlowBlock": 9,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "ordinal": 9,
+      "id": "end-block-trace-true",
+      "anchorId": "block.end-block-trace",
+      "branch": "background=false",
+      "observable": "EndBlockTrace(true)",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "ReceiptsTracer.EndBlockTrace(accumulateBlockBloom:bloomsAndReceiptsRootTaskisnull)",
+        "syntaxSha256": "3d88e5860317556657c642eb2fe690f7450f119896fd3050cb9ef8d8b561e072",
+        "symbolId": "global::Nethermind.Blockchain.Tracing.BlockReceiptsTracer.EndBlockTrace(bool)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Blockchain.Tracing.BlockReceiptsTracer",
+        "containingMember": "ProcessBlock",
+        "position": 8842,
+        "startLine": 205,
+        "startColumn": 13,
+        "controlFlowBlock": 9,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "ordinal": 10,
+      "id": "storage-roots-commit",
+      "anchorId": "block.storage-roots-commit",
+      "branch": "always",
+      "observable": "commit-roots",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "CommitStateAndStorageRoots(spec)",
+        "syntaxSha256": "da3bc9e2de3a4624c4788c2b352457643455c8dc98df497b6befacd9a5086513",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitStateAndStorageRoots(Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 8942,
+        "startLine": 207,
+        "startColumn": 13,
+        "controlFlowBlock": 9,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "ordinal": 11,
+      "id": "main-thread-account-changes",
+      "anchorId": "block.account-changes",
+      "branch": "main-thread=true",
+      "observable": "account-changes",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "SetAccountChanges(block)",
+        "syntaxSha256": "c1182e4489e7a833245d8d7b8e0402ce03447862753e65f8f94390fb17572aa5",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.SetAccountChanges(Nethermind.Core.Block)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 9067,
+        "startLine": 211,
+        "startColumn": 17,
+        "controlFlowBlock": 10,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "ordinal": 12,
+      "id": "state-root-if-enabled",
+      "anchorId": "block.state-root",
+      "branch": "state-root=true",
+      "observable": "state-root",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "ComputeStateRoot(header)",
+        "syntaxSha256": "a96f54772333d4be573e64e3407482264f7ae2259663ff552cff995da81d5c63",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ComputeStateRoot(Nethermind.Core.BlockHeader)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 9186,
+        "startLine": 216,
+        "startColumn": 17,
+        "controlFlowBlock": 12,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "ordinal": 13,
+      "id": "bal-finalization",
+      "anchorId": "block.bal-finalization",
+      "branch": "BAL-disabled",
+      "observable": "BAL-finalization-observation",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "_balManager.SetBlockAccessList(block)",
+        "syntaxSha256": "e6503f33cbd1c7478cd5abced7d12be0ca2d7ea4e902fd21da5a32dbbd55081d",
+        "symbolId": "global::Nethermind.Consensus.Processing.IBlockAccessListManager.SetBlockAccessList(Nethermind.Core.Block)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.IBlockAccessListManager",
+        "containingMember": "ProcessBlock",
+        "position": 9429,
+        "startLine": 224,
+        "startColumn": 13,
+        "controlFlowBlock": 15,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "ordinal": 14,
+      "id": "header-hash",
+      "anchorId": "block.hash",
+      "branch": "normal-return",
+      "observable": "header.Hash",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "SimpleAssignmentExpression",
+        "canonicalSyntax": "header.Hash=header.CalculateHash()",
+        "syntaxSha256": "a450d0572fbfc919c796e5795c97f747584a449e1eec7012b62440fc489d40d0",
+        "symbolId": "global::Nethermind.Core.BlockHeader.Hash",
+        "symbolKind": "Property",
+        "operationKind": "SimpleAssignment",
+        "operationType": "Nethermind.Core.Crypto.Hash256",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 9921,
+        "startLine": 241,
+        "startColumn": 9,
+        "controlFlowBlock": 20,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    },
+    {
+      "ordinal": 15,
+      "id": "return-receipts",
+      "anchorId": "block.return-receipts",
+      "branch": "normal-return",
+      "observable": "return receipts",
+      "binding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "ReturnStatement",
+        "canonicalSyntax": "returnreceipts;",
+        "syntaxSha256": "7a82e41ffe44752a0892d5daf81dc89dfd1d161eda9edc2eb34b314163aa6a48",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)",
+        "symbolKind": "Method",
+        "operationKind": "Return",
+        "operationType": "Nethermind.Core.TxReceipt[]",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 9975,
+        "startLine": 243,
+        "startColumn": 9,
+        "controlFlowBlock": 20,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      }
+    }
+  ],
+  "headerAssignments": [
+    {
+      "id": "header.blob-gas-used",
+      "anchorId": "block.blob-gas-calculation",
+      "guardAnchorId": "block.blob-gas-guard",
+      "selectedArm": "true-arm",
+      "targetCanonical": "header.BlobGasUsed",
+      "valueCanonical": "BlobGasCalculator.CalculateBlobGas(block.Transactions)",
+      "excludedWriteCanonicals": [],
+      "assignmentBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "SimpleAssignmentExpression",
+        "canonicalSyntax": "header.BlobGasUsed=BlobGasCalculator.CalculateBlobGas(block.Transactions)",
+        "syntaxSha256": "32c492f65a838bc9a492586d42fd7c1ff5dcdc75331c2eaadf8080152e76c77e",
+        "symbolId": "global::Nethermind.Core.BlockHeader.BlobGasUsed",
+        "symbolKind": "Property",
+        "operationKind": "SimpleAssignment",
+        "operationType": "ulong?",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 7669,
+        "startLine": 176,
+        "startColumn": 13,
+        "controlFlowBlock": 5,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      },
+      "valueBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "BlobGasCalculator.CalculateBlobGas(block.Transactions)",
+        "syntaxSha256": "0f784de23e15afbb976bdd10dbebd3abb9eb2480848965d9907f721876852949",
+        "symbolId": "global::Nethermind.Evm.BlobGasCalculator.CalculateBlobGas(Nethermind.Core.Transaction[])",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "ulong",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 7690,
+        "startLine": 176,
+        "startColumn": 34,
+        "controlFlowBlock": 5,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      },
+      "guardBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "SimpleMemberAccessExpression",
+        "canonicalSyntax": "spec.IsEip4844Enabled",
+        "syntaxSha256": "dfa0412a311368f91ccb55a68240115cea6ac39b77f8ab8cd62521c9156a175f",
+        "symbolId": "global::Nethermind.Core.Specs.IReleaseSpec.IsEip4844Enabled",
+        "symbolKind": "Property",
+        "operationKind": "PropertyReference",
+        "operationType": "bool",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 7624,
+        "startLine": 174,
+        "startColumn": 13,
+        "controlFlowBlock": 4,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      },
+      "excludedBindings": []
+    },
+    {
+      "id": "header.receipts-root",
+      "anchorId": "block.sync-receipts-root",
+      "guardAnchorId": "block.receipts-background-guard",
+      "selectedArm": "false-arm",
+      "targetCanonical": "header.ReceiptsRoot",
+      "valueCanonical": "CalculateReceiptsRoot(receipts,spec,block)",
+      "excludedWriteCanonicals": [
+        "(header.Bloom,header.ReceiptsRoot)=bloomsAndReceiptsRootTask.GetAwaiter().GetResult()"
+      ],
+      "assignmentBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "SimpleAssignmentExpression",
+        "canonicalSyntax": "header.ReceiptsRoot=CalculateReceiptsRoot(receipts,spec,block)",
+        "syntaxSha256": "15931ae8e803eca2fdec801cee08c2ca9b6dba557a301ed22a9e926f5397ec28",
+        "symbolId": "global::Nethermind.Core.BlockHeader.ReceiptsRoot",
+        "symbolKind": "Property",
+        "operationKind": "SimpleAssignment",
+        "operationType": "Nethermind.Core.Crypto.Hash256",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 8231,
+        "startLine": 191,
+        "startColumn": 13,
+        "controlFlowBlock": 8,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      },
+      "valueBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "CalculateReceiptsRoot(receipts,spec,block)",
+        "syntaxSha256": "dd9b8c113ecd14a9e7faf0c05fac7de58fc0b8c103bff1719babbee513d6978e",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CalculateReceiptsRoot(Nethermind.Core.TxReceipt[],Nethermind.Core.Specs.IReleaseSpec,Nethermind.Core.Block)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "Nethermind.Core.Crypto.Hash256",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 8253,
+        "startLine": 191,
+        "startColumn": 35,
+        "controlFlowBlock": 8,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      },
+      "guardBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "ShouldCalculateReceiptsInBackground(receipts)",
+        "syntaxSha256": "a46f7efba9d9ccfcdb9e0bf4d0df3816e1e0ab627f950942c8383137c684fe27",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ShouldCalculateReceiptsInBackground(Nethermind.Core.TxReceipt[])",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "bool",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 7859,
+        "startLine": 180,
+        "startColumn": 13,
+        "controlFlowBlock": 6,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      },
+      "excludedBindings": [
+        {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+          "owner": "BlockProcessor",
+          "member": "ProcessBlock",
+          "nodeKind": "SimpleMemberAccessExpression",
+          "canonicalSyntax": "header.ReceiptsRoot",
+          "syntaxSha256": "6fde218171716847f498e0d28176a829908daaf8162ac06df969542313d97213",
+          "symbolId": "global::Nethermind.Core.BlockHeader.ReceiptsRoot",
+          "symbolKind": "Property",
+          "operationKind": "PropertyReference",
+          "operationType": "Nethermind.Core.Crypto.Hash256",
+          "receiverType": "",
+          "containingMember": "ProcessBlock",
+          "position": 9327,
+          "startLine": 221,
+          "startColumn": 32,
+          "controlFlowBlock": 14,
+          "isReachable": true,
+          "hasCandidateSymbols": false,
+          "candidateReason": "None",
+          "isErrorSymbol": false,
+          "dataFlowSucceeded": true,
+          "readInside": [
+            "block",
+            "blockTracer",
+            "bloomsAndReceiptsRootTask",
+            "header",
+            "options",
+            "receipts",
+            "spec",
+            "this",
+            "token"
+          ],
+          "writtenInside": [
+            "bloomsAndReceiptsRootTask",
+            "body",
+            "header",
+            "receipts"
+          ]
+        }
+      ]
+    }
+  ],
+  "opaqueDelegates": [
+    {
+      "id": "miner-rewards",
+      "anchorId": "block.rewards",
+      "requiresNormalReturn": true,
+      "throwScope": "throws are outside the normal-return theorem"
+    },
+    {
+      "id": "withdrawals",
+      "anchorId": "block.withdrawals",
+      "requiresNormalReturn": true,
+      "throwScope": "throws are outside the normal-return theorem"
+    },
+    {
+      "id": "execution-requests",
+      "anchorId": "block.execution-requests",
+      "requiresNormalReturn": true,
+      "throwScope": "throws are outside the normal-return theorem"
+    },
+    {
+      "id": "calculate-blooms",
+      "anchorId": "block.sync-blooms",
+      "requiresNormalReturn": true,
+      "throwScope": "throws are outside the normal-return theorem"
+    },
+    {
+      "id": "calculate-receipts-root",
+      "anchorId": "block.sync-receipts-root",
+      "requiresNormalReturn": true,
+      "throwScope": "throws are outside the normal-return theorem"
+    },
+    {
+      "id": "end-block-trace",
+      "anchorId": "block.end-block-trace",
+      "requiresNormalReturn": true,
+      "throwScope": "throws are outside the normal-return theorem"
+    },
+    {
+      "id": "account-changes",
+      "anchorId": "block.account-changes",
+      "requiresNormalReturn": true,
+      "throwScope": "throws are outside the normal-return theorem"
+    },
+    {
+      "id": "state-root",
+      "anchorId": "block.state-root",
+      "requiresNormalReturn": true,
+      "throwScope": "throws are outside the normal-return theorem"
+    },
+    {
+      "id": "bal-finalization",
+      "anchorId": "block.bal-finalization",
+      "requiresNormalReturn": true,
+      "throwScope": "throws are outside the normal-return theorem"
+    },
+    {
+      "id": "header-hash",
+      "anchorId": "block.hash",
+      "requiresNormalReturn": true,
+      "throwScope": "throws are outside the normal-return theorem"
+    }
+  ],
+  "bridge": {
+    "foldPackage": "SequentialBlockTransactionFoldExtractor",
+    "foldArtifact": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.lean",
+    "foldArtifactSha256": "e1c7c38d5f90662a649fff77b8fa7bbc2543ea25e8eea1ac845a4d15ffbf5516",
+    "foldRefinement": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Refinement/SequentialBlockTransactionFold.lean",
+    "foldRefinementSha256": "02bcb54c9c4d183c70ccf4ffb75d28e312c0b859aa3691d5d92a731cf737dec3",
+    "relation": "elementwise projection bridge: a completed SequentialBlockTransactionFold FoldResult supplies receipt/log/terminal-result/index projections; it is not a whole-result equality premise",
+    "requiredTerminalFields": [
+      "outcome",
+      "committed",
+      "state.receipts[*].index/logs",
+      "terminalResults[*]",
+      "completedIndices",
+      "events.postTransactionCommit"
+    ],
+    "requiredFoldPremises": [
+      "fold.outcome=.completed",
+      "fold.committed=true",
+      "projectFoldReceipts(fold.state.receipts)=input.receipts (elementwise)",
+      "projectFoldReceiptLogs(fold.state.receipts)=input.fold.terminalLogProjection (elementwise)",
+      "projectFoldTerminalResults(fold.terminalResults)=input.fold.terminalResults (elementwise)",
+      "fold.completedIndices=input.fold.completedIndices (elementwise)",
+      "input.fold.terminalReceiptProjection=input.receipts (elementwise)",
+      "input.fold.terminalLogProjection=projectInputReceiptLogs(input.receipts) (elementwise)",
+      "fold.outcome=.completed -\u003E fold.terminalResults are all .ok (upstream fold theorem)",
+      "hasPostTransactionCommit(fold)=true"
+    ]
+  },
+  "sourceEntryAdapters": [
+    {
+      "id": "block.processBlock.standard-exact-base-adapter",
+      "claim": "static-layout-only; runtime caller supplies exact-base receiver, selected standard executor, BAL-disabled, named external normal-return/no-additional-effect premises, and separate TransactionsExecuted/post-transaction-CommitState normal-return premises",
+      "entryMemberId": "block.processBlock",
+      "exactBaseReceiver": "BlockProcessor.ProcessBlock exact base receiver",
+      "selectedStandardExecutor": "_blockTransactionsExecutor.ProcessTransactions(block,options,ReceiptsTracer,token)",
+      "balPremise": "runtime premise: BAL disabled",
+      "backgroundPremise": "runtime premise: ShouldCalculateReceiptsInBackground(receipts)=false",
+      "mainThreadPremise": "runtime premise: BlockchainProcessor.IsMainProcessingThread is selected as observed",
+      "stateRootPremise": "runtime premise: ShouldComputeStateRoot(header) is selected as observed",
+      "specPremise": "runtime premise: spec is the release-spec receiver used by the selected standard path",
+      "entryBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "MethodDeclaration",
+        "canonicalSyntax": "protectedvirtualTxReceipt[]ProcessBlock(Blockblock,IBlockTracerblockTracer,ProcessingOptionsoptions,IReleaseSpecspec,CancellationTokentoken){...}",
+        "syntaxSha256": "95fbba7b2a802f6a6ec0235c6db28da42a57aec79152381c84c69a420979b0a4",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)",
+        "symbolKind": "Method",
+        "operationKind": "MethodBodyOperation",
+        "operationType": "void",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 6513,
+        "startLine": 145,
+        "startColumn": 5,
+        "controlFlowBlock": -1,
+        "isReachable": false,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      },
+      "executorBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "_blockTransactionsExecutor.ProcessTransactions(block,options,ReceiptsTracer,token)",
+        "syntaxSha256": "f466e7af7ed3c3f6af679f2e3a15e3598f0b86a4a5c3aebd2228c00a45712c76",
+        "symbolId": "global::Nethermind.Consensus.Processing.IBlockProcessor.IBlockTransactionsExecutor.ProcessTransactions(Nethermind.Core.Block,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Blockchain.Tracing.BlockReceiptsTracer,System.Threading.CancellationToken)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "Nethermind.Core.TxReceipt[]",
+        "receiverType": "Nethermind.Consensus.Processing.IBlockProcessor.IBlockTransactionsExecutor",
+        "containingMember": "ProcessBlock",
+        "position": 7259,
+        "startLine": 166,
+        "startColumn": 32,
+        "controlFlowBlock": 1,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      },
+      "receiptsReferenceCount": 8,
+      "receiptsWriteCount": 1,
+      "receiptsBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "VariableDeclarator",
+        "canonicalSyntax": "receipts=_blockTransactionsExecutor.ProcessTransactions(block,options,ReceiptsTracer,token)",
+        "syntaxSha256": "8b8af2f3173d83fe06a8510e656aa00b0c013ed005e5799f6bf1159aaec8cb41",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock.receipts",
+        "symbolKind": "Local",
+        "operationKind": "VariableDeclarator",
+        "operationType": "Nethermind.Core.TxReceipt[]",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 7248,
+        "startLine": 166,
+        "startColumn": 21,
+        "controlFlowBlock": 1,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      },
+      "balBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "_balManager.SetBlockAccessList(block)",
+        "syntaxSha256": "e6503f33cbd1c7478cd5abced7d12be0ca2d7ea4e902fd21da5a32dbbd55081d",
+        "symbolId": "global::Nethermind.Consensus.Processing.IBlockAccessListManager.SetBlockAccessList(Nethermind.Core.Block)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.IBlockAccessListManager",
+        "containingMember": "ProcessBlock",
+        "position": 9429,
+        "startLine": 224,
+        "startColumn": 13,
+        "controlFlowBlock": 15,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      },
+      "backgroundBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "ShouldCalculateReceiptsInBackground(receipts)",
+        "syntaxSha256": "a46f7efba9d9ccfcdb9e0bf4d0df3816e1e0ab627f950942c8383137c684fe27",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ShouldCalculateReceiptsInBackground(Nethermind.Core.TxReceipt[])",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "bool",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 7859,
+        "startLine": 180,
+        "startColumn": 13,
+        "controlFlowBlock": 6,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      },
+      "mainThreadBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "SimpleMemberAccessExpression",
+        "canonicalSyntax": "BlockchainProcessor.IsMainProcessingThread",
+        "syntaxSha256": "1232779ddd44ec160cf5ada2dee93a9afc57ad582c7d8fdd286ed0fd94d8f183",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockchainProcessor.IsMainProcessingThread",
+        "symbolKind": "Property",
+        "operationKind": "PropertyReference",
+        "operationType": "bool",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 8993,
+        "startLine": 209,
+        "startColumn": 17,
+        "controlFlowBlock": 9,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      },
+      "stateRootBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "ShouldComputeStateRoot(header)",
+        "syntaxSha256": "ba450fe0871f856a730b6d59527d977c6df412d62583ed0d2c0054c219c867fc",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ShouldComputeStateRoot(Nethermind.Core.BlockHeader)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "bool",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 9124,
+        "startLine": 214,
+        "startColumn": 17,
+        "controlFlowBlock": 11,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      },
+      "specBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "SimpleMemberAccessExpression",
+        "canonicalSyntax": "spec.IsEip4844Enabled",
+        "syntaxSha256": "dfa0412a311368f91ccb55a68240115cea6ac39b77f8ab8cd62521c9156a175f",
+        "symbolId": "global::Nethermind.Core.Specs.IReleaseSpec.IsEip4844Enabled",
+        "symbolKind": "Property",
+        "operationKind": "PropertyReference",
+        "operationType": "bool",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 7624,
+        "startLine": 174,
+        "startColumn": 13,
+        "controlFlowBlock": 4,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      },
+      "stateRootWriteBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ComputeStateRoot",
+        "nodeKind": "SimpleAssignmentExpression",
+        "canonicalSyntax": "header.StateRoot=_stateProvider.StateRoot",
+        "syntaxSha256": "93a9346e54134f11db279671eb9b4f75d353a49223adc76ae7da0228d11bc1e4",
+        "symbolId": "global::Nethermind.Core.BlockHeader.StateRoot",
+        "symbolKind": "Property",
+        "operationKind": "SimpleAssignment",
+        "operationType": "Nethermind.Core.Crypto.Hash256",
+        "receiverType": "",
+        "containingMember": "ComputeStateRoot",
+        "position": 10554,
+        "startLine": 264,
+        "startColumn": 9,
+        "controlFlowBlock": 4,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "_",
+          "header",
+          "this"
+        ],
+        "writtenInside": [
+          "_"
+        ]
+      },
+      "stateRootValueBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ComputeStateRoot",
+        "nodeKind": "SimpleMemberAccessExpression",
+        "canonicalSyntax": "_stateProvider.StateRoot",
+        "syntaxSha256": "e094e1849004a2bf187cfc2ed2abec3e017370343ea8c1d4f013c786b631c04a",
+        "symbolId": "global::Nethermind.Evm.State.IReadOnlyStateProvider.StateRoot",
+        "symbolKind": "Property",
+        "operationKind": "PropertyReference",
+        "operationType": "Nethermind.Core.Crypto.Hash256",
+        "receiverType": "",
+        "containingMember": "ComputeStateRoot",
+        "position": 10573,
+        "startLine": 264,
+        "startColumn": 28,
+        "controlFlowBlock": 4,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "_",
+          "header",
+          "this"
+        ],
+        "writtenInside": [
+          "_"
+        ]
+      },
+      "accountChangesWriteBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "SetAccountChanges",
+        "nodeKind": "SimpleAssignmentExpression",
+        "canonicalSyntax": "block.AccountChanges=_stateProvider.GetAccountChanges()",
+        "syntaxSha256": "5928232c52572deaa09ffc7d73d5759f7265b736c1d2ec74d6a415f4da790cf1",
+        "symbolId": "global::Nethermind.Core.Block.AccountChanges",
+        "symbolKind": "Property",
+        "operationKind": "SimpleAssignment",
+        "operationType": "Nethermind.Core.Collections.ArrayPoolList\u003CNethermind.Core.AddressAsKey\u003E",
+        "receiverType": "",
+        "containingMember": "SetAccountChanges",
+        "position": 14140,
+        "startLine": 370,
+        "startColumn": 12,
+        "controlFlowBlock": 1,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "this"
+        ],
+        "writtenInside": []
+      },
+      "accountChangesValueBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "SetAccountChanges",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "_stateProvider.GetAccountChanges()",
+        "syntaxSha256": "52028f161154f1eb8dcc3d8a73776c6e6bda4967a2e4098bcb53378acfb35523",
+        "symbolId": "global::Nethermind.Evm.State.IWorldState.GetAccountChanges()",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "Nethermind.Core.Collections.ArrayPoolList\u003CNethermind.Core.AddressAsKey\u003E",
+        "receiverType": "Nethermind.Evm.State.IWorldState",
+        "containingMember": "SetAccountChanges",
+        "position": 14163,
+        "startLine": 370,
+        "startColumn": 35,
+        "controlFlowBlock": 1,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "this"
+        ],
+        "writtenInside": []
+      },
+      "transactionsExecutedNormalReturnPremise": "runtime premise: TransactionsExecuted subscribers return normally",
+      "postTransactionCommitNormalReturnPremise": "runtime premise: post-transaction CommitState(spec) returns normally",
+      "transactionsExecutedEventSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.TransactionsExecuted",
+      "transactionsExecutedBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "TransactionsExecuted?.Invoke()",
+        "syntaxSha256": "12f54485b56c2c3cba96d3b5f8701591e3db9079f05277e7fe805261deb4153a",
+        "symbolId": "global::System.Action.Invoke()",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "System.Action",
+        "containingMember": "ProcessBlock",
+        "position": 7572,
+        "startLine": 170,
+        "startColumn": 30,
+        "controlFlowBlock": 3,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      },
+      "postTransactionCommitBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "InvocationExpression",
+        "canonicalSyntax": "CommitState(spec)",
+        "syntaxSha256": "f520c232a3eede1b825548d46c8774e7d06cbe8b55e462afc677ae36f6cc5f76",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitState(Nethermind.Core.Specs.IReleaseSpec)",
+        "symbolKind": "Method",
+        "operationKind": "Invocation",
+        "operationType": "void",
+        "receiverType": "Nethermind.Consensus.Processing.BlockProcessor",
+        "containingMember": "ProcessBlock",
+        "position": 7592,
+        "startLine": 172,
+        "startColumn": 9,
+        "controlFlowBlock": 4,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      },
+      "conditionalSignal": {
+        "evaluation": {
+          "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+          "owner": "BlockProcessor",
+          "member": "ProcessBlock",
+          "nodeKind": "IdentifierName",
+          "canonicalSyntax": "TransactionsExecuted",
+          "syntaxSha256": "dbed9416aa97b806582cca2aeae0acfdf7cac939b3ef8a9a07e7ff661113654b",
+          "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.TransactionsExecuted",
+          "symbolKind": "Event",
+          "operationKind": "EventReference",
+          "operationType": "System.Action",
+          "receiverType": "",
+          "containingMember": "ProcessBlock",
+          "position": 7551,
+          "startLine": 170,
+          "startColumn": 9,
+          "controlFlowBlock": 2,
+          "isReachable": true,
+          "hasCandidateSymbols": false,
+          "candidateReason": "None",
+          "isErrorSymbol": false,
+          "dataFlowSucceeded": true,
+          "readInside": [
+            "block",
+            "blockTracer",
+            "bloomsAndReceiptsRootTask",
+            "header",
+            "options",
+            "receipts",
+            "spec",
+            "this",
+            "token"
+          ],
+          "writtenInside": [
+            "bloomsAndReceiptsRootTask",
+            "body",
+            "header",
+            "receipts"
+          ]
+        },
+        "whenNullBlock": 4,
+        "whenNotNullBlock": 3
+      },
+      "headerBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "VariableDeclarator",
+        "canonicalSyntax": "header=block.Header",
+        "syntaxSha256": "bc328ffb82ccd24ea73030fd16be5c284c14548dec4b63ae6e7a883f6d20baaa",
+        "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock.header",
+        "symbolKind": "Local",
+        "operationKind": "VariableDeclarator",
+        "operationType": "Nethermind.Core.BlockHeader",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 6770,
+        "startLine": 153,
+        "startColumn": 21,
+        "controlFlowBlock": 1,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      },
+      "headerValueBinding": {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "owner": "BlockProcessor",
+        "member": "ProcessBlock",
+        "nodeKind": "SimpleMemberAccessExpression",
+        "canonicalSyntax": "block.Header",
+        "syntaxSha256": "c4f82644fd7381f2a9f04a12dc768d62cdef437991e2ec375373630fb1d95466",
+        "symbolId": "global::Nethermind.Core.Block.Header",
+        "symbolKind": "Property",
+        "operationKind": "PropertyReference",
+        "operationType": "Nethermind.Core.BlockHeader",
+        "receiverType": "",
+        "containingMember": "ProcessBlock",
+        "position": 6779,
+        "startLine": 153,
+        "startColumn": 30,
+        "controlFlowBlock": 1,
+        "isReachable": true,
+        "hasCandidateSymbols": false,
+        "candidateReason": "None",
+        "isErrorSymbol": false,
+        "dataFlowSucceeded": true,
+        "readInside": [
+          "block",
+          "blockTracer",
+          "bloomsAndReceiptsRootTask",
+          "header",
+          "options",
+          "receipts",
+          "spec",
+          "this",
+          "token"
+        ],
+        "writtenInside": [
+          "bloomsAndReceiptsRootTask",
+          "body",
+          "header",
+          "receipts"
+        ]
+      },
+      "preservedValues": [
+        {
+          "name": "header",
+          "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock.header",
+          "type": "Nethermind.Core.BlockHeader",
+          "definitionCanonical": "header=block.Header",
+          "readContexts": [
+            "_systemContractHandler.ApplyBlockhashStateChanges(header,spec);",
+            "header.BlobGasUsed=BlobGasCalculator.CalculateBlobGas(block.Transactions);",
+            "header.ReceiptsRoot=CalculateReceiptsRoot(receipts,spec,block);",
+            "ShouldComputeStateRoot(header)",
+            "ComputeStateRoot(header);",
+            "(header.Bloom,header.ReceiptsRoot)=bloomsAndReceiptsRootTask.GetAwaiter().GetResult();",
+            "(header.Bloom,header.ReceiptsRoot)=bloomsAndReceiptsRootTask.GetAwaiter().GetResult();",
+            "header.Hash=header.CalculateHash();",
+            "header.Hash=header.CalculateHash();"
+          ],
+          "readPositions": [
+            7185,
+            7669,
+            8231,
+            9147,
+            9203,
+            9313,
+            9327,
+            9921,
+            9935
+          ]
+        },
+        {
+          "name": "block",
+          "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken).0",
+          "type": "Nethermind.Core.Block",
+          "definitionCanonical": "Blockblock",
+          "readContexts": [
+            "BlockBodybody=block.Body;",
+            "BlockHeaderheader=block.Header;",
+            "ReceiptsTracer.StartNewBlockTrace(block);",
+            "_blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header,spec));",
+            "_balManager.Setup(block);",
+            "_systemContractHandler.StoreBeaconRoot(block,spec,NullTxTracer.Instance);",
+            "TxReceipt[]receipts=_blockTransactionsExecutor.ProcessTransactions(block,options,ReceiptsTracer,token);",
+            "header.BlobGasUsed=BlobGasCalculator.CalculateBlobGas(block.Transactions);",
+            "return(AccumulateBlockBloom(receipts),CalculateReceiptsRoot(receipts,spec,block));",
+            "header.ReceiptsRoot=CalculateReceiptsRoot(receipts,spec,block);",
+            "ApplyMinerRewards(block,blockTracer,spec);",
+            "_systemContractHandler.ProcessWithdrawals(block,spec);",
+            "_systemContractHandler.ProcessExecutionRequests(block,_stateProvider,receipts,spec);",
+            "SetAccountChanges(block);",
+            "_balManager.SetBlockAccessList(block);"
+          ],
+          "readPositions": [
+            6738,
+            6779,
+            6888,
+            6985,
+            7034,
+            7090,
+            7306,
+            7725,
+            8122,
+            8291,
+            8362,
+            8443,
+            8789,
+            9085,
+            9460
+          ]
+        },
+        {
+          "name": "spec",
+          "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken).3",
+          "type": "Nethermind.Core.Specs.IReleaseSpec",
+          "definitionCanonical": "IReleaseSpecspec",
+          "readContexts": [
+            "_blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header,spec));",
+            "_systemContractHandler.StoreBeaconRoot(block,spec,NullTxTracer.Instance);",
+            "_systemContractHandler.ApplyBlockhashStateChanges(header,spec);",
+            "CommitState(spec);",
+            "CommitState(spec);",
+            "spec.IsEip4844Enabled",
+            "return(AccumulateBlockBloom(receipts),CalculateReceiptsRoot(receipts,spec,block));",
+            "header.ReceiptsRoot=CalculateReceiptsRoot(receipts,spec,block);",
+            "ApplyMinerRewards(block,blockTracer,spec);",
+            "_systemContractHandler.ProcessWithdrawals(block,spec);",
+            "CommitState(spec);",
+            "_systemContractHandler.ProcessExecutionRequests(block,_stateProvider,receipts,spec);",
+            "CommitStateAndStorageRoots(spec);"
+          ],
+          "readPositions": [
+            6999,
+            7097,
+            7193,
+            7220,
+            7604,
+            7624,
+            8116,
+            8285,
+            8382,
+            8450,
+            8721,
+            8822,
+            8969
+          ]
+        },
+        {
+          "name": "blockTracer",
+          "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken).1",
+          "type": "Nethermind.Evm.Tracing.IBlockTracer",
+          "definitionCanonical": "IBlockTracerblockTracer",
+          "readContexts": [
+            "ReceiptsTracer.SetOtherTracer(blockTracer);",
+            "ApplyMinerRewards(block,blockTracer,spec);"
+          ],
+          "readPositions": [
+            6832,
+            8369
+          ]
+        },
+        {
+          "name": "_stateProvider",
+          "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor._stateProvider",
+          "type": "Nethermind.Evm.State.IWorldState",
+          "definitionCanonical": "_stateProvider=stateProvider",
+          "readContexts": [
+            "_systemContractHandler.ProcessExecutionRequests(block,_stateProvider,receipts,spec);"
+          ],
+          "readPositions": [
+            8796
+          ]
+        },
+        {
+          "name": "_systemContractHandler",
+          "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor._systemContractHandler",
+          "type": "Nethermind.Consensus.Processing.BlockProcessor.ISystemContractHandler",
+          "definitionCanonical": "_systemContractHandler",
+          "readContexts": [
+            "_systemContractHandler.StoreBeaconRoot(block,spec,NullTxTracer.Instance);",
+            "_systemContractHandler.ApplyBlockhashStateChanges(header,spec);",
+            "_systemContractHandler.ProcessWithdrawals(block,spec);",
+            "_systemContractHandler.ProcessExecutionRequests(block,_stateProvider,receipts,spec);"
+          ],
+          "readPositions": [
+            7051,
+            7135,
+            8401,
+            8741
+          ]
+        },
+        {
+          "name": "ReceiptsTracer",
+          "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ReceiptsTracer",
+          "type": "Nethermind.Blockchain.Tracing.BlockReceiptsTracer",
+          "definitionCanonical": "protectedBlockReceiptsTracerReceiptsTracer{get;set;}=new();",
+          "readContexts": [
+            "ReceiptsTracer.SetOtherTracer(blockTracer);",
+            "ReceiptsTracer.StartNewBlockTrace(block);",
+            "TxReceipt[]receipts=_blockTransactionsExecutor.ProcessTransactions(block,options,ReceiptsTracer,token);",
+            "ReceiptsTracer.EndBlockTrace(accumulateBlockBloom:bloomsAndReceiptsRootTaskisnull);"
+          ],
+          "readPositions": [
+            6802,
+            6854,
+            7322,
+            8842
+          ]
+        }
+      ]
+    }
+  ],
+  "taskFlow": {
+    "variable": "bloomsAndReceiptsRootTask",
+    "localSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock.bloomsAndReceiptsRootTask",
+    "initializer": "bloomsAndReceiptsRootTask=null",
+    "synchronousArm": "false background arm has no task assignment",
+    "endTracePredicate": "bloomsAndReceiptsRootTaskisnull",
+    "backgroundResultPredicate": "bloomsAndReceiptsRootTaskisnotnull",
+    "finallyPredicate": "bloomsAndReceiptsRootTaskis{IsCompletedSuccessfully:false}",
+    "backgroundAssignments": 1,
+    "synchronousAssignments": 0,
+    "nullPreservedInSynchronousArm": true,
+    "backgroundResultExcluded": true,
+    "finallyObservationExcluded": true,
+    "initializerBinding": {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "member": "ProcessBlock",
+      "nodeKind": "VariableDeclarator",
+      "canonicalSyntax": "bloomsAndReceiptsRootTask=null",
+      "syntaxSha256": "bd04a32caa81b806e4e424da8380105b8d6065a6e9c8e6f8589f4c00cc5c59fe",
+      "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock.bloomsAndReceiptsRootTask",
+      "symbolKind": "Local",
+      "operationKind": "VariableDeclarator",
+      "operationType": "System.Threading.Tasks.Task\u003C(Nethermind.Core.Bloom BlockBloom, Nethermind.Core.Crypto.Hash256 ReceiptsRoot)\u003E",
+      "receiverType": "",
+      "containingMember": "ProcessBlock",
+      "position": 7813,
+      "startLine": 179,
+      "startColumn": 57,
+      "controlFlowBlock": 6,
+      "isReachable": true,
+      "hasCandidateSymbols": false,
+      "candidateReason": "None",
+      "isErrorSymbol": false,
+      "dataFlowSucceeded": true,
+      "readInside": [
+        "block",
+        "blockTracer",
+        "bloomsAndReceiptsRootTask",
+        "header",
+        "options",
+        "receipts",
+        "spec",
+        "this",
+        "token"
+      ],
+      "writtenInside": [
+        "bloomsAndReceiptsRootTask",
+        "body",
+        "header",
+        "receipts"
+      ]
+    },
+    "endTraceBinding": {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "member": "ProcessBlock",
+      "nodeKind": "InvocationExpression",
+      "canonicalSyntax": "ReceiptsTracer.EndBlockTrace(accumulateBlockBloom:bloomsAndReceiptsRootTaskisnull)",
+      "syntaxSha256": "3d88e5860317556657c642eb2fe690f7450f119896fd3050cb9ef8d8b561e072",
+      "symbolId": "global::Nethermind.Blockchain.Tracing.BlockReceiptsTracer.EndBlockTrace(bool)",
+      "symbolKind": "Method",
+      "operationKind": "Invocation",
+      "operationType": "void",
+      "receiverType": "Nethermind.Blockchain.Tracing.BlockReceiptsTracer",
+      "containingMember": "ProcessBlock",
+      "position": 8842,
+      "startLine": 205,
+      "startColumn": 13,
+      "controlFlowBlock": 9,
+      "isReachable": true,
+      "hasCandidateSymbols": false,
+      "candidateReason": "None",
+      "isErrorSymbol": false,
+      "dataFlowSucceeded": true,
+      "readInside": [
+        "block",
+        "blockTracer",
+        "bloomsAndReceiptsRootTask",
+        "header",
+        "options",
+        "receipts",
+        "spec",
+        "this",
+        "token"
+      ],
+      "writtenInside": [
+        "bloomsAndReceiptsRootTask",
+        "body",
+        "header",
+        "receipts"
+      ]
+    },
+    "backgroundResultBinding": {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "member": "ProcessBlock",
+      "nodeKind": "IsPatternExpression",
+      "canonicalSyntax": "bloomsAndReceiptsRootTaskisnotnull",
+      "syntaxSha256": "a64ef84e68925f38ecb709f9b89c30a9bedcf1ff84c8690d9eb2cfd6d7282f65",
+      "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock.bloomsAndReceiptsRootTask",
+      "symbolKind": "Local",
+      "operationKind": "IsPattern",
+      "operationType": "bool",
+      "receiverType": "",
+      "containingMember": "ProcessBlock",
+      "position": 9243,
+      "startLine": 219,
+      "startColumn": 17,
+      "controlFlowBlock": 13,
+      "isReachable": true,
+      "hasCandidateSymbols": false,
+      "candidateReason": "None",
+      "isErrorSymbol": false,
+      "dataFlowSucceeded": true,
+      "readInside": [
+        "block",
+        "blockTracer",
+        "bloomsAndReceiptsRootTask",
+        "header",
+        "options",
+        "receipts",
+        "spec",
+        "this",
+        "token"
+      ],
+      "writtenInside": [
+        "bloomsAndReceiptsRootTask",
+        "body",
+        "header",
+        "receipts"
+      ]
+    },
+    "finallyBinding": {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "owner": "BlockProcessor",
+      "member": "ProcessBlock",
+      "nodeKind": "IsPatternExpression",
+      "canonicalSyntax": "bloomsAndReceiptsRootTaskis{IsCompletedSuccessfully:false}",
+      "syntaxSha256": "fc163852568f0a7e281dba01f224ef4d9ac95bf800ab4900aaeff00dc6b12678",
+      "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock.bloomsAndReceiptsRootTask",
+      "symbolKind": "Local",
+      "operationKind": "IsPattern",
+      "operationType": "bool",
+      "receiverType": "",
+      "containingMember": "ProcessBlock",
+      "position": 9520,
+      "startLine": 228,
+      "startColumn": 17,
+      "controlFlowBlock": 16,
+      "isReachable": true,
+      "hasCandidateSymbols": false,
+      "candidateReason": "None",
+      "isErrorSymbol": false,
+      "dataFlowSucceeded": true,
+      "readInside": [
+        "block",
+        "blockTracer",
+        "bloomsAndReceiptsRootTask",
+        "header",
+        "options",
+        "receipts",
+        "spec",
+        "this",
+        "token"
+      ],
+      "writtenInside": [
+        "bloomsAndReceiptsRootTask",
+        "body",
+        "header",
+        "receipts"
+      ]
+    }
+  },
+  "entryPreservation": {
+    "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+    "member": "ProcessBlock",
+    "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ProcessBlock(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Consensus.Processing.ProcessingOptions,Nethermind.Core.Specs.IReleaseSpec,System.Threading.CancellationToken)",
+    "canonicalSyntax": "{BlockBodybody=block.Body;BlockHeaderheader=block.Header;ReceiptsTracer.SetOtherTracer(blockTracer);ReceiptsTracer.StartNewBlockTrace(block);_blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header,spec));_balManager.Setup(block);_systemContractHandler.StoreBeaconRoot(block,spec,NullTxTracer.Instance);_systemContractHandler.ApplyBlockhashStateChanges(header,spec);CommitState(spec);TxReceipt[]receipts=_blockTransactionsExecutor.ProcessTransactions(block,options,ReceiptsTracer,token);TransactionsExecuted?.Invoke();CommitState(spec);if(spec.IsEip4844Enabled){header.BlobGasUsed=BlobGasCalculator.CalculateBlobGas(block.Transactions);}Task\u003C(BloomBlockBloom,Hash256ReceiptsRoot)\u003E?bloomsAndReceiptsRootTask=null;if(ShouldCalculateReceiptsInBackground(receipts)){bloomsAndReceiptsRootTask=Task.Run(()=\u003E{CalculateBlooms(receipts);return(AccumulateBlockBloom(receipts),CalculateReceiptsRoot(receipts,spec,block));});}else{CalculateBlooms(receipts);header.ReceiptsRoot=CalculateReceiptsRoot(receipts,spec,block);}try{ApplyMinerRewards(block,blockTracer,spec);_systemContractHandler.ProcessWithdrawals(block,spec);CommitState(spec);_systemContractHandler.ProcessExecutionRequests(block,_stateProvider,receipts,spec);ReceiptsTracer.EndBlockTrace(accumulateBlockBloom:bloomsAndReceiptsRootTaskisnull);CommitStateAndStorageRoots(spec);if(BlockchainProcessor.IsMainProcessingThread){SetAccountChanges(block);}if(ShouldComputeStateRoot(header)){ComputeStateRoot(header);}if(bloomsAndReceiptsRootTaskisnotnull){(header.Bloom,header.ReceiptsRoot)=bloomsAndReceiptsRootTask.GetAwaiter().GetResult();}_balManager.SetBlockAccessList(block);}finally{if(bloomsAndReceiptsRootTaskis{IsCompletedSuccessfully:false}){try{bloomsAndReceiptsRootTask.GetAwaiter().GetResult();}catch{}}}header.Hash=header.CalculateHash();returnreceipts;}",
+    "syntaxSha256": "80d2f26d89842515ead4ad275d0ecd424df2395b80ba3b30569a280cf9080bb2"
+  },
+  "helperPreservation": [
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "member": "AccumulateBlockBloom",
+      "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.AccumulateBlockBloom(Nethermind.Core.TxReceipt[])",
+      "canonicalSyntax": "privatestaticBloomAccumulateBlockBloom(TxReceipt[]receipts){BloomblockBloom=new();foreach(TxReceipt?tinreceipts){blockBloom.Accumulate(t.Bloom!);}returnblockBloom;}",
+      "syntaxSha256": "add2837433c5d3d18d5ddc670aa36d5c73d024a1b73497c5409d9c3ea733ab5e"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "member": "ApplyMinerReward",
+      "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ApplyMinerReward(Nethermind.Consensus.Rewards.BlockReward,Nethermind.Core.Specs.IReleaseSpec)",
+      "canonicalSyntax": "[MethodImpl(MethodImplOptions.NoInlining)]privatevoidApplyMinerReward(BlockRewardreward,IReleaseSpecspec){if(_logger.IsTrace)TraceMinerReward(reward);_stateProvider.AddToBalanceAndCreateIfNotExists(reward.Address,reward.Value,spec);}",
+      "syntaxSha256": "9243e1988ea538748bb87c7e6f2f2c488db6b3ae81a72703815a4dd432037330"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "member": "ApplyMinerRewards",
+      "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ApplyMinerRewards(Nethermind.Core.Block,Nethermind.Evm.Tracing.IBlockTracer,Nethermind.Core.Specs.IReleaseSpec)",
+      "canonicalSyntax": "privatevoidApplyMinerRewards(Blockblock,IBlockTracertracer,IReleaseSpecspec){if(_logger.IsTrace)_logger.Trace(\u0022Applying miner rewards:\u0022);BlockReward[]rewards=rewardCalculator.CalculateRewards(block);if(tracer.IsTracingRewards){for(inti=0;i\u003Crewards.Length;i\u002B\u002B){BlockRewardreward=rewards[i];usingITxTracertxTracer=tracer.StartNewTxTrace(null);ApplyMinerReward(reward,spec);tracer.EndTxTrace();tracer.ReportReward(reward.Address,reward.RewardType.ToLowerString(),reward.Value);if(txTracer.IsTracingState){_stateProvider.Commit(spec,txTracer);}}}else{for(inti=0;i\u003Crewards.Length;i\u002B\u002B){ApplyMinerReward(rewards[i],spec);}}}",
+      "syntaxSha256": "80bd12efcd7c533307f6cd2da28554bd331ab164b7578e341297325d8a81a654"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "member": "CalculateBlooms",
+      "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CalculateBlooms(Nethermind.Core.TxReceipt[])",
+      "canonicalSyntax": "[MethodImpl(MethodImplOptions.NoInlining)]privatestaticvoidCalculateBlooms(TxReceipt[]receipts){usingMetricsTimer\u003CBloomsTimeSink\u003E_=new();if(receipts.Length\u003C=Environment.ProcessorCount){foreach(TxReceipt?tinreceipts){t.CalculateBloom();}return;}ParallelUnbalancedWork.For(0,receipts.Length,ParallelUnbalancedWork.DefaultOptions,receipts,static(i,receipts)=\u003E{receipts[i].CalculateBloom();returnreceipts;});}",
+      "syntaxSha256": "52628ec2ee27c2ebb75e5cd5f7c527aa50ee68080cd59631f2965c007e8a1318"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "member": "CalculateReceiptsRoot",
+      "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CalculateReceiptsRoot(Nethermind.Core.TxReceipt[],Nethermind.Core.Specs.IReleaseSpec,Nethermind.Core.Block)",
+      "canonicalSyntax": "privatestaticHash256CalculateReceiptsRoot(TxReceipt[]receipts,IReleaseSpecspec,Blockblock){usingMetricsTimer\u003CReceiptsRootTimeSink\u003E_=new();returnReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts,spec,block.ReceiptsRoot);}",
+      "syntaxSha256": "c7a64338bbe5f3eabc9fe9c6699db88848e6be56af62255e4fb33d81afa6f345"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "member": "CommitState",
+      "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitState(Nethermind.Core.Specs.IReleaseSpec)",
+      "canonicalSyntax": "privatevoidCommitState(IReleaseSpecspec){usingMetricsTimer\u003CCommitTimeSink\u003E_=new();_stateProvider.Commit(spec,commitRoots:false);}",
+      "syntaxSha256": "7cd46a953aa3d5524db0883358b8e629b0741c548ee1e1e7f5e609a68c523d82"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "member": "CommitStateAndStorageRoots",
+      "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitStateAndStorageRoots(Nethermind.Core.Specs.IReleaseSpec)",
+      "canonicalSyntax": "privatevoidCommitStateAndStorageRoots(IReleaseSpecspec){usingMetricsTimer\u003CStorageMerkleTimeSink\u003E_=new();_stateProvider.Commit(spec,commitRoots:true);}",
+      "syntaxSha256": "f366476bb0490f6c788bce0ba7f1ea1bed830427716029b16cddd3f4eebc90f6"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "member": "ComputeStateRoot",
+      "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ComputeStateRoot(Nethermind.Core.BlockHeader)",
+      "canonicalSyntax": "privatevoidComputeStateRoot(BlockHeaderheader){using(MetricsTimer\u003CStateRootTimeSink\u003E_=new()){_stateProvider.RecalculateStateRoot();}header.StateRoot=_stateProvider.StateRoot;}",
+      "syntaxSha256": "f2b6c4f3eed0f57f712d044a55154259ed680ae03a3bfd6605cd4136cb42a219"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "member": "CountLogs",
+      "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CountLogs(Nethermind.Core.TxReceipt[])",
+      "canonicalSyntax": "privatestaticintCountLogs(TxReceipt[]receipts){intcount=0;foreach(TxReceipt?tinreceipts){count\u002B=t.Logs?.Length??0;}returncount;}",
+      "syntaxSha256": "9e6ae117ecbd4d97a3f8aa86bfd19fadf367d390f2f59087ddc639d0fe722f06"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "member": "CreateBlockExecutionContext",
+      "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.CreateBlockExecutionContext(Nethermind.Core.BlockHeader,Nethermind.Core.Specs.IReleaseSpec)",
+      "canonicalSyntax": "protectedvirtualBlockExecutionContextCreateBlockExecutionContext(BlockHeaderheader,IReleaseSpecspec)=\u003Enew(header,spec);",
+      "syntaxSha256": "c6061361cfaaa61961b114b89dc835d8b91697fd45c55d9633c8d02b113bb456"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "member": "SetAccountChanges",
+      "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.SetAccountChanges(Nethermind.Core.Block)",
+      "canonicalSyntax": "[MethodImpl(MethodImplOptions.NoInlining)]privatevoidSetAccountChanges(Blockblock)=\u003Eblock.AccountChanges=_stateProvider.GetAccountChanges();",
+      "syntaxSha256": "8ec2b585964311e79203d574baf4ce92d5e9a436b6b8955eb8741652f5af5843"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.std.cs",
+      "member": "ShouldCalculateReceiptsInBackground",
+      "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ShouldCalculateReceiptsInBackground(Nethermind.Core.TxReceipt[])",
+      "canonicalSyntax": "[MethodImpl(MethodImplOptions.AggressiveInlining)]privatestaticpartialboolShouldCalculateReceiptsInBackground(TxReceipt[]receipts)=\u003Ereceipts.Length\u003E=BackgroundReceiptCountThreshold||CountLogs(receipts)\u003E=BackgroundLogCountThreshold;",
+      "syntaxSha256": "35f9710b6403354d97203b8a383dc01fe5a9e90fd094628fb2e985cad2dccede"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "member": "ShouldComputeStateRoot",
+      "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.ShouldComputeStateRoot(Nethermind.Core.BlockHeader)",
+      "canonicalSyntax": "protectedboolShouldComputeStateRoot(BlockHeaderheader)=\u003E!header.IsGenesis||!_specProvider.GenesisStateUnavailable;",
+      "syntaxSha256": "77e2a33c3428bde4e2f8e056ddd3c3f892d0092ed008d5f56a4957cd0ec13bca"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "member": "TraceMinerReward",
+      "symbolId": "global::Nethermind.Consensus.Processing.BlockProcessor.TraceMinerReward(Nethermind.Consensus.Rewards.BlockReward)",
+      "canonicalSyntax": "[MethodImpl(MethodImplOptions.NoInlining)]privatevoidTraceMinerReward(BlockRewardreward)=\u003E_logger.Trace($\u0022  {(BigInteger)reward.Value/(BigInteger)Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}\u0022);",
+      "syntaxSha256": "54e75525b573c26bb4d97e794e44eedc04cb641ae64dfa6f001229f51702b77c"
+    }
+  ],
+  "instrumentation": {
+    "wrapper": {
+      "path": "src/Nethermind/Nethermind.Core/Metric/MetricsTimer.cs",
+      "role": "instrumentation-wrapper",
+      "sha256": "9e72b71ff14688b9dfb16f5a09db1263153440154e5a1886e4f949f3ab5c4ca1",
+      "syntaxSha256": "65fb9dbdd1ed9a419ce44ad6c2fef46685f5d6c85275b1aa10a15eae9f9ea620"
+    },
+    "sinks": [
+      {
+        "name": "BloomsTimeSink",
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "typeSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.BloomsTimeSink",
+        "canonicalSyntax": "privatereadonlystructBloomsTimeSink:IMetricSink{publicstaticvoidAddTicks(longticks)=\u003EEvm.Metrics.IncrementBloomsTime(ticks);publicstaticboolIsEnabled=\u003EExecutionMetricsFlag.IsActive;}",
+        "syntaxSha256": "2666099d09fb638d2ec053386f7aead33b21e3d43a5a79a86db0a474cba11c31",
+        "enabledPropertySymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.BloomsTimeSink.IsEnabled",
+        "enabledValueSymbol": "global::Nethermind.Evm.ExecutionMetricsFlag.IsActive",
+        "addTicksSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.BloomsTimeSink.AddTicks(long)",
+        "addTicksCalls": [
+          "global::Nethermind.Evm.Metrics.IncrementBloomsTime(long)"
+        ],
+        "ownerSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.CalculateBlooms(Nethermind.Core.TxReceipt[])",
+        "resourceCanonical": "MetricsTimer\u003CBloomsTimeSink\u003E_=new()",
+        "wrapperType": "Nethermind.Core.Metric.MetricsTimer\u003CNethermind.Consensus.Processing.BlockProcessor.BloomsTimeSink\u003E",
+        "constructorSymbol": "global::Nethermind.Core.Metric.MetricsTimer\u003CTMetrics\u003E..ctor()",
+        "disposeSymbol": "global::Nethermind.Core.Metric.MetricsTimer\u003CTMetrics\u003E.Dispose()"
+      },
+      {
+        "name": "CommitTimeSink",
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "typeSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitTimeSink",
+        "canonicalSyntax": "privatereadonlystructCommitTimeSink:IMetricSink{publicstaticvoidAddTicks(longticks)=\u003EEvm.Metrics.IncrementCommitTime(ticks);publicstaticboolIsEnabled=\u003EExecutionMetricsFlag.IsActive;}",
+        "syntaxSha256": "5c87be1345df77b9abf2ce6ca7fd7e15568a89ef5d853927de028bf578357e3e",
+        "enabledPropertySymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitTimeSink.IsEnabled",
+        "enabledValueSymbol": "global::Nethermind.Evm.ExecutionMetricsFlag.IsActive",
+        "addTicksSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitTimeSink.AddTicks(long)",
+        "addTicksCalls": [
+          "global::Nethermind.Evm.Metrics.IncrementCommitTime(long)"
+        ],
+        "ownerSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitState(Nethermind.Core.Specs.IReleaseSpec)",
+        "resourceCanonical": "MetricsTimer\u003CCommitTimeSink\u003E_=new()",
+        "wrapperType": "Nethermind.Core.Metric.MetricsTimer\u003CNethermind.Consensus.Processing.BlockProcessor.CommitTimeSink\u003E",
+        "constructorSymbol": "global::Nethermind.Core.Metric.MetricsTimer\u003CTMetrics\u003E..ctor()",
+        "disposeSymbol": "global::Nethermind.Core.Metric.MetricsTimer\u003CTMetrics\u003E.Dispose()"
+      },
+      {
+        "name": "ReceiptsRootTimeSink",
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "typeSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.ReceiptsRootTimeSink",
+        "canonicalSyntax": "privatereadonlystructReceiptsRootTimeSink:IMetricSink{publicstaticvoidAddTicks(longticks)=\u003EEvm.Metrics.IncrementReceiptsRootTime(ticks);publicstaticboolIsEnabled=\u003EExecutionMetricsFlag.IsActive;}",
+        "syntaxSha256": "8c2b60cd60f4cfd7010b71b82eaac4cd35c0cc5e00d960d957cf60be7a9eba21",
+        "enabledPropertySymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.ReceiptsRootTimeSink.IsEnabled",
+        "enabledValueSymbol": "global::Nethermind.Evm.ExecutionMetricsFlag.IsActive",
+        "addTicksSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.ReceiptsRootTimeSink.AddTicks(long)",
+        "addTicksCalls": [
+          "global::Nethermind.Evm.Metrics.IncrementReceiptsRootTime(long)"
+        ],
+        "ownerSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.CalculateReceiptsRoot(Nethermind.Core.TxReceipt[],Nethermind.Core.Specs.IReleaseSpec,Nethermind.Core.Block)",
+        "resourceCanonical": "MetricsTimer\u003CReceiptsRootTimeSink\u003E_=new()",
+        "wrapperType": "Nethermind.Core.Metric.MetricsTimer\u003CNethermind.Consensus.Processing.BlockProcessor.ReceiptsRootTimeSink\u003E",
+        "constructorSymbol": "global::Nethermind.Core.Metric.MetricsTimer\u003CTMetrics\u003E..ctor()",
+        "disposeSymbol": "global::Nethermind.Core.Metric.MetricsTimer\u003CTMetrics\u003E.Dispose()"
+      },
+      {
+        "name": "StateRootTimeSink",
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "typeSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.StateRootTimeSink",
+        "canonicalSyntax": "privatereadonlystructStateRootTimeSink:IMetricSink{publicstaticvoidAddTicks(longticks){Evm.Metrics.IncrementStateHashTime(ticks);Evm.Metrics.IncrementStateRootTime(ticks);}publicstaticboolIsEnabled=\u003EExecutionMetricsFlag.IsActive;}",
+        "syntaxSha256": "0900a60eba60f797d396d80e732bd104cdb6a35931988164993acbd82b6a051f",
+        "enabledPropertySymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.StateRootTimeSink.IsEnabled",
+        "enabledValueSymbol": "global::Nethermind.Evm.ExecutionMetricsFlag.IsActive",
+        "addTicksSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.StateRootTimeSink.AddTicks(long)",
+        "addTicksCalls": [
+          "global::Nethermind.Evm.Metrics.IncrementStateHashTime(long)",
+          "global::Nethermind.Evm.Metrics.IncrementStateRootTime(long)"
+        ],
+        "ownerSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.ComputeStateRoot(Nethermind.Core.BlockHeader)",
+        "resourceCanonical": "MetricsTimer\u003CStateRootTimeSink\u003E_=new()",
+        "wrapperType": "Nethermind.Core.Metric.MetricsTimer\u003CNethermind.Consensus.Processing.BlockProcessor.StateRootTimeSink\u003E",
+        "constructorSymbol": "global::Nethermind.Core.Metric.MetricsTimer\u003CTMetrics\u003E..ctor()",
+        "disposeSymbol": "global::Nethermind.Core.Metric.MetricsTimer\u003CTMetrics\u003E.Dispose()"
+      },
+      {
+        "name": "StorageMerkleTimeSink",
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "typeSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.StorageMerkleTimeSink",
+        "canonicalSyntax": "privatereadonlystructStorageMerkleTimeSink:IMetricSink{publicstaticvoidAddTicks(longticks){Evm.Metrics.IncrementStateHashTime(ticks);Evm.Metrics.IncrementStorageMerkleTime(ticks);}publicstaticboolIsEnabled=\u003EExecutionMetricsFlag.IsActive;}",
+        "syntaxSha256": "3dd8e64b1a6692574a778f925a15340615f1f9e8fe3a3b0751d1494c854db39a",
+        "enabledPropertySymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.StorageMerkleTimeSink.IsEnabled",
+        "enabledValueSymbol": "global::Nethermind.Evm.ExecutionMetricsFlag.IsActive",
+        "addTicksSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.StorageMerkleTimeSink.AddTicks(long)",
+        "addTicksCalls": [
+          "global::Nethermind.Evm.Metrics.IncrementStateHashTime(long)",
+          "global::Nethermind.Evm.Metrics.IncrementStorageMerkleTime(long)"
+        ],
+        "ownerSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitStateAndStorageRoots(Nethermind.Core.Specs.IReleaseSpec)",
+        "resourceCanonical": "MetricsTimer\u003CStorageMerkleTimeSink\u003E_=new()",
+        "wrapperType": "Nethermind.Core.Metric.MetricsTimer\u003CNethermind.Consensus.Processing.BlockProcessor.StorageMerkleTimeSink\u003E",
+        "constructorSymbol": "global::Nethermind.Core.Metric.MetricsTimer\u003CTMetrics\u003E..ctor()",
+        "disposeSymbol": "global::Nethermind.Core.Metric.MetricsTimer\u003CTMetrics\u003E.Dispose()"
+      }
+    ],
+    "activations": [
+      {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "ownerSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.CalculateBlooms(Nethermind.Core.TxReceipt[])",
+        "operationKind": "ObjectCreation",
+        "resourceCanonical": "MetricsTimer\u003CBloomsTimeSink\u003E_=new()",
+        "wrapperType": "Nethermind.Core.Metric.MetricsTimer\u003CNethermind.Consensus.Processing.BlockProcessor.BloomsTimeSink\u003E",
+        "sinkTypeSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.BloomsTimeSink",
+        "targetSymbol": "global::Nethermind.Core.Metric.MetricsTimer\u003CTMetrics\u003E..ctor()"
+      },
+      {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "ownerSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitState(Nethermind.Core.Specs.IReleaseSpec)",
+        "operationKind": "ObjectCreation",
+        "resourceCanonical": "MetricsTimer\u003CCommitTimeSink\u003E_=new()",
+        "wrapperType": "Nethermind.Core.Metric.MetricsTimer\u003CNethermind.Consensus.Processing.BlockProcessor.CommitTimeSink\u003E",
+        "sinkTypeSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitTimeSink",
+        "targetSymbol": "global::Nethermind.Core.Metric.MetricsTimer\u003CTMetrics\u003E..ctor()"
+      },
+      {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "ownerSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.CalculateReceiptsRoot(Nethermind.Core.TxReceipt[],Nethermind.Core.Specs.IReleaseSpec,Nethermind.Core.Block)",
+        "operationKind": "ObjectCreation",
+        "resourceCanonical": "MetricsTimer\u003CReceiptsRootTimeSink\u003E_=new()",
+        "wrapperType": "Nethermind.Core.Metric.MetricsTimer\u003CNethermind.Consensus.Processing.BlockProcessor.ReceiptsRootTimeSink\u003E",
+        "sinkTypeSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.ReceiptsRootTimeSink",
+        "targetSymbol": "global::Nethermind.Core.Metric.MetricsTimer\u003CTMetrics\u003E..ctor()"
+      },
+      {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "ownerSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.ComputeStateRoot(Nethermind.Core.BlockHeader)",
+        "operationKind": "ObjectCreation",
+        "resourceCanonical": "MetricsTimer\u003CStateRootTimeSink\u003E_=new()",
+        "wrapperType": "Nethermind.Core.Metric.MetricsTimer\u003CNethermind.Consensus.Processing.BlockProcessor.StateRootTimeSink\u003E",
+        "sinkTypeSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.StateRootTimeSink",
+        "targetSymbol": "global::Nethermind.Core.Metric.MetricsTimer\u003CTMetrics\u003E..ctor()"
+      },
+      {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+        "ownerSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.CommitStateAndStorageRoots(Nethermind.Core.Specs.IReleaseSpec)",
+        "operationKind": "ObjectCreation",
+        "resourceCanonical": "MetricsTimer\u003CStorageMerkleTimeSink\u003E_=new()",
+        "wrapperType": "Nethermind.Core.Metric.MetricsTimer\u003CNethermind.Consensus.Processing.BlockProcessor.StorageMerkleTimeSink\u003E",
+        "sinkTypeSymbol": "global::Nethermind.Consensus.Processing.BlockProcessor.StorageMerkleTimeSink",
+        "targetSymbol": "global::Nethermind.Core.Metric.MetricsTimer\u003CTMetrics\u003E..ctor()"
+      }
+    ]
+  },
+  "openObligations": [
+    "The source-entry adapter is static-layout-only: a caller must supply runtime exact-base, standard-executor, and BAL-disabled premises.",
+    "An adapter must supply a completed SequentialBlockTransactionFold result with elementwise receipt, log, terminal-result, and index projections; no whole-result equality is assumed.",
+    "An adapter must relate the supplied block, header, receipts, release spec, world, tracer, and standard handler identities.",
+    "Each admitted opaque hook has an explicit normal-return observation; source-owned hook bodies are recursively audited for typed effects and callable edges, while their computations remain outside this theorem.",
+    "Every delegate invocation is typed; only the exact TransactionsExecuted Action event is admitted, and source delegate callables are otherwise rejected.",
+    "Pinned source-owned constructors, dispatch, operators, conversions, dynamic calls, pointers, and implicit using/foreach/await edges require an exact audit or fail closed.",
+    "The five admitted timer sinks have exact whole-type preservation identities; their getters, callbacks, initializers, and timer constructor/disposal bindings cannot introduce source-local re-entry or captures.",
+    "External boundaries outside the five pinned trees require explicit no-additional-modeled-effect and normal-return adapter premises; source-owned opaque hooks are closed by the pinned-tree effect and callable audits.",
+    "EIP-4844, main-thread account-change, state-root, and synchronous null-task guards are source-bound premises with typed observations.",
+    "The normal theorem excludes background receipt work, rollback/durability, validation, storage, DI, and CLR behavior."
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "0.1.0",
+  "kernel": "ordinary standard-mainnet exact-Commit simple-transfer success machine",
+  "acceptanceState": "static-draft",
+  "sourceClosureSha256": "static-draft-reemit-required",
+  "compilerClosureSha256": "6185996666fdad205d2bf17895ed7b570948deea9ba9ea3d80b28bafb9717ca7",
+  "sources": [],
+  "dependencies": [],
+  "compilerReferences": [],
+  "options": {
+    "none": 0,
+    "commit": 1,
+    "restore": 2,
+    "skipValidation": 4,
+    "warmup": 8,
+    "buildUp": 16,
+    "exactTarget": "ExecutionOptions.Commit (raw = 1; no Restore/Warmup/BuildUp)",
+    "binding": null
+  },
+  "route": {
+    "processorRegistration": "BlockProcessingModule.AddScoped<ITransactionProcessor, EthereumTransactionProcessor>",
+    "baseType": "EthereumTransactionProcessorBase : TransactionProcessorBase<EthereumGasPolicy>",
+    "executorRegistration": "BlockProcessingModule.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockValidationTransactionsExecutor>",
+    "directInnerGuard": "!balManager.Enabled => return inner.ProcessTransactions(...) (sole direct true-arm return; no virtual/decorator execution is claimed)",
+    "balEnabledMember": "IBlockAccessListManager.Enabled",
+    "parallelDecorator": "BlockProcessingModule.AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, ParallelBlockValidationTransactionsExecutor>",
+    "forkIdentity": "Nethermind.Specs.Forks.Amsterdam (25_Amsterdam.cs)",
+    "baseTracerType": "Nethermind.Blockchain.Tracing.BlockReceiptsTracer(parallel=false)",
+    "excludedRoutes": [],
+    "bindings": []
+  },
+  "machine": {
+    "entry": "TransactionProcessorBase<TGasPolicy>.Process(Transaction, ITxTracer, ExecutionOptions)",
+    "successDomain": "OnlyOkTerminal; static draft",
+    "stages": [],
+    "branches": [],
+    "effects": [],
+    "anchors": [],
+    "controlFlows": [],
+    "route": null,
+    "options": null,
+    "excludedBranches": [],
+    "normalReturnPremises": [],
+    "fieldwiseHandoffs": []
+  },
+  "arithmeticRules": [],
+  "externalCorrespondence": [],
+  "openObligations": [
+    "Re-emit this draft through --extract after the serialized source/compiler closure lane is available.",
+    "Do not treat this draft as a C# execution or production-equivalence certificate."
+  ]
+}

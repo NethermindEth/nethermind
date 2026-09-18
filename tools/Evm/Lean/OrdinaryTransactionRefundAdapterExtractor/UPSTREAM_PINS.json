@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "status": "accepted-standard-only",
+  "dependencies": [
+    {
+      "path": "tools/Evm/Lean/Eip803x/Gas.lean",
+      "sha256": "9de536802dec28031f51a6c4321fe1fd4ce7652b3426a43e1256ae4cc39c075b"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Schedule.lean",
+      "sha256": "84f5f3bf4d6f570e1fb3c2ccc560336c845baafa81c5e1db828e433654524868"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Production.lean",
+      "sha256": "4bc54d28101015c6ada5df75f9bc083468804536446b8e9f90efeb3f3026a66c"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/TransactionGas.lean",
+      "sha256": "2e87721125c6430eab9c76dc8f32a11f4898db0dec68b57a48043c18cbdeefcd"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/TransactionSettlement.lean",
+      "sha256": "db349833a4caa046083b37e3b796a0a8cb631e561741dfff27e78757d29f9be2"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Generated/TransactionSettlementKernel.lean",
+      "sha256": "21e4c3ef135618a96bd5e7d2111e0be0bb272840b7d9ca427f17ef7777e2401c"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Generated/StateGasTransitionKernel.lean",
+      "sha256": "f284d83951b94cbfaf10ad8b5a58b0015b2c96f4ac86e97c9de8b3865dee1dce"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Generated/StateGasTransitionAdapterKernel.lean",
+      "sha256": "95a3e2fadce28e7a98a666f4d57d82a7d174f05e4492979968708843b752091a"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Refinement/TransactionSettlement.lean",
+      "sha256": "bb34d4962f22231ae1d466dfe0302ebaa40ba07624e6f43e28f282b9700b0f25"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Refinement/StateGasTransition.lean",
+      "sha256": "a3d3beb8004c1431e2550a702f84d816751657ad90c8320ddc5809956da41cec"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Refinement/StateGasTransitionAdapter.lean",
+      "sha256": "77fb2fce964efc1203658d96dc7e977d3c9ede587ab21c1ea13d2a33f716bb0c"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Refinement/StateGasTransitionAdapterKernel.lean",
+      "sha256": "b72895f08007be0481b12bd38560f4dde3a059f30c23595e9cd060f35ab34b29"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/TransactionSettlementVectors.lean",
+      "sha256": "085895d4a21bc57fa368ed707b36010fa6aa136999185d41e3fed7a4eebea0da"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/StateGasTransitionVectors.lean",
+      "sha256": "d510bdd95bd0f57025a7fa13979e7fca968c9192a883b1e3463e642c8a6d2ea4"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/StateGasTransitionAdapterVectors.lean",
+      "sha256": "8a1d169b35709bf9bcc16c7eca20b0764e204fa79e0bfd594e6347916f1429cb"
+    },
+    {
+      "path": "tools/Evm/Lean/Extractor/Generated/TransactionSettlementKernel.ir.json",
+      "sha256": "51dfcde8e9441beae09b05699a31c2e9e8457674db74210e4474fa67f81c1ee7"
+    },
+    {
+      "path": "tools/Evm/Lean/Extractor/Generated/TransactionSettlementKernel.source-manifest.json",
+      "sha256": "2012c3b0132ca65b2690046777dd31bffc1e189d716f214fadb3b724565a0548"
+    },
+    {
+      "path": "tools/Evm/Lean/Extractor/Generated/StateGasTransitionKernel.ir.json",
+      "sha256": "d3a920f44b72d22500d8184f79843b38c02840bc86d671b33c6ad7b79cd03583"
+    },
+    {
+      "path": "tools/Evm/Lean/Extractor/Generated/StateGasTransitionKernel.source-manifest.json",
+      "sha256": "362031db8ef6bbfdcab657694f69a810369273f2ca41b7e1a233465e05c4cf85"
+    },
+    {
+      "path": "tools/Evm/Lean/Extractor/Generated/StateGasTransitionAdapterKernel.ir.json",
+      "sha256": "f51fa70f1d202f3c7fc8c009c83f9cedb353a49fd214e3285bdbbb18b45b51cf"
+    },
+    {
+      "path": "tools/Evm/Lean/Extractor/Generated/StateGasTransitionAdapterKernel.source-manifest.json",
+      "sha256": "b1f8c6fc051aa910953f5b98b38086ac04dbafeff509dd74bee39095fc59ae19"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Extensions/UInt64Extensions.cs",
+      "sha256": "0e2d5004e25261c0bdf2e8a1959da5207425a9b4b2f27f617f5b8b354be1aa24"
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+using System;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.Arm;
+using Nethermind.Core.Extensions;
+using Nethermind.Int256;
+
+namespace Nethermind.Evm;
+
+public ref partial struct EvmStack
+{
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void ReadUInt256FromSlot(ref byte slot, out UInt256 value)
+    {
+        if (!Vector256.IsHardwareAccelerated && !AdvSimd.Arm64.IsSupported)
+        {
+            value = ReadBeWord(ref slot);
+            return;
+        }
+
+        Unsafe.SkipInit(out value);
+        EvmWord beBytes = Unsafe.ReadUnaligned<EvmWord>(ref slot);
+        Unsafe.As<UInt256, EvmWord>(ref value) = beBytes.ByteSwap();
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void ReadMemoryPositionFromSlot(ref byte slot, out UInt256 position)
+    {
+        ref ulong limbs = ref Unsafe.As<byte, ulong>(ref slot);
+        ulong unreachable = limbs | Unsafe.Add(ref limbs, 1) | Unsafe.Add(ref limbs, 2);
+        ulong addressable = Bytes.Bswap64(Unsafe.Add(ref limbs, 3));
+
+        position = new UInt256(addressable, 0, 0, unreachable);
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool PopMemoryPositionAndUInt256(out UInt256 position, out UInt256 value)
+    {
+        Unsafe.SkipInit(out position);
+        Unsafe.SkipInit(out value);
+        nint newHead = Head - 2;
+        if (newHead < 0)
+        {
+            return false;
+        }
+        Head = newHead;
+        ref byte baseRef = ref Unsafe.Add(ref _stack, newHead * WordSize);
+        ReadUInt256FromSlot(ref baseRef, out value);
+        ReadMemoryPositionFromSlot(ref Unsafe.Add(ref baseRef, WordSize), out position);
+        return true;
+    }
+
+    [SkipLocalsInit]
+    public bool PopWord256(out Span<byte> word)
+    {
+        nint head = Head - 1;
+        if (head < 0)
+        {
+            word = default;
+            return false;
+        }
+        Head = head;
+        word = MemoryMarshal.CreateSpan(ref Unsafe.Add(ref _stack, head * WordSize), WordSize);
+        return true;
+    }
+}

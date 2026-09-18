@@ -141,6 +141,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     public Hash256 GetStorageRoot(Address address) => GetOrCreateStorage(address).StorageRoot;
 
+    internal bool IsStorageEmpty(Address address) => GetOrCreateStorage(address).IsEmpty;
+
     private HashSet<AddressAsKey>? _tempToUpdateRoots;
     /// <summary>
     /// Called by Commit
@@ -705,6 +707,20 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public int Count => _dictionary.Count;
         public bool HasClear => _missingAreDefault;
 
+        /// <summary>Whether any committed block-level change leaves a slot at a non-zero value.</summary>
+        public bool HasNonZeroValue
+        {
+            get
+            {
+                foreach (StorageChangeTrace trace in _dictionary.Values)
+                {
+                    if (!trace.After.IsZero()) return true;
+                }
+
+                return false;
+            }
+        }
+
         public void Reset(int capacity)
         {
             _missingAreDefault = false;
@@ -859,6 +875,21 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             {
                 EnsureStorageTree();
                 return _backend.RootHash;
+            }
+        }
+
+        public bool IsEmpty
+        {
+            get
+            {
+                // Writes committed without merkleizing are not reflected in the backend root. A zero-only overlay
+                // cannot prove it contains every pre-existing slot, while a full clear can coexist with later
+                // non-zero writes, so the final block-level values take precedence where they are conclusive.
+                if (_wasWritten && BlockChange.HasNonZeroValue) return false;
+                if (BlockChange.HasClear) return true;
+
+                EnsureStorageTree();
+                return _backend.RootHash == Keccak.EmptyTreeHash;
             }
         }
 

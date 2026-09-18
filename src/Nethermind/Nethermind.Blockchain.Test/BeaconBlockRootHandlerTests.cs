@@ -5,6 +5,7 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
@@ -129,28 +130,31 @@ public class BeaconBlockRootHandlerTests
     }
 
     [Test]
-    public void Test_StoreBeaconRoot_AccessListNotNull()
+    public void Test_StoreBeaconRoot_AccessListNotNull([Values] bool eip8037Enabled)
     {
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithParentBeaconBlockRoot(Hash256.Zero).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
+        IReleaseSpec spec = eip8037Enabled ? Amsterdam.Instance : Cancun.Instance;
 
         _worldState.AccountExists(Arg.Any<Address>()).Returns(true);
 
-        _beaconBlockRootHandler.StoreBeaconRoot(block, Cancun.Instance, NullTxTracer.Instance);
+        _beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
 
-        Transaction transaction = new()
+        SystemCall transaction = new()
         {
             Value = 0ul,
             Data = header.ParentBeaconBlockRoot!.Bytes.ToArray(),
             To = Eip4788Constants.BeaconRootsAddress,
             SenderAddress = Address.SystemUser,
-            GasLimit = 30_000_000ul,
+            GasLimit = Eip8037Constants.SystemCallGasLimit,
             GasPrice = UInt256.Zero,
             AccessList = new AccessList.Builder().AddAddress(Eip4788Constants.BeaconRootsAddress).Build()
         };
 
         transaction.Hash = transaction.CalculateHash();
         _transactionProcessor.Received().Execute(Arg.Is<Transaction>(t =>
+            t is SystemCall &&
+            t.GasLimit == Eip8037Constants.SystemCallGasLimit &&
             t.Hash == transaction.Hash), NullTxTracer.Instance);
     }
 }

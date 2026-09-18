@@ -1,0 +1,177 @@
+-- SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+-- SPDX-License-Identifier: LGPL-3.0-only
+
+import BlockProcessorExtractor.Generated.NormalFiniteBranchCompletion
+
+namespace BlockProcessorExtractor.Generated.BlockchainPublication
+
+namespace F
+export BlockProcessorExtractor.Generated.NormalFiniteBranchCompletion (Input Result run suggested containsFlag)
+end F
+def acceptanceState : String := "source-admitted"
+def sourceClosureSha256 : String := "24d85c0b6c0a42dc1c950ff8056e0f87f81103b9c59c61ebfb14dfc5118b80e6"
+def semanticIrSha256 : String := "38e3e21037eac7ac664e4aadf74d17111baf99ff4184ed78fa6984907b076d43"
+
+inductive Site where
+  | stop | stats | head | mark | metrics | disposeBlocks | disposeInputs
+  deriving DecidableEq, Repr
+inductive Op where
+  | stop | difficulty | stats | head | mark | metrics | prepareReturn | disposeBlocks | disposeInputs | «return»
+  deriving DecidableEq, Repr
+def program : List Op := [.stop, .difficulty, .stats, .head, .mark, .metrics, .prepareReturn, .disposeBlocks, .disposeInputs, .«return»]
+
+structure Input where
+  finite : F.Input
+  suggestedBlock : Nat
+  preparedBlocks : List Nat
+  blocksToProcess : List Nat
+  blocksResource : Nat
+  inputsResource : Nat
+  difficulty : Nat → Option Nat
+  baseBlock : Option Nat
+  headResult : Bool
+  warnEnabled : Bool
+  normal : Site → Bool
+
+def readOnly (i : Input) : Bool := F.containsFlag i.finite.options 65
+def updateHead (i : Input) : Bool := !F.containsFlag i.finite.options 64
+def markProcessed (i : Input) : Bool := F.containsFlag i.finite.options 128
+def forceProcessing (i : Input) : Bool := F.containsFlag i.finite.options 2
+def suggestedHeader (i : Input) : Nat := i.finite.header i.suggestedBlock
+def preparedEntry (i : Input) : Bool :=
+  (i.finite.originalList == i.inputsResource) &&
+  (i.blocksToProcess == F.suggested i.finite) &&
+  (if forceProcessing i then
+    i.preparedBlocks.isEmpty && (i.blocksToProcess == [i.suggestedBlock])
+   else (i.preparedBlocks == i.blocksToProcess) && !i.blocksToProcess.isEmpty)
+def boundary (i : Input) : Bool :=
+  preparedEntry i && (i.blocksResource != i.inputsResource &&
+  i.baseBlock == i.finite.baseHeader &&
+  i.blocksToProcess.getLast? == some i.suggestedBlock &&
+  (i.difficulty (suggestedHeader i)).all (· < 2^256))
+def callsNormal (i : Input) : Bool :=
+  i.normal .stop && (readOnly i || i.normal .stats) && (!updateHead i || i.normal .head) &&
+  (!markProcessed i || i.normal .mark) && (readOnly i || i.normal .metrics) &&
+  i.normal .disposeBlocks && i.normal .disposeInputs
+
+inductive Event where
+  | branchReturned (blocks : List Nat)
+  | errorCleared | stopwatchStopped
+  | selectedLast (block : Nat)
+  | difficultyAssigned (header : Nat) (value : Option Nat)
+  | statsUpdated (blocks : List Nat) (baseBlock : Option Nat)
+  | headInvoked (suggestedHeader : Nat) (wereProcessed force : Bool) (preloaded : List Nat)
+  | headReturned (result : Bool) | headWarning
+  | markInvoked (prepared : List Nat) | markReturned | bestKnownMetricRead
+  | returnPrepared (block : Option Nat)
+  | disposeBlocksInvoked (resource : Nat) | disposeInputsInvoked (resource : Nat)
+  | returned (block : Option Nat) | escaped (site : Site)
+  deriving DecidableEq, Repr
+structure State where
+  lastProcessed : Option Nat
+  difficultyWrites : List (Nat × Option Nat)
+  headReturn : Option Bool
+  markCompleted : Bool
+  blocksDisposed : Bool
+  inputsDisposed : Bool
+  deriving DecidableEq, Repr
+inductive Outcome where
+  | running | returned | outsideBoundary | upstreamEscape | escaped (site : Site)
+  deriving DecidableEq, Repr
+structure Result where
+  finite : F.Result
+  outcome : Outcome
+  state : Option State
+  events : List Event
+  returnedBlock : Option Nat
+  error : Option String
+  deriving DecidableEq, Repr
+
+def refused (finite : F.Result) : Result :=
+  { finite := finite, outcome := .outsideBoundary, state := none, events := [], returnedBlock := none, error := none }
+def escape (r : Result) (site : Site) (events : List Event) : Result :=
+  { r with outcome := .escaped site, state := none, returnedBlock := none, events := r.events ++ events ++ [.escaped site] }
+def update (r : Result) (s : State) (events : List Event) : Result :=
+  { r with state := some s, events := r.events ++ events }
+def call (i : Input) (r : Result) (site : Site) (s : State) (events : List Event) : Result :=
+  if i.normal site then update r s events else escape r site events
+def step (i : Input) (blocks : List Nat) (r : Result) (op : Op) : Result :=
+  match r.outcome, r.state with
+  | .running, some s =>
+    match op with
+    | .stop => call i r .stop s [.stopwatchStopped]
+    | .difficulty =>
+      match blocks.getLast? with
+      | none => r
+      | some last =>
+        let value := i.difficulty (suggestedHeader i)
+        let target := i.finite.header last
+        update r { s with lastProcessed := some last, difficultyWrites := [(target, value)] }
+          [.selectedLast last, .difficultyAssigned target value]
+    | .stats => if readOnly i then r else call i r .stats s [.statsUpdated blocks i.baseBlock]
+    | .head => if !updateHead i then r else
+      let invoked := [.headInvoked (suggestedHeader i) true false i.preparedBlocks]
+      if i.normal .head then update r { s with headReturn := some i.headResult }
+        (invoked ++ [.headReturned i.headResult] ++ (if !i.headResult && i.warnEnabled then [.headWarning] else []))
+      else escape r .head invoked
+    | .mark => if !markProcessed i then r else
+      if i.normal .mark then update r { s with markCompleted := true } [.markInvoked i.preparedBlocks, .markReturned]
+      else escape r .mark [.markInvoked i.preparedBlocks]
+    | .metrics => if readOnly i then r else call i r .metrics s [.bestKnownMetricRead]
+    | .prepareReturn => update r s [.returnPrepared s.lastProcessed]
+    | .disposeBlocks => call i r .disposeBlocks { s with blocksDisposed := true } [.disposeBlocksInvoked i.blocksResource]
+    | .disposeInputs => call i r .disposeInputs { s with inputsDisposed := true } [.disposeInputsInvoked i.inputsResource]
+    | .«return» => { r with outcome := .returned, returnedBlock := s.lastProcessed, events := r.events ++ [.returned s.lastProcessed] }
+  | _, _ => r
+def execute (i : Input) (blocks : List Nat) : List Op → Result → Result
+  | [], r => r
+  | op :: rest, r => execute i blocks rest (step i blocks r op)
+def initial (finite : F.Result) (blocks : List Nat) : Result :=
+  { finite := finite, outcome := .running,
+    state := some
+      { lastProcessed := none, difficultyWrites := [], headReturn := none,
+        markCompleted := false, blocksDisposed := false, inputsDisposed := false },
+    events := [.branchReturned blocks, .errorCleared], returnedBlock := none, error := none }
+def run (i : Input) : Result :=
+  let finite := F.run i.finite
+  if !boundary i then refused finite
+  else if finite.outcome == .outsideBoundary then refused finite
+  else if finite.outcome != .completed then { refused finite with outcome := .upstreamEscape }
+  else match finite.returnedBlocks with
+    | none => refused finite
+    | some blocks => execute i blocks program (initial finite blocks)
+
+-- Classification at the wrapper boundary does not assert that the normal finite runner throws.
+inductive Failure where
+  | unknownParent | notBetter | invalid (headerHash : Option Nat) (message : String) | escaped
+  deriving DecidableEq, Repr
+structure FailureInput where
+  failure : Failure
+  options : Nat
+  blocks : List Nat
+  hash : Nat → Option Nat
+  handlerNormal : Bool
+structure FailureObservation where
+  returned : Bool
+  returnedBlock : Option Nat
+  error : Option (Option String)
+  invalidEventBlock : Option (Option Nat)
+  deletionCalls : Option (List Nat)
+  finalStateKnown : Bool
+  deriving DecidableEq, Repr
+def classifyFailure (i : FailureInput) : FailureObservation :=
+  let unknown : FailureObservation :=
+    { returned := false, returnedBlock := none, error := none, invalidEventBlock := none,
+      deletionCalls := none, finalStateKnown := false }
+  if !i.handlerNormal then unknown else
+  match i.failure with
+  | .unknownParent | .notBetter =>
+      { returned := true, returnedBlock := none, error := some none, invalidEventBlock := some none,
+        deletionCalls := some [], finalStateKnown := false }
+  | .escaped => unknown
+  | .invalid hash message =>
+      let matchingBlocks := i.blocks.filter (fun block => i.hash block == hash)
+      { returned := true, returnedBlock := none, error := some (some message), invalidEventBlock := some matchingBlocks.head?,
+        deletionCalls := some (if hash.isSome && !F.containsFlag i.options 65 then matchingBlocks else []), finalStateKnown := false }
+
+end BlockProcessorExtractor.Generated.BlockchainPublication

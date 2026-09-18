@@ -1,0 +1,771 @@
+{
+  "schemaVersion": 3,
+  "kernel": "Nethermind.Evm.GasPolicy.PrecompileGasPricingKernel",
+  "roots": [
+    {
+      "name": "TryConsume",
+      "signature": "Nethermind.Evm.GasPolicy.PrecompileGasPricingResult Nethermind.Evm.GasPolicy.PrecompileGasPricingKernel.TryConsume(ulong gas, ulong baseGasCost, ulong dataGasCost)"
+    }
+  ],
+  "dataTypes": [
+    {
+      "type": "Nethermind.Evm.GasPolicy.PrecompileGasPricingResult",
+      "constructor": "Nethermind.Evm.GasPolicy.PrecompileGasPricingResult.PrecompileGasPricingResult(Nethermind.Evm.GasPolicy.PrecompileGasPricingOutcome outcome, ulong remainingGas, ulong chargedGas)",
+      "fields": [
+        {
+          "name": "Outcome",
+          "type": "Nethermind.Evm.GasPolicy.PrecompileGasPricingOutcome",
+          "parameterOrdinal": 0
+        },
+        {
+          "name": "RemainingGas",
+          "type": "ulong",
+          "parameterOrdinal": 1
+        },
+        {
+          "name": "ChargedGas",
+          "type": "ulong",
+          "parameterOrdinal": 2
+        }
+      ]
+    }
+  ],
+  "methods": [
+    {
+      "signature": "Nethermind.Evm.GasPolicy.PrecompileGasPricingResult Nethermind.Evm.GasPolicy.PrecompileGasPricingKernel.TryConsume(ulong gas, ulong baseGasCost, ulong dataGasCost)",
+      "returnType": "Nethermind.Evm.GasPolicy.PrecompileGasPricingResult",
+      "parameters": [
+        {
+          "ordinal": 0,
+          "name": "gas",
+          "type": "ulong"
+        },
+        {
+          "ordinal": 1,
+          "name": "baseGasCost",
+          "type": "ulong"
+        },
+        {
+          "ordinal": 2,
+          "name": "dataGasCost",
+          "type": "ulong"
+        }
+      ],
+      "blocks": [
+        {
+          "ordinal": 0,
+          "kind": "Entry",
+          "conditionKind": "None",
+          "predecessors": [],
+          "operations": [],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 1
+          }
+        },
+        {
+          "ordinal": 1,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 0,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "Binary",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "checked",
+                "value": "false"
+              },
+              {
+                "name": "lifted",
+                "value": "false"
+              },
+              {
+                "name": "operator",
+                "value": "GreaterThan"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "ulong",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": []
+              },
+              {
+                "kind": "Binary",
+                "type": "ulong",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "checked",
+                    "value": "false"
+                  },
+                  {
+                    "name": "lifted",
+                    "value": "false"
+                  },
+                  {
+                    "name": "operator",
+                    "value": "Subtract"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FieldReference",
+                    "type": "ulong",
+                    "constant": "18446744073709551615",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "field",
+                        "value": "ulong ulong.MaxValue"
+                      }
+                    ],
+                    "children": []
+                  },
+                  {
+                    "kind": "ParameterReference",
+                    "type": "ulong",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "parameter",
+                        "value": "2"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 2
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 3
+          }
+        },
+        {
+          "ordinal": 2,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 1,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "ObjectCreation",
+            "type": "Nethermind.Evm.GasPolicy.PrecompileGasPricingResult",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "constructor",
+                "value": "Nethermind.Evm.GasPolicy.PrecompileGasPricingResult.PrecompileGasPricingResult(Nethermind.Evm.GasPolicy.PrecompileGasPricingOutcome outcome, ulong remainingGas, ulong chargedGas)"
+              }
+            ],
+            "children": [
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FieldReference",
+                    "type": "Nethermind.Evm.GasPolicy.PrecompileGasPricingOutcome",
+                    "constant": "1",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "field",
+                        "value": "Nethermind.Evm.GasPolicy.PrecompileGasPricingOutcome.BaseDataOverflow"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "ParameterReference",
+                    "type": "ulong",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "parameter",
+                        "value": "0"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "2"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "Conversion",
+                    "type": "ulong",
+                    "constant": "0",
+                    "isImplicit": true,
+                    "properties": [
+                      {
+                        "name": "checked",
+                        "value": "false"
+                      },
+                      {
+                        "name": "conversion",
+                        "value": "exists,nonidentity,nonnumeric,nonreference,implicit,nonnullable,builtin"
+                      }
+                    ],
+                    "children": [
+                      {
+                        "kind": "Literal",
+                        "type": "int",
+                        "constant": "0",
+                        "isImplicit": false,
+                        "properties": [],
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Return",
+            "destinationOrdinal": 6
+          }
+        },
+        {
+          "ordinal": 3,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 1,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [
+            {
+              "kind": "SimpleAssignment",
+              "type": "ulong",
+              "isImplicit": true,
+              "properties": [
+                {
+                  "name": "ref",
+                  "value": "false"
+                }
+              ],
+              "children": [
+                {
+                  "kind": "LocalReference",
+                  "type": "ulong",
+                  "isImplicit": true,
+                  "properties": [
+                    {
+                      "name": "local",
+                      "value": "totalGasCost@993"
+                    }
+                  ],
+                  "children": []
+                },
+                {
+                  "kind": "Binary",
+                  "type": "ulong",
+                  "isImplicit": false,
+                  "properties": [
+                    {
+                      "name": "checked",
+                      "value": "false"
+                    },
+                    {
+                      "name": "lifted",
+                      "value": "false"
+                    },
+                    {
+                      "name": "operator",
+                      "value": "Add"
+                    }
+                  ],
+                  "children": [
+                    {
+                      "kind": "ParameterReference",
+                      "type": "ulong",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "parameter",
+                          "value": "1"
+                        }
+                      ],
+                      "children": []
+                    },
+                    {
+                      "kind": "ParameterReference",
+                      "type": "ulong",
+                      "isImplicit": false,
+                      "properties": [
+                        {
+                          "name": "parameter",
+                          "value": "2"
+                        }
+                      ],
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "branchValue": {
+            "kind": "Binary",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "checked",
+                "value": "false"
+              },
+              {
+                "name": "lifted",
+                "value": "false"
+              },
+              {
+                "name": "operator",
+                "value": "LessThan"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "ulong",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": []
+              },
+              {
+                "kind": "LocalReference",
+                "type": "ulong",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "local",
+                    "value": "totalGasCost@993"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 4
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 5
+          }
+        },
+        {
+          "ordinal": 4,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 3,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "ObjectCreation",
+            "type": "Nethermind.Evm.GasPolicy.PrecompileGasPricingResult",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "constructor",
+                "value": "Nethermind.Evm.GasPolicy.PrecompileGasPricingResult.PrecompileGasPricingResult(Nethermind.Evm.GasPolicy.PrecompileGasPricingOutcome outcome, ulong remainingGas, ulong chargedGas)"
+              }
+            ],
+            "children": [
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FieldReference",
+                    "type": "Nethermind.Evm.GasPolicy.PrecompileGasPricingOutcome",
+                    "constant": "2",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "field",
+                        "value": "Nethermind.Evm.GasPolicy.PrecompileGasPricingOutcome.OutOfGas"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "Conversion",
+                    "type": "ulong",
+                    "constant": "0",
+                    "isImplicit": true,
+                    "properties": [
+                      {
+                        "name": "checked",
+                        "value": "false"
+                      },
+                      {
+                        "name": "conversion",
+                        "value": "exists,nonidentity,nonnumeric,nonreference,implicit,nonnullable,builtin"
+                      }
+                    ],
+                    "children": [
+                      {
+                        "kind": "Literal",
+                        "type": "int",
+                        "constant": "0",
+                        "isImplicit": false,
+                        "properties": [],
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "2"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "Conversion",
+                    "type": "ulong",
+                    "constant": "0",
+                    "isImplicit": true,
+                    "properties": [
+                      {
+                        "name": "checked",
+                        "value": "false"
+                      },
+                      {
+                        "name": "conversion",
+                        "value": "exists,nonidentity,nonnumeric,nonreference,implicit,nonnullable,builtin"
+                      }
+                    ],
+                    "children": [
+                      {
+                        "kind": "Literal",
+                        "type": "int",
+                        "constant": "0",
+                        "isImplicit": false,
+                        "properties": [],
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Return",
+            "destinationOrdinal": 6
+          }
+        },
+        {
+          "ordinal": 5,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 3,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "ObjectCreation",
+            "type": "Nethermind.Evm.GasPolicy.PrecompileGasPricingResult",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "constructor",
+                "value": "Nethermind.Evm.GasPolicy.PrecompileGasPricingResult.PrecompileGasPricingResult(Nethermind.Evm.GasPolicy.PrecompileGasPricingOutcome outcome, ulong remainingGas, ulong chargedGas)"
+              }
+            ],
+            "children": [
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FieldReference",
+                    "type": "Nethermind.Evm.GasPolicy.PrecompileGasPricingOutcome",
+                    "constant": "0",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "field",
+                        "value": "Nethermind.Evm.GasPolicy.PrecompileGasPricingOutcome.Success"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "Binary",
+                    "type": "ulong",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "checked",
+                        "value": "false"
+                      },
+                      {
+                        "name": "lifted",
+                        "value": "false"
+                      },
+                      {
+                        "name": "operator",
+                        "value": "Subtract"
+                      }
+                    ],
+                    "children": [
+                      {
+                        "kind": "ParameterReference",
+                        "type": "ulong",
+                        "isImplicit": false,
+                        "properties": [
+                          {
+                            "name": "parameter",
+                            "value": "0"
+                          }
+                        ],
+                        "children": []
+                      },
+                      {
+                        "kind": "LocalReference",
+                        "type": "ulong",
+                        "isImplicit": false,
+                        "properties": [
+                          {
+                            "name": "local",
+                            "value": "totalGasCost@993"
+                          }
+                        ],
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "2"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "LocalReference",
+                    "type": "ulong",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "local",
+                        "value": "totalGasCost@993"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Return",
+            "destinationOrdinal": 6
+          }
+        },
+        {
+          "ordinal": 6,
+          "kind": "Exit",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 2,
+              "semantics": "Return"
+            },
+            {
+              "sourceOrdinal": 4,
+              "semantics": "Return"
+            },
+            {
+              "sourceOrdinal": 5,
+              "semantics": "Return"
+            }
+          ],
+          "operations": []
+        }
+      ]
+    }
+  ],
+  "program": {
+    "outcomes": [
+      "success",
+      "baseDataOverflow",
+      "outOfGas"
+    ]
+  },
+  "adapter": {
+    "standardPolicyMethod": "EthereumGasPolicy.TryConsumePrecompileGas",
+    "kernelMethod": "PrecompileGasPricingKernel.TryConsume",
+    "fullFrameMethod": "VirtualMachine.RunPrecompile",
+    "inlineMethod": "EvmInstructions.TryInlineStaticPrecompileCall",
+    "concreteVirtualMachine": "EthereumVirtualMachine : VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E",
+    "mainnetDiRegistration": ".AddScoped\u003CIVirtualMachine, EthereumVirtualMachine\u003E()",
+    "mainnetDiRegistrationExtension": "Nethermind.Core.ContainerBuilderExtensions.AddScoped\u003CNethermind.Evm.IVirtualMachine, Nethermind.Evm.EthereumVirtualMachine\u003E()",
+    "mainnetDiRegistrationAssembly": "Nethermind.Core",
+    "pricingSteps": [
+      "precompile base cost",
+      "precompile data cost",
+      "pure overflow and affordability decision",
+      "execution gas assignment only"
+    ],
+    "baseThenData": true,
+    "onlyExecutionGasIsAssigned": true,
+    "fullFrameUsesLocalCopy": true,
+    "inlineUsesByRefChild": true,
+    "ethereumVirtualMachineUsesStandardGasPolicy": true,
+    "mainnetDiRegistersEthereumVirtualMachine": true,
+    "mainnetDiBindsProductionScopedExtension": true
+  }
+}

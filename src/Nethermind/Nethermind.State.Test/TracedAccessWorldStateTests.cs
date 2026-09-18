@@ -54,6 +54,44 @@ public class TracedAccessWorldStateTests(bool parallel)
         return (tws, scope);
     }
 
+    private static (TracedAccessWorldState tws, IDisposable scope) CreateParallelOverlayTracingState(
+        Action<IWorldState>? genesisSetup = null,
+        StorageCell? declaredStorageCell = null)
+    {
+        IWorldState inner = TestWorldStateFactory.CreateForTest();
+        Hash256 stateRoot;
+        using (inner.BeginScope(IWorldState.PreGenesis))
+        {
+            genesisSetup?.Invoke(inner);
+            inner.Commit(Spec, isGenesis: true);
+            inner.CommitTree(0);
+            stateRoot = inner.StateRoot;
+        }
+
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
+        AccountChangesBuilder addressAChanges = Build.An.AccountChanges.WithAddress(TestItem.AddressA);
+        if (declaredStorageCell is { } storageCell)
+        {
+            addressAChanges = addressAChanges.WithStorageChanges(storageCell.Index, new StorageChange(0, 0u));
+        }
+
+        ReadOnlyBlockAccessList suggestedBal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                addressAChanges.TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).TestObject)
+            .TestObject;
+        BlockAccessListBasedWorldState balWorldState = new(inner, LimboLogs.Instance);
+        balWorldState.SetBlockAccessIndex(0);
+        balWorldState.Setup(Build.A.Block.WithHeader(baseBlock).WithBlockAccessList(suggestedBal).TestObject);
+        balWorldState.SetParentReader(inner);
+
+        TracedAccessWorldState tws = new(balWorldState, parallel: true);
+        tws.SetGeneratingBlockAccessList(new());
+        IDisposable scope = tws.BeginScope(baseBlock);
+        tws.SetIndex(0);
+        return (tws, scope);
+    }
+
     [Test]
     public void Mutation_without_generating_block_access_list_throws_actionable_exception()
     {
@@ -308,6 +346,21 @@ public class TracedAccessWorldStateTests(bool parallel)
             .SetName("IsDeadAccount_RecordsAccountRead");
 
         yield return new TestCaseData(
+            (Action<IWorldState>)(ws => ws.CreateAccount(TestItem.AddressA, 0)),
+            (Action<TracedAccessWorldState>)(tws =>
+            {
+                bool collision = tws.IsCreateCollision(
+                    TestItem.AddressA,
+                    includeStorageCollision: true,
+                    out bool physicalLeafExists,
+                    out bool logicalAccountExists);
+                Assert.That(collision, Is.False);
+                Assert.That(physicalLeafExists, Is.True);
+                Assert.That(logicalAccountExists, Is.False);
+            }))
+            .SetName("IsCreateCollision_RecordsAccountRead");
+
+        yield return new TestCaseData(
             (Action<IWorldState>)(ws => ws.CreateAccount(TestItem.AddressA, 77)),
             (Action<TracedAccessWorldState>)(tws =>
             {
@@ -376,6 +429,193 @@ public class TracedAccessWorldStateTests(bool parallel)
             {
                 Assert.That(ac!.BalanceChange, Is.Not.Null);
                 Assert.That(ac.BalanceChange!.Value.Value, Is.EqualTo(UInt256.Zero));
+            }
+        }
+    }
+
+    [Test]
+    public void IsCreateCollision_uses_current_nonce_overlay_during_parallel_replay()
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateParallelOverlayTracingState();
+        using (scope)
+        {
+            tws.SetNonce(TestItem.AddressA, 1);
+
+            bool collision = tws.IsCreateCollision(
+                TestItem.AddressA,
+                includeStorageCollision: true,
+                out bool physicalLeafExists,
+                out bool logicalAccountExists);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(collision, Is.True);
+                Assert.That(physicalLeafExists, Is.True);
+                Assert.That(logicalAccountExists, Is.True);
+            }
+        }
+    }
+
+    [Test]
+    public void IsCreateCollision_preserves_prefunded_account_state_without_treating_it_as_a_collision()
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateParallelOverlayTracingState();
+        using (scope)
+        {
+            bool created = tws.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, 1, Spec, out _);
+            bool collision = tws.IsCreateCollision(
+                TestItem.AddressA,
+                includeStorageCollision: true,
+                out bool physicalLeafExists,
+                out bool logicalAccountExists);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(created, Is.True);
+                Assert.That(collision, Is.False);
+                Assert.That(physicalLeafExists, Is.True);
+                Assert.That(logicalAccountExists, Is.True);
+            }
+        }
+    }
+
+    [TestCase(0u)]
+    [TestCase(1u)]
+    public void AddToBalanceAndCreateIfNotExists_returns_false_after_current_transaction_account_touch(uint balance)
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateParallelOverlayTracingState();
+        using (scope)
+        {
+            Assert.That(tws.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balance, Spec, out _), Is.True);
+            Assert.That(tws.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, balance, Spec, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void AddToBalanceAndCreateIfNotExists_restores_current_transaction_physical_creation()
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateParallelOverlayTracingState();
+        using (scope)
+        {
+            Snapshot snapshot = tws.TakeSnapshot();
+            Assert.That(tws.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, 0, Spec, out _), Is.True);
+
+            tws.Restore(snapshot);
+
+            Assert.That(tws.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, 0, Spec, out _), Is.True);
+        }
+    }
+
+    [Test]
+    public void IsCreateCollision_classifies_current_zero_balance_creation_as_physical_only()
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateParallelOverlayTracingState();
+        using (scope)
+        {
+            Assert.That(tws.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, 0, Spec, out _), Is.True);
+
+            bool collision = tws.IsCreateCollision(
+                TestItem.AddressA,
+                includeStorageCollision: true,
+                out bool physicalLeafExists,
+                out bool logicalAccountExists);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(collision, Is.False);
+                Assert.That(physicalLeafExists, Is.True);
+                Assert.That(logicalAccountExists, Is.False);
+            }
+        }
+    }
+
+    [Test]
+    public void AddToBalanceAndCreateIfNotExists_recreates_after_current_transaction_deletion()
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateParallelOverlayTracingState();
+        using (scope)
+        {
+            Assert.That(tws.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, 0, Spec, out _), Is.True);
+
+            tws.DeleteAccount(TestItem.AddressA);
+
+            bool collision = tws.IsCreateCollision(
+                TestItem.AddressA,
+                includeStorageCollision: true,
+                out bool physicalLeafExists,
+                out bool logicalAccountExists);
+            bool recreated = tws.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, 0, Spec, out _);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(collision, Is.False);
+                Assert.That(physicalLeafExists, Is.False);
+                Assert.That(logicalAccountExists, Is.False);
+                Assert.That(recreated, Is.True);
+            }
+        }
+    }
+
+    [Test]
+    public void IsCreateCollision_uses_current_storage_overlay_during_parallel_replay()
+    {
+        StorageCell cell = new(TestItem.AddressA, 1);
+        (TracedAccessWorldState tws, IDisposable scope) = CreateParallelOverlayTracingState(declaredStorageCell: cell);
+        using (scope)
+        {
+            tws.Set(cell, [1]);
+            bool collision = tws.IsCreateCollision(
+                TestItem.AddressA,
+                includeStorageCollision: true,
+                out bool physicalLeafExists,
+                out bool logicalAccountExists);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(collision, Is.True);
+                Assert.That(physicalLeafExists, Is.True);
+                Assert.That(logicalAccountExists, Is.False);
+            }
+        }
+    }
+
+    [Test]
+    public void IsCreateCollision_fails_closed_when_current_transaction_clears_last_parent_storage_slot()
+    {
+        StorageCell cell = new(TestItem.AddressA, 1);
+        Action<IWorldState> setup = ws =>
+        {
+            ws.CreateAccount(TestItem.AddressA, 0);
+            ws.Set(cell, [1]);
+        };
+        (TracedAccessWorldState parallelReplay, IDisposable parallelScope) = CreateParallelOverlayTracingState(setup, cell);
+        using (parallelScope)
+        {
+            parallelReplay.Set(cell, []);
+
+            Assert.That(
+                () => parallelReplay.IsCreateCollision(
+                    TestItem.AddressA,
+                    includeStorageCollision: true,
+                    out _,
+                    out _),
+                Throws.TypeOf<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>());
+        }
+    }
+
+    [Test]
+    public void AccountExists_preserves_current_transaction_empty_account_touch_during_parallel_replay()
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateParallelOverlayTracingState(ws =>
+            ws.CreateAccount(TestItem.AddressA, 1));
+        using (scope)
+        {
+            tws.SubtractFromBalance(TestItem.AddressA, 1, Spec, out _);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tws.AccountExists(TestItem.AddressA), Is.True);
+                Assert.That(tws.IsDeadAccount(TestItem.AddressA), Is.True);
             }
         }
     }

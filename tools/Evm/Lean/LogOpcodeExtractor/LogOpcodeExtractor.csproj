@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Nethermind.Evm.Lean.LogOpcodeExtractor</AssemblyName>
+    <RootNamespace>Nethermind.Evm.Lean.LogOpcodeExtractor</RootNamespace>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Test/**/*.cs" />
+    <EmbeddedResource Include="Admission/*.cs.txt" WithCulture="false" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Nethermind.Evm.Lean.LogOpcodeExtractor.Test</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="../MemoryControlOpcodeExtractor/Admission/TypeFlags.cs.txt" WithCulture="false" LogicalName="Nethermind.Evm.Lean.LogOpcodeExtractor.Admission.TypeFlags.cs.txt" />
+    <EmbeddedResource Include="../MemoryControlOpcodeExtractor/Admission/DispatchFlags.cs.txt" WithCulture="false" LogicalName="Nethermind.Evm.Lean.LogOpcodeExtractor.Admission.DispatchFlags.cs.txt" />
+    <EmbeddedResource Include="../MemoryControlOpcodeExtractor/Admission/EthereumVirtualMachine.cs.txt" WithCulture="false" LogicalName="Nethermind.Evm.Lean.LogOpcodeExtractor.Admission.EthereumVirtualMachine.cs.txt" />
+    <EmbeddedResource Include="../MemoryControlOpcodeExtractor/Admission/VirtualMachineStandard.cs.txt" WithCulture="false" LogicalName="Nethermind.Evm.Lean.LogOpcodeExtractor.Admission.VirtualMachineStandard.cs.txt" />
+    <EmbeddedResource Include="../MemoryControlOpcodeExtractor/Admission/BlockProcessingModule.cs.txt" WithCulture="false" LogicalName="Nethermind.Evm.Lean.LogOpcodeExtractor.Admission.BlockProcessingModule.cs.txt" />
+    <EmbeddedResource Include="../MemoryControlOpcodeExtractor/Admission/NamedReleaseSpec.cs.txt" WithCulture="false" LogicalName="Nethermind.Evm.Lean.LogOpcodeExtractor.Admission.NamedReleaseSpec.cs.txt" />
+    <EmbeddedResource Include="../MemoryControlOpcodeExtractor/Admission/VirtualMachineDispatch.cs.txt" WithCulture="false" LogicalName="Nethermind.Evm.Lean.LogOpcodeExtractor.Admission.VirtualMachineDispatch.cs.txt" />
+    <EmbeddedResource Include="../MemoryControlOpcodeExtractor/Admission/Instruction.cs.txt" WithCulture="false" LogicalName="Nethermind.Evm.Lean.LogOpcodeExtractor.Admission.Instruction.cs.txt" />
+    <EmbeddedResource Include="../MemoryControlOpcodeExtractor/Admission/GasCostOf.cs.txt" WithCulture="false" LogicalName="Nethermind.Evm.Lean.LogOpcodeExtractor.Admission.GasCostOf.cs.txt" />
+    <EmbeddedResource Include="../MemoryControlOpcodeExtractor/Admission/IGasPolicy.cs.txt" WithCulture="false" LogicalName="Nethermind.Evm.Lean.LogOpcodeExtractor.Admission.IGasPolicy.cs.txt" />
+    <EmbeddedResource Include="../MemoryControlOpcodeExtractor/Admission/EthereumGasPolicy.cs.txt" WithCulture="false" LogicalName="Nethermind.Evm.Lean.LogOpcodeExtractor.Admission.EthereumGasPolicy.cs.txt" />
+    <EmbeddedResource Include="../MemoryControlOpcodeExtractor/Admission/EvmPooledMemory.cs.txt" WithCulture="false" LogicalName="Nethermind.Evm.Lean.LogOpcodeExtractor.Admission.EvmPooledMemory.cs.txt" />
+    <EmbeddedResource Include="../MemoryControlOpcodeExtractor/Admission/InstructionStack.cs.txt" WithCulture="false" LogicalName="Nethermind.Evm.Lean.LogOpcodeExtractor.Admission.InstructionStack.cs.txt" />
+    <EmbeddedResource Include="../MemoryControlOpcodeExtractor/Admission/VirtualMachineOpcodeHandlers.cs.txt" WithCulture="false" LogicalName="Nethermind.Evm.Lean.LogOpcodeExtractor.Admission.VirtualMachineOpcodeHandlers.cs.txt" />
+    <EmbeddedResource Include="../MemoryControlOpcodeExtractor/Admission/Fork*.cs.txt" WithCulture="false" LogicalName="Nethermind.Evm.Lean.LogOpcodeExtractor.Admission.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>

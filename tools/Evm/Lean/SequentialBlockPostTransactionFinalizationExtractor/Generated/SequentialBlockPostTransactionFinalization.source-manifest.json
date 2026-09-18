@@ -1,0 +1,286 @@
+{
+  "schemaVersion": 8,
+  "extractorVersion": "1.14.0",
+  "kernel": "standard exact-base BAL-disabled normal-completion synchronous BlockProcessor post-transaction finalization tail",
+  "sources": [
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs",
+      "role": "caller",
+      "sha256": "e2db419219184150c979cd6a081c83ba758c5024a15f996b510806bd1303deda",
+      "syntaxSha256": "9f4908b1edb7c698d26b41a2c15c3258601cf2565f6d65f09b81a08ffd19ffd1"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.std.cs",
+      "role": "partial-standard-source",
+      "sha256": "7ec6d0f975f36958f83b002ca53404620427a756cab70a037c0988ed75567ed4",
+      "syntaxSha256": "030f029e8ce38ab353df592d27c50295b66026e801c3152564119d754bfad6c8"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/IBlockProcessor.cs",
+      "role": "interface-closure",
+      "sha256": "df79a2a24ca0ad79918cf10bce5b9d74cb4ad1b7542185b41076a0f3758a940e",
+      "syntaxSha256": "0c261a9d55d33505912c168643268866e3bf692f78754d80b80703ca75882b07"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/ProcessingOptions.cs",
+      "role": "flag-closure",
+      "sha256": "145c5bec2a5e70e01dc448a887cd17bb1b81277605a487e437971882a5b0421a",
+      "syntaxSha256": "d646ef78fdf18df03605e994c93ddb19f72b9edbc35e84fc28f9b39eecffea3f"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs",
+      "role": "fold-caller-closure",
+      "sha256": "d520090e2adde45bced4b6af6f9add35ea77ed288060d09fdf05cae3b28bdf56",
+      "syntaxSha256": "a9f1064cf4dd1cdbc0a29fc4266064039d8cb575b5cec5037a8de1dd8f04bed0"
+    }
+  ],
+  "compilerClosure": {
+    "inventoryPath": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json",
+    "count": 434,
+    "aggregateSha256": "6fdfa102a4190083ae62080355aa6691b5f46acc32d4f9da2212012686d9c2e2",
+    "inventorySha256": "1f73a3800a957dd02d9d7b06b3b955c81bb92fd9eb8d2831920905394bfc1d5c",
+    "supportSources": [
+      {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.SystemContractHandler.cs",
+        "sha256": "a069ba0962027b068e388544d3f338a47990f11e5085d381238231607758128b"
+      },
+      {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockAccessListSystemContractHandler.cs",
+        "sha256": "07342dde345dcec7b34569e8cb9f447f9d4abe3a640cd127559db77f2e1981fe"
+      },
+      {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/TransactionProcessorAdapterExtensions.cs",
+        "sha256": "910820a7e8bba91c30b052f5818707c46d625a2fbf12727e2aa869512120aa9e"
+      },
+      {
+        "path": "src/Nethermind/Nethermind.Consensus/Processing/IBlockAccessListManager.cs",
+        "sha256": "0ed401a074b32a35fb3de497a516d8b717802c55ffdac3f1cd773a7f4e6be273"
+      }
+    ]
+  },
+  "members": [
+    "block.processBlock",
+    "block.commit-no-roots",
+    "block.commit-roots",
+    "block.compute-state-root",
+    "block.set-account-changes"
+  ],
+  "anchors": [
+    "block.post-transaction-commit",
+    "block.blob-gas-guard",
+    "block.blob-gas-calculation",
+    "block.background-task-null",
+    "block.receipts-background-guard",
+    "block.sync-blooms",
+    "block.sync-receipts-root",
+    "block.rewards",
+    "block.withdrawals",
+    "block.finalization-commit",
+    "block.execution-requests",
+    "block.end-block-trace",
+    "block.storage-roots-commit",
+    "block.main-thread-guard",
+    "block.account-changes",
+    "block.state-root-guard",
+    "block.state-root",
+    "block.background-result-guard",
+    "block.bal-finalization",
+    "block.background-finally-guard",
+    "block.hash",
+    "block.return-receipts"
+  ],
+  "controlFlows": [
+    "block.processBlock",
+    "block.commit-no-roots",
+    "block.commit-roots",
+    "block.compute-state-root",
+    "block.set-account-changes"
+  ],
+  "commits": [
+    "post-transaction-no-roots",
+    "finalization-no-roots",
+    "storage-roots"
+  ],
+  "steps": [
+    "post-transaction-commit",
+    "blob-gas-if-enabled",
+    "receipt-task-null",
+    "synchronous-blooms",
+    "synchronous-receipts-root",
+    "rewards",
+    "withdrawals",
+    "finalization-commit",
+    "execution-requests",
+    "end-block-trace-true",
+    "storage-roots-commit",
+    "main-thread-account-changes",
+    "state-root-if-enabled",
+    "bal-finalization",
+    "header-hash",
+    "return-receipts"
+  ],
+  "headerAssignments": [
+    "header.blob-gas-used",
+    "header.receipts-root"
+  ],
+  "sourceEntryAdapters": [
+    "block.processBlock.standard-exact-base-adapter"
+  ],
+  "taskFlowVariable": "bloomsAndReceiptsRootTask",
+  "irSha256": "1d599ef71c083c5aa4a80fbc0e44d99f807d09dc0fa17f9e2d5b94047e45145a",
+  "leanSha256": "f84cd3be1182df43429d6ea75ec8df360059c2fc4a183270748118cc78a8064b",
+  "dependencies": [
+    {
+      "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/LeanEmitter.cs",
+      "sha256": "633d6e1fa0f7bd884021084a51057301f50625c200c311b90fee60091018ddb3"
+    },
+    {
+      "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Specification/SequentialBlockPostTransactionFinalization.lean",
+      "sha256": "c615288e71c6f56cf22edd44791c753a168a979ad43892468813ea0e7ae9a263"
+    },
+    {
+      "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Refinement/SequentialBlockPostTransactionFinalization.lean",
+      "sha256": "954be90e9bc923ea2754cae8f20de7c3ce02328041bd813d0958f1f109747458"
+    },
+    {
+      "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Vectors/SequentialBlockPostTransactionFinalizationVectors.lean",
+      "sha256": "7bc5b62611f57e3040ec7600f8d1f03af30bd4767572df1d084ebbec812f2d07"
+    },
+    {
+      "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/EXPORTED_THEOREMS.txt",
+      "sha256": "dea78ac75c216204477c271343fedacf453649ca3097f77e92867f8efdbcdfcd"
+    },
+    {
+      "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Verify-Axioms.ps1",
+      "sha256": "478054a1232962fee0e63b1258ff31d94252767f1d85ab588c1cd61d6ffa85cb"
+    },
+    {
+      "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Verify-MutationGates.ps1",
+      "sha256": "ccaade28332587d7fd13477e136a874a98df354d3d93aa45fe480b2c0c7a5d84"
+    },
+    {
+      "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PROMOTION_PINS.json",
+      "sha256": "72adccc0226124a32633dd820f51a8f127237c539ac6f166a0693fccd4556e9d"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Metric/MetricsTimer.cs",
+      "sha256": "9e72b71ff14688b9dfb16f5a09db1263153440154e5a1886e4f949f3ab5c4ca1"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.SystemContractHandler.cs",
+      "sha256": "a069ba0962027b068e388544d3f338a47990f11e5085d381238231607758128b"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockAccessListSystemContractHandler.cs",
+      "sha256": "07342dde345dcec7b34569e8cb9f447f9d4abe3a640cd127559db77f2e1981fe"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/TransactionProcessorAdapterExtensions.cs",
+      "sha256": "910820a7e8bba91c30b052f5818707c46d625a2fbf12727e2aa869512120aa9e"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Consensus/Processing/IBlockAccessListManager.cs",
+      "sha256": "0ed401a074b32a35fb3de497a516d8b717802c55ffdac3f1cd773a7f4e6be273"
+    },
+    {
+      "path": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/SOURCE_PINS.json",
+      "sha256": "6fcc8fab16bd1d555e2306aa61fd3bcc22e1289c973b954d897e98194ad6c595"
+    },
+    {
+      "path": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.ir.json",
+      "sha256": "0580b07867d42ffcd210a2044cf15f6e30193ba4170486c97b20caad54cbdda5"
+    },
+    {
+      "path": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.source-manifest.json",
+      "sha256": "f531d9ca1bf15382ef74b2c055ad45ca8352163815a35b07e382a20f257c5a56"
+    },
+    {
+      "path": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.lean",
+      "sha256": "e1c7c38d5f90662a649fff77b8fa7bbc2543ea25e8eea1ac845a4d15ffbf5516"
+    },
+    {
+      "path": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Specification/SequentialBlockTransactionFold.lean",
+      "sha256": "fcc95dcc5923b7fff9f228a87489666520e1c68f2a6d1c384514946d386007b9"
+    },
+    {
+      "path": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Refinement/SequentialBlockTransactionFold.lean",
+      "sha256": "02bcb54c9c4d183c70ccf4ffb75d28e312c0b859aa3691d5d92a731cf737dec3"
+    },
+    {
+      "path": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Vectors/SequentialBlockTransactionFoldVectors.lean",
+      "sha256": "1ba9beb06d742ea1d6a8bb89814d78c25bbfe08a706a2214a0c7a5b114f7755c"
+    },
+    {
+      "path": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/EXPORTED_THEOREMS.txt",
+      "sha256": "3f3de4d7350098b07bd112c51358dd249938f1b861c86e85bb7f02a0b71495d2"
+    },
+    {
+      "path": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Verify-Axioms.ps1",
+      "sha256": "4247673d4163ed4258dde5ec276c25ba5d0c00fab7c3417e1f14535fa2c1f7f3"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/SOURCE_PINS.json",
+      "sha256": "0223aadf196cc74051d632260693eeb607fde202fa612caee59d3ddaca886c6f"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json",
+      "sha256": "1f73a3800a957dd02d9d7b06b3b955c81bb92fd9eb8d2831920905394bfc1d5c"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.ir.json",
+      "sha256": "0bf061d43d54e3eb9bdc7ccff4d0541d6dee189ac1ccea7f139095d3e1b7945a"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.source-manifest.json",
+      "sha256": "3d1ec03bce750645bc29d8fb51ac94321508364735b9a65a987043100f74bd8e"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.lean",
+      "sha256": "028d11a14e031aaedce27c71b26e2c69cf16e759ff3ac870373ead10f6971180"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Specification/ReceiptTerminalFold.lean",
+      "sha256": "d48c07020ea58c5bdc97f9b51e8b82bf70bfa670410d77675288fba75b317e86"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Refinement/ReceiptTerminalFold.lean",
+      "sha256": "bd4a3556a98ec40875960ff2180523d16221b05cd6cf9a0b6ce1fc46a8cb3e93"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Vectors/ReceiptTerminalFoldVectors.lean",
+      "sha256": "1abc8030e6df89c397c41b24cb61fb829e9455bd5f7a20e31e4861c49d231c54"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/EXPORTED_THEOREMS.txt",
+      "sha256": "6edd082b554fff37b231b5c7e2ea8538423e0d75f17df4b79da86f0517b0012f"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Verify-Axioms.ps1",
+      "sha256": "f019aebcd67b0299c3ab1049fda475dad4e15a010e4962439cd25e9b34a9a485"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/BlockReceiptGas.lean",
+      "sha256": "51f1df6a272adf776aac2cea085e6d063e25997310eb77c29e99fe5970b62a6e"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/TransactionGas.lean",
+      "sha256": "2e87721125c6430eab9c76dc8f32a11f4898db0dec68b57a48043c18cbdeefcd"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Generated/BlockReceiptGasAccountingKernel.lean",
+      "sha256": "5d7851084945d5263dd87bcda4ae9e60ce7b779473a7c37617a96cf0e91026f2"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Generated/TransactionGasInitializationKernel.lean",
+      "sha256": "83ce996d6dcc93a588114e73737a25a14cb21689e9e8900e6dc68a07fb170b6f"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Refinement/BlockReceiptGasAccounting.lean",
+      "sha256": "6d8a1c1de3f99c43f24576a6358e083fcce43cfe23037bd54cfececfbda5dfe5"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Refinement/TransactionGasInitialization.lean",
+      "sha256": "8986504ad786cc621dcb0c74400980366847c43d832830973f52a5d38c290578"
+    }
+  ]
+}

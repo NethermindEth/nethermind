@@ -1,0 +1,11 @@
+name = "TransactionProcessorExtractor"
+version = "0.1.0"
+defaultTargets = ["TransactionProcessorExtractor.Refinement.TransactionProcessorLifecycle"]
+
+[[lean_lib]]
+name = "Eip803x"
+srcDir = ".."
+
+[[lean_lib]]
+name = "TransactionProcessorExtractor"
+srcDir = ".."

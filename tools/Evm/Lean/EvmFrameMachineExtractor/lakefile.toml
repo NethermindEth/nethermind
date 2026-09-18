@@ -1,0 +1,55 @@
+name = "EvmFrameMachineExtractor"
+version = "0.1.0"
+defaultTargets = [
+  "EvmFrameMachineExtractor.Refinement.StageARouting",
+  "EvmFrameMachineExtractor.Refinement.EvmFrameMachine",
+  "EvmFrameMachineExtractor.Refinement.TransactionAdapter"
+]
+
+[[lean_lib]]
+name = "Eip803x"
+srcDir = ".."
+
+[[lean_lib]]
+name = "EvmFrameMachineExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "Keccak256OpcodeExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "MemoryCopyOpcodeExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "PersistentStorageOpcodeExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "TransientStorageOpcodeExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "PushOpcodeExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "LogOpcodeExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "CallCreateOpcodeExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "ControlFlowOpcodeExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "ExtendedStackOpcodeExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "CallDataLoadOpcodeExtractor"
+srcDir = ".."

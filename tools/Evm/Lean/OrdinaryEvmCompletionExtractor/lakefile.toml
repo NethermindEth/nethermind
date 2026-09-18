@@ -1,0 +1,41 @@
+name = "OrdinaryEvmCompletionExtractor"
+version = "0.1.0"
+
+defaultTargets = ["OrdinaryEvmCompletionExtractor.Refinement.OrdinaryEvmCompletion"]
+
+[[lean_lib]]
+name = "OrdinaryEvmCompletionExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "EvmTransactionPreparationExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "OrdinaryPostNonceDispatchExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "OrdinaryStatefulAdmissionPrefixExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "TransactionProcessorExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "AuthorizationStateGasFoldExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "OrdinaryTransactionRefundAdapterExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "ReceiptTerminalFoldExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "Eip803x"
+srcDir = ".."
+

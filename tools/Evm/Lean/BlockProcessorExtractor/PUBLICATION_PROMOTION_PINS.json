@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "name": "BlockchainPublication",
+  "status": "accepted-upstream",
+  "upstream": "NormalFiniteBranchCompletion",
+  "upstreamSchemaVersion": 1,
+  "upstreamExtractorVersion": "1.0.0",
+  "artifacts": [
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/NormalFiniteBranchCompletion.ir.json",
+      "sha256": "ebccc9751bc3f65dc577ad78e9202497b9eeb38d410ec43c0c5d8808e7a15816"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/NormalFiniteBranchCompletion.lean",
+      "sha256": "71fb06de4352ff82041687051bf3fa72968fbd351a88068ced427f9011ba7638"
+    },
+    {
+      "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/NormalFiniteBranchCompletion.source-manifest.json",
+      "sha256": "5de2e5fe4d00d76f944806b5bf0044226011ead1f3a1a11ee99c80653dc01463"
+    }
+  ]
+}

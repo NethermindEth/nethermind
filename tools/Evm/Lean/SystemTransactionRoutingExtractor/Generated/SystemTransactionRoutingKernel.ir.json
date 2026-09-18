@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.8.0",
+  "ancestorBaselineCommit": "b2478235e71e6a7ec2a509aa0155e25d5fdfff80",
+  "sourceIdentityAuthority": "The source-manifest SHA-256 identities are authoritative for the admitted current source; the ancestor baseline records lineage only.",
+  "kernel": "Nethermind.Evm.TransactionProcessing.SystemTransactionRoutingKernel",
+  "program": {
+    "none": 0,
+    "commit": 1,
+    "restore": 2,
+    "skipValidation": 4,
+    "warmup": 8,
+    "buildUp": 16,
+    "useSystemProcessor": "isSystemTransaction||options==ExecutionOptions.SkipValidation",
+    "shouldPayOriginalValue": "(coreOptions\u0026ExecutionOptions.SkipValidation)!=ExecutionOptions.SkipValidation\u0026\u0026(coreOptions\u0026ExecutionOptions.SkipValidationAndCommit)!=ExecutionOptions.SkipValidationAndCommit",
+    "getSystemExecutionOptions": "payOriginalValue?options|ExecutionOptions.SkipValidationAndCommit:options",
+    "participatesInNormalBlockCounters": "(options\u0026ExecutionOptions.SkipValidation)!=ExecutionOptions.SkipValidation\u0026\u0026!parallel"
+  },
+  "adapter": {
+    "classifier": "TransactionExtensions.IsSystem",
+    "route": "TransactionProcessorBase\u003CTGasPolicy\u003E.ExecuteCore",
+    "systemFactory": "TransactionProcessorBase\u003CTGasPolicy\u003E.CreateSystemTransactionProcessor (virtual)",
+    "systemOverride": "SystemTransactionProcessor\u003CTGasPolicy\u003E.Execute",
+    "counterGate": "TransactionProcessorBase\u003CTGasPolicy\u003E.UpdateHeaderGasUsedAndPayFees normal counter-gate decision only",
+    "mainnetProcessor": "EthereumTransactionProcessor : EthereumTransactionProcessorBase",
+    "mainnetRegistration": ".AddScoped\u003CITransactionProcessor, EthereumTransactionProcessor\u003E()",
+    "isSystemClassifierBound": true,
+    "kernelCallsBound": true,
+    "systemExecuteOverridesBase": true,
+    "standardProcessorInheritsDefaultFactory": true,
+    "mainnetRegistrationBound": true,
+    "optionsForwardedToCounterGate": true,
+    "payValueUsesAssignedField": true,
+    "payValueOverridesBase": true,
+    "virtualPayValueCallsBound": true,
+    "scopedBindingImplementationBound": true,
+    "routedSystemForwardingMustReach": true,
+    "admittedArgumentBindingsRemainDirect": true,
+    "boundReferenceArgumentsFailClosed": true,
+    "mainnetRegistrationDominatesLoadExit": true,
+    "counterClaim": "normal counter-gate decision only; virtual PayFees effects are outside the claim"
+  }
+}

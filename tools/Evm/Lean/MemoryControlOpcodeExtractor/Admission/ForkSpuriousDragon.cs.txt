@@ -1,0 +1,15 @@
+namespace Nethermind.Specs.Forks;
+
+public class SpuriousDragon() : NamedReleaseSpec<SpuriousDragon>(TangerineWhistle.Instance)
+{
+    public override void Apply(NamedReleaseSpec spec)
+    {
+        spec.Name = "Spurious Dragon";
+        spec.MaxCodeSize = CodeSizeConstants.MaxCodeSizeEip170;
+        spec.IsEip155Enabled = true;
+        spec.IsEip158Enabled = true;
+        spec.IsEip160Enabled = true;
+        spec.IsEip170Enabled = true;
+    }
+}
+

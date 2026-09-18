@@ -1,0 +1,1063 @@
+{
+  "schemaVersion": 2,
+  "extractorVersion": "1.2.0",
+  "ancestorBaselineCommit": "b2478235e71e6a7ec2a509aa0155e25d5fdfff80",
+  "sourceIdentityAuthority": "The source-manifest SHA-256 identities are authoritative for the admitted current source; the ancestor baseline records lineage only.",
+  "kernel": "Nethermind.Evm.AuthorizationStateGasFold",
+  "initialIntrinsic": {
+    "authorizationCostMethod": {
+      "namespace": "Nethermind.Evm",
+      "owner": "IntrinsicGasCalculator",
+      "name": "AuthorizationListCost",
+      "returnType": "(ulongExecutionCost,longStateCost)",
+      "parameters": [
+        {
+          "name": "transaction",
+          "type": "Transaction",
+          "refKind": ""
+        },
+        {
+          "name": "spec",
+          "type": "IReleaseSpec",
+          "refKind": ""
+        }
+      ],
+      "accessibility": "internal",
+      "modifiers": [
+        "internal",
+        "static"
+      ]
+    },
+    "zeroStateCostReturns": [
+      "(0,0)",
+      "(authCount * perAuthExecution,0)",
+      "(authCount * GasCostOf.NewAccount,0)"
+    ],
+    "calculateMethod": {
+      "namespace": "Nethermind.Evm.GasPolicy",
+      "owner": "EthereumGasPolicy",
+      "name": "Calculate",
+      "returnType": "IntrinsicGas\u003CEthereumGasPolicy\u003E",
+      "parameters": [
+        {
+          "name": "tx",
+          "type": "Transaction",
+          "refKind": ""
+        },
+        {
+          "name": "spec",
+          "type": "IReleaseSpec",
+          "refKind": ""
+        },
+        {
+          "name": "blockGasLimit",
+          "type": "ulong",
+          "refKind": ""
+        }
+      ],
+      "accessibility": "private",
+      "modifiers": [
+        "private",
+        "static"
+      ]
+    },
+    "costCall": "IntrinsicGasCalculator.AuthorizationListCost(tx, spec)",
+    "totalStateCostAssignment": "long totalStateCost = authStateCost",
+    "standardStateProjection": "StateReservoir = totalStateCost; StateGasUsed = totalStateCost",
+    "executeMethod": {
+      "namespace": "Nethermind.Evm.TransactionProcessing",
+      "owner": "TransactionProcessorBase",
+      "name": "Execute",
+      "returnType": "TransactionResult",
+      "parameters": [
+        {
+          "name": "tx",
+          "type": "Transaction",
+          "refKind": ""
+        },
+        {
+          "name": "tracer",
+          "type": "ITxTracer",
+          "refKind": ""
+        },
+        {
+          "name": "opts",
+          "type": "ExecutionOptions",
+          "refKind": ""
+        },
+        {
+          "name": "header",
+          "type": "BlockHeader",
+          "refKind": ""
+        },
+        {
+          "name": "spec",
+          "type": "IReleaseSpec",
+          "refKind": ""
+        },
+        {
+          "name": "intrinsicGas",
+          "type": "IntrinsicGas\u003CTGasPolicy\u003E",
+          "refKind": "in"
+        }
+      ],
+      "accessibility": "private",
+      "modifiers": [
+        "private"
+      ]
+    },
+    "calculateAvailableGasCall": {
+      "callee": "CalculateAvailableGas",
+      "arguments": [
+        "tx",
+        "spec",
+        "inintrinsicGas",
+        "outTGasPolicygasAvailable"
+      ],
+      "method": "Execute",
+      "anchor": {
+        "stage": "calculateAvailableGas",
+        "method": "Execute",
+        "canonicalSyntax": "CalculateAvailableGas(tx,spec,inintrinsicGas,outTGasPolicygasAvailable)",
+        "startLine": 256,
+        "startColumn": 28,
+        "endLine": 256,
+        "endColumn": 105
+      }
+    },
+    "calculateAvailableGasMethod": {
+      "namespace": "Nethermind.Evm.TransactionProcessing",
+      "owner": "TransactionProcessorBase",
+      "name": "CalculateAvailableGas",
+      "returnType": "TransactionResult",
+      "parameters": [
+        {
+          "name": "tx",
+          "type": "Transaction",
+          "refKind": ""
+        },
+        {
+          "name": "spec",
+          "type": "IReleaseSpec",
+          "refKind": ""
+        },
+        {
+          "name": "intrinsicGas",
+          "type": "IntrinsicGas\u003CTGasPolicy\u003E",
+          "refKind": "in"
+        },
+        {
+          "name": "gasAvailable",
+          "type": "TGasPolicy",
+          "refKind": "out"
+        }
+      ],
+      "accessibility": "protected",
+      "modifiers": [
+        "protected",
+        "virtual"
+      ]
+    },
+    "availableGasForwardCall": {
+      "callee": "TGasPolicy.TryCreateAvailableFromIntrinsic",
+      "arguments": [
+        "tx.GasLimit",
+        "intrinsicGas.Standard",
+        "spec",
+        "outgasAvailable"
+      ],
+      "method": "CalculateAvailableGas",
+      "anchor": {
+        "stage": "calculateAvailableGas",
+        "method": "CalculateAvailableGas",
+        "canonicalSyntax": "TGasPolicy.TryCreateAvailableFromIntrinsic(tx.GasLimit,intrinsicGas.Standard,spec,outgasAvailable)",
+        "startLine": 707,
+        "startColumn": 13,
+        "endLine": 707,
+        "endColumn": 115
+      }
+    },
+    "availableGasMethod": {
+      "namespace": "Nethermind.Evm.GasPolicy",
+      "owner": "EthereumGasPolicy",
+      "name": "TryCreateAvailableFromIntrinsic",
+      "returnType": "bool",
+      "parameters": [
+        {
+          "name": "gasLimit",
+          "type": "ulong",
+          "refKind": ""
+        },
+        {
+          "name": "intrinsicGas",
+          "type": "EthereumGasPolicy",
+          "refKind": "in"
+        },
+        {
+          "name": "spec",
+          "type": "IReleaseSpec",
+          "refKind": ""
+        },
+        {
+          "name": "available",
+          "type": "EthereumGasPolicy",
+          "refKind": "out"
+        }
+      ],
+      "accessibility": "public",
+      "modifiers": [
+        "public",
+        "static"
+      ]
+    },
+    "initializationKernelCall": {
+      "callee": "TransactionGasInitializationKernel.TryCreate",
+      "arguments": [
+        "gasLimit",
+        "intrinsicGas.Value",
+        "intrinsicGas.StateReservoir",
+        "spec.IsEip8037Enabled",
+        "Eip7825Constants.DefaultTxGasLimitCap"
+      ],
+      "method": "TryCreateAvailableFromIntrinsic",
+      "anchor": {
+        "stage": "calculateAvailableGas",
+        "method": "TryCreateAvailableFromIntrinsic",
+        "canonicalSyntax": "TransactionGasInitializationKernel.TryCreate(gasLimit,intrinsicGas.Value,intrinsicGas.StateReservoir,spec.IsEip8037Enabled,Eip7825Constants.DefaultTxGasLimitCap)",
+        "startLine": 854,
+        "startColumn": 53,
+        "endLine": 859,
+        "endColumn": 51
+      }
+    },
+    "availableFieldProjection": [
+      "Value=result.Value",
+      "StateReservoir=result.StateReservoir",
+      "StateGasUsed=result.StateGasUsed",
+      "StateGasSpill=result.StateGasSpill",
+      "StateGasSpillRefunded=result.StateGasSpillRefunded"
+    ],
+    "anchors": [
+      {
+        "stage": "initialIntrinsicStateGas",
+        "method": "AuthorizationListCost",
+        "canonicalSyntax": "(ulongExecutionCost,longStateCost)",
+        "startLine": 81,
+        "startColumn": 21,
+        "endLine": 81,
+        "endColumn": 58
+      },
+      {
+        "stage": "initialIntrinsicStateGas",
+        "method": "Calculate",
+        "canonicalSyntax": "{ulongtokensInCallData=IntrinsicGasCalculator.CalculateTokensInCallData(tx,spec);ulongfloorTokensInAccessList=IntrinsicGasCalculator.CalculateFloorTokensInAccessList(tx,spec);(ulongauthExecutionCost,longauthStateCost)=IntrinsicGasCalculator.AuthorizationListCost(tx,spec);ulongaccessListCost=IntrinsicGasCalculator.AccessListCost(tx,spec,floorTokensInAccessList);ulongbaseCost=spec.IsEip2780Enabled?GasCostOf.TransactionEip2780:GasCostOf.Transaction;ulongcreateCost=CreateCost(tx,spec);ulongeip2780ExtraGas=Eip2780ExtraGas(tx,spec);ulongexecutionGas=baseCost\u002BDataCost(tx,spec,tokensInCallData)\u002BcreateCost\u002BaccessListCost\u002BauthExecutionCost\u002Beip2780ExtraGas;ulongfloorBase=spec.IsEip2780Enabled?baseCost\u002BcreateCost\u002Beip2780ExtraGas:baseCost;ulongfloorCost=IntrinsicGasCalculator.CalculateFloorCost(tx,spec,floorBase,tokensInCallData,floorTokensInAccessList);longtotalStateCost=authStateCost;returnspec.IsEip8037Enabled?newIntrinsicGas\u003CEthereumGasPolicy\u003E(newEthereumGasPolicy{Value=executionGas,StateReservoir=totalStateCost,StateGasUsed=totalStateCost,},FromULong(floorCost)):newIntrinsicGas\u003CEthereumGasPolicy\u003E(FromULong(executionGas),FromULong(floorCost));}",
+        "startLine": 821,
+        "startColumn": 5,
+        "endLine": 849,
+        "endColumn": 6
+      },
+      {
+        "stage": "calculateAvailableGas",
+        "method": "Execute",
+        "canonicalSyntax": "CalculateAvailableGas(tx,spec,inintrinsicGas,outTGasPolicygasAvailable)",
+        "startLine": 256,
+        "startColumn": 28,
+        "endLine": 256,
+        "endColumn": 105
+      },
+      {
+        "stage": "calculateAvailableGas",
+        "method": "CalculateAvailableGas",
+        "canonicalSyntax": "TGasPolicy.TryCreateAvailableFromIntrinsic(tx.GasLimit,intrinsicGas.Standard,spec,outgasAvailable)",
+        "startLine": 707,
+        "startColumn": 13,
+        "endLine": 707,
+        "endColumn": 115
+      },
+      {
+        "stage": "calculateAvailableGas",
+        "method": "TryCreateAvailableFromIntrinsic",
+        "canonicalSyntax": "TransactionGasInitializationKernel.TryCreate(gasLimit,intrinsicGas.Value,intrinsicGas.StateReservoir,spec.IsEip8037Enabled,Eip7825Constants.DefaultTxGasLimitCap)",
+        "startLine": 854,
+        "startColumn": 53,
+        "endLine": 859,
+        "endColumn": 51
+      }
+    ]
+  },
+  "reachability": {
+    "concreteProcessor": "Nethermind.Evm.TransactionProcessing.EthereumTransactionProcessor",
+    "ethereumBase": "Nethermind.Evm.TransactionProcessing.EthereumTransactionProcessorBase",
+    "closedGenericBase": "Nethermind.Evm.TransactionProcessing.TransactionProcessorBase\u003CEthereumGasPolicy\u003E",
+    "registration": ".AddScoped\u003CITransactionProcessor,EthereumTransactionProcessor\u003E()",
+    "registrationAnchor": {
+      "stage": "processDelegationsGuard",
+      "method": "Load",
+      "canonicalSyntax": "builder//Validators.AddSingleton\u003CTxValidator,ISpecProvider\u003E((spec)=\u003EnewTxValidator(spec.ChainId)).Bind\u003CITxValidator,TxValidator\u003E().AddKeyedSingleton\u003CITxValidator\u003E(ITxValidator.SpecChangeTxValidatorKey,staticctx=\u003EnewSpecChangeTxValidator(ctx.Resolve\u003CISpecProvider\u003E().ChainId)).AddSingleton\u003CIBlockValidator,BlockValidator\u003E().AddSingleton\u003CIHeaderValidator,HeaderValidator\u003E().AddSingleton\u003CIUnclesValidator,UnclesValidator\u003E().AddLast\u003CITxGossipPolicy,SpecDrivenTxGossipPolicy\u003E()//Blockpreprocessorsteps,injectedasanorderedIReadOnlyList\u003CIBlockPreprocessorStep\u003E.//Consensuspluginsprepend/appendtheirownstepsviathesameDSL..AddFirst\u003CIBlockPreprocessorStep,RecoverSignatures\u003E()//Blockprocessingcomponentscommonbetweenrpc,validationandproduction.AddScoped\u003CITransactionProcessor.IBlobBaseFeeCalculator,BlobBaseFeeCalculator\u003E().AddScoped\u003CITransactionProcessor,EthereumTransactionProcessor\u003E()",
+      "startLine": 41,
+      "startColumn": 9,
+      "endLine": 59,
+      "endColumn": 78
+    }
+  },
+  "delegations": {
+    "method": {
+      "namespace": "Nethermind.Evm.TransactionProcessing",
+      "owner": "TransactionProcessorBase",
+      "name": "ProcessDelegations",
+      "returnType": "bool",
+      "parameters": [
+        {
+          "name": "tx",
+          "type": "Transaction",
+          "refKind": ""
+        },
+        {
+          "name": "spec",
+          "type": "IReleaseSpec",
+          "refKind": ""
+        },
+        {
+          "name": "accessTracker",
+          "type": "StackAccessTracker",
+          "refKind": "in"
+        },
+        {
+          "name": "gasAvailable",
+          "type": "TGasPolicy",
+          "refKind": "ref"
+        },
+        {
+          "name": "executionIntrinsicGasStandard",
+          "type": "TGasPolicy",
+          "refKind": "ref"
+        },
+        {
+          "name": "codeInsertRefunds",
+          "type": "long",
+          "refKind": "out"
+        }
+      ],
+      "accessibility": "private",
+      "modifiers": [
+        "private"
+      ]
+    },
+    "executeCall": {
+      "callee": "ProcessDelegations",
+      "arguments": [
+        "tx",
+        "spec",
+        "accessTracker",
+        "refgasAvailable",
+        "refexecutionIntrinsicGasStandard",
+        "outdelegationRefunds"
+      ],
+      "method": "ExecuteEvmTransaction",
+      "anchor": {
+        "stage": "processDelegationsGuard",
+        "method": "ExecuteEvmTransaction",
+        "canonicalSyntax": "ProcessDelegations(tx,spec,accessTracker,refgasAvailable,refexecutionIntrinsicGasStandard,outdelegationRefunds)",
+        "startLine": 332,
+        "startColumn": 22,
+        "endLine": 332,
+        "endColumn": 141
+      }
+    },
+    "executeGuard": "spec.IsEip7702Enabled\u0026\u0026tx.HasAuthorizationList",
+    "initialStateUsedExpression": "TGasPolicy.GetStateGasUsed(in gasAvailable)",
+    "charges": [
+      {
+        "kind": "newAccountState",
+        "callee": "TGasPolicy.TryConsumeStateGas",
+        "arguments": [
+          "refgasAvailable",
+          "TGasPolicy.GetNewAccountStateCost()"
+        ],
+        "guard": "!logicalAccountExists\u0026\u0026!TGasPolicy.TryConsumeStateGas(refgasAvailable,TGasPolicy.GetNewAccountStateCost())",
+        "order": 36981,
+        "anchor": {
+          "stage": "chargeNewAccountState",
+          "method": "ProcessDelegations",
+          "canonicalSyntax": "TGasPolicy.TryConsumeStateGas(refgasAvailable,TGasPolicy.GetNewAccountStateCost())",
+          "startLine": 773,
+          "startColumn": 55,
+          "endLine": 773,
+          "endColumn": 139
+        }
+      },
+      {
+        "kind": "accountWriteExecution",
+        "callee": "TGasPolicy.UpdateGas",
+        "arguments": [
+          "refgasAvailable",
+          "accountWriteGas"
+        ],
+        "guard": "accountWriteGas!=0\u0026\u0026!TGasPolicy.UpdateGas(refgasAvailable,accountWriteGas)",
+        "order": 37417,
+        "anchor": {
+          "stage": "chargeAccountWriteExecution",
+          "method": "ProcessDelegations",
+          "canonicalSyntax": "TGasPolicy.UpdateGas(refgasAvailable,accountWriteGas)",
+          "startLine": 781,
+          "startColumn": 58,
+          "endLine": 781,
+          "endColumn": 113
+        }
+      },
+      {
+        "kind": "perAuthorizationState",
+        "callee": "TGasPolicy.TryConsumeStateGas",
+        "arguments": [
+          "refgasAvailable",
+          "TGasPolicy.GetPerAuthBaseStateCost()"
+        ],
+        "guard": "!delegatedBefore\u0026\u0026delegationSetFor!.Add(authority)\u0026\u0026!TGasPolicy.TryConsumeStateGas(refgasAvailable,TGasPolicy.GetPerAuthBaseStateCost())",
+        "order": 37801,
+        "anchor": {
+          "stage": "chargePerAuthorizationState",
+          "method": "ProcessDelegations",
+          "canonicalSyntax": "TGasPolicy.TryConsumeStateGas(refgasAvailable,TGasPolicy.GetPerAuthBaseStateCost())",
+          "startLine": 790,
+          "startColumn": 37,
+          "endLine": 790,
+          "endColumn": 122
+        }
+      }
+    ],
+    "validAuthorizationGuard": "authorizationResult!=AuthorizationTupleResult.Valid",
+    "authorityMutationOrder": "classify logical existence for state gas and physical existence for mutation; charge state (new account), charge execution (first account write), charge state (first non-clear delegation), then CreateAccount/IncrementNonce and SetDelegation",
+    "delta": {
+      "variable": "authorizationStateGasUsed",
+      "left": "TGasPolicy.GetStateGasUsed(in gasAvailable)",
+      "operator": "-",
+      "right": "preAuthorizationStateGasUsed",
+      "anchor": {
+        "stage": "computeAuthorizationStateGasDelta",
+        "method": "ProcessDelegations",
+        "canonicalSyntax": "authorizationStateGasUsed=TGasPolicy.GetStateGasUsed(ingasAvailable)-preAuthorizationStateGasUsed",
+        "startLine": 817,
+        "startColumn": 22,
+        "endLine": 817,
+        "endColumn": 124
+      }
+    },
+    "foldCall": {
+      "callee": "TGasPolicy.FoldTopFrameStateGas",
+      "arguments": [
+        "refgasAvailable",
+        "refexecutionIntrinsicGasStandard",
+        "authorizationStateGasUsed"
+      ],
+      "method": "ProcessDelegations",
+      "anchor": {
+        "stage": "foldTopFrameStateGas",
+        "method": "ProcessDelegations",
+        "canonicalSyntax": "TGasPolicy.FoldTopFrameStateGas(refgasAvailable,refexecutionIntrinsicGasStandard,authorizationStateGasUsed)",
+        "startLine": 818,
+        "startColumn": 17,
+        "endLine": 818,
+        "endColumn": 128
+      }
+    },
+    "stateChargeAdapter": {
+      "method": {
+        "namespace": "Nethermind.Evm.GasPolicy",
+        "owner": "EthereumGasPolicy",
+        "name": "TryConsumeStateGas",
+        "returnType": "bool",
+        "parameters": [
+          {
+            "name": "gas",
+            "type": "EthereumGasPolicy",
+            "refKind": "ref"
+          },
+          {
+            "name": "stateGasCost",
+            "type": "long",
+            "refKind": ""
+          }
+        ],
+        "accessibility": "public",
+        "modifiers": [
+          "public",
+          "static"
+        ]
+      },
+      "kernelCall": {
+        "callee": "StateGasChargeKernel.TryCharge",
+        "arguments": [
+          "gas.Value",
+          "gas.StateReservoir",
+          "gas.StateGasUsed",
+          "gas.StateGasSpill",
+          "gas.StateGasSpillRefunded",
+          "stateGasCost"
+        ],
+        "method": "TryConsumeStateGas",
+        "anchor": {
+          "stage": "chargeNewAccountState",
+          "method": "TryConsumeStateGas",
+          "canonicalSyntax": "StateGasChargeKernel.TryCharge(gas.Value,gas.StateReservoir,gas.StateGasUsed,gas.StateGasSpill,gas.StateGasSpillRefunded,stateGasCost)",
+          "startLine": 135,
+          "startColumn": 39,
+          "endLine": 141,
+          "endColumn": 26
+        }
+      },
+      "outOfGasGuard": "result.OutcomeisStateGasChargeOutcome.OutOfGas",
+      "successFieldProjection": [
+        "Value=result.Value",
+        "StateReservoir=result.StateReservoir",
+        "StateGasUsed=result.StateGasUsed",
+        "StateGasSpill=result.StateGasSpill",
+        "StateGasSpillRefunded=result.StateGasSpillRefunded"
+      ],
+      "successReturn": "true",
+      "anchors": [
+        {
+          "stage": "chargeNewAccountState",
+          "method": "TryConsumeStateGas",
+          "canonicalSyntax": "StateGasChargeKernel.TryCharge(gas.Value,gas.StateReservoir,gas.StateGasUsed,gas.StateGasSpill,gas.StateGasSpillRefunded,stateGasCost)",
+          "startLine": 135,
+          "startColumn": 39,
+          "endLine": 141,
+          "endColumn": 26
+        },
+        {
+          "stage": "chargeNewAccountState",
+          "method": "TryConsumeStateGas",
+          "canonicalSyntax": "if(result.OutcomeisStateGasChargeOutcome.OutOfGas)returnfalse;",
+          "startLine": 143,
+          "startColumn": 9,
+          "endLine": 143,
+          "endColumn": 76
+        },
+        {
+          "stage": "chargeNewAccountState",
+          "method": "TryConsumeStateGas",
+          "canonicalSyntax": "gas.Value=result.Value;",
+          "startLine": 145,
+          "startColumn": 9,
+          "endLine": 145,
+          "endColumn": 34
+        },
+        {
+          "stage": "chargeNewAccountState",
+          "method": "TryConsumeStateGas",
+          "canonicalSyntax": "gas.StateReservoir=result.StateReservoir;",
+          "startLine": 146,
+          "startColumn": 9,
+          "endLine": 146,
+          "endColumn": 52
+        },
+        {
+          "stage": "chargeNewAccountState",
+          "method": "TryConsumeStateGas",
+          "canonicalSyntax": "gas.StateGasUsed=result.StateGasUsed;",
+          "startLine": 147,
+          "startColumn": 9,
+          "endLine": 147,
+          "endColumn": 48
+        },
+        {
+          "stage": "chargeNewAccountState",
+          "method": "TryConsumeStateGas",
+          "canonicalSyntax": "gas.StateGasSpill=result.StateGasSpill;",
+          "startLine": 148,
+          "startColumn": 9,
+          "endLine": 148,
+          "endColumn": 50
+        },
+        {
+          "stage": "chargeNewAccountState",
+          "method": "TryConsumeStateGas",
+          "canonicalSyntax": "gas.StateGasSpillRefunded=result.StateGasSpillRefunded;",
+          "startLine": 149,
+          "startColumn": 9,
+          "endLine": 149,
+          "endColumn": 66
+        },
+        {
+          "stage": "chargeNewAccountState",
+          "method": "TryConsumeStateGas",
+          "canonicalSyntax": "returntrue;",
+          "startLine": 150,
+          "startColumn": 9,
+          "endLine": 150,
+          "endColumn": 21
+        }
+      ]
+    },
+    "executionCharge": {
+      "method": {
+        "namespace": "Nethermind.Evm.GasPolicy",
+        "owner": "EthereumGasPolicy",
+        "name": "UpdateGas",
+        "returnType": "bool",
+        "parameters": [
+          {
+            "name": "gas",
+            "type": "EthereumGasPolicy",
+            "refKind": "ref"
+          },
+          {
+            "name": "gasCost",
+            "type": "ulong",
+            "refKind": ""
+          }
+        ],
+        "accessibility": "public",
+        "modifiers": [
+          "public",
+          "static"
+        ]
+      },
+      "remainingGasMethod": {
+        "namespace": "Nethermind.Evm.GasPolicy",
+        "owner": "EthereumGasPolicy",
+        "name": "GetRemainingGas",
+        "returnType": "ulong",
+        "parameters": [
+          {
+            "name": "gas",
+            "type": "EthereumGasPolicy",
+            "refKind": "in"
+          }
+        ],
+        "accessibility": "public",
+        "modifiers": [
+          "public",
+          "static"
+        ]
+      },
+      "remainingGasExpression": "gas.Value",
+      "guard": "GetRemainingGas(ingas)\u003CgasCost",
+      "failureMutation": "{gas.Value=0;returnfalse;}",
+      "successCall": {
+        "callee": "ConsumeRaw",
+        "arguments": [
+          "refgas",
+          "gasCost"
+        ],
+        "method": "UpdateGas",
+        "anchor": {
+          "stage": "chargeAccountWriteExecution",
+          "method": "UpdateGas",
+          "canonicalSyntax": "ConsumeRaw(refgas,gasCost)",
+          "startLine": 517,
+          "startColumn": 9,
+          "endLine": 517,
+          "endColumn": 37
+        }
+      },
+      "consumeRawMethod": {
+        "namespace": "Nethermind.Evm.GasPolicy",
+        "owner": "EthereumGasPolicy",
+        "name": "ConsumeRaw",
+        "returnType": "void",
+        "parameters": [
+          {
+            "name": "gas",
+            "type": "EthereumGasPolicy",
+            "refKind": "ref"
+          },
+          {
+            "name": "cost",
+            "type": "ulong",
+            "refKind": ""
+          }
+        ],
+        "accessibility": "private",
+        "modifiers": [
+          "private",
+          "static"
+        ]
+      },
+      "successMutation": "gas.Value-=cost",
+      "successReturn": "returntrue;",
+      "anchors": [
+        {
+          "stage": "chargeAccountWriteExecution",
+          "method": "GetRemainingGas",
+          "canonicalSyntax": "gas.Value",
+          "startLine": 87,
+          "startColumn": 70,
+          "endLine": 87,
+          "endColumn": 79
+        },
+        {
+          "stage": "chargeAccountWriteExecution",
+          "method": "ConsumeRaw",
+          "canonicalSyntax": "gas.Value-=cost",
+          "startLine": 105,
+          "startColumn": 78,
+          "endLine": 105,
+          "endColumn": 95
+        },
+        {
+          "stage": "chargeAccountWriteExecution",
+          "method": "UpdateGas",
+          "canonicalSyntax": "if(GetRemainingGas(ingas)\u003CgasCost){gas.Value=0;returnfalse;}",
+          "startLine": 511,
+          "startColumn": 9,
+          "endLine": 515,
+          "endColumn": 10
+        },
+        {
+          "stage": "chargeAccountWriteExecution",
+          "method": "UpdateGas",
+          "canonicalSyntax": "ConsumeRaw(refgas,gasCost)",
+          "startLine": 517,
+          "startColumn": 9,
+          "endLine": 517,
+          "endColumn": 37
+        },
+        {
+          "stage": "chargeAccountWriteExecution",
+          "method": "UpdateGas",
+          "canonicalSyntax": "returntrue;",
+          "startLine": 518,
+          "startColumn": 9,
+          "endLine": 518,
+          "endColumn": 21
+        }
+      ]
+    },
+    "failure": {
+      "methodReturn": "false",
+      "callerFailureBranch": "spec.IsEip8037Enabled -\u003E topFrameOutOfGas = true; otherwise GasLimitBelowIntrinsicGas",
+      "partialStateContract": "false returns expose gasAvailable after all prior successful charges; account-write OOG clears Value, while per-authorization state OOG preserves earlier fields; no rollback occurs inside ProcessDelegations",
+      "resetOrder": "EIP-7702/EIP-8037 snapshot capture -\u003E top-frame EIP-8037 OOG -\u003E optional snapshot restore -\u003E gasAvailable = prePreparationGas -\u003E executionIntrinsicGasStandard = intrinsicGas.Standard",
+      "anchors": [
+        {
+          "stage": "processDelegationsGuard",
+          "method": "ExecuteEvmTransaction",
+          "canonicalSyntax": "WorldState.TakeSnapshot()",
+          "startLine": 328,
+          "startColumn": 44,
+          "endLine": 328,
+          "endColumn": 69
+        },
+        {
+          "stage": "processDelegationsGuard",
+          "method": "ExecuteEvmTransaction",
+          "canonicalSyntax": "if(spec.IsEip8037Enabled){topFrameOutOfGas=true;}else{returnTransactionResult.GasLimitBelowIntrinsicGas;}",
+          "startLine": 334,
+          "startColumn": 21,
+          "endLine": 341,
+          "endColumn": 22
+        },
+        {
+          "stage": "processDelegationsGuard",
+          "method": "ExecuteEvmTransaction",
+          "canonicalSyntax": "WorldState.Restore(preExecutionSnapshot)",
+          "startLine": 364,
+          "startColumn": 21,
+          "endLine": 364,
+          "endColumn": 61
+        },
+        {
+          "stage": "processDelegationsGuard",
+          "method": "ExecuteEvmTransaction",
+          "canonicalSyntax": "gasAvailable=prePreparationGas",
+          "startLine": 367,
+          "startColumn": 17,
+          "endLine": 367,
+          "endColumn": 49
+        },
+        {
+          "stage": "processDelegationsGuard",
+          "method": "ExecuteEvmTransaction",
+          "canonicalSyntax": "executionIntrinsicGasStandard=intrinsicGas.Standard",
+          "startLine": 368,
+          "startColumn": 17,
+          "endLine": 368,
+          "endColumn": 70
+        }
+      ]
+    },
+    "anchors": [
+      {
+        "stage": "processDelegationsGuard",
+        "method": "ExecuteEvmTransaction",
+        "canonicalSyntax": "if(spec.IsEip7702Enabled\u0026\u0026tx.HasAuthorizationList){if(spec.IsEip8037Enabled){preExecutionSnapshot=WorldState.TakeSnapshot();hasPreExecutionSnapshot=true;}if(!ProcessDelegations(tx,spec,accessTracker,refgasAvailable,refexecutionIntrinsicGasStandard,outdelegationRefunds)){if(spec.IsEip8037Enabled){topFrameOutOfGas=true;}else{returnTransactionResult.GasLimitBelowIntrinsicGas;}}}",
+        "startLine": 324,
+        "startColumn": 13,
+        "endLine": 343,
+        "endColumn": 14
+      },
+      {
+        "stage": "capturePreAuthorizationStateGasUsed",
+        "method": "ProcessDelegations",
+        "canonicalSyntax": "preAuthorizationStateGasUsed=TGasPolicy.GetStateGasUsed(ingasAvailable)",
+        "startLine": 723,
+        "startColumn": 18,
+        "endLine": 723,
+        "endColumn": 92
+      },
+      {
+        "stage": "validateAuthorization",
+        "method": "ProcessDelegations",
+        "canonicalSyntax": "IsValidForExecution(authTuple,accessTracker,spec,outboolhasDelegation,outstring?error)",
+        "startLine": 742,
+        "startColumn": 64,
+        "endLine": 742,
+        "endColumn": 158
+      },
+      {
+        "stage": "chargeNewAccountState",
+        "method": "ProcessDelegations",
+        "canonicalSyntax": "TGasPolicy.TryConsumeStateGas(refgasAvailable,TGasPolicy.GetNewAccountStateCost())",
+        "startLine": 773,
+        "startColumn": 55,
+        "endLine": 773,
+        "endColumn": 139
+      },
+      {
+        "stage": "chargeAccountWriteExecution",
+        "method": "ProcessDelegations",
+        "canonicalSyntax": "TGasPolicy.UpdateGas(refgasAvailable,accountWriteGas)",
+        "startLine": 781,
+        "startColumn": 58,
+        "endLine": 781,
+        "endColumn": 113
+      },
+      {
+        "stage": "chargePerAuthorizationState",
+        "method": "ProcessDelegations",
+        "canonicalSyntax": "TGasPolicy.TryConsumeStateGas(refgasAvailable,TGasPolicy.GetPerAuthBaseStateCost())",
+        "startLine": 790,
+        "startColumn": 37,
+        "endLine": 790,
+        "endColumn": 122
+      },
+      {
+        "stage": "applyAuthorityMutation",
+        "method": "ProcessDelegations",
+        "canonicalSyntax": "_codeInfoRepository.SetDelegation(authTuple.CodeAddress,authority,spec)",
+        "startLine": 811,
+        "startColumn": 21,
+        "endLine": 811,
+        "endColumn": 94
+      },
+      {
+        "stage": "computeAuthorizationStateGasDelta",
+        "method": "ProcessDelegations",
+        "canonicalSyntax": "authorizationStateGasUsed=TGasPolicy.GetStateGasUsed(ingasAvailable)-preAuthorizationStateGasUsed",
+        "startLine": 817,
+        "startColumn": 22,
+        "endLine": 817,
+        "endColumn": 124
+      },
+      {
+        "stage": "foldTopFrameStateGas",
+        "method": "ProcessDelegations",
+        "canonicalSyntax": "TGasPolicy.FoldTopFrameStateGas(refgasAvailable,refexecutionIntrinsicGasStandard,authorizationStateGasUsed)",
+        "startLine": 818,
+        "startColumn": 17,
+        "endLine": 818,
+        "endColumn": 128
+      }
+    ]
+  },
+  "fold": {
+    "method": {
+      "namespace": "Nethermind.Evm.GasPolicy",
+      "owner": "EthereumGasPolicy",
+      "name": "FoldTopFrameStateGas",
+      "returnType": "void",
+      "parameters": [
+        {
+          "name": "gas",
+          "type": "EthereumGasPolicy",
+          "refKind": "ref"
+        },
+        {
+          "name": "baseline",
+          "type": "EthereumGasPolicy",
+          "refKind": "ref"
+        },
+        {
+          "name": "stateGasUsed",
+          "type": "long",
+          "refKind": ""
+        }
+      ],
+      "accessibility": "public",
+      "modifiers": [
+        "public",
+        "static"
+      ]
+    },
+    "noOpPredicate": "stateGasUsed\u003C=0",
+    "gasPolicyFields": [
+      "Value",
+      "StateReservoir",
+      "StateGasUsed",
+      "StateGasSpill",
+      "StateGasSpillRefunded"
+    ],
+    "writes": [
+      {
+        "owner": "baseline",
+        "field": "stateReservoir",
+        "operator": "\u002B=",
+        "value": "stateGasUsed",
+        "order": 0,
+        "anchor": {
+          "stage": "foldTopFrameStateGas",
+          "method": "FoldTopFrameStateGas",
+          "canonicalSyntax": "baseline.StateReservoir\u002B=stateGasUsed;",
+          "startLine": 721,
+          "startColumn": 9,
+          "endLine": 721,
+          "endColumn": 49
+        }
+      },
+      {
+        "owner": "baseline",
+        "field": "stateGasUsed",
+        "operator": "\u002B=",
+        "value": "stateGasUsed",
+        "order": 1,
+        "anchor": {
+          "stage": "foldTopFrameStateGas",
+          "method": "FoldTopFrameStateGas",
+          "canonicalSyntax": "baseline.StateGasUsed\u002B=stateGasUsed;",
+          "startLine": 722,
+          "startColumn": 9,
+          "endLine": 722,
+          "endColumn": 47
+        }
+      },
+      {
+        "owner": "gasAvailable",
+        "field": "stateGasSpill",
+        "operator": "=",
+        "value": "0",
+        "order": 2,
+        "anchor": {
+          "stage": "foldTopFrameStateGas",
+          "method": "FoldTopFrameStateGas",
+          "canonicalSyntax": "gas.StateGasSpill=0;",
+          "startLine": 723,
+          "startColumn": 9,
+          "endLine": 723,
+          "endColumn": 31
+        }
+      },
+      {
+        "owner": "gasAvailable",
+        "field": "stateGasSpillRefunded",
+        "operator": "=",
+        "value": "0",
+        "order": 3,
+        "anchor": {
+          "stage": "foldTopFrameStateGas",
+          "method": "FoldTopFrameStateGas",
+          "canonicalSyntax": "gas.StateGasSpillRefunded=0;",
+          "startLine": 724,
+          "startColumn": 9,
+          "endLine": 724,
+          "endColumn": 39
+        }
+      }
+    ],
+    "anchors": [
+      {
+        "stage": "foldTopFrameStateGas",
+        "method": "FoldTopFrameStateGas",
+        "canonicalSyntax": "if(stateGasUsed\u003C=0){return;}",
+        "startLine": 716,
+        "startColumn": 9,
+        "endLine": 719,
+        "endColumn": 10
+      },
+      {
+        "stage": "foldTopFrameStateGas",
+        "method": "FoldTopFrameStateGas",
+        "canonicalSyntax": "baseline.StateReservoir\u002B=stateGasUsed;",
+        "startLine": 721,
+        "startColumn": 9,
+        "endLine": 721,
+        "endColumn": 49
+      },
+      {
+        "stage": "foldTopFrameStateGas",
+        "method": "FoldTopFrameStateGas",
+        "canonicalSyntax": "baseline.StateGasUsed\u002B=stateGasUsed;",
+        "startLine": 722,
+        "startColumn": 9,
+        "endLine": 722,
+        "endColumn": 47
+      },
+      {
+        "stage": "foldTopFrameStateGas",
+        "method": "FoldTopFrameStateGas",
+        "canonicalSyntax": "gas.StateGasSpill=0;",
+        "startLine": 723,
+        "startColumn": 9,
+        "endLine": 723,
+        "endColumn": 31
+      },
+      {
+        "stage": "foldTopFrameStateGas",
+        "method": "FoldTopFrameStateGas",
+        "canonicalSyntax": "gas.StateGasSpillRefunded=0;",
+        "startLine": 724,
+        "startColumn": 9,
+        "endLine": 724,
+        "endColumn": 39
+      }
+    ]
+  },
+  "dependencies": [
+    {
+      "name": "TransactionGasInitialization",
+      "manifestPath": "tools/Evm/Lean/Extractor/Generated/TransactionGasInitializationKernel.source-manifest.json",
+      "manifestSha256": "c4081417da301771539d0509bf281a42f40a1a719cc4611c051e60fc8d6c7202",
+      "refinementPath": "tools/Evm/Lean/Eip803x/Refinement/TransactionGasInitialization.lean",
+      "refinementSha256": "8986504ad786cc621dcb0c74400980366847c43d832830973f52a5d38c290578",
+      "leanPath": "tools/Evm/Lean/Eip803x/Generated/TransactionGasInitializationKernel.lean",
+      "leanSha256": "83ce996d6dcc93a588114e73737a25a14cb21689e9e8900e6dc68a07fb170b6f",
+      "rootSignature": "Nethermind.Evm.GasPolicy.TransactionGasInitializationResult Nethermind.Evm.GasPolicy.TransactionGasInitializationKernel.TryCreate(ulong gasLimit, ulong intrinsicExecutionGas, long intrinsicStateGas, bool eip8037Enabled, ulong executionGasLimitCap)",
+      "theoremName": "generatedTryCreate_refines_initializeTransactionGas",
+      "theoremSignature": "theoremgeneratedTryCreate_refines_initializeTransactionGas{gasLimitintrinsicExecutionGasexecutionGasLimitCap:Nat}{intrinsicStateGas:Int}(h:RefinementValidgasLimitintrinsicExecutionGasintrinsicStateGasexecutionGasLimitCap):letresult:=tryCreategasLimitintrinsicExecutionGasintrinsicStateGastrueexecutionGasLimitCapletinput:=referenceInputgasLimitintrinsicExecutionGasintrinsicStateGasexecutionGasLimitCapletmodel:=TransactionGas.initializeTransactionGasinputinput.Valid\u2227result.outcome=.success\u2227result.value=model.gasLeft\u2227result.stateReservoir=(model.stateGasReservoir:Int)\u2227result.stateGasUsed=(model.stateGasUsed:Int)\u2227result.stateGasSpill=(model.stateGasSpill:Int)\u2227result.stateGasSpillRefunded=(model.stateGasSpillRefunded:Int)\u2227model.evmGas=gasLimit-(intrinsicExecutionGas\u002BInt.toNatintrinsicStateGas)\u2227model.executionGasBudget=executionGasLimitCap-intrinsicExecutionGas"
+    },
+    {
+      "name": "StateGasCharge",
+      "manifestPath": "tools/Evm/Lean/Extractor/Generated/StateGasChargeKernel.source-manifest.json",
+      "manifestSha256": "bc62e03880343c8cd27dedd238fa386125a412e112548bec70d4a3bba4a0e575",
+      "refinementPath": "tools/Evm/Lean/Eip803x/Refinement/StateGasCharge.lean",
+      "refinementSha256": "4cb359f611ef04300618f9109ac89ca6b32c857c8e9e6c2305e11a0323d57ead",
+      "leanPath": "tools/Evm/Lean/Eip803x/Generated/StateGasChargeKernel.lean",
+      "leanSha256": "d6a09be29c449e3f005d84cde988a619e03c4d2b0a69fcf0989f879b2fc87337",
+      "rootSignature": "Nethermind.Evm.GasPolicy.StateGasChargeResult Nethermind.Evm.GasPolicy.StateGasChargeKernel.TryCharge(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long stateGasCost)",
+      "theoremName": "generatedTryCharge_refines_chargeState",
+      "theoremSignature": "theoremgeneratedTryCharge_refines_chargeState{production:ProductionGasState}{model:GasState}(amount:Nat)(hRep:ProductionGas.Representsproductionmodel)(hWell:ProductionGas.WellFormedproduction)(hNoOverflow:ProductionGas.ChargeNoOverflowamountproduction):letresult:=generatedResultToProduction(Eip803x.Generated.StateGasChargeKernel.tryChargeproduction.gasLeftproduction.stateReservoirproduction.stateGasUsedproduction.stateGasSpillproduction.stateGasSpillRefunded(amount:Int))(result.outcome=.success\u2192\u2203after,GasMachine.chargeStateamountmodel=.okafter\u2227ProductionGas.Represents(ProductionGas.resultStateresult)after)\u2227(result.outcome=.outOfGas\u2192GasMachine.chargeStateamountmodel=.error.outOfGas\u2227ProductionGas.resultStateresult=production)"
+    },
+    {
+      "name": "StateGasTransition",
+      "manifestPath": "tools/Evm/Lean/Extractor/Generated/StateGasTransitionKernel.source-manifest.json",
+      "manifestSha256": "362031db8ef6bbfdcab657694f69a810369273f2ca41b7e1a233465e05c4cf85",
+      "refinementPath": "tools/Evm/Lean/Eip803x/Refinement/StateGasTransition.lean",
+      "refinementSha256": "a3d3beb8004c1431e2550a702f84d816751657ad90c8320ddc5809956da41cec",
+      "leanPath": "tools/Evm/Lean/Eip803x/Generated/StateGasTransitionKernel.lean",
+      "leanSha256": "f284d83951b94cbfaf10ad8b5a58b0015b2c96f4ac86e97c9de8b3865dee1dce",
+      "rootSignature": "Nethermind.Evm.GasPolicy.StateGasTransitionResult Nethermind.Evm.GasPolicy.StateGasTransitionKernel.AddStateGasRefundToReservoir(ulong value, long stateReservoir, long stateGasUsed, long stateGasSpill, long stateGasSpillRefunded, long amount, bool trackSpillRefund)",
+      "theoremName": "generated_refund_matches_spec",
+      "theoremSignature": "theoremgenerated_refund_matches_spec{parentchild:ProductionGasState}(hNoOverflow:Spec.refundNoOverflowparentchild):generatedResultToSpec(Eip803x.Generated.StateGasTransitionKernel.refundparent.gasLeftparent.stateReservoirparent.stateGasUsedparent.stateGasSpillparent.stateGasSpillRefundedchild.gasLeftchild.stateReservoirchild.stateGasUsedchild.stateGasSpillchild.stateGasSpillRefunded)=Spec.refundparentchild"
+    }
+  ],
+  "externalObligations": [
+    "This is an admission/fold control and normalized-effect execution claim; it is not a proof of the complete production authorization loop.",
+    "The logical-versus-physical existence selectors are source-bound; authorization validity, signature recovery, nonce/chain-id/code checks, world-state read correctness, and authority mutation remain external.",
+    "The normalized authorization effects supplied to the mathematical model are an assumed adapter boundary, not a source-derived translation or proof of ProcessDelegations validation predicates.",
+    "Account-write execution gas is represented as a fixed-width Value charge; its pricing constant and EIP-8038 policy semantics remain external.",
+    "StateGasCharge and StateGasTransition behavior is imported only through the exact pinned generated artifacts and theorem signatures recorded in Dependencies.",
+    "The partial-failure result is the ProcessDelegations boundary state; the caller reset projection is modeled separately and does not assert atomicity of preparation.",
+    "Lean\u0027s normalized-effect interpreter uses unbounded Nat/Int and requires nonnegative state costs; fixed-width C#/Lean equivalence additionally requires the named per-transition, delta, and fold no-wrap obligations.",
+    "Snapshot restoration, world-state rollback, gas settlement, fees, receipts, tracing, DI resolution, CLR/JIT/AOT, and persistence are outside the claim."
+  ]
+}

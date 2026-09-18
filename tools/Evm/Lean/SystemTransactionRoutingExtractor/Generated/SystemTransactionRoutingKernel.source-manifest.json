@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.8.0",
+  "compilerVersion": "5.6.0.0",
+  "languageVersion": "14.0",
+  "ancestorBaselineCommit": "b2478235e71e6a7ec2a509aa0155e25d5fdfff80",
+  "sourceIdentityAuthority": "The source-manifest SHA-256 identities are authoritative for the admitted current source; the ancestor baseline records lineage only.",
+  "kernel": "Nethermind.Evm.TransactionProcessing.SystemTransactionRoutingKernel",
+  "sources": [
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionRoutingKernel.cs",
+      "sha256": "b884bb49ad7c109b907f4dfcac56a5eb13283d964310d45eb9ca85177ff5e5c1"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ExecutionOptions.cs",
+      "sha256": "014a2598e1def284b7b98dc97185b6dbbc45ca04be4ab159e330a0675ac24f10"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+      "sha256": "0374c6f35a9a23361f37b41162ac281ca83b09846ab4295d5a592db6315c99cc"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionProcessor.cs",
+      "sha256": "10c7370e5f6d5ca25e4cd0801967083f97f432e211314dc40126a18fbea48a95"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/TransactionExtensions.cs",
+      "sha256": "d3df04cb465668a3dcc842f33e5bc7a16d2420cdc1dcd03edf1c3275c2b24852"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+      "sha256": "fce65ce5bb523c56fc8aa6ee0e4d092c940a5a90b174c820ffe262eeb5241c60"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/ContainerBuilderExtensions.cs",
+      "sha256": "3799fa7083184f34951fa15ed67f40af2548e33b5944757681b80cc309ecad4a"
+    }
+  ],
+  "admissions": [
+    {
+      "key": "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionRoutingKernel.cs:compilation-unit/0:complete-source",
+      "sourceSha256": "b884bb49ad7c109b907f4dfcac56a5eb13283d964310d45eb9ca85177ff5e5c1"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/TransactionProcessing/ExecutionOptions.cs:compilation-unit/0:complete-source",
+      "sourceSha256": "014a2598e1def284b7b98dc97185b6dbbc45ca04be4ab159e330a0675ac24f10"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs:compilation-unit/0:complete-source",
+      "sourceSha256": "0374c6f35a9a23361f37b41162ac281ca83b09846ab4295d5a592db6315c99cc"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionProcessor.cs:compilation-unit/0:complete-source",
+      "sourceSha256": "10c7370e5f6d5ca25e4cd0801967083f97f432e211314dc40126a18fbea48a95"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Core/TransactionExtensions.cs:compilation-unit/0:complete-source",
+      "sourceSha256": "d3df04cb465668a3dcc842f33e5bc7a16d2420cdc1dcd03edf1c3275c2b24852"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs:compilation-unit/0:complete-source",
+      "sourceSha256": "fce65ce5bb523c56fc8aa6ee0e4d092c940a5a90b174c820ffe262eeb5241c60"
+    },
+    {
+      "key": "src/Nethermind/Nethermind.Core/ContainerBuilderExtensions.cs:compilation-unit/0:complete-source",
+      "sourceSha256": "3799fa7083184f34951fa15ed67f40af2548e33b5944757681b80cc309ecad4a"
+    }
+  ],
+  "ir": {
+    "path": "SystemTransactionRoutingKernel.ir.json",
+    "sha256": "ff45245e89476b78ab44aa1f4a6ce9465340d82fc0155f08cd6db3f719d6e24c"
+  },
+  "lean": {
+    "path": "tools/Evm/Lean/Eip803x/Generated/SystemTransactionRoutingKernel.lean",
+    "sha256": "8d4f20165c64a4ec0f04739b54275976aef72d3c7889e7b474823617d6fc30b3"
+  },
+  "combinedSha256": "51a2b39c8cac9d247dd9f75417cf86b2de28621d6df4379112e6e47ac4e4ef77",
+  "semanticBindings": [
+    "TransactionExtensions.IsSystem -\u003E SystemTransactionRoutingKernel.UseSystemProcessor -\u003E SystemTransactionProcessor.Execute",
+    "SystemTransactionProcessor.Execute -\u003E ShouldPayOriginalValue/GetSystemExecutionOptions -\u003E TransactionProcessorBase.Execute",
+    "SystemTransactionProcessor.PayValue -\u003E assigned _payOriginalValue field -\u003E TransactionProcessorBase.PayValue",
+    "semantically bound route/classifier/PayValue calls -\u003E no CFG-before-target ordinary by-value tx/spec reference escape",
+    "UpdateHeaderGasUsedAndPayFees gate decision only -\u003E ParticipatesInNormalBlockCounters; virtual PayFees effects are outside the claim",
+    "BlockProcessingModule.AddScoped\u003CITransactionProcessor, EthereumTransactionProcessor\u003E",
+    "Nethermind.Core.ContainerBuilderExtensions.AddScoped\u003CT, TImpl\u003E on Autofac.ContainerBuilder",
+    "Nethermind.Core.ContainerBuilderExtensions.AddScoped\u003CT, TImpl\u003E -\u003E BindScoped\u003CT, TImpl\u003E -\u003E Autofac scoped externally-owned service binding",
+    "EthereumTransactionProcessor -\u003E inherited TransactionProcessorBase\u003CEthereumGasPolicy\u003E.CreateSystemTransactionProcessor"
+  ]
+}

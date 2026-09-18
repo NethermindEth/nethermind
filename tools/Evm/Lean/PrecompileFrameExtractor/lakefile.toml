@@ -1,0 +1,12 @@
+name = "PrecompileFrameExtractor"
+version = "0.1.0"
+defaultTargets = [
+  "PrecompileFrameExtractor.Generated.PrecompileFrameStageA",
+  "PrecompileFrameExtractor.Generated.PrecompileFrameStageB",
+  "PrecompileFrameExtractor.Specification.PrecompileFrameStageBReference",
+  "PrecompileFrameExtractor.Refinement.PrecompileFrameStageB"
+]
+
+[[lean_lib]]
+name = "PrecompileFrameExtractor"
+srcDir = ".."

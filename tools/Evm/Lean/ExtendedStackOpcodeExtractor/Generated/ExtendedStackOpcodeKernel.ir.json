@@ -1,0 +1,235 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.0.0",
+  "kernel": "ExtendedStackOpcodeKernel",
+  "root": "Nethermind.Evm.VirtualMachine\u003CNethermind.Evm.GasPolicy.EthereumGasPolicy\u003E",
+  "gasPolicy": "Nethermind.Evm.GasPolicy.EthereumGasPolicy",
+  "fork": "Nethermind.Specs.Forks.Amsterdam",
+  "buildFlavor": "standard-mainnet",
+  "forkGate": "IReleaseSpec.IsEip8024Enabled",
+  "defaultHandler": "BadInstructionOpcode",
+  "pcOrder": "opcode-pc-before-gas;valid-immediate-pc-before-stack",
+  "gasOrder": "very-low-before-decode-and-stack",
+  "faultOrder": "fork-disabled-before-gas;out-of-gas-before-invalid-immediate-before-underflow-before-overflow",
+  "stackLimit": 1024,
+  "veryLowGas": 3,
+  "dispatchTables": [
+    {
+      "name": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag"
+    },
+    {
+      "name": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag"
+    },
+    {
+      "name": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag"
+    },
+    {
+      "name": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag"
+    }
+  ],
+  "forkLineage": [
+    "Olympic",
+    "Frontier",
+    "Homestead",
+    "Dao",
+    "TangerineWhistle",
+    "SpuriousDragon",
+    "Byzantium",
+    "Constantinople",
+    "ConstantinopleFix",
+    "Istanbul",
+    "MuirGlacier",
+    "Berlin",
+    "London",
+    "ArrowGlacier",
+    "GrayGlacier",
+    "Paris",
+    "Shanghai",
+    "Cancun",
+    "Prague",
+    "Osaka",
+    "BPO1",
+    "BPO2",
+    "Amsterdam"
+  ],
+  "openExtractionObligations": [
+    "Roslyn admission and source routing do not prove CLR, JIT, function-pointer, or unsafe EvmStack execution.",
+    "Tracing, cancellation, opcode counters, tail calls, frame settlement, memory, allocation, and transaction or block integration remain outside this one-opcode projection.",
+    "The generated semantics models only standard-mainnet EthereumGasPolicy and the Amsterdam EIP-8024 gate; zkEVM and alternate gas policies are excluded.",
+    "The source-derived decoder refinement is imported as an independent prior result; this package does not claim whole-loop, frame, or CLR verification."
+  ],
+  "opcodes": [
+    {
+      "name": "dupN",
+      "instruction": "DUPN",
+      "opcodeByte": 230,
+      "handlerBody": "DupNOpcode\u003CTTracingInst\u003E",
+      "forwarder": "DupNOpcode\u003CTTracingInst\u003E.Execute",
+      "instructionMethod": "InstructionDupN",
+      "decoderMethod": "TryDecodeSingle",
+      "stackMethod": "Dup",
+      "dispatchAssignment": "lookup[(int)Instruction.DUPN]=OpcodeHandler\u003CDupNOpcode\u003CTTracingInst\u003E,TTracingInst,TCancelable\u003E();",
+      "gasClass": "veryLow",
+      "fixedGas": 3,
+      "stackGrowth": 1,
+      "pcOrder": "opcode-pc-before-gas;valid-immediate-pc-before-stack",
+      "gasOrder": "very-low-before-decode-and-stack",
+      "faultOrder": "fork-disabled-before-gas;out-of-gas-before-invalid-immediate-before-underflow-before-overflow",
+      "activation": "IReleaseSpec.IsEip8024Enabled"
+    },
+    {
+      "name": "swapN",
+      "instruction": "SWAPN",
+      "opcodeByte": 231,
+      "handlerBody": "SwapNOpcode\u003CTTracingInst\u003E",
+      "forwarder": "SwapNOpcode\u003CTTracingInst\u003E.Execute",
+      "instructionMethod": "InstructionSwapN",
+      "decoderMethod": "TryDecodeSingle",
+      "stackMethod": "Swap",
+      "dispatchAssignment": "lookup[(int)Instruction.SWAPN]=OpcodeHandler\u003CSwapNOpcode\u003CTTracingInst\u003E,TTracingInst,TCancelable\u003E();",
+      "gasClass": "veryLow",
+      "fixedGas": 3,
+      "stackGrowth": 0,
+      "pcOrder": "opcode-pc-before-gas;valid-immediate-pc-before-stack",
+      "gasOrder": "very-low-before-decode-and-stack",
+      "faultOrder": "fork-disabled-before-gas;out-of-gas-before-invalid-immediate-before-underflow-before-overflow",
+      "activation": "IReleaseSpec.IsEip8024Enabled"
+    },
+    {
+      "name": "exchange",
+      "instruction": "EXCHANGE",
+      "opcodeByte": 232,
+      "handlerBody": "ExchangeOpcode\u003CTTracingInst\u003E",
+      "forwarder": "ExchangeOpcode\u003CTTracingInst\u003E.Execute",
+      "instructionMethod": "InstructionExchange",
+      "decoderMethod": "TryDecodePair",
+      "stackMethod": "Exchange",
+      "dispatchAssignment": "lookup[(int)Instruction.EXCHANGE]=OpcodeHandler\u003CExchangeOpcode\u003CTTracingInst\u003E,TTracingInst,TCancelable\u003E();",
+      "gasClass": "veryLow",
+      "fixedGas": 3,
+      "stackGrowth": 0,
+      "pcOrder": "opcode-pc-before-gas;valid-immediate-pc-before-stack",
+      "gasOrder": "very-low-before-decode-and-stack",
+      "faultOrder": "fork-disabled-before-gas;out-of-gas-before-invalid-immediate-before-underflow-before-overflow",
+      "activation": "IReleaseSpec.IsEip8024Enabled"
+    }
+  ],
+  "specializations": [
+    {
+      "opcode": "dupN",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CDupNOpcode\u003COffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E",
+      "disabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBadInstructionOpcode,OffFlag,OffFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "dupN",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CDupNOpcode\u003COffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E",
+      "disabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBadInstructionOpcode,OffFlag,OnFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "dupN",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CDupNOpcode\u003COnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E",
+      "disabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBadInstructionOpcode,OnFlag,OffFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "dupN",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CDupNOpcode\u003COnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E",
+      "disabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBadInstructionOpcode,OnFlag,OnFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "swapN",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CSwapNOpcode\u003COffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E",
+      "disabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBadInstructionOpcode,OffFlag,OffFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "swapN",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CSwapNOpcode\u003COffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E",
+      "disabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBadInstructionOpcode,OffFlag,OnFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "swapN",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CSwapNOpcode\u003COnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E",
+      "disabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBadInstructionOpcode,OnFlag,OffFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "swapN",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CSwapNOpcode\u003COnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E",
+      "disabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBadInstructionOpcode,OnFlag,OnFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "exchange",
+      "dispatchTable": "NoTrace",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CExchangeOpcode\u003COffFlag\u003E,OffFlag,OffFlag,OnFlag\u003E",
+      "disabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBadInstructionOpcode,OffFlag,OffFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "exchange",
+      "dispatchTable": "NoTraceCancelable",
+      "tracingFlag": "OffFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CExchangeOpcode\u003COffFlag\u003E,OffFlag,OnFlag,OnFlag\u003E",
+      "disabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBadInstructionOpcode,OffFlag,OnFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "exchange",
+      "dispatchTable": "Traced",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OffFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CExchangeOpcode\u003COnFlag\u003E,OnFlag,OffFlag,OnFlag\u003E",
+      "disabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBadInstructionOpcode,OnFlag,OffFlag,OffFlag\u003E"
+    },
+    {
+      "opcode": "exchange",
+      "dispatchTable": "TracedCancelable",
+      "tracingFlag": "OnFlag",
+      "cancelableFlag": "OnFlag",
+      "continuableFlag": "OnFlag",
+      "enabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CExchangeOpcode\u003COnFlag\u003E,OnFlag,OnFlag,OnFlag\u003E",
+      "disabledRoot": "VirtualMachine\u003CEthereumGasPolicy\u003E.ExecuteOpcode\u003CBadInstructionOpcode,OnFlag,OnFlag,OffFlag\u003E"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+namespace Nethermind.Evm;
+
+partial class EvmInstructions
+{
+/// <summary>
+    /// Returns the current size of the EVM memory.
+    /// </summary>
+    public struct OpMSize<TGasPolicy> : IOpEnvUInt64<TGasPolicy>
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        public static ulong Operation(VmState<TGasPolicy> vmState)
+            => vmState.Memory.Size;
+    }
+
+/// <summary>
+    /// Pushes the remaining gas onto the stack.
+    /// The gas available is decremented by the base cost, and if negative, an OutOfGas error is returned.
+    /// </summary>
+    /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
+    /// <param name="stack">The execution stack where the gas value will be pushed.</param>
+    /// <param name="gas">Reference to the gas state, updated by the operation's cost.</param>
+    /// <returns>
+    /// <see cref="EvmExceptionType.None"/> if gas is available, or <see cref="EvmExceptionType.OutOfGas"/> if the gas becomes negative.
+    /// </returns>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static EvmExceptionType InstructionGas<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        // Deduct the base gas cost for reading gas.
+        if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) goto OutOfGas;
+
+        // Push the remaining gas (as unsigned 64-bit) onto the stack.
+        return stack.PushUInt64<TTracingInst, OnFlag>(TGasPolicy.GetRemainingGas(in gas));
+        // Jump forward to be unpredicted by the branch predictor.
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    }
+
+}

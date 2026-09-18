@@ -1,0 +1,509 @@
+{
+  "schemaVersion": 1,
+  "claim": {
+    "status": "incomplete",
+    "permitted": "The listed Lean theorems hold for the handwritten reference model and any explicitly identified extracted kernels.",
+    "prohibitedUntilAllCoverageGatesPass": "Nethermind's complete EVM and mainnet transaction and block processors are formally verified."
+  },
+  "enforcement": {
+    "script": "tools/Evm/Lean/Verify.ps1",
+    "workflow": ".github/workflows/build-tools.yml (Evm/Evm.slnx matrix entry)",
+    "status": "configured; a fresh complete serialized pass remains pending the transaction/block dependency cascade and unaccepted package gates; earlier package checks and recorded regression runs do not establish a green current aggregate. The recorded consolidated accepted-precompile selector passed 2369/2370 with one intentional maximum-round BLAKE2F skip, SELFDESTRUCT passed 102/102, and pure-word production regressions passed 2430/2430; GitHub execution not yet observed"
+  },
+  "pins": {
+    "nethermindCommit": "b2478235e71e6a7ec2a509aa0155e25d5fdfff80",
+    "nethermindCommitSemantics": "ancestor baseline only; package source manifests contain the authoritative worktree source and dependency hashes, including added kernels and production corrections absent from this commit; live identity checks and package acceptance gates are required for each bounded result",
+    "executionSpecsCommit": "0cc100eb190b64b23baba72dac0165652eaec252",
+    "eips": {
+      "152": "5510973b40973b6aa774f04c9caba823c8ff8460",
+      "196": "9e393a79d9937f579acbdcb234a67869259d5a96",
+      "197": "9e393a79d9937f579acbdcb234a67869259d5a96",
+      "198": "9e393a79d9937f579acbdcb234a67869259d5a96",
+      "2565": "9e393a79d9937f579acbdcb234a67869259d5a96",
+      "1108": "8cc38b9d7566132c5a05cef8d3b573d7fc2c44e8",
+      "1153": "0904d24b579a008831f7a0e3ef2f1381dd8d28d1",
+      "2537": "1dd2558f9a68d9453aed71c803fdda09d83c6e37",
+      "4844": "70471d02d48a81ca963407abe9c48706059dc8e8",
+      "7951": "b55cdb0ee78a696327cf76d1c5cf8088d73499ca",
+      "2780": "7243c92ba812437c64bae9fc6524ee269b29daa9",
+      "7610": "7707fe333322ed68d1b5efa50bdb4f35909255a7",
+      "7702": "bbc3f95844c37612a2f1b9e7477990bb717ecfa0",
+      "7708": "f7230c46a743313957d8f38a159bda934cc735b2",
+      "7778": "295064f75fb2084196dd2e247a4abf6074defe9c",
+      "7825": "b55cdb0ee78a696327cf76d1c5cf8088d73499ca",
+      "7823": "b55cdb0ee78a696327cf76d1c5cf8088d73499ca",
+      "7883": "b55cdb0ee78a696327cf76d1c5cf8088d73499ca",
+      "7928": "d2a64c2d4cc44f2f507577d0ebfb110dcc21d358",
+      "7939": "b55cdb0ee78a696327cf76d1c5cf8088d73499ca",
+      "7910": "0c82d532192eca83ab5ce12b2a0d3e019c803066",
+      "8024": "34b49095ca5f7343045da279f04e7ecd1e451393",
+      "6780": "688e939c4e0968f0cbc6a4e79426b498869eec19",
+      "8246": "9207c6011f526bd40abd79649484a1a342585bd4",
+      "8037": "052029f3625328d6f51dec8e62a7090201e66f17",
+      "8038": "8331fb3eed0a5366b28b25a016f1ad04fac0fa8e"
+    },
+    "fork": {
+      "chain": "mainnet",
+      "release": "Amsterdam",
+      "activation": "synthetic timestamp 0 / block 0",
+      "eip7778Enabled": true,
+      "productionMainnetActivationScheduled": false,
+      "activationAdapterStatus": "open: the synthetic timestamp-0/block-0 Amsterdam selection is an experimental proof configuration; semantic agreement with the configured chain-spec/spec-provider and runtime fork route is not proved"
+    },
+    "leanToolchain": "leanprover/lean4:v4.33.1"
+  },
+  "observableResult": [
+    "validity",
+    "status",
+    "returndata",
+    "logs",
+    "stateDelta",
+    "destroyList",
+    "warmedAccounts",
+    "warmedStorageKeys",
+    "executionGas",
+    "stateGas",
+    "refundCounter",
+    "remainingGas",
+    "receipts",
+    "receiptRoot",
+    "bloom",
+    "requestsHash",
+    "stateRoot",
+    "headerGasUsed",
+    "processedHeader"
+  ],
+  "coverage": {
+    "packageStatus": {
+      "ordinaryPostNonceDispatch": {
+        "status": "unaccepted-candidate",
+        "reviewStatus": "static design accepted; serialized promotion and executable rereview pending",
+        "scope": "tools/Evm/Lean/OrdinaryPostNonceDispatchExtractor/SCOPE.md",
+        "boundary": "successful nonce increment through typed simple-transfer or EVM handoff; lookup, precommit and gas-policy calls are effect observations; downstream semantics and production adapters remain open"
+      },
+      "simpleTransferCompletion": {
+        "status": "unaccepted-model-to-model-candidate",
+        "reviewStatus": "static design accepted; serialized promotion and executable rereview pending",
+        "scope": "tools/Evm/Lean/SimpleTransferCompletionExtractor/SCOPE.md",
+        "boundary": "hash-pinned generated/reference model agreement for normal-return request issuance with extensional access sets and bounded address-topic projection; concrete fee/finalization/world/tracer behavior, callback exceptions and receipt folding remain open; OrdinaryPost is identity-only"
+      },
+      "evmTransactionPreparation": {
+        "status": "accepted-conditional-model-to-model",
+        "reviewStatus": "original conditional scope independently accepted after the 43-test package gate, deterministic regeneration and warning-failing Lean/Evm.slnx checks; bounded unused-import/audit hardening was independently rereviewed and accepted: standard-only module-origin census of 3565 declarations (3273 public, 292 private) across 22 repository modules, 15 negative controls and unchanged accepted generated triplet; this evidence-only rereview does not expand the conditional scope",
+        "scope": "tools/Evm/Lean/EvmTransactionPreparationExtractor/SCOPE.md",
+        "boundary": "successful EvmHandoff through authorization/environment/top-frame preparation under explicit input-coherence and source-entry obligations; production gas/journal adapters, reservoir nonnegativity and signed-counter no-wrap reachability, semantic sibling composition, VM execution and tail settlement remain open",
+        "acceptedArtifacts": {
+          "ir": {
+            "path": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Generated/EvmTransactionPreparation.ir.json",
+            "sha256": "e0f24be598e3bf88505fe6b5550e5c46dd504c9e69115e3c7a18f95a5bdc5a7e"
+          },
+          "sourceManifest": {
+            "path": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Generated/EvmTransactionPreparation.source-manifest.json",
+            "sha256": "b3f88923311ec963d40768bf34f22a0e15ca6807a12ade85a846d2815eafb9c1"
+          },
+          "generatedLean": {
+            "path": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Generated/EvmTransactionPreparation.lean",
+            "sha256": "471e789607e8a294c6deb2148291578a185c77d970360e16e1fa0958f3987930"
+          }
+        }
+      },
+      "receiptTerminalFold": {
+        "status": "accepted-conditional-bounded-refinement",
+        "reviewStatus": "schema 9 / extractor 1.9.2 independently accepted after 180/180 tests, deterministic artifacts, standard-only axiom audit of 234 exports, Evm.slnx Release warning-as-error build with zero warnings/errors, and post-solution --check",
+        "scope": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/SCOPE.md",
+        "boundary": "normal sequential exact-base BlockReceiptsTracer with no BuildReceipt override and normally returning finalization/forwarding; generated fixed-width receipt/result/gas fold, with bounded natural-number accounting and valid synchronized snapshot histories; payloads remain typed oracles, and production-object/caller projection, concrete tracer/VM/world-state behavior, parallel/BAL execution, receipt encoding/Bloom/roots/persistence and block composition remain open",
+        "acceptedArtifacts": {
+          "ir": {
+            "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.ir.json",
+            "sha256": "0bf061d43d54e3eb9bdc7ccff4d0541d6dee189ac1ccea7f139095d3e1b7945a"
+          },
+          "sourceManifest": {
+            "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.source-manifest.json",
+            "sha256": "3d1ec03bce750645bc29d8fb51ac94321508364735b9a65a987043100f74bd8e"
+          },
+          "generatedLean": {
+            "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.lean",
+            "sha256": "028d11a14e031aaedce27c71b26e2c69cf16e759ff3ac870373ead10f6971180"
+          }
+        }
+      },
+      "ordinaryTransactionRefundAdapter": {
+        "status": "accepted-conditional-source-audited-refinement",
+        "reviewStatus": "schema 1 / extractor 1.0.0 independently accepted for conditional standard-mainnet helper entry; final scope-warning-only regeneration independently confirmed byte-for-byte equivalent to the prior accepted semantic artifacts after reversing metadata: 104/104 tests with no failures/skips, 720 schema negatives, deterministic artifacts, 20-job warning-as-error Lean build and four direct targets, eight compile-first finite semantic mutations, complete 1005-export standard-only census, shared Evm.slnx Release warning-as-error with zero warnings/errors, and fresh live-source postchecks",
+        "scope": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/DESIGN.md",
+        "boundary": "standard EthereumTransactionProcessor/EthereumGasPolicy refund-helper entry over raw route, transaction/spec/substate, five-field gas, intrinsic/floor/baseline and code-count observations; derives thirteen normal-settlement inputs, all six GasConsumed fields, all five working gas-policy fields, local/ref caller gas and optional sender credit, with a separate EIP-8037 halt projection and state restoration before execution-gas clearing; 157 source identities, 146 compiled trees, 226 selected references and 52 dependencies; support compilation is not a proof; route/snapshot provenance, normal non-reentrant getters/world hooks, UInt256 representation/modular-arithmetic primitives and runtime selection remain explicit premises; natural no-wrap/range corollaries are separate, and complete authorization/VM/world-state/exception-runtime/transaction/block semantics remain open",
+        "verificationScript": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Verify.ps1",
+        "exportInventory": {
+          "count": 1005,
+          "upstreamCount": 640,
+          "generatedCount": 91,
+          "specificationCount": 164,
+          "refinementCount": 38,
+          "vectorsCount": 72,
+          "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/EXPORTED_THEOREMS.txt",
+          "sha256": "b6cf921d99722cc15ddcac3f54b32ae07c9035b18692d96091fa266763805396"
+        },
+        "acceptedArtifacts": {
+          "ir": {
+            "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Generated/OrdinaryTransactionRefund.ir.json",
+            "sha256": "53f6a24671a917e2675a1a45eb1b49e812b91283fc1c78bf49014f2ad08a1666"
+          },
+          "sourceManifest": {
+            "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Generated/OrdinaryTransactionRefund.source-manifest.json",
+            "sha256": "527ee805b9be85e57898863fd618fa1ede84862a0cd78ef02083c37ed88278bb"
+          },
+          "generatedLean": {
+            "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Generated/OrdinaryTransactionRefund.lean",
+            "sha256": "b7b21ec284183b073ff1a3f603471b156c07624de3270bc63189b7f7d6600f23"
+          }
+        },
+        "evidence": [
+          "D:/tmp/formal-verify/refund-acceptance-build.log",
+          "D:/tmp/formal-verify/refund-acceptance-extract.log",
+          "D:/tmp/formal-verify/refund-acceptance-full-gate.log",
+          "D:/tmp/formal-verify/finite-evm-build1.log",
+          "D:/tmp/formal-verify/refund-post-finite-solution-check.log",
+          "D:/tmp/formal-verify/refund-acceptance-postcheck.log",
+          "D:/tmp/formal-verify/refund-acceptance-doc-checks.log"
+        ]
+      },
+      "ordinaryEvmCompletion": {
+        "status": "accepted-conditional-source-audited-refinement",
+        "reviewStatus": "Both independent whole-package candidate reviews passed; final schema 1 / extractor 1.0.0 promotion independently reconciled by exactly recovering the prior candidate closure, IR, manifest and generated Lean after reversing only eight metadata/message files. The promoted gate passes 46/46 tests without skips, 30 identity-schema and 866 artifact-schema negatives, deterministic regeneration, 43-job warning-as-error Lean build, 13 compile-valid generated semantic mutations and all 13336 standard-only declarations across 42 modules with 17 census controls. Shared Evm.slnx Release warning-as-error build has zero warnings/errors; completion/preparation/refund/receipt live postchecks pass under the pinned build epoch. A subsequent independently reviewed metadata-only cascade updates the stateful-prefix and lifecycle imports; all four authored proof files remain byte-identical, and the same complete package gate passes under the refreshed triplet. Evidence is appended in formal-aggregate-after-ordinary-completion.log. The aggregate root gate is integrated but a fresh complete aggregate run remains pending.",
+        "scope": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/SCOPE.md",
+        "boundary": "standard Amsterdam EthereumTransactionProcessor/EthereumGasPolicy, exact caller-derived Commit flags and sequential base BlockReceiptsTracer, non-CREATE computed final preparation VM boundary with present code, empty destroy list, normal non-reentrant hooks and source-attached raw post-VM observation; derives status/rollback, refund input/result, all six consumed gas fields, distinct processor and receipt-prefix writes, fee observations, terminal inputs/results and cleanup order without supplied settled outputs; upstream preparation remains conditional model-to-model, with production gas/journal correspondence, signed-gas nonnegativity/no-wrap reachability and semantic sibling composition open; actual VM/precompile execution, primitive UInt256 and object projections, world/fee/tracer/commit/disposal effects, runtime selection and provenance/noninterference remain explicit obligations; the restricted Roslyn translator/template and CLR are trusted, not proved; complete transaction and block refinement remains open",
+        "verificationScript": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Verify-Candidate.ps1",
+        "sourceClosure": {
+          "sourceIdentities": 157,
+          "compiledTrees": 146,
+          "metadataReferences": 226,
+          "dependencies": 131,
+          "roots": 10,
+          "typedSites": 43,
+          "operationKinds": 47,
+          "sha256": "50d54c1db38d1045465503a3fc40faee3642f0fbd390f68339843f864b4ad148"
+        },
+        "declarationInventory": {
+          "modules": 42,
+          "count": 13336,
+          "publicCount": 12791,
+          "privateCount": 545,
+          "path": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/IMPORTED_DECLARATIONS.txt",
+          "sha256": "103c5bb4aa37510df26581e0ca0fd3b329a7ca496ea467f464c30f08419767bd",
+          "boundary": "complete compiler-loaded repository module-origin closure, including private and compiler-generated declarations of every kind; transitive standard-only axioms, not 13336 authored theorems"
+        },
+        "acceptedArtifacts": {
+          "ir": {
+            "path": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Generated/OrdinaryEvmCompletion.ir.json",
+            "sha256": "7b8b6b3ae5964c1e4c0740550e7d18756473529834cdaf60027fcb3c7de81601"
+          },
+          "sourceManifest": {
+            "path": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Generated/OrdinaryEvmCompletion.source-manifest.json",
+            "sha256": "c46d9bafd3b48294b41a457ddc242aa0f235fb4969da9d6bcb3f622558f76c4f"
+          },
+          "generatedLean": {
+            "path": "tools/Evm/Lean/OrdinaryEvmCompletionExtractor/Generated/OrdinaryEvmCompletion.lean",
+            "sha256": "5865a04c4acb8322a3ee7dc9c3638287bec1f7a5ac74069a71562d79df13df98"
+          }
+        },
+        "evidence": [
+          "D:/tmp/formal-verify/ordinary-completion-promotion-extract2.log",
+          "D:/tmp/formal-verify/ordinary-completion-promotion-full-gate2.log",
+          "D:/tmp/formal-verify/ordinary-completion-promotion-evm-build.log",
+          "D:/tmp/formal-verify/ordinary-completion-promotion-postchecks2.log",
+          "D:/tmp/formal-verify/formal-aggregate-after-ordinary-completion.log"
+        ]
+      },
+      "ordinaryTransactionMachine": {
+        "status": "unaccepted-static-draft",
+        "reviewStatus": "static design reviewed; repinning to accepted ReceiptTerminal and executable gates pending",
+        "scope": "tools/Evm/Lean/OrdinaryTransactionMachineExtractor/SCOPE.md",
+        "boundary": "adapter-supplied settled-list fold on a restricted ordinary simple-transfer route; correspondence with Block.Transactions and complete production execution remain open"
+      },
+      "sequentialBlockTransactionFold": {
+        "status": "accepted-conditional-model-to-model",
+        "reviewStatus": "schema 9 / extractor 1.8.0 independently accepted after 314/314 tests, 16 Lean scenarios, ten compile-valid semantic mutations, deterministic artifacts, standard-only axiom audit of 49 exports, Evm.slnx Release warning-as-error build with zero warnings/errors, and post-solution --check",
+        "scope": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/SCOPE.md",
+        "boundary": "conditional direct-inner BAL-disabled sequential fold of supplied successful terminal observations; fresh production entry, runtime route and observation derivation remain an explicit open source-composition obligation",
+        "acceptedArtifacts": {
+          "ir": {
+            "path": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.ir.json",
+            "sha256": "0580b07867d42ffcd210a2044cf15f6e30193ba4170486c97b20caad54cbdda5"
+          },
+          "sourceManifest": {
+            "path": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.source-manifest.json",
+            "sha256": "f531d9ca1bf15382ef74b2c055ad45ca8352163815a35b07e382a20f257c5a56"
+          },
+          "generatedLean": {
+            "path": "tools/Evm/Lean/SequentialBlockTransactionFoldExtractor/Generated/SequentialBlockTransactionFold.lean",
+            "sha256": "e1c7c38d5f90662a649fff77b8fa7bbc2543ea25e8eea1ac845a4d15ffbf5516"
+          }
+        }
+      },
+      "sequentialBlockPostTransactionFinalization": {
+        "status": "accepted-conditional-source-audited-refinement",
+        "reviewStatus": "schema 8 / extractor 1.14.0 independently accepted and refreshed through the shared directive-admission/publication-gate cascade: 604/604 tests, seven finalization semantic mutations, deterministic artifacts, standalone Lake and four direct Lean checks, all 1305 descendant exports standard-only (485 finalization, 223 Fold, 407 Receipt, 190 accounting), Evm.slnx Release warning-as-error with zero warnings/errors, and post-solution --check; separate --publication-check validates the independently accepted ProcessOne suffix",
+        "scope": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/SCOPE.md",
+        "boundary": "normal synchronous exact-base standard BAL-disabled ProcessBlock tail over five semantic-owned source trees with four separately pinned compiler-support trees; external-hook effects, normal returns, source-entry identity and static dispatch bindings are explicit premises; supplied FoldResult is not a Fold.run witness, receipt indices and log counts are related while log contents, concrete hook/root/world behavior and runtime dispatch remain open",
+        "acceptedArtifacts": {
+          "ir": {
+            "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/SequentialBlockPostTransactionFinalization.ir.json",
+            "sha256": "1d599ef71c083c5aa4a80fbc0e44d99f807d09dc0fa17f9e2d5b94047e45145a"
+          },
+          "sourceManifest": {
+            "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/SequentialBlockPostTransactionFinalization.source-manifest.json",
+            "sha256": "99823606ef2143b4fb00aeb6af02994d4f707dc757ae719d9df6ccdb34ce0e7b"
+          },
+          "generatedLean": {
+            "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/SequentialBlockPostTransactionFinalization.lean",
+            "sha256": "f84cd3be1182df43429d6ea75ec8df360059c2fc4a183270748118cc78a8064b"
+          }
+        }
+      },
+      "processOneValidatedPublication": {
+        "status": "accepted-conditional-source-audited-refinement",
+        "reviewStatus": "schema 2 / extractor 1.0.0 independently accepted after the serialized 604/604-test gate with zero failed/skipped, strict IR/manifest schema controls, two fresh byte-identical extractions, warning-failing Lake and four direct Lean targets, eight publication plus seven finalization compile-valid semantic mutations, all 1599 descendant exports standard-only with negative/completeness controls under sixteen roots, Evm.slnx Release warning-as-error with zero warnings/errors, and both post-solution checks",
+        "scope": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/ProcessOneValidatedPublication.SCOPE.md",
+        "boundary": "eight semantic trees with four separately pinned compiler-support trees, 434 compiler references and 52 dependencies; validation observation, rejection disposal, four artifact publications, optional InsertDeferred and processed tuple return under supplied normal ProcessBlock, exact-base standard sequential BAL-disabled/nonparallel, identity/snapshot/flag and separate external-effect/normal-return premises; no computed finalization composition, concrete options-mask derivation, receipt-content, runtime dispatch, CLR, validator/disposal/storage implementation or durability proof; escapes assert known prefix only and no final state; full branch/outer processing remain open",
+        "verificationScript": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Verify-Publication.ps1",
+        "exportInventory": {
+          "count": 1599,
+          "publicationCount": 294,
+          "upstreamCount": 1305,
+          "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/PUBLICATION_EXPORTED_THEOREMS.txt",
+          "sha256": "9af770169f8539bf833aa4519a07b6a52fd0bffad5d513d40546f9ba0bf72312"
+        },
+        "acceptedArtifacts": {
+          "ir": {
+            "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/ProcessOneValidatedPublication.ir.json",
+            "sha256": "201d8d2e6163d3a75b439cebf0e5fa7754792c3ba63de70b246939bc9d4cad3a"
+          },
+          "sourceManifest": {
+            "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/ProcessOneValidatedPublication.source-manifest.json",
+            "sha256": "547dbea87c2c26539a11b4e3db1f2d22db4d7590a6a68c1695a46f70518bdf3d"
+          },
+          "generatedLean": {
+            "path": "tools/Evm/Lean/SequentialBlockPostTransactionFinalizationExtractor/Generated/ProcessOneValidatedPublication.lean",
+            "sha256": "7f47700c2f38717b37c6f8bb7e187021d9af8e6a641389fa0bd27865122eec5d"
+          }
+        },
+        "evidence": [
+          "D:/tmp/formal-verify/process-one-full-604-first-20260916.log",
+          "D:/tmp/formal-verify/evm-solution-after-publication-20260916.log",
+          "D:/tmp/formal-verify/finalization-post-publication-solution-check-20260916.log",
+          "D:/tmp/formal-verify/publication-post-solution-check-20260916.log",
+          "D:/tmp/formal-verify/publication-accepted-doc-consistency-20260916.log",
+          "D:/tmp/formal-verify/finalization-accepted-doc-check-20260916.log",
+          "D:/tmp/formal-verify/publication-accepted-doc-check-20260916.log"
+        ]
+      },
+      "branchAcceptedIteration": {
+        "status": "accepted-conditional-source-audited-refinement",
+        "reviewStatus": "schema 2 / extractor 1.0.0 independently accepted after exact source/proof and strict-schema remediation review, 106/106 tests with zero failed/skipped, 290 schema negative controls, deterministic artifacts, explicit Lake and four direct Lean checks, seven compile-first semantic mutations, all 2144 descendant exports standard-only with negative/completeness controls under twenty roots, Evm.slnx Release warning-as-error with zero warnings/errors, and post-solution publication/Branch/Lean/diff/hash checks",
+        "scope": "tools/Evm/Lean/BlockProcessorExtractor/BRANCH_ACCEPTED_ITERATION.md",
+        "boundary": "thirteen semantic trees, four separate compiler-support trees, 434 compiler paths with 329 selected references and 82 exact dependencies; normal standard sequential BAL-disabled suffix binding the computed ProcessOne publication tuple over supplied normal ProcessBlock inputs, owned scope/nonempty branch and bounded prefix state, through inclusion, prewarm, CommitTree invocation, successful-prefix increment, events, checkpoint/reset/hash and terminal cleanup; runtime binding, external normal-hook effects and noninterference remain premises; concrete world/tree behavior, full branch entry, finite composition, retry/parallel execution, CLR and durability remain open; escapes assert known prefix only and no final state",
+        "verificationScript": "tools/Evm/Lean/BlockProcessorExtractor/Verify-Branch.ps1",
+        "exportInventory": {
+          "count": 2144,
+          "branchCount": 545,
+          "upstreamCount": 1599,
+          "path": "tools/Evm/Lean/BlockProcessorExtractor/EXPORTED_BRANCH_THEOREMS.txt",
+          "sha256": "466024c46460b510b09519b1b860c73970c8b4b2585c5fa2a6bcd1664e4bd133"
+        },
+        "acceptedArtifacts": {
+          "ir": {
+            "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/BranchAcceptedIteration.ir.json",
+            "sha256": "a4ef55d283e20e63999710c9e3edecc046e1e3d23367c89a34ad463bee21e96d"
+          },
+          "sourceManifest": {
+            "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/BranchAcceptedIteration.source-manifest.json",
+            "sha256": "3609aac9ae2eee30ec0936173336cd65da0582d8909995e077f9557967930074"
+          },
+          "generatedLean": {
+            "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/BranchAcceptedIteration.lean",
+            "sha256": "07abf81a2b3885b3e7baadabf2d72f13e4766841ba5725254b16d760a4dc49c9"
+          }
+        },
+        "evidence": [
+          "D:/tmp/formal-verify/branch-full-gate3.log",
+          "D:/tmp/formal-verify/branch-final-evm-build.log",
+          "D:/tmp/formal-verify/branch-final-postchecks.log",
+          "D:/tmp/formal-verify/branch-accepted-doc-checks.log"
+        ]
+      },
+      "normalFiniteBranchCompletion": {
+        "status": "accepted-conditional-source-audited-refinement",
+        "reviewStatus": "schema 1 / extractor 1.0.0 independently accepted after deriving final slot filling and terminal alignment internally, 72/72 tests without failures/skips, 185 strict-schema negatives, deterministic artifacts, 31-job warning-failing Lake and four direct Lean checks, four compile-first semantic mutations, all 2317 standard-only descendant exports with completeness/forbidden controls under twenty-four roots, Evm.slnx Release warning-as-error with zero warnings/errors, and explicit ProcessOne/Branch/finite/refund postchecks",
+        "scope": "tools/Evm/Lean/BlockProcessorExtractor/OUTER_BLOCK_COMPLETION.md",
+        "boundary": "normal owned sequential BAL-disabled caller-control fold over computed accepted-iteration results; slot filling and terminal alignment follow from initialized slots and each specified iteration, not supplied output premises; 23 source identities comprise seventeen compiled semantic trees and six pinned declarations, plus four inherited compiler-support trees and 22 exact dependencies; supplied normal ProcessBlock inputs, preloop setup, normal hooks, runtime binding and noninterference remain premises; branch preparation/eligibility, retry/parallel execution, exception origin, concrete world/tree effects, complete EVM/transaction composition, CLR and durability remain open",
+        "verificationScript": "tools/Evm/Lean/BlockProcessorExtractor/Verify-Outer.ps1",
+        "verificationArguments": ["-Slice", "finite"],
+        "exportInventory": {
+          "count": 2317,
+          "finiteCount": 173,
+          "upstreamCount": 2144,
+          "path": "tools/Evm/Lean/BlockProcessorExtractor/EXPORTED_FINITE_THEOREMS.txt",
+          "sha256": "1d8110918a0f1941835508532155a84724aa93d8b63238da8cfab278617e4317"
+        },
+        "acceptedArtifacts": {
+          "ir": {
+            "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/NormalFiniteBranchCompletion.ir.json",
+            "sha256": "ebccc9751bc3f65dc577ad78e9202497b9eeb38d410ec43c0c5d8808e7a15816"
+          },
+          "sourceManifest": {
+            "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/NormalFiniteBranchCompletion.source-manifest.json",
+            "sha256": "5de2e5fe4d00d76f944806b5bf0044226011ead1f3a1a11ee99c80653dc01463"
+          },
+          "generatedLean": {
+            "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/NormalFiniteBranchCompletion.lean",
+            "sha256": "71fb06de4352ff82041687051bf3fa72968fbd351a88068ced427f9011ba7638"
+          }
+        },
+        "evidence": [
+          "D:/tmp/formal-verify/finite-full-gate3.log",
+          "D:/tmp/formal-verify/finite-axioms1.log",
+          "D:/tmp/formal-verify/finite-final-evm-build.log",
+          "D:/tmp/formal-verify/finite-final-postchecks.log",
+          "D:/tmp/formal-verify/finite-accepted-doc-checks.log"
+        ]
+      },
+      "blockchainPublication": {
+        "status": "accepted-conditional-source-audited-refinement",
+        "reviewStatus": "schema 1 / extractor 1.0.0 independently accepted after the complete combined gate: 104/104 tests without failures/skips, 368 strict-schema negatives, deterministic artifacts, 35 warning-failing Lake jobs and eight direct Lean checks, seventeen compile-first semantic mutations, both 2317/2745 standard-only descendant censuses with all completeness/forbidden controls, Evm.slnx Release warning-as-error with zero warnings/errors, and five live postchecks with unchanged artifact identities",
+        "scope": "tools/Evm/Lean/BlockProcessorExtractor/OUTER_BLOCK_COMPLETION.md",
+        "boundary": "normal synchronous caller-control publication over the computed finite returned array, distinct prepared/input/processed lists, nullable total difficulty, head/mark call ordering and ordered disposal; 23 source identities comprise seventeen compiled semantic trees and six pinned declarations, plus four inherited compiler-support trees and 21 exact dependencies; preparation provenance, eligibility/ancestry, supplied normal ProcessBlock inputs, standard owned BAL-disabled routing, runtime binding, getter/callback normality and noninterference remain premises; invalid-wrapper classification is a separate conditional boundary contract, not proof that the normal fold throws, and generic escapes assert no final state; concrete tree/world effects, actual head change, retry/parallel execution, CLR, async queues, durability and complete EVM/transaction composition remain open",
+        "verificationScript": "tools/Evm/Lean/BlockProcessorExtractor/Verify-Outer.ps1",
+        "verificationArguments": ["-Slice", "publication"],
+        "exportInventory": {
+          "count": 2745,
+          "publicationCount": 428,
+          "upstreamCount": 2317,
+          "path": "tools/Evm/Lean/BlockProcessorExtractor/EXPORTED_OUTER_THEOREMS.txt",
+          "sha256": "3c9edadabfd4127e2a5192828a496ae890b3dc72f3c600ab839a576fc545a27c"
+        },
+        "acceptedArtifacts": {
+          "ir": {
+            "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/BlockchainPublication.ir.json",
+            "sha256": "38e3e21037eac7ac664e4aadf74d17111baf99ff4184ed78fa6984907b076d43"
+          },
+          "sourceManifest": {
+            "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/BlockchainPublication.source-manifest.json",
+            "sha256": "1f1f004187b2fa216a1f912f8a50cabba228500a74de4b73bd6176c200fa6291"
+          },
+          "generatedLean": {
+            "path": "tools/Evm/Lean/BlockProcessorExtractor/Generated/BlockchainPublication.lean",
+            "sha256": "dc4889bf20e1a497b37a603b60c603ae61b1273c14f9c4618e617691276c2225"
+          }
+        },
+        "evidence": [
+          "D:/tmp/formal-verify/outer-publication-full-gate1.log",
+          "D:/tmp/formal-verify/outer-publication-final-evm-build.log",
+          "D:/tmp/formal-verify/outer-publication-final-postchecks2.log",
+          "D:/tmp/formal-verify/publication-independent-final-review.log",
+          "D:/tmp/formal-verify/outer-publication-accepted-doc-checks.log"
+        ]
+      }
+    },
+    "reference": {
+      "reservoirAlgebra": "proved",
+      "sstorePricingTable": "proved",
+      "accountPricing": "proved-handwritten-pinned-eip8037-eip8038-eip7702-reference-with-56-schedule-polymorphic-vectors; independent-rereview-found-no-pricing-semantic-defect; account-access production leaf is listed separately and does not refine whole account-operation pricing",
+      "transactionGasSettlement": "proved-under-explicit-natural-number-validity-preconditions",
+      "blockReceiptGasAccounting": "proved-for-the-natural-number-cumulative-execution-state-paid-receipt-and-header-maximum-projection; extracted-fixed-width-kernel-refines-it-under-explicit-no-wrap-obligations",
+      "stackSlotEncodingAndOperandLayout": "proved-for-the-handwritten-big-endian-slot-model; production-extraction-not-started",
+      "pureStackWordOperations": "independently reviewed and accepted handwritten execution reference for all 26 Amsterdam pure word opcodes, plus an independently accepted structural production extraction over shared Word/Gas/Stack foundations: 40 admitted C# sources and the exact build selector, 26 descriptors, 104 fully closed standard-table roots, 47 mutation/artifact tests, and 10 Lean jobs; CLR stack/limb/SIMD behavior, the shared primitive implementations, and whole frame-loop composition remain incomplete",
+      "pushOpcodes": "independently accepted operational production slice for PUSH0 through PUSH32 over 42 complete sources, 33 descriptors, and 132 closed standard roots; exact successful opcode, gas, PC, stack, immediate-padding, terminal-elision, and independent ordinary PUSH2-to-JUMP/JUMPI fusion relations are proved, while unsafe code/stack representations, CLR execution, jump-destination analysis, exceptional fusion paths, tracing/cancellation, and the frame loop remain incomplete",
+      "stackRearrangementOpcodes": "independently accepted operational production slice for POP, DUP1 through DUP16, and SWAP1 through SWAP16 over 38 Roslyn-pinned sources plus the raw build selector, 49 exact syntax admissions, 33 descriptors, and 132 closed standard roots; generated independent list/stack/gas/PC/fault transitions refine the handwritten bounded-stack operations, while unsafe representations, CLR/JIT, tracing/cancellation, opcode counters, frames, allocations, and processor composition remain incomplete",
+      "extendedStack": "independently accepted operational pinned-EIP-8024 DUPN-SWAPN-EXCHANGE component over 40 Roslyn sources plus one raw standard/zkEVM build selector, 67 exact syntax admissions, three opcodes, 12 enabled roots, and four shared disabled roots; the independent generated transition refines handwritten decoder, PC-first immediate consumption, fixed three-gas debit, invalid and missing immediates, underflow/overflow, exact stack mutation, and disabled-fork BadInstruction without gas or stack mutation; 363 mutation assertions, 11 focused tests, 11 Lean jobs, warning-as-error checks, and byte-identical regeneration pass; unsafe EvmStack/UInt256 representation, CLR/JIT specialization, function pointers and tail calls, tracing/cancellation, counters, whole-loop/frame settlement, memory/allocation behavior, alternate gas policies, zkEVM, and transaction/block composition remain open",
+      "memoryStackControl": "handwritten bounded semantics for 84 Amsterdam memory, stack, copy, jump, and halt opcodes; an independently accepted production metadata extraction pins 167 syntax admissions and the exact 84-by-4 closed standard-table Cartesian product and proves byte, gas, memory, stack, control, activation, and fork-lineage descriptor agreement, but does not translate the admitted C# bodies into operational Lean semantics",
+      "memoryCopyOpcodes": "independently accepted operational standard-mainnet Amsterdam component for MLOAD, MSTORE, MSTORE8, MSIZE, CALLDATACOPY, CODECOPY, RETURNDATACOPY, MCOPY, and GAS over 57 complete C# sources plus three raw inputs, 60 exact syntax admissions, eight semantic bindings, and 36 closed tracing/cancellation roots; an independently generated executable transition refines a separate operational specification and successful outcomes project to MemoryStackControl; concrete unsafe/word/endian representation, CLR/JIT, pooling/aliasing, tracer implementations, whole-loop/frame settlement and rollback, alternate gas policies, zkEVM, and transaction/block composition remain incomplete",
+      "callDataLoadOpcode": "independently accepted operational standard-mainnet Amsterdam CALLDATALOAD component over 52 complete C# sources plus three raw inputs, 93 exact syntax admissions, 12 semantic bindings, and four closed tracing/cancellation roots; 43 Lean theorems connect theorem-free generated semantics to an independent specification under explicit representation and range premises; reachability is admitted only through BlockProcessingModule.Load to EthereumVirtualMachine : VirtualMachine<EthereumGasPolicy>; top-level module/Autofac runtime composition, unsafe/native-endian behavior, CLR/JIT/AOT, tracer totality, frame settlement, rollback, persistence, alternate policies, zkEVM, and transaction/block composition remain incomplete",
+      "controlFlowOpcodes": "independently accepted operational standard-mainnet Amsterdam component for STOP, SLOTNUM, JUMP, JUMPI, PC, JUMPDEST, RETURN, and REVERT over 57 exact C# sources plus three raw inputs, 206 exact syntax admissions, 32 enabled tracing/cancellation roots, and eight gated assignments to four shared bad-instruction roots; generated theorem-free semantics refine a separate operational specification for fork gates, fixed and expansion gas, stack/memory residues, exact trace boundaries, conditional and fused jumps, and terminal returndata staging; jump validity uses an independent PUSH-aware scanner, RETURN/REVERT charge expansion before logical memory growth, and 11 focused tests with 15109 mutation assertions, nine Lean jobs, direct warning-as-error checks, and byte-identical regeneration pass; scalar/SIMD jump-bitmap equivalence, shared foundational representations, unsafe/pooling/tracer/CLR behavior, cancellation exceptions, whole-loop/frame settlement, rollback, and processor composition remain incomplete",
+      "environmentOpcodes": "handwritten value/stack model plus independently accepted package-wide operational refinement for all 20 Amsterdam context opcodes across all four standard dispatch tables: 37 production sources, 100 exact syntax admissions, 80 exact closed roots, and a universal closed_amsterdam_refines equality covering success, gas, one-byte PC advancement, OOG clearing, post-charge underflow/overflow, and missing-header failure before charging; exactly 50 focused tests pass; concrete providers, world-state and context construction, representations, trace callbacks, cancellation scheduling, CLR behavior, frame composition, and whole-EVM composition remain incomplete",
+      "accountReadOpcodes": "independently accepted generated-abstract-to-handwritten refinement for BALANCE, EXTCODESIZE, EXTCODECOPY, and EXTCODEHASH over 57 admitted source/build inputs, 108 unique syntax identities, and 16 exact standard opcode/table roots; the two transitions share AccountReadTypes and MemoryGas.prepare, and no observed C# frame/provider bridge, CLR semantics, tracing, journals, frames, or transaction/block composition is claimed",
+      "logs": "independently reviewed handwritten handler-local LOG0-LOG4 reference plus an independently accepted structural production slice over 46 sources and the raw build selector, 101 unique owner-qualified syntax identities, and 20 exact roots; strict generated Lean refines the logical handler and memory-preparation transitions, while unsafe representations, pooled memory, journal/tracer implementations, frames, receipts/Bloom, CLR, and whole-EVM composition remain incomplete",
+      "keccak256": "independently reviewed proved handwritten handler-local KECCAK256 reference covering checked ceiling word count, dynamic-charge-before-overflow order, bounded memory expansion and OOG mutation, exact zero-extended hash input, stack replacement, and positive configurable quadratic divisor; the Keccak primitive is an explicit oracle; the separately listed accepted production refinement connects the immediate standard-mainnet Amsterdam handler slice while cache/hash correctness, byte and unsafe representation, CLR, frames, and processor composition remain incomplete",
+      "transientStorage": "handwritten pinned-EIP-1153 state-lifecycle and bounded-stack TLOAD/TSTORE reference plus an independently accepted immediate-handler production refinement over 47 admitted sources and the exact two-by-four closed standard dispatch roots; gas, PC, activation, failure, stack, read/write, and transient-map effects are proved, while concrete provider/journal rollback, call-context, transaction reset, representation, tracing machinery, CLR, and frame composition remain incomplete",
+      "persistentStorage": "independently reviewed handwritten pinned-Amsterdam non-tracing SLOAD and joint EIP-8037/EIP-8038 SSTORE reference plus an independently accepted immediate-handler production refinement over 55 sources and eight exact standard roots; strict generated Lean proves status, PC, stack, gas/state gas, warmth, reads/writes, refunds/refills, and all failure branches for IsTracingAccess=false; provider/journal/database behavior, access-list tracing, unsafe representations, CLR/JIT, fixed-width adapters, frame rollback, and transaction/block composition remain incomplete",
+      "worldJournal": "independently accepted standard-mainnet normal-access pre-commit journal projection over 19 pinned C# sources, 87 exact members, 12 semantic bindings, and 14 operations; theorem-free generated semantics refine an independent extensional specification across arbitrary finite traces through 53 refinement theorems and 71 vectors, including absent versus physical-empty accounts, canonical fresh-account hashes, raw JustCache positions and semantic stutter, persistent originals, transaction-wide createdThisTx, warmth, ordered logs, destroy state, and nested snapshot/restore; Roslyn-to-C#/CLR semantics, collection and fixed-width behavior, backing-input and Keccak premises, active-scope metrics/memoization/advisory-hint stutter, code/storage clearing, reaping, commit/trie/root/database behavior, BAL/tracing-access modes, CREATE/frame/gas/transaction/block composition, and the complete EVM remain incomplete",
+      "frameJournal": "independently accepted standard-mainnet normal-access non-BAL pre-commit nested-frame journal composition over 20 pinned production/build sources, 53 exact syntax members, six dependency identities, 13 theorem identities, one directly pinned imported WorldJournal kernel, nine operations, and 18 semantic bindings; theorem-free generated semantics refine a separate specification across arbitrary finite traces through 25 public theorems and 38 vectors, covering CALL/CREATE entry, no-child boundary stutter, LIFO success/revert/exception exit, seven frame-local journal surfaces, transaction-wide persistent originals and createdThisTx, and the RIPEMD-160 latch plus post-restore empty-account retouch; account restoration is extensional and raw touch/cache residue is not equated; CALL/CREATE and SELFDESTRUCT remain handwritten premises, while gas/refund settlement, code deposit/clearing, other precompile behavior, provider commit/trie/root/database behavior, BAL/tracing-access execution, top-level transaction/block processing, CLR/JIT/unsafe/pooling behavior, tracer correctness, the complete frame loop, and the complete EVM remain incomplete",
+      "frameControlSettlement": "handwritten single-iteration control agreement over shared canonical leaves, not a production refinement: source/member identities and named theorem witnesses are checked, while SourceAdapterBindings assumes canonical bytecode/full-frame dispatch leaves equal caller-supplied oracle values on admitted states; semantic adapter composition, concrete C# leaf behavior, whole-loop induction/reachability, fixed-width adapter obligations, outer transaction settlement, and caller rollback remain incomplete",
+      "callCreateFrameBoundary": "independently rereviewed proved handwritten pinned-Amsterdam CALL-family and CREATE/CREATE2 handler-to-child-frame reference with 33 model theorems, 98 executable examples, 14 mutation definitions, and 27 concrete mutation cases; production extraction, concrete state/access journals, full VM loop, address derivation, and transaction/block composition remain incomplete",
+      "selfDestruct": "independently reviewed proved handwritten immediate-handler Amsterdam SELFDESTRUCT reference for static/base/stack/access order, EIP-8038 access/account-write pricing, EIP-8037 new-account state gas, EIP-6780 marking, EIP-8246 self-target preservation, and EIP-7708 positive-transfer logging; production stack/address decoding, state/access journals, rollback, finalization/reaping, fixed-width behavior, dispatch, receipts/roots, and frame/transaction/block composition remain incomplete",
+      "allOpcodes": "inventory-only",
+      "standardPrecompiles": "dispatch inventory plus independently reviewed handwritten Identity, SHA-256, RIPEMD-160, ECRECOVER, BLAKE2F, KZG_POINT_EVALUATION, P256VERIFY, BLS12_G1ADD, BLS12_G1MSM, BLS12_G2ADD, BLS12_G2MSM, BLS12_PAIRING_CHECK, BLS12_MAP_FP_TO_G1, BLS12_MAP_FP2_TO_G2, MODEXP, BN254_ADD, BN254_MUL, and BN254_PAIRING oracle-bounded leaves, and generic full-frame/inline-wrapper references; ECRECOVER pins exact v and scalar boundaries and makes secp256k1 recovery plus Keccak explicit oracles rather than cryptographic proof; BLAKE2F pins framing, round pricing, flag validation, and result shape while leaving compression as an oracle; KZG_POINT_EVALUATION pins exact framing, hash-before-proof gating, result constants, and pricing while leaving SHA-256, BLS, KZG, and trusted setup as oracles; P256VERIFY pins exact scalar/field/public-key gates and result shape while leaving curve arithmetic and ECDSA as an oracle; MODEXP pins zero-padded parsing, uint32 header saturation, EIP-7823 field admission, Amsterdam pricing, output width, and cache normalization while leaving big-integer computation as an oracle; the BLS and BN254 leaves pin framing, ordered validation, infinity/padding/scalar behavior, pricing, and output shape while leaving field/curve/scalar/group/MSM/pairing operations as oracles; independent rereview accepts the source-pinned production Identity pricing extraction/refinement, the bounded inline STATICCALL Stage B wrapper refinement, and the bounded already-created full-frame Stage C adapter refinement for every typed input and supplied leaf oracle under explicit adapter premises; no active Amsterdam leaf remains inventory-only, while cryptographic primitive correctness, concrete world/gas/tracer adapter agreement, exact outer throw state, CLR copy/exception behavior, complete frame-driver composition, transaction reachability, and whole-EVM composition remain incomplete",
+      "transactionProcessor": "independently rereviewed abstract handwritten pinned standard-mainnet ordinary EthereumTransactionProcessor lifecycle reference has an accepted tenth correction for run-level CREATE admission, stage-specific lifecycle-control preservation, rollback snapshots, and the CallAndRestore restore-then-conditional-commit split; production extraction/refinement, state and VM hooks, recovery and temporary-account-deletion adapters, receipt encoding, and roots remain incomplete",
+      "ordinaryStaticAdmission": "independently accepted return-value reference and refinement for the standard-mainnet ValidateStatic/ValidateGas path plus CalculateAvailableGas through the canonical transaction-gas initializer; exact width-bounded ordered branch and wrapper results are proved, while rejection logging, SemanticModel/CLR execution, contiguous admission, state, VM, fees, finalization, receipts, and whole transaction composition remain incomplete",
+      "systemTransactionProcessor": "independently reviewed fail-closed handwritten pinned standard-mainnet system route with 27 theorems, 76 examples, and 75 mutation cases covering exact tracer/fork/schedule guards, beacon/request transaction shapes, bypassed fee/nonce operations, EIP-3860 creation intrinsic gas, EIP-7708 transfer logs including CREATE, execution/rollback/destroy-list effects, and request projections; independently accepted handwritten composition validates one block's beacon plus four ordered request calls before synchronous singleton-branch admission; the separately listed independently accepted production routing refinement covers only source route/options/counter projection; multi-block adapter composition, created-address derivation, state/VM/tracer hooks, receipts, and roots remain incomplete",
+      "blockProcessor": "proved-handwritten-abstract-sequential BlockchainProcessor-BranchProcessor-BlockProcessor reference over explicit hooks; independent rereview accepted synchronous order, rollback, receipt timing, request/hash visibility, CommitState and CommitTree placement, result classification, and finalization; an independently accepted fail-closed singleton composition checks system-call world chaining, counter exclusion, receipt preservation, encoding, and request hash before branch admission; a separately accepted handwritten parallel-artifact theorem proves canonical ordered merge equals sequential execution when every artifact is certified against its exact sequential prefix, with rejection using sequential fallback; production extraction/refinement, hook internals, per-block composition for multi-block branches, BAL/validator certificate soundness, scheduler behavior, and persistence durability are not proved"
+    },
+    "productionRefinement": {
+      "stateGasChargeKernel": "proved-under-representation-well-formedness-and-no-overflow-obligations",
+      "stateGasTransitionKernel": "all-nine-generated-roots-equal-a-separately-written-production-shaped-transcription-under-explicit-machine-width-and-no-overflow-obligations; independent-gas-machine-semantics-adapter-reachability-and-frame-composition-incomplete",
+      "transactionGasInitializationKernel": "generated-trycreate-refines-a-generalized-initial-split-extending-the-pinned-eip8037-zero-state-initialization-to-arbitrary-nonnegative-int64-state-baselines-under-affordability, uint64-intrinsic-total-no-wrap, execution-intrinsic-at-most-cap, and signed-reservoir-representability obligations; the zero-at-actual-pinned-admission case is retained as a corollary; production FoldTopFrameStateGas and post-preparation adapter composition remain unproved",
+      "authorizationStateGasFold": "independently accepted bounded source-derived EIP-7702/EIP-8037 authorization state-gas composition over four complete production sources and eleven dependency/artifact identities; source admission binds zero intrinsic authorization state gas, five-field initial policy construction, ordered valid-authorization state/execution/state charges, partial failure and caller-visible restoration, post-minus-pre state-gas delta, and the exact FoldTopFrameStateGas field updates; theorem-free generated definitions refine a separate primitive-charge/fold specification under explicit fixed-width and no-wrap obligations; the parent gate requires at least 74 Microsoft.Testing.Platform tests and deterministic byte comparison of IR ae4feb9828b04dfb04dead897dfcde09f01c00ef1b57eda54da86dddc3bcdef0, manifest 6801fb2371085444ca60763c6a2ec6005599dd5cefdb5356fe196c4355a84434, and generated Lean 4bac397d626405cdc89a375552b08fedcf8da21008ca14a0ea62ba5cd977500e; it separately SHA-256-pins and compiles handwritten refinement 24e11c978c1e960c5f6961b4ee136a8880d6e78528a983a5b210e78818fec315; authorization validation/recovery/normalization, account and world-state facts or mutation, journal/snapshot correctness, EIP-8038 pricing, complete authorization-loop behavior, settlement, receipts, DI/CLR behavior, and whole transaction semantics remain incomplete",
+      "blockGasInclusionKernel": "generated-validate-and-calculateblockexecutiongas-refine-the-pinned-two-dimensional-admission-and-eip7778-execution-gas-formulas-on-uint64-inputs; processor-adapter-and-counter-composition-incomplete",
+      "blockReceiptGasAccountingKernel": "generated-accumulate-and-fromtotals-refine-the-natural-receipt-accounting-model-under-explicit-range-and-no-wrap-obligations; unchecked-wrap transcription and source-validated blockreceiptstracer update-restore delegation are checked; whole-block composition-incomplete",
+      "sstoreKernel": "generated reference-only Price refines the independent EIP-8038 SStore.price under storage-derived consistent predicates, explicit schedules, and uint64/int64 no-wrap obligations; source-pinned InstructionSStoreMetered delegates only PriceAfterAccess after the separate access policy and pins execution-before-state plus individual signed refund/refill order; access charge/warming/OOG composition, tracing-access BAL behavior, unchecked refund-counter accumulation, and whole opcode/frame refinement remain incomplete",
+      "accountAccessPricingKernel": "generated theorem-free Price refines the handwritten EIP-8038 accountAccessCharge for explicit uint64 schedule representations; source-pinned EthereumGasPolicy account-access adapter shape/order and two-step delegated access call are checked, with exact-boundary dynamic and specialized tests; the EXTCODESIZE/COPY second read, CALL/CALLCODE/DELEGATECALL/STATICCALL value and new-account charges, CREATE pricing/deposit, delegated-target OOG sequencing, and whole opcode/frame refinement remain incomplete",
+      "extendedStackDecoderKernel": "independently reviewed and accepted: restricted Roslyn extraction selects the pinned kernel plus exactly 15 standard-mainnet non-zkEVM EvmInstructions partials, semantic binding pins DecodeSingle/DecodePair to the exact top-level methods, generated Lean proves all 256 immediate decodings and PC/one-based position projections equal the handwritten EIP-8024 decoder; full stack mutation, gas, dispatch-loop, frame, transaction, and block composition remain incomplete",
+      "extendedStackOpcodes": "independently accepted operational refinement for DUPN, SWAPN, and EXCHANGE with 40 Roslyn-pinned production sources plus one raw standard/zkEVM build selector, 67 exact path/namespace/generic-owner/member admissions, 12 enabled tracing/cancellation roots, four shared disabled roots, strict case-sensitive field-complete IR/manifest and lowercase-digest validation, 363 mutation assertions, 11 focused tests, 11 warning-free Lean jobs, and byte-identical regeneration; production handler dispatch, opcode-PC-before-gas order, fixed VeryLow debit, immediate consumption, invalid/missing immediates, underflow/overflow, exact bounded-stack mutation, and disabled BadInstruction without debit or stack mutation are covered; unsafe EvmStack/UInt256 representation, CLR/JIT specialization, function pointers and tail calls, tracing/cancellation effects, counters, frame settlement, memory/allocation behavior, alternate gas policies, zkEVM, whole-loop, and transaction/block composition remain incomplete",
+      "pureWordOpcodes": "independently accepted structural refinement for 26 opcodes and 104 exact closed standard-table roots over shared Word, Gas, and stack foundations; strict field-complete IR validation, 47 focused extractor/mutation tests, and 10 Lean jobs pass; concrete CLR stack/limb/SIMD equivalence and whole frame-loop composition remain incomplete",
+      "pushOpcodes": "independently accepted operational refinement for PUSH0 through PUSH32 with 42 admitted complete sources, 33 opcode descriptors, 132 exact closed roots, strict field-complete IR/manifest and lowercase digest validation, 23 focused mutation/artifact tests, eight warning-free Lean jobs, and byte-identical regeneration; unsafe code/sentinel and EvmStack representations, fixed-width CLR execution, jump-destination analysis, tracing/cancellation transparency, exceptional or invalid-destination fusion equivalence, and whole frame-loop composition remain incomplete",
+      "stackRearrangementOpcodes": "independently accepted operational refinement for POP, DUP1 through DUP16, and SWAP1 through SWAP16 with 38 Roslyn sources plus the raw standard/zk build selector, 49 exact syntax admissions, 33 descriptors, 132 exact closed roots, strict field-complete IR/manifest and lowercase digest validation, 16 focused mutation/artifact tests, nine warning-free Lean jobs, and byte-identical regeneration; unsafe EvmStack/UInt256 representation, CLR/JIT specialization, tracing/cancellation, counters, frame settlement, allocation limits, and transaction/block composition remain incomplete",
+      "memoryControlOpcodeMetadata": "independently accepted metadata-only refinement for 84 opcodes, 336 exact closed roots, and 167 complete syntax admissions; strict field-complete IR validation and 46 focused tests pass; operational stack/memory/gas/failure/control equivalence remains incomplete",
+      "memoryCopyOpcodes": "independently accepted operational refinement for MLOAD, MSTORE, MSTORE8, MSIZE, CALLDATACOPY, CODECOPY, RETURNDATACOPY, MCOPY, and GAS with 57 complete C# sources plus three raw inputs, 60 exact syntax admissions, eight semantic bindings, 36 closed tracing/cancellation roots, strict field-complete IR/manifest and canonical artifact-digest validation, 22 focused mutation/artifact tests, 10 warning-free Lean jobs, direct warning-as-error checks, and byte-identical IR/manifest/Lean regeneration; theorem-free executable semantics emitted independently from typed production-derived IR refine the independent operational specification for dispatch trace/PC/count order, stack and fixed/dynamic charge order, logical memory installation and failure residue, exact copy bounds and memmove behavior, distinct memory-byte/memory-size callbacks and push payload widths, GAS execution-gas-only observation, outer out-of-gas clearing and finish/error trace closure, and exceptional fault-PC normalization, with a separate successful projection to MemoryStackControl; CLR/JIT/function-pointer specialization, UInt256/EvmWord/unsafe/intrinsic endian representation, pooled-memory/Span allocation and aliasing, tracer implementations/exceptions, whole-loop/frame settlement and rollback, alternate gas policies, zkEVM, and transaction/block composition remain incomplete",
+      "callDataLoadOpcode": "independently accepted operational refinement for CALLDATALOAD with 52 complete C# sources plus three raw inputs, 93 exact syntax admissions, 12 semantic bindings, four closed tracing/cancellation roots, strict field-complete IR/manifest/artifact validation, a minimum 31-test Microsoft.Testing.Platform gate, 43 Lean theorems, standalone Lake build, and byte-identical comparison of CallDataLoadOpcodeKernel.ir.json, CallDataLoadOpcodeKernel.source-manifest.json, and CallDataLoadOpcodeKernel.lean; theorem-free generated semantics refine an independent specification for trace/PC/count and gas/depth order, full-word offset decoding, right-zero-padded reads, stack replacement, trace payloads, cancellation, outer OOG closure, and fault-PC normalization under explicit representation/range premises; production reachability is admitted only through BlockProcessingModule.Load to EthereumVirtualMachine : VirtualMachine<EthereumGasPolicy>; top-level module/Autofac runtime composition, unsafe/native-endian behavior, CLR/JIT/AOT, tracer totality, complete frame settlement, rollback, persistence, alternate policies, zkEVM, and transaction/block composition remain incomplete",
+      "controlFlowOpcodes": "independently accepted operational refinement for STOP, SLOTNUM, JUMP, JUMPI, PC, JUMPDEST, RETURN, and REVERT with 57 exact C# sources plus three raw inputs, 206 exact syntax admissions, 32 enabled tracing/cancellation roots and eight gated assignments to four shared bad-instruction roots, strict field-complete IR/manifest and canonical digest validation, 11 focused tests with 15109 mutation assertions, nine warning-free Lean jobs, direct warning-as-error checks, and two-run byte-identical IR/manifest/Lean regeneration; generated theorem-free semantics independently scan PUSH-aware jump destinations and refine a separate operational specification for Amsterdam activation, PC/count order, fixed and expansion gas, stack/memory failure residue, jump fusion, trace events, and terminal output; scalar/SIMD analyzer extensional equivalence, shared word/stack/memory/gas representations, unsafe and pooled storage, concrete tracer callbacks, cancellation exceptions, CLR/JIT/hardware, complete dispatch-loop/frame settlement, rollback, and transaction/block composition remain incomplete",
+      "callCreateOpcodes": "independently accepted operational refinement for CALL, CALLCODE, DELEGATECALL, STATICCALL, CREATE, CREATE2, and SELFDESTRUCT with 79 C# sources plus four raw inputs, 105 exact syntax admissions, 14 semantic bindings, 28 exact tracing/cancellation roots, strict artifact validation, 41 focused tests, 45 public theorems plus eight private helper theorems, standalone Lake build, direct warning-as-error checks, and two-run byte-identical regeneration; generated theorem-free semantics refine an independently defined specification through the universal closed_amsterdam_refines equality over every dispatch table, opcode, oracle, machine state, and child outcome, covering low-160 CALL-family and SELFDESTRUCT address decoding, ordered stack/gas/memory/access/state effects, EIP-150 reservation and stipend, RIPEMD-160 exclusion from direct precompile execution, bounded inline gas return, child staging, physical/logical CREATE collision facts, production-ordered child refund and code deposit, rollback/refill/exception residue, SELFDESTRUCT, and trace event kind/order/ownership; address derivation/hashing, precompile implementations, arbitrary child execution, concrete world/access/storage/code journals, trace payloads, unsafe/pooling/CLR/JIT behavior, complete dispatch/frame composition, and transaction/block composition remain incomplete",
+      "environmentOpcodes": "independently accepted package-wide operational refinement for all 20 Amsterdam context opcodes across all four standard dispatch tables and 80 exact closed roots; the universal closed_amsterdam_refines equality covers success, OOG gas clearing, post-charge BLOCKHASH/BLOBHASH underflow, post-charge push overflow, one-byte PC advancement, missing-header bad instruction before charging, and every provider result encoded in the context; strict field-complete IR validation and exactly 50 focused tests pass; concrete provider and context construction, representation equivalence, trace callbacks, cancellation scheduling, CLR behavior, frame composition, and whole-EVM composition remain incomplete",
+      "accountReadOpcodes": "independently accepted generated-abstract-to-handwritten immediate-handler refinement for BALANCE, EXTCODESIZE, EXTCODECOPY, and EXTCODEHASH with 57 admitted sources, 108 unique syntax identities, and 16 exact roots; strict field-complete IR/manifest validation and 50 focused tests pass; shared MemoryGas.prepare, concrete production-provider/state adapters, tracing, CLR, frames, and transaction/block composition remain incomplete",
+      "logOpcodes": "independently accepted structural single-opcode refinement for LOG0-LOG4 with 46 admitted sources plus the raw standard build selector, 101 unique syntax identities, and 20 exact roots; strict field-complete IR/manifest validation and 41 focused tests pass; logical gas/memory/stack/log/report order is covered while concrete unsafe representations, pooled memory, journals/tracers, frames, receipts/Bloom, CLR, and whole-EVM composition remain incomplete",
+      "keccak256Opcode": "independently accepted bounded standard-mainnet Amsterdam immediate-handler operational refinement over 41 complete C# sources plus the raw standard/zkEVM build selector, 95 exact path/namespace/generic-owner/member syntax admissions, four closed tracing/cancellation dispatch roots, strict case-sensitive field-complete IR/manifest validation, 23 focused mutation/artifact tests, 10 warning-free Lean jobs, direct warning-as-error checks, and byte-identical IR/manifest/Lean regeneration; generated theorem-free semantics refine the independent handwritten transition for PC-first and opcode-count order, atomic stack pop, fixed-plus-dynamic word charge before checked ceiling overflow, memory expansion/OOG precedence and retained mutations, exact zero-extended oracle input, stack replacement, execution/state-gas projection, and immediate trace boundaries after erasing PC/count/trace; mapping found and the accepted production fix removes a non-consensus duplicate terminal remaining-gas callback, without expanding consensus coverage; Keccak/ValueKeccak/KeccakCache correctness, hash and ValueHash256 byte layout, cache synchronization, unsafe word/stack representation, pooling/allocation/aliasing, tracer implementations/exceptions, CLR/JIT/AOT, outer frame settlement, rollback, zkEVM, and transaction/block composition remain incomplete",
+      "persistentStorageOpcodes": "independently accepted immediate-handler SLOAD/SSTORE refinement with 55 admitted sources, eight exact roots, explicit IsTracingAccess=false, strict field-complete IR/manifest validation, 53 focused tests, and 11 warning-free Lean jobs; concrete provider/journal/database behavior, access-list tracing, representations, CLR/JIT, frame rollback, machine-width adapters, and transaction/block composition remain incomplete",
+      "worldJournal": "independently accepted bounded source-profile-to-generated-semantics refinement for the standard-mainnet normal-access pre-commit world journal with 19 pinned C# sources, 87 exact members, 12 semantic bindings, 14 operations, strict field-complete IR/manifest/artifact-digest validation, a minimum 35-test mutation gate, 53 refinement theorems, 71 vectors, and deterministic byte comparison of WorldJournalKernel.ir.json, WorldJournalKernel.source-manifest.json, and WorldJournalKernel.lean; generated theorem-free transitions refine a separate extensional specification for account, persistent, transient, warmth, log, destroy, and nested snapshot behavior, while Roslyn/C#/CLR semantics, library representations, backing and Keccak premises, stuttering runtime effects, commit/roots/persistence, BAL/tracing-access, CREATE/frame/gas/transaction/block composition, and the complete EVM remain incomplete",
+      "frameJournal": "independently accepted bounded source-profile-to-generated-semantics refinement for the standard-mainnet normal-access non-BAL pre-commit nested-frame journal with 20 pinned production/build sources, 53 exact syntax members, six dependency identities, 13 theorem identities, one directly and upstream-manifest-bound imported WorldJournal kernel, nine operations, 18 semantic bindings, strict field-complete IR/manifest/artifact-digest validation, a minimum 69-test Microsoft.Testing.Platform gate, 25 public refinement theorems, 38 vectors, standalone Lake build, and deterministic byte comparison of FrameJournalKernel.ir.json, FrameJournalKernel.source-manifest.json, and FrameJournalKernel.lean; generated theorem-free semantics refine a separate specification for CALL/CREATE entry, no-child boundary stutter, LIFO success/revert/exception behavior, seven frame-local journal surfaces, transaction-wide persistent originals and createdThisTx, and RIPEMD-160 latch/restore-retouch behavior with extensional account restoration; CALL/CREATE and SELFDESTRUCT remain handwritten premises, while gas/refund settlement, code deposit/clearing, other precompile behavior, provider commit/trie/root/database behavior, BAL/tracing-access execution, top-level transaction/block processing, CLR/JIT/unsafe/pooling behavior, tracer correctness, complete frame-loop composition, and the complete EVM remain incomplete",
+      "transientStorageOpcodes": "independently accepted operational immediate-handler refinement for TLOAD/TSTORE and eight exact closed roots; strict field-complete IR/manifest validation and 29 focused tests pass; concrete provider/journal/frame/reset composition remains incomplete; extraction found and corrected the non-consensus TSTORE pre-write trace-value defect",
+      "opcodeStep": "component opcode refinements are in progress; no single complete standard-mainnet opcode-step or frame-loop theorem exists",
+      "frameLoop": "independently accepted Stage A routing/dependency extraction only: 114 pinned production/raw sources and 181 exact Roslyn admissions derive all 1024 routes for the four standard-mainnet Amsterdam dispatch tables, comprising 612 enabled and 412 explicit bad-instruction routes; all 14 opcode packages are admitted through 16 exact theorem identities, including the universal CallCreate theorem, so all 612 enabled routes are admitted and zero enabled routes remain composition-incomplete; all 18 precompile identities remain unadmitted; the parent gate performs isolated byte-identical regeneration of EvmFrameMachineKernel.ir.json, EvmFrameMachineKernel.source-manifest.json, and EvmFrameMachineKernel.lean, enforces a minimum 28-test Microsoft.Testing.Platform suite, and builds the standalone Lake package; the checked refinement covers bounded route/precompile lookup and cardinality facts only, while executable frame transitions, settlement, precompile bodies, transaction installation, fuel adequacy, adapters, and whole-EVM refinement remain incomplete",
+      "frameControlSettlement": "accepted handwritten single-iteration control agreement, not production refinement: a generated driver and independently organized handwritten reference agree over shared canonical leaves for admitted fresh/continuation setup, bytecode/full-precompile selection, derived VM-frame settlement, and cleanup. SourceAdapterBindings carries identity-checked theorem witnesses but assumes canonical bytecode/full-frame dispatch leaves equal caller-supplied oracle values; ProductionLeafSimulation remains an explicit open obligation. The parent gate byte-compares EvmFrameControlSettlementKernel.ir.json, EvmFrameControlSettlementKernel.source-manifest.json, and EvmFrameControlSettlementKernel.lean, requires at least 28 tests, and runs standalone Lake plus direct module checks. Semantic adapter composition, actual production leaf behavior, whole-loop induction/reachability, fixed-width outputs, outer transaction deployment/refund/finalization, and caller rollback ownership remain incomplete",
+      "frameDriverStageE": "independently accepted source-attached parametric shell for exactly one admitted ExecuteTransaction frame-driver step, not a C# operational or production refinement: 12 current-source inputs, 21 exact members, eight dependency identities, four control anchors, and 22 branch contracts bind fresh/continuation preparation, bytecode/full-precompile dispatch, returned/suspended/continued/exceptional classification, child/create/top/precompile settlement selection, and cleanup. Generated executePlan matches every admitted stage/member/node/kind/arm/hash identity and fails closed through source-control, topology, plan, and phase gates. The independent reference and 20-test/96-job standalone gate establish same-leaf one-step algebra only. Batch-count positivity, 1024-opcode completion, successor validity, concrete leaf simulations and adapters, fork/policy runtime selection, recursion/fuel adequacy, transaction reachability, CLR/JIT behavior, and whole-EVM refinement remain incomplete",
+      "precompiles": "independently accepted narrow Identity pricing kernel extraction/refinement with source-pinned metadata/delegation/copy adapter, directive and partial-source rejection, semantic target binding, and 19 mutation-sensitive extractor tests; independently accepted base-plus-data gas pricing extraction/refinement pins the pure ulong kernel, production policy delegate, named full-frame/inline consumers, and registration syntax while proving exact success, ordinary-OOG, overflow, and state-gas preservation; a separate independently reviewed handwritten generic wrapper covers abstract full-frame/inline gas and exit relations; PrecompileFrame Stage A source-closes typed registry/cache/route/cancellation/pricing/result/frame-residue metadata for all 18 routes through 122 sources, 154 members, 23 dependency identities, and 26 mutation descriptors; independently accepted Stage B adds a theorem-free operational transition over ten direct production sources, 24 exact members, 18 typed leaf oracles, nine branches, 28 mutation descriptors, and eight semantic bindings, universally refining a separate decision/render reference for direct eligibility, cancellation, memory admission, concrete child/pricing/clear/restore/refund gas effects, returned/managed failure, success, returndata, output-copy OOG, and stack result; independently accepted Stage C covers the already-created full-frame adapter over ten direct production sources, 48 exact members, 53 dependency identities, 18 oracles, ten branches, and 63 admission hashes, deriving its settlement domain from Entry.Admitted and refining hard/soft failure plus top/nested success with exact single-clear and settlement order; the parent gate byte-compares all Stage A/B/C artifacts and requires 95 plus 104 focused tests; leaf correctness, concrete world/gas/tracer adapter agreement, arithmetic bounds, exact outer throw state, complete frame-driver composition, transaction reachability, CLR/native behavior, runtime Autofac behavior, zkEVM paths, and complete precompile refinement remain unproved",
+      "transactionProcessor": "independently accepted bounded production lifecycle-control refinement: exact source identities and six path/namespace/owner-qualified normalized complete-token fingerprints bind the ordinary standard-mainnet EthereumTransactionProcessor methods; nested local-function/lambda anchors fail closed; strict field-complete IR/manifest round trips feed generated theorem-free prefix/finalization projections and all six extracted EVM-call partial-order edges refining TransactionReference. Twenty-five mutation/artifact tests and nine Lean build jobs pass. Sender recovery, validation/arithmetic hooks, world-state/VM/tracer behavior, code deployment, rollback/commit correctness, complete fee/refund behavior, receipt bytes, runtime DI/CLR behavior, and whole transaction semantics remain incomplete",
+      "ordinaryStaticAdmission": "independently accepted bounded production return-value refinement for standard-mainnet ValidateStatic/ValidateGas and CalculateAvailableGas: 20 complete source identities, exact Roslyn guard/return/width/enum/result admission, five canonical initializer dependencies, theorem-free generated Lean, an independent fixed-width reference, and fieldwise theorems; the parent gate requires 96 tests and deterministic byte comparison of IR 371b62d91c38bfeee01f068d8f1a120b9e2a54673dd36368e104a7d9a88ed94c, manifest 4051605bd7fdb7c86dd689c1739b896f6c9ed2440565e513aaac12f3ba29b92c, and Lean fe1f879297f3370edd0e6da2fcca8c4030bbd9bbeb67765f7ca7ec3fe1b8dfad; ValidateStatic logging, full SemanticModel/C# operational semantics, runtime DI/CLR routing, sender and intrinsic calculation, state, VM, fees, finalization, receipts, and complete transaction composition remain unproved",
+      "ordinaryStatefulAdmissionPrefix": "independently accepted conditional syntax-grammar/model-to-model refinement for the standard-mainnet ordinary stateful prefix after successful static admission: 15 current-source identities and 45 modeled member/token identities feed a finite Roslyn-AST grammar and theorem-free generated transition for effective-price metrics, sender recovery/validation, gas purchase, nonce update, and the combined restore request; a separately decomposed reference agrees only when the caller supplies sourceGrammarSemanticsCoherent and the explicit finite-width, ordinary-route, account/world-state, blob, and adapter predicates. The parent gate requires 39 tests, deterministic byte comparison of IR 7345825d56805be9b092e825bb43c79eac16433e730a1e7bec96a65f367d7fd1, manifest 5a95863000799d536abc3484916e590442ded2ba4a560823d536610b480befba, and Lean 52126602fc36539573b9b53ddf4623b80611fec72c7c1849d12749ef11ed93f9, plus the package build and four direct Lean targets. Grammar-assigned identity/category tags are not Roslyn symbol/type results and no live production witness discharges the premise; ValidateStatic, compiler/CLR semantics, adapters, fast-path/code execution, settlement, receipts, and complete transaction composition remain incomplete",
+      "systemTransactionProcessor": "independently accepted narrow production refinement: generated theorem-free routing kernel refines an independent option/route/Boolean-counter-gate model for the exact source-hashed standard-mainnet snapshot; semantic admission binds the actual classifier, routing kernel calls, system Execute and PayValue overrides, assigned decision field, inherited virtual payment calls, and direct parameter identity/reassignment/alias/ref/out/in guards evaluated over every CFG path that can reach the bound target. The strict route/classifier, normal/system-dispatch, and three PayValue bridges additionally reject ordinary by-value Transaction/IReleaseSpec escapes, including later-textual handoffs reached through a loop or goto; later straight-line same-block operations remain outside the before-target barrier without a cycle. All other forwarding/counter/preparation checks explicitly bind direct arguments only because their extracted formula consumes opts (and counter parallel), not Transaction/IReleaseSpec heap state; both counter paths, the complete Autofac.Module.Load registration graph, and production reduced AddScoped<ITransactionProcessor,EthereumTransactionProcessor> route through the exact BindScoped and Autofac registration chain remain pinned. Independent rereview passed 107 focused tests, deterministic seven-source regeneration, exhaustive strict IR/manifest field checks, targeted Lean checks, source hashes and all flag combinations, plus eight aggregate-carrier cycle probes; the reference barriers are source-admission boundaries rather than endpoint/transitive object-effect proofs; b2478235e71e6a7ec2a509aa0155e25d5fdfff80 is an ancestor baseline only and is not claimed to contain the added kernel; virtual PayFees effects, VM/world-state/tracer behavior, fees, receipts, roots, runtime Autofac resolution, full system execution, and transaction/block composition remain incomplete",
+      "blockProcessor": "independently accepted bounded source-syntax/order refinement for synchronous BlockProcessor, BranchProcessor, BlockchainProcessor and BlockHeader control surfaces: complete token admission pins eighteen selected methods and the checkpoint field; strict field-complete IR/manifest round trips feed generated independent phase, synchronous receipt-event, successful per-block commit, cleanup/finalization, header/artifact and source-derived checkpoint projections refining the handwritten block/branch references through fifteen Lean theorems. Forty-three artifact/mutation tests include reviewed 64-to-128 checkpoint propagation. Concrete runtime binding, DI, C# operational semantics, external hooks, receipt/state/root computation, rollback correctness, background work, parallel execution, persistence and full block semantics remain incomplete",
+      "synchronousBlockPipelineMachine": "independently accepted static-only standard-mainnet synchronous pipeline audit scaffold over 50 C# sources, three configuration inputs, four handwritten Lean files, and eight byte-pinned composition inputs, for 65 total inputs; it checks 80 Roslyn symbols, 182 source anchors/partial-order edges, 17 phase labels, and 57 hook contracts across configured chain-spec and DI derivation, transaction adapter and receipt lifecycle, synchronous/task-local receipt arms, state/root/validation boundaries, BAL retry scopes, CommitTree, header projection, and outer-chain result handling; SOURCE_PINS.json is 4abb555b5bb6f9ca29b5507ee6d39ec9f8ee582d844bee17d47691f27c90c656 and METADATA_MIRROR.json is fb997fb68896341b2d32709c30d44fe91e0f503a6a5d9c1debe6ca472046a0fc; the current source pin includes the EIP-4788 correction from a plain 30000000-gas transaction to a 31566720-gas SystemCall, preserving 30000000 execution gas and the 1566720 state reservoir required by EIP-8037; the source audit and preparation-boundary regression pass, while operational extraction intentionally refuses before producing IR, generated Lean, or a theorem; composition inputs are identity pins rather than semantic admissions, and transaction/frame/world semantics, hook implementations, roots/hash/trie/RLP, BAL/parallel equivalence, rollback and persistence durability, background scheduling and exception precedence, DI/virtual dispatch, CLR/JIT/compiler behavior, and complete block refinement remain incomplete",
+      "parallelBlockExecutor": "independently accepted handwritten canonical-merge composition: exact per-prefix transition, artifact-delta, receipt, and count certificates imply ordered artifact merge equals sequential execution, while rejection is sequential fallback; production worker snapshots, BAL completeness, IncrementalValidation certificate soundness, world-state merge, scheduling/cancellation, exceptions, roots, and persistence are not extracted or proved"
+    }
+  },
+  "requiredBlockOrder": [
+    "suggested-block validation",
+    "synchronous branch selection and preparation",
+    "sender and EIP-7702 authority recovery",
+    "open world-state scope at parent root",
+    "DAO transition when applicable",
+    "beacon-root system call",
+    "historical blockhash state change",
+    "user transaction fold",
+    "blob gas and receipt root and bloom",
+    "rewards",
+    "withdrawals",
+    "execution requests and system calls",
+    "storage and state roots",
+    "block access list",
+    "processed-header validation",
+    "CommitTree invocation",
+    "synchronous result classification and head/processed-chain finalization"
+  ],
+  "trustBoundary": [
+    "Lean kernel and elaborator",
+    "Roslyn semantic model and the checked extractor",
+    ".NET compiler, Fody weaving, CLR and JIT/AOT execution",
+    "cryptographic primitive implementations unless separately refined",
+    "RLP, trie persistence and database durability unless separately refined",
+    "host operating system and hardware",
+    "parallel scheduler until separately proved equivalent to the sequential block relation"
+  ]
+}

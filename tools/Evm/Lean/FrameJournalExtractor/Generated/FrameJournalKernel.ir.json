@@ -1,0 +1,200 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.0.0",
+  "kernel": "Nethermind standard-mainnet nested-frame pre-commit journal composition",
+  "scope": {
+    "fork": "Amsterdam",
+    "executionMode": "normal non-BAL execution with isTracingAccess=false",
+    "frameBoundary": "nested child CALL/CREATE entry and success/revert/exception exit before provider commit",
+    "restoredSurfaces": [
+      "accounts",
+      "persistent",
+      "transient",
+      "warmAccounts",
+      "warmCells",
+      "logs",
+      "destroySet"
+    ],
+    "transactionWideSurfaces": [
+      "persistentOriginals",
+      "createdThisTx",
+      "ripemdTouchLatched"
+    ],
+    "exclusions": [
+      "gas and refund settlement",
+      "code deposit and ClearStorage",
+      "precompile bodies",
+      "trie, state root, database, and provider commit",
+      "BAL and tracing-access execution",
+      "top-level transaction and block processing",
+      "CLR, unsafe stack, pooling, and tracer correctness"
+    ],
+    "premises": [
+      "EnableZkEvm is not true, so the pinned standard-source item selection applies",
+      "the executing release spec is the pinned Amsterdam instance selected by the pinned MainnetSpecProvider schedule",
+      "the injected world state follows the pinned normal main-processing IWorldState-to-WorldState registration and tracer.IsTracingAccess is false",
+      "all child body world operations satisfy the accepted WorldJournalExtractor adapter relation",
+      "CALL/CREATE admission facts and child exit classification satisfy the pinned CallCreate reference boundary",
+      "SSTORE, TSTORE, LOG, and SELFDESTRUCT effects are mapped to world operations by the pinned accepted leaf adapters",
+      "frame-stack and world-snapshot stacks agree at package entry",
+      "the child VmState is disposed exactly once on every nested exit",
+      "latchRipemdTouch is emitted only after the pinned production RIPEMD empty-account predicate has set the execution-wide latch",
+      "production PushTouch raw change-kind and duplicate-touch behavior is related extensionally to the abstract same-account update"
+    ]
+  },
+  "operations": [
+    {
+      "name": "applyWorld",
+      "effect": "apply one accepted world-journal operation",
+      "admissionBoundary": "requires a non-snapshot WorldJournal operation",
+      "bindingKind": "dependencyTheorem",
+      "sourcePath": "tools/Evm/Lean/WorldJournalExtractor/Generated/WorldJournalKernel.source-manifest.json",
+      "containingType": "WorldJournalExtractor.Refinement.WorldJournal",
+      "member": "transition_refines",
+      "signature": "54fcea6c3e4b4d89ef460b41b986abfef7ade6e16c2975a0631014c40ce03988",
+      "orderedEffects": [
+        "dependency transition"
+      ]
+    },
+    {
+      "name": "enterCall",
+      "effect": "capture child world/access/log/destroy baseline",
+      "admissionBoundary": "begins after parent-owned pricing, access warming, and admission",
+      "bindingKind": "sourceMember",
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Call.cs",
+      "containingType": "EvmInstructions",
+      "member": "CreateFullCallFrame",
+      "signature": "EvmExceptionType CreateFullCallFrame\u00603(VirtualMachine\u003CTGasPolicy\u003E,ref EvmStack,ref TGasPolicy,in UInt256,UInt256,UInt256,UInt256,CodeInfo,Address,Address,Address,ExecutionEnvironment,in UInt256,ulong,bool)",
+      "orderedEffects": [
+        "takeSnapshot",
+        "rentFrame"
+      ]
+    },
+    {
+      "name": "enterCreate",
+      "effect": "mark destination created-this-transaction and capture all journaled surfaces",
+      "admissionBoundary": "parent nonce increment precedes the captured world baseline",
+      "bindingKind": "sourceMember",
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "containingType": "VmState",
+      "member": "Initialize",
+      "signature": "void Initialize(TGasPolicy,long,long,ExecutionType,bool,bool,bool,bool,bool,ExecutionEnvironment,in StackAccessTracker,in Snapshot)",
+      "orderedEffects": [
+        "wasCreated",
+        "takeSnapshot"
+      ]
+    },
+    {
+      "name": "preFrameCallFailure",
+      "effect": "stutter at the child-composition boundary",
+      "admissionBoundary": "no child was rented; earlier target warming remains in the parent baseline",
+      "bindingKind": "sourceMember",
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Call.cs",
+      "containingType": "EvmInstructions",
+      "member": "InstructionCall",
+      "signature": "EvmExceptionType InstructionCall\u00606(ref EvmStack,ref TGasPolicy,VirtualMachine\u003CTGasPolicy\u003E)",
+      "orderedEffects": [
+        "no child"
+      ]
+    },
+    {
+      "name": "preFrameCreateFailure",
+      "effect": "stutter at the child-composition boundary",
+      "admissionBoundary": "covers CompleteCreateWithoutChild and collision branches returning before child RentFrame; parent effects already applied belong to the input baseline",
+      "bindingKind": "sourceMember",
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Create.cs",
+      "containingType": "EvmInstructions",
+      "member": "InstructionCreate",
+      "signature": "EvmExceptionType InstructionCreate\u00605(ref EvmStack,ref TGasPolicy,VirtualMachine\u003CTGasPolicy\u003E)",
+      "orderedEffects": [
+        "no child"
+      ]
+    },
+    {
+      "name": "latchRipemdTouch",
+      "effect": "retain the historical RIPEMD-160 empty-account touch across later rollback",
+      "admissionBoundary": "emitted only after RunPrecompile has observed an existing dead RIPEMD account under EIP-158",
+      "bindingKind": "sourceMember",
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "containingType": "VirtualMachine",
+      "member": "RunPrecompile",
+      "signature": "CallResult RunPrecompile\u00601(VmState\u003CTGasPolicy\u003E)",
+      "orderedEffects": [
+        "empty-account predicate",
+        "set execution-wide latch"
+      ]
+    },
+    {
+      "name": "exitSuccess",
+      "effect": "discard top checkpoint while retaining child mutations",
+      "admissionBoundary": "CommitToParent disables access rollback before disposal",
+      "bindingKind": "sourceMember",
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "containingType": "VmState",
+      "member": "CommitToParent",
+      "signature": "void CommitToParent(VmState\u003CTGasPolicy\u003E)",
+      "orderedEffects": [
+        "retain",
+        "pop"
+      ]
+    },
+    {
+      "name": "exitRevert",
+      "effect": "restore top checkpoint and pop child",
+      "admissionBoundary": "world restore followed by access/log/destroy restore",
+      "bindingKind": "sourceMember",
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "containingType": "VirtualMachine",
+      "member": "HandleRevert",
+      "signature": "void HandleRevert(VmState\u003CTGasPolicy\u003E,in CallResult,ref nuint)",
+      "orderedEffects": [
+        "restore",
+        "pop"
+      ]
+    },
+    {
+      "name": "exitException",
+      "effect": "restore top checkpoint and pop child",
+      "admissionBoundary": "returned and thrown exception paths share the same journal result",
+      "bindingKind": "sourceMember",
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "containingType": "VirtualMachine",
+      "member": "HandleException",
+      "signature": "TransactionSubstate HandleException(scoped in CallResult,scoped ref nuint,out bool)",
+      "orderedEffects": [
+        "restore",
+        "pop"
+      ]
+    }
+  ],
+  "sourceChains": [
+    "InstructionCall -\u003E CreateFullCallFrame -\u003E WorldState.TakeSnapshot -\u003E VmState.RentFrame -\u003E Initialize",
+    "InstructionCreate -\u003E IncrementNonce -\u003E WorldState.TakeSnapshot -\u003E VmState.RentFrame -\u003E Initialize",
+    "ExecuteTransaction success -\u003E CommitToParent -\u003E Dispose without StackAccessTracker.Restore",
+    "ExecuteTransaction revert -\u003E HandleRevert -\u003E WorldState.Restore -\u003E Dispose -\u003E StackAccessTracker.Restore",
+    "HandleException/HandleFailure -\u003E WorldState.Restore -\u003E PopAndRestoreParentState -\u003E Dispose -\u003E StackAccessTracker.Restore",
+    "RunPrecompile RIPEMD predicate -\u003E latch -\u003E child rollback WorldState.Restore -\u003E RestoreRipemdTouch -\u003E zero-balance touch replay"
+  ],
+  "dependencyTheorems": [
+    "WorldJournalExtractor.Refinement.WorldJournal.transition_refines",
+    "WorldJournalExtractor.Refinement.WorldJournal.finite_trace_refines",
+    "PersistentStorageOpcodeExtractor.Refinement.PersistentStorageOpcode.sload_byte_refines",
+    "PersistentStorageOpcodeExtractor.Refinement.PersistentStorageOpcode.sstore_byte_refines",
+    "TransientStorageOpcodeExtractor.Refinement.TransientStorageOpcode.tload_byte_refines",
+    "TransientStorageOpcodeExtractor.Refinement.TransientStorageOpcode.tstore_byte_refines",
+    "LogOpcodeExtractor.Refinement.generated_execute_refines_reference",
+    "Eip803x.Evm.CallCreateFrame.call_failure_constructor_has_no_child",
+    "Eip803x.Evm.CallCreateFrame.create_failure_constructor_has_no_state_charge",
+    "Eip803x.Evm.CallCreateFrame.revert_returns_exact_execution_and_restores_world",
+    "Eip803x.Evm.CallCreateFrame.completion_preserves_enclosing_checkpoint",
+    "Eip803x.Evm.SelfDestruct.destroy_marked_exactly_for_same_transaction_creation",
+    "Eip803x.Evm.SelfDestruct.successful_other_target_moves_exact_balance"
+  ],
+  "importedKernels": [
+    {
+      "name": "WorldJournalExtractor.Generated.WorldJournalKernel",
+      "manifestPath": "tools/Evm/Lean/WorldJournalExtractor/Generated/WorldJournalKernel.source-manifest.json",
+      "artifactPath": "tools/Evm/Lean/WorldJournalExtractor/Generated/WorldJournalKernel.lean"
+    }
+  ]
+}

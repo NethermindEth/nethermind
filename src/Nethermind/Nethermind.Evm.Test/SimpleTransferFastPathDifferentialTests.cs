@@ -58,6 +58,7 @@ public class SimpleTransferFastPathDifferentialTests
         string? Error,
         ulong GasSpent,
         ulong EffectiveBlockGas,
+        ulong BlockStateGas,
         ulong HeaderGasUsed,
         Hash256? StateRoot,
         UInt256 SenderBalance,
@@ -113,6 +114,7 @@ public class SimpleTransferFastPathDifferentialTests
             Assert.That(fast.Error, Is.EqualTo(slow.Error), "error");
             Assert.That(fast.GasSpent, Is.EqualTo(slow.GasSpent), "spent gas");
             Assert.That(fast.EffectiveBlockGas, Is.EqualTo(slow.EffectiveBlockGas), "effective block gas");
+            Assert.That(fast.BlockStateGas, Is.EqualTo(slow.BlockStateGas), "block state gas");
             Assert.That(fast.HeaderGasUsed, Is.EqualTo(slow.HeaderGasUsed), "header GasUsed");
             Assert.That(fast.SenderBalance, Is.EqualTo(slow.SenderBalance), "sender balance");
             Assert.That(fast.RecipientBalance, Is.EqualTo(slow.RecipientBalance), "recipient balance");
@@ -120,6 +122,37 @@ public class SimpleTransferFastPathDifferentialTests
             Assert.That(WithoutAccountReads(fast.TracerEvents), Is.EqualTo(WithoutAccountReads(slow.TracerEvents)), "tracer event sequence");
             Assert.That(StateReportedAddresses(fast.TracerEvents), Is.EquivalentTo(StateReportedAddresses(slow.TracerEvents)), "state-reported address set");
             Assert.That(fast.FastPathEngaged, Is.EqualTo(fastPathExpectedToEngage ? 1 : 0), "fast path engaged");
+            Assert.That(slow.FastPathEngaged, Is.Zero, "forced EVM path did not engage the fast path");
+        }
+    }
+
+    [TestCase(200_000UL, RecipientKind.Nonexistent, 1_000_000UL)]
+    [TestCase(300_000UL, RecipientKind.Nonexistent, 1_000_000UL)]
+    [TestCase(300_000UL, RecipientKind.Existing, 1_000_000UL)]
+    [TestCase(300_000UL, RecipientKind.Self, 1_000_000UL)]
+    [TestCase(300_000UL, RecipientKind.Nonexistent, 0UL)]
+    public void Eip8037_fast_path_and_evm_path_are_equivalent(ulong gasLimit, RecipientKind recipientKind, ulong value)
+    {
+        ExecutionCapture fast = Run(forceEvmPath: false, value, recipientKind, eip7708: true, dataLength: 0,
+            TracerShape.AllOn, Mode.Execute, eip8037: true, gasLimit: gasLimit);
+        ExecutionCapture slow = Run(forceEvmPath: true, value, recipientKind, eip7708: true, dataLength: 0,
+            TracerShape.AllOn, Mode.Execute, eip8037: true, gasLimit: gasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fast.Executed, Is.EqualTo(slow.Executed), "executed");
+            Assert.That(fast.Status, Is.EqualTo(slow.Status), "status code");
+            Assert.That(fast.Error, Is.EqualTo(slow.Error), "error");
+            Assert.That(fast.GasSpent, Is.EqualTo(slow.GasSpent), "spent gas");
+            Assert.That(fast.EffectiveBlockGas, Is.EqualTo(slow.EffectiveBlockGas), "effective block gas");
+            Assert.That(fast.BlockStateGas, Is.EqualTo(slow.BlockStateGas), "block state gas");
+            Assert.That(fast.HeaderGasUsed, Is.EqualTo(slow.HeaderGasUsed), "header GasUsed");
+            Assert.That(fast.SenderBalance, Is.EqualTo(slow.SenderBalance), "sender balance");
+            Assert.That(fast.RecipientBalance, Is.EqualTo(slow.RecipientBalance), "recipient balance");
+            Assert.That(fast.StateRoot, Is.EqualTo(slow.StateRoot), "state root");
+            Assert.That(WithoutAccountReads(fast.TracerEvents), Is.EqualTo(WithoutAccountReads(slow.TracerEvents)), "tracer event sequence");
+            Assert.That(StateReportedAddresses(fast.TracerEvents), Is.EquivalentTo(StateReportedAddresses(slow.TracerEvents)), "state-reported address set");
+            Assert.That(fast.FastPathEngaged, Is.EqualTo(1), "fast path engaged");
             Assert.That(slow.FastPathEngaged, Is.Zero, "forced EVM path did not engage the fast path");
         }
     }
@@ -149,9 +182,12 @@ public class SimpleTransferFastPathDifferentialTests
         bool eip7708,
         int dataLength,
         TracerShape tracerShape,
-        Mode mode)
+        Mode mode,
+        bool eip8037 = false,
+        ulong gasLimit = 100_000)
     {
-        OverridableReleaseSpec spec = new(Prague.Instance) { IsEip7708Enabled = eip7708 };
+        IReleaseSpec fork = eip8037 ? Amsterdam.Instance : Prague.Instance;
+        OverridableReleaseSpec spec = new(fork) { IsEip7708Enabled = eip7708 };
         TestSpecProvider specProvider = new(spec);
         IWorldState state = TestWorldStateFactory.CreateForTest();
         using IDisposable worldScope = state.BeginScope(IWorldState.PreGenesis);
@@ -197,13 +233,13 @@ public class SimpleTransferFastPathDifferentialTests
             .WithData(dataLength is 0 ? [] : Enumerable.Repeat((byte)1, dataLength).ToArray())
             .WithGasPrice(1)
             .WithMaxFeePerGas(1)
-            .WithGasLimit(100_000)
+            .WithGasLimit(gasLimit)
             .SignedAndResolved(ecdsa, TestItem.PrivateKeyA)
             .TestObject;
 
         Block block = Build.A.Block
             .WithNumber(1)
-            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTimestamp(eip8037 ? MainnetSpecProvider.AmsterdamBlockTimestamp : MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10_000_000)
             .TestObject;
@@ -239,6 +275,7 @@ public class SimpleTransferFastPathDifferentialTests
                 Error: recordingTracer?.Error,
                 GasSpent: recordingTracer?.GasSpent ?? 0,
                 EffectiveBlockGas: recordingTracer?.EffectiveBlockGas ?? 0,
+                BlockStateGas: recordingTracer?.BlockStateGas ?? 0,
                 HeaderGasUsed: block.Header.GasUsed,
                 StateRoot: stateRoot,
                 SenderBalance: state.GetBalance(TestItem.AddressA),
@@ -259,6 +296,7 @@ public class SimpleTransferFastPathDifferentialTests
         public string? Error { get; private set; }
         public ulong GasSpent { get; private set; }
         public ulong EffectiveBlockGas { get; private set; }
+        public ulong BlockStateGas { get; private set; }
 
         public RecordingTracer(TracerShape shape)
         {
@@ -329,6 +367,7 @@ public class SimpleTransferFastPathDifferentialTests
             Status = StatusCode.Success;
             GasSpent = gasSpent.SpentGas;
             EffectiveBlockGas = gasSpent.EffectiveBlockGas;
+            BlockStateGas = gasSpent.BlockStateGas;
             Events.Add($"Success({recipient},{gasSpent.SpentGas},{output.ToHexString()},logs:{logs.Length})");
         }
 
@@ -338,6 +377,7 @@ public class SimpleTransferFastPathDifferentialTests
             Error = error;
             GasSpent = gasSpent.SpentGas;
             EffectiveBlockGas = gasSpent.EffectiveBlockGas;
+            BlockStateGas = gasSpent.BlockStateGas;
             Events.Add($"Failed({recipient},{gasSpent.SpentGas},{error})");
         }
     }

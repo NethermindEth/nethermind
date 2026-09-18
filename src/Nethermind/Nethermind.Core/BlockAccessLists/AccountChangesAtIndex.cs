@@ -21,6 +21,7 @@ public class AccountChangesAtIndex(Address address)
     public BalanceChange? BalanceChange { get; internal set; }
     public NonceChange? NonceChange { get; internal set; }
     public CodeChange? CodeChange { get; internal set; }
+    internal bool? PhysicalAccountExists { get; set; }
 
     public UInt256? PreTxBalance { get; internal set; }
     public byte[]? PreTxCode { get; internal set; }
@@ -88,6 +89,7 @@ public class AccountChangesAtIndex(Address address)
         BalanceChange = null;
         NonceChange = null;
         CodeChange = null;
+        PhysicalAccountExists = null;
         PreTxBalance = null;
         PreTxCode = null;
         _preTxStorage?.ClearAndTrim();

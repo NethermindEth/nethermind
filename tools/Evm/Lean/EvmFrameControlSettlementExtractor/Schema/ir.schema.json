@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "extractorVersion", "kernel", "acceptanceState", "closedRoot", "closedFork", "closedGasPolicy", "boundary", "phases", "frameKinds", "exitKinds", "controlRoutes", "settlementVariants", "dispatchOrder", "branches", "sources", "members", "dependencies", "reviewedOperationalBindings", "exclusions"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "extractorVersion": {"type": "string"},
+    "kernel": {"type": "string"},
+    "acceptanceState": {"const": "stage-d-single-iteration-admitted"},
+    "closedRoot": {"type": "string", "minLength": 1},
+    "closedFork": {"const": "Nethermind.Specs.Forks.Amsterdam"},
+    "closedGasPolicy": {"const": "Nethermind.Evm.GasPolicy.EthereumGasPolicy"},
+    "boundary": {"$ref": "#/definitions/boundary"},
+    "phases": {"type": "array", "const": ["fresh", "continuation", "running"]},
+    "frameKinds": {"type": "array", "const": ["bytecode", "precompile"]},
+    "exitKinds": {"type": "array", "const": ["success", "revert", "exception", "incomplete"]},
+    "controlRoutes": {"type": "array", "minItems": 7, "uniqueItems": true, "items": {"type": "string"}},
+    "settlementVariants": {"type": "array", "minItems": 10, "uniqueItems": true, "items": {"type": "string"}},
+    "dispatchOrder": {"type": "array", "const": ["clearReturnDataOnFreshOnly", "freshOrContinuationPreparation", "selectCurrentFrameBytecodeOrFullPrecompile", "executeSelectedFrame", "bytecodeDispatchCancellationAtEntryOrCompletedBatchWithSuccessor", "recordBytecodeDirectInlineStaticPrecompileOutcome", "classifyReturnedThrownOrFullPrecompileOutcome", "settleNestedCreateDepositAfterInitcodeSuccess", "applyVmFrameExitSettlement", "cleanupFrameUnwindWhenIterationLeavesVm"]},
+    "branches": {"type": "array", "minItems": 24, "uniqueItems": true, "items": {"$ref": "#/definitions/branch"}},
+    "sources": {"type": "array", "minItems": 80, "items": {"$ref": "#/definitions/source"}},
+    "members": {"type": "array", "minItems": 70, "items": {"$ref": "#/definitions/member"}},
+    "dependencies": {"type": "array", "minItems": 10, "items": {"$ref": "#/definitions/dependency"}},
+    "reviewedOperationalBindings": {"type": "array", "minItems": 10, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "exclusions": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+  },
+  "definitions": {
+    "boundary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["adapters", "oracles", "fixedWidth", "cancellation", "fuel"],
+      "properties": {
+        "adapters": {"type": "array", "minItems": 10, "uniqueItems": true, "items": {"type": "string"}},
+        "oracles": {"type": "array", "minItems": 2, "uniqueItems": true, "items": {"type": "string"}},
+        "fixedWidth": {"type": "array", "minItems": 3, "items": {"type": "string"}},
+        "cancellation": {"type": "array", "minItems": 5, "items": {"type": "string"}},
+        "fuel": {"type": "array", "minItems": 3, "items": {"type": "string"}}
+      }
+    },
+    "branch": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "invocation", "effects", "settlement"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "invocation": {"type": "string", "minLength": 1},
+        "effects": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "settlement": {"type": "string", "minLength": 1}
+      }
+    },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["role", "path", "sha256", "syntaxSha256"],
+      "properties": {
+        "role": {"type": "string", "minLength": 1}, "path": {"type": "string", "minLength": 1},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "syntaxSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "member": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sourcePath", "owner", "member", "syntaxKind", "signature"],
+      "properties": {
+        "sourcePath": {"type": "string", "minLength": 1}, "owner": {"type": "string", "minLength": 1},
+        "member": {"type": "string", "minLength": 1}, "syntaxKind": {"type": "string", "minLength": 1}, "signature": {"type": "string", "minLength": 1}
+      }
+    },
+    "dependency": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "name", "path", "sha256", "binding", "theorems"],
+      "properties": {
+        "kind": {"type": "string", "minLength": 1}, "name": {"type": "string", "minLength": 1},
+        "path": {"type": "string", "minLength": 1}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "binding": {"type": "string", "minLength": 1}, "theorems": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+      }
+    }
+  }
+}

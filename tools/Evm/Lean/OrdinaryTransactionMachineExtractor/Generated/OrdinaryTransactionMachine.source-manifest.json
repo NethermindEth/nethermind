@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "0.1.0",
+  "roslynVersion": "static-draft",
+  "languageVersion": "CSharp14",
+  "kernel": "ordinary standard-mainnet exact-Commit simple-transfer success machine",
+  "acceptanceState": "static-draft",
+  "sourceClosureSha256": "static-draft-reemit-required",
+  "compilerClosureSha256": "6185996666fdad205d2bf17895ed7b570948deea9ba9ea3d80b28bafb9717ca7",
+  "sources": [],
+  "dependencies": [],
+  "compilerReferences": [],
+  "bindings": [],
+  "controlFlows": [],
+  "ir": {
+    "path": "OrdinaryTransactionMachine.ir.json",
+    "sha256": "static-draft-reemit-required"
+  },
+  "lean": {
+    "path": "tools/Evm/Lean/OrdinaryTransactionMachineExtractor/Generated/OrdinaryTransactionMachine.lean",
+    "sha256": "static-draft-reemit-required"
+  },
+  "combinedSourceSha256": "static-draft-reemit-required",
+  "semanticIrSha256": "static-draft-reemit-required",
+  "openObligations": [
+    "Re-emit the IR, Lean file and manifest atomically in the serialized build lane.",
+    "Static draft is not an acceptance witness."
+  ]
+}

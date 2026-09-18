@@ -101,6 +101,17 @@ public class Eip8037Tests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void System_transaction_before_eip8037_keeps_full_execution_budget()
+    {
+        EthereumGasPolicy intrinsicGas = EthereumGasPolicy.CreateSystemTransactionIntrinsicGas(Eip8037Constants.SystemCallGasLimit);
+        Assert.That(EthereumGasPolicy.TryCreateSystemTransactionAvailableGas(Eip8037Constants.SystemCallGasLimit, in intrinsicGas, Cancun.Instance, out EthereumGasPolicy availableGas), Is.True);
+
+        Assert.That(
+            (availableGas.Value, availableGas.StateReservoir),
+            Is.EqualTo((Eip8037Constants.SystemCallBaseGasLimit, 0L)));
+    }
+
+    [Test]
     public void Execution_transaction_gas_uses_tx_cap_even_when_intrinsic_state_matches_system_reservoir()
     {
         EthereumGasPolicy intrinsicGas = new()

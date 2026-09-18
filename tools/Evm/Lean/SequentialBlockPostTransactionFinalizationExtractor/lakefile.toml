@@ -1,0 +1,25 @@
+name = "SequentialBlockPostTransactionFinalizationExtractor"
+version = "0.1.0"
+defaultTargets = [
+  "SequentialBlockPostTransactionFinalizationExtractor.Generated.SequentialBlockPostTransactionFinalization",
+  "SequentialBlockPostTransactionFinalizationExtractor.Specification.SequentialBlockPostTransactionFinalization",
+  "SequentialBlockPostTransactionFinalizationExtractor.Refinement.SequentialBlockPostTransactionFinalization",
+  "SequentialBlockPostTransactionFinalizationExtractor.Vectors.SequentialBlockPostTransactionFinalizationVectors",
+  "SequentialBlockTransactionFoldExtractor.Vectors.SequentialBlockTransactionFoldVectors",
+]
+
+[[lean_lib]]
+name = "SequentialBlockPostTransactionFinalizationExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "SequentialBlockTransactionFoldExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "ReceiptTerminalFoldExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "Eip803x"
+srcDir = ".."

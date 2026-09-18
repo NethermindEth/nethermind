@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "extractorVersion", "kernel", "acceptanceState", "targetRoot", "targetFork", "targetGasPolicy", "boundary", "phases", "subjects", "routes", "dispatchOrder", "controlPlan", "branches", "sourceControl", "sources", "members", "dependencies", "reviewedOperationalBindings", "exclusions"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "extractorVersion": {"type": "string", "minLength": 1},
+    "kernel": {"type": "string", "minLength": 1},
+    "acceptanceState": {"const": "stage-e-source-attached-parametric-shell"},
+    "targetRoot": {"type": "string", "minLength": 1},
+    "targetFork": {"const": "Nethermind.Specs.Forks.Amsterdam"},
+    "targetGasPolicy": {"const": "Nethermind.Evm.GasPolicy.EthereumGasPolicy"},
+    "boundary": {"$ref": "#/definitions/boundary"},
+    "phases": {"const": ["fresh", "continuation", "running"]},
+    "subjects": {"const": ["bytecode", "fullPrecompile"]},
+    "routes": {"type": "array", "minItems": 20, "uniqueItems": true, "items": {"type": "string"}},
+    "dispatchOrder": {"type": "array", "minItems": 9, "uniqueItems": true, "items": {"type": "string"}},
+    "controlPlan": {"type": "array", "minItems": 5, "maxItems": 5, "prefixItems": [
+      {"allOf": [{"$ref": "#/definitions/controlPlanStep"}, {"properties": {"stage": {"const": "prepare"}, "member": {"const": "ExecuteTransaction"}}}]},
+      {"allOf": [{"$ref": "#/definitions/controlPlanStep"}, {"properties": {"stage": {"const": "dispatch"}, "member": {"const": "ExecuteTransaction"}}}]},
+      {"allOf": [{"$ref": "#/definitions/controlPlanStep"}, {"properties": {"stage": {"const": "classify"}, "member": {"const": "ExecuteTransaction"}}}]},
+      {"allOf": [{"$ref": "#/definitions/controlPlanStep"}, {"properties": {"stage": {"const": "settle"}, "member": {"const": "ExecuteTransaction"}}}]},
+      {"allOf": [{"$ref": "#/definitions/controlPlanStep"}, {"properties": {"stage": {"const": "cleanup"}, "member": {"const": "Dispose"}}}]}
+    ], "items": {"$ref": "#/definitions/controlPlanStep"}},
+    "branches": {"type": "array", "minItems": 18, "uniqueItems": true, "items": {"$ref": "#/definitions/branch"}},
+    "sourceControl": {"type": "array", "minItems": 4, "maxItems": 4, "prefixItems": [
+      {"allOf": [{"$ref": "#/definitions/sourceControl"}, {"properties": {"member": {"const": "ExecuteTransaction"}}}]},
+      {"allOf": [{"$ref": "#/definitions/sourceControl"}, {"properties": {"member": {"const": "RunByteCode"}}}]},
+      {"allOf": [{"$ref": "#/definitions/sourceControl"}, {"properties": {"member": {"const": "RunDispatchLoop"}}}]},
+      {"allOf": [{"$ref": "#/definitions/sourceControl"}, {"properties": {"member": {"const": "Dispose"}}}]}
+    ], "items": {"$ref": "#/definitions/sourceControl"}},
+    "sources": {"type": "array", "minItems": 12, "items": {"$ref": "#/definitions/source"}},
+    "members": {"type": "array", "minItems": 20, "items": {"$ref": "#/definitions/member"}},
+    "dependencies": {"type": "array", "minItems": 8, "items": {"$ref": "#/definitions/dependency"}},
+    "reviewedOperationalBindings": {"type": "array", "minItems": 5, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "exclusions": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+  },
+  "definitions": {
+    "boundary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["leafBindings", "cancellation", "fixedWidth", "fuel"],
+      "properties": {
+        "leafBindings": {"type": "array", "minItems": 4, "uniqueItems": true, "items": {"type": "string"}},
+        "cancellation": {"type": "array", "minItems": 3, "uniqueItems": true, "items": {"type": "string"}},
+        "fixedWidth": {"type": "array", "minItems": 2, "uniqueItems": true, "items": {"type": "string"}},
+        "fuel": {"type": "array", "minItems": 3, "uniqueItems": true, "items": {"type": "string"}}
+      }
+    },
+    "branch": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "invocation", "effects", "settlement", "sourceBindings"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1}, "invocation": {"type": "string", "minLength": 1},
+        "effects": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "settlement": {"type": "string", "minLength": 1},
+        "sourceBindings": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[^:]+:n[0-9]{3}:[^:]+:[^:]+:[0-9a-f]{64}:[^:]+$"}}
+      }
+    },
+    "sourceControl": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sourcePath", "ownerPath", "member", "sha256", "operations", "topology", "topologySha256"],
+      "properties": {
+        "sourcePath": {"type": "string", "minLength": 1}, "ownerPath": {"type": "string", "minLength": 1},
+        "member": {"type": "string", "minLength": 1}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "operations": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "topology": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/controlNode"}},
+        "topologySha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "controlNode": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "parentId", "arm", "condition", "sha256", "operations"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1}, "kind": {"type": "string", "minLength": 1},
+        "parentId": {"type": "string", "minLength": 1}, "arm": {"type": "string", "minLength": 1},
+        "condition": {"type": "string", "minLength": 1}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "operations": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "controlPlanStep": {
+      "type": "object", "additionalProperties": false,
+      "required": ["stage", "member", "nodeId", "kind", "sourceArm", "sourceSha256"],
+      "properties": {
+        "stage": {"enum": ["prepare", "dispatch", "classify", "settle", "cleanup"]},
+        "member": {"type": "string", "minLength": 1}, "nodeId": {"type": "string", "minLength": 1},
+        "kind": {"type": "string", "minLength": 1}, "sourceArm": {"type": "string", "minLength": 1}, "sourceSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "source": {
+      "type": "object", "additionalProperties": false, "required": ["role", "path", "sha256", "syntaxSha256"],
+      "properties": {"role": {"type": "string", "minLength": 1}, "path": {"type": "string", "minLength": 1}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "syntaxSha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+    },
+    "member": {
+      "type": "object", "additionalProperties": false,
+      "required": ["sourcePath", "namespace", "ownerPath", "memberKind", "member", "genericArity", "parameterTypes", "syntaxKind", "sha256"],
+      "properties": {"sourcePath": {"type": "string"}, "namespace": {"type": "string"}, "ownerPath": {"type": "string"}, "memberKind": {"type": "string"}, "member": {"type": "string"}, "genericArity": {"type": "integer", "minimum": 0}, "parameterTypes": {"type": "string"}, "syntaxKind": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+    },
+    "dependency": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "name", "path", "sha256", "binding", "theorems"],
+      "properties": {"kind": {"enum": ["generated", "proof"]}, "name": {"type": "string"}, "path": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "binding": {"type": "string"}, "theorems": {"type": "array", "items": {"type": "string"}}}
+    }
+  }
+}

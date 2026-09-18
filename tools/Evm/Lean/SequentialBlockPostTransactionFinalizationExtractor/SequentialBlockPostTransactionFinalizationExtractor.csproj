@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Nethermind.Evm.Lean.SequentialBlockPostTransactionFinalizationExtractor</AssemblyName>
+    <RootNamespace>Nethermind.Evm.Lean.SequentialBlockPostTransactionFinalizationExtractor</RootNamespace>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Test/**/*.cs" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <ProjectReference Include="../SequentialBlockTransactionFoldExtractor/SequentialBlockTransactionFoldExtractor.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Nethermind.Evm.Lean.SequentialBlockPostTransactionFinalizationExtractor.Test</_Parameter1>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Nethermind.Evm.Lean.BlockProcessorExtractor</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+</Project>

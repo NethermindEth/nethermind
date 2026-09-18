@@ -1,0 +1,514 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.0.0",
+  "ancestorBaselineCommit": "b2478235e71e6a7ec2a509aa0155e25d5fdfff80",
+  "sourceIdentityAuthority": "The source-manifest SHA-256 identities are authoritative for the admitted current source; the ancestor baseline records lineage only.",
+  "kernel": "Nethermind.Evm.TransactionProcessing.EthereumTransactionProcessor ordinary lifecycle control",
+  "options": {
+    "none": 0,
+    "commit": 1,
+    "restore": 2,
+    "skipValidation": 4,
+    "warmup": 8,
+    "buildUp": 16
+  },
+  "reachability": {
+    "service": "ITransactionProcessor",
+    "concreteProcessor": "EthereumTransactionProcessor",
+    "ethereumBase": "EthereumTransactionProcessorBase",
+    "closedGenericBase": "TransactionProcessorBase\u003CEthereumGasPolicy\u003E",
+    "registration": {
+      "stage": "mainnetRegistration",
+      "method": "BlockProcessingModule.Load",
+      "canonicalSyntax": "builder//Validators.AddSingleton\u003CTxValidator,ISpecProvider\u003E((spec)=\u003EnewTxValidator(spec.ChainId)).Bind\u003CITxValidator,TxValidator\u003E().AddKeyedSingleton\u003CITxValidator\u003E(ITxValidator.SpecChangeTxValidatorKey,staticctx=\u003EnewSpecChangeTxValidator(ctx.Resolve\u003CISpecProvider\u003E().ChainId)).AddSingleton\u003CIBlockValidator,BlockValidator\u003E().AddSingleton\u003CIHeaderValidator,HeaderValidator\u003E().AddSingleton\u003CIUnclesValidator,UnclesValidator\u003E().AddLast\u003CITxGossipPolicy,SpecDrivenTxGossipPolicy\u003E()//Blockpreprocessorsteps,injectedasanorderedIReadOnlyList\u003CIBlockPreprocessorStep\u003E.//Consensuspluginsprepend/appendtheirownstepsviathesameDSL..AddFirst\u003CIBlockPreprocessorStep,RecoverSignatures\u003E()//Blockprocessingcomponentscommonbetweenrpc,validationandproduction.AddScoped\u003CITransactionProcessor.IBlobBaseFeeCalculator,BlobBaseFeeCalculator\u003E().AddScoped\u003CITransactionProcessor,EthereumTransactionProcessor\u003E()",
+      "startLine": 41,
+      "startColumn": 9,
+      "endLine": 59,
+      "endColumn": 78
+    }
+  },
+  "lifecycle": {
+    "restoreFormula": "opts.HasFlag(ExecutionOptions.Restore)",
+    "commitFormula": "opts.HasFlag(ExecutionOptions.Commit) || (!opts.HasFlag(ExecutionOptions.SkipValidation) \u0026\u0026 !spec.IsEip658Enabled)",
+    "commitBeforeFormula": "commit \u0026\u0026 (simpleTransferRecipient is null || restore || tracer.IsTracingState)",
+    "admissionStages": [
+      {
+        "stage": "recoverSenderBeforeIntrinsicGas",
+        "method": "Execute(Transaction, tracer, options)",
+        "canonicalSyntax": "RecoverSenderBeforeIntrinsicGas(tx,spec)",
+        "startLine": 204,
+        "startColumn": 13,
+        "endLine": 204,
+        "endColumn": 54
+      },
+      {
+        "stage": "calculateIntrinsicGas",
+        "method": "Execute(Transaction, tracer, options)",
+        "canonicalSyntax": "CalculateIntrinsicGas(tx,spec,header.GasLimit)",
+        "startLine": 205,
+        "startColumn": 53,
+        "endLine": 205,
+        "endColumn": 101
+      },
+      {
+        "stage": "validateStatic",
+        "method": "Execute(..., intrinsicGas)",
+        "canonicalSyntax": "ValidateStatic(tx,header,spec,opts,inintrinsicGas)",
+        "startLine": 232,
+        "startColumn": 28,
+        "endLine": 232,
+        "endColumn": 83
+      },
+      {
+        "stage": "calculateEffectiveGasPrice",
+        "method": "Execute(..., intrinsicGas)",
+        "canonicalSyntax": "CalculateEffectiveGasPrice(tx,spec.IsEip1559Enabled,header.BaseFeePerGas,outUInt256opcodeGasPrice)",
+        "startLine": 234,
+        "startColumn": 41,
+        "endLine": 234,
+        "endColumn": 144
+      },
+      {
+        "stage": "updateMetrics",
+        "method": "Execute(..., intrinsicGas)",
+        "canonicalSyntax": "UpdateMetrics(opts,effectiveGasPrice)",
+        "startLine": 236,
+        "startColumn": 13,
+        "endLine": 236,
+        "endColumn": 51
+      },
+      {
+        "stage": "recoverSenderIfNeeded",
+        "method": "Execute(..., intrinsicGas)",
+        "canonicalSyntax": "RecoverSenderIfNeeded(tx,spec,opts,effectiveGasPrice)",
+        "startLine": 238,
+        "startColumn": 40,
+        "endLine": 238,
+        "endColumn": 96
+      },
+      {
+        "stage": "validateSender",
+        "method": "Execute(..., intrinsicGas)",
+        "canonicalSyntax": "ValidateSender(tx,header,spec,tracer,opts)",
+        "startLine": 240,
+        "startColumn": 28,
+        "endLine": 240,
+        "endColumn": 74
+      },
+      {
+        "stage": "buyGas",
+        "method": "Execute(..., intrinsicGas)",
+        "canonicalSyntax": "BuyGas(tx,spec,tracer,opts,effectiveGasPrice,outUInt256premiumPerGas,outUInt256senderReservedGasPayment,outUInt256blobBaseFee)",
+        "startLine": 241,
+        "startColumn": 28,
+        "endLine": 241,
+        "endColumn": 167
+      },
+      {
+        "stage": "incrementNonce",
+        "method": "Execute(..., intrinsicGas)",
+        "canonicalSyntax": "IncrementNonce(tx,header,spec,tracer,opts)",
+        "startLine": 242,
+        "startColumn": 28,
+        "endLine": 242,
+        "endColumn": 74
+      },
+      {
+        "stage": "prepareSimpleTransferFastPath",
+        "method": "Execute(..., intrinsicGas)",
+        "canonicalSyntax": "PrepareSimpleTransferFastPath(tx,spec,outCodeInfo?preloadedCodeInfo,outAddress?preloadedDelegationAddress)",
+        "startLine": 251,
+        "startColumn": 48,
+        "endLine": 251,
+        "endColumn": 161
+      },
+      {
+        "stage": "commitBeforeExecution",
+        "method": "Execute(..., intrinsicGas)",
+        "canonicalSyntax": "WorldState.Commit(spec,tracer.IsTracingState?tracer:NullTxTracer.Instance,commitRoots:false)",
+        "startLine": 254,
+        "startColumn": 40,
+        "endLine": 254,
+        "endColumn": 139
+      },
+      {
+        "stage": "calculateAvailableGas",
+        "method": "Execute(..., intrinsicGas)",
+        "canonicalSyntax": "CalculateAvailableGas(tx,spec,inintrinsicGas,outTGasPolicygasAvailable)",
+        "startLine": 256,
+        "startColumn": 28,
+        "endLine": 256,
+        "endColumn": 105
+      },
+      {
+        "stage": "dispatchSimpleTransfer",
+        "method": "Execute(..., intrinsicGas)",
+        "canonicalSyntax": "ExecuteSimpleTransfer(tx,header,spec,tracer,opts,restore,commit,deleteCallerAccount,simpleTransferRecipient,inintrinsicGas,gasAvailable,inopcodeGasPrice,inpremiumPerGas,insenderReservedGasPayment,inblobBaseFee)",
+        "startLine": 260,
+        "startColumn": 24,
+        "endLine": 260,
+        "endColumn": 253
+      },
+      {
+        "stage": "dispatchEvm",
+        "method": "Execute(..., intrinsicGas)",
+        "canonicalSyntax": "ExecuteEvmTransaction(tx,header,spec,tracer,opts,restore,commit,deleteCallerAccount,inintrinsicGas,gasAvailable,inopcodeGasPrice,inpremiumPerGas,insenderReservedGasPayment,inblobBaseFee,preloadedCodeInfo,preloadedDelegationAddress)",
+        "startLine": 263,
+        "startColumn": 20,
+        "endLine": 263,
+        "endColumn": 271
+      }
+    ],
+    "rejectionGates": [
+      "validateStatic",
+      "validateSender",
+      "buyGas",
+      "incrementNonce",
+      "calculateAvailableGas"
+    ],
+    "restoreOnRejectionGates": [
+      "validateSender",
+      "buyGas",
+      "incrementNonce"
+    ],
+    "simpleTransferTail": [
+      {
+        "stage": "recipientStateCharge",
+        "method": "ExecuteSimpleTransfer",
+        "canonicalSyntax": "TGasPolicy.TryConsumeStateGas(refgasAvailable,TGasPolicy.GetNewAccountStateCost())",
+        "startLine": 459,
+        "startColumn": 39,
+        "endLine": 459,
+        "endColumn": 123
+      },
+      {
+        "stage": "payValue",
+        "method": "ExecuteSimpleTransfer",
+        "canonicalSyntax": "PayValue(tx,spec,opts)",
+        "startLine": 466,
+        "startColumn": 39,
+        "endLine": 466,
+        "endColumn": 63
+      },
+      {
+        "stage": "refund",
+        "method": "ExecuteSimpleTransfer",
+        "canonicalSyntax": "Refund(tx,header,spec,opts,insubstate,ingasAvailable,inopcodeGasPrice,codeInsertRefunds:0,infloorGas,instandardGas,postIntrinsicStateReservoir)",
+        "startLine": 514,
+        "startColumn": 36,
+        "endLine": 514,
+        "endColumn": 195
+      },
+      {
+        "stage": "headerGasAndPayFees",
+        "method": "ExecuteSimpleTransfer",
+        "canonicalSyntax": "UpdateHeaderGasUsedAndPayFees(tx,header,spec,tracer,opts,insubstate,inspentGas,premiumPerGas,inopcodeGasPrice,blobBaseFee,statusCode)",
+        "startLine": 523,
+        "startColumn": 13,
+        "endLine": 523,
+        "endColumn": 159
+      },
+      {
+        "stage": "finalizeTransaction",
+        "method": "ExecuteSimpleTransfer",
+        "canonicalSyntax": "FinalizeTransaction(tx,spec,tracer,opts,restore,commit,deleteCallerAccount,insenderReservedGasPayment,recipient,insubstate,spentGas,statusCode)",
+        "startLine": 524,
+        "startColumn": 20,
+        "endLine": 524,
+        "endColumn": 176
+      }
+    ],
+    "evmTail": [
+      {
+        "stage": "processDelegations",
+        "method": "ExecuteEvmTransaction",
+        "canonicalSyntax": "ProcessDelegations(tx,spec,accessTracker,refgasAvailable,refexecutionIntrinsicGasStandard,outdelegationRefunds)",
+        "startLine": 332,
+        "startColumn": 22,
+        "endLine": 332,
+        "endColumn": 141
+      },
+      {
+        "stage": "buildExecutionEnvironment",
+        "method": "ExecuteEvmTransaction",
+        "canonicalSyntax": "BuildExecutionEnvironment(tx,spec,_codeInfoRepository,accessTracker,preloadedCodeInfo,preloadedDelegationAddress,loadRecipient,refgasAvailable,reftopFrameOutOfGas,outExecutionEnvironmente)",
+        "startLine": 346,
+        "startColumn": 28,
+        "endLine": 346,
+        "endColumn": 229
+      },
+      {
+        "stage": "recipientStateCharge",
+        "method": "ExecuteEvmTransaction",
+        "canonicalSyntax": "TGasPolicy.TryConsumeStateGas(refgasAvailable,TGasPolicy.GetNewAccountStateCost())",
+        "startLine": 357,
+        "startColumn": 37,
+        "endLine": 357,
+        "endColumn": 121
+      },
+      {
+        "stage": "executeEvmCall",
+        "method": "ExecuteEvmTransaction",
+        "canonicalSyntax": "ExecuteEvmCall\u003COffFlag\u003E(tx,header,spec,tracer,opts,delegationRefunds,executionIntrinsicGas,postIntrinsicStateReservoir,accessTracker,gasAvailable,env,topFrameOutOfGas,outTransactionSubstatesubstate,outGasConsumedspentGas)",
+        "startLine": 375,
+        "startColumn": 17,
+        "endLine": 375,
+        "endColumn": 255
+      },
+      {
+        "stage": "headerGasAndPayFees",
+        "method": "ExecuteEvmTransaction",
+        "canonicalSyntax": "UpdateHeaderGasUsedAndPayFees(tx,header,spec,tracer,opts,insubstate,inspentGas,premiumPerGas,inopcodeGasPrice,blobBaseFee,statusCode)",
+        "startLine": 378,
+        "startColumn": 13,
+        "endLine": 378,
+        "endColumn": 159
+      },
+      {
+        "stage": "deferredDestroyList",
+        "method": "ExecuteEvmTransaction",
+        "canonicalSyntax": "FinalizeDestroyedAccount(WorldState,insubstate,buffer[i],commit,removeSelfdestructBurn)",
+        "startLine": 398,
+        "startColumn": 29,
+        "endLine": 398,
+        "endColumn": 121
+      },
+      {
+        "stage": "finalizeTransaction",
+        "method": "ExecuteEvmTransaction",
+        "canonicalSyntax": "FinalizeTransaction(tx,spec,tracer,opts,restore,commit,deleteCallerAccount,insenderReservedGasPayment,env.ExecutingAccount,insubstate,spentGas,statusCode)",
+        "startLine": 424,
+        "startColumn": 20,
+        "endLine": 424,
+        "endColumn": 187
+      }
+    ],
+    "evmCallPartialOrder": [
+      {
+        "before": {
+          "stage": "topExecutionSnapshot",
+          "method": "ExecuteEvmCall",
+          "canonicalSyntax": "WorldState.TakeSnapshot()",
+          "startLine": 1345,
+          "startColumn": 33,
+          "endLine": 1345,
+          "endColumn": 58
+        },
+        "after": {
+          "stage": "payValue",
+          "method": "ExecuteEvmCall",
+          "canonicalSyntax": "PayValue(tx,spec,opts)",
+          "startLine": 1401,
+          "startColumn": 13,
+          "endLine": 1401,
+          "endColumn": 37
+        }
+      },
+      {
+        "before": {
+          "stage": "payValue",
+          "method": "ExecuteEvmCall",
+          "canonicalSyntax": "PayValue(tx,spec,opts)",
+          "startLine": 1401,
+          "startColumn": 13,
+          "endLine": 1401,
+          "endColumn": 37
+        },
+        "after": {
+          "stage": "vmExecution",
+          "method": "ExecuteEvmCall",
+          "canonicalSyntax": "VirtualMachine.ExecuteTransaction(state,WorldState,tracer)",
+          "startLine": 1419,
+          "startColumn": 23,
+          "endLine": 1419,
+          "endColumn": 83
+        }
+      },
+      {
+        "before": {
+          "stage": "vmExecution",
+          "method": "ExecuteEvmCall",
+          "canonicalSyntax": "VirtualMachine.ExecuteTransaction(state,WorldState,tracer)",
+          "startLine": 1419,
+          "startColumn": 23,
+          "endLine": 1419,
+          "endColumn": 83
+        },
+        "after": {
+          "stage": "executionRollback",
+          "method": "ExecuteEvmCall",
+          "canonicalSyntax": "WorldState.Restore(snapshot)",
+          "startLine": 1434,
+          "startColumn": 21,
+          "endLine": 1434,
+          "endColumn": 49
+        }
+      },
+      {
+        "before": {
+          "stage": "vmExecution",
+          "method": "ExecuteEvmCall",
+          "canonicalSyntax": "VirtualMachine.ExecuteTransaction(state,WorldState,tracer)",
+          "startLine": 1419,
+          "startColumn": 23,
+          "endLine": 1419,
+          "endColumn": 83
+        },
+        "after": {
+          "stage": "deployment",
+          "method": "ExecuteEvmCall",
+          "canonicalSyntax": "DeployContract(spec,env.ExecutingAccount,insubstate,inaccessedItems,refgasAvailable)",
+          "startLine": 1441,
+          "startColumn": 30,
+          "endLine": 1441,
+          "endColumn": 121
+        }
+      },
+      {
+        "before": {
+          "stage": "executionRollback",
+          "method": "ExecuteEvmCall",
+          "canonicalSyntax": "WorldState.Restore(snapshot)",
+          "startLine": 1434,
+          "startColumn": 21,
+          "endLine": 1434,
+          "endColumn": 49
+        },
+        "after": {
+          "stage": "refund",
+          "method": "ExecuteEvmCall",
+          "canonicalSyntax": "Refund(tx,header,spec,opts,insubstate,gasAvailable,VirtualMachine.TxExecutionContext.GasPrice,(ulong)delegationRefunds,gas.FloorGas,gas.Standard,postIntrinsicStateReservoir,topLevelCreateStateGasCharged)",
+          "startLine": 1483,
+          "startColumn": 27,
+          "endLine": 1483,
+          "endColumn": 242
+        }
+      },
+      {
+        "before": {
+          "stage": "deployment",
+          "method": "ExecuteEvmCall",
+          "canonicalSyntax": "DeployContract(spec,env.ExecutingAccount,insubstate,inaccessedItems,refgasAvailable)",
+          "startLine": 1441,
+          "startColumn": 30,
+          "endLine": 1441,
+          "endColumn": 121
+        },
+        "after": {
+          "stage": "refund",
+          "method": "ExecuteEvmCall",
+          "canonicalSyntax": "Refund(tx,header,spec,opts,insubstate,gasAvailable,VirtualMachine.TxExecutionContext.GasPrice,(ulong)delegationRefunds,gas.FloorGas,gas.Standard,postIntrinsicStateReservoir,topLevelCreateStateGasCharged)",
+          "startLine": 1483,
+          "startColumn": 27,
+          "endLine": 1483,
+          "endColumn": 242
+        }
+      }
+    ],
+    "methodFingerprints": [
+      {
+        "key": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs:Nethermind.Evm.TransactionProcessing:TransactionProcessorBase/1:method:Execute/3",
+        "sha256": "456eb3167c3fbabe0d5a81d62a48e3818a3c59a0376399df749d1a0405043499"
+      },
+      {
+        "key": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs:Nethermind.Evm.TransactionProcessing:TransactionProcessorBase/1:method:Execute/6",
+        "sha256": "bd2f30b2ef5ffb7dc2daa9d6ac1b8e5f7c1bb779fbcc4079bea54f142ff91be1"
+      },
+      {
+        "key": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs:Nethermind.Evm.TransactionProcessing:TransactionProcessorBase/1:method:ExecuteSimpleTransfer/15",
+        "sha256": "b3a4b0544ecafaf58fab5392b1eb3cf5a74f5ad13832075295281e6e9b13dc84"
+      },
+      {
+        "key": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs:Nethermind.Evm.TransactionProcessing:TransactionProcessorBase/1:method:ExecuteEvmTransaction/16",
+        "sha256": "fb0349e6fb14296142e90160a7a1eef090f0833177fe143be9183c6f9cb3ad89"
+      },
+      {
+        "key": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs:Nethermind.Evm.TransactionProcessing:TransactionProcessorBase/1:method:ExecuteEvmCall/14",
+        "sha256": "39c8cdb3e99f5028a05421420a8ea351297500e83aa018a7ebae8e9d91426bf8"
+      },
+      {
+        "key": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs:Nethermind.Evm.TransactionProcessing:TransactionProcessorBase/1:method:FinalizeTransaction/12",
+        "sha256": "b2fa7d276948dcb0b71acc4d4a47063bab3ac6a6505d3b73403d6c5326df459b"
+      }
+    ],
+    "finalization": {
+      "warmupWriteGate": "!opts.HasFlag(ExecutionOptions.Warmup)",
+      "branchPriority": [
+        "restore",
+        "commit",
+        "resetTransient"
+      ],
+      "restoreActions": [
+        "reset",
+        "deleteCaller | returnReservedGas; decrementNonce; commitWithoutRoots"
+      ],
+      "buildUpReapGate": "opts == ExecutionOptions.BuildUp \u0026\u0026 spec.IsEip8037Enabled",
+      "receiptGate": "tracer.IsTracingReceipt",
+      "receiptStateRootGate": "!spec.IsEip658Enabled",
+      "failureOutputGate": "substate.ShouldRevert",
+      "failureErrorPrecedence": [
+        "substate.Error",
+        "substate.EvmExceptionType",
+        "none"
+      ],
+      "resultGate": "substate.EvmExceptionType != EvmExceptionType.None",
+      "anchors": [
+        {
+          "stage": "writeBlockGas",
+          "method": "FinalizeTransaction",
+          "canonicalSyntax": "if(!opts.HasFlag(ExecutionOptions.Warmup)){tx.BlockGasUsed=spentGas.EffectiveBlockGas;}",
+          "startLine": 633,
+          "startColumn": 13,
+          "endLine": 636,
+          "endColumn": 14
+        },
+        {
+          "stage": "writeSpentGas",
+          "method": "FinalizeTransaction",
+          "canonicalSyntax": "if(!opts.HasFlag(ExecutionOptions.Warmup))tx.SpentGas=spentGas.SpentGas;",
+          "startLine": 639,
+          "startColumn": 13,
+          "endLine": 640,
+          "endColumn": 49
+        },
+        {
+          "stage": "finalizeState",
+          "method": "FinalizeTransaction",
+          "canonicalSyntax": "if(restore){WorldState.Reset(resetBlockChanges:false);if(deleteCallerAccount){WorldState.DeleteAccount(tx.SenderAddress!);}else{if(!senderReservedGasPayment.IsZero){WorldState.AddToBalance(tx.SenderAddress!,senderReservedGasPayment,spec);}DecrementNonce(tx);WorldState.Commit(spec,commitRoots:false);}}elseif(commit){WorldState.Commit(spec,tracer.IsTracingState?tracer:NullStateTracer.Instance,commitRoots:!spec.IsEip658Enabled);}else{WorldState.ResetTransient();if(opts==ExecutionOptions.BuildUp\u0026\u0026spec.IsEip8037Enabled){WorldState.ReapEmptyAccounts();}}",
+          "startLine": 643,
+          "startColumn": 13,
+          "endLine": 673,
+          "endColumn": 14
+        },
+        {
+          "stage": "projectReceipt",
+          "method": "FinalizeTransaction",
+          "canonicalSyntax": "if(tracer.IsTracingReceipt){Hash256?stateRoot=null;if(!spec.IsEip658Enabled){WorldState.RecalculateStateRoot();stateRoot=WorldState.StateRoot;}if(statusCode==StatusCode.Failure){byte[]output=substate.ShouldRevert?substate.Output.AsReadOnlyArray():[];string?error=substate.Error;if(errorisnull\u0026\u0026substate.EvmExceptionTypeisnotEvmExceptionType.None){error=substate.EvmExceptionType.FastToString();}tracer.MarkAsFailed(executingAccount,spentGas,output,error,stateRoot);}else{LogEntry[]logs=substate.Logs.Count!=0?substate.LogsToArray():[];tracer.MarkAsSuccess(executingAccount,spentGas,substate.Output.AsReadOnlyArray(),logs,stateRoot);}}",
+          "startLine": 675,
+          "startColumn": 13,
+          "endLine": 699,
+          "endColumn": 14
+        },
+        {
+          "stage": "projectResult",
+          "method": "FinalizeTransaction",
+          "canonicalSyntax": "returnsubstate.EvmExceptionType!=EvmExceptionType.None?TransactionResult.EvmException(substate.EvmExceptionType,substate.SubstateError):TransactionResult.Ok;",
+          "startLine": 701,
+          "startColumn": 13,
+          "endLine": 703,
+          "endColumn": 40
+        }
+      ]
+    }
+  },
+  "externalObligations": [
+    "sender recovery and intrinsic-gas calculation are total external hooks in this slice",
+    "all validation predicates and detailed TransactionResult error payloads remain external",
+    "effective-price, gas purchase, nonce, and UInt256 arithmetic correctness remain external",
+    "simple-transfer selection, account existence, value transfer, VM execution, and code deposit remain external",
+    "snapshot, rollback, commit, transient reset, empty-account reaping, and state-root correctness remain external",
+    "refund/fee amounts, block counters, destroy-list effects, logs, and receipt payload bytes remain external",
+    "tracer callback implementation and exception behavior remain external",
+    "ContainerBuilder AddScoped DSL semantics, Autofac resolution semantics, and CLR/JIT behavior remain external"
+  ]
+}

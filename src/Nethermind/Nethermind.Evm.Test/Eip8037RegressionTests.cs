@@ -11,6 +11,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -419,9 +420,215 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(false, TestName = "Eip8037_top_level_create_on_existing_target_clears_storage_without_charging_create_state_gas")]
-    [TestCase(true, TestName = "Eip8037_top_level_create_on_pruned_storage_target_clears_stale_storage")]
-    public void Eip8037_top_level_create_clears_storage(bool pruneTarget)
+    [Test]
+    public void Pre_Eip8037_top_level_create_storage_only_target_clears_storage()
+    {
+        byte[] runtimeCode = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+        byte[] initCode = Prepare.EvmCode
+            .ForInitOf(runtimeCode)
+            .Done;
+
+        (Block block, Transaction transaction) = PrepareTx(
+            MainnetSpecProvider.PragueActivation,
+            1_000_000,
+            initCode,
+            value: 0);
+        transaction.To = null;
+        transaction.Data = initCode;
+
+        Address contractAddress = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
+        TestState.CreateAccount(contractAddress, UInt256.Zero);
+        TestState.Set(new StorageCell(contractAddress, 0), [1]);
+        TestState.Commit(SpecProvider.GenesisSpec, commitRoots: false);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        TransactionResult result = _processor.Execute(
+            transaction,
+            new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+            tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(TransactionResult.Ok));
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(TestState.GetCode(contractAddress), Is.EqualTo(runtimeCode));
+            AssertStorage(new StorageCell(contractAddress, 0), UInt256.Zero);
+        }
+    }
+
+    [TestCase(true, TestName = "Eip8037_build_up_reaps_storage_loaded_by_create2_collision_before_retry")]
+    [TestCase(false, TestName = "Eip8037_execute_reaps_storage_loaded_by_create2_collision_before_retry")]
+    public void Eip8037_reaps_storage_loaded_by_create2_collision_before_retry(bool buildUp)
+    {
+        byte[] runtimeCode = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+        byte[] initCode = Prepare.EvmCode
+            .SLOAD(0)
+            .SSTORE(1)
+            .ForInitOf(runtimeCode)
+            .Done;
+        byte[] factoryCode = Prepare.EvmCode
+            .Create2(initCode, DefaultCreate2Salt, UInt256.Zero)
+            .PushData(0)
+            .Op(Instruction.MSTORE)
+            .PushData(32)
+            .PushData(0)
+            .Op(Instruction.RETURN)
+            .Done;
+
+        (Block block, _) = PrepareTx(
+            Activation,
+            1_000_000,
+            factoryCode,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+        block.Header.GasLimit = DynamicStatePricingBlockGasLimit;
+
+        Address contractAddress = ContractAddress.From(Recipient, DefaultCreate2Salt.PadLeft(32), initCode);
+        TestState.CreateAccount(contractAddress, UInt256.Zero);
+        TestState.Set(new StorageCell(contractAddress, 0), [1]);
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(1);
+
+        EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
+        Transaction collision = Build.A.Transaction
+            .WithTo(Recipient)
+            .WithNonce(0)
+            .WithGasLimit(1_000_000)
+            .WithGasPrice(1)
+            .WithValue(0)
+            .SignedAndResolved(ecdsa, SenderKey)
+            .TestObject;
+        Transaction touch = Build.A.Transaction
+            .WithTo(contractAddress)
+            .WithNonce(1)
+            .WithGasLimit(1_000_000)
+            .WithGasPrice(1)
+            .WithValue(0)
+            .SignedAndResolved(ecdsa, SenderKey)
+            .TestObject;
+        Transaction retry = Build.A.Transaction
+            .WithTo(Recipient)
+            .WithNonce(2)
+            .WithGasLimit(1_000_000)
+            .WithGasPrice(1)
+            .WithValue(0)
+            .SignedAndResolved(ecdsa, SenderKey)
+            .TestObject;
+        BlockExecutionContext context = new(block.Header, SpecProvider.GetSpec(block.Header));
+
+        TransactionResult Process(Transaction transaction, ITxTracer tracer) => buildUp
+            ? _processor.BuildUp(transaction, in context, tracer)
+            : _processor.Execute(transaction, in context, tracer);
+
+        TestAllTracerWithOutput collisionTracer = CreateTracer();
+        TransactionResult collisionResult = Process(collision, collisionTracer);
+        TransactionResult touchResult = Process(touch, NullTxTracer.Instance);
+
+        TestAllTracerWithOutput retryTracer = CreateTracer();
+        TransactionResult retryResult = Process(retry, retryTracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(collisionResult, Is.EqualTo(TransactionResult.Ok));
+            Assert.That(collisionTracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(collisionTracer.ReturnValue.IsZero(), Is.True);
+            Assert.That(touchResult, Is.EqualTo(TransactionResult.Ok));
+            Assert.That(TestState.HasEmptyAccountLeaf(contractAddress), Is.False);
+            Assert.That(retryResult, Is.EqualTo(TransactionResult.Ok));
+            Assert.That(retryTracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(TestState.GetCode(contractAddress), Is.EqualTo(runtimeCode));
+            AssertStorage(new StorageCell(contractAddress, 0), UInt256.Zero);
+            AssertStorage(new StorageCell(contractAddress, 1), UInt256.Zero);
+        }
+    }
+
+    [Test]
+    public void Prague_failed_create2_code_deposit_preserves_legacy_empty_leaf()
+    {
+        byte[] childInitCode = Prepare.EvmCode
+            .PushData(33_000)
+            .PushData(0)
+            .Op(Instruction.RETURN)
+            .Done;
+        byte[] factoryCode = BuildCreateFactory(childInitCode, UInt256.Zero, create2: true)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        (Block block, Transaction transaction) = PrepareTx(
+            MainnetSpecProvider.PragueActivation,
+            5_000_000,
+            factoryCode,
+            value: 0);
+        Address target = ContractAddress.From(Recipient, DefaultCreate2Salt.PadLeft(32), childInitCode);
+        StorageCell legacyStorage = new(target, 0);
+        TestState.CreateAccount(target, UInt256.Zero);
+        TestState.Set(legacyStorage, [1]);
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(1);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        TransactionResult result = _processor.Execute(
+            transaction,
+            new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+            tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(TransactionResult.Ok));
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(TestState.HasEmptyAccountLeaf(target), Is.True);
+            Assert.That(TestState.Get(legacyStorage).ToArray(), Is.EqualTo([1]));
+        }
+    }
+
+    [Test]
+    public void Eip8037_build_up_keeps_untouched_legacy_storage_only_target()
+    {
+        (Block block, _) = PrepareTx(
+            Activation,
+            1_000_000,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+        block.Header.GasLimit = DynamicStatePricingBlockGasLimit;
+
+        Address target = Address.FromNumber(0x8037);
+        TestState.CreateAccount(target, UInt256.Zero);
+        TestState.Set(new StorageCell(target, 0), [1]);
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(1);
+
+        Transaction unrelated = Build.A.Transaction
+            .WithTo(TestItem.AddressD)
+            .WithNonce(0)
+            .WithGasLimit(1_000_000)
+            .WithGasPrice(1)
+            .WithValue(0)
+            .SignedAndResolved(new EthereumEcdsa(SpecProvider.ChainId), SenderKey)
+            .TestObject;
+        BlockExecutionContext context = new(block.Header, SpecProvider.GetSpec(block.Header));
+
+        TransactionResult result = _processor.BuildUp(unrelated, in context, NullTxTracer.Instance);
+        bool collision = TestState.IsCreateCollision(
+            target,
+            includeStorageCollision: true,
+            out bool physicalLeafExists,
+            out bool logicalAccountExists);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(TransactionResult.Ok));
+            Assert.That(physicalLeafExists, Is.True);
+            Assert.That(logicalAccountExists, Is.False);
+            Assert.That(collision, Is.True);
+        }
+    }
+
+    [TestCase(false, TestName = "Eip8037_top_level_create_on_balance_and_storage_target_collides_without_state_gas")]
+    [TestCase(true, TestName = "Eip8037_top_level_create_on_storage_only_target_refills_state_gas")]
+    public void Eip8037_top_level_create_storage_collision_preserves_target(bool storageOnlyTarget)
     {
         byte[] initCode = Prepare.EvmCode
             .Op(Instruction.STOP)
@@ -437,17 +644,10 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         transaction.Data = initCode;
 
         Address contractAddress = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
-        TestState.CreateAccount(contractAddress, pruneTarget ? UInt256.Zero : (UInt256)1);
+        TestState.CreateAccount(contractAddress, storageOnlyTarget ? UInt256.Zero : (UInt256)1);
         TestState.Set(new StorageCell(contractAddress, 0), [1]);
-        if (pruneTarget)
-        {
-            TestState.Commit(Spec, commitRoots: false);
-            Assert.That(TestState.AccountExists(contractAddress), Is.False);
-        }
-
-        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, Spec);
-        if (!pruneTarget)
-            transaction.GasLimit = intrinsicGas.MinimalGas;
+        TestState.Commit(SpecProvider.GenesisSpec, commitRoots: false);
+        Assert.That(TestState.AccountExists(contractAddress), Is.True);
         block.Header.GasLimit = DynamicStatePricingBlockGasLimit;
 
         TestAllTracerWithOutput tracer = CreateTracer();
@@ -455,12 +655,100 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-            if (!pruneTarget)
-                Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(intrinsicGas.MinimalGas));
-            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(pruneTarget ? (ulong)GasCostOf.CreateState : 0));
-            Assert.That(TestState.GetBalance(contractAddress), Is.EqualTo(pruneTarget ? UInt256.Zero : (UInt256)1));
-            AssertStorage(new StorageCell(contractAddress, 0), UInt256.Zero);
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(transaction.GasLimit));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(transaction.GasLimit));
+            Assert.That(TestState.GetBalance(contractAddress), Is.EqualTo(storageOnlyTarget ? UInt256.Zero : (UInt256)1));
+            AssertStorage(new StorageCell(contractAddress, 0), UInt256.One);
+        }
+    }
+
+    [TestCase(false, EvmExceptionType.TransactionCollision,
+        TestName = "Eip8037_top_level_create_existing_storage_target_does_not_charge_create_state_gas")]
+    [TestCase(true, EvmExceptionType.OutOfGas,
+        TestName = "Eip8037_top_level_create_storage_only_collision_charges_before_collision")]
+    public void Eip8037_top_level_create_storage_collision_uses_logical_existence(
+        bool storageOnlyTarget,
+        EvmExceptionType expectedException)
+    {
+        byte[] initCode = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+
+        (Block block, Transaction transaction) = PrepareTx(
+            Activation,
+            1_000_000,
+            initCode,
+            value: 0,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+        transaction.To = null;
+        transaction.Data = initCode;
+
+        Address contractAddress = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
+        TestState.CreateAccount(contractAddress, storageOnlyTarget ? UInt256.Zero : UInt256.One);
+        TestState.Set(new StorageCell(contractAddress, 0), [1]);
+        TestState.Commit(SpecProvider.GenesisSpec, commitRoots: false);
+
+        EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, Spec);
+        transaction.GasLimit = intrinsicGas.Standard + (ulong)GasCostOf.CreateState - 1;
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        TransactionResult result = _processor.Execute(
+            transaction,
+            new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+            tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.EvmExceptionType, Is.EqualTo(expectedException));
+            Assert.That(tracer.Error, Is.EqualTo(expectedException.ToString()));
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(transaction.GasLimit));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            Assert.That(TestState.GetBalance(contractAddress), Is.EqualTo(storageOnlyTarget ? UInt256.Zero : UInt256.One));
+            AssertStorage(new StorageCell(contractAddress, 0), UInt256.One);
+        }
+    }
+
+    [Test]
+    public void Eip8037_top_level_create_storage_only_collision_refills_reservoir()
+    {
+        byte[] initCode = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+        ulong gasLimit = Eip7825Constants.DefaultTxGasLimitCap + GasCostOf.CreateState;
+
+        (Block block, Transaction transaction) = PrepareTx(
+            Activation,
+            gasLimit,
+            initCode,
+            value: 0,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+        transaction.To = null;
+        transaction.Data = initCode;
+
+        Address contractAddress = ContractAddress.From(transaction.SenderAddress!, transaction.Nonce);
+        TestState.CreateAccount(contractAddress, UInt256.Zero);
+        TestState.Set(new StorageCell(contractAddress, 0), [1]);
+        TestState.Commit(SpecProvider.GenesisSpec, commitRoots: false);
+        UInt256 senderBalanceBefore = TestState.GetBalance(Sender);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        TransactionResult result = _processor.Execute(
+            transaction,
+            new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+            tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.TransactionCollision));
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(Eip7825Constants.DefaultTxGasLimitCap));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(Eip7825Constants.DefaultTxGasLimitCap));
+            Assert.That(TestState.GetBalance(Sender), Is.EqualTo(senderBalanceBefore - Eip7825Constants.DefaultTxGasLimitCap));
+            AssertStorage(new StorageCell(contractAddress, 0), UInt256.One);
         }
     }
 
@@ -532,6 +820,60 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(expectedPaidGas));
             Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(expectedAuthorizationStateGas));
             Assert.That(block.Header.GasUsed, Is.EqualTo(Math.Max(tracer.CumulativeExecutionGasUsed, expectedAuthorizationStateGas)));
+        }
+    }
+
+    [TestCase(false, TestName = "Eip8037_authorization_charges_new_account_state_gas_for_physical_empty_authority")]
+    [TestCase(true, TestName = "Eip8037_authorization_charges_new_account_state_gas_for_storage_only_authority")]
+    public void Eip8037_authorization_charges_new_account_state_gas_for_logically_nonexistent_authority(bool storageOnly)
+    {
+        EthereumEcdsa ecdsa = new(SpecProvider.ChainId);
+        PrivateKey authorityKey = TestItem.PrivateKeyC;
+        Address authority = authorityKey.Address;
+        Address codeSource = TestItem.AddressE;
+
+        TestState.CreateAccount(authority, 0);
+        if (storageOnly)
+        {
+            TestState.Set(new StorageCell(authority, 0), [1]);
+        }
+        TestState.CreateAccount(codeSource, 0);
+        TestState.InsertCode(codeSource, Prepare.EvmCode.Op(Instruction.STOP).Done, SpecProvider.GenesisSpec);
+
+        const long gasLimit = 1_000_000;
+        Transaction transaction = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(Recipient)
+            .WithGasLimit(gasLimit)
+            .WithGasPrice(1)
+            .WithAuthorizationCode(ecdsa.Sign(authorityKey, SpecProvider.ChainId, codeSource, 0))
+            .SignedAndResolved(ecdsa, SenderKey, true)
+            .TestObject;
+        (Block block, _) = PrepareTx(
+            Activation,
+            gasLimit,
+            transaction: transaction,
+            blockGasLimit: DynamicStatePricingBlockGasLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestState.AccountExists(authority), Is.True);
+            Assert.That(TestState.IsDeadAccount(authority), Is.True);
+        }
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.NewAccountState + GasCostOf.PerAuthBaseState));
+            Assert.That(TestState.GetNonce(authority), Is.EqualTo(1ul));
+            Assert.That(Eip7702Constants.IsDelegatedCode(TestState.GetCode(authority)), Is.True);
+            if (storageOnly)
+            {
+                Assert.That(TestState.Get(new StorageCell(authority, 0)).ToArray(), Is.EqualTo(new byte[] { 1 }));
+            }
         }
     }
 
@@ -731,9 +1073,9 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(false, TestName = "Eip8037_nested_pruned_storage_only_target_charges_create_state_gas_CREATE")]
-    [TestCase(true, TestName = "Eip8037_nested_pruned_storage_only_target_charges_create_state_gas_CREATE2")]
-    public void Eip8037_nested_pruned_storage_only_target_charges_create_state_gas(bool create2)
+    [TestCase(false, 410_412UL, TestName = "Eip8037_nested_storage_only_target_collision_refills_state_gas_CREATE")]
+    [TestCase(true, 410_412UL, TestName = "Eip8037_nested_storage_only_target_collision_refills_state_gas_CREATE2")]
+    public void Eip8037_nested_storage_only_target_collision_refills_state_gas(bool create2, ulong expectedBlockGas)
     {
         byte[] initCode = Prepare.EvmCode
             .Op(Instruction.STOP)
@@ -744,8 +1086,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             : ContractAddress.From(Recipient, 0);
         TestState.CreateAccount(createAddress, 0);
         TestState.Set(new StorageCell(createAddress, 0), [1]);
-        TestState.Commit(Spec, commitRoots: false);
-        Assert.That(TestState.AccountExists(createAddress), Is.False);
+        TestState.Commit(SpecProvider.GenesisSpec, commitRoots: false);
+        Assert.That(TestState.AccountExists(createAddress), Is.True);
 
         Prepare codeBuilder = create2
             ? Prepare.EvmCode.Create2(initCode, salt, UInt256.Zero)
@@ -760,8 +1102,10 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo((ulong)GasCostOf.CreateState));
-            AssertStorage(new StorageCell(createAddress, 0), UInt256.Zero);
+            Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+            Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(expectedBlockGas));
+            Assert.That(TestState.AccountExists(createAddress), Is.True);
+            AssertStorage(new StorageCell(createAddress, 0), UInt256.One);
         }
     }
 

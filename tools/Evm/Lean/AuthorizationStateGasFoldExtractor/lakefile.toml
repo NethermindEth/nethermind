@@ -1,0 +1,11 @@
+name = "AuthorizationStateGasFoldExtractor"
+version = "0.1.0"
+defaultTargets = ["AuthorizationStateGasFoldExtractor.Refinement.AuthorizationStateGasFold"]
+
+[[lean_lib]]
+name = "Eip803x"
+srcDir = ".."
+
+[[lean_lib]]
+name = "AuthorizationStateGasFoldExtractor"
+srcDir = ".."

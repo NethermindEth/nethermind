@@ -40,6 +40,7 @@ public static partial class EvmInstructions
     /// </summary>
     /// <typeparam name="TGasPolicy">The gas policy used for gas accounting.</typeparam>
     /// <typeparam name="TOpMath">A struct implementing <see cref="IOpMath1Param"/> for the specific math operation.</typeparam>
+    /// <typeparam name="TTracingInst">Indicates whether instruction-level tracing is active.</typeparam>
     /// <param name="_">An unused virtual machine instance.</param>
     /// <param name="stack">The EVM stack from which the operand is read and where the result is written.</param>
     /// <param name="gas">Reference to the gas state, updated by the operation's cost.</param>
@@ -48,22 +49,24 @@ public static partial class EvmInstructions
     /// <see cref="EvmExceptionType.StackUnderflow"/> if the stack is empty.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath1Param<TGasPolicy, TOpMath>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> _)
+    public static EvmExceptionType InstructionMath1Param<TGasPolicy, TOpMath, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> _)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpMath : struct, IOpMath1Param
+        where TTracingInst : struct, IFlag
     {
         // Deduct the gas cost associated with the math operation.
         if (!TGasPolicy.UpdateGas<TOpMath>(ref gas)) return EvmExceptionType.OutOfGas;
 
-        return Math1ParamCore<TOpMath, OnFlag>(ref stack);
+        return Math1ParamCore<TOpMath, TTracingInst, OnFlag>(ref stack);
     }
 
-    /// <summary>Gas-free body of <see cref="InstructionMath1Param{TGasPolicy, TOpMath}"/>.</summary>
+    /// <summary>Gas-free body of <see cref="InstructionMath1Param{TGasPolicy, TOpMath, TTracingInst}"/>.</summary>
     /// <remarks>When <typeparamref name="TCheckDepth"/> is inactive, the caller must have verified at least 1 stack item.</remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static EvmExceptionType Math1ParamCore<TOpMath, TCheckDepth>(ref EvmStack stack)
+    internal static EvmExceptionType Math1ParamCore<TOpMath, TTracingInst, TCheckDepth>(ref EvmStack stack)
         where TOpMath : struct, IOpMath1Param
+        where TTracingInst : struct, IFlag
         where TCheckDepth : struct, IFlag
     {
         // Folding a word down to a scalar through an EvmWord value makes the operand address-taken, so
@@ -76,6 +79,7 @@ public static partial class EvmInstructions
 
             ref byte slot = ref stack.PeekBytesByRefUnchecked();
             WriteSmallWordToSlot(ref slot, EvmStack.IsSlotZero(ref slot) ? 1UL : 0UL);
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref slot);
             return EvmExceptionType.None;
         }
 
@@ -91,6 +95,7 @@ public static partial class EvmInstructions
             Add(ref value, 1) = ~Add(ref value, 1);
             Add(ref value, 2) = ~Add(ref value, 2);
             Add(ref value, 3) = ~Add(ref value, 3);
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref valueBytes);
             return EvmExceptionType.None;
         }
 
@@ -105,6 +110,7 @@ public static partial class EvmInstructions
         // Write the computed result directly back to the stack slot.
         WriteUnaligned(ref bytesRef, result);
 
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref bytesRef);
         return EvmExceptionType.None;
         // Label for error handling when the stack does not have the required element.
     StackUnderflow:
@@ -143,7 +149,8 @@ public static partial class EvmInstructions
     /// </remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static EvmExceptionType CountLeadingZerosCore<TCheckDepth>(ref EvmStack stack)
+    internal static EvmExceptionType CountLeadingZerosCore<TTracingInst, TCheckDepth>(ref EvmStack stack)
+        where TTracingInst : struct, IFlag
         where TCheckDepth : struct, IFlag
     {
         if (TCheckDepth.IsActive && !stack.EnsureDepth(1))
@@ -153,6 +160,7 @@ public static partial class EvmInstructions
         // The counter already answers 256 for a zero word, so no special case is needed for it.
         ulong count = (ulong)Bytes.CountLeadingZeroBits(ref slot);
         WriteSmallWordToSlot(ref slot, count);
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref slot);
         return EvmExceptionType.None;
     }
 
@@ -221,9 +229,11 @@ public static partial class EvmInstructions
     /// Implements the SIGNEXTEND opcode.
     /// Performs sign extension on a 256-bit integer in-place based on a specified byte index.
     /// </summary>
+    /// <typeparam name="TTracingInst">Indicates whether instruction-level tracing is active.</typeparam>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSignExtend<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
+    public static EvmExceptionType InstructionSignExtend<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
     {
         if (!TGasPolicy.UpdateGas<LowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
@@ -242,6 +252,7 @@ public static partial class EvmInstructions
             (indexLow & 0x00FF_FFFF_FFFF_FFFFUL)) != 0 || selector >= EvmStack.WordSize)
         {
             // If the index is out-of-range, no extension is needed.
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref bytesRef);
             return EvmExceptionType.None;
         }
 
@@ -261,6 +272,7 @@ public static partial class EvmInstructions
             EvmWord prefixMask = Vector256.LoadUnsafe(
                 ref MemoryMarshal.GetReference(SignExtendPrefixMask), (nuint)(EvmStack.WordSize - position));
             Vector256.ConditionalSelect(prefixMask, fill, Vector256.LoadUnsafe(ref bytesRef)).StoreUnsafe(ref bytesRef);
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref bytesRef);
             return EvmExceptionType.None;
         }
 
@@ -274,6 +286,7 @@ public static partial class EvmInstructions
             prefixMask = Vector128.LoadUnsafe(ref maskRef, (nuint)Vector128<byte>.Count);
             Vector128.ConditionalSelect(prefixMask, fill, Vector128.LoadUnsafe(ref bytesRef, (nuint)Vector128<byte>.Count))
                 .StoreUnsafe(ref bytesRef, (nuint)Vector128<byte>.Count);
+            if (TTracingInst.IsActive) stack.ReportPushWord(ref bytesRef);
             return EvmExceptionType.None;
         }
 #endif
@@ -305,6 +318,7 @@ public static partial class EvmInstructions
             partialWord ^= (partialWord ^ fillWord) & mask;
         }
 
+        if (TTracingInst.IsActive) stack.ReportPushWord(ref bytesRef);
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:

@@ -1,0 +1,243 @@
+{
+  "schemaVersion": 1,
+  "package": "OrdinaryEvmCompletionExtractor",
+  "acceptanceState": "static-draft-unreviewed",
+  "leanToolchain": "leanprover/lean4:v4.33.1",
+  "theorems": [
+    "EvmTransactionPreparationExtractor.Refinement.generated_refines_reference",
+    "OrdinaryTransactionRefundAdapterExtractor.Refinement.OrdinaryTransactionRefund.generated_refines_spec",
+    "ReceiptTerminalFoldExtractor.Refinement.ReceiptTerminalFold.generatedFinalizeTransaction_refines_spec"
+  ],
+  "files": [
+    {
+      "path": "tools/Evm/Lean/AuthorizationStateGasFoldExtractor/Generated/AuthorizationStateGasFold.lean",
+      "sha256": "562a288d1ce8538310287867dd1346e74431693c1d5b4bef7e83103a22a790be",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/AuthorizationStateGasFoldExtractor/Refinement/AuthorizationStateGasFold.lean",
+      "sha256": "8340d14520ac44e4b8e542373be1bbcda6b215fb381c2f879f3bc872075e950d",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/BlockReceiptGas.lean",
+      "sha256": "51f1df6a272adf776aac2cea085e6d063e25997310eb77c29e99fe5970b62a6e",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Gas.lean",
+      "sha256": "9de536802dec28031f51a6c4321fe1fd4ce7652b3426a43e1256ae4cc39c075b",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Generated/BlockReceiptGasAccountingKernel.lean",
+      "sha256": "5d7851084945d5263dd87bcda4ae9e60ce7b779473a7c37617a96cf0e91026f2",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Generated/StateGasChargeKernel.lean",
+      "sha256": "d6a09be29c449e3f005d84cde988a619e03c4d2b0a69fcf0989f879b2fc87337",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Generated/StateGasTransitionAdapterKernel.lean",
+      "sha256": "95a3e2fadce28e7a98a666f4d57d82a7d174f05e4492979968708843b752091a",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Generated/StateGasTransitionKernel.lean",
+      "sha256": "f284d83951b94cbfaf10ad8b5a58b0015b2c96f4ac86e97c9de8b3865dee1dce",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Generated/TransactionGasInitializationKernel.lean",
+      "sha256": "83ce996d6dcc93a588114e73737a25a14cb21689e9e8900e6dc68a07fb170b6f",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Generated/TransactionSettlementKernel.lean",
+      "sha256": "21e4c3ef135618a96bd5e7d2111e0be0bb272840b7d9ca427f17ef7777e2401c",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Production.lean",
+      "sha256": "4bc54d28101015c6ada5df75f9bc083468804536446b8e9f90efeb3f3026a66c",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Refinement/BlockReceiptGasAccounting.lean",
+      "sha256": "6d8a1c1de3f99c43f24576a6358e083fcce43cfe23037bd54cfececfbda5dfe5",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Refinement/StateGasCharge.lean",
+      "sha256": "4cb359f611ef04300618f9109ac89ca6b32c857c8e9e6c2305e11a0323d57ead",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Refinement/StateGasTransition.lean",
+      "sha256": "a3d3beb8004c1431e2550a702f84d816751657ad90c8320ddc5809956da41cec",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Refinement/StateGasTransitionAdapter.lean",
+      "sha256": "77fb2fce964efc1203658d96dc7e977d3c9ede587ab21c1ea13d2a33f716bb0c",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Refinement/StateGasTransitionAdapterKernel.lean",
+      "sha256": "b72895f08007be0481b12bd38560f4dde3a059f30c23595e9cd060f35ab34b29",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Refinement/TransactionGasInitialization.lean",
+      "sha256": "8986504ad786cc621dcb0c74400980366847c43d832830973f52a5d38c290578",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Refinement/TransactionSettlement.lean",
+      "sha256": "bb34d4962f22231ae1d466dfe0302ebaa40ba07624e6f43e28f282b9700b0f25",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/Schedule.lean",
+      "sha256": "84f5f3bf4d6f570e1fb3c2ccc560336c845baafa81c5e1db828e433654524868",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/TransactionGas.lean",
+      "sha256": "2e87721125c6430eab9c76dc8f32a11f4898db0dec68b57a48043c18cbdeefcd",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/Eip803x/TransactionSettlement.lean",
+      "sha256": "db349833a4caa046083b37e3b796a0a8cb631e561741dfff27e78757d29f9be2",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/EvmTransactionPreparationExtractor/EXPORTED_THEOREMS.txt",
+      "sha256": "cfe2d2125a53f8aa80a0fd43b9cb97b5742ef97062a2c7e39505394a89a73f50",
+      "role": "accepted-axiom-audit-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Generated/EvmTransactionPreparation.lean",
+      "sha256": "471e789607e8a294c6deb2148291578a185c77d970360e16e1fa0958f3987930",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/EvmTransactionPreparationExtractor/IMPORTED_THEOREMS.txt",
+      "sha256": "8c64b43a0debfcd071a31b9b4d8772f021d60ff369f59a3dfebc31105eb79bc3",
+      "role": "accepted-axiom-audit-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Reference/EvmTransactionPreparationReference.lean",
+      "sha256": "609b9574b00effbd5b74e6a6ca3254ecd5c7f4e84cd1455cb90436ab42b77b0d",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Refinement/Admission.lean",
+      "sha256": "38c975e1b04275ea6e0a7af9ecc2a439f150ba2e71a8cd43995582d4a9409af7",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Refinement/EvmTransactionPreparation.lean",
+      "sha256": "fad9d554c59d4d92ddde7dfd51b06fb6a9486d7391dd6c1e7b9a097dca7d6415",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Refinement/Maps.lean",
+      "sha256": "5720c76db2b127cb0c0dc94228e847b6ec1903656b3969cbf0489c9eaa1e9b24",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Verify-Axioms.ps1",
+      "sha256": "59bf8d4e749fbfd72dfcd037b14e35a34f65b3aa4070abd390cc4bdabae99863",
+      "role": "accepted-axiom-audit-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/EvmTransactionPreparationExtractor/Verify-ClosureAxioms.ps1",
+      "sha256": "8c468b5d0fb584c58a0fdbbbf4336659964e3675917de186705b36c74d856c26",
+      "role": "accepted-axiom-audit-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/OrdinaryPostNonceDispatchExtractor/Generated/OrdinaryPostNonceDispatch.lean",
+      "sha256": "645ee68e4edf2e4d81d3e27da202a588d57b9f8ffdc883f035e3c55a0c1f475c",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/OrdinaryPostNonceDispatchExtractor/Reference/OrdinaryPostNonceDispatchReference.lean",
+      "sha256": "2d9347ad22562e3f2430455fc035c580458e0754060d46f1ec43c58f5caeea1b",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/OrdinaryPostNonceDispatchExtractor/Refinement/OrdinaryPostNonceDispatch.lean",
+      "sha256": "7352ca6fd6124edeb8f622ef6272a825d9e71b8cd17c454304aa5924e256d256",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/OrdinaryStatefulAdmissionPrefixExtractor/Generated/OrdinaryStatefulAdmissionPrefix.lean",
+      "sha256": "52126602fc36539573b9b53ddf4623b80611fec72c7c1849d12749ef11ed93f9",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/EXPORTED_THEOREMS.txt",
+      "sha256": "b6cf921d99722cc15ddcac3f54b32ae07c9035b18692d96091fa266763805396",
+      "role": "accepted-axiom-audit-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Generated/OrdinaryTransactionRefund.lean",
+      "sha256": "b7b21ec284183b073ff1a3f603471b156c07624de3270bc63189b7f7d6600f23",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Refinement/OrdinaryTransactionRefund.lean",
+      "sha256": "8f0a67d6da67a3068cc96cba94f77df24ad3a3dfe07b13b22bc21ec6ed76a13d",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Specification/OrdinaryTransactionRefund.lean",
+      "sha256": "e793fb500728ab024b3879407bd235ea52ec98a8fccf7a00d27be1f62b9576a2",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/OrdinaryTransactionRefundAdapterExtractor/Verify-Axioms.ps1",
+      "sha256": "201bf63c5b53f71db843400abec61f2dae548b86cb59f0aac955b5bcb3d5199f",
+      "role": "accepted-axiom-audit-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/DECLARED_THEOREMS.txt",
+      "sha256": "07a89b290a1b551d7a9203d878b39ee7e4d5ffd73496bfcc28bce7b1a675544d",
+      "role": "accepted-axiom-audit-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/EXPORTED_THEOREMS.txt",
+      "sha256": "6edd082b554fff37b231b5c7e2ea8538423e0d75f17df4b79da86f0517b0012f",
+      "role": "accepted-axiom-audit-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.lean",
+      "sha256": "028d11a14e031aaedce27c71b26e2c69cf16e759ff3ac870373ead10f6971180",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Refinement/ReceiptTerminalFold.lean",
+      "sha256": "bd4a3556a98ec40875960ff2180523d16221b05cd6cf9a0b6ce1fc46a8cb3e93",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Specification/ReceiptTerminalFold.lean",
+      "sha256": "d48c07020ea58c5bdc97f9b51e8b82bf70bfa670410d77675288fba75b317e86",
+      "role": "lean-stage-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Verify-Axioms.ps1",
+      "sha256": "f019aebcd67b0299c3ab1049fda475dad4e15a010e4962439cd25e9b34a9a485",
+      "role": "accepted-axiom-audit-dependency"
+    },
+    {
+      "path": "tools/Evm/Lean/TransactionProcessorExtractor/Generated/TransactionProcessorLifecycle.lean",
+      "sha256": "fa1fef73c8eb344c2ec62f85f82c12bbdb228ac36ddc2b72512a4c2a7d71ed02",
+      "role": "lean-stage-dependency"
+    }
+  ]
+}

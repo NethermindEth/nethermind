@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 3,
+  "extractorVersion": "1.2.0",
+  "compilerVersion": "5.6.0.0",
+  "languageVersion": "14.0",
+  "root": "Nethermind.Evm.TransactionProcessing.TransactionSettlementKernel",
+  "methodSignature": "Nethermind.Evm.TransactionProcessing.TransactionSettlementResult Nethermind.Evm.TransactionProcessing.TransactionSettlementKernel.Calculate(ulong transactionGasLimit, ulong preRefundGas, long refundCounter, int destroyCount, ulong destroyRefund, ulong codeInsertExecutionRefund, ulong calldataFloorGas, long stateGasUsed, ulong refundQuotient, bool isError, bool shouldRevert, bool isEip8037Enabled, bool isEip7778Enabled)",
+  "rootSignatures": [
+    "Nethermind.Evm.TransactionProcessing.TransactionSettlementResult Nethermind.Evm.TransactionProcessing.TransactionSettlementKernel.Calculate(ulong transactionGasLimit, ulong preRefundGas, long refundCounter, int destroyCount, ulong destroyRefund, ulong codeInsertExecutionRefund, ulong calldataFloorGas, long stateGasUsed, ulong refundQuotient, bool isError, bool shouldRevert, bool isEip8037Enabled, bool isEip7778Enabled)"
+  ],
+  "source": {
+    "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionSettlementKernel.cs",
+    "sha256": "37add297aaaf07a4260b45c05c5f866a48f92eef2ac6fb16ef2bfd96103f8c44"
+  },
+  "artifact": {
+    "path": "TransactionSettlementKernel.ir.json",
+    "sha256": "51dfcde8e9441beae09b05699a31c2e9e8457674db74210e4474fa67f81c1ee7"
+  },
+  "leanArtifact": {
+    "path": "tools/Evm/Lean/Eip803x/Generated/TransactionSettlementKernel.lean",
+    "sha256": "21e4c3ef135618a96bd5e7d2111e0be0bb272840b7d9ca427f17ef7777e2401c"
+  },
+  "extractedMethods": [
+    "Nethermind.Evm.TransactionProcessing.TransactionSettlementResult Nethermind.Evm.TransactionProcessing.TransactionSettlementKernel.Calculate(ulong transactionGasLimit, ulong preRefundGas, long refundCounter, int destroyCount, ulong destroyRefund, ulong codeInsertExecutionRefund, ulong calldataFloorGas, long stateGasUsed, ulong refundQuotient, bool isError, bool shouldRevert, bool isEip8037Enabled, bool isEip7778Enabled)"
+  ],
+  "supportingSources": [
+    {
+      "path": "src/Nethermind/Nethermind.Core/Extensions/UInt64Extensions.cs",
+      "sha256": "0e2d5004e25261c0bdf2e8a1959da5207425a9b4b2f27f617f5b8b354be1aa24"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/GasPolicy/Eip8037BlockGasInclusionCheck.cs",
+      "sha256": "79e4c84096c72bd0241553f114f08973279eb841cfa469f944566fb9490afe4e"
+    }
+  ]
+}

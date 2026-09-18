@@ -1,0 +1,725 @@
+{
+  "schemaVersion": 3,
+  "kernel": "Nethermind.Evm.GasPolicy.AccountAccessPricingKernel",
+  "roots": [
+    {
+      "name": "Price",
+      "signature": "Nethermind.Evm.GasPolicy.AccountAccessPricingResult Nethermind.Evm.GasPolicy.AccountAccessPricingKernel.Price(bool hotAndColdEnabled, bool eip8038Enabled, bool isCold, bool isPrecompile, Nethermind.Evm.GasPolicy.AccountAccessKind kind, ulong coldAccountAccessGas, ulong warmAccessGas)"
+    }
+  ],
+  "dataTypes": [
+    {
+      "type": "Nethermind.Evm.GasPolicy.AccountAccessPricingResult",
+      "constructor": "Nethermind.Evm.GasPolicy.AccountAccessPricingResult.AccountAccessPricingResult(Nethermind.Evm.GasPolicy.AccountAccessPricingDecision decision, ulong amount)",
+      "fields": [
+        {
+          "name": "Decision",
+          "type": "Nethermind.Evm.GasPolicy.AccountAccessPricingDecision",
+          "parameterOrdinal": 0
+        },
+        {
+          "name": "Amount",
+          "type": "ulong",
+          "parameterOrdinal": 1
+        }
+      ]
+    }
+  ],
+  "methods": [
+    {
+      "signature": "Nethermind.Evm.GasPolicy.AccountAccessPricingResult Nethermind.Evm.GasPolicy.AccountAccessPricingKernel.Price(bool hotAndColdEnabled, bool eip8038Enabled, bool isCold, bool isPrecompile, Nethermind.Evm.GasPolicy.AccountAccessKind kind, ulong coldAccountAccessGas, ulong warmAccessGas)",
+      "returnType": "Nethermind.Evm.GasPolicy.AccountAccessPricingResult",
+      "parameters": [
+        {
+          "ordinal": 0,
+          "name": "hotAndColdEnabled",
+          "type": "bool"
+        },
+        {
+          "ordinal": 1,
+          "name": "eip8038Enabled",
+          "type": "bool"
+        },
+        {
+          "ordinal": 2,
+          "name": "isCold",
+          "type": "bool"
+        },
+        {
+          "ordinal": 3,
+          "name": "isPrecompile",
+          "type": "bool"
+        },
+        {
+          "ordinal": 4,
+          "name": "kind",
+          "type": "Nethermind.Evm.GasPolicy.AccountAccessKind"
+        },
+        {
+          "ordinal": 5,
+          "name": "coldAccountAccessGas",
+          "type": "ulong"
+        },
+        {
+          "ordinal": 6,
+          "name": "warmAccessGas",
+          "type": "ulong"
+        }
+      ],
+      "blocks": [
+        {
+          "ordinal": 0,
+          "kind": "Entry",
+          "conditionKind": "None",
+          "predecessors": [],
+          "operations": [],
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 1
+          }
+        },
+        {
+          "ordinal": 1,
+          "kind": "Block",
+          "conditionKind": "WhenTrue",
+          "predecessors": [
+            {
+              "sourceOrdinal": 0,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "ParameterReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "parameter",
+                "value": "0"
+              }
+            ],
+            "children": []
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 2
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 3
+          }
+        },
+        {
+          "ordinal": 2,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 1,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "ObjectCreation",
+            "type": "Nethermind.Evm.GasPolicy.AccountAccessPricingResult",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "constructor",
+                "value": "Nethermind.Evm.GasPolicy.AccountAccessPricingResult.AccountAccessPricingResult(Nethermind.Evm.GasPolicy.AccountAccessPricingDecision decision, ulong amount)"
+              }
+            ],
+            "children": [
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FieldReference",
+                    "type": "Nethermind.Evm.GasPolicy.AccountAccessPricingDecision",
+                    "constant": "0",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "field",
+                        "value": "Nethermind.Evm.GasPolicy.AccountAccessPricingDecision.NoCharge"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "Conversion",
+                    "type": "ulong",
+                    "constant": "0",
+                    "isImplicit": true,
+                    "properties": [
+                      {
+                        "name": "checked",
+                        "value": "false"
+                      },
+                      {
+                        "name": "conversion",
+                        "value": "exists,nonidentity,nonnumeric,nonreference,implicit,nonnullable,builtin"
+                      }
+                    ],
+                    "children": [
+                      {
+                        "kind": "Literal",
+                        "type": "int",
+                        "constant": "0",
+                        "isImplicit": false,
+                        "properties": [],
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Return",
+            "destinationOrdinal": 10
+          }
+        },
+        {
+          "ordinal": 3,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 1,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "ParameterReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "parameter",
+                "value": "2"
+              }
+            ],
+            "children": []
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 4
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 6
+          }
+        },
+        {
+          "ordinal": 4,
+          "kind": "Block",
+          "conditionKind": "WhenTrue",
+          "predecessors": [
+            {
+              "sourceOrdinal": 3,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "ParameterReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "parameter",
+                "value": "3"
+              }
+            ],
+            "children": []
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 5
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 6
+          }
+        },
+        {
+          "ordinal": 5,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 4,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "ObjectCreation",
+            "type": "Nethermind.Evm.GasPolicy.AccountAccessPricingResult",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "constructor",
+                "value": "Nethermind.Evm.GasPolicy.AccountAccessPricingResult.AccountAccessPricingResult(Nethermind.Evm.GasPolicy.AccountAccessPricingDecision decision, ulong amount)"
+              }
+            ],
+            "children": [
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FieldReference",
+                    "type": "Nethermind.Evm.GasPolicy.AccountAccessPricingDecision",
+                    "constant": "1",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "field",
+                        "value": "Nethermind.Evm.GasPolicy.AccountAccessPricingDecision.Charge"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "ParameterReference",
+                    "type": "ulong",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "parameter",
+                        "value": "5"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Return",
+            "destinationOrdinal": 10
+          }
+        },
+        {
+          "ordinal": 6,
+          "kind": "Block",
+          "conditionKind": "WhenFalse",
+          "predecessors": [
+            {
+              "sourceOrdinal": 3,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 4,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "Binary",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "checked",
+                "value": "false"
+              },
+              {
+                "name": "lifted",
+                "value": "false"
+              },
+              {
+                "name": "operator",
+                "value": "Equals"
+              }
+            ],
+            "children": [
+              {
+                "kind": "ParameterReference",
+                "type": "Nethermind.Evm.GasPolicy.AccountAccessKind",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "parameter",
+                    "value": "4"
+                  }
+                ],
+                "children": []
+              },
+              {
+                "kind": "FieldReference",
+                "type": "Nethermind.Evm.GasPolicy.AccountAccessKind",
+                "constant": "1",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "field",
+                    "value": "Nethermind.Evm.GasPolicy.AccountAccessKind.SelfDestructBeneficiary"
+                  }
+                ],
+                "children": []
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 7
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 9
+          }
+        },
+        {
+          "ordinal": 7,
+          "kind": "Block",
+          "conditionKind": "WhenTrue",
+          "predecessors": [
+            {
+              "sourceOrdinal": 6,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "ParameterReference",
+            "type": "bool",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "parameter",
+                "value": "1"
+              }
+            ],
+            "children": []
+          },
+          "fallThrough": {
+            "semantics": "Regular",
+            "destinationOrdinal": 8
+          },
+          "conditional": {
+            "semantics": "Regular",
+            "destinationOrdinal": 9
+          }
+        },
+        {
+          "ordinal": 8,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 7,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "ObjectCreation",
+            "type": "Nethermind.Evm.GasPolicy.AccountAccessPricingResult",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "constructor",
+                "value": "Nethermind.Evm.GasPolicy.AccountAccessPricingResult.AccountAccessPricingResult(Nethermind.Evm.GasPolicy.AccountAccessPricingDecision decision, ulong amount)"
+              }
+            ],
+            "children": [
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FieldReference",
+                    "type": "Nethermind.Evm.GasPolicy.AccountAccessPricingDecision",
+                    "constant": "0",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "field",
+                        "value": "Nethermind.Evm.GasPolicy.AccountAccessPricingDecision.NoCharge"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "Conversion",
+                    "type": "ulong",
+                    "constant": "0",
+                    "isImplicit": true,
+                    "properties": [
+                      {
+                        "name": "checked",
+                        "value": "false"
+                      },
+                      {
+                        "name": "conversion",
+                        "value": "exists,nonidentity,nonnumeric,nonreference,implicit,nonnullable,builtin"
+                      }
+                    ],
+                    "children": [
+                      {
+                        "kind": "Literal",
+                        "type": "int",
+                        "constant": "0",
+                        "isImplicit": false,
+                        "properties": [],
+                        "children": []
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Return",
+            "destinationOrdinal": 10
+          }
+        },
+        {
+          "ordinal": 9,
+          "kind": "Block",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 6,
+              "semantics": "Regular"
+            },
+            {
+              "sourceOrdinal": 7,
+              "semantics": "Regular"
+            }
+          ],
+          "operations": [],
+          "branchValue": {
+            "kind": "ObjectCreation",
+            "type": "Nethermind.Evm.GasPolicy.AccountAccessPricingResult",
+            "isImplicit": false,
+            "properties": [
+              {
+                "name": "constructor",
+                "value": "Nethermind.Evm.GasPolicy.AccountAccessPricingResult.AccountAccessPricingResult(Nethermind.Evm.GasPolicy.AccountAccessPricingDecision decision, ulong amount)"
+              }
+            ],
+            "children": [
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "0"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "FieldReference",
+                    "type": "Nethermind.Evm.GasPolicy.AccountAccessPricingDecision",
+                    "constant": "1",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "field",
+                        "value": "Nethermind.Evm.GasPolicy.AccountAccessPricingDecision.Charge"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "kind": "Argument",
+                "isImplicit": false,
+                "properties": [
+                  {
+                    "name": "argumentKind",
+                    "value": "Explicit"
+                  },
+                  {
+                    "name": "parameter",
+                    "value": "1"
+                  }
+                ],
+                "children": [
+                  {
+                    "kind": "ParameterReference",
+                    "type": "ulong",
+                    "isImplicit": false,
+                    "properties": [
+                      {
+                        "name": "parameter",
+                        "value": "6"
+                      }
+                    ],
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          "fallThrough": {
+            "semantics": "Return",
+            "destinationOrdinal": 10
+          }
+        },
+        {
+          "ordinal": 10,
+          "kind": "Exit",
+          "conditionKind": "None",
+          "predecessors": [
+            {
+              "sourceOrdinal": 2,
+              "semantics": "Return"
+            },
+            {
+              "sourceOrdinal": 5,
+              "semantics": "Return"
+            },
+            {
+              "sourceOrdinal": 8,
+              "semantics": "Return"
+            },
+            {
+              "sourceOrdinal": 9,
+              "semantics": "Return"
+            }
+          ],
+          "operations": []
+        }
+      ]
+    }
+  ],
+  "program": {
+    "resultFields": [
+      {
+        "name": "decision",
+        "type": "Decision",
+        "constructorParameterOrdinal": 0
+      },
+      {
+        "name": "amount",
+        "type": "Nat",
+        "constructorParameterOrdinal": 1
+      }
+    ],
+    "decisions": [
+      "noCharge",
+      "charge"
+    ],
+    "accessKinds": [
+      "default",
+      "selfDestructBeneficiary"
+    ]
+  },
+  "adapter": {
+    "delegationMethod": "TryConsumeDelegatedAccountAccessGas",
+    "coreMethod": "TryConsumeAccountAccessGasCore",
+    "callSiteMethod": "InstructionCall",
+    "callSpecMethod": "CallSpec.TryConsumeDelegatedAccountAccessGas",
+    "coreSteps": [
+      "hot/cold gate",
+      "optional tracing WarmUp",
+      "access WarmUp",
+      "cold-gate precompile fact",
+      "conditional EIP-8038 fact",
+      "fork-aware warm account schedule",
+      "pure account-access pricing",
+      "gas update or no-charge decision"
+    ],
+    "tracingWarmUpPrecedesFacts": true,
+    "precompileCheckOnlyAfterColdFact": true,
+    "gasUpdateFollowsPricing": true,
+    "delegatedAccessIsSecondAndConditional": true,
+    "delegatedAccessPathIsReachable": true
+  }
+}

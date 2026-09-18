@@ -23,10 +23,10 @@ public class IdentityPrecompile : IPrecompile<IdentityPrecompile>
     // making caching strictly worse than direct execution for this precompile.
     public bool SupportsCaching => false;
 
-    public ulong BaseGasCost(IReleaseSpec releaseSpec) => 15UL;
+    public ulong BaseGasCost(IReleaseSpec releaseSpec) => IdentityPrecompileKernel.BaseGasCost();
 
     public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
-        3UL * EvmCalculations.Div32Ceiling(inputData.Length);
+        IdentityPrecompileKernel.DataGasCost((uint)inputData.Length);
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => inputData.ToArray();
 }

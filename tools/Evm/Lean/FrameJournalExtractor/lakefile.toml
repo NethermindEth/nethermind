@@ -1,0 +1,27 @@
+name = "FrameJournalExtractor"
+version = "0.1.0"
+defaultTargets = ["FrameJournalExtractor.Refinement.FrameJournal", "FrameJournalExtractor.Vectors.FrameJournalVectors"]
+
+[[lean_lib]]
+name = "Eip803x"
+srcDir = ".."
+
+[[lean_lib]]
+name = "WorldJournalExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "PersistentStorageOpcodeExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "TransientStorageOpcodeExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "LogOpcodeExtractor"
+srcDir = ".."
+
+[[lean_lib]]
+name = "FrameJournalExtractor"
+srcDir = ".."

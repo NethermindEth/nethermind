@@ -1,0 +1,623 @@
+{
+  "schemaVersion": 1,
+  "extractorVersion": "1.0.0",
+  "compilerVersion": "5.6.0.0",
+  "languageVersion": "14.0",
+  "kernel": "Nethermind standard-mainnet nested-frame pre-commit journal composition",
+  "sources": [
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "sha256": "45edba3691e09185e749485785990662ddea1af849bc6e4564f92b68a5137a6b"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.CallResult.cs",
+      "sha256": "d21bebbb4caea938c42d369083d922f6e18d01eb797b1c534fb1541c242ca073"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "sha256": "7b7b6ddb753118b426d14976a3fe8e79f808320d6a09ea9cace9df19197f9f23"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Call.cs",
+      "sha256": "cfc87832eb304f8f8dccfb27b6b89605f6c74e88522f02b13c775834d14948a5"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Create.cs",
+      "sha256": "23927529d13488932ec47b57972ab7084566a28deae83805d69a1fe977576719"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.ControlFlow.cs",
+      "sha256": "282ba75f60c1ddd03fd51460b0e3273c0113430d02faee3abff991fe5f920c6c"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "sha256": "2dec74bcc5748a1850d1bed1e8fe0221aed8c904bf2ba0c0827e76e603a71f18"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs",
+      "sha256": "ed5cdfdfe2ebf4d8c9f651572927efe7bdb5c75107db63a40577c5ec3ec2882f"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/State/Snapshot.cs",
+      "sha256": "47625d60a8315bbc3afd26eca85780b0ab894d7401d913cbec00ed89b51f46c8"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "sha256": "4f36bb20057caec9c85bcd3621372563f4d47ba36a9cbf01be267af4e379bca1"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/VirtualMachine.ExecutionHandlers.cs",
+      "sha256": "62714bd459a38cc13e7b7bd2d5cfc7bc2ffdcb50743eeb565fdc2ee2966e286a"
+    },
+    {
+      "path": "src/Nethermind/Directory.Build.targets",
+      "sha256": "0598cebaef1df41102a18a3f9ace810bed1e4e64b8471d055724b4a394dccec6"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/SpecFlags.std.cs",
+      "sha256": "653891cfe2289e874dcdd98c9401b3b319637d5241fd9a4d6cd7ef1c146ee5a8"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/ExecutionType.cs",
+      "sha256": "b6689c7c928182f6d115ca57cc8ac45bb9312359a026704f2eec77b921028013"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/Forks/25_Amsterdam.cs",
+      "sha256": "4dfbf9079e9dce30423327ae4433f32e49388d403a8fedfcf253f94f79450c6a"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Specs/MainnetSpecProvider.cs",
+      "sha256": "ef89706a6ec327c5975a1ccb0e23930e774ef82a24b43a45053f7b021ddcb3b8"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+      "sha256": "fce65ce5bb523c56fc8aa6ee0e4d092c940a5a90b174c820ffe262eeb5241c60"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+      "sha256": "0374c6f35a9a23361f37b41162ac281ca83b09846ab4295d5a592db6315c99cc"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.Core/Account.cs",
+      "sha256": "3a94d972388a4c5d46d744bf0733b80fb6575a148bf32123d64a0a51abddd749"
+    },
+    {
+      "path": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "sha256": "93eab6702f4e3ef6c52afb0f595ff2b0c17cdeabbce1de3f0507f2aa0e6f6858"
+    }
+  ],
+  "members": [
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "containingType": "VirtualMachine",
+      "member": "ExecuteTransaction",
+      "signature": "TransactionSubstate ExecuteTransaction\u00601(VmState\u003CTGasPolicy\u003E,IWorldState,ITxTracer)",
+      "canonicalSha256": "7402f4dd14c8a4d7f044403b3685ba792cb7d18e06f1b73362da47f13971a6e6"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "containingType": "VirtualMachine",
+      "member": "PrepareNextCallFrame",
+      "signature": "void PrepareNextCallFrame(in CallResult,ref nuint)",
+      "canonicalSha256": "465ef19c521ed2ef7768630c5e66b8247e2af9498b3da856fee9c02831b3316c"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "containingType": "VirtualMachine",
+      "member": "HandleRevert",
+      "signature": "void HandleRevert(VmState\u003CTGasPolicy\u003E,in CallResult,ref nuint)",
+      "canonicalSha256": "20dfaa8b69851e4246b1f24114754bbebba29ef9a015cedc8b69b6320e405461"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "containingType": "VirtualMachine",
+      "member": "HandleFailure",
+      "signature": "TransactionSubstate HandleFailure\u00601(Exception,string?,scoped ref nuint,out bool)",
+      "canonicalSha256": "4c7a39ace603b25b51d3eafc250372b34724b2a7b058241823825b08854a68e1"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "containingType": "VirtualMachine",
+      "member": "HandleException",
+      "signature": "TransactionSubstate HandleException(scoped in CallResult,scoped ref nuint,out bool)",
+      "canonicalSha256": "ce0a84b25c66da200fb870961a88365c089390e727e05ca9957a9290e65228f1"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "containingType": "VirtualMachineStatics",
+      "member": "RestoreRipemdTouch",
+      "signature": "void RestoreRipemdTouch(IWorldState,IReleaseSpec,bool)",
+      "canonicalSha256": "4ec6ae723baf5ec57ec32f835a7333d92275a77d1239b22091452f29de8375a2"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "containingType": "VirtualMachine",
+      "member": "RunPrecompile",
+      "signature": "CallResult RunPrecompile\u00601(VmState\u003CTGasPolicy\u003E)",
+      "canonicalSha256": "601ed81ed18cea3f009a5ef8121e7d78562dff8e4c587a6f1c13ff42b122f750"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "containingType": "VirtualMachine",
+      "member": "RunPrecompile",
+      "signature": "CallResult RunPrecompile(VmState\u003CTGasPolicy\u003E)",
+      "canonicalSha256": "0b6eddb1a87cd1b34b963734f9df5ce09c3f9408df3dd3ad642d671f7f39b3c4"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "containingType": "VirtualMachine",
+      "member": "PopAndRestoreParentState",
+      "signature": "void PopAndRestoreParentState()",
+      "canonicalSha256": "5e4d63ce20d31c522f8f4fca07a6a7be1ac0bdf0d5859bb372a8111b1b5e2859"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "containingType": "VirtualMachine",
+      "member": "AddLog",
+      "signature": "void AddLog(LogEntry)",
+      "canonicalSha256": "3217b019cdb27d464d9444fdd50675db162338c6d3d792e3b461f09464dbfe14"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.cs",
+      "containingType": "VirtualMachine",
+      "member": "AddSelfDestructLog",
+      "signature": "void AddSelfDestructLog\u00602(Address,Address,in UInt256)",
+      "canonicalSha256": "12bd4f2219cec4305dda4dd39be15e99676dbfc7e2575bbc5a118fa90e13eaa0"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.CallResult.cs",
+      "containingType": "CallResult",
+      "member": "IsReturn",
+      "signature": "bool IsReturn",
+      "canonicalSha256": "5ac21543cdc8e7823b6ab399aa8972bf56b01ce8ca9dfaff8d3c98e0f1e7e6e0"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.CallResult.cs",
+      "containingType": "CallResult",
+      "member": "IsException",
+      "signature": "bool IsException",
+      "canonicalSha256": "7e6491645ed1d39696b60c20788fb9f477fa7ecea6fd7eb9498e0da6dd512b01"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.CallResult.cs",
+      "containingType": "CallResult",
+      "member": "ShouldRevert",
+      "signature": "bool ShouldRevert",
+      "canonicalSha256": "18b24e654bde5a8c1751eecb7f21dabc70312f60200af59d3730a9074558aad6"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.CallResult.cs",
+      "containingType": "CallResult",
+      "member": "StateToExecute",
+      "signature": "VmState\u003CTGasPolicy\u003E? StateToExecute",
+      "canonicalSha256": "0ca19963e5b17fa3f77384c926b1676201fb8d38cc918d6992656083ea5c3479"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "containingType": "VmState",
+      "member": "RentFrame",
+      "signature": "VmState\u003CTGasPolicy\u003E RentFrame(TGasPolicy,long,long,ExecutionType,bool,bool,ExecutionEnvironment,in StackAccessTracker,in Snapshot,bool,bool,bool)",
+      "canonicalSha256": "64da655fbbbb3f5eda9179d036628b72d7ee3965a4fd3091997adf70570c3244"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "containingType": "VmState",
+      "member": "Initialize",
+      "signature": "void Initialize(TGasPolicy,long,long,ExecutionType,bool,bool,bool,bool,bool,ExecutionEnvironment,in StackAccessTracker,in Snapshot)",
+      "canonicalSha256": "85c5e35af8dceaccbbeb444cc689de16ea7860b93877a24a2b08287ddb679d0f"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "containingType": "VmState",
+      "member": "Dispose",
+      "signature": "void Dispose()",
+      "canonicalSha256": "31c9010c47f03c152c0ecf578ab11ebedcaedf67e3f83ca82b60f3485538d52a"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VmState.cs",
+      "containingType": "VmState",
+      "member": "CommitToParent",
+      "signature": "void CommitToParent(VmState\u003CTGasPolicy\u003E)",
+      "canonicalSha256": "77f0c5bcadd7d0f8ba3cf4c99dabadc0c4c28617eb042bd3396bc161d279c368"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Call.cs",
+      "containingType": "EvmInstructions",
+      "member": "InstructionCall",
+      "signature": "EvmExceptionType InstructionCall\u00606(ref EvmStack,ref TGasPolicy,VirtualMachine\u003CTGasPolicy\u003E)",
+      "canonicalSha256": "64d550c6357c663b28522fc0310e1621c500298e8ad820a1fbfc7d6f25c37a8f"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Call.cs",
+      "containingType": "EvmInstructions",
+      "member": "CreateFullCallFrame",
+      "signature": "EvmExceptionType CreateFullCallFrame\u00603(VirtualMachine\u003CTGasPolicy\u003E,ref EvmStack,ref TGasPolicy,in UInt256,UInt256,UInt256,UInt256,CodeInfo,Address,Address,Address,ExecutionEnvironment,in UInt256,ulong,bool)",
+      "canonicalSha256": "424be83c7f4abf0026b88ca3b0e80dd1be1f3c80bd3b7cec138c308bc262f543"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Create.cs",
+      "containingType": "EvmInstructions",
+      "member": "InstructionCreate",
+      "signature": "EvmExceptionType InstructionCreate\u00605(ref EvmStack,ref TGasPolicy,VirtualMachine\u003CTGasPolicy\u003E)",
+      "canonicalSha256": "270d1093cc525bedf48f678fe72cedb5ab0a5ec5191f59d37a381d1477ac9f35"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Create.cs",
+      "containingType": "EvmInstructions",
+      "member": "CompleteCreateWithoutChild",
+      "signature": "EvmExceptionType CompleteCreateWithoutChild\u00602(ref EvmStack,ref TGasPolicy,VirtualMachine\u003CTGasPolicy\u003E)",
+      "canonicalSha256": "7f9bed171ebfe5b348824a896c01d2097ee0b408802b872c25e53da9c6d67d65"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.ControlFlow.cs",
+      "containingType": "EvmInstructions",
+      "member": "InstructionSelfDestruct",
+      "signature": "EvmExceptionType InstructionSelfDestruct\u00604(ref EvmStack,ref TGasPolicy,VirtualMachine\u003CTGasPolicy\u003E)",
+      "canonicalSha256": "c5099b455cf41c803e65d1a9ffb220fd286762f91bcd347f43f1d99b21b49416"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "containingType": "WorldState",
+      "member": "TakeSnapshot",
+      "signature": "Snapshot TakeSnapshot(bool)",
+      "canonicalSha256": "b892b47b62b71f2c7869eefc1b9579bbc4e098ad6e60770cce758ae4a57f6380"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "containingType": "WorldState",
+      "member": "Restore",
+      "signature": "void Restore(Snapshot)",
+      "canonicalSha256": "7a65d07c50c579e4451b3396301a75c98b11d2b04e81f73aec790fe7c712e2cd"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "containingType": "WorldState",
+      "member": "AccountExists",
+      "signature": "bool AccountExists(Address)",
+      "canonicalSha256": "06d1f8dead1f68f3966e2efc97ca2518f96a01f826faf2331db2865d0e19f45e"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "containingType": "WorldState",
+      "member": "IsDeadAccount",
+      "signature": "bool IsDeadAccount(Address)",
+      "canonicalSha256": "42df1b0c9a9091059cef4fb2b7dcc2308e0a7d5cc372e2165dbd15d2d8af9ff8"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/WorldState.cs",
+      "containingType": "WorldState",
+      "member": "AddToBalance",
+      "signature": "void AddToBalance(Address,in UInt256,IReleaseSpec)",
+      "canonicalSha256": "c4320d69b0d6272dca98487a80bc6a38bfe824154cf677c912346a19fbcd74d9"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs",
+      "containingType": "StackAccessTracker",
+      "member": "TakeSnapshot",
+      "signature": "void TakeSnapshot()",
+      "canonicalSha256": "1040e496fe4749686641b712f1cd57a36b10bbd2763eed0bf0a120e545f88ec8"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs",
+      "containingType": "StackAccessTracker",
+      "member": "Restore",
+      "signature": "void Restore()",
+      "canonicalSha256": "3ea034b6590dacb2c96a5f0aca8c70bab8bdba7dd02441dfa11810bb23598bb7"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/StackAccessTracker.cs",
+      "containingType": "StackAccessTracker",
+      "member": "ToBeDestroyed",
+      "signature": "void ToBeDestroyed(Address)",
+      "canonicalSha256": "6e8d64fbd7605fcf86f485dd75cede2369925b992d837774bf3c8f8eec089f41"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/State/Snapshot.cs",
+      "containingType": "Snapshot",
+      "member": "Snapshot",
+      "signature": "Snapshot(in Storage,int,int)",
+      "canonicalSha256": "1ed98654c2ebd4e4be968b014370c6161681e8da1a69b2cc0e48997393238027"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "containingType": "VirtualMachine",
+      "member": "PrepareOpcodes",
+      "signature": "void PrepareOpcodes\u00602()",
+      "canonicalSha256": "a38007f8a5df35e913a22df1826bcaec7fdc502214cd8b9fe2cfa6c53d998a46"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs",
+      "containingType": "OpcodeTable",
+      "member": "GetExecutionHandlers",
+      "signature": "ExecutionHandlers GetExecutionHandlers(IReleaseSpec)",
+      "canonicalSha256": "d64b792bfa76bae5de12f5588296b3acb04d576aca8c2f8f91e6ebfcbc5260ca"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.ExecutionHandlers.cs",
+      "containingType": "VirtualMachine",
+      "member": "GetExecutionHandlers",
+      "signature": "ExecutionHandlers GetExecutionHandlers()",
+      "canonicalSha256": "13d0ae66c7a2aa9a4edb7d89331ad61e50547090f1952bb8e90652c5812a16aa"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.ExecutionHandlers.cs",
+      "containingType": "ExecutionHandlers",
+      "member": "RunPrecompile",
+      "signature": "delegate*\u003CVirtualMachine\u003CTGasPolicy\u003E, VmState\u003CTGasPolicy\u003E, CallResult\u003E RunPrecompile",
+      "canonicalSha256": "b504a6049fc7355418cbe0aa460016e2660dd1563f34d7b694e38b640a4d2b21"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/VirtualMachine.ExecutionHandlers.cs",
+      "containingType": "VirtualMachine",
+      "member": "RunPrecompileCore",
+      "signature": "CallResult RunPrecompileCore\u00601(VirtualMachine\u003CTGasPolicy\u003E,VmState\u003CTGasPolicy\u003E)",
+      "canonicalSha256": "4027b65c98da7796035156e106cbc1b921b8ae45dcc60ed1e63ac0ff13aa8cab"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/SpecFlags.std.cs",
+      "containingType": "SpecFlags",
+      "member": "Eip158",
+      "signature": "bool Eip158(IReleaseSpec)",
+      "canonicalSha256": "77604250c22243e31f0a16e26ff0de9bd9181abc7cdf3639612aafc6bf436ce3"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/SpecFlags.std.cs",
+      "containingType": "SpecFlags",
+      "member": "Validate",
+      "signature": "void Validate(IReleaseSpec)",
+      "canonicalSha256": "0ca0bed3e2ae3b4e78e276c367a654cceda3755b799689136ef07fc38f7dd818"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/ExecutionType.cs",
+      "containingType": "ExecutionTypeExtensions",
+      "member": "IsAnyCreate",
+      "signature": "bool IsAnyCreate(this ExecutionType)",
+      "canonicalSha256": "dbec62b7b7290fec6294b96dacc48abe19d0a717772f8c332a60167c85a64574"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/Forks/25_Amsterdam.cs",
+      "containingType": "Amsterdam",
+      "member": "Apply",
+      "signature": "void Apply(NamedReleaseSpec)",
+      "canonicalSha256": "dbb3c71db2874a95df7b4265e983f9408e5b020635507808470779d4bc8a2b68"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Specs/MainnetSpecProvider.cs",
+      "containingType": "MainnetSpecProvider",
+      "member": "MainnetSpecProvider",
+      "signature": "MainnetSpecProvider()",
+      "canonicalSha256": "ca6f100cb804949760155226cdfc74218da055f648f5a17def7dc432625e9e46"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs",
+      "containingType": "BlockProcessingModule",
+      "member": "Load",
+      "signature": "void Load(ContainerBuilder)",
+      "canonicalSha256": "45be8b86c359250d361843840b12ebd412a3a606a1835c48e31ff1df2ed66616"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+      "containingType": "TransactionProcessorBase",
+      "member": "ExecuteEvmTransaction",
+      "signature": "TransactionResult ExecuteEvmTransaction(Transaction,BlockHeader,IReleaseSpec,ITxTracer,ExecutionOptions,bool,bool,bool,in IntrinsicGas\u003CTGasPolicy\u003E,TGasPolicy,in UInt256,in UInt256,in UInt256,in UInt256,CodeInfo?,Address?)",
+      "canonicalSha256": "49d874bd7560acc604da87e080dd3e119652453f9e28ede79a5eb8e55ad7397a"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessor.cs",
+      "containingType": "TransactionProcessorBase",
+      "member": "ExecuteEvmCall",
+      "signature": "int ExecuteEvmCall\u00601(Transaction,BlockHeader,IReleaseSpec,ITxTracer,ExecutionOptions,long,IntrinsicGas\u003CTGasPolicy\u003E,long,in StackAccessTracker,TGasPolicy,ExecutionEnvironment,bool,out TransactionSubstate,out GasConsumed)",
+      "canonicalSha256": "4bde58a5ba26b702215f9eb6b47d3788bebc33508e846674a640b762dc76f074"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.Core/Account.cs",
+      "containingType": "Account",
+      "member": "IsEmpty",
+      "signature": "bool IsEmpty",
+      "canonicalSha256": "6342ce801619431259d8175d77405f0b6cb536f15fba5ac8288a785dd3010799"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "AccountExists",
+      "signature": "bool AccountExists(Address)",
+      "canonicalSha256": "042cc60a6ecd210f728ec1ec65548ab6124dd815dc5b3667bd3d53828bdba463"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "IsDeadAccount",
+      "signature": "bool IsDeadAccount(Address)",
+      "canonicalSha256": "471d8d7ed0c2408713f74311ca8aa967fdf56c4cd6ab42a65b6132a8e23ed9dd"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "AddToBalance",
+      "signature": "void AddToBalance(Address,in UInt256,IReleaseSpec,out UInt256)",
+      "canonicalSha256": "ea34354fe4be1e8f82382dd2c0536d37b246ad9f45f67f6119ffda98430c4f06"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "SetNewBalance",
+      "signature": "void SetNewBalance(Address,in UInt256,IReleaseSpec,bool,out UInt256)",
+      "canonicalSha256": "515f223789d3bffef94d1f4a3889e2bcb0942188618566d7a61d113b85c75e5f"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "PushTouch",
+      "signature": "void PushTouch(Address,Account,IReleaseSpec,bool)",
+      "canonicalSha256": "1cce2b9c180be4e8210d6931ea5faf98b904e1c6006235233198d1628303e3c4"
+    },
+    {
+      "sourcePath": "src/Nethermind/Nethermind.State/StateProvider.cs",
+      "containingType": "StateProvider",
+      "member": "Push",
+      "signature": "void Push(Address,Account?,ChangeType)",
+      "canonicalSha256": "1021369355952b676e4981f94959d2880b23737ff9821fdc4fb8cab47fb9c91b"
+    }
+  ],
+  "dependencies": [
+    {
+      "name": "WorldJournalExtractor",
+      "admissionState": "productionRefinement",
+      "identityPath": "tools/Evm/Lean/WorldJournalExtractor/Generated/WorldJournalKernel.source-manifest.json",
+      "identitySha256": "5c22d3c7649fc110fbb40cdaeacf49dfe4d7a87b529d27ea3f79a6d316bf1ffb",
+      "proofModule": "WorldJournalExtractor.Refinement.WorldJournal",
+      "proofPath": "tools/Evm/Lean/WorldJournalExtractor/Refinement/WorldJournal.lean",
+      "proofSha256": "f37d5ebd59a9f6353bf5200f6dd1952c1591cde70f408d23403fb9f0ecd91407",
+      "requiredTheorems": [
+        {
+          "fullyQualifiedName": "WorldJournalExtractor.Refinement.WorldJournal.transition_refines",
+          "signatureSha256": "54fcea6c3e4b4d89ef460b41b986abfef7ade6e16c2975a0631014c40ce03988"
+        },
+        {
+          "fullyQualifiedName": "WorldJournalExtractor.Refinement.WorldJournal.finite_trace_refines",
+          "signatureSha256": "a954fddf09edb5dae3230e7fe285e3bdea6518c1a443f3a85718c4305542d6db"
+        }
+      ]
+    },
+    {
+      "name": "PersistentStorageOpcodeExtractor",
+      "admissionState": "productionRefinement",
+      "identityPath": "tools/Evm/Lean/PersistentStorageOpcodeExtractor/Generated/PersistentStorageOpcodeKernel.source-manifest.json",
+      "identitySha256": "4a62692982c77affa265763fc0dcffb62f3c828c9136e127862c1ad655470881",
+      "proofModule": "PersistentStorageOpcodeExtractor.Refinement.PersistentStorageOpcode",
+      "proofPath": "tools/Evm/Lean/PersistentStorageOpcodeExtractor/Refinement/PersistentStorageOpcode.lean",
+      "proofSha256": "4543590597947d7541bcd6b17a49823453f8309861ac57bcfdb3bd5e282f2d98",
+      "requiredTheorems": [
+        {
+          "fullyQualifiedName": "PersistentStorageOpcodeExtractor.Refinement.PersistentStorageOpcode.sload_byte_refines",
+          "signatureSha256": "68a6b42c5aa0f8dcca66636ddec33cff049750390c41786ed77f9109a04aeeab"
+        },
+        {
+          "fullyQualifiedName": "PersistentStorageOpcodeExtractor.Refinement.PersistentStorageOpcode.sstore_byte_refines",
+          "signatureSha256": "b587237145ee1912f9d77141e327171cf8f21f8705a40734713ab95b800ef43a"
+        }
+      ]
+    },
+    {
+      "name": "TransientStorageOpcodeExtractor",
+      "admissionState": "productionRefinement",
+      "identityPath": "tools/Evm/Lean/TransientStorageOpcodeExtractor/Generated/TransientStorageOpcodeKernel.source-manifest.json",
+      "identitySha256": "c2a054aa59d22c5753c06a387ea392513502bad05081f6a687146a23cf58d6c9",
+      "proofModule": "TransientStorageOpcodeExtractor.Refinement.TransientStorageOpcode",
+      "proofPath": "tools/Evm/Lean/TransientStorageOpcodeExtractor/Refinement/TransientStorageOpcode.lean",
+      "proofSha256": "8dcf94eb16c0214d067e9f111d57b5153656d3198a34964a0730caa735c994a6",
+      "requiredTheorems": [
+        {
+          "fullyQualifiedName": "TransientStorageOpcodeExtractor.Refinement.TransientStorageOpcode.tload_byte_refines",
+          "signatureSha256": "904bf0ad238351edb1b0873fce5e4b301c2bdeb665a7bcf1a79fa8bf101cfada"
+        },
+        {
+          "fullyQualifiedName": "TransientStorageOpcodeExtractor.Refinement.TransientStorageOpcode.tstore_byte_refines",
+          "signatureSha256": "e7f73630cad4ec7c9fdbb2cf61890edcbd49cbcd3ab46ebb6c1231c7dd454869"
+        }
+      ]
+    },
+    {
+      "name": "LogOpcodeExtractor",
+      "admissionState": "productionRefinement",
+      "identityPath": "tools/Evm/Lean/LogOpcodeExtractor/Generated/LogOpcodeKernel.source-manifest.json",
+      "identitySha256": "09741481354b0cb8967c434897885d46f72786b981f0a1cfe0f6754a2e4e74f0",
+      "proofModule": "LogOpcodeExtractor.Refinement.LogOpcode",
+      "proofPath": "tools/Evm/Lean/LogOpcodeExtractor/Refinement/LogOpcode.lean",
+      "proofSha256": "d90c5bd31ae4919178d2916e1f50d7b78c552ab5f85acef161e549231583bc6a",
+      "requiredTheorems": [
+        {
+          "fullyQualifiedName": "LogOpcodeExtractor.Refinement.generated_execute_refines_reference",
+          "signatureSha256": "f9cedf2b4e5cb173bfcc581988a451569f6f2a99b0a537326c7877ee869d603f"
+        }
+      ]
+    },
+    {
+      "name": "CallCreateFrame",
+      "admissionState": "acceptedHandwrittenReference",
+      "identityPath": "tools/Evm/Lean/Eip803x/Evm/CallCreateFrame.lean",
+      "identitySha256": "63606e8412bf5459477921d8dfea326078182d18530b7fafca6170ea148a9ee2",
+      "proofModule": "Eip803x.Evm.CallCreateFrame",
+      "proofPath": "tools/Evm/Lean/Eip803x/Evm/CallCreateFrame.lean",
+      "proofSha256": "63606e8412bf5459477921d8dfea326078182d18530b7fafca6170ea148a9ee2",
+      "requiredTheorems": [
+        {
+          "fullyQualifiedName": "Eip803x.Evm.CallCreateFrame.call_failure_constructor_has_no_child",
+          "signatureSha256": "00a75378c19eeb26996c6d70f9952a6adaff8f7d0d1721f3274b433eb9d46e44"
+        },
+        {
+          "fullyQualifiedName": "Eip803x.Evm.CallCreateFrame.create_failure_constructor_has_no_state_charge",
+          "signatureSha256": "de9a001256b293d832af74905e5e4fde6dc9bc3ca19aef5f16f193c66291200f"
+        },
+        {
+          "fullyQualifiedName": "Eip803x.Evm.CallCreateFrame.revert_returns_exact_execution_and_restores_world",
+          "signatureSha256": "071a6e5b1f83f3aec372d0cce0df8f3e587e5b1bf7026df43c109e3a6234ecb6"
+        },
+        {
+          "fullyQualifiedName": "Eip803x.Evm.CallCreateFrame.completion_preserves_enclosing_checkpoint",
+          "signatureSha256": "262abc8b9b9a7a4415e9fb45d4da4b36d1bfd8be9109504840e9da986eb2616f"
+        }
+      ]
+    },
+    {
+      "name": "SelfDestruct",
+      "admissionState": "acceptedHandwrittenReference",
+      "identityPath": "tools/Evm/Lean/Eip803x/Evm/SelfDestruct.lean",
+      "identitySha256": "056d34839b368b1daf46079fc03c8842b7553ffa089a4c5a1a29b0d8be1e7c3e",
+      "proofModule": "Eip803x.Evm.SelfDestruct",
+      "proofPath": "tools/Evm/Lean/Eip803x/Evm/SelfDestruct.lean",
+      "proofSha256": "056d34839b368b1daf46079fc03c8842b7553ffa089a4c5a1a29b0d8be1e7c3e",
+      "requiredTheorems": [
+        {
+          "fullyQualifiedName": "Eip803x.Evm.SelfDestruct.destroy_marked_exactly_for_same_transaction_creation",
+          "signatureSha256": "07099a44b275eb1040b2abb72a6a22ab6d4c8cd530a2f16f6e7aa5627144d53f"
+        },
+        {
+          "fullyQualifiedName": "Eip803x.Evm.SelfDestruct.successful_other_target_moves_exact_balance",
+          "signatureSha256": "7f3c3f92d68cf697f16acf1f8b40bee24439f4cf479217801d1d9791fcbfa4d6"
+        }
+      ]
+    }
+  ],
+  "importedKernels": [
+    {
+      "name": "WorldJournalExtractor.Generated.WorldJournalKernel",
+      "manifestPath": "tools/Evm/Lean/WorldJournalExtractor/Generated/WorldJournalKernel.source-manifest.json",
+      "manifestSha256": "5c22d3c7649fc110fbb40cdaeacf49dfe4d7a87b529d27ea3f79a6d316bf1ffb",
+      "artifactPath": "tools/Evm/Lean/WorldJournalExtractor/Generated/WorldJournalKernel.lean",
+      "artifactSha256": "188c1a3d9a2f6c5cdb1a33b1446381b325e769910e8583470ccc5b5684e843a9"
+    }
+  ],
+  "ir": {
+    "path": "FrameJournalKernel.ir.json",
+    "sha256": "117f5a45dd65488c6c66af504d7b293b2af965379e25c0a58fb6d92054a20b57"
+  },
+  "lean": {
+    "path": "Generated/FrameJournalKernel.lean",
+    "sha256": "232951813100d23c1d593fde8fb0955888f373049df6cba8512afc8c9de6ccf2"
+  },
+  "combinedSourceSha256": "414f042917a64af5a6067e788bb41e4c5342ee3a8cd9613c975cad6ac6957dc0",
+  "combinedMemberSha256": "eb50071629c9c5d7e06b91a2d514c840726fe444782d893708dcc364e3328c31",
+  "combinedDependencySha256": "f30ca20f1ea27c270fc0ecadb1eca28c0658e32644dc7b43731327828f697ef3",
+  "combinedImportedKernelSha256": "07456107f1241ecd48d3d80da78a4758c3d3bb299cb6ea32addfa4761e5fd955",
+  "semanticBindings": [
+    "child suspension pushes the current VmState before selecting StateToExecute",
+    "CALL child entry snapshots world state before value-transfer mutation and snapshots the copied access tracker in VmState.Initialize",
+    "CREATE preserves the parent nonce increment, snapshots world state, marks the destination created-this-transaction, then snapshots the access tracker",
+    "successful child completion disables tracker restoration through CommitToParent before disposal",
+    "explicit REVERT restores the world snapshot and child disposal restores access, log, and destroy journals",
+    "returned exceptions and thrown EVM failures restore the world snapshot before the child is popped and disposed",
+    "normal access tracking restores warm account and cell sets; destroy and ordered log journals always restore",
+    "pre-frame failure is modeled relative to the post-pricing/post-warming parent baseline and creates no additional child snapshot or child mutation",
+    "world operation bodies delegate to the accepted theorem-free WorldJournalExtractor transition",
+    "the imported WorldJournal generated kernel is byte-bound both directly and through its independently pinned upstream manifest digest",
+    "the standard build selects .std.cs and excludes .zkevm.cs when EnableZkEvm is not true",
+    "Amsterdam is inherited from BPO2, enables EIP-7928/8037/8038, and is selected by the pinned mainnet fork schedule",
+    "standard main processing registers concrete WorldState and constructs StackAccessTracker from tracer.IsTracingAccess; this package admits the false normal-access branch",
+    "ExecutionType.IsAnyCreate is exactly CREATE or CREATE2 at the VmState created-this-transaction gate",
+    "the standard execution-handler dispatch binds the active spec\u0027s EIP-158 flag to the generic RIPEMD precompile body used by execution",
+    "the execution-wide RIPEMD-160 touch latch is set after the historical empty-account predicate and replayed after world restoration",
+    "the production RIPEMD PushTouch change kind and consecutive-touch deduplication are projected extensionally to a same-account update",
+    "SSTORE, TSTORE, LOG, and SELFDESTRUCT leaf effects enter composition only through the pinned dependency boundary"
+  ]
+}
