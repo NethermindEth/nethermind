@@ -103,7 +103,9 @@ public class PersistenceManager(
     ///   <item>Backstop fallback (if the finalized trigger persisted nothing): if
     ///   <c>snapshotsDepth &gt; </c> the backstop depth (<c>LongFinalityMaxReorgDepth</c> when long
     ///   finality is enabled, otherwise <c>MaxReorgDepth</c>, raised to at least
-    ///   <c>MinReorgDepth + CompactSize</c>) → seed = the committed head.</item>
+    ///   <c>MinReorgDepth + CompactSize</c>) → seed = the committed head, and where that head cannot
+    ///   serve at all (it reaches no persisted ancestor) the longest chain then the latest state, so an
+    ///   off-chain committed head cannot hold persistence still.</item>
     ///   <item>Otherwise → no candidate; Phase 1 doesn't run, fall through to Phase 2.</item>
     /// </list>
     /// Phase 2 runs only with <see cref="_enableLongFinality"/> enabled AND
@@ -158,7 +160,7 @@ public class PersistenceManager(
         // longest chain, then the latest state, only when nothing was committed this session.
         if (snapshotsDepth > _backstopReorgDepth)
         {
-            (PersistedSnapshot? persisted, Snapshot? inMemory) = FindBackstopCandidate(currentPersistedState, latestSnapshot);
+            (PersistedSnapshot? persisted, Snapshot? inMemory) = FindSeededCandidate(currentPersistedState, latestSnapshot);
             if (persisted is not null || inMemory is not null)
             {
                 if (_logger.IsWarn) _logger.Warn(
@@ -166,6 +168,13 @@ public class PersistenceManager(
                     $"forcing persistence to bound memory (finalized block {finalizedBlockNumber}).");
                 return (persisted, inMemory, null);
             }
+
+            // The backstop exists to bound memory, so reaching it with nothing persistable is the state that has to be
+            // visible: it is how an unservable seed stalls the very tier the backstop was meant to drain, silently.
+            if (_logger.IsWarn) _logger.Warn(
+                $"In-memory state depth {snapshotsDepth} exceeded the force-persist backstop {_backstopReorgDepth}, but no " +
+                $"snapshot chain reaches the persisted state {currentPersistedState}; nothing was persisted this round and " +
+                $"the in-memory tier keeps growing (latest {latestSnapshot}, finalized block {finalizedBlockNumber}).");
         }
 
         // ---- Phase 2: conversion to the persisted-snapshot tier ----
@@ -175,28 +184,66 @@ public class PersistenceManager(
         return (null, null, TryFindSnapshotToConvert(currentPersistedState));
     }
 
-    /// <summary>The backstop's seed decides which chain is persisted, and a seed only wins by assembling a chain
-    /// down to the persisted state. A state committed off that chain reaches none: the engine keeps driving the tip
-    /// while the node syncs from genesis, so the last committed state sits millions of blocks above, on an ancestry
-    /// this node does not have. Committing to that one seed would stop persistence for good - and with it the history
-    /// capture that runs on top of it - while the in-memory tier the backstop exists to bound keeps growing. So each
-    /// seed is tried in turn, preference order intact, until one assembles a chain.</summary>
-    private (PersistedSnapshot? Persisted, Snapshot? InMemory) FindBackstopCandidate(in StateId currentPersistedState, in StateId latestSnapshot)
+    /// <summary>Seeding from the committed head is what keeps a forced persist on the canonical chain rather than on
+    /// an arbitrary longer fork, so that preference is given up only when the committed head cannot serve at all: a
+    /// state committed off this chain reaches no persisted ancestor, which is the shape an engine-driven tip takes
+    /// while the node syncs from genesis - millions of blocks above, on an ancestry this node does not have. Holding
+    /// that seed stops persistence for good, and with it the history capture running on top, while the in-memory
+    /// tier keeps growing. A committed head that is on this chain but has assembled nothing yet is left alone: it
+    /// serves the next round, whereas falling through there could seed a persisted orphan above the tip and let the
+    /// prune that follows orphan the canonical siblings.</summary>
+    private (PersistedSnapshot? Persisted, Snapshot? InMemory) FindSeededCandidate(in StateId currentPersistedState, in StateId latestSnapshot)
     {
         StateId? committed = snapshotRepository.GetLastCommittedStateId();
-        (PersistedSnapshot? persisted, Snapshot? inMemory) = FindFromSeed(committed, currentPersistedState);
-        if (persisted is not null || inMemory is not null) return (persisted, inMemory);
+        if (committed is not null)
+        {
+            (PersistedSnapshot? fromCommitted, Snapshot? inMemoryFromCommitted) = FindFromSeed(committed, currentPersistedState);
+            if (fromCommitted is not null || inMemoryFromCommitted is not null) return (fromCommitted, inMemoryFromCommitted);
+            // With nothing persisted yet there is no ancestry to be on the wrong side of, and the reachability
+            // check reports that as unreachable - which is what lets the fallback run there, as it must.
+            if (snapshotRepository.Reaches(committed.Value, currentPersistedState)) return (null, null);
+        }
 
         StateId? longest = snapshotRepository.GetLastSnapshotId();
         if (longest != committed)
         {
-            (persisted, inMemory) = FindFromSeed(longest, currentPersistedState);
+            (PersistedSnapshot? fromLongest, Snapshot? inMemoryFromLongest) = FindFromSeed(longest, currentPersistedState);
+            if (fromLongest is not null || inMemoryFromLongest is not null) return (fromLongest, inMemoryFromLongest);
+        }
+
+        if (latestSnapshot != committed && latestSnapshot != longest)
+        {
+            (PersistedSnapshot? fromLatest, Snapshot? inMemoryFromLatest) =
+                snapshotRepository.FindSnapshotToPersist(latestSnapshot, currentPersistedState, _compactSize);
+            if (fromLatest is not null || inMemoryFromLatest is not null) return (fromLatest, inMemoryFromLatest);
+        }
+
+        return FindCandidateAbovePersistedState(currentPersistedState);
+    }
+
+    /// <summary>Last resort: the shutdown flush has no third seed to offer - every seed it knows is the off-chain tip -
+    /// so the chain that does carry the persisted state forward is found from the other end. A candidate must span at
+    /// most CompactSize from the persisted state, so only that band is scanned, and the first chunk that assembles
+    /// wins; the caller's loop takes the rest.</summary>
+    private (PersistedSnapshot? Persisted, Snapshot? InMemory) FindCandidateAbovePersistedState(in StateId currentPersistedState)
+    {
+        bool nothingPersisted = currentPersistedState == StateId.PreGenesis;
+        ulong ceiling = nothingPersisted ? _compactSize : currentPersistedState.BlockNumber + _compactSize;
+        ulong floor = nothingPersisted ? 0 : currentPersistedState.BlockNumber + 1;
+
+        using ArrayPoolList<StateId> ordered = snapshotRepository.GetStatesUpToBlock(ceiling);
+        foreach (StateId candidate in ordered)
+        {
+            if (candidate.BlockNumber < floor) continue;
+
+            (PersistedSnapshot? persisted, Snapshot? inMemory) =
+                snapshotRepository.FindSnapshotToPersist(candidate, currentPersistedState, _compactSize);
             if (persisted is not null || inMemory is not null) return (persisted, inMemory);
         }
 
-        if (latestSnapshot == committed || latestSnapshot == longest) return (null, null);
-        return snapshotRepository.FindSnapshotToPersist(latestSnapshot, currentPersistedState, _compactSize);
+        return (null, null);
     }
+
 
     private (PersistedSnapshot? Persisted, Snapshot? InMemory) FindFromSeed(StateId? seed, in StateId currentPersistedState) =>
         seed is null ? (null, null) : snapshotRepository.FindSnapshotToPersist(seed.Value, currentPersistedState, _compactSize);
@@ -460,8 +507,13 @@ public class PersistenceManager(
             seed ??= latestStateId;
             if (seed is null) break;
 
+            // A finalized seed the walk cannot assemble from, or a committed head left on another chain by an
+            // engine-driven tip, must not end the flush: this is the shutdown path, and what it fails to persist
+            // is discarded with the in-memory tier and never captured into history.
             (PersistedSnapshot? persisted, Snapshot? snapshotToPersist) =
                 snapshotRepository.FindSnapshotToPersist(seed.Value, currentPersistedState, _compactSize);
+            if (persisted is null && snapshotToPersist is null)
+                (persisted, snapshotToPersist) = FindSeededCandidate(currentPersistedState, latestStateId.Value);
 
             if (persisted is not null)
             {

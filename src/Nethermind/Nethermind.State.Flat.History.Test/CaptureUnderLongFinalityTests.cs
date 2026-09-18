@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -39,6 +40,9 @@ public class CaptureUnderLongFinalityTests
         using SnapshotableMemColumnsDb<FlatDbColumns> flatColumns = new();
         using SnapshotableMemColumnsDb<FlatHistoryColumns> historyColumns = new();
         using FlatTestContainer tier = new(config);
+        // Disposed before the container, and on the throwing path too: these tests assert inside the loop, and a
+        // compactor still working over a deleted temp dir buries the assertion under teardown noise.
+        await using IAsyncDisposable compactorLifetime = tier.Compactor;
         SnapshotRepository repository = tier.Repository;
         ResourcePool pool = tier.ResourcePool;
 
@@ -89,7 +93,6 @@ public class CaptureUnderLongFinalityTests
         }
 
         Assert.That(writer.LastCapturedBlock, Is.GreaterThan(100ul), "the watermark must follow the sync");
-        await tier.Compactor.DisposeAsync();
     }
 
     // The consensus client keeps driving the tip while the node is still syncing from genesis: the engine
@@ -113,6 +116,9 @@ public class CaptureUnderLongFinalityTests
         using SnapshotableMemColumnsDb<FlatDbColumns> flatColumns = new();
         using SnapshotableMemColumnsDb<FlatHistoryColumns> historyColumns = new();
         using FlatTestContainer tier = new(config);
+        // Disposed before the container, and on the throwing path too: these tests assert inside the loop, and a
+        // compactor still working over a deleted temp dir buries the assertion under teardown noise.
+        await using IAsyncDisposable compactorLifetime = tier.Compactor;
         SnapshotRepository repository = tier.Repository;
         ResourcePool pool = tier.ResourcePool;
 
@@ -155,6 +161,7 @@ public class CaptureUnderLongFinalityTests
             snapshot.Content.Accounts[TestItem.AddressA] = new Account(block, (UInt256)(block * 100));
             repository.AddStateId(next);
             repository.TryAdd(snapshot, SnapshotTier.InMemoryBase);
+            repository.SetLastCommittedStateId(next);
             await manager.AddToPersistence(next);
             previous = next;
 
@@ -171,6 +178,9 @@ public class CaptureUnderLongFinalityTests
                 tipSnapshot.Content.Accounts[TestItem.AddressB] = new Account(1, 1);
                 repository.AddStateId(tip);
                 repository.TryAdd(tipSnapshot, SnapshotTier.InMemoryBase);
+                // AddSnapshot commits every snapshot it takes, the engine-driven one included, so the tip is what the
+                // seed selection reads first - which is the branch the fix is about.
+                repository.SetLastCommittedStateId(tip);
                 await manager.AddToPersistence(tip);
             }
 
@@ -178,7 +188,6 @@ public class CaptureUnderLongFinalityTests
         }
 
         Assert.That(writer.LastCapturedBlock, Is.GreaterThan(60ul), "the watermark must keep following the sync after the tip state");
-        await tier.Compactor.DisposeAsync();
     }
 
     /// <summary>The node's own defaults, and the finalized view a syncing node actually gets: the consensus client
@@ -201,6 +210,7 @@ public class CaptureUnderLongFinalityTests
         System.Collections.Generic.Dictionary<ulong, Hash256> canonicalRoots = [];
         SyncingChainFinalizedStateProvider finalized = new(canonicalRoots);
         using FlatTestContainer tier = new(config, finalizedStateProvider: finalized);
+        await using IAsyncDisposable compactorLifetime = tier.Compactor;
         SnapshotRepository repository = tier.Repository;
         ResourcePool pool = tier.ResourcePool;
 
@@ -272,6 +282,5 @@ public class CaptureUnderLongFinalityTests
         }
 
         Assert.That(writer.LastCapturedBlock, Is.GreaterThan(600ul), "the watermark must follow the sync");
-        await tier.Compactor.DisposeAsync();
     }
 }

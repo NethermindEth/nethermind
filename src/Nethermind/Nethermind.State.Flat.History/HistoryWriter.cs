@@ -382,18 +382,33 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     /// multi-block chunk reads the same as a pruned one from here, and the two need telling apart from a node's log.</summary>
     private void ReportUnconnectedWalk(in StateId current, bool hasWatermark, ulong watermark, in StateId persistedHead, ISnapshotRepository snapshotRepository)
     {
-        string atCurrent = DescribeTiers(current, snapshotRepository);
-        int statesAtBlock;
-        using (ArrayPoolList<StateId> states = snapshotRepository.GetStatesAtBlockNumber(current.BlockNumber)) statesAtBlock = states.Count;
+        // The walk reports a refusal it did not cause when capture is already off: a reorged capture disables it from
+        // inside the walk, and a second Error would name a different, wrong cause and run the one-shot handlers twice.
+        if (_permanentGapDetected) return;
 
         DisableCapture($"History capture stopped at {current} without connecting to the captured range - " +
             $"the blocks below were pruned before history was enabled. The walk started at the persisted head " +
-            $"{persistedHead}; at the stop the snapshot tiers held [{atCurrent}] and the block carried {statesAtBlock} " +
-            $"state(s). The watermark stays at {(hasWatermark ? watermark.ToString() : "none")}; as-of reads above it " +
-            "report no history, and capture is disabled until restart.");
+            $"{persistedHead}; at the stop {DescribeTiers(current, snapshotRepository)}. The watermark stays at " +
+            $"{(hasWatermark ? watermark.ToString() : "none")}; as-of reads above it report no history, and capture " +
+            "is disabled until restart.");
     }
 
+    /// <summary>Diagnostics only, and they run on the way into a degradation: leases and the repository's own locks
+    /// can throw against a concurrent teardown, and letting that out would abort the persist instead of disabling
+    /// capture once, leaving the walk to fail the same way on every round.</summary>
     private static string DescribeTiers(in StateId stateId, ISnapshotRepository snapshotRepository)
+    {
+        try
+        {
+            return DescribeTiersCore(stateId, snapshotRepository);
+        }
+        catch (Exception e)
+        {
+            return $"the snapshot tiers could not be read ({e.Message})";
+        }
+    }
+
+    private static string DescribeTiersCore(in StateId stateId, ISnapshotRepository snapshotRepository)
     {
         bool inMemoryBase = snapshotRepository.TryLeaseInMemoryState(stateId, SnapshotTier.InMemoryBase, out Snapshot? baseSnapshot);
         string baseSpan = inMemoryBase ? $"{baseSnapshot!.From.BlockNumber}->{baseSnapshot.To.BlockNumber}" : "none";
@@ -407,7 +422,11 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         string persistedSpan = persistedBase ? $"{persisted!.From.BlockNumber}->{persisted.To.BlockNumber}" : "none";
         persisted?.Dispose();
 
-        return $"in-memory base {baseSpan}, in-memory compacted {compactedSpan}, persisted base {persistedSpan}";
+        int statesAtBlock;
+        using (ArrayPoolList<StateId> states = snapshotRepository.GetStatesAtBlockNumber(stateId.BlockNumber)) statesAtBlock = states.Count;
+
+        return $"the snapshot tiers held [in-memory base {baseSpan}, in-memory compacted {compactedSpan}, " +
+            $"persisted base {persistedSpan}] and the block carried {statesAtBlock} state(s)";
     }
 
     /// <summary>Permanently stops capture for this process, notifying dependants so they can persist retained data

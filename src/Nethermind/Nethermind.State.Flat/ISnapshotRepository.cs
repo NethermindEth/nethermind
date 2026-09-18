@@ -37,6 +37,10 @@ public interface ISnapshotRepository
     /// or the persisted base bucket.</summary>
     bool HasState(in StateId stateId);
 
+    /// <summary>Whether <paramref name="from"/> chains down to <paramref name="target"/> over parent edges. A seed
+    /// that does not is on another chain, so nothing assembled from it can carry the persisted state forward.</summary>
+    bool Reaches(in StateId from, in StateId target);
+
     /// <summary>Index a caller-built <paramref name="snapshot"/> into the bucket selected by
     /// <paramref name="tier"/> (must be a <c>Persisted*</c> value), acquiring the bucket's own lease. The
     /// caller retains its construction lease and is responsible for the catalog entry — a freshly
