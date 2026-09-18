@@ -13,9 +13,15 @@ public interface IStateHeaderProvider
     /// <summary>Finds the parent header of <paramref name="target"/>, or <c>null</c> when it is unavailable.</summary>
     BlockHeader? FindParentHeader(BlockHeader target);
 
-    /// <summary>The highest block number below which state must be kept for reorg safety.</summary>
+    /// <summary>
+    /// The highest block number at or below which state is finalized and safe to persist and prune.
+    /// State above it must be kept for reorg safety.
+    /// </summary>
     ulong FinalizedBlockNumber { get; }
 
-    /// <summary>Canonical header at the given height, or <c>null</c> when unavailable or below finality.</summary>
+    /// <summary>
+    /// Canonical header at the given height, or <c>null</c> when the height is above
+    /// <see cref="FinalizedBlockNumber"/> or the header is unavailable.
+    /// </summary>
     BlockHeader? GetFinalizedHeader(ulong blockNumber);
 }
