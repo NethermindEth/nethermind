@@ -8,7 +8,6 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Evm.Tracing;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -17,7 +16,8 @@ namespace Nethermind.Consensus.Processing;
 /// <summary>
 /// The <see cref="IBlockchainProcessor"/> of the block producer env that builds on the main (global) world state.
 /// Like <see cref="BlockchainProcessor"/> it walks back to reprocess ancestors lacking state, but it never
-/// touches the main processing queue and never updates the head.
+/// touches the main processing queue, never updates the head and processes every block it is handed
+/// regardless of how it compares to the head.
 /// </summary>
 /// <remarks>
 /// The exclusive lock serializes calls because the wrapped scope's world state and branch processor
@@ -33,7 +33,6 @@ public sealed class MainStateBlockBuildingChainProcessor(
 ) : IBlockchainProcessor
 {
     private readonly IBranchProcessor _branchProcessor = branchProcessor;
-    private readonly IBlockTree _blockTree = blockTree;
     private readonly ILogger _logger = logManager.GetClassLogger<MainStateBlockBuildingChainProcessor>();
     private readonly ProcessingBranchBuilder _branchBuilder = new(blockTree, stateReader, preprocessorSteps, logManager.GetClassLogger<ProcessingBranchBuilder>());
     private readonly Lock _lock = new();
@@ -50,20 +49,6 @@ public sealed class MainStateBlockBuildingChainProcessor(
     {
         if (!_branchBuilder.RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
         {
-            return null;
-        }
-
-        UInt256 totalDifficulty = suggestedBlock.TotalDifficulty ?? 0;
-        if (_logger.IsTrace) _logger.Trace($"Total difficulty of block {suggestedBlock.ToString(Block.Format.Short)} is {totalDifficulty}");
-
-        bool shouldProcess =
-            suggestedBlock.IsGenesis
-            || _blockTree.IsBetterThanHead(suggestedBlock.Header)
-            || options.ContainsFlag(ProcessingOptions.ForceProcessing);
-
-        if (!shouldProcess)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
             return null;
         }
 

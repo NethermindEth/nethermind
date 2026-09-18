@@ -27,10 +27,11 @@ public class MainStateBlockBuildingChainProcessorTests : ChainProcessorTestsBase
         StateReader,
         LimboLogs.Instance);
 
-    [TestCase(ProcessingOptions.ProducingBlock, true, 2_000_000)]
-    [TestCase(ProcessingOptions.ReadOnlyChain, true, 2_000_000)]
-    [TestCase(ProcessingOptions.None, false, 1)]
-    public void Process_follows_head_and_option_semantics(ProcessingOptions options, bool expectProcessed, long totalDifficulty)
+    // The last case is not better than head and lacks ForceProcessing; a block-building env processes it anyway.
+    [TestCase(ProcessingOptions.ProducingBlock, 2_000_000)]
+    [TestCase(ProcessingOptions.ReadOnlyChain, 2_000_000)]
+    [TestCase(ProcessingOptions.None, 1)]
+    public void Process_runs_regardless_of_head_and_never_updates_it(ProcessingOptions options, long totalDifficulty)
     {
         Block block = BuildBlockOnHead(totalDifficulty);
         BranchProcessor.Allow(block);
@@ -38,9 +39,9 @@ public class MainStateBlockBuildingChainProcessorTests : ChainProcessorTestsBase
 
         Block? processed = _processor.Process(block, options, NullBlockTracer.Instance);
 
-        Assert.That(processed, expectProcessed ? Is.Not.Null : Is.Null);
+        Assert.That(processed, Is.Not.Null);
         Assert.That(BlockTree.Head!.Hash, Is.Not.EqualTo(block.Hash));
-        Assert.That(BranchProcessor.ProcessedBranches, expectProcessed ? Is.Not.Empty : Is.Empty);
+        Assert.That(BranchProcessor.ProcessedBranches, Is.Not.Empty);
     }
 
     // The second case is what BlockProducerBase uses with BuildBlocksOnMainState.
