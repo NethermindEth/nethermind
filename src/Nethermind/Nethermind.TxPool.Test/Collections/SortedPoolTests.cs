@@ -57,7 +57,7 @@ namespace Nethermind.TxPool.Test.Collections
             InsertSnapshotTransaction(other);
             Dictionary<AddressAsKey, Transaction[]> before = _sortedPool.GetProductionSnapshot();
             Dictionary<AddressAsKey, Transaction[]> unchanged = _sortedPool.GetProductionSnapshot();
-            Assert.That(unchanged[first.SenderAddress!], Is.SameAs(before[first.SenderAddress!]));
+            Assert.That(unchanged, Is.SameAs(before));
 
             Transaction next = Build.A.Transaction.WithSenderAddress(first.SenderAddress!).WithNonce(1).WithGasPrice(10).TestObject;
             InsertSnapshotTransaction(next);
