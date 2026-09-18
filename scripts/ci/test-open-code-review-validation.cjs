@@ -248,14 +248,14 @@ test('last request offers only submission without unsupported forced tool select
   assert.equal(report.findings.length, 0);
 });
 
-test('malformed final JSON gets a bounded submission-only repair', async t => {
+test('malformed final JSON gets a bounded repair', async t => {
   const f = fixture(t);
   let requests = 0;
   const result = await runPass({ phase: 'discovery', repository: f.repository, context: f.context,
     prompt: 'trusted', usage: { input: 0, output: 0, requests: 0 }, budget: 1000000,
     deadline: Date.now() + 10000, maxRounds: 1, ask: async body => {
-      assert.deepEqual(body.tools.map(tool => tool.function.name), ['submit_review']);
       if (++requests === 1) {
+        assert.deepEqual(body.tools.map(tool => tool.function.name), ['submit_review']);
         const malformed = submit({});
         malformed.choices[0].message.tool_calls[0].function.arguments = '{"checks": "unescaped "quote"}';
         return malformed;

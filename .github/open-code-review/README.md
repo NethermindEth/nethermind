@@ -107,7 +107,7 @@ counts toward the limit. Treat budget-exhausted runs as incomplete when comparin
 review quality.
 The primary OCR process has an 18-minute limit. Independent discovery and validation
 share an additional eight-minute limit and token budget, with at most ten requests
-per pass plus two submission-only repairs. The job has a 35-minute limit. The default total allowance is approximately
+per pass plus two bounded repair requests. The job has a 35-minute limit. The default total allowance is approximately
 11 million tokens: 10 million for OCR and one million for validation. Repeated and
 cached context count toward these budgets; one in-flight request can exceed a soft
 limit. Actual usage depends on the PR and model. No extra secret is required to

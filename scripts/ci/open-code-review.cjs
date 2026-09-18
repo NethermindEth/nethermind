@@ -114,7 +114,7 @@ function assess(result, preview, target, exitCode, expectedModel, additionalReas
     'Reviewed ' + ((coverage?.completed?.length || 0) + (coverage?.reused?.length || 0)) +
       ' / ' + (coverage?.selected?.length || 0) + ' selected files; excluded ' + excluded.length + '.',
     'Static source review only; this action does not build the PR or run tests. File coverage does not measure review depth.',
-    'Tokens: ' + (summary.input_tokens ?? 'unknown') + ' input, ' +
+    'Primary tokens: ' + (summary.input_tokens ?? 'unknown') + ' input, ' +
       (summary.output_tokens ?? 'unknown') + ' output. Elapsed: ' + quote(summary.elapsed || 'unknown') + '.',
     'Billed cost: see the dedicated LiteLLM key; OCR does not report the proxy charge.',
   ];
@@ -151,6 +151,15 @@ async function publish({ github, context, core, directory, enabled, postReview }
       '\nAdditional validation tokens: ' + validation.usage.input + ' input, ' + validation.usage.output + ' output.' +
       '\nSource checks are bounded and model-assessed; they are not proof of correctness.';
     if (evidence.truncated) report.markdown += '\nInitial source context was truncated; additional reads were available to the reviewer.';
+  } else {
+    try {
+      const validation = readJson(path.join(directory, 'validation.json'));
+      if (validation.head === target.head && validation.base === target.merge_base &&
+          [validation.usage?.input, validation.usage?.output].every(value => Number.isSafeInteger(value) && value >= 0)) {
+        report.markdown += '\n\nReported validation tokens before completion failed: ' + validation.usage.input +
+          ' input, ' + validation.usage.output + ' output.';
+      }
+    } catch { /* Missing validation is already an incomplete outcome. */ }
   }
   let pr;
   try { pr = readJson(path.join(directory, 'pr-context.json')); } catch { /* Disclosure below. */ }

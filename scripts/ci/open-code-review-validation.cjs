@@ -65,7 +65,11 @@ async function completion(config, token, body, timeout, fetcher = fetch) {
 
 function evidence(repository, refs, required) {
   if (!Array.isArray(refs) || refs.length > 12 || (required && refs.length === 0) ||
-      !refs.every(ref => repository.hasEvidence(ref))) fail('Submission cites missing or unread source evidence');
+      !refs.every(ref => repository.hasEvidence(ref))) {
+    const error = new ValidationError('Submission cites missing or unread source evidence');
+    error.unread = Array.isArray(refs) ? refs.filter(ref => !repository.hasEvidence(ref)).slice(0, 12) : [];
+    throw error;
+  }
 }
 
 function finding(repository, changes, value) {
@@ -90,14 +94,14 @@ async function runPass({ phase, repository, context, candidates, prompt, ask, us
     { role: 'system', content: prompt + '\nCurrent phase: ' + phase + '. You have at most ' + maxRounds + ' requests; batch independent source reads (up to eight tools per request). Reserve the last request for submit_review.' },
     { role: 'user', content: JSON.stringify({ context, ...(phase === 'validation' ? { candidates } : {}) }) },
   ];
-  // Two final submission-only repairs accommodate malformed JSON/citations without another investigation loop.
+  // Two bounded repairs accommodate malformed JSON/citations, including one last evidence read.
   for (let turn = 0; turn < maxRounds + 2; turn++) {
     if (Date.now() >= deadline) fail('Validation time limit reached');
     if (usage.input + usage.output >= budget) fail('Validation token budget exhausted');
     if (turn === maxRounds - 3) messages.push({ role: 'user', content: 'Three requests remain. Finish the assigned checks and prepare submit_review. Use unverified for unresolved checks; do not silently omit them.' });
-    if (turn === maxRounds - 1) messages.push({ role: 'user', content: 'This is the final request. Submit the review now. Mark unresolved checks/candidates unverified.' });
+    if (turn === maxRounds - 1 || turn === maxRounds + 1) messages.push({ role: 'user', content: 'Submit the review now. Mark unresolved checks/candidates unverified.' });
     // Some reasoning providers reject forced tool_choice; keep their default selection.
-    const response = await ask({ messages, tools: turn >= maxRounds - 1
+    const response = await ask({ messages, tools: turn === maxRounds - 1 || turn === maxRounds + 1
       ? tools.filter(tool => tool.function.name === 'submit_review') : tools, max_tokens: 16384 },
     Math.min(120000, deadline - Date.now()));
     const counted = response.usage;
@@ -167,6 +171,7 @@ async function runPass({ phase, repository, context, candidates, prompt, ask, us
         result = { error: error instanceof ValidationError ? error.message : error instanceof SyntaxError
           ? 'Tool arguments must be valid JSON. Escape quotes inside strings and keep explanations brief.'
           : 'Invalid or unavailable source request; use a valid source path, symbol and bounded range.' };
+        if (error.unread) result.unread = error.unread;
       }
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
     }

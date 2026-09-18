@@ -202,6 +202,15 @@ function buildContext(repository, pr = {}) {
   };
   const expandedMethods = new Set();
   for (const symbol of [...symbols].slice(0, 12)) {
+    if (stateSymbols.has(symbol)) {
+      for (const change of production.slice(0, 16)) {
+        if (!repository.files().has(change.path)) continue;
+        const lines = repository.content(change.path).split('\n');
+        const assignment = new RegExp('^\\s*(?:this\\.)?' + symbol + '\\s*(?:\\?\\?=|=(?!=))');
+        const added = change.ranges.find(range => assignment.test(lines[range.start - 1] || ''));
+        if (added) addSource({ path: change.path, line: added.start }, symbol);
+      }
+    }
     for (const hit of repository.search({ symbol }).matches.filter(hit => !isTest(hit.path)).slice(0, 4)) {
       if (!addSource(hit, symbol)) continue;
       // A writer's callers distinguish startup-only reconstruction from an ordinary reload path.
