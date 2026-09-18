@@ -313,7 +313,6 @@ public class PbtResourcePoolTests
         content.Storages[PbtStateKey.Storage(TestItem.AddressA, 1)] = EvmWordSlot.FromStripped(Bytes.FromHexString("01"));
         content.Codes[TestItem.KeccakA.ValueHash256] = new CodeInfo(Bytes.FromHexString("6001"));
         content.SelfDestructedStorageAddresses[addressHash] = true;
-        content.SetCodeReference(TestItem.KeccakA.ValueHash256, 1);
         TrackingMemoryProvider memoryProvider = new();
         PbtNodePath groupKey = new([], 0);
         using (RefCountingMemory payload = CreateGroup(memoryProvider, TestItem.KeccakA.ValueHash256))
@@ -327,7 +326,6 @@ public class PbtResourcePoolTests
             Assert.That(rented.Storages, Is.Empty);
             Assert.That(rented.Codes, Is.Empty);
             Assert.That(rented.SelfDestructedStorageAddresses, Is.Empty);
-            Assert.That(rented.CodeReferences, Is.Empty);
             Assert.That(rented.GetPayloadSize(), Is.EqualTo(default(PbtSnapshotPayloadSize)));
             Assert.That(rented.TryGetNodeGroup(groupKey, out _), Is.False);
             Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);

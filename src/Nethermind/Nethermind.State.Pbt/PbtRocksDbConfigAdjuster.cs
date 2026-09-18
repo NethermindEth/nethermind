@@ -53,7 +53,6 @@ internal sealed class PbtRocksDbConfigAdjuster(
         nameof(PbtColumns.Metadata) => pbtConfig.MetadataRocksDbOptions,
         nameof(PbtColumns.AccountNodeGroups) or nameof(PbtColumns.CodeNodeGroups) or nameof(PbtColumns.StorageNodeGroups)
             => pbtConfig.NodeGroupsRocksDbOptions,
-        nameof(PbtColumns.CodeReferences) => pbtConfig.CodeReferencesRocksDbOptions,
         _ => "",
     };
 

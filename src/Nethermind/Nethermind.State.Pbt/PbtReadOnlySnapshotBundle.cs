@@ -33,9 +33,6 @@ public sealed class PbtReadOnlySnapshotBundle(
     private static readonly StringLabel _readCodeSnapshotLabel = new("code_snapshot");
     private static readonly StringLabel _readCodePersistenceLabel = new("code_persistence");
     private static readonly StringLabel _readCodePersistenceNullLabel = new("code_persistence_null");
-    private static readonly StringLabel _readCodeReferenceSnapshotLabel = new("code_reference_snapshot");
-    private static readonly StringLabel _readCodeReferencePersistenceLabel = new("code_reference_persistence");
-    private static readonly StringLabel _readCodeReferencePersistenceNullLabel = new("code_reference_persistence_null");
 
     private bool _isDisposed;
 
@@ -82,25 +79,6 @@ public sealed class PbtReadOnlySnapshotBundle(
             || path.BitDepth >= 8 && path.GetByte(0) == Eip8297KeyDerivation.StorageZone)
             return 2;
         return path.BitDepth >= 8 && path.GetByte(0) == Eip8297KeyDerivation.CodeZone ? 1 : 0;
-    }
-
-    internal ulong GetCodeReference(in ValueHash256 codeHash)
-    {
-        GuardDispose();
-        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        for (int i = snapshots.Count - 1; i >= 0; i--)
-        {
-            if (snapshots[i].Content.TryGetCodeReference(codeHash, out ulong? count))
-            {
-                if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readCodeReferenceSnapshotLabel);
-                return count ?? 0;
-            }
-        }
-
-        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        ulong result = reader.GetCodeReference(codeHash);
-        if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, result == 0 ? _readCodeReferencePersistenceNullLabel : _readCodeReferencePersistenceLabel);
-        return result;
     }
 
     internal IEnumerable<KeyValuePair<ValueHash256, Account>> EnumerateAccounts()

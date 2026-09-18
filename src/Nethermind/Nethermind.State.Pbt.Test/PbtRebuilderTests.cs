@@ -215,7 +215,7 @@ public class PbtRebuilderTests
     }
 
     [Test]
-    public async Task Rebuild_counts_shared_code_references_across_leaf_windows([Values(1, 3, 0)] int windowSize)
+    public async Task Rebuild_matches_reference_root_across_leaf_windows([Values(1, 3, 0)] int windowSize)
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence target = new(db, Config);
@@ -224,17 +224,9 @@ public class PbtRebuilderTests
 
         ValueHash256 root = await Rebuild(leaves, 5, new StateId(7, TestItem.KeccakA.ValueHash256), target, windowSize: windowSize);
 
-        using IPbtPersistence.IReader reader = target.CreateReader();
-        Account sharedCodeAccount = PbtTestLeaves.ReadAccount(reader, TestItem.AddressB)!;
-        Account uniqueCodeAccount = PbtTestLeaves.ReadAccount(reader, TestItem.AddressC)!;
-        Account delegatedAccount = PbtTestLeaves.ReadAccount(reader, TestItem.AddressF)!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
-            Assert.That(reader.GetCodeReference(sharedCodeAccount.CodeHash.ValueHash256), Is.EqualTo(2));
-            Assert.That(reader.GetCodeReference(uniqueCodeAccount.CodeHash.ValueHash256), Is.EqualTo(1));
-            Assert.That(reader.GetCodeReference(delegatedAccount.CodeHash.ValueHash256), Is.EqualTo(2), "delegation leaves reference the designator's code hash");
-            Assert.That(reader.GetCodeReference(Keccak.OfAnEmptyString.ValueHash256), Is.Zero);
             Assert.That(db.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
         }
     }

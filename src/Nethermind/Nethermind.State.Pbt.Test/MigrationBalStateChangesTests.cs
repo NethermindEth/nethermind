@@ -72,7 +72,6 @@ public class MigrationBalStateChangesTests
         using (worldState.BeginScope(null))
         {
             worldState.CreateAccount(TestItem.AddressA, 20, 1);
-            worldState.InsertCode(TestItem.AddressA, code, Amsterdam.Instance);
             worldState.Set(new StorageCell(TestItem.AddressA, 1), 0xff);
             worldState.CreateAccount(TestItem.AddressB, 30, 1);
             worldState.InsertCode(TestItem.AddressB, code, Amsterdam.Instance);

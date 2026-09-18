@@ -289,46 +289,6 @@ public class PbtWorldStateScopeTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task ReplacingCode_RemovesStaleHeaderChunks(bool codeAfterAccount)
-    {
-        byte[] longCode = new byte[100];
-        Array.Fill(longCode, (byte)0x01);
-        byte[] shortCode = [0x02];
-        Hash256 longHash = Keccak.Compute(longCode);
-        Hash256 shortHash = Keccak.Compute(shortCode);
-        await using PbtTestContext ctx = new();
-        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
-
-        using (IWorldStateScopeProvider.ICodeSetter codeWriter = scope.CodeDb.BeginCodeWrite())
-            codeWriter.Set(longHash.ValueHash256, longCode);
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
-            batch.Set(TestItem.AddressA, Build.An.Account.WithCode(longCode).TestObject);
-        scope.Commit(0);
-
-        if (!codeAfterAccount) WriteShortCode();
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
-            batch.Set(TestItem.AddressA, Build.An.Account.WithCode(shortCode).TestObject);
-        if (codeAfterAccount) WriteShortCode();
-        scope.Commit(1);
-
-        using PbtReadOnlySnapshotBundle committed = ((IPbtDbManager)ctx.Manager).GatherReadOnlyBundle(new StateId(1, scope.RootHash));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(committed.GetCodeReference(longHash.ValueHash256), Is.Zero);
-            Assert.That(committed.GetCodeReference(shortHash.ValueHash256), Is.EqualTo(1));
-            for (int chunkId = 1; chunkId < 4; chunkId++)
-                Assert.That(committed.EnumerateLeaves((PbtStorageTreeKey)PbtStateKey.Code(TestItem.AddressA, longHash.ValueHash256, chunkId)), Is.Empty);
-        }
-
-        void WriteShortCode()
-        {
-            using IWorldStateScopeProvider.ICodeSetter codeWriter = scope.CodeDb.BeginCodeWrite();
-            codeWriter.Set(shortHash.ValueHash256, shortCode);
-        }
-    }
-
     [TestCase(7u, false)]
     [TestCase(1000u, false)]
     [TestCase(1000u, true)]
@@ -888,7 +848,6 @@ public class PbtWorldStateScopeTests
         public Account? GetAccount(in ValueHash256 addressHash) => null;
         public EvmWord GetSlot(in PbtStorageTreeKey key) => default;
         public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
-        public ulong GetCodeReference(in ValueHash256 codeHash) => 0;
         public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => new PbtIterator<KeyValuePair<ValueHash256, Account>>(((IEnumerable<KeyValuePair<ValueHash256, Account>>)[]).GetEnumerator());
         public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(PbtStorageTreeKey? prefix = null) => new PbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>>(((IEnumerable<KeyValuePair<PbtStorageTreeKey, EvmWord>>)[]).GetEnumerator());
         public IPbtIterator<PbtStorageNodePath> EnumerateNodeGroupKeys() => new PbtIterator<PbtStorageNodePath>(_store.EnumerateNodeGroupKeys().GetEnumerator());

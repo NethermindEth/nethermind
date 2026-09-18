@@ -51,7 +51,6 @@ public class PbtSnapshotCompactor(
                 foreach ((HashedKey<PbtStorageTreeKey> key, EvmWord value) in content.Storages) merged.Storages[key] = value;
                 foreach ((ValueHash256 codeHash, CodeInfo code) in content.Codes) merged.Codes[codeHash] = code;
                 foreach ((PbtStorageNodePath groupKey, RefCountingMemory? payload) in content.NodeGroups) merged.SetNodeGroup(groupKey, payload);
-                foreach ((ValueHash256 hash, ulong? count) in content.CodeReferences) merged.SetCodeReference(hash, count);
             }
 
             PbtSnapshot newest = chainOldestFirst[^1];

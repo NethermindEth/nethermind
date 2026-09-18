@@ -18,11 +18,10 @@ namespace Nethermind.State.Pbt;
 public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logManager)
 {
     private const int DefaultWindowSize = 2_000_000;
-    private static readonly int DelegationDesignatorLength = Eip7702Constants.DelegationHeader.Length + Address.Size;
     private readonly ILogger _logger = logManager.GetClassLogger<PbtRebuilder>();
 
     /// <summary>Folds leaf records into staged tree groups and publishes the completed root.</summary>
-    /// <param name="source">Owned leaf chunks; account code-hash leaves must occur once per account.</param>
+    /// <param name="source">Owned leaf chunks.</param>
     /// <param name="targetState">The source state identity to publish on success.</param>
     /// <param name="cancellationToken">Cancels consumption and tree updates before publication.</param>
     /// <param name="windowSize">Maximum received records per update; zero uses 2,000,000 records.</param>
@@ -44,7 +43,6 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
         if (windowSize == 0) windowSize = DefaultWindowSize;
 
         using PbtWriteBatchBuilder<PbtStorageTreeKey> changes = new(0);
-        Dictionary<ValueHash256, ulong> codeReferences = [];
         ValueHash256 root = default;
         int windowCount = 0;
         long receivedCount = 0;
@@ -58,15 +56,6 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
                 foreach (RebuildEntry entry in chunk.AsSpan())
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    if (entry.Key.Length == Eip8297KeyDerivation.AccountKeyLength && entry.Key.Bytes[0] == Eip8297KeyDerivation.AccountZone)
-                    {
-                        // Delegated accounts reference their designator's code hash like any other code, but the tree
-                        // stores the designator itself rather than its hash.
-                        if (entry.Key.Bytes[^1] == PbtKeyDerivation.CodeHashLeafKey && entry.Leaf != Keccak.OfAnEmptyString.ValueHash256)
-                            AddCodeReference(entry.Leaf);
-                        else if (entry.Key.Bytes[^1] == PbtKeyDerivation.DelegationLeafKey)
-                            AddCodeReference(ValueKeccak.Compute(entry.Leaf.Bytes[..DelegationDesignatorLength]));
-                    }
                     changes.Set(entry.Key, entry.Leaf);
                     receivedCount++;
                     if (++windowCount == windowSize) CommitWindow();
@@ -83,12 +72,6 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
         if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at {targetState}: {receivedCount} received leaves in {committedWindows} windows, tree root {root}");
         return root;
 
-        void AddCodeReference(in ValueHash256 codeHash)
-        {
-            codeReferences.TryGetValue(codeHash, out ulong count);
-            codeReferences[codeHash] = checked(count + 1);
-        }
-
         void CommitWindow()
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -97,16 +80,10 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, ILogManager logMa
             using (PbtWriteBatch<PbtStorageTreeKey> prepared = changes.Build())
             {
                 root = TrieUpdater.UpdateRoot(new WindowStore(reader, stagingBatch, cancellationToken), root, prepared);
-                foreach ((ValueHash256 codeHash, ulong count) in codeReferences)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    stagingBatch.SetCodeReference(codeHash, checked(reader.GetCodeReference(codeHash) + count));
-                }
                 cancellationToken.ThrowIfCancellationRequested();
                 stagingBatch.Commit();
             }
             changes.Reset();
-            codeReferences.Clear();
             windowCount = 0;
             committedWindows++;
             if (progress.Elapsed >= TimeSpan.FromSeconds(10))

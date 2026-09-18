@@ -12,7 +12,7 @@ using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Pbt;
 
-/// <summary>One immutable-at-seal diff layer of flat values, canonical node groups, and code references.</summary>
+/// <summary>One immutable-at-seal diff layer of flat values and canonical node groups.</summary>
 /// <remarks>
 /// Concurrent node-group replacements are supported; reads concurrent with same-path replacements require caller serialization.
 /// Sealed content supports concurrent readers while its snapshot is leased. Reset requires exclusive ownership.
@@ -25,7 +25,6 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     internal readonly ConcurrentDictionary<ValueHash256, CodeInfo> Codes = new();
     internal readonly ConcurrentDictionary<ValueHash256, bool> SelfDestructedStorageAddresses = new();
     internal readonly ConcurrentDictionary<PbtStorageNodePath, RefCountingMemory?> NodeGroups = new();
-    internal readonly ConcurrentDictionary<ValueHash256, ulong?> CodeReferences = new();
 
     internal void ClearStorage(in ValueHash256 addressHash)
     {
@@ -70,11 +69,6 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         return found;
     }
 
-    internal void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount) => CodeReferences[codeHash] = referenceCount;
-
-    internal bool TryGetCodeReference(in ValueHash256 codeHash, out ulong? referenceCount) =>
-        CodeReferences.TryGetValue(codeHash, out referenceCount);
-
     public void Reset()
     {
         Accounts.NoLockClear();
@@ -83,7 +77,6 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         SelfDestructedStorageAddresses.NoLockClear();
         foreach ((_, RefCountingMemory? payload) in NodeGroups) ((IDisposable?)payload)?.Dispose();
         NodeGroups.NoLockClear();
-        CodeReferences.NoLockClear();
     }
 
     internal PbtSnapshotPayloadSize GetPayloadSize()
@@ -97,11 +90,10 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
         foreach ((PbtStorageNodePath path, RefCountingMemory? payload) in NodeGroups)
             nodeBytes += ((path.BitDepth + 7) >> 3) + (payload?.Memory.Length ?? 0);
 
-        long codeReferenceBytes = CodeReferences.Count * (ValueHash256.MemorySize + sizeof(ulong));
-        return new PbtSnapshotPayloadSize(leafBytes, nodeBytes, codeReferenceBytes);
+        return new PbtSnapshotPayloadSize(leafBytes, nodeBytes);
     }
 
     public void Dispose() => Reset();
 }
 
-internal readonly record struct PbtSnapshotPayloadSize(long Leaf, long Node, long CodeReference);
+internal readonly record struct PbtSnapshotPayloadSize(long Leaf, long Node);

@@ -344,7 +344,6 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
             return null;
         }
         public IPbtIterator<PbtStorageNodePath> EnumerateNodeGroupKeys() => new PbtIterator<PbtStorageNodePath>(((IEnumerable<PbtStorageNodePath>)[]).GetEnumerator());
-        public ulong GetCodeReference(in ValueHash256 codeHash) => 0;
 
         public void Dispose()
         {
