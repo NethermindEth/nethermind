@@ -3,7 +3,10 @@
 
 using System;
 using System.Linq;
+using Autofac;
+using Nethermind.Core;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
@@ -70,6 +73,24 @@ public class PruningTrieStoreModuleTests
             LimboLogs.Instance);
 
         Assert.That(resolved, Is.False, "the flat persistence must not be resolved unless the drop is actually requested");
+    }
+
+    [Test]
+    public void State_db_still_resolves_when_the_drop_is_requested()
+    {
+        // The state DB factory reaches for the flat IPersistence to decide, so this closes a cycle if
+        // anything the flat persistence needs leads back to the state DB. Only the drop path does that,
+        // and no shipped config enables it, so nothing else in the suite would catch it.
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .Intercept<IFlatDbConfig>((cfg) =>
+            {
+                cfg.Enabled = true;
+                cfg.DropPruningTrieState = true;
+            })
+            .Build();
+
+        Assert.That(() => container.ResolveKeyed<IDb>(DbNames.State), Throws.Nothing);
     }
 
     private static IFlatDbConfig Config(Flags flags)
