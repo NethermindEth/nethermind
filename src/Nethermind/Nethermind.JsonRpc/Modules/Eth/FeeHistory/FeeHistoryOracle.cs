@@ -75,7 +75,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             double GasUsedRatio,
             double BlobGasUsedRatio,
             Hash256? ParentHash,
-            ulong GasUsed,
             int BlockTransactionsLength,
             List<RewardInfo> RewardsInBlocks);
 
@@ -138,7 +137,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     b.GasUsed / (double)b.GasLimit,
                     blobGasUsedRatio,
                     b.ParentHash,
-                    b.GasUsed,
                     b.Transactions.Length,
                     GetRewardsInBlock(b));
             }
