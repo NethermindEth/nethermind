@@ -18,6 +18,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     private readonly ValueHash256 _groupHash;
     private readonly TrieUpdaterMetrics? _metrics;
     private RefCountingMemory? _lease;
+    private long _subtreeBytes;
     private bool _loaded;
     private OffsetBuffer _offsets;
     private LengthBuffer _lengths;
@@ -46,6 +47,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         {
             _metrics?.IncrementGroupParses();
             PbtNodeGroupReader reader = new(path, _lease.GetSpan());
+            _subtreeBytes = reader.SubtreeBytes;
             for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
             {
                 if (position == PbtFourLevelGroupGeometry.RootPosition && BitDepth != 0) continue;
@@ -62,6 +64,20 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     }
 
     internal int BitDepth { get; }
+
+    /// <summary>Whether a stored payload was loaded for this frame.</summary>
+    /// <remarks>
+    /// A frame that never loaded has no stored group: every node of the group is a descendant of the frame's
+    /// input subtree, and an input whose children lie inside the group is decomposed or bulk-copied through this
+    /// reader before the frame is published. The size accessors below then report an absent group.
+    /// </remarks>
+    internal readonly bool HasPayload => _lease is not null;
+
+    /// <summary>The stored payload's length, or zero when nothing was loaded.</summary>
+    internal readonly int PayloadLength => _lease?.GetSpan().Length ?? 0;
+
+    /// <summary>The stored payload's subtree size minus its own length, or zero when nothing was loaded.</summary>
+    internal readonly long DescendantBytes => _subtreeBytes - PayloadLength;
 
     internal ReadOnlyMemory<byte> GetEncoding(scoped in PbtTraversalPath path, int position)
     {

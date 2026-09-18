@@ -126,7 +126,8 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     }
 
     /// <summary>Finishes the footer and transfers the output lease, or returns null for an empty group.</summary>
-    internal RefCountingMemory? Detach()
+    /// <param name="descendantBytes">The summed subtree sizes of the groups physically stored below this one; ignored for an empty group.</param>
+    internal RefCountingMemory? Detach(long descendantBytes)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ValidateCommitted();
@@ -135,12 +136,13 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
             Dispose();
             return null;
         }
+        ArgumentOutOfRangeException.ThrowIfNegative(descendantBytes);
 
         PbtNodeGroupCodec.Header.CopyTo(_memory!.GetSpan());
         int trailerLength = PbtNodeGroupCodec.GetTrailerLength(_availability);
         Span<byte> footer = _memory!.GetSpan().Slice(PbtNodeGroupCodec.HeaderLength + _written, trailerLength);
-        PbtNodeGroupCodec.WriteFooter(footer, _offsets, _availability);
         int length = PbtNodeGroupCodec.HeaderLength + _written + trailerLength;
+        PbtNodeGroupCodec.WriteFooter(footer, _offsets, _availability, length + descendantBytes);
         RefCountingMemory memory = _memory;
         if (memory.GetSpan().Length >= length * CompactionSlackRatio)
         {

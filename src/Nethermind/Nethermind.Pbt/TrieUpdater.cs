@@ -146,8 +146,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             OwnedSubtree result = FoldMutations(context, ref reader, writer, root, operations, ref path, 0, plan);
             TraversalSubtree resolved = result.Borrow(stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)]);
             ValueHash256 hash = writer.Write(path, PbtFourLevelGroupGeometry.RootPosition, 0, ref resolved, metrics);
-            using (RefCountingMemory? payload = writer.Detach())
-                store.SetNodeGroup(path, hash, payload);
+            PublishGroup(store, ref reader, writer, path, hash, 0, ref result.SizeDelta);
             return hash;
         }
     }
@@ -221,16 +220,20 @@ internal static partial class TrieUpdater<TKey, TPath>
                 operations = operations[1..];
                 plan = plan.AfterFiltering(preservesOrder: true);
                 OwnedSubtree descendantResult = FoldMutations(context, ref ownerReader, ownerWriter, current, operations, ref path, bitDepth, plan);
-                if (terminalResult.IsEmpty) return descendantResult;
-                if (!descendantResult.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
-                return terminalResult;
+                if (!terminalResult.IsEmpty && !descendantResult.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
+                // Either fold may have removed groups below; the surviving result carries both size changes.
+                OwnedSubtree result = terminalResult.IsEmpty ? descendantResult : terminalResult;
+                result.SizeDelta = terminalResult.SizeDelta + descendantResult.SizeDelta;
+                return result;
             }
             if (hasTerminalLeaf)
             {
                 TraversalSubtree descendants = default;
                 OwnedSubtree descendantResult = FoldMutations(context, ref ownerReader, ownerWriter, descendants, operations, ref path, bitDepth, plan);
                 if (!descendantResult.IsEmpty) throw new ArgumentException("Tree keys must be prefix-free.", nameof(operations));
-                return current.Materialize();
+                OwnedSubtree result = current.Materialize();
+                result.SizeDelta = descendantResult.SizeDelta;
+                return result;
             }
         }
 
@@ -278,11 +281,67 @@ internal static partial class TrieUpdater<TKey, TPath>
         using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
         {
             using PbtNodeGroupWriter<TPath> writer = new(bitDepth, context.MemoryProvider);
+            long absentDescendantBytes = AbsentDescendantBytes(context.Store, current, operations, bitDepth, metrics);
             OwnedSubtree result = FoldBoundaryFromPartition(context, ref reader, writer, current, operations, ref path, bitDepth, partition);
-            using (RefCountingMemory? payload = writer.Detach())
-                context.Store.SetNodeGroup(path, result.Borrow(stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)]).Hash(bitDepth, metrics), payload);
+            ValueHash256 hash = result.Borrow(stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)]).Hash(bitDepth, metrics);
+            PublishGroup(context.Store, ref reader, writer, path, hash, absentDescendantBytes, ref result.SizeDelta);
             return result;
         }
+    }
+
+    /// <summary>Publishes a frame's group and turns the size change folded below it into the frame's own change.</summary>
+    /// <remarks>
+    /// The stored subtree size is the new payload length plus the descendants' sizes: the loaded payload's, or for a
+    /// group that did not exist, <paramref name="absentDescendantBytes"/>, each adjusted by the folded change. A group
+    /// that stays absent stores nothing, so its unresolved descendant size only has to leave the delta intact.
+    /// </remarks>
+    /// <param name="sizeDelta">On entry the summed change of the groups folded below; on exit this group's change.</param>
+    internal static void PublishGroup(IPbtStore store, ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
+        scoped in PbtTraversalPath path, in ValueHash256 hash, long absentDescendantBytes, ref long sizeDelta)
+    {
+        long descendantBytes = (reader.HasPayload ? reader.DescendantBytes : absentDescendantBytes) + sizeDelta;
+        using RefCountingMemory? payload = writer.Detach(descendantBytes);
+        store.SetNodeGroup(path, hash, payload);
+        sizeDelta += (payload?.GetSpan().Length ?? 0) - reader.PayloadLength;
+    }
+
+    /// <summary>Resolves the descendant size of a group that <paramref name="operations"/> may create between existing groups.</summary>
+    /// <remarks>
+    /// A group opened at <paramref name="bitDepth"/> under a branch whose children lie beyond it does not exist yet, so its
+    /// descendants' size cannot arrive as a delta: it is the stored size of the one group holding the branch's children.
+    /// That read happens only when an insert diverges from the branch inside the group, which is what creates the group;
+    /// diverging deletes are no-ops and mutations under the branch fold below it. It must precede folding, while the
+    /// store still serves that child group's old payload.
+    /// </remarks>
+    internal static long AbsentDescendantBytes(IPbtStore store, scoped in TraversalSubtree current, ReadOnlySpan<PbtWriteOperation<TKey>> operations, int bitDepth, TrieUpdaterMetrics? metrics) =>
+        IsAbsentGroupBelow(current, bitDepth) && CreatesNodesInGroup(current, operations, bitDepth) ? ReadDescendantBytes(store, current, metrics) : 0;
+
+    /// <summary>Whether <paramref name="current"/> is a branch whose children lie beyond the group at <paramref name="bitDepth"/>, so that group cannot exist.</summary>
+    internal static bool IsAbsentGroupBelow(scoped in TraversalSubtree current, int bitDepth)
+    {
+        Debug.Assert(bitDepth != 0, "The root group always exists.");
+        return !current.IsEmpty && !current.IsLeaf && current.BranchDepth >= bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
+    }
+
+    /// <summary>Whether an insert diverges from <paramref name="current"/> inside the group at <paramref name="bitDepth"/>.</summary>
+    internal static bool CreatesNodesInGroup(scoped in TraversalSubtree current, ReadOnlySpan<PbtWriteOperation<TKey>> operations, int bitDepth)
+    {
+        int boundaryDepth = bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
+        foreach (ref readonly PbtWriteOperation<TKey> operation in operations)
+            if (operation.Value != default && current.FirstDifferingBit(operation.Key, bitDepth) < boundaryDepth) return true;
+        return false;
+    }
+
+    /// <summary>Reads the stored subtree size of the one group holding the children of <paramref name="current"/>.</summary>
+    [SkipLocalsInit]
+    internal static long ReadDescendantBytes(IPbtStore store, scoped in TraversalSubtree current, TrieUpdaterMetrics? metrics)
+    {
+        TPath childGroup = current.Materialize().GroupPath;
+        PbtTraversalPath childPath = PbtTraversalPath.FromPath(stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)], childGroup);
+        metrics?.IncrementPhysicalGroupFetches();
+        using RefCountingMemory payload = store.GetNodeGroup(childPath, current.Hash(childGroup.BitDepth, metrics))
+            ?? throw new InvalidDataException("A referenced PBT node group is missing.");
+        return PbtNodeGroupCodec.ReadSubtreeBytes(payload.GetSpan());
     }
 
     [SkipLocalsInit]
@@ -307,7 +366,9 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (!foldedInParallel)
             FoldBuckets(context, ref reader, writer, ref frontier, operations, ref path, bitDepth, partition, sourceBuffer);
 
-        return Compose(ref reader, writer, path, context.Metrics, ref frontier, sourceBuffer).Materialize();
+        OwnedSubtree result = Compose(ref reader, writer, path, context.Metrics, ref frontier, sourceBuffer).Materialize();
+        result.SizeDelta = frontier.DescendantDelta;
+        return result;
     }
 
     private static void FoldBuckets(FoldContext context, scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
@@ -327,7 +388,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 bucket, ref path, bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup, partition.Plan.ForChild());
             path.Truncate(bitDepth);
             TraversalSubtree resolved = result.Borrow(sourceBuffer);
-            SetBoundary(path, ref frontier, slot, ref resolved);
+            SetBoundary(path, ref frontier, slot, ref resolved, result.SizeDelta);
         }
     }
 
@@ -396,7 +457,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         {
             if (bucket.Context.Metrics is { } bucketMetrics) context.Metrics!.Add(bucketMetrics);
             TraversalSubtree resolved = bucket.Result.Borrow(sourceBuffer);
-            SetBoundary(path, ref frontier, bucket.Slot, ref resolved);
+            SetBoundary(path, ref frontier, bucket.Slot, ref resolved, bucket.Result.SizeDelta);
         }
         // The folds hold node encodings; clear so the pool does not keep them alive.
         ArrayPool<BucketFold>.Shared.Return(buckets, clearArray: true);
@@ -470,10 +531,11 @@ internal static partial class TrieUpdater<TKey, TPath>
         return result;
     }
 
-    internal static void SetBoundary(PbtTraversalPath path, ref Frontier frontier, int slot, ref TraversalSubtree result)
+    internal static void SetBoundary(PbtTraversalPath path, ref Frontier frontier, int slot, ref TraversalSubtree result, long sizeDelta)
     {
         uint bit = 1u << BoundaryPosition(slot);
         frontier.Mask = result.IsEmpty ? frontier.Mask & ~bit : frontier.Mask | bit;
+        frontier.DescendantDelta += sizeDelta;
         frontier.Set(path, slot, ref result);
     }
 
@@ -574,7 +636,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         int boundaryDepth = bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
         if (current.IsLeaf)
         {
-            SetBoundary(path, ref frontier, BoundarySlot(current.Node.Key.Bytes, bitDepth), ref current);
+            SetBoundary(path, ref frontier, BoundarySlot(current.Node.Key.Bytes, bitDepth), ref current, 0);
             return;
         }
 

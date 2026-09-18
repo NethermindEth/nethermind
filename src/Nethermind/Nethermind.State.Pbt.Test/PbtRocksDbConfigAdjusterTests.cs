@@ -174,7 +174,7 @@ public class PbtRocksDbConfigAdjusterTests
                 foreach ((PbtStorageNodePath path, PbtColumns _) in groups)
                 {
                     PbtStorageNodePath nodePath = PbtFourLevelGroupGeometry.PathOf(path, NodePosition(path));
-                    PbtNodeGroupCodec.Encode(ref writer, path, [new PbtNodeRecord(nodePath, encoding)]);
+                    PbtNodeGroupCodec.Encode(ref writer, path, [new PbtNodeRecord(nodePath, encoding)], 0);
                     using RefCountingMemory payload = writer.Detach()!;
                     batch.SetNodeGroup(path, payload);
                 }
