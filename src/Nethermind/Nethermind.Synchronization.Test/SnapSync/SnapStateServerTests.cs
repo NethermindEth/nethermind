@@ -2,11 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -711,5 +716,34 @@ public class SnapStateServerTests
 
         slots.DisposeRecursive();
         proofs?.Dispose();
+    }
+
+    [Test]
+    public async Task TestGetAccountRange_AtSnapServingDepthBoundary_IsServable()
+    {
+        const int chainLength = 200;
+
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<IFlatDbConfig>(new FlatDbConfig { Enabled = true })
+            .AddSingleton<ISyncConfig>(new SyncConfig { SnapServingEnabled = true }));
+
+        await chain.BuildSomeBlocks(chainLength);
+
+        ISyncConfig syncConfig = chain.Container.Resolve<ISyncConfig>();
+        ISnapStateServer server = chain.WorldStateManager.SnapStateServer!;
+
+        ulong depth = syncConfig.SnapServingMaxDepth - 1;
+        ulong boundaryNumber = chain.BlockTree.Head!.Number - depth;
+        BlockHeader boundary = chain.BlockTree.FindHeader(boundaryNumber, BlockTreeLookupOptions.None)!;
+
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = server.GetAccountRanges(
+            boundary.StateRoot!, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
+
+        using (accounts)
+        using (proofs)
+        {
+            Assert.That(accounts, Is.Not.Empty,
+                $"state root of block {boundaryNumber} (head-{depth}) was not servable");
+        }
     }
 }

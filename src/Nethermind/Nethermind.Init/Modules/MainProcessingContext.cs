@@ -83,7 +83,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         if (initConfig.ExitOnInvalidBlock)
         {
             ILogger exitLogger = logManager.GetClassLogger<MainProcessingContext>();
-            _components.BlockchainProcessor.InvalidBlock += (_, _) =>
+            _components.BlockProcessingQueue.InvalidBlock += (_, _) =>
             {
                 if (exitLogger.IsInfo) exitLogger.Info("Exiting on invalid block");
                 processExitSource.Exit(ExitCodes.InvalidBlock);
