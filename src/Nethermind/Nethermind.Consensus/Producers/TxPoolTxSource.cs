@@ -14,7 +14,6 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -76,11 +75,6 @@ namespace Nethermind.Consensus.Producers
                 comparer,
                 pendingTxFilter,
                 gasLimit);
-            IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(
-                pendingBlobTransactionsEquivalences,
-                comparer,
-                BlobFilter,
-                maxBlobCount);
             if (_logger.IsTrace) _logger.Trace($"Collecting pending transactions at block gas limit {gasLimit}.");
 
             int checkedTransactions = 0;
@@ -88,7 +82,16 @@ namespace Nethermind.Consensus.Producers
 
             using ArrayPoolList<Transaction> selectedBlobTxs = new((int)maxBlobCount);
 
-            Dictionary<Hash256, Transaction>? fullBlobTxs = SelectBlobTransactions(blobTransactions, parent, spec, baseFee, selectedBlobTxs, maxBlobCount, !isRevalidatedForTarget);
+            Dictionary<Hash256, Transaction>? fullBlobTxs = null;
+            if (pendingBlobTransactionsEquivalences.Count > 0)
+            {
+                IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(
+                    pendingBlobTransactionsEquivalences,
+                    comparer,
+                    BlobFilter,
+                    maxBlobCount);
+                fullBlobTxs = SelectBlobTransactions(blobTransactions, parent, spec, baseFee, selectedBlobTxs, maxBlobCount, !isRevalidatedForTarget);
+            }
 
             foreach (Transaction tx in transactions)
             {
