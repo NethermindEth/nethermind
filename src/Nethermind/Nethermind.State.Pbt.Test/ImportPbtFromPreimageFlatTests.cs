@@ -111,6 +111,7 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressB)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressC)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
         Assert.That(reader.GetCode(bigCodeHash.ValueHash256)!.Code.ToArray(), Is.EqualTo(bigCode));
+        Assert.That(codeDb.ReadsCount, Is.EqualTo(2), "shared bytecode is fetched once per code hash");
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressB)!.StorageRoot, Is.EqualTo(TestItem.KeccakA));
         Assert.That(pbtDb.GetColumnDb(PbtColumns.FullLeaves).GetAll(), Is.Empty);
         Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(((UInt256)0x1234).ToBigEndian()));
@@ -253,7 +254,8 @@ public class ImportPbtFromPreimageFlatTests
         await step.Execute(CancellationToken.None);
 
         using IPbtPersistence.IReader reader = target.CreateReader();
-        int expectedWrites = accountCount * (slotsPerAccount + 2);
+        // Every account shares one code, which is staged once.
+        int expectedWrites = accountCount * (slotsPerAccount + 1) + 1;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(exit.ExitCode, Is.Zero);

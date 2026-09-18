@@ -10,6 +10,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Buffers;
 using Nethermind.Evm.CodeAnalysis;
@@ -63,6 +64,9 @@ public class ImportPbtFromPreimageFlat(
     /// <summary>Entries copied before workers publish progress, avoiding an interlocked add per entry.</summary>
     private const int ProgressPublishInterval = 100_000;
 
+    /// <summary>Code hashes already staged, so shared bytecode is fetched and written once.</summary>
+    private const int StagedCodeCapacity = 1 << 20;
+
     private static readonly TimeSpan CopyLogInterval = TimeSpan.FromSeconds(5);
 
     /// <summary>Leaves per phase-two channel chunk and records per scan page.</summary>
@@ -75,6 +79,7 @@ public class ImportPbtFromPreimageFlat(
     internal int CopyBatchSize { get; init; } = 10_000;
 
     private readonly ILogger _logger = logManager.GetClassLogger<ImportPbtFromPreimageFlat>();
+    private readonly LruKeyCache<ValueHash256> _stagedCodes = new(StagedCodeCapacity, nameof(_stagedCodes));
 
     public async Task Execute(CancellationToken cancellationToken)
     {
@@ -293,7 +298,7 @@ public class ImportPbtFromPreimageFlat(
             Address address = new(accountKey.Bytes[..AddressLength]);
 
             Account account = DecodeAccount(accountIterator.CurrentValue);
-            byte[]? code = account.HasCode
+            byte[]? code = account.HasCode && _stagedCodes.Set(account.CodeHash.ValueHash256)
                 ? codeDb.Get(account.CodeHash.Bytes) ?? throw new InvalidDataException($"Missing bytecode for {address} (code hash {account.CodeHash}) in the code database.")
                 : null;
 
