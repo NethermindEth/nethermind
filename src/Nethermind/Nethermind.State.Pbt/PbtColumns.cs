@@ -10,9 +10,6 @@ public enum PbtColumns
     /// <summary>Legacy EIP-8297 split leaves, retained for schema detection.</summary>
     FullLeaves,
 
-    /// <summary>Content-addressed overflow-code reference records.</summary>
-    CodeReferences,
-
     /// <summary>Stem leaf blobs of the account header zone (0x0), keyed by stem.</summary>
     AccountLeaves,
 

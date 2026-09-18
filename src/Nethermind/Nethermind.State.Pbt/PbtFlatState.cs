@@ -14,7 +14,7 @@ namespace Nethermind.State.Pbt;
 /// <summary>Derives canonical tree leaves from whole flat values without retaining a second flat index.</summary>
 internal static class PbtFlatState
 {
-    internal static IEnumerable<KeyValuePair<PbtPath, ValueHash256>> AccountLeaves(ValueHash256 addressHash, Account account, CodeInfo? code, bool includeCode = true)
+    internal static IEnumerable<KeyValuePair<PbtPath, ValueHash256>> AccountLeaves(ValueHash256 addressHash, Account account, CodeInfo? code)
     {
         if (account.HasCode && code is null) throw new InvalidDataException($"Missing PBT bytecode for {account.CodeHash}.");
         ValueHash256 basicData = default;
@@ -28,7 +28,7 @@ internal static class PbtFlatState
             yield break;
         }
         yield return new(PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), account.CodeHash.ValueHash256);
-        if (code is null || !includeCode) yield break;
+        if (code is null) yield break;
         int codeLength = code.Code.Length;
         int chunkCount = (codeLength + 30) / 31;
         int chunksLength = chunkCount * PbtKeyDerivation.CodeChunkSize;
@@ -64,9 +64,8 @@ internal static class PbtFlatState
         Func<ValueHash256, CodeInfo?> getCode)
     {
         SortedDictionary<PbtStorageTreeKey, ValueHash256> leaves = [];
-        HashSet<ValueHash256> emittedCode = [];
         foreach ((ValueHash256 addressHash, Account account) in accounts)
-            foreach ((PbtPath key, ValueHash256 value) in AccountLeaves(addressHash, account, account.HasCode ? getCode(account.CodeHash.ValueHash256) : null, emittedCode.Add(account.CodeHash.ValueHash256)))
+            foreach ((PbtPath key, ValueHash256 value) in AccountLeaves(addressHash, account, account.HasCode ? getCode(account.CodeHash.ValueHash256) : null))
                 leaves[(PbtStorageTreeKey)key] = value;
         foreach ((PbtStorageTreeKey key, EvmWord value) in storages)
             if (!EvmWordSlot.IsZero(value)) leaves[key] = new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value));

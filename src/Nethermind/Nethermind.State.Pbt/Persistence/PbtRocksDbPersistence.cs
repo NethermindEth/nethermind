@@ -26,7 +26,7 @@ public class PbtRocksDbPersistence(
     private static ReadOnlySpan<byte> NodeGroupKeyLayoutKey => "nodeGroupKeyLayout"u8;
     private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
     internal static ReadOnlySpan<byte> RootNodeGroupKey => "rootNodeGroup"u8;
-    private const int SchemaEpoch = 15;
+    private const int SchemaEpoch = 16;
     private const byte ValidState = 1;
 
     private readonly IColumnsDb<PbtColumns> _db = Initialize(db, config.NodeGroupKeyLayout, config.ImportFromPreimageFlat);
@@ -95,7 +95,7 @@ public class PbtRocksDbPersistence(
     {
         if (db.GetColumnDb(PbtColumns.Metadata).Get(RootNodeGroupKey) is not null) return true;
 
-        PbtColumns[] columns = [PbtColumns.FullLeaves, PbtColumns.CodeReferences,
+        PbtColumns[] columns = [PbtColumns.FullLeaves,
             PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups,
             PbtColumns.AccountLeaves, PbtColumns.CodeLeaves, PbtColumns.StorageLeaves,
             PbtColumns.AccountTrieNodes, PbtColumns.CodeTrieNodes, PbtColumns.StorageTrieNodes,
@@ -198,7 +198,6 @@ public class PbtRocksDbPersistence(
         private readonly IReadOnlyKeyValueStore _accounts = snapshot.GetColumn(PbtColumns.Accounts);
         private readonly IReadOnlyKeyValueStore _storages = snapshot.GetColumn(PbtColumns.Storages);
         private readonly IReadOnlyKeyValueStore _codes = snapshot.GetColumn(PbtColumns.Codes);
-        private readonly IReadOnlyKeyValueStore _codeReferences = snapshot.GetColumn(PbtColumns.CodeReferences);
         private readonly IReadOnlyKeyValueStore _accountNodeGroups = snapshot.GetColumn(PbtColumns.AccountNodeGroups);
         private readonly IReadOnlyKeyValueStore _codeNodeGroups = snapshot.GetColumn(PbtColumns.CodeNodeGroups);
         private readonly IReadOnlyKeyValueStore _storageNodeGroups = snapshot.GetColumn(PbtColumns.StorageNodeGroups);
@@ -331,14 +330,6 @@ public class PbtRocksDbPersistence(
             return groups.GetViewBetween([], upper);
         }
 
-        public ulong GetCodeReference(in ValueHash256 codeHash)
-        {
-            byte[]? value = _codeReferences.Get(codeHash.Bytes);
-            if (value is null) return 0;
-            if (value.Length != sizeof(ulong)) throw new InvalidDataException("Invalid persisted PBT code-reference value length.");
-            return BinaryPrimitives.ReadUInt64BigEndian(value);
-        }
-
         public void Dispose() => snapshot.Dispose();
     }
 
@@ -420,19 +411,6 @@ public class PbtRocksDbPersistence(
             ReadOnlySpan<byte> storageKey = NodeGroupStorageKey(layout, column, groupKey, key);
             if (payload is null) groups.Set(storageKey, null, flags);
             else groups.PutSpan(storageKey, payload.GetSpan(), flags);
-        }
-
-        public void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount)
-        {
-            IWriteBatch references = _batch.GetColumnBatch(PbtColumns.CodeReferences);
-            if (referenceCount is null or 0)
-            {
-                references.Set(codeHash.Bytes, null, flags);
-                return;
-            }
-            Span<byte> value = stackalloc byte[sizeof(ulong)];
-            BinaryPrimitives.WriteUInt64BigEndian(value, referenceCount.Value);
-            references.PutSpan(codeHash.Bytes, value, flags);
         }
 
         private bool _completed;

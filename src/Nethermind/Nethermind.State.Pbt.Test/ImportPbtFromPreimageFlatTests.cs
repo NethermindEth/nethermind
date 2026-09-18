@@ -103,8 +103,6 @@ public class ImportPbtFromPreimageFlatTests
             logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {partitionName}: 0.00 % ")));
             logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {partitionName}: 100.00 % ")));
         }
-        Assert.That(reader.GetCodeReference(bigCodeHash.ValueHash256), Is.EqualTo(2), "shared code references survive later account changes");
-        Assert.That(reader.GetCodeReference(delegationHash.ValueHash256), Is.EqualTo(2), "delegated accounts reference their designator's code hash");
         PbtScanReport scan = await new PbtScanner(pbtDb, config, LimboLogs.Instance).Scan(CancellationToken.None);
         Assert.That(scan.Accounts.RecordCount, Is.EqualTo(5), scan.Format());
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)100));
@@ -121,17 +119,14 @@ public class ImportPbtFromPreimageFlatTests
             new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reopened.CreateReader()), pool, PbtResourcePool.Usage.MainBlockProcessing);
         Account retained = bundle.GetAccount(TestItem.AddressB)!.WithChangedNonce(4).WithChangedBalance(43);
         bundle.SetAccount(TestItem.AddressB, retained);
-        bundle.SetAccount(TestItem.AddressC, null);
+        Assert.Throws<InvalidOperationException>(() => bundle.SetAccount(TestItem.AddressC, null), "imported code chunks are shared without a reference count");
         bundle.SetAccount(TestItem.AddressE, new Account(2, 0));
-        bundle.SetAccount(TestItem.AddressB, null);
         using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
         ValueHash256 remainingRoot = TrieUpdater.UpdateRoot(new PbtSnapshotStore(bundle), reader.CurrentRoot, changes, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, null);
         bundle.CompleteLeafChanges();
-        model.Clear();
-        PbtReferenceModel.SetAccount(model, TestItem.AddressA, 1, 100);
-        PbtReferenceModel.SetAccount(model, TestItem.AddressD, 1, 0, delegation);
+        PbtReferenceModel.SetAccount(model, TestItem.AddressB, 4, 43, bigCode);
         PbtReferenceModel.SetAccount(model, TestItem.AddressE, 2, 0);
-        Assert.That(remainingRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "last-owner deletion must remove all persisted code chunks");
+        Assert.That(remainingRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
     }
 
     [Test]
@@ -262,7 +257,6 @@ public class ImportPbtFromPreimageFlatTests
             Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
             Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
             Assert.That(reader.GetCode(codeHash.ValueHash256)!.Code.ToArray(), Is.EqualTo(code));
-            Assert.That(reader.GetCodeReference(codeHash.ValueHash256), Is.EqualTo(accountCount));
             foreach (Address address in addresses)
             {
                 Assert.That(PbtTestLeaves.ReadAccount(reader, address)!.Balance, Is.EqualTo((UInt256)100));
@@ -361,7 +355,7 @@ public class ImportPbtFromPreimageFlatTests
     /// <param name="clearKeyChunk">A value of 1 reopens the view after each deleted key, verifying the exclusive resume cursor.</param>
     [TestCase(10_000)]
     [TestCase(1)]
-    public async Task Import_mode_recovers_an_interrupted_epoch_15_attempt(int clearKeyChunk)
+    public async Task Import_mode_recovers_an_interrupted_epoch_16_attempt(int clearKeyChunk)
     {
         PbtConfig config = new() { ImportFromPreimageFlat = true };
 
@@ -432,7 +426,7 @@ public class ImportPbtFromPreimageFlatTests
         IDb metadata = pbtDb.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x0000000f")));
+            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x00000010")));
             Assert.That(metadata.Get("rootNodeGroup"u8), Is.Not.Null);
             Assert.That(metadata.Get("currentState"u8), Is.Null);
             Assert.That(metadata.Get("validState"u8), Is.Null);
@@ -752,7 +746,6 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(exitSource.ExitCode, Is.EqualTo(0));
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
         Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "leaf chunks must fold to the same root");
-        Assert.That(reader.GetCodeReference(bigCodeHash.ValueHash256), Is.EqualTo(2));
         PbtScanReport report = await new PbtScanner(pbtDb, config, LimboLogs.Instance).Scan(CancellationToken.None);
         Assert.That(report.Accounts.RecordCount, Is.EqualTo(3));
         Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(((UInt256)0x1234).ToBigEndian()));
@@ -1014,7 +1007,6 @@ public class ImportPbtFromPreimageFlatTests
         {
             Assert.That(retryExit.ExitCode, Is.Zero);
             Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
-            Assert.That(reader.GetCodeReference(codeHash.ValueHash256), Is.EqualTo(1));
             Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
         }
     }

@@ -27,7 +27,7 @@ public sealed class PbtSnapshotBundle(
     private readonly PbtWriteBatchBuilder<PbtPath> _codeBatch = resourcePool.GetWriteBatch(usage);
     private readonly PbtWriteBatchBuilder<PbtStoragePath> _storageBatch = resourcePool.GetStorageWriteBatch(usage);
     private readonly Lock _accountLock = new();
-    private readonly Dictionary<ValueHash256, AwaitedCode> _accountsAwaitingCode = [];
+    private readonly Dictionary<ValueHash256, ValueHash256> _accountsAwaitingCode = [];
     // Read-through memo of bytecode served by the read-only base; never snapshot content, so it is not persisted.
     private readonly ConcurrentDictionary<ValueHash256, CodeInfo> _codeMemo = new();
     private PbtTransientResource _transientResource = resourcePool.GetCachedResource(usage);
@@ -69,10 +69,10 @@ public sealed class PbtSnapshotBundle(
         ObjectDisposedException.ThrowIf(_isDisposed, this);
         lock (_accountLock)
         {
-            foreach ((ValueHash256 addressHash, AwaitedCode awaited) in _accountsAwaitingCode)
+            foreach ((ValueHash256 addressHash, ValueHash256 awaitedCodeHash) in _accountsAwaitingCode)
             {
-                CodeInfo code = GetCode(awaited.CodeHash) ?? throw new InvalidDataException($"Missing PBT bytecode for {awaited.CodeHash}.");
-                WriteAccountLeaves(addressHash, WriteBuffer.Accounts[addressHash]!, code, awaited.IncludeCode);
+                CodeInfo code = GetCode(awaitedCodeHash) ?? throw new InvalidDataException($"Missing PBT bytecode for {awaitedCodeHash}.");
+                WriteAccountLeaves(addressHash, WriteBuffer.Accounts[addressHash]!, code);
             }
             _accountsAwaitingCode.Clear();
         }
@@ -112,14 +112,6 @@ public sealed class PbtSnapshotBundle(
         payload = readOnlyBundle.GetNodeGroup(storagePath);
         if (payload is not null) trieNodeCache?.Add(groupHash, storagePath, payload);
         return payload;
-    }
-
-    private ulong GetCodeReference(in ValueHash256 codeHash)
-    {
-        if (WriteBuffer.TryGetCodeReference(codeHash, out ulong? count)) return count ?? 0;
-        for (int index = snapshots.Count - 1; index >= 0; index--)
-            if (snapshots[index].Content.TryGetCodeReference(codeHash, out count)) return count ?? 0;
-        return readOnlyBundle.GetCodeReference(codeHash);
     }
 
     internal IEnumerable<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressFilter = null)
@@ -192,37 +184,17 @@ public sealed class PbtSnapshotBundle(
         {
             ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(address);
             Account? previous = GetAccount(addressHash);
-            CodeInfo? previousCode = previous is { HasCode: true } ? GetCode(previous.CodeHash.ValueHash256) : null;
-            if (previous is { HasCode: true } && previousCode is null && !_accountsAwaitingCode.ContainsKey(addressHash))
-                throw new InvalidDataException($"Missing PBT bytecode for {previous.CodeHash}.");
+            // Code chunk leaves are shared per code hash without a reference count, so a non-delegation code hash
+            // can never be replaced or removed once set (EIP-6780 and EIP-161 guarantee this in protocol execution).
+            if (previous is { HasCode: true } && previous.CodeHash != account?.CodeHash)
+            {
+                CodeInfo previousCode = GetCode(previous.CodeHash.ValueHash256) ?? throw new InvalidDataException($"Missing PBT bytecode for {previous.CodeHash}.");
+                if (!Eip7702Constants.IsDelegatedCode(previousCode.CodeSpan))
+                    throw new InvalidOperationException($"The code of {address} cannot be replaced or removed: EIP-8297 code leaves are shared by code hash.");
+            }
             CodeInfo? code = account is { HasCode: true } ? GetCode(account.CodeHash.ValueHash256) : null;
 
-            // Code chunk leaves are shared per code hash, so they are written only when this update makes the
-            // code referenced; an unresolved earlier decision for the same code carries over unchanged.
-            bool includeCode = _accountsAwaitingCode.TryGetValue(addressHash, out AwaitedCode awaited) && awaited.IncludeCode;
-            if (previous?.CodeHash != account?.CodeHash)
-            {
-                includeCode = false;
-                if (previous is { HasCode: true })
-                {
-                    ValueHash256 previousHash = previous.CodeHash.ValueHash256;
-                    ulong count = checked(GetCodeReference(previousHash) - 1);
-                    WriteBuffer.SetCodeReference(previousHash, count == 0 ? null : count);
-                    // Deleting an absent chunk is a no-op, so zero chunks need not be skipped here.
-                    if (count == 0 && previousCode is not null && !Eip7702Constants.IsDelegatedCode(previousCode.CodeSpan))
-                        for (int chunkId = 0; chunkId < CodeChunkCount(previousCode); chunkId++)
-                            SetPbtLeaf(PbtStateKey.Code(addressHash, previousHash, chunkId), null);
-                }
-                if (account is { HasCode: true })
-                {
-                    ValueHash256 codeHash = account.CodeHash.ValueHash256;
-                    ulong count = GetCodeReference(codeHash);
-                    includeCode = count == 0;
-                    WriteBuffer.SetCodeReference(codeHash, checked(count + 1));
-                }
-            }
-
-            WriteAccountLeaves(addressHash, account, code, includeCode);
+            WriteAccountLeaves(addressHash, account, code);
 
             _accountsAwaitingCode.Remove(addressHash);
             WriteBuffer.Accounts[addressHash] = account;
@@ -232,14 +204,12 @@ public sealed class PbtSnapshotBundle(
             }
             else if (account.HasCode && code is null)
             {
-                _accountsAwaitingCode[addressHash] = new AwaitedCode(account.CodeHash.ValueHash256, includeCode);
+                _accountsAwaitingCode[addressHash] = account.CodeHash.ValueHash256;
             }
         }
     }
 
-    private static int CodeChunkCount(CodeInfo code) => (code.Code.Length + 30) / 31;
-
-    private void WriteAccountLeaves(ValueHash256 addressHash, Account? account, CodeInfo? code, bool includeCode)
+    private void WriteAccountLeaves(ValueHash256 addressHash, Account? account, CodeInfo? code)
     {
         bool isDelegation = code is not null && Eip7702Constants.IsDelegatedCode(code.CodeSpan);
         ValueHash256 basicData = default;
@@ -255,9 +225,9 @@ public sealed class PbtSnapshotBundle(
             else
             {
                 SetPbtLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), account.CodeHash.ValueHash256);
-                if (code is not null && includeCode)
+                if (code is not null)
                 {
-                    int chunkCount = CodeChunkCount(code);
+                    int chunkCount = (code.Code.Length + 30) / 31;
                     using ArrayPoolListRef<byte> chunks = new(chunkCount * PbtKeyDerivation.CodeChunkSize, chunkCount * PbtKeyDerivation.CodeChunkSize);
                     PbtKeyDerivation.ChunkifyCode(code.CodeSpan, chunks.AsSpan());
                     for (int chunkId = 0; chunkId < chunkCount; chunkId++)
@@ -297,10 +267,10 @@ public sealed class PbtSnapshotBundle(
         {
             WriteBuffer.Codes[codeHash] = code;
             using ArrayPoolListRef<ValueHash256> resolved = new(0);
-            foreach ((ValueHash256 addressHash, AwaitedCode awaited) in _accountsAwaitingCode)
+            foreach ((ValueHash256 addressHash, ValueHash256 awaitedCodeHash) in _accountsAwaitingCode)
             {
-                if (awaited.CodeHash != codeHash) continue;
-                WriteAccountLeaves(addressHash, WriteBuffer.Accounts[addressHash]!, code, awaited.IncludeCode);
+                if (awaitedCodeHash != codeHash) continue;
+                WriteAccountLeaves(addressHash, WriteBuffer.Accounts[addressHash]!, code);
                 resolved.Add(addressHash);
             }
             foreach (ValueHash256 addressHash in resolved) _accountsAwaitingCode.Remove(addressHash);
@@ -323,8 +293,6 @@ public sealed class PbtSnapshotBundle(
         }
         return code;
     }
-
-    private readonly record struct AwaitedCode(ValueHash256 CodeHash, bool IncludeCode);
 
     // The owning scope serializes capture with snapshot collection and disposal.
     internal PbtTrieWarmupSession CreateTrieWarmupSession(ITrieWarmer trieWarmer, int sequenceId)

@@ -35,7 +35,6 @@ public static class Metrics
 
     internal static readonly PbtSnapshotMemoryLabel AccountLeafSnapshotMemory = new("account", "leaf");
     internal static readonly PbtSnapshotMemoryLabel AccountTrieSnapshotMemory = new("account", "trie");
-    internal static readonly PbtSnapshotMemoryLabel CodeLeafSnapshotMemory = new("code", "leaf");
     internal static readonly PbtSnapshotMemoryLabel CodeTrieSnapshotMemory = new("code", "trie");
     internal static readonly PbtSnapshotMemoryLabel StorageLeafSnapshotMemory = new("storage", "leaf");
     internal static readonly PbtSnapshotMemoryLabel StorageTrieSnapshotMemory = new("storage", "trie");
@@ -83,9 +82,9 @@ public static class Metrics
     public static ConcurrentDictionary<PbtResourcePool.PooledResourceLabel, long> PbtCreatedPooledResource { get; } = new();
 
     /// <remarks>
-    /// One observation per point read of an account, storage slot, node group, code, or code reference.
+    /// One observation per point read of an account, storage slot, node group, or code.
     /// Snapshot hits include tombstones and cleared storage. Persistence timings exclude the preceding
-    /// unsuccessful snapshot walk and distinguish missing values (null, zero storage, or zero references).
+    /// unsuccessful snapshot walk and distinguish missing values (null or zero storage).
     /// </remarks>
     [DetailedMetric]
     [Description("Time of a read through the pbt read-only snapshot bundle, by read type, node-group partition, tier and result (Stopwatch ticks)")]
@@ -99,7 +98,6 @@ public static class Metrics
     {
         [AccountLeafSnapshotMemory] = 0,
         [AccountTrieSnapshotMemory] = 0,
-        [CodeLeafSnapshotMemory] = 0,
         [CodeTrieSnapshotMemory] = 0,
         [StorageLeafSnapshotMemory] = 0,
         [StorageTrieSnapshotMemory] = 0,
@@ -115,7 +113,6 @@ public static class Metrics
     {
         PbtBaseSnapshotMemory.AddBy(AccountLeafSnapshotMemory, direction * size.Leaf);
         PbtBaseSnapshotMemory.AddBy(AccountTrieSnapshotMemory, direction * size.Node);
-        PbtBaseSnapshotMemory.AddBy(CodeLeafSnapshotMemory, direction * size.CodeReference);
         Interlocked.Add(ref _pbtBaseSnapshotCount, direction);
     }
 

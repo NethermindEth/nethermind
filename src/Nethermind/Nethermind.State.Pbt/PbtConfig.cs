@@ -116,11 +116,4 @@ public class PbtConfig : IPbtConfig
         "write_buffer_size=64000000;" +
         "max_write_buffer_number=8;" +
         "";
-
-    public string CodeReferencesRocksDbOptions { get; set; } =
-        PbtCommonRecordOptions +
-        "max_bytes_for_level_base=64000000;" +
-        "write_buffer_size=16000000;" +
-        "max_write_buffer_number=2;" +
-        "";
 }

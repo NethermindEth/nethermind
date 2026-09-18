@@ -116,7 +116,6 @@ public class PbtMetricsTests
             reader.GetAccount(addressHash).Returns(account);
             reader.GetSlot(storageKey).Returns(slot);
             reader.GetCode(codeHash).Returns(code);
-            reader.GetCodeReference(codeHash).Returns(1UL);
             reader.GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>()).Returns(_ => { payload.AcquireLease(); return payload; });
         }
 
@@ -128,7 +127,6 @@ public class PbtMetricsTests
             content.Accounts[addressHash] = deleted ? null : account;
             if (scenario == "selfdestruct") content.ClearStorage(addressHash);
             else content.Storages[storageKey] = deleted ? default : slot;
-            content.SetCodeReference(codeHash, deleted ? null : 1UL);
             if (!deleted) payload.AcquireLease();
             content.NodeGroups[groupKey.ToPath<PbtStorageNodePath>()] = deleted ? null : payload;
             if (!deleted) content.Codes[codeHash] = code;
@@ -143,7 +141,6 @@ public class PbtMetricsTests
         Account? actualAccount = bundle.GetAccount(TestItem.AddressA);
         EvmWord actualSlot = bundle.GetSlot(TestItem.AddressA, 1);
         using RefCountingMemory? actualGroup = bundle.GetNodeGroup(groupKey);
-        ulong actualReference = bundle.GetCodeReference(codeHash);
         CodeInfo? actualCode = bundle.GetCode(codeHash);
 
         string tier = snapshotHit ? "snapshot" : scenario == "missing" ? "persistence_null" : "persistence";
@@ -154,12 +151,11 @@ public class PbtMetricsTests
             Assert.That(actualAccount, Is.EqualTo(empty ? null : account));
             Assert.That(actualSlot, Is.EqualTo(empty ? default : slot));
             Assert.That(actualGroup, Is.SameAs(empty ? null : payload));
-            Assert.That(actualReference, Is.EqualTo(empty ? 0UL : 1UL));
             Assert.That(actualCode, Is.SameAs(scenario == "missing" ? null : code));
             Assert.That(_readOnlyBundleTime.Labels, Is.EqualTo(detailedMetrics
-                ? new[] { $"account_{tier}", $"storage_{tier}", $"node_group_{partition}_{tier}", $"code_reference_{tier}", $"code_{codeTier}" }
+                ? new[] { $"account_{tier}", $"storage_{tier}", $"node_group_{partition}_{tier}", $"code_{codeTier}" }
                 : []));
-            Assert.That(_readOnlyBundleTime.Observations, Has.Count.EqualTo(detailedMetrics ? 5 : 0));
+            Assert.That(_readOnlyBundleTime.Observations, Has.Count.EqualTo(detailedMetrics ? 4 : 0));
             Assert.That(_readOnlyBundleTime.Observations, Is.All.GreaterThanOrEqualTo(0));
         }
     }

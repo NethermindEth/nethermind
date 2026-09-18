@@ -41,14 +41,12 @@ public class PbtRocksDbConfigAdjusterTests
         CodesRocksDbOptions = $"column={nameof(PbtColumns.Codes)};",
         StoragesRocksDbOptions = $"column={nameof(PbtColumns.Storages)};",
         NodeGroupsRocksDbOptions = "column=NodeGroups;",
-        CodeReferencesRocksDbOptions = $"column={nameof(PbtColumns.CodeReferences)};",
     };
 
     [Test]
     public void EveryActiveColumnGetsTheGlobalThenSharedThenItsOwnOptions(
         [Values(PbtColumns.Metadata, PbtColumns.Accounts, PbtColumns.Codes, PbtColumns.Storages,
-            PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups,
-            PbtColumns.CodeReferences)] PbtColumns column)
+            PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups)] PbtColumns column)
     {
         IRocksDbConfig config = CreateAdjuster(Substitute.For<IRocksDbConfigFactory>())
             .GetForDatabase(nameof(DbNames.Pbt), column.ToString());
@@ -74,8 +72,7 @@ public class PbtRocksDbConfigAdjusterTests
     [Test]
     public void OnlyTheAccountAndStorageColumnsGetADedicatedBlockCache(
         [Values(null, nameof(PbtColumns.Metadata), nameof(PbtColumns.Accounts), nameof(PbtColumns.Codes), nameof(PbtColumns.Storages),
-            nameof(PbtColumns.AccountNodeGroups), nameof(PbtColumns.CodeNodeGroups), nameof(PbtColumns.StorageNodeGroups),
-            nameof(PbtColumns.CodeReferences))] string? columnName)
+            nameof(PbtColumns.AccountNodeGroups), nameof(PbtColumns.CodeNodeGroups), nameof(PbtColumns.StorageNodeGroups))] string? columnName)
     {
         IDisposableStack disposeStack = Substitute.For<IDisposableStack>();
 

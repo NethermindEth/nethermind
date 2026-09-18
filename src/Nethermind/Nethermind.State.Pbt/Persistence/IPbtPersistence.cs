@@ -48,8 +48,6 @@ public interface IPbtPersistence
 
         /// <summary>Gets a caller-owned iterator over the persisted group keys.</summary>
         IPbtIterator<PbtStorageNodePath> EnumerateNodeGroupKeys();
-
-        ulong GetCodeReference(in ValueHash256 codeHash);
     }
 
     public interface IWriteBatch : IDisposable
@@ -65,7 +63,6 @@ public interface IPbtPersistence
         /// Validates the boundary key and complete payload before staging the write.
         /// </remarks>
         void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>;
-        void SetCodeReference(in ValueHash256 codeHash, ulong? referenceCount);
         void Commit();
     }
 }

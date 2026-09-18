@@ -150,7 +150,7 @@ public class PbtSnapshotBundleTests
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(content.NodeGroups, Has.Count.EqualTo(groupCount));
-                    Assert.That(content.GetPayloadSize(), Is.EqualTo(new PbtSnapshotPayloadSize(0, nodeBytes, 0)));
+                    Assert.That(content.GetPayloadSize(), Is.EqualTo(new PbtSnapshotPayloadSize(0, nodeBytes)));
                     Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.EqualTo(groupCount * (tombstone ? 1 : 2)));
                 }
 
@@ -375,7 +375,8 @@ public class PbtSnapshotBundleTests
         PbtResourcePool pool = new(new PbtConfig());
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
             new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(new PbtStorageTreeKey([0]), null)), pool, PbtResourcePool.Usage.MainBlockProcessing);
-        byte[] code = Bytes.FromHexString("6001");
+        // Only a delegated account may be deleted once its code is known: chunk leaves are shared without a reference count.
+        byte[] code = deleteAccount ? Delegation : RealCode;
         Account account = Build.An.Account.WithCode(code).TestObject;
         bundle.SetAccount(TestItem.AddressA, account);
         bundle.SetAccount(TestItem.AddressA, account);
@@ -1081,9 +1082,7 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
-    public void Shared_code_survives_account_replacement_and_last_reference_removal(
-        [Values] bool reverseOrder, [Values(0ul, 3ul)] ulong replacementNonce,
-        [Values("", "00", "6001")] string replacementCode, [Values(1, 129, 258)] int chunkCount)
+    public void Shared_code_is_reapplied_for_each_holder_across_folds([Values] bool reverseOrder, [Values(1, 129, 258)] int chunkCount)
     {
         PbtResourcePool pool = new(new PbtConfig());
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
@@ -1092,40 +1091,80 @@ public class PbtSnapshotBundleTests
         bytes.AsSpan().Fill(0x5b);
         CodeInfo code = new(bytes);
         Account account = Build.An.Account.WithCode(bytes).TestObject;
-        bundle.SetCode(account.CodeHash.ValueHash256, code);
+        if (!reverseOrder) bundle.SetCode(account.CodeHash.ValueHash256, code);
         bundle.SetAccount(TestItem.AddressA, account);
-        bundle.SetAccount(TestItem.AddressB, account);
+        if (reverseOrder) bundle.SetCode(account.CodeHash.ValueHash256, code);
         ValueHash256 root = Fold(bundle, default);
         using PbtSnapshot original = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root);
-        byte[] replacementBytes = Bytes.FromHexString(replacementCode);
-        Account replacement = Build.An.Account.WithNonce(replacementNonce).WithCode(replacementBytes).TestObject;
-        if (replacement.HasCode) bundle.SetCode(replacement.CodeHash.ValueHash256, new CodeInfo(replacementBytes));
-        if (reverseOrder) bundle.SetAccount(TestItem.AddressB, account);
-        bundle.SetAccount(TestItem.AddressA, replacement);
-        if (!reverseOrder) bundle.SetAccount(TestItem.AddressB, account);
+        bundle.SetAccount(TestItem.AddressB, account);
         root = Fold(bundle, root);
         Dictionary<string, byte[]> model = [];
-        PbtReferenceModel.SetAccount(model, TestItem.AddressA, replacement.Nonce, replacement.Balance, replacementBytes);
+        PbtReferenceModel.SetAccount(model, TestItem.AddressA, account.Nonce, account.Balance, bytes);
         PbtReferenceModel.SetAccount(model, TestItem.AddressB, account.Nonce, account.Balance, bytes);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
-            Assert.That(original.Content.Accounts[PbtKeyDerivation.AddressKeyHash(TestItem.AddressA)], Is.SameAs(account));
             Assert.That(original.Content.Codes[account.CodeHash.ValueHash256], Is.SameAs(code));
-        }
-        bundle.SetAccount(TestItem.AddressB, null);
-        root = Fold(bundle, root);
-        model.Clear();
-        PbtReferenceModel.SetAccount(model, TestItem.AddressA, replacement.Nonce, replacement.Balance, replacementBytes);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
             Assert.That(bundle.GetCode(account.CodeHash.ValueHash256), Is.SameAs(code));
         }
     }
 
+    private static readonly byte[] RealCode = Bytes.FromHexString("6001");
+    private static readonly byte[] OtherRealCode = Bytes.FromHexString("6002");
+    private static readonly byte[] Delegation = Bytes.FromHexString("ef01000000000000000000000000000000000000000001");
+    private static readonly byte[] OtherDelegation = Bytes.FromHexString("ef01000000000000000000000000000000000000000002");
+
+    public static IEnumerable<TestCaseData> CodeHashTransitionCases()
+    {
+        yield return new TestCaseData(RealCode, OtherRealCode, typeof(InvalidOperationException)).SetName("Real_to_other_real_throws");
+        yield return new TestCaseData(RealCode, null, typeof(InvalidOperationException)).SetName("Real_to_deleted_throws");
+        yield return new TestCaseData(RealCode, Delegation, typeof(InvalidOperationException)).SetName("Real_to_delegation_throws");
+        yield return new TestCaseData(RealCode, RealCode, null).SetName("Real_to_same_real_is_allowed");
+        yield return new TestCaseData(Array.Empty<byte>(), RealCode, null).SetName("Empty_to_real_is_allowed");
+        yield return new TestCaseData(Delegation, OtherDelegation, null).SetName("Delegation_to_other_delegation_is_allowed");
+        yield return new TestCaseData(Delegation, Array.Empty<byte>(), null).SetName("Delegation_to_empty_is_allowed");
+        yield return new TestCaseData(Delegation, null, null).SetName("Delegation_to_deleted_is_allowed");
+    }
+
+    [TestCaseSource(nameof(CodeHashTransitionCases))]
+    public void Code_hash_transitions_without_a_reference_count(byte[] previousCode, byte[]? nextCode, Type? expectedException)
+    {
+        PbtResourcePool pool = new(new PbtConfig());
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        Account previous = Build.An.Account.WithNonce(1).WithCode(previousCode).TestObject;
+        Account? next = nextCode is null ? null : Build.An.Account.WithNonce(2).WithCode(nextCode).TestObject;
+        Set(previous, previousCode);
+        ValueHash256 root = Fold(bundle, default);
+        if (expectedException is not null)
+        {
+            Assert.Throws(expectedException, () => Set(next, nextCode));
+            return;
+        }
+        Set(next, nextCode);
+        Dictionary<string, byte[]> model = [];
+        if (next is not null) PbtReferenceModel.SetAccount(model, TestItem.AddressA, next.Nonce, next.Balance, nextCode);
+        Assert.That(Fold(bundle, root), Is.EqualTo(PbtReferenceModel.Root(model)));
+
+        void Set(Account? account, byte[]? code)
+        {
+            if (code is { Length: > 0 }) bundle.SetCode(account!.CodeHash.ValueHash256, new CodeInfo(code));
+            bundle.SetAccount(TestItem.AddressA, account);
+        }
+    }
+
     [Test]
-    public void Delegation_header_matches_eip_preimages([Values] bool includeCode)
+    public void Replacing_unknown_previous_code_throws()
+    {
+        PbtResourcePool pool = new(new PbtConfig());
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        bundle.SetAccount(TestItem.AddressA, Build.An.Account.WithCode(RealCode).TestObject);
+        Assert.Throws<InvalidDataException>(() => bundle.SetAccount(TestItem.AddressA, Build.An.Account.WithCode(OtherRealCode).TestObject));
+    }
+
+    [Test]
+    public void Delegation_header_matches_eip_preimages()
     {
         byte[] code = Bytes.FromHexString("ef01000000000000000000000000000000000000000001");
         Account account = Build.An.Account.WithCode(code).TestObject;
@@ -1135,7 +1174,7 @@ public class PbtSnapshotBundleTests
             [new PbtPath([0, .. addressHash.Bytes, 0])] = new(Bytes.FromHexString("0000000000000017000000000000000000000000000000000000000000000000")),
             [new PbtPath([0, .. addressHash.Bytes, 2])] = new([.. code, .. new byte[9]]),
         };
-        Assert.That(PbtFlatState.AccountLeaves(addressHash, account, new CodeInfo(code), includeCode), Is.EquivalentTo(expected));
+        Assert.That(PbtFlatState.AccountLeaves(addressHash, account, new CodeInfo(code)), Is.EquivalentTo(expected));
     }
 
     [Test]
@@ -1154,9 +1193,6 @@ public class PbtSnapshotBundleTests
         Set(TestItem.AddressA, []);
         Set(TestItem.AddressA, firstDelegation);
         Set(TestItem.AddressA, null);
-        Set(TestItem.AddressB, Bytes.FromHexString("6001"));
-        Set(TestItem.AddressB, firstDelegation);
-        Set(TestItem.AddressB, Bytes.FromHexString("00"));
         Set(TestItem.AddressB, null);
         Assert.That(Fold(bundle, root), Is.EqualTo(default(ValueHash256)));
 
@@ -1214,31 +1250,7 @@ public class PbtSnapshotBundleTests
 
     [TestCase(false)]
     [TestCase(true)]
-    public void Pending_code_replacement_and_final_reference_readdition_stage_latest_values(bool resolveAbandonedCode)
-    {
-        PbtResourcePool pool = new(new PbtConfig());
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), new Reader(default, null)), pool, PbtResourcePool.Usage.MainBlockProcessing);
-        byte[] abandonedBytes = Bytes.FromHexString("6001");
-        Account abandoned = Build.An.Account.WithCode(abandonedBytes).TestObject;
-        byte[] bytes = new byte[(PbtKeyDerivation.StemSubtreeWidth + 2) * 31];
-        bytes.AsSpan().Fill(0x5b);
-        Account account = Build.An.Account.WithBalance(3).WithCode(bytes).TestObject;
-        bundle.SetAccount(TestItem.AddressA, abandoned);
-        bundle.SetAccount(TestItem.AddressA, account);
-        if (resolveAbandonedCode) bundle.SetCode(abandoned.CodeHash.ValueHash256, new CodeInfo(abandonedBytes));
-        bundle.SetCode(account.CodeHash.ValueHash256, new CodeInfo(bytes));
-        bundle.SetAccount(TestItem.AddressA, null);
-        bundle.SetAccount(TestItem.AddressB, account);
-        ValueHash256 root = Fold(bundle, default);
-        Dictionary<string, byte[]> model = [];
-        PbtReferenceModel.SetAccount(model, TestItem.AddressB, account.Nonce, account.Balance, bytes);
-        Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
-    }
-
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Late_code_lookup_resolves_pending_mutations_without_reapplying_references(bool failFirstFold)
+    public void Late_code_lookup_resolves_pending_mutations(bool failFirstFold)
     {
         PbtResourcePool pool = new(new PbtConfig());
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
@@ -1464,7 +1476,6 @@ public class PbtSnapshotBundleTests
             return memory;
         }
         public IPbtIterator<PbtStorageNodePath> EnumerateNodeGroupKeys() => new PbtIterator<PbtStorageNodePath>(((IEnumerable<PbtStorageNodePath>)[]).GetEnumerator());
-        public ulong GetCodeReference(in ValueHash256 codeHash) => 0;
         public void Dispose() { }
     }
 
