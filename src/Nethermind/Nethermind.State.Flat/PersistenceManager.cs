@@ -158,9 +158,7 @@ public class PersistenceManager(
         // longest chain, then the latest state, only when nothing was committed this session.
         if (snapshotsDepth > _backstopReorgDepth)
         {
-            StateId backstopSeed = snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.GetLastSnapshotId() ?? latestSnapshot;
-            (PersistedSnapshot? persisted, Snapshot? inMemory) =
-                snapshotRepository.FindSnapshotToPersist(backstopSeed, currentPersistedState, _compactSize);
+            (PersistedSnapshot? persisted, Snapshot? inMemory) = FindBackstopCandidate(currentPersistedState, latestSnapshot);
             if (persisted is not null || inMemory is not null)
             {
                 if (_logger.IsWarn) _logger.Warn(
@@ -176,6 +174,32 @@ public class PersistenceManager(
 
         return (null, null, TryFindSnapshotToConvert(currentPersistedState));
     }
+
+    /// <summary>The backstop's seed decides which chain is persisted, and a seed only wins by assembling a chain
+    /// down to the persisted state. A state committed off that chain reaches none: the engine keeps driving the tip
+    /// while the node syncs from genesis, so the last committed state sits millions of blocks above, on an ancestry
+    /// this node does not have. Committing to that one seed would stop persistence for good - and with it the history
+    /// capture that runs on top of it - while the in-memory tier the backstop exists to bound keeps growing. So each
+    /// seed is tried in turn, preference order intact, until one assembles a chain.</summary>
+    private (PersistedSnapshot? Persisted, Snapshot? InMemory) FindBackstopCandidate(in StateId currentPersistedState, in StateId latestSnapshot)
+    {
+        StateId? committed = snapshotRepository.GetLastCommittedStateId();
+        (PersistedSnapshot? persisted, Snapshot? inMemory) = FindFromSeed(committed, currentPersistedState);
+        if (persisted is not null || inMemory is not null) return (persisted, inMemory);
+
+        StateId? longest = snapshotRepository.GetLastSnapshotId();
+        if (longest != committed)
+        {
+            (persisted, inMemory) = FindFromSeed(longest, currentPersistedState);
+            if (persisted is not null || inMemory is not null) return (persisted, inMemory);
+        }
+
+        if (latestSnapshot == committed || latestSnapshot == longest) return (null, null);
+        return snapshotRepository.FindSnapshotToPersist(latestSnapshot, currentPersistedState, _compactSize);
+    }
+
+    private (PersistedSnapshot? Persisted, Snapshot? InMemory) FindFromSeed(StateId? seed, in StateId currentPersistedState) =>
+        seed is null ? (null, null) : snapshotRepository.FindSnapshotToPersist(seed.Value, currentPersistedState, _compactSize);
 
     /// <summary>
     /// Phase 2 — scan in-memory snapshots in ascending block-number order using two passes so
@@ -250,6 +274,9 @@ public class PersistenceManager(
                 if (toPersist is not null)
                 {
                     using Snapshot _ = toPersist;
+                    // The span tells a per-block chunk from a multi-block one, which is what the history capture
+                    // walking on top of this can and cannot follow.
+                    if (_logger.IsDebug) _logger.Debug($"Persisting in-memory chunk {toPersist.From.BlockNumber}->{toPersist.To.BlockNumber}.");
                     snapshotRepository.RemoveSiblingAndDescendents(toPersist.To);
                     CaptureHistory(toPersist.To, _cts.Token);
                     PersistSnapshot(toPersist);
@@ -259,6 +286,7 @@ public class PersistenceManager(
                 else if (persistedToPersist is not null)
                 {
                     using PersistedSnapshot _ = persistedToPersist;
+                    if (_logger.IsDebug) _logger.Debug($"Persisting persisted-tier chunk {persistedToPersist.From.BlockNumber}->{persistedToPersist.To.BlockNumber}.");
                     snapshotRepository.RemoveSiblingAndDescendents(persistedToPersist.To);
                     CaptureHistory(persistedToPersist.To, _cts.Token);
                     PersistPersistedSnapshot(persistedToPersist);

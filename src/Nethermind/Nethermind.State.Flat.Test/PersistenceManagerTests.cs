@@ -1251,6 +1251,53 @@ public class PersistenceManagerTests
         Assert.That(hook.CapturedUpTo, Is.EqualTo(to));
     }
 
+    [Test]
+    public async Task AddToPersistence_WhenTheLastCommittedStateIsOffChain_PersistsTheChainThatReachesThePersistedState()
+    {
+        // A backstop shallow enough for the fixture's chain to reach it; the seed it picks is what this covers.
+        FlatDbConfig config = new()
+        {
+            CompactSize = _config.CompactSize,
+            CompactionOffset = 0,
+            MinReorgDepth = 8,
+            MaxInMemoryBaseSnapshotCount = _config.MaxInMemoryBaseSnapshotCount,
+            MaxReorgDepth = 32,
+            LongFinalityMaxReorgDepth = 32,
+            EnableLongFinality = true
+        };
+        using PersistenceManager manager = new(
+            config,
+            _tier.Resolve<ICompactionSchedule>(),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            NullStatePersistenceBarrier.Instance,
+            LimboLogs.Instance,
+            _persistedSnapshotCompactor,
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>());
+
+        // A chain of CompactSize chunks, deep enough for the backstop to fire.
+        StateId first = CreateStateId(16);
+        StateId second = CreateStateId(32);
+        StateId third = CreateStateId(48);
+        _ = CreateSnapshot(Block0, first);
+        _ = CreateSnapshot(first, second);
+        _ = CreateSnapshot(second, third);
+        // The engine commits a state at the tip while the node is still syncing from genesis: its parent is a
+        // block this node has never had, so nothing chains from it down to the persisted state.
+        StateId offChainParent = CreateStateId(100_000, rootByte: 0xAA);
+        StateId offChain = CreateStateId(100_001, rootByte: 0xBB);
+        _ = CreateSnapshot(offChainParent, offChain);
+        _snapshotRepository.SetLastCommittedStateId(offChain);
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        await manager.AddToPersistence(third);
+
+        Assert.That(manager.GetCurrentPersistedStateId(), Is.EqualTo(first),
+            "an off-chain committed state must not stop the synced chain from persisting");
+    }
+
     // FlushToPersistence prunes both tiers as it drains, so a flush without capture would leave the flushed
     // range permanently absent from history on every shutdown.
     [Test]
