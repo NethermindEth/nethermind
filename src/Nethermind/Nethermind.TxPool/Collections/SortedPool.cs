@@ -624,6 +624,18 @@ namespace Nethermind.TxPool.Collections
                 return;
             }
 
+            if (bucket is SnapshotBucket { Snapshot: { } snapshot })
+            {
+                foreach (TValue value in snapshot)
+                {
+                    if (!visitor(value, ref state))
+                    {
+                        break;
+                    }
+                }
+                return;
+            }
+
             foreach (TValue value in bucket)
             {
                 if (!visitor(value, ref state))

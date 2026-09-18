@@ -321,18 +321,22 @@ namespace Nethermind.TxPool.Test.Collections
 
         private static IEnumerable<TestCaseData> VisitBucketCases()
         {
-            yield return new TestCaseData(Array.Empty<ulong>(), int.MaxValue, Array.Empty<int>())
-                .SetName("VisitBucket_missing_group_visits_nothing");
-            yield return new TestCaseData(new ulong[] { 0, 1, 2, 3 }, int.MaxValue, new[] { 0, 1, 2, 3 })
-                .SetName("VisitBucket_iterates_all_items_in_ascending_nonce_order");
-            yield return new TestCaseData(new ulong[] { 0, 1, 2, 3 }, 2, new[] { 0, 1, 2 })
-                .SetName("VisitBucket_stops_after_visitor_returns_false");
+            foreach (bool cached in new[] { false, true })
+            {
+                yield return new TestCaseData(Array.Empty<ulong>(), int.MaxValue, Array.Empty<int>(), cached)
+                    .SetName($"VisitBucket_missing_group_visits_nothing_cached_{cached}");
+                yield return new TestCaseData(new ulong[] { 0, 1, 2, 3 }, int.MaxValue, new[] { 0, 1, 2, 3 }, cached)
+                    .SetName($"VisitBucket_iterates_all_items_in_ascending_nonce_order_cached_{cached}");
+                yield return new TestCaseData(new ulong[] { 0, 1, 2, 3 }, 2, new[] { 0, 1, 2 }, cached)
+                    .SetName($"VisitBucket_stops_after_visitor_returns_false_cached_{cached}");
+            }
         }
 
         [TestCaseSource(nameof(VisitBucketCases))]
-        public void VisitBucket_visits_expected_nonces(ulong[] insertNonces, int stopAfterNonce, int[] expectedVisited)
+        public void VisitBucket_visits_expected_nonces(ulong[] insertNonces, int stopAfterNonce, int[] expectedVisited, bool cached)
         {
             InsertNonces(TestItem.AddressA, insertNonces);
+            if (cached) _sortedPool.GetProductionSnapshot();
 
             (List<int> Visited, int StopAfter) state = (new List<int>(), stopAfterNonce);
             _sortedPool.VisitBucket(TestItem.AddressA, ref state, static (Transaction tx, ref (List<int> Visited, int StopAfter) s) =>
@@ -342,6 +346,40 @@ namespace Nethermind.TxPool.Test.Collections
             });
 
             Assert.That(state.Visited, Is.EqualTo(expectedVisited));
+        }
+
+        [Test]
+        public void VisitBucket_observes_membership_changes_after_snapshot()
+        {
+            Transaction first = _transactions[1];
+            Transaction next = Build.A.Transaction.WithSenderAddress(first.SenderAddress!).WithNonce(1).WithGasPrice(10).TestObject;
+            Transaction replacement = Build.A.Transaction.WithSenderAddress(first.SenderAddress!).WithGasPrice(100).TestObject;
+            InsertSnapshotTransaction(first);
+            _sortedPool.GetProductionSnapshot();
+            AssertVisited(first);
+
+            InsertSnapshotTransaction(next);
+            AssertVisited(first, next);
+            _sortedPool.GetProductionSnapshot();
+            InsertSnapshotTransaction(replacement);
+            AssertVisited(replacement, next);
+            _sortedPool.GetProductionSnapshot();
+            _sortedPool.TryRemove(replacement.Hash!);
+            AssertVisited(next);
+            _sortedPool.GetProductionSnapshot();
+            _sortedPool.TryRemove(next.Hash!);
+            AssertVisited();
+
+            void AssertVisited(params Transaction[] expected)
+            {
+                List<Transaction> visited = [];
+                _sortedPool.VisitBucket(first.SenderAddress!, ref visited, static (Transaction tx, ref List<Transaction> values) =>
+                {
+                    values.Add(tx);
+                    return true;
+                });
+                Assert.That(visited, Is.EqualTo(expected));
+            }
         }
 
         [Test]
