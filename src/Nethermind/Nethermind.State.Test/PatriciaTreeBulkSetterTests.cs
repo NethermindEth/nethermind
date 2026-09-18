@@ -31,6 +31,9 @@ public class PatriciaTreeBulkSetterTests
         }
         yield return new TestCaseData(GenRandomOfLength(100)).SetName("100");
         yield return new TestCaseData(GenRandomOfLength(1000)).SetName("1000");
+        // Partial top-level branches wide enough to split into parallel runs: two even buckets, and one fat bucket beside two thin ones.
+        yield return new TestCaseData(GenRandomWithFirstNibbles(600, [0xa, 0xb])).SetName("two nibbles 600");
+        yield return new TestCaseData(GenRandomWithFirstNibbles(600, [3, 3, 3, 3, 3, 3, 3, 7, 0xc])).SetName("skewed 600");
 
         yield return new TestCaseData(new List<(Hash256 key, byte[] value)>()
         {
@@ -242,7 +245,10 @@ public class PatriciaTreeBulkSetterTests
         return randData;
     }
 
-    internal static List<(Hash256 key, byte[] value)> GenRandomOfLength(int itemCount, int seed = 0)
+    internal static List<(Hash256 key, byte[] value)> GenRandomOfLength(int itemCount, int seed = 0) => GenRandomWithFirstNibbles(itemCount, null, seed);
+
+    /// <summary>Random entries whose first key nibble is drawn from <paramref name="firstNibbles"/>, shaping the top-level branch.</summary>
+    internal static List<(Hash256 key, byte[] value)> GenRandomWithFirstNibbles(int itemCount, int[] firstNibbles, int seed = 0)
     {
         Random rng = new(seed);
         List<(Hash256 key, byte[] value)> items = [];
@@ -251,6 +257,8 @@ public class PatriciaTreeBulkSetterTests
         {
             byte[] buffer = new byte[32];
             rng.NextBytes(buffer);
+            if (firstNibbles is not null)
+                buffer[0] = (byte)((firstNibbles[rng.Next(firstNibbles.Length)] << 4) | (buffer[0] & 0x0f));
             Hash256 key = new(buffer);
             rng.NextBytes(buffer);
 
@@ -524,6 +532,20 @@ public class PatriciaTreeBulkSetterTests
         }
 
         Assert.That(thrown, Is.True);
+    }
+
+    [TestCase(new[] { 2000 }, 128, new[] { 1 })]
+    [TestCase(new[] { 100, 20, 5 }, 128, new[] { 3 })]
+    [TestCase(new[] { 128, 128, 128 }, 128, new[] { 1, 2, 3 })]
+    [TestCase(new[] { 60, 70, 128, 10 }, 128, new[] { 2, 4 })]
+    [TestCase(new[] { 10, 5000, 10, 5000 }, 128, new[] { 2, 4 })]
+    [TestCase(new[] { 0, 300, 0, 0, 200, 0 }, 128, new[] { 2, 6 })]
+    [TestCase(new[] { 1, 1, 1 }, 0, new[] { 1, 2, 3 })]
+    public void PlanBucketRuns_merges_consecutive_buckets_up_to_the_minimum(int[] counts, int minEntries, int[] expectedRunEnds)
+    {
+        int[] runEnds = new int[TrieNode.BranchesCount];
+        int runCount = PatriciaTree.PlanBucketRuns(counts, minEntries, runEnds);
+        Assert.That(runEnds.AsSpan(0, runCount).ToArray(), Is.EqualTo(expectedRunEnds));
     }
 
     public static IEnumerable<TestCaseData> BucketSortTestCase()

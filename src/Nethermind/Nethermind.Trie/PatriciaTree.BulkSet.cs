@@ -14,10 +14,10 @@ namespace Nethermind.Trie;
 
 public partial class PatriciaTree
 {
+    /// <summary>Minimum entries a parallel worker takes; narrower fan-out costs more than it saves.</summary>
     public const int MinEntriesToParallelizeThreshold = 128;
     private const int InPlaceSortThreshold = 32;
     private const int BSearchThreshold = 128;
-    private const int FullBranch = (1 << TrieNode.BranchesCount) - 1;
 
     [Flags]
     public enum Flags
@@ -51,7 +51,8 @@ public partial class PatriciaTree
     /// BulkSet multiple entries at the same time. It works by working each nibble level one at a time, partially
     /// sorting the <see cref="entries"/> then recurs on each nibble, traversing the top level branch only once.
     /// if <see cref="Flags.WasSorted"/> is on, the sort is skipped for a slightly faster set.
-    /// It will parallelize at the top level if the number of entries reached a certain threshold.
+    /// A branch whose consecutive nibble buckets merge into at least two runs of
+    /// <see cref="MinEntriesToParallelizeThreshold"/> entries sets each run on its own worker.
     /// </summary>
     /// <param name="entries"></param>
     /// <param name="flags"></param>
@@ -199,8 +200,23 @@ public partial class PatriciaTree
         bool hasRemove = false;
         int nonNullChildCount = 0;
 
-        if (!Core.Cpu.RuntimeInformation.IsSingleProcessor && entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && !flags.HasFlag(Flags.DoNotParallelize))
+        Span<int> runEnds = stackalloc int[TrieNode.BranchesCount];
+        int runCount = 1;
+        if (!Core.Cpu.RuntimeInformation.IsSingleProcessor && entries.Length >= MinEntriesToParallelizeThreshold && !flags.HasFlag(Flags.DoNotParallelize))
         {
+            Span<int> counts = stackalloc int[TrieNode.BranchesCount];
+            for (int mask = nibMask; mask != 0; mask &= mask - 1)
+            {
+                int nib = BitOperations.TrailingZeroCount(mask);
+                int next = mask & (mask - 1);
+                counts[nib] = (next != 0 ? indexes[BitOperations.TrailingZeroCount(next)] : entries.Length) - indexes[nib];
+            }
+            runCount = PlanBucketRuns(counts, MinEntriesToParallelizeThreshold, runEnds);
+        }
+
+        if (runCount > 1)
+        {
+            using ArrayPoolList<int> runs = new(runEnds[..runCount]);
             using ArrayPoolList<(
                 int startIdx,
                 int count,
@@ -230,26 +246,30 @@ public partial class PatriciaTree
                 jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
             }
 
-            Parallel.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
+            Parallel.For(0, runCount, ParallelUnbalancedWork.DefaultOptions,
                 GetTraverseStack,
-                (i, _, workerTraverseStack) =>
+                (runIndex, _, workerTraverseStack) =>
                 {
-                    (int startIdx, int count, int nib, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[i];
+                    for (int i = runIndex == 0 ? 0 : runs[runIndex - 1]; i < runs[runIndex]; i++)
+                    {
+                        (int startIdx, int count, int nib, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[i];
+                        if (count == 0) continue;
 
-                    Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);
-                    Span<BulkSetEntry> bufferEntries = originalBufferArray.AsSpan(startIdx, count);
+                        Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);
+                        Span<BulkSetEntry> bufferEntries = originalBufferArray.AsSpan(startIdx, count);
 
-                    TrieNode? newChild = BulkSet(
-                        in closureCtx,
-                        workerTraverseStack,
-                        jobEntries,
-                        bufferEntries,
-                        ref childPath,
-                        child,
-                        flipCount,
-                        flags & ~Flags.DoNotParallelize); // Only parallelize at top level.
+                        TrieNode? newChild = BulkSet(
+                            in closureCtx,
+                            workerTraverseStack,
+                            jobEntries,
+                            bufferEntries,
+                            ref childPath,
+                            child,
+                            flipCount,
+                            flags & ~Flags.DoNotParallelize); // Only parallelize at top level.
 
-                    jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
+                        jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
+                    }
 
                     return workerTraverseStack;
                 },
@@ -258,6 +278,7 @@ public partial class PatriciaTree
 
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
+                if (jobs[i].count == 0) continue;
                 TrieNode? child = jobs[i].currentChild;
                 TrieNode? newChild = jobs[i].newChild;
 
@@ -377,6 +398,25 @@ public partial class PatriciaTree
         existingNode.SetChild(branchIdx, newChild);
 
         return existingNode;
+    }
+
+    /// <summary>Groups consecutive nibble buckets into runs of at least <paramref name="minEntries"/> entries each.</summary>
+    /// <remarks>A trailing shortfall joins the preceding run, so a branch that cannot fill two runs yields one.</remarks>
+    /// <returns>The number of runs; <paramref name="runEnds"/> holds each run's exclusive end nibble.</returns>
+    internal static int PlanBucketRuns(ReadOnlySpan<int> counts, int minEntries, Span<int> runEnds)
+    {
+        int runCount = 0;
+        int sum = 0;
+        for (int nib = 0; nib < counts.Length; nib++)
+        {
+            sum += counts[nib];
+            if (sum < minEntries) continue;
+            runEnds[runCount++] = nib + 1;
+            sum = 0;
+        }
+        if (runCount == 0) runCount = 1;
+        runEnds[runCount - 1] = counts.Length;
+        return runCount;
     }
 
     /// <summary>
