@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -24,6 +25,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     private readonly ConcurrentDictionary<StateId, Snapshot> _snapshots = new();
     private readonly IResourcePool _resourcePool;
     private readonly IFlatDbManager _flatDbManager;
+    private readonly KnownHeadersScopeProvider _worldState;
     private readonly ITrieNodeCache _trieNodeCache;
     private bool _isDisposed = false;
 
@@ -33,6 +35,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         IFlatDbConfig configuration,
         ITrieNodeCache trieNodeCache,
         IResourcePool resourcePool,
+        IStateHeaderProvider stateHeaderProvider,
         ILogManager logManager)
     {
         GlobalStateReader = new OverridableStateReader(this);
@@ -40,20 +43,22 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         _resourcePool = resourcePool;
         _flatDbManager = flatDbManager;
         _trieNodeCache = trieNodeCache;
-        WorldState = new OverridableFlatScopeProvider(
+        _worldState = new KnownHeadersScopeProvider(stateHeaderProvider, headerProvider => new OverridableFlatScopeProvider(
             this,
             configuration,
             new NoopTrieWarmer(),
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(_codeDbOverlay),
-            logManager);
+            headerProvider,
+            logManager));
     }
 
-    public IWorldStateScopeProvider WorldState { get; }
+    public IWorldStateScopeProvider WorldState => _worldState;
     public IStateReader GlobalStateReader { get; }
 
     public void ResetOverrides()
     {
         _codeDbOverlay.ClearTempChanges();
+        _worldState.Clear();
         foreach (KeyValuePair<StateId, Snapshot> kvp in _snapshots)
         {
             kvp.Value.Dispose();
@@ -126,17 +131,59 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         IFlatDbConfig configuration,
         ITrieWarmer trieWarmer,
         IWorldStateScopeProvider.ICodeDb codeDb,
+        IStateHeaderProvider stateHeaderProvider,
         ILogManager logManager)
         : IWorldStateScopeProvider
     {
-        public bool HasRoot(BlockHeader? baseBlock, BlockHeader? targetBlock) => flatOverrideScope.HasStateForBlock(baseBlock);
+        private readonly IStateHeaderProvider _stateHeaderProvider = stateHeaderProvider;
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock, LocalMetrics metrics)
+        public bool HasRoot(BlockHeader? baseBlock) => flatOverrideScope.HasStateForBlock(baseBlock);
+
+        public bool HasStateForTargetBlock(BlockHeader targetBlock)
+        {
+            ArgumentNullException.ThrowIfNull(targetBlock);
+            return TryGetBaseBlock(targetBlock, out BlockHeader? parent) && HasRoot(parent);
+        }
+
+        public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+        {
+            ArgumentNullException.ThrowIfNull(targetBlock);
+            if (!TryGetBaseBlock(targetBlock, out BlockHeader? parent))
+            {
+                scope = null;
+                return false;
+            }
+
+            return TryBeginScope(parent, metrics, out scope);
+        }
+
+        private bool TryGetBaseBlock(BlockHeader targetBlock, out BlockHeader? parent)
+        {
+            if (targetBlock.IsGenesis)
+            {
+                parent = null;
+                return true;
+            }
+
+            parent = _stateHeaderProvider.FindParentHeader(targetBlock);
+            return parent is not null;
+        }
+
+        public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
         {
             StateId currentState = new(baseBlock);
-            SnapshotBundle snapshotBundle = flatOverrideScope.GatherSnapshotBundle(baseBlock);
+            SnapshotBundle snapshotBundle;
+            try
+            {
+                snapshotBundle = flatOverrideScope.GatherSnapshotBundle(baseBlock);
+            }
+            catch (StateUnavailableException)
+            {
+                scope = null;
+                return false;
+            }
 
-            return new FlatWorldStateScope(
+            scope = new FlatWorldStateScope(
                 currentState,
                 snapshotBundle,
                 codeDb,
@@ -144,6 +191,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                 configuration,
                 trieWarmer,
                 logManager);
+            return true;
         }
     }
 

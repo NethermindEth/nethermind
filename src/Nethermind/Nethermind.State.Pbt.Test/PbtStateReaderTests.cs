@@ -21,7 +21,7 @@ public class PbtStateReaderTests
         Address address = TestItem.AddressA;
 
         Hash256[] roots = new Hash256[5];
-        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, null, new LocalMetrics());
+        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
         for (ulong number = 1; number <= 2; number++)
         {
             using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))

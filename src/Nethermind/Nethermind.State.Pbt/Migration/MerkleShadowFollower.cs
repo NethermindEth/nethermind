@@ -193,7 +193,9 @@ internal sealed class MerkleShadowFollower(
         try
         {
             IWorldState worldState = lifetime.Resolve<IWorldState>();
-            return _state = new ReplayState(lifetime, worldState, worldState.BeginScope(anchor), anchor);
+            if (!worldState.TryBeginScope(anchor, out IDisposable? scopeCloser))
+                throw new InvalidOperationException($"Flat state is unavailable at the shadow anchor {anchor.ToString(BlockHeader.Format.Short)}.");
+            return _state = new ReplayState(lifetime, worldState, scopeCloser, anchor);
         }
         catch
         {

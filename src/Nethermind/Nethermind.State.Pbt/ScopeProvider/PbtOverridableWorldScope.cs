@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -32,6 +33,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     private readonly IPbtConfig _config;
     private readonly PbtTrieNodeCache? _trieNodeCache;
     private readonly bool _recordDetailedMetrics;
+    private readonly KnownHeadersScopeProvider _worldState;
     private bool _isDisposed;
 
     public PbtOverridableWorldScope(
@@ -40,6 +42,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         IPbtResourcePool resourcePool,
         IMetricsConfig metricsConfig,
         IPbtConfig config,
+        IStateHeaderProvider stateHeaderProvider,
         ILogManager? logManager = null,
         PbtTrieNodeCache? trieNodeCache = null)
     {
@@ -51,10 +54,10 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         _recordDetailedMetrics = metricsConfig.EnableDetailedMetric;
         _codeDbOverlay = new ReadOnlyDb(codeDb, createInMemWriteStore: true);
         GlobalStateReader = new OverridableStateReader(this);
-        WorldState = new OverridableScopeProvider(this);
+        _worldState = new KnownHeadersScopeProvider(stateHeaderProvider, headerProvider => new OverridableScopeProvider(this, headerProvider));
     }
 
-    public IWorldStateScopeProvider WorldState { get; }
+    public IWorldStateScopeProvider WorldState => _worldState;
     public IStateReader GlobalStateReader { get; }
 
     public void AddSnapshot(PbtSnapshot snapshot)
@@ -65,6 +68,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     public void ResetOverrides()
     {
         _codeDbOverlay.ClearTempChanges();
+        _worldState.Clear();
         ClearSnapshots();
     }
 
@@ -117,18 +121,35 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         }
     }
 
-    private class OverridableScopeProvider(PbtOverridableWorldScope outer) : IWorldStateScopeProvider
+    private class OverridableScopeProvider(PbtOverridableWorldScope outer, IStateHeaderProvider stateHeaderProvider) : IWorldStateScopeProvider
     {
         private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(outer._codeDbOverlay);
 
-        public bool HasRoot(BlockHeader? baseBlock, BlockHeader? targetBlock) => outer.HasStateForBlock(baseBlock);
+        public bool HasRoot(BlockHeader? baseBlock) => outer.HasStateForBlock(baseBlock);
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock, LocalMetrics metrics)
+        public bool HasStateForTargetBlock(BlockHeader targetBlock) =>
+            stateHeaderProvider.TryGetBaseBlock(targetBlock, out BlockHeader? parent) && HasRoot(parent);
+
+        public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
         {
+            if (stateHeaderProvider.TryGetBaseBlock(targetBlock, out BlockHeader? parent)) return TryBeginScope(parent, metrics, out scope);
+            scope = null;
+            return false;
+        }
+
+        public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+        {
+            if (!HasRoot(baseBlock))
+            {
+                scope = null;
+                return false;
+            }
+
             StateId stateId = new(baseBlock);
-            return new PbtWorldStateScope(
+            scope = new PbtWorldStateScope(
                 stateId, baseBlock, outer.GatherBundle(stateId), _codeDb, outer, NullPbtChildHeaderSource.Instance,
                 outer._resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: false, _noopTrieWarmer, outer._config, outer._logManager);
+            return true;
         }
     }
 

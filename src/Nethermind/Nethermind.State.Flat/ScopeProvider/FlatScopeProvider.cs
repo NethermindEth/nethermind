@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -15,11 +16,13 @@ public class FlatScopeProvider(
     IFlatDbConfig configuration,
     ITrieWarmer trieWarmer,
     ResourcePool.Usage usage,
+    IStateHeaderProvider stateHeaderProvider,
     ILogManager logManager,
     bool isReadOnly)
     : IWorldStateScopeProvider, IDisposable
 {
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
+    private readonly IStateHeaderProvider _stateHeaderProvider = stateHeaderProvider;
 
     private readonly Lazy<WarmReadPool>? _warmReadPool = isReadOnly ? null : new Lazy<WarmReadPool>(() =>
     {
@@ -28,14 +31,53 @@ public class FlatScopeProvider(
         return new WarmReadPool(concurrency);
     });
 
-    public bool HasRoot(BlockHeader? baseBlock, BlockHeader? targetBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
+    public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock, LocalMetrics metrics)
+    public bool HasStateForTargetBlock(BlockHeader targetBlock)
+    {
+        ArgumentNullException.ThrowIfNull(targetBlock);
+        return TryGetBaseBlock(targetBlock, out BlockHeader? parent) && HasRoot(parent);
+    }
+
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        ArgumentNullException.ThrowIfNull(targetBlock);
+        if (!TryGetBaseBlock(targetBlock, out BlockHeader? parent))
+        {
+            scope = null;
+            return false;
+        }
+
+        return TryBeginScope(parent, metrics, out scope);
+    }
+
+    private bool TryGetBaseBlock(BlockHeader targetBlock, out BlockHeader? parent)
+    {
+        if (targetBlock.IsGenesis)
+        {
+            parent = null;
+            return true;
+        }
+
+        parent = _stateHeaderProvider.FindParentHeader(targetBlock);
+        return parent is not null;
+    }
+
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
         StateId currentState = new(baseBlock);
-        SnapshotBundle snapshotBundle = flatDbManager.GatherSnapshotBundle(currentState, usage: usage);
+        SnapshotBundle snapshotBundle;
+        try
+        {
+            snapshotBundle = flatDbManager.GatherSnapshotBundle(currentState, usage: usage);
+        }
+        catch (StateUnavailableException)
+        {
+            scope = null;
+            return false;
+        }
 
-        return new FlatWorldStateScope(
+        scope = new FlatWorldStateScope(
             currentState,
             snapshotBundle,
             _codeDb,
@@ -45,6 +87,7 @@ public class FlatScopeProvider(
             logManager,
             warmReadPool: _warmReadPool,
             isReadOnly: isReadOnly);
+        return true;
     }
 
     public void Dispose()

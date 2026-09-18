@@ -64,7 +64,9 @@ internal sealed class MigrationGenesisBootstrap(
         using ILifetimeScope scope = rootLifetime.BeginLifetimeScope(builder =>
             builder.RegisterInstance(provider).As<IWorldStateScopeProvider>().ExternallyOwned());
         IWorldState state = scope.Resolve<IWorldState>();
-        using (state.BeginScope(IWorldState.PreGenesis))
+        if (!state.TryBeginScope(IWorldState.PreGenesis, out IDisposable? stateScope))
+            throw new InvalidOperationException("The genesis source scope is unavailable.");
+        using (stateScope)
         {
             Block built = scope.Resolve<IGenesisBuilder>().Build();
             if (built.Hash != expectedHash)
@@ -140,13 +142,14 @@ internal sealed class MigrationGenesisBootstrap(
     {
         private int _opened;
 
-        public bool HasRoot(BlockHeader? baseBlock, BlockHeader? targetBlock) => baseBlock is null && Volatile.Read(ref _opened) == 0;
+        public bool HasRoot(BlockHeader? baseBlock) => baseBlock is null && Volatile.Read(ref _opened) == 0;
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock, LocalMetrics metrics)
+        public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
         {
             if (baseBlock is not null || Interlocked.CompareExchange(ref _opened, 1, 0) != 0)
                 throw new InvalidOperationException("The genesis source scope opens once, at the pre-genesis state.");
-            return owner.Open();
+            scope = owner.Open();
+            return true;
         }
     }
 

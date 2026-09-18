@@ -7,6 +7,7 @@ using Autofac;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
@@ -45,15 +46,23 @@ public class MigrationScopeProviderTests
         using MigrationReadOnlyScopeProvider provider = new(flat, pbt, Specs());
         BlockHeader baseBlock = Header(1, Activation - 1);
         BlockHeader? target = targetBinary is { } binary ? Header(2, binary ? Activation : Activation - 1) : null;
-        flat.HasRoot(baseBlock, null).Returns(flatHolds);
+        flat.HasRoot(baseBlock).Returns(flatHolds);
         LocalMetrics metrics = new();
-
-        provider.BeginScope(baseBlock, target, metrics);
-
         IWorldStateScopeProvider selected = expected == "flat" ? flat : pbt;
         IWorldStateScopeProvider other = expected == "flat" ? pbt : flat;
-        selected.Received(1).BeginScope(baseBlock, target, metrics);
-        other.DidNotReceiveWithAnyArgs().BeginScope(default, default, default!);
+
+        if (target is null)
+        {
+            provider.TryBeginScope(baseBlock, metrics, out _);
+            selected.Received(1).TryBeginScope(baseBlock, metrics, out Arg.Any<IWorldStateScopeProvider.IScope?>());
+            other.DidNotReceiveWithAnyArgs().TryBeginScope(default, default!, out Arg.Any<IWorldStateScopeProvider.IScope?>());
+        }
+        else
+        {
+            provider.TryBeginScopeAtTarget(target, metrics, out _);
+            selected.Received(1).TryBeginScopeAtTarget(target, metrics, out Arg.Any<IWorldStateScopeProvider.IScope?>());
+            other.DidNotReceiveWithAnyArgs().TryBeginScopeAtTarget(default!, default!, out Arg.Any<IWorldStateScopeProvider.IScope?>());
+        }
     }
 
     [Test]
@@ -62,9 +71,9 @@ public class MigrationScopeProviderTests
         IWorldStateScopeProvider flat = Substitute.For<IWorldStateScopeProvider>();
         IWorldStateScopeProvider pbt = Substitute.For<IWorldStateScopeProvider>();
         using MigrationReadOnlyScopeProvider provider = new(flat, pbt, Specs());
-        provider.BeginScope(null, Header(0, 0), new LocalMetrics());
-        flat.Received(1).BeginScope(Arg.Is<BlockHeader?>(header => header == null), Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>());
-        pbt.DidNotReceiveWithAnyArgs().BeginScope(default, default, default!);
+        provider.TryBeginScopeAtTarget(Header(0, 0), new LocalMetrics(), out _);
+        flat.Received(1).TryBeginScopeAtTarget(Arg.Is<BlockHeader>(header => header.Number == 0), Arg.Any<LocalMetrics>(), out Arg.Any<IWorldStateScopeProvider.IScope?>());
+        pbt.DidNotReceiveWithAnyArgs().TryBeginScopeAtTarget(default!, default!, out Arg.Any<IWorldStateScopeProvider.IScope?>());
     }
 
     [Test]
@@ -77,7 +86,7 @@ public class MigrationScopeProviderTests
         await using PbtTestContext pbt = new();
         FlatWorldStateManager flat = container.Resolve<FlatWorldStateManager>();
         MigrationBackendSelector selector = new(Specs(), pbt.Manager, pbt.Coordinator);
-        MigrationScopeProvider provider = new(flat, pbt.WorldStateManager, pbt.Manager, pbt.ResourcePool, selector, pbt.Config, LimboLogs.Instance);
+        MigrationScopeProvider provider = new(flat, pbt.WorldStateManager, pbt.Manager, pbt.ResourcePool, selector, pbt.Config, TestStateHeaderProvider.Instance, LimboLogs.Instance);
         BlockHeader genesis = Build.A.BlockHeader.WithNumber(0).WithTimestamp(0).TestObject;
         BlockHeader block1 = Build.A.BlockHeader.WithParent(genesis).WithTimestamp(12).TestObject;
         BlockHeader activation = Build.A.BlockHeader.WithParent(block1).WithTimestamp(Activation).TestObject;
@@ -90,7 +99,7 @@ public class MigrationScopeProviderTests
         }
 
         // Commit genesis into PBT only and persist it: PBT is now ahead of a flat that holds nothing.
-        using (IWorldStateScopeProvider.IScope scope = pbt.WorldStateManager.GlobalWorldState.BeginScope(null, genesis, new LocalMetrics()))
+        using (IWorldStateScopeProvider.IScope scope = pbt.WorldStateManager.GlobalWorldState.BeginScope(null, new LocalMetrics()))
         {
             scope.UpdateRootHash();
             ((PbtWorldStateScope)scope).UseAuthoritativeRoot(genesis.StateRoot!);
@@ -107,7 +116,7 @@ public class MigrationScopeProviderTests
             Assert.That(provider.Select(block1, parentOfBehind), Is.TypeOf<PbtMirrorScopeProvider>(), "PBT behind the base: wait for the follower");
         }
         // Persist a second PBT state so the pointer is above block 0.
-        using (IWorldStateScopeProvider.IScope scope = pbt.WorldStateManager.GlobalWorldState.BeginScope(genesis, block1, new LocalMetrics()))
+        using (IWorldStateScopeProvider.IScope scope = pbt.WorldStateManager.GlobalWorldState.BeginScope(genesis, new LocalMetrics()))
         {
             scope.UpdateRootHash();
             ((PbtWorldStateScope)scope).UseAuthoritativeRoot(block1.StateRoot!);

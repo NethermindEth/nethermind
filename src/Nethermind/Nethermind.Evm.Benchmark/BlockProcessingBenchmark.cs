@@ -478,7 +478,8 @@ public class BlockProcessingBenchmark
         // Single world state — BranchProcessor.Process() manages scope internally,
         // matching the live client's block processing path.
         IDbProvider dbProvider = TestMemDbProvider.Init();
-        IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, LimboLogs.Instance);
+        TestStateHeaderProvider stateHeaderProvider = new();
+        IWorldStateManager wsm = TestWorldStateFactory.CreateWorldStateManagerForTest(dbProvider, stateHeaderProvider, LimboLogs.Instance);
         IWorldStateScopeProvider scopeProvider = wsm.GlobalWorldState;
 
         IBlockValidationModule[] validationModules = _container.Resolve<IBlockValidationModule[]>();
@@ -557,6 +558,7 @@ public class BlockProcessingBenchmark
                 .WithStateRoot(stateProvider.StateRoot)
                 .WithGasLimit(30_000_000)
                 .TestObject;
+            stateHeaderProvider.Parent = _parentHeader;
         }
 
         _branchProcessor = _processingScope.Resolve<IBranchProcessor>();

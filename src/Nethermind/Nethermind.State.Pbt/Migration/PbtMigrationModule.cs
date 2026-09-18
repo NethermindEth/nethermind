@@ -23,7 +23,6 @@ using Nethermind.State.Pbt.Sync;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Pbt.Migration;
 
@@ -83,7 +82,7 @@ internal sealed class PbtMigrationModule(IPbtConfig configuration) : Module
         // Flat's persistence must not seek post-activation boundaries, whose canonical roots are PBT roots.
         builder.RegisterType<PersistenceManager>().As<IPersistenceManager>().SingleInstance()
             .WithParameter(new ResolvedParameter(
-                (parameter, _) => parameter.ParameterType == typeof(IFinalizedStateProvider),
+                (parameter, _) => parameter.ParameterType == typeof(IStateHeaderProvider),
                 (_, context) => context.Resolve<MigrationFlatFinalizedStateProvider>()));
 
         if (configuration.MigrationGenesisBootstrap)

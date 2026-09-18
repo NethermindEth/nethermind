@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
@@ -19,10 +20,11 @@ internal sealed class MigrationScopeProvider(
     IPbtResourcePool resourcePool,
     MigrationBackendSelector selector,
     IPbtConfig config,
+    IStateHeaderProvider stateHeaderProvider,
     ILogManager logManager) : IWorldStateScopeProvider
 {
     private readonly IWorldStateScopeProvider _flat = flat.GlobalWorldState;
-    private readonly IWorldStateScopeProvider _mirror = new PbtMirrorScopeProvider(flat.GlobalWorldState, pbtManager, resourcePool, config, logManager);
+    private readonly IWorldStateScopeProvider _mirror = new PbtMirrorScopeProvider(flat.GlobalWorldState, pbtManager, resourcePool, config, stateHeaderProvider, logManager);
     private readonly IWorldStateScopeProvider _pbt = pbt.GlobalWorldState;
 
     internal IWorldStateScopeProvider Select(BlockHeader? baseBlock, BlockHeader? targetBlock)
@@ -32,10 +34,21 @@ internal sealed class MigrationScopeProvider(
         return selector.PbtAhead(baseBlock) ? _flat : _mirror;
     }
 
-    public bool HasRoot(BlockHeader? baseBlock, BlockHeader? targetBlock) => Select(baseBlock, targetBlock).HasRoot(baseBlock, targetBlock);
+    public bool HasRoot(BlockHeader? baseBlock) => Select(baseBlock, null).HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock, LocalMetrics metrics) =>
-        Select(baseBlock, targetBlock).BeginScope(baseBlock, targetBlock, metrics);
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) =>
+        stateHeaderProvider.TryGetBaseBlock(targetBlock, out BlockHeader? parent) && Select(parent, targetBlock).HasRoot(parent);
+
+    // The selected backend opens at the resolved parent directly: its own target resolution would repeat the lookup.
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        if (stateHeaderProvider.TryGetBaseBlock(targetBlock, out BlockHeader? parent)) return Select(parent, targetBlock).TryBeginScope(parent, metrics, out scope);
+        scope = null;
+        return false;
+    }
+
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+        Select(baseBlock, null).TryBeginScope(baseBlock, metrics, out scope);
 }
 
 /// <summary>Read-only composite: executes on the backend the target's spec selects, reads from whichever holds the state.</summary>
@@ -47,16 +60,19 @@ internal sealed class MigrationScopeProvider(
 internal sealed class MigrationReadOnlyScopeProvider(IWorldStateScopeProvider flat, IWorldStateScopeProvider pbt, ISpecProvider specProvider)
     : IWorldStateScopeProvider, IDisposable
 {
-    private IWorldStateScopeProvider Select(BlockHeader? baseBlock, BlockHeader? targetBlock)
-    {
-        if (targetBlock is null) return flat.HasRoot(baseBlock, null) ? flat : pbt;
-        return specProvider.GetSpec(targetBlock).IsEip8347Enabled ? pbt : flat;
-    }
+    private IWorldStateScopeProvider SelectForBase(BlockHeader? baseBlock) => flat.HasRoot(baseBlock) ? flat : pbt;
 
-    public bool HasRoot(BlockHeader? baseBlock, BlockHeader? targetBlock) => Select(baseBlock, targetBlock).HasRoot(baseBlock, targetBlock);
+    private IWorldStateScopeProvider SelectForTarget(BlockHeader targetBlock) => specProvider.GetSpec(targetBlock).IsEip8347Enabled ? pbt : flat;
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock, LocalMetrics metrics) =>
-        Select(baseBlock, targetBlock).BeginScope(baseBlock, targetBlock, metrics);
+    public bool HasRoot(BlockHeader? baseBlock) => SelectForBase(baseBlock).HasRoot(baseBlock);
+
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) => SelectForTarget(targetBlock).HasStateForTargetBlock(targetBlock);
+
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+        SelectForTarget(targetBlock).TryBeginScopeAtTarget(targetBlock, metrics, out scope);
+
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+        SelectForBase(baseBlock).TryBeginScope(baseBlock, metrics, out scope);
 
     public void Dispose()
     {

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -25,24 +26,47 @@ public class PbtMirrorScopeProvider(
     IPbtDbManager manager,
     IPbtResourcePool resourcePool,
     IPbtConfig config,
+    IStateHeaderProvider stateHeaderProvider,
     ILogManager? logManager = null) : IWorldStateScopeProvider
 {
     private static readonly ITrieWarmer _noopTrieWarmer = new NoopTrieWarmer();
 
 
-    public bool HasRoot(BlockHeader? baseBlock, BlockHeader? targetBlock) =>
-        authoritative.HasRoot(baseBlock, targetBlock) && manager.HasStateForBlock(new StateId(baseBlock));
+    public bool HasRoot(BlockHeader? baseBlock) =>
+        authoritative.HasRoot(baseBlock) && manager.HasStateForBlock(new StateId(baseBlock));
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock, LocalMetrics metrics)
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) =>
+        stateHeaderProvider.TryGetBaseBlock(targetBlock, out BlockHeader? parent) && HasRoot(parent);
+
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
-        IWorldStateScopeProvider.IScope authoritativeScope = authoritative.BeginScope(baseBlock, targetBlock, metrics);
+        if (stateHeaderProvider.TryGetBaseBlock(targetBlock, out BlockHeader? parent)) return TryBeginScope(parent, metrics, out scope);
+        scope = null;
+        return false;
+    }
+
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        if (!authoritative.TryBeginScope(baseBlock, metrics, out IWorldStateScopeProvider.IScope? authoritativeScope))
+        {
+            scope = null;
+            return false;
+        }
+
         try
         {
             StateId stateId = new(baseBlock);
+            if (manager.TryGatherBundle(stateId, PbtResourcePool.Usage.MainBlockProcessing) is not { } bundle)
+            {
+                authoritativeScope.Dispose();
+                scope = null;
+                return false;
+            }
+
             PbtWorldStateScope pbtScope = new(
                 stateId,
                 baseBlock,
-                manager.GatherBundle(stateId, PbtResourcePool.Usage.MainBlockProcessing),
+                bundle,
                 authoritativeScope.CodeDb,
                 manager,
                 // The mirror supplies the root; do not consult the block tree.
@@ -54,7 +78,8 @@ public class PbtMirrorScopeProvider(
                 config,
                 logManager);
 
-            return new Scope(authoritativeScope, pbtScope);
+            scope = new Scope(authoritativeScope, pbtScope);
+            return true;
         }
         catch
         {

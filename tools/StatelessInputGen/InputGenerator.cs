@@ -135,7 +135,9 @@ internal static class InputGenerator
         {
             ExecutionRequestsProcessorFactory = ExecutionRequestsProcessorFactory.Instance
         };
-        using IDisposable scope = env.WorldState.BeginScope(headers[^1], block.Header);
+        if (!env.WorldState.TryBeginScope(headers[^1], out IDisposable? scope))
+            throw new InvalidDataException("Witness is missing the parent state root.");
+        using IDisposable _ = scope;
         // Normal processed-block validation checks the recovered requests hash against the original header.
         env.BlockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, spec, cancellationToken);
     }

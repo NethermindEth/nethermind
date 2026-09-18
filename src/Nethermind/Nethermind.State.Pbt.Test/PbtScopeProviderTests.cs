@@ -193,7 +193,7 @@ public class PbtScopeProviderTests
         UInt256 slotValue = 0x99;
 
         Dictionary<string, byte[]> model = [];
-        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, null, new LocalMetrics());
+        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics());
 
         // a header-region slot (< 64) and a storage-zone slot (>= 64) with no account entry: the
         // header stem has no dirty account to fold it in, so it must be emitted by the stem pass
@@ -226,7 +226,7 @@ public class PbtScopeProviderTests
         Dictionary<string, byte[]> model = [];
 
         Hash256 root1;
-        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, null, new LocalMetrics()))
+        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics()))
         {
             using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(addresses.Length))
             {
@@ -255,7 +255,7 @@ public class PbtScopeProviderTests
         // must reproduce their cached node hash without re-folding — the root has to match the reference.
         BlockHeader header1 = Build.A.BlockHeader.WithNumber(1).WithStateRoot(root1).TestObject;
         Hash256 root2;
-        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(header1, null, new LocalMetrics()))
+        using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(header1, new LocalMetrics()))
         {
             using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(addresses.Length))
             {
@@ -284,7 +284,7 @@ public class PbtScopeProviderTests
         Address address = TestItem.AddressC;
 
         Dictionary<string, byte[]> model = [];
-        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, null, new LocalMetrics());
+        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics());
 
         // first writes then an explicit fold, which flushes the dirty stems into the overlays
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(0))

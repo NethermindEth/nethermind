@@ -12,7 +12,6 @@ using Nethermind.Logging;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Pbt;
 
@@ -26,7 +25,7 @@ namespace Nethermind.State.Pbt;
 /// </summary>
 public class PbtPersistenceCoordinator(
     IPbtConfig config,
-    IFinalizedStateProvider finalizedStateProvider,
+    IStateHeaderProvider finalizedStateProvider,
     IPbtPersistence persistence,
     PbtSnapshotRepository repository,
     PbtCompactionSchedule schedule,
@@ -117,7 +116,7 @@ public class PbtPersistenceCoordinator(
                 if (persisted != StateId.PreGenesis && persisted.BlockNumber >= head.BlockNumber) break;
                 ulong finalized = finalizedStateProvider.FinalizedBlockNumber;
                 StateId seed = (persisted == StateId.PreGenesis || finalized > persisted.BlockNumber)
-                    && finalizedStateProvider.GetFinalizedStateRootAt(finalized) is Hash256 root
+                    && finalizedStateProvider.GetFinalizedHeader(finalized)?.StateRoot is Hash256 root
                     ? new StateId(finalized, root)
                     : head;
                 if (!PersistSegment(seed)) break;
@@ -143,7 +142,7 @@ public class PbtPersistenceCoordinator(
 
         if (finalizedStateProvider.FinalizedBlockNumber >= nextBoundary
             && depth + _compactSize > _minReorgDepth
-            && finalizedStateProvider.GetFinalizedStateRootAt(nextBoundary) is Hash256 canonicalRoot
+            && finalizedStateProvider.GetFinalizedHeader(nextBoundary)?.StateRoot is Hash256 canonicalRoot
             && PersistSegment(new StateId(nextBoundary, canonicalRoot)))
         {
             return true;

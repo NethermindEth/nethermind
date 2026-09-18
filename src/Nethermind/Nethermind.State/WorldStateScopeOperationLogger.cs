@@ -19,13 +19,36 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     private ILogger _logger = logManager.GetClassLogger<WorldStateScopeOperationLogger>();
     private long _currentScopeId = 0;
 
-    public bool HasRoot(BlockHeader? baseBlock, BlockHeader? targetBlock) =>
-        baseScopeProvider.HasRoot(baseBlock, targetBlock);
+    public bool HasRoot(BlockHeader? baseBlock) =>
+        baseScopeProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock, LocalMetrics metrics)
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) =>
+        baseScopeProvider.HasStateForTargetBlock(targetBlock);
+
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
+        if (!baseScopeProvider.TryBeginScopeAtTarget(targetBlock, metrics, out IWorldStateScopeProvider.IScope? innerScope))
+        {
+            scope = null;
+            return false;
+        }
+
         long scopeId = Interlocked.Increment(ref _currentScopeId);
-        return new ScopeWrapper(baseScopeProvider.BeginScope(baseBlock, targetBlock, metrics), scopeId, _logger);
+        scope = new ScopeWrapper(innerScope, scopeId, _logger);
+        return true;
+    }
+
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        if (!baseScopeProvider.TryBeginScope(baseBlock, metrics, out IWorldStateScopeProvider.IScope? innerScope))
+        {
+            scope = null;
+            return false;
+        }
+
+        long scopeId = Interlocked.Increment(ref _currentScopeId);
+        scope = new ScopeWrapper(innerScope, scopeId, _logger);
+        return true;
     }
 
     private class ScopeWrapper(IWorldStateScopeProvider.IScope innerScope, long scopeId, ILogger logger) : IWorldStateScopeProvider.IScope

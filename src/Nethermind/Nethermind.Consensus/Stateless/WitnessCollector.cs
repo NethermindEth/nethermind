@@ -25,7 +25,12 @@ public class WitnessCollector(
     /// </remarks>
     public Witness GetWitnessForExistingBlock(BlockHeader parentHeader, Block block)
     {
-        using IDisposable? scope = worldState.BeginScope(parentHeader, block.Header);
+        if (!worldState.TryBeginScopeAtTarget(block.Header, out IDisposable? scope))
+        {
+            throw new InvalidOperationException($"Parent state is unavailable for target block {block.ToString(Block.Format.FullHashAndNumber)}.");
+        }
+
+        using IDisposable _ = scope;
         blockProcessor.ProcessOne(block, ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, specProvider.GetSpec(block.Header));
         return worldState.GetWitness(parentHeader);
     }

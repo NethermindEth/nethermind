@@ -26,18 +26,19 @@ public class BranchProcessorScopeTests
     private const ulong Activation = 48;
     private const int CommitPoint = 64;
 
-    [TestCase(3, 2, false, "0-1,2-3", TestName = "activation inside the branch re-opens once")]
-    [TestCase(3, -1, false, "0-1", TestName = "no activation keeps one scope for the branch")]
-    [TestCase(CommitPoint + 2, CommitPoint + 1, false, "0-1,65-66", TestName = "activation right after the commit point re-opens once, not twice")]
-    [TestCase(3, 2, true, "0-1,2-3", TestName = "a read-only branch re-opens too")]
+    [TestCase(3, 2, false, "1,3", TestName = "activation inside the branch re-opens once")]
+    [TestCase(3, -1, false, "1", TestName = "no activation keeps one scope for the branch")]
+    [TestCase(CommitPoint + 2, CommitPoint + 1, false, "1,66", TestName = "activation right after the commit point re-opens once, not twice")]
+    [TestCase(3, 2, true, "1,3", TestName = "a read-only branch re-opens too")]
     public void Scope_follows_the_activation(int blockCount, int activationIndex, bool readOnly, string expectedScopes)
     {
         List<string> scopes = [];
         IWorldState worldState = Substitute.For<IWorldState>();
-        worldState.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>()).Returns(call =>
+        worldState.TryBeginScopeAtTarget(Arg.Any<BlockHeader>(), out Arg.Any<IDisposable>()).Returns(call =>
         {
-            scopes.Add($"{call.ArgAt<BlockHeader>(0).Number}-{call.ArgAt<BlockHeader>(1).Number}");
-            return Substitute.For<IDisposable>();
+            scopes.Add(call.ArgAt<BlockHeader>(0).Number.ToString());
+            call[1] = Substitute.For<IDisposable>();
+            return true;
         });
         IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
         blockProcessor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())

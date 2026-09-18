@@ -3,9 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Pbt.Migration;
 
@@ -15,8 +13,8 @@ namespace Nethermind.State.Pbt.Migration;
 /// that root is a PBT root flat holds no snapshot for, so without this clamp the states up to the activation
 /// parent would never be persisted (not even by the shutdown flush) and would vanish on restart.
 /// </remarks>
-internal sealed class MigrationFlatFinalizedStateProvider(IFinalizedStateProvider inner, IBlockTree blockTree, ISpecProvider specProvider)
-    : IFinalizedStateProvider
+internal sealed class MigrationFlatFinalizedStateProvider(IStateHeaderProvider inner, IBlockTree blockTree, ISpecProvider specProvider)
+    : IStateHeaderProvider
 {
     private ulong? _lastMerkleBlock;
 
@@ -37,9 +35,11 @@ internal sealed class MigrationFlatFinalizedStateProvider(IFinalizedStateProvide
         }
     }
 
-    public Hash256? GetFinalizedStateRootAt(ulong blockNumber)
+    public BlockHeader? GetFinalizedHeader(ulong blockNumber)
     {
         BlockHeader? header = blockTree.FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
-        return header is null || specProvider.GetSpec(header).IsEip8347Enabled ? null : inner.GetFinalizedStateRootAt(blockNumber);
+        return header is null || specProvider.GetSpec(header).IsEip8347Enabled ? null : inner.GetFinalizedHeader(blockNumber);
     }
+
+    public BlockHeader? FindParentHeader(BlockHeader target) => inner.FindParentHeader(target);
 }

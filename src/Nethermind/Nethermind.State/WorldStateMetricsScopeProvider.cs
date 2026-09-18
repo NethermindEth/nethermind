@@ -18,8 +18,33 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
     private readonly Action<double> _updateMetrics = updateMetrics;
     private double _stateMerkleizationTime;
 
-    public bool HasRoot(BlockHeader? baseBlock, BlockHeader? targetBlock) => _baseProvider.HasRoot(baseBlock, targetBlock);
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock, LocalMetrics metrics) => new MetricsScope(_baseProvider.BeginScope(baseBlock, targetBlock, metrics), this);
+    public bool HasRoot(BlockHeader? baseBlock) => _baseProvider.HasRoot(baseBlock);
+
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) => _baseProvider.HasStateForTargetBlock(targetBlock);
+
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        if (!_baseProvider.TryBeginScopeAtTarget(targetBlock, metrics, out IWorldStateScopeProvider.IScope? baseScope))
+        {
+            scope = null;
+            return false;
+        }
+
+        scope = new MetricsScope(baseScope, this);
+        return true;
+    }
+
+    public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+    {
+        if (!_baseProvider.TryBeginScope(baseBlock, metrics, out IWorldStateScopeProvider.IScope? baseScope))
+        {
+            scope = null;
+            return false;
+        }
+
+        scope = new MetricsScope(baseScope, this);
+        return true;
+    }
 
     private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) : IWorldStateScopeProvider.IScope
     {

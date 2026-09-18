@@ -3,7 +3,6 @@
 
 using System.Linq;
 using System.Threading;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Tracing;
@@ -99,7 +98,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             }
 
             Block block = searchResult.Object;
-            using Scope<ITracer> scope = tracerEnv.BuildAndOverride(blockFinder.FindParentHeader(block.Header, BlockTreeLookupOptions.None));
+            using Scope<ITracer> scope = tracerEnv.BuildAndOverrideAtTarget(block.Header);
 
             TxReceipt receipt = receiptFinder.Get(block).ForTransaction(txHash);
             BlockReceiptsTracer receiptsTracer = new();

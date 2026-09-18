@@ -43,6 +43,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
@@ -230,8 +231,10 @@ public class BlockProcessorTests
         [Values] bool omitRead, [Values] bool revertWrite, [ValueSource(nameof(ReadCoverageBlockCounts))] int blockCount)
     {
         List<TracedAccessWorldState> workers = [];
+        TestStateHeaderProvider stateHeaderProvider = new();
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(Amsterdam.Instance))
+            .AddSingleton<IStateHeaderProvider>(stateHeaderProvider)
             .AddDecorator<CodeInfoRepositoryFactory>((_, factory) => state =>
             {
                 if (state is TracedAccessWorldState traced) workers.Add(traced);
@@ -249,6 +252,7 @@ public class BlockProcessorTests
             state.CommitTree(0);
             parent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(state.StateRoot).TestObject;
         }
+        stateHeaderProvider.Parent = parent;
         using IDisposable scope = state.BeginScope(parent);
         BlockAccessListManager manager = (BlockAccessListManager)lifetime.Resolve<IBlockAccessListManager>();
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
@@ -461,77 +465,12 @@ public class BlockProcessorTests
             Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(0));
         }
 
-        for (int i = 0; i < parentReaderFactory.BuiltHeaders.Count; i++)
-        {
-            BlockHeader builtHeader = parentReaderFactory.BuiltHeaders[i]!;
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(builtHeader.Number, Is.EqualTo(6));
-                Assert.That(builtHeader.Hash, Is.EqualTo(parentHash));
-                Assert.That(builtHeader.StateRoot, Is.EqualTo(parentStateRoot));
-            }
-        }
+        Assert.That(parentReaderFactory.BuiltHeaders, Is.All.SameAs(block.Header));
 
         balManager.ReturnTxProcessor(1);
         balManager.ReturnTxProcessor(2);
 
         Assert.That(parentReaderFactory.DisposedScopes, Is.EqualTo(2));
-    }
-
-    [Test]
-    public void Parallel_validation_parent_reader_uses_parent_root_captured_before_pre_block_changes()
-    {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        Hash256 parentStateRoot;
-        using (stateProvider.BeginScope(IWorldState.PreGenesis))
-        {
-            stateProvider.Commit(Amsterdam.Instance, isGenesis: true);
-            stateProvider.CommitTree(0);
-            parentStateRoot = stateProvider.StateRoot;
-        }
-
-        Hash256 parentHash = TestItem.KeccakA;
-        BlockHeader parentHeader = Build.A.BlockHeader
-            .WithNumber(6)
-            .WithHash(parentHash)
-            .WithStateRoot(parentStateRoot)
-            .TestObject;
-
-        using IDisposable parentScope = stateProvider.BeginScope(parentHeader);
-        TrackingReadOnlyTxProcessingEnvFactory parentReaderFactory = new();
-        using BlockAccessListManager balManager = new(
-            stateProvider,
-            LimboLogs.Instance,
-            new BlocksConfig { ParallelExecution = true },
-            new WithdrawalProcessorFactory(LimboLogs.Instance),
-            new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), new TestSingleReleaseSpecProvider(Amsterdam.Instance), LimboLogs.Instance),
-            readOnlyTxProcessingEnvFactory: parentReaderFactory);
-
-        Transaction tx = Build.A.Transaction.WithNonce(0).TestObject;
-        Block block = Build.A.Block
-            .WithNumber(7)
-            .WithParentHash(parentHash)
-            .WithTransactions(tx)
-            .WithBlockAccessList(new ReadOnlyBlockAccessList())
-            .TestObject;
-
-        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
-
-        stateProvider.CreateAccount(TestItem.AddressB, 1);
-        stateProvider.Commit(Amsterdam.Instance, commitRoots: false);
-
-        balManager.SetBlockExecutionContext(new(block.Header, Amsterdam.Instance));
-        Assert.DoesNotThrow(() => balManager.Setup(block));
-
-        _ = balManager.GetTxProcessor(1);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(parentReaderFactory.BuiltHeaders.Count, Is.EqualTo(1));
-            Assert.That(parentReaderFactory.BuiltHeaders[0]!.StateRoot, Is.EqualTo(parentStateRoot));
-        }
-
-        balManager.ReturnTxProcessor(1);
     }
 
     private static void ApplyStateChangesInParentScope(
@@ -557,11 +496,13 @@ public class BlockProcessorTests
         }
     }
 
-    private static (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider) CreateProcessorAndBranch(
+    private static (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider, TestStateHeaderProvider stateHeaderProvider) CreateProcessorAndBranch(
         IRewardCalculator? rewardCalculator = null,
-        IBlockCachePreWarmer? preWarmer = null)
+        IBlockCachePreWarmer? preWarmer = null,
+        BlockHeader? parentHeader = null)
     {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        TestStateHeaderProvider stateHeaderProvider = new() { Parent = parentHeader };
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest(stateHeaderProvider);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         BlockAccessListManager balManager = new(stateProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), HoodiSpecProvider.Instance, LimboLogs.Instance));
         ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
@@ -590,13 +531,49 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             preWarmer);
 
-        return (processor, branchProcessor, stateProvider);
+        return (processor, branchProcessor, stateProvider, stateHeaderProvider);
+    }
+
+    [TestCase(ProcessingOptions.None)]
+    [TestCase(ProcessingOptions.EthereumMerge)]
+    [TestCase(ProcessingOptions.DoNotUpdateHead)]
+    [TestCase(ProcessingOptions.ReadOnlyChain)]
+    [TestCase(ProcessingOptions.ProducingBlock)]
+    [TestCase(ProcessingOptions.ForceProcessing)]
+    [TestCase(ProcessingOptions.NoValidation)]
+    public void BranchProcessor_opens_target_scope_for_all_options(ProcessingOptions options)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        (_, BranchProcessor branchProcessor, _, TestStateHeaderProvider stateHeaderProvider) = CreateProcessorAndBranch(parentHeader: parent);
+        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithParent(parent).TestObject).TestObject;
+
+        Assert.DoesNotThrow(() => branchProcessor.Process(null, [block], options, NullBlockTracer.Instance));
+        Assert.That(stateHeaderProvider.LastTarget, Is.SameAs(block.Header));
+    }
+
+    [Test]
+    public void BranchProcessor_target_scope_failure_is_not_invalid_block_and_does_not_execute()
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        TokenCapturingPreWarmer preWarmer = new();
+        (_, BranchProcessor branchProcessor, _, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
+        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithParent(parent).TestObject).TestObject;
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>
+            branchProcessor.Process(null, [block], ProcessingOptions.None, NullBlockTracer.Instance))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("Parent state is unavailable"));
+            Assert.That(exception, Is.Not.TypeOf<InvalidBlockException>());
+            Assert.That(preWarmer.CapturedToken, Is.EqualTo(default(CancellationToken)));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Prepared_block_contains_author_field()
     {
-        (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch();
+        (_, BranchProcessor branchProcessor, _, _) = CreateProcessorAndBranch();
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
@@ -612,10 +589,12 @@ public class BlockProcessorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Recovers_state_on_cancel()
     {
-        (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(
-            rewardCalculator: new RewardCalculator(MainnetSpecProvider.Instance));
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        (_, BranchProcessor branchProcessor, _, _) = CreateProcessorAndBranch(
+            rewardCalculator: new RewardCalculator(MainnetSpecProvider.Instance),
+            parentHeader: parent);
 
-        BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;
         Assert.Throws<OperationCanceledException>(() => branchProcessor.Process(
             null,
@@ -657,7 +636,7 @@ public class BlockProcessorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void TransactionsExecuted_event_fires_during_ProcessOne()
     {
-        (BlockProcessor processor, _, IWorldState stateProvider) = CreateProcessorAndBranch();
+        (BlockProcessor processor, _, IWorldState stateProvider, _) = CreateProcessorAndBranch();
 
         bool eventFired = false;
         processor.TransactionsExecuted += () => eventFired = true;
@@ -715,7 +694,7 @@ public class BlockProcessorTests
     public void BranchProcessor_cancels_prewarmer_via_TransactionsExecuted_event([Values(2, 3)] int transactionCount)
     {
         TokenCapturingPreWarmer preWarmer = new();
-        (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
+        (_, BranchProcessor branchProcessor, _, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).WithTransactions(transactionCount, MuirGlacier.Instance).TestObject;
@@ -753,7 +732,7 @@ public class BlockProcessorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_unsubscribes_from_TransactionsExecuted_after_processing()
     {
-        (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider) = CreateProcessorAndBranch();
+        (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider, _) = CreateProcessorAndBranch();
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
@@ -779,7 +758,7 @@ public class BlockProcessorTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_no_prewarmer_still_processes_successfully()
     {
-        (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: null);
+        (_, BranchProcessor branchProcessor, _, _) = CreateProcessorAndBranch(preWarmer: null);
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).WithTransactions(3, MuirGlacier.Instance).TestObject;
@@ -1857,12 +1836,15 @@ public class BlockProcessorTests
             TrackingReadOnlyTxProcessingEnvFactory factory,
             ITransactionProcessor transactionProcessor) : IReadOnlyTxProcessorSource
         {
-            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
+            public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) => throw new NotSupportedException();
+
+            public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
             {
                 IWorldState worldState = Substitute.For<IWorldState>();
-                factory.BuiltHeaders.Add(baseBlock);
+                factory.BuiltHeaders.Add(targetBlock);
                 factory.BuiltWorldStates.Add(worldState);
-                return new Scope(factory, transactionProcessor, worldState);
+                scope = new Scope(factory, transactionProcessor, worldState);
+                return true;
             }
 
             public void Dispose() { }

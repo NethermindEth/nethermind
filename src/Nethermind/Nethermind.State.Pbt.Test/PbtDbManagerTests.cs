@@ -20,7 +20,6 @@ using NSubstitute;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.State.Pbt.Persistence;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -72,7 +71,7 @@ public class PbtDbManagerTests
     {
         await using PbtTestContext ctx = new();
         Hash256 root1;
-        using (IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, null, new LocalMetrics()))
+        using (IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics()))
         {
             root1 = CommitBlock(scope, 1, 100);
         }
@@ -104,7 +103,7 @@ public class PbtDbManagerTests
 
         await using (PbtTestContext ctx = new(db))
         {
-            using (IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, null, new LocalMetrics()))
+            using (IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics()))
             {
                 root1 = CommitBlock(scope, 1, 100);
                 CommitBlock(scope, 2, 200);
@@ -122,7 +121,7 @@ public class PbtDbManagerTests
             Assert.That(reopened.Manager.HasStateForBlock(new StateId(1, root1)), Is.False);
             Assert.That(reopened.Manager.TryGatherReadOnlyBundle(new StateId(1, root1)), Is.Null);
 
-            using IWorldStateScopeProvider.IScope scope = reopened.CreateScopeProvider().BeginScope(Header(3, root3), null, new LocalMetrics());
+            using IWorldStateScopeProvider.IScope scope = reopened.CreateScopeProvider().BeginScope(Header(3, root3), new LocalMetrics());
             Account? account = scope.Get(Address);
             Assert.That(account, Is.Not.Null);
             Assert.That(account!.Nonce, Is.EqualTo(3ul));
@@ -136,19 +135,19 @@ public class PbtDbManagerTests
     {
         await using PbtTestContext ctx = new();
         Hash256 root1;
-        using (IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, null, new LocalMetrics()))
+        using (IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics()))
         {
             root1 = CommitBlock(scope, 1, 100);
         }
 
         Hash256 rootA;
         Hash256 rootB;
-        using (IWorldStateScopeProvider.IScope scopeA = ctx.CreateScopeProvider().BeginScope(Header(1, root1), null, new LocalMetrics()))
+        using (IWorldStateScopeProvider.IScope scopeA = ctx.CreateScopeProvider().BeginScope(Header(1, root1), new LocalMetrics()))
         {
             rootA = CommitBlock(scopeA, 2, 222);
         }
 
-        using (IWorldStateScopeProvider.IScope scopeB = ctx.CreateScopeProvider().BeginScope(Header(1, root1), null, new LocalMetrics()))
+        using (IWorldStateScopeProvider.IScope scopeB = ctx.CreateScopeProvider().BeginScope(Header(1, root1), new LocalMetrics()))
         {
             rootB = CommitBlock(scopeB, 2, 333);
         }
@@ -157,17 +156,17 @@ public class PbtDbManagerTests
         Assert.That(ctx.Manager.HasStateForBlock(new StateId(2, rootA)), Is.True);
         Assert.That(ctx.Manager.HasStateForBlock(new StateId(2, rootB)), Is.True);
 
-        using (IWorldStateScopeProvider.IScope onA = ctx.CreateScopeProvider(isReadOnly: true).BeginScope(Header(2, rootA), null, new LocalMetrics()))
+        using (IWorldStateScopeProvider.IScope onA = ctx.CreateScopeProvider(isReadOnly: true).BeginScope(Header(2, rootA), new LocalMetrics()))
         {
             Assert.That(onA.Get(Address)!.Balance, Is.EqualTo((UInt256)222));
         }
 
-        using (IWorldStateScopeProvider.IScope onB = ctx.CreateScopeProvider(isReadOnly: true).BeginScope(Header(2, rootB), null, new LocalMetrics()))
+        using (IWorldStateScopeProvider.IScope onB = ctx.CreateScopeProvider(isReadOnly: true).BeginScope(Header(2, rootB), new LocalMetrics()))
         {
             Assert.That(onB.Get(Address)!.Balance, Is.EqualTo((UInt256)333));
         }
 
-        using IWorldStateScopeProvider.IScope onParent = ctx.CreateScopeProvider(isReadOnly: true).BeginScope(Header(1, root1), null, new LocalMetrics());
+        using IWorldStateScopeProvider.IScope onParent = ctx.CreateScopeProvider(isReadOnly: true).BeginScope(Header(1, root1), new LocalMetrics());
         Assert.That(onParent.Get(Address)!.Balance, Is.EqualTo((UInt256)100));
     }
 
@@ -177,7 +176,7 @@ public class PbtDbManagerTests
         await using PbtTestContext ctx = new(config: new PbtConfig { CompactSize = 2, MinReorgDepth = 1, MaxReorgDepth = 100 });
 
         Hash256[] roots = new Hash256[6];
-        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, null, new LocalMetrics());
+        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
         for (ulong number = 1; number <= 5; number++)
         {
             roots[number] = CommitBlock(scope, number, number * 100);
@@ -208,13 +207,13 @@ public class PbtDbManagerTests
         {
             // Block 0 has no header root, so genesis claims its tree root.
             BlockHeader genesis;
-            using (IWorldStateScopeProvider.IScope genesisScope = ctx.CreateScopeProvider().BeginScope(null, null, new LocalMetrics()))
+            using (IWorldStateScopeProvider.IScope genesisScope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics()))
             {
                 genesis = Header(0, CommitBlock(genesisScope, 0, 1));
             }
 
             first = childHeaders.Add(genesis, TestItem.KeccakA);
-            using (IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(genesis, null, new LocalMetrics()))
+            using (IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(genesis, new LocalMetrics()))
             {
                 Assert.That(CommitBlock(scope, 1, 100), Is.EqualTo(TestItem.KeccakA), "the block reports the root its header claims");
             }
@@ -237,7 +236,7 @@ public class PbtDbManagerTests
             }
 
             BlockHeader second = childHeaders.Add(first, TestItem.KeccakB);
-            using IWorldStateScopeProvider.IScope scope = reopened.CreateScopeProvider().BeginScope(first, null, new LocalMetrics());
+            using IWorldStateScopeProvider.IScope scope = reopened.CreateScopeProvider().BeginScope(first, new LocalMetrics());
             Assert.That(scope.Get(Address)!.Balance, Is.EqualTo((UInt256)100), "the persisted state is found by its header");
             Assert.That(CommitBlock(scope, 2, 200), Is.EqualTo(second.StateRoot), "and the branch carries on from it");
         }
@@ -439,7 +438,7 @@ public class PbtDbManagerTests
         Hash256 root;
         await using (PbtTestContext context = new(db, new PbtConfig { MirrorFlat = mirror }))
         {
-            using (IWorldStateScopeProvider.IScope scope = context.CreateScopeProvider().BeginScope(null, null, new LocalMetrics()))
+            using (IWorldStateScopeProvider.IScope scope = context.CreateScopeProvider().BeginScope(null, new LocalMetrics()))
                 root = CommitBlock(scope, 1, 100);
             await context.Manager.DisposeAsync();
             await context.Manager.DisposeAsync();

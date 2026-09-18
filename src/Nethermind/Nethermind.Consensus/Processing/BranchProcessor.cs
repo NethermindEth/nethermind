@@ -46,6 +46,11 @@ public class BranchProcessor(
         stateProvider.CommitTree(block.Number);
     }
 
+    private IDisposable BeginTargetScope(Block targetBlock) =>
+        stateProvider.TryBeginScopeAtTarget(targetBlock.Header, out IDisposable? worldStateCloser)
+            ? worldStateCloser
+            : throw new InvalidOperationException($"Parent state is unavailable for target block {targetBlock.ToString(Block.Format.FullHashAndNumber)}.");
+
     public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer, CancellationToken token = default)
     {
         if (suggestedBlocks.Count == 0) return [];
@@ -69,7 +74,7 @@ public class BranchProcessor(
         }
         else
         {
-            worldStateCloser = stateProvider.BeginScope(baseBlock, suggestedBlock.Header);
+            worldStateCloser = BeginTargetScope(suggestedBlock);
         }
 
         CancellationTokenSource? backgroundCancellation = new();
@@ -122,7 +127,7 @@ public class BranchProcessor(
                     if (worldStateCloser is not null && !scopeOpenedForNextBlock && spec.IsEip8347Enabled != wasEip8347Enabled)
                     {
                         worldStateCloser.Dispose();
-                        worldStateCloser = stateProvider.BeginScope(preBlockBaseBlock, suggestedBlock.Header);
+                        worldStateCloser = BeginTargetScope(suggestedBlock);
                     }
                 }
                 scopeOpenedForNextBlock = false;
@@ -161,7 +166,7 @@ public class BranchProcessor(
                     WaitForCacheClear();
 
                     worldStateCloser.Dispose();
-                    worldStateCloser = stateProvider.BeginScope(preBlockBaseBlock, suggestedBlock.Header);
+                    worldStateCloser = BeginTargetScope(suggestedBlock);
                     ProcessingOptions retryOptions = blockOptions | ProcessingOptions.ForceSequentialBlockAccessList;
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, retryOptions, blockTracer, spec, token);
                 }
@@ -199,10 +204,9 @@ public class BranchProcessor(
                 if (isCommitPoint && notReadOnly)
                 {
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
-                    BlockHeader previousBranchStateRoot = suggestedBlock.Header;
 
                     worldStateCloser?.Dispose();
-                    worldStateCloser = stateProvider.BeginScope(previousBranchStateRoot, suggestedBlocks[i + 1].Header);
+                    worldStateCloser = BeginTargetScope(suggestedBlocks[i + 1]);
                     scopeOpenedForNextBlock = true;
                 }
 

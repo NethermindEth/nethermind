@@ -68,6 +68,7 @@ public class PbtMirrorModule(IPbtConfig config) : Module
                             ctx.Resolve<IPbtDbManager>(),
                             ctx.Resolve<IPbtResourcePool>(),
                             ctx.Resolve<IPbtConfig>(),
+                            ctx.Resolve<IStateHeaderProvider>(),
                             ctx.Resolve<ILogManager>()));
     }
 }

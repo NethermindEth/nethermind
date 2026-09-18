@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
@@ -35,7 +36,9 @@ internal sealed class PbtBalReplay(
         using ILifetimeScope scope = rootLifetime.BeginLifetimeScope(builder =>
             builder.RegisterInstance(provider).As<IWorldStateScopeProvider>().ExternallyOwned());
         IWorldState state = scope.Resolve<IWorldState>();
-        using IDisposable stateScope = state.BeginScope(parent, child);
+        if (!state.TryBeginScopeAtTarget(child, out IDisposable? stateScope))
+            throw new InvalidOperationException("The replay scope opens once, for its own child.");
+        using IDisposable _ = stateScope;
         provider.Scope!.UseAuthoritativeRoot(child.StateRoot!);
         MigrationBalStateChanges.Apply(blockAccessList, state, specProvider.GetSpec(child));
         state.CommitTree(child.Number);
@@ -54,14 +57,26 @@ internal sealed class PbtBalReplay(
     {
         public PbtWorldStateScope? Scope { get; private set; }
 
-        public bool HasRoot(BlockHeader? baseBlock, BlockHeader? targetBlock) =>
-            baseBlock?.Hash == parent.Hash && targetBlock?.Hash == child.Hash;
+        public bool HasRoot(BlockHeader? baseBlock) => false;
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock, BlockHeader? targetBlock, LocalMetrics metrics)
+        public bool HasStateForTargetBlock(BlockHeader targetBlock) => targetBlock.Hash == child.Hash && Scope is null;
+
+        public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
         {
-            if (!HasRoot(baseBlock, targetBlock) || Scope is not null)
-                throw new InvalidOperationException("The replay scope opens once, for its own parent and child.");
-            return Scope = owner.Open(parent);
+            if (!HasStateForTargetBlock(targetBlock))
+            {
+                scope = null;
+                return false;
+            }
+
+            scope = Scope = owner.Open(parent);
+            return true;
+        }
+
+        public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
+        {
+            scope = null;
+            return false;
         }
     }
 }

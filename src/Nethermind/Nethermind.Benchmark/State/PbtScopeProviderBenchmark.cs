@@ -83,7 +83,7 @@ public class PbtScopeProviderBenchmark
         _provider = StateBackend switch
         {
             Backend.Pbt => CreatePbtProvider(),
-            Backend.Trie => new TrieStoreScopeProvider(new TestRawTrieStore(new MemDb()), new MemDb(), LimboLogs.Instance),
+            Backend.Trie => new TrieStoreScopeProvider(new TestRawTrieStore(new MemDb()), new MemDb(), new BenchFinalizedStateProvider(), LimboLogs.Instance),
             _ => throw new ArgumentOutOfRangeException(nameof(StateBackend))
         };
 
@@ -95,7 +95,7 @@ public class PbtScopeProviderBenchmark
 
         // Commit layers without finalizing so the measured scope has an in-memory chain of the requested depth.
         Hash256 baseRoot;
-        using (IWorldStateScopeProvider.IScope scope = _provider.BeginScope(null, null, new LocalMetrics()))
+        using (IWorldStateScopeProvider.IScope scope = _provider.BeginScope(null, new LocalMetrics()))
         {
             for (int block = 1; block <= ChainDepth; block++)
             {
@@ -125,14 +125,14 @@ public class PbtScopeProviderBenchmark
         _pbtManager = new PbtDbManager(
             repository, coordinator, persistence, resourcePool, compactor, new BenchProcessExitSource(_cts), LimboLogs.Instance, config, new MetricsConfig());
         return new PbtScopeProvider(
-            new MemDb(), _pbtManager, NullPbtChildHeaderSource.Instance, resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false,
+            new MemDb(), _pbtManager, NullPbtChildHeaderSource.Instance, new BenchFinalizedStateProvider(), resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false,
             new NoopTrieWarmer(), config);
     }
 
     [Benchmark]
     public Hash256 WriteAndUpdateRootHash()
     {
-        using IWorldStateScopeProvider.IScope scope = _provider.BeginScope(_baseHeader, null, new LocalMetrics());
+        using IWorldStateScopeProvider.IScope scope = _provider.BeginScope(_baseHeader, new LocalMetrics());
         WriteState(scope);
         scope.UpdateRootHash();
         return scope.RootHash;
@@ -141,7 +141,7 @@ public class PbtScopeProviderBenchmark
     [Benchmark]
     public Account? ReadAccounts()
     {
-        using IWorldStateScopeProvider.IScope scope = _provider.BeginScope(_baseHeader, null, new LocalMetrics());
+        using IWorldStateScopeProvider.IScope scope = _provider.BeginScope(_baseHeader, new LocalMetrics());
         Account? last = null;
         for (int i = 0; i < AccountCount; i++)
         {
@@ -195,11 +195,13 @@ public class PbtScopeProviderBenchmark
     private static Address DeriveAddress(int index) =>
         new(Keccak.Compute(Address.FromNumber((UInt256)(ulong)index).Bytes));
 
-    private sealed class BenchFinalizedStateProvider : IFinalizedStateProvider
+    private sealed class BenchFinalizedStateProvider : IStateHeaderProvider
     {
         public ulong FinalizedBlockNumber { get; }
 
-        public Hash256? GetFinalizedStateRootAt(ulong blockNumber) => null;
+        public BlockHeader? GetFinalizedHeader(ulong blockNumber) => null;
+
+        public BlockHeader? FindParentHeader(BlockHeader target) => null;
     }
 
     private sealed class BenchProcessExitSource(CancellationTokenSource cts) : IProcessExitSource

@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
@@ -15,7 +17,6 @@ using Nethermind.Pbt;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.ScopeProvider;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -30,6 +31,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
     public MemDb CodeDb { get; } = new();
     public PbtConfig Config { get; }
     public TestFinalizedStateProvider FinalizedStateProvider { get; } = new();
+    public TestStateHeaderProvider StateHeaderProvider { get; } = new();
     public PbtSnapshotRepository Repository { get; } = new();
     public IPbtResourcePool ResourcePool { get; }
     public IDb MetadataDb { get; } = new MemDb();
@@ -64,11 +66,11 @@ internal sealed class PbtTestContext : IAsyncDisposable
         _trieNodeCache = new PbtTrieNodeCache(Config);
         Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, Compactor, new TestProcessExitSource(_cts), LimboLogs.Instance, Config, metricsConfig, _trieNodeCache);
         StateReader = new PbtStateReader(CodeDb, Manager);
-        WorldStateManager = new PbtWorldStateManager(Manager, ChildHeaders, ResourcePool, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool, metricsConfig, Config), TrieWarmer, CodeDb, Config);
+        WorldStateManager = new PbtWorldStateManager(Manager, ChildHeaders, StateHeaderProvider, ResourcePool, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool, metricsConfig, Config, StateHeaderProvider), TrieWarmer, CodeDb, Config);
     }
 
     public PbtScopeProvider CreateScopeProvider(bool isReadOnly = false, ILogManager? logManager = null) =>
-        new(CodeDb, Manager, ChildHeaders, ResourcePool, isReadOnly ? PbtResourcePool.Usage.ReadOnlyProcessingEnv : PbtResourcePool.Usage.MainBlockProcessing, isReadOnly,
+        new(CodeDb, Manager, ChildHeaders, StateHeaderProvider, ResourcePool, isReadOnly ? PbtResourcePool.Usage.ReadOnlyProcessingEnv : PbtResourcePool.Usage.MainBlockProcessing, isReadOnly,
             TrieWarmer, Config, logManager);
 
     public async ValueTask DisposeAsync()
@@ -80,15 +82,19 @@ internal sealed class PbtTestContext : IAsyncDisposable
         _cts.Dispose();
     }
 
-    public sealed class TestFinalizedStateProvider : IFinalizedStateProvider
+    /// <summary>Finality as the persistence coordinator sees it; parents are never resolved through it.</summary>
+    public sealed class TestFinalizedStateProvider : IStateHeaderProvider
     {
-        private readonly Dictionary<ulong, Hash256> _roots = [];
+        private readonly Dictionary<ulong, BlockHeader> _headers = [];
 
         public ulong FinalizedBlockNumber { get; set; }
 
-        public Hash256? GetFinalizedStateRootAt(ulong blockNumber) => _roots.GetValueOrDefault(blockNumber);
+        public BlockHeader? GetFinalizedHeader(ulong blockNumber) => _headers.GetValueOrDefault(blockNumber);
 
-        public void SetCanonicalRoot(ulong blockNumber, Hash256 root) => _roots[blockNumber] = root;
+        public BlockHeader? FindParentHeader(BlockHeader target) => null;
+
+        public void SetCanonicalRoot(ulong blockNumber, Hash256 root) =>
+            _headers[blockNumber] = Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(root).TestObject;
     }
 
     private sealed class TestProcessExitSource(CancellationTokenSource cts) : IProcessExitSource

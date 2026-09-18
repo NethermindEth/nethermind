@@ -3,7 +3,6 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Specs.Forks;
@@ -12,7 +11,6 @@ using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Pbt.Migration;
 using Nethermind.State.Pbt.Persistence;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -66,17 +64,17 @@ public class MigrationStateBoundaryTests
             blockTree.FindHeader(header.Number, BlockTreeLookupOptions.RequireCanonical).Returns(header);
             blockTree.FindHeader(header.Hash!, BlockTreeLookupOptions.RequireCanonical).Returns(header);
         }
-        IFinalizedStateProvider inner = Substitute.For<IFinalizedStateProvider>();
+        IStateHeaderProvider inner = Substitute.For<IStateHeaderProvider>();
         inner.FinalizedBlockNumber.Returns(finalized);
-        inner.GetFinalizedStateRootAt(Arg.Any<ulong>()).Returns(call => chain[call.Arg<ulong>()].StateRoot);
+        inner.GetFinalizedHeader(Arg.Any<ulong>()).Returns(call => chain[call.Arg<ulong>()]);
 
         MigrationFlatFinalizedStateProvider provider = new(inner, blockTree, Specs());
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(provider.FinalizedBlockNumber, Is.EqualTo(expected));
-            Assert.That(provider.GetFinalizedStateRootAt(3), Is.EqualTo(chain[3].StateRoot));
-            Assert.That(provider.GetFinalizedStateRootAt(4), Is.Null, "post-activation boundaries carry PBT roots flat never holds");
+            Assert.That(provider.GetFinalizedHeader(3), Is.SameAs(chain[3]));
+            Assert.That(provider.GetFinalizedHeader(4), Is.Null, "post-activation boundaries carry PBT roots flat never holds");
         }
     }
 }
