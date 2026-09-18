@@ -89,7 +89,7 @@ public class ImportPbtFromPreimageFlatTests
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
         RecordingExitSource exitSource = new();
         // Both phases need the same column database; otherwise phase two scans nothing.
-        ImportPbtFromPreimageFlat step = new(flatSource, codeDb, pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance), pbtTarget, config, exitSource, logs);
+        ImportPbtFromPreimageFlat step = new(flatSource, codeDb, pbtDb, new PbtRebuilder(pbtTarget, config, LimboLogs.Instance), pbtTarget, config, exitSource, logs);
 
         await step.Execute(CancellationToken.None);
 
@@ -176,7 +176,7 @@ public class ImportPbtFromPreimageFlatTests
                 cancellation.Cancel();
         };
         RecordingExitSource exit = new();
-        ImportPbtFromPreimageFlat step = new(source, codes, db, new PbtRebuilder(target, LimboLogs.Instance), target, config, exit, logs) { EntryChunkSize = 1 };
+        ImportPbtFromPreimageFlat step = new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, exit, logs) { EntryChunkSize = 1 };
 
         await step.Execute(cancellation.Token).WaitAsync(TimeSpan.FromSeconds(30));
 
@@ -244,7 +244,7 @@ public class ImportPbtFromPreimageFlatTests
                 Assert.That(target.IsValid, Is.False);
             }
         };
-        ImportPbtFromPreimageFlat step = new(source, codes, db, new PbtRebuilder(target, LimboLogs.Instance), target, config, exit, LimboLogs.Instance) { CopyBatchSize = batchSize };
+        ImportPbtFromPreimageFlat step = new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, exit, LimboLogs.Instance) { CopyBatchSize = batchSize };
 
         await step.Execute(CancellationToken.None);
 
@@ -293,7 +293,7 @@ public class ImportPbtFromPreimageFlatTests
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
         RecordingExitSource exitSource = new();
-        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance), pbtTarget, config, exitSource, LimboLogs.Instance);
+        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, config, LimboLogs.Instance), pbtTarget, config, exitSource, LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
 
@@ -339,7 +339,7 @@ public class ImportPbtFromPreimageFlatTests
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
         RecordingExitSource exitSource = new();
-        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance), pbtTarget, config, exitSource, LimboLogs.Instance);
+        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, config, LimboLogs.Instance), pbtTarget, config, exitSource, LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
 
@@ -383,7 +383,7 @@ public class ImportPbtFromPreimageFlatTests
         async Task<ValueHash256> Import()
         {
             RecordingExitSource exitSource = new();
-            ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance), pbtTarget, config, exitSource, LimboLogs.Instance)
+            ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, config, LimboLogs.Instance), pbtTarget, config, exitSource, LimboLogs.Instance)
             {
                 ClearKeyChunk = clearKeyChunk,
             };
@@ -680,7 +680,7 @@ public class ImportPbtFromPreimageFlatTests
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
         RecordingExitSource exitSource = new();
         // A flush interval of 1 exercises same-stem merging across windows.
-        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance), pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
+        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, new PbtConfig(), LimboLogs.Instance), pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
         Assert.That(exitSource.ExitCode, Is.EqualTo(0));
@@ -738,7 +738,7 @@ public class ImportPbtFromPreimageFlatTests
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig());
         RecordingExitSource exitSource = new();
         PbtConfig config = new() { ImportStorageReadConcurrency = workers, ImportWindowSize = windowSize };
-        ImportPbtFromPreimageFlat step = new(flatSource, codeDb, pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance), pbtTarget, config, exitSource, LimboLogs.Instance)
+        ImportPbtFromPreimageFlat step = new(flatSource, codeDb, pbtDb, new PbtRebuilder(pbtTarget, config, LimboLogs.Instance), pbtTarget, config, exitSource, LimboLogs.Instance)
         {
             EntryChunkSize = entryChunkSize,
         };
@@ -813,7 +813,7 @@ public class ImportPbtFromPreimageFlatTests
             persisted.Commit();
 
         RecordingExitSource exitSource = new();
-        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, LimboLogs.Instance), pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
+        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, new PbtConfig(), LimboLogs.Instance), pbtTarget, new PbtConfig(), exitSource, LimboLogs.Instance);
 
         await step.Execute(CancellationToken.None);
 
@@ -890,7 +890,7 @@ public class ImportPbtFromPreimageFlatTests
             staging.Commit();
         };
         RecordingExitSource exit = new();
-        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(target, LimboLogs.Instance), target, config, exit, LimboLogs.Instance) { EntryChunkSize = 1 };
+        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, exit, LimboLogs.Instance) { EntryChunkSize = 1 };
 
         await step.Execute(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(60));
 
@@ -960,7 +960,7 @@ public class ImportPbtFromPreimageFlatTests
             if (failure == "persistence") throw new IOException("injected staging persistence failure");
         };
         RecordingExitSource exit = new();
-        ImportPbtFromPreimageFlat step = new(source, codes, db, new PbtRebuilder(target, LimboLogs.Instance), target, config, exit, LimboLogs.Instance) { EntryChunkSize = 1 };
+        ImportPbtFromPreimageFlat step = new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, exit, LimboLogs.Instance) { EntryChunkSize = 1 };
         Task import = step.Execute(cancellation.Token);
         try
         {
@@ -1002,7 +1002,7 @@ public class ImportPbtFromPreimageFlatTests
         db.ViewClosed = null;
         db.Recording = false;
         RecordingExitSource retryExit = new();
-        ImportPbtFromPreimageFlat retry = new(source, codes, db, new PbtRebuilder(target, LimboLogs.Instance), target, config, retryExit, LimboLogs.Instance) { EntryChunkSize = 5, ClearKeyChunk = 1 };
+        ImportPbtFromPreimageFlat retry = new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, retryExit, LimboLogs.Instance) { EntryChunkSize = 5, ClearKeyChunk = 1 };
         await retry.Execute(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(60));
         using IPbtPersistence.IReader reader = target.CreateReader();
         using (Assert.EnterMultipleScope())

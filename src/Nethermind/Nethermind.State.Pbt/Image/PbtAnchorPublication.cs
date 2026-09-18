@@ -26,6 +26,7 @@ internal sealed class PbtAnchorPublication(
     IPbtPersistence persistence,
     IPbtDbManager manager,
     PbtPersistenceCoordinator coordinator,
+    IPbtConfig config,
     ILogManager logManager)
 {
     private static readonly byte[] _provenanceKey = "migrationPreparedAnchor"u8.ToArray();
@@ -117,7 +118,7 @@ internal sealed class PbtAnchorPublication(
             ValueHash256 root;
             try
             {
-                root = await new PbtRebuilder(target, logManager).Rebuild(channel.Reader, anchorState, linked.Token, 16_384, WriteFlags.None);
+                root = await new PbtRebuilder(target, config, logManager).Rebuild(channel.Reader, anchorState, linked.Token, 16_384, WriteFlags.None);
                 await producer;
             }
             finally

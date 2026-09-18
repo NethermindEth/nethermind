@@ -85,7 +85,7 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Minimum number of leaf operations per worker when a tree frame whose stored subtree is at least FoldLargeSubtreeBytes splits its buckets across workers.", DefaultValue = "16")]
     int FoldLargeSubtreeMinOperationsPerWorker { get; set; }
 
-    [ConfigItem(Description = "Number of parallel workers copying the source and scanning staged key ranges to derive leaves during the preimage-flat import. 0 uses the processor count. The tree fold runs in a separate single consumer.", DefaultValue = "0")]
+    [ConfigItem(Description = "Number of parallel workers copying the source and scanning staged key ranges to derive leaves during the preimage-flat import. 0 uses the processor count. The tree fold runs in a separate single consumer whose zones and wide buckets fold with FoldConcurrency threads.", DefaultValue = "0")]
     int ImportStorageReadConcurrency { get; set; }
 
     [ConfigItem(Description = "Number of tree leaves buffered per window during the preimage-flat import before it is folded into the tree and committed. 0 uses the built-in default (2000000). Larger windows fold in fewer passes at the cost of memory.", DefaultValue = "0")]

@@ -300,7 +300,7 @@ public class MigrationBalFollowerTests
             Directory.CreateDirectory(_scratch.Path);
             using FileStream snapshot = File.OpenRead(Path.Combine(Fixtures, "canonical", "anchor", "snapshot.pbt"));
             using FileStream preimages = File.OpenRead(Path.Combine(Fixtures, "canonical", "anchor", "preimages.bin"));
-            await new PbtAnchorPublication(new PbtRocksDbPersistence(_target, new PbtConfig()), _target, _pbt.Persistence, _pbt.Manager, _pbt.Coordinator, LimboLogs.Instance)
+            await new PbtAnchorPublication(new PbtRocksDbPersistence(_target, new PbtConfig()), _target, _pbt.Persistence, _pbt.Manager, _pbt.Coordinator, new PbtConfig(), LimboLogs.Instance)
                 .Publish(snapshot, preimages, identity, anchor, _scratch.Path, () => true, default);
         }
 

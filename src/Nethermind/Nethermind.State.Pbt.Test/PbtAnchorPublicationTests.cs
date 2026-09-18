@@ -422,7 +422,7 @@ public class PbtAnchorPublicationTests
         private void Open()
         {
             Pbt = new PbtTestContext(Target);
-            Publication = new PbtAnchorPublication(new PbtRocksDbPersistence(Target, new PbtConfig()), Target, Pbt.Persistence, Pbt.Manager, Pbt.Coordinator, LimboLogs.Instance);
+            Publication = new PbtAnchorPublication(new PbtRocksDbPersistence(Target, new PbtConfig()), Target, Pbt.Persistence, Pbt.Manager, Pbt.Coordinator, new PbtConfig(), LimboLogs.Instance);
         }
 
         public async Task<ValueHash256> Publish(CancellationToken cancellationToken = default)

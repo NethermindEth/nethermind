@@ -81,7 +81,7 @@ public class PbtRebuilderTests
         ILogManager? logManager = null,
         int windowSize = 0)
     {
-        PbtRebuilder rebuilder = new(target, logManager ?? LimboLogs.Instance);
+        PbtRebuilder rebuilder = new(target, new PbtConfig(), logManager ?? LimboLogs.Instance);
         Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateUnbounded<ArrayPoolList<RebuildEntry>>();
         for (int offset = 0; offset < leaves.Count; offset += chunkSize)
         {
@@ -201,7 +201,7 @@ public class PbtRebuilderTests
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence target = new(db, Config);
-        PbtRebuilder rebuilder = new(target, LimboLogs.Instance);
+        PbtRebuilder rebuilder = new(target, Config, LimboLogs.Instance);
 
         Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateUnbounded<ArrayPoolList<RebuildEntry>>();
         channel.Writer.Complete();
@@ -254,7 +254,7 @@ public class PbtRebuilderTests
         Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateBounded<ArrayPoolList<RebuildEntry>>(1);
         DrainedChunkReader source = new(channel.Reader);
         StateId targetState = new(7, TestItem.KeccakA.ValueHash256);
-        Task<ValueHash256> rebuilding = new PbtRebuilder(target, LimboLogs.Instance)
+        Task<ValueHash256> rebuilding = new PbtRebuilder(target, Config, LimboLogs.Instance)
             .Rebuild(source, targetState, CancellationToken.None, windowSize);
         using PbtNodeGroupStore expectedStore = new();
         ValueHash256 expectedRoot = default;
@@ -307,7 +307,7 @@ public class PbtRebuilderTests
         Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateBounded<ArrayPoolList<RebuildEntry>>(1);
         DrainedChunkReader source = new(channel.Reader);
         using CancellationTokenSource cancellation = new();
-        Task<ValueHash256> rebuilding = new PbtRebuilder(target, LimboLogs.Instance)
+        Task<ValueHash256> rebuilding = new PbtRebuilder(target, Config, LimboLogs.Instance)
             .Rebuild(source, new StateId(7, TestItem.KeccakA.ValueHash256), cancellation.Token, 1);
         ArrayPoolList<RebuildEntry> chunk = new(1) { new((PbtStorageTreeKey)PbtStateKey.Account(TestItem.AddressA, 0), TestItem.KeccakB.ValueHash256) };
         try
