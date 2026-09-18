@@ -270,24 +270,49 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void should_announce_persisted_light_v1_blob_tx_with_consensus_size()
+    public void should_announce_persisted_light_v1_blob_tx_with_elided_network_encoding_size()
     {
         Transaction tx = BuildBlobTransaction(fullProvider: true);
         LightTransaction lightTx = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+        int elidedWireSize = BuildElidedBlobTransaction(tx).GetLength();
 
         _handler.SendNewTransactions([lightTx], sendFullTx: false);
 
         _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage72>(m =>
             m.Hashes.Length == 1 &&
             m.Hashes[0] == tx.Hash &&
-            m.Sizes[0] == lightTx.GetConsensusEncodingSize() &&
+            m.Sizes[0] == elidedWireSize &&
             m.Sizes[0] < tx.GetLength()));
+    }
+
+    [Test]
+    public void announced_size_matches_the_elided_typed_transaction_encoding()
+    {
+        Transaction tx = BuildBlobTransaction(fullProvider: true);
+        Transaction elidedTx = BuildElidedBlobTransaction(tx);
+
+        int announced = 0;
+        _session.When(session => session.DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage72>()))
+            .Do(call => announced = ((NewPooledTransactionHashesMessage72)call[0]).Sizes[0]);
+
+        _handler.SendNewTransaction(tx);
+
+        // Peers compare the announced size with the decoded typed transaction envelope, excluding the enclosing
+        // PooledTransactions list element's RLP string prefix.
+        byte[] servedTxBytes = TxDecoder.Instance
+            .Encode(elidedTx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping).Bytes;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(announced, Is.EqualTo(servedTxBytes.Length));
+            Assert.That(announced, Is.GreaterThan(tx.GetLength(shouldCountBlobs: false) + 8));
+        }
     }
 
     [Test]
     public void should_not_announce_legacy_light_v1_blob_tx_with_unknown_network_size()
     {
-        // The consensus size is not present in legacy entries.
+        // The elided network-encoding size is not present in legacy entries.
         Transaction tx = BuildBlobTransaction(fullProvider: true);
         LightTransaction legacyLightTx = new(
             timestamp: tx.Timestamp,
@@ -796,14 +821,14 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void should_announce_v0_blob_tx_with_consensus_size()
+    public void should_announce_v0_blob_tx_with_elided_network_encoding_size()
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Cancun.Instance)
             .WithNonce(0UL)
             .SignedAndResolved()
             .TestObject;
-        int consensusEncodingSize = tx.GetLength(shouldCountBlobs: false);
+        int elidedWireSize = BuildElidedBlobTransaction(tx).GetLength();
 
         _handler.SendNewTransaction(tx);
 
@@ -811,7 +836,7 @@ public class Eth72ProtocolHandlerTests
             m.Hashes.Length == 1
             && m.Hashes[0] == tx.Hash
             && m.Sizes.Length == 1
-            && m.Sizes[0] == consensusEncodingSize
+            && m.Sizes[0] == elidedWireSize
             && m.Sizes[0] < tx.GetLength()));
     }
 
@@ -945,7 +970,7 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void should_announce_sparse_blob_tx_with_consensus_size()
+    public void should_announce_sparse_blob_tx_with_elided_network_encoding_size()
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
@@ -953,7 +978,7 @@ public class Eth72ProtocolHandlerTests
             .SignedAndResolved()
             .TestObject;
         int fullTxLength = tx.GetLength();
-        int consensusEncodingSize = tx.GetLength(shouldCountBlobs: false);
+        int elidedWireSize = BuildElidedBlobTransaction(tx).GetLength();
 
         _handler.SendNewTransaction(tx);
 
@@ -961,7 +986,7 @@ public class Eth72ProtocolHandlerTests
             m.Hashes.Length == 1 &&
             m.Hashes[0] == tx.Hash &&
             m.Sizes.Length == 1 &&
-            m.Sizes[0] == consensusEncodingSize &&
+            m.Sizes[0] == elidedWireSize &&
             m.Sizes[0] < fullTxLength));
     }
 
