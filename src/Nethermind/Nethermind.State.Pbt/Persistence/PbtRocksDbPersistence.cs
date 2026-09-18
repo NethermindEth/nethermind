@@ -26,7 +26,7 @@ public class PbtRocksDbPersistence(
     private static ReadOnlySpan<byte> NodeGroupKeyLayoutKey => "nodeGroupKeyLayout"u8;
     private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
     internal static ReadOnlySpan<byte> RootNodeGroupKey => "rootNodeGroup"u8;
-    private const int SchemaEpoch = 14;
+    private const int SchemaEpoch = 15;
     private const byte ValidState = 1;
 
     private readonly IColumnsDb<PbtColumns> _db = Initialize(db, config.NodeGroupKeyLayout, config.ImportFromPreimageFlat);

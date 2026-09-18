@@ -1386,7 +1386,7 @@ public class PbtSnapshotBundleTests
         foreach (PbtNodeRecord record in records) length += record.Encoding.Length;
         byte[] payload = new byte[length];
         BufferWriter writer = new(payload);
-        PbtNodeGroupCodec.Encode(ref writer, groupKey, records);
+        PbtNodeGroupCodec.Encode(ref writer, groupKey, records, 0);
         return writer.WrittenSpan.ToArray();
     }
 

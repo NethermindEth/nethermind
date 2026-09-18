@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
+using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -90,6 +91,21 @@ internal static class PbtStoreTestExtensions
     {
         PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageTreeKey.MaxLength], groupKey);
         return new PbtNodeGroupReader(cursor, payload);
+    }
+
+    /// <summary>Asserts every stored subtree size equals the summed payload lengths of the group and the groups keyed below it.</summary>
+    internal static void AssertSubtreeBytes(IReadOnlyList<PbtPhysicalPayload> payloads)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (PbtPhysicalPayload group in payloads)
+            {
+                long expected = 0;
+                foreach (PbtPhysicalPayload candidate in payloads)
+                    if (candidate.Key.MatchesPrefix(group.Key, group.Key.BitDepth)) expected += candidate.Payload.Length;
+                Assert.That(PbtNodeGroupCodec.ReadSubtreeBytes(group.Payload.Span), Is.EqualTo(expected), $"subtree bytes of group {Convert.ToHexString(group.Key.ToEncodedArray())}");
+            }
+        }
     }
 
     internal static RefCountingMemory? GetPhysicalNodeGroup<TPath>(this PbtNodeGroupStore store, TPath groupKey)
@@ -266,7 +282,7 @@ internal static class PbtStoreTestExtensions
         BufferWriter writer = new(memoryProvider ?? PooledRefCountingMemoryProvider.Instance);
         try
         {
-            PbtNodeGroupCodec.Encode(ref writer, location.GroupKey, records);
+            PbtNodeGroupCodec.Encode(ref writer, location.GroupKey, records, 0);
             using RefCountingMemory payload = writer.Detach()!;
             store.SetNodeGroup(location.GroupKey, encoding is null ? default : PbtNodeCodec.Hash(new PbtNodeReader(encoding)), payload);
         }

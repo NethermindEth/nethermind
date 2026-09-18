@@ -89,7 +89,7 @@ public class PbtSnapshotCompactorTests
             PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageTreeKey.MaxLength], groupKey);
             using PbtNodeGroupWriter<TPath> writer = new(groupKey.BitDepth, memoryProvider);
             writer.Write(path, PbtFourLevelGroupGeometry.RootPosition, PbtNodeCodec.EncodeLeaf(key, value.Bytes));
-            return writer.Detach()!;
+            return writer.Detach(0)!;
         }
     }
 

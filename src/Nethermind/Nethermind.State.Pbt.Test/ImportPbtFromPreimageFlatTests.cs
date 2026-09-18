@@ -361,7 +361,7 @@ public class ImportPbtFromPreimageFlatTests
     /// <param name="clearKeyChunk">A value of 1 reopens the view after each deleted key, verifying the exclusive resume cursor.</param>
     [TestCase(10_000)]
     [TestCase(1)]
-    public async Task Import_mode_recovers_an_interrupted_epoch_14_attempt(int clearKeyChunk)
+    public async Task Import_mode_recovers_an_interrupted_epoch_15_attempt(int clearKeyChunk)
     {
         PbtConfig config = new() { ImportFromPreimageFlat = true };
 
@@ -432,7 +432,7 @@ public class ImportPbtFromPreimageFlatTests
         IDb metadata = pbtDb.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x0000000e")));
+            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x0000000f")));
             Assert.That(metadata.Get("rootNodeGroup"u8), Is.Not.Null);
             Assert.That(metadata.Get("currentState"u8), Is.Null);
             Assert.That(metadata.Get("validState"u8), Is.Null);
@@ -516,7 +516,7 @@ public class ImportPbtFromPreimageFlatTests
                 ? PbtNodeCodec.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256)
                 : PbtNodeCodec.EncodeLeaf(new PbtStorageTreeKey(keyBytes), TestItem.KeccakA.Bytes);
             BufferWriter writer = new(new byte[1024]);
-            PbtNodeGroupCodec.Encode(ref writer, group, new[] { new PbtNodeRecord(node, encoding) });
+            PbtNodeGroupCodec.Encode(ref writer, group, new[] { new PbtNodeRecord(node, encoding) }, 0);
             Add(column, group.ToStorageKey(column, PbtNodeGroupKeyLayout.Padded), writer.WrittenSpan.ToArray());
             expectedGroups[depth]++;
             expectedPayloads[depth] += writer.WrittenSpan.Length;

@@ -54,7 +54,7 @@ public class PbtFormatInteropTests
         PbtPhysicalPayload physical = tree.PhysicalPayloads[0];
         byte[] payload = physical.Payload.ToArray();
         if (format == 0) payload = payload[PbtNodeGroupCodec.HeaderLength..];
-        else if (format == 1) payload[0] = 3;
+        else if (format == 1) payload[0] = 2;
         else
         {
             byte[] legacyPayload = new byte[5 + 36 + 66];
@@ -119,9 +119,9 @@ public class PbtFormatInteropTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(mixedRoot, Is.EqualTo("0xd6100f64e772fe72648dbef668e718b9625d3d7907e18e62618c54c07f7af13e"));
-            Assert.That(mixedPayload, Is.EqualTo("0x6f4f5d98eec215acf73602b828d46ad135728243c74344e2623d29e0aaa90a67"));
+            Assert.That(mixedPayload, Is.EqualTo("0xc5cddb8bac26daa7ce5f670162886a231a4f7225eaf38c54091b1e76d8368e55"));
             Assert.That(singletonRoot, Is.EqualTo("0x3039f167d1d69a8b3739e88307abc9c4e71193e29f330c06a5b1edae10cafde7"));
-            Assert.That(singletonPayload, Is.EqualTo("0x86884a84e431a12152c642e5c4f0e489f233d83f6666c4bf21370d18ea62d70c"));
+            Assert.That(singletonPayload, Is.EqualTo("0x371ea64ebc38aedbb68d608d88190f501ca38fd79f0267387923cbc1874a7894"));
             Assert.That(tree.RootHash.ToString(), Is.EqualTo(mixedRoot));
             Assert.That(tree.CanonicalRecords(), Is.EqualTo(mixedRecords));
             Assert.That(PhysicalDigest(tree), Is.EqualTo(mixedPayload));

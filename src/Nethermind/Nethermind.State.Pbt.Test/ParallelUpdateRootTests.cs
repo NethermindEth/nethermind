@@ -315,6 +315,7 @@ public class ParallelUpdateRootTests
                 Assert.That(root, Is.EqualTo(sequential.RootHash), $"round {round}");
                 Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()), $"round {round}");
                 Assert.That(PhysicalRecords(store), Is.EqualTo(PhysicalRecords(sequential.PhysicalPayloads)), $"round {round}");
+                PbtStoreTestExtensions.AssertSubtreeBytes(store.ExportPhysicalPayloads());
             }
         }
     }

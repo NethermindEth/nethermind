@@ -2403,12 +2403,12 @@ public class Eip8297CanonicalTreeTests
             records.Add(new(PbtFourLevelGroupGeometry.PathOf(groupKey, nodes.CurrentPosition), nodes.Current));
         byte[] expectedPayload = new byte[payloads[0].Payload.Length];
         BufferWriter writer = new(expectedPayload);
-        PbtNodeGroupCodec.Encode(ref writer, groupKey, records);
+        PbtNodeGroupCodec.Encode(ref writer, groupKey, records, 0);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
             Assert.That(reader.Count, Is.EqualTo(leafCount + 1));
-            Assert.That(payloads[0].Payload.Length, Is.EqualTo(PbtNodeGroupCodec.HeaderLength + leafCount * leafEncodingLength + rootEncodingLength + 4 + 2 * (leafCount + 1)));
+            Assert.That(payloads[0].Payload.Length, Is.EqualTo(PbtNodeGroupCodec.HeaderLength + leafCount * leafEncodingLength + rootEncodingLength + PbtNodeGroupCodec.GetTrailerLength((1u << (leafCount + 1)) - 1)));
             Assert.That(payloads[0].Payload.ToArray(), Is.EqualTo(expectedPayload));
             Assert.That(provider.RentCount, Is.EqualTo(expectedRentCount));
             Assert.That(provider.RequestedLengths[0], Is.EqualTo(initialCapacity), "one pool bucket up front");
@@ -2512,6 +2512,7 @@ public class Eip8297CanonicalTreeTests
     {
         string[] canonical = bulk.CanonicalRecords();
         string[] physical = PhysicalRecords(bulk);
+        PbtStoreTestExtensions.AssertSubtreeBytes(bulk.PhysicalPayloads);
         bulk.Reopen();
 
         using (Assert.EnterMultipleScope())
@@ -2620,7 +2621,7 @@ public class Eip8297CanonicalTreeTests
                 BufferWriter writer = new(MemoryProvider);
                 try
                 {
-                    PbtNodeGroupCodec.Encode(ref writer, storageGroupKey, records);
+                    PbtNodeGroupCodec.Encode(ref writer, storageGroupKey, records, 0);
                     RefCountingMemory payload = writer.Detach()!;
                     return payload;
                 }
