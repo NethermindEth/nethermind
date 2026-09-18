@@ -301,13 +301,10 @@ internal static partial class TrieUpdater<TKey, TPath>
         Decompose(ref reader, writer, path, ref current, bitDepth, ref frontier, partition.UsedMask);
         Span<byte> sourceBuffer = stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)];
 
-        Span<int> runEnds = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
-        int runCount = context.FoldQuota is null || operations.Length < context.MinOperationsPerWorker
-            ? 1
-            : PlanBucketRuns(partition.Counts, context.MinOperationsPerWorker, runEnds);
-        if (runCount > 1)
-            FoldBucketsInParallel(context, ref reader, writer, ref frontier, operations, path, bitDepth, partition, runEnds[..runCount], sourceBuffer);
-        else
+        bool foldedInParallel = context.FoldQuota is not null && operations.Length >= context.MinOperationsPerWorker
+            && (partition.UsedMask & (partition.UsedMask - 1)) != 0
+            && TryFoldBucketsInParallel(context, ref reader, writer, ref frontier, operations, path, bitDepth, partition, sourceBuffer);
+        if (!foldedInParallel)
             FoldBuckets(context, ref reader, writer, ref frontier, operations, ref path, bitDepth, partition, sourceBuffer);
 
         return Compose(ref reader, writer, path, context.Metrics, ref frontier, sourceBuffer).Materialize();
@@ -341,11 +338,17 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// the calling thread while <see cref="FoldContext.FoldQuota"/> has no free slot; the first slot taken admits
     /// a parallel loop over the runs still left, whose workers charge themselves as they start.
     /// </remarks>
-    private static void FoldBucketsInParallel(FoldContext context, scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
-        scoped ref Frontier frontier, Span<PbtWriteOperation<TKey>> operations, scoped PbtTraversalPath path, int bitDepth, scoped PartitionOutcome partition, ReadOnlySpan<int> runEnds, scoped Span<byte> sourceBuffer)
+    /// <returns>Whether the buckets were folded; false leaves them untouched when they cannot fill two runs.</returns>
+    [SkipLocalsInit]
+    private static bool TryFoldBucketsInParallel(FoldContext context, scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer,
+        scoped ref Frontier frontier, Span<PbtWriteOperation<TKey>> operations, scoped PbtTraversalPath path, int bitDepth, scoped PartitionOutcome partition, scoped Span<byte> sourceBuffer)
     {
+        Span<int> runEnds = stackalloc int[PbtFourLevelGroupGeometry.BoundarySlots];
+        int runCount = PlanBucketRuns(partition.Counts, context.MinOperationsPerWorker, runEnds);
+        if (runCount < 2) return false;
+
         BucketFold[] buckets = ArrayPool<BucketFold>.Shared.Rent(partition.Counts.Length);
-        using ArrayPoolList<int> runs = new(runEnds);
+        using ArrayPoolList<int> runs = new(runEnds[..runCount]);
         int offset = OffsetOf(context.Operations!, operations);
         int bucketCount = 0;
         for (int mask = partition.UsedMask; mask != 0; mask &= mask - 1)
@@ -397,6 +400,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
         // The folds hold node encodings; clear so the pool does not keep them alive.
         ArrayPool<BucketFold>.Shared.Return(buckets, clearArray: true);
+        return true;
 
         void FoldRun(int run)
         {
