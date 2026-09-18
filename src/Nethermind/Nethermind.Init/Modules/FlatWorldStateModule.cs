@@ -144,6 +144,13 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 .AddStep(typeof(ImportFlatDb));
         }
 
+        // Only to pull the state DB open during init; the drop is decided by PruningTrieStoreModule,
+        // which still declines here if anything about the configuration says it should.
+        if (flatDbConfig.DropPruningTrieState)
+        {
+            builder.AddStep(typeof(DropPruningTrieState));
+        }
+
         builder.RegisterInstance(NullHistoricalTrieVisitor.Instance)
             .As<IHistoricalTrieVisitor>()
             .ExternallyOwned()
