@@ -171,6 +171,28 @@ on:
           scenario, including each image of a multi-image run.
         required: false
         default: ""
+      docker_cpu:
+        description: >-
+          Override the client container's CPU quota (expb `resources.cpu`, Docker --cpus) for this
+          dispatch only. Empty keeps the runner's configured value; `all` (or 0) removes the quota. The
+          rendered config is a temporary copy, so the shared config on the box is never changed.
+        required: false
+        default: ""
+      docker_cpuset:
+        description: >-
+          Override the client container's CPU pinning (expb `resources.cpuset`, Docker --cpuset-cpus,
+          e.g. 2-7,10-15) for this dispatch only. Empty keeps the runner's configured value; `all` removes
+          the pinning, so the client may run on every host CPU, including the infra ones. expb offlines
+          the SMT siblings of the pinned cores itself, so pin whole physical cores.
+        required: false
+        default: ""
+      docker_infra_cpuset:
+        description: >-
+          Override the pinning of the k6, payload-server and Alloy containers (expb
+          `resources.infra_cpuset`) for this dispatch only. Empty keeps the runner's configured value;
+          `all` removes the pinning.
+        required: false
+        default: ""
   pull_request:
     types: [labeled]
   push:
@@ -221,6 +243,9 @@ jobs:
       dottrace_mode: ${{ steps.resolve.outputs.dottrace_mode }}
       trace_blocks: ${{ steps.resolve.outputs.trace_blocks }}
       client_env: ${{ steps.resolve.outputs.client_env }}
+      docker_cpu: ${{ steps.resolve.outputs.docker_cpu }}
+      docker_cpuset: ${{ steps.resolve.outputs.docker_cpuset }}
+      docker_infra_cpuset: ${{ steps.resolve.outputs.docker_infra_cpuset }}
       client: ${{ steps.resolve.outputs.client }}
       measurement_source: ${{ steps.resolve.outputs.measurement_source }}
       client_snapshot_dir: ${{ steps.resolve.outputs.client_snapshot_dir }}
@@ -258,6 +283,9 @@ jobs:
           DISPATCH_PERF: ${{ inputs.perf }}
           DISPATCH_TRACE_BLOCKS: ${{ inputs.trace_blocks }}
           DISPATCH_CLIENT_ENV: ${{ inputs.client_env }}
+          DISPATCH_DOCKER_CPU: ${{ inputs.docker_cpu }}
+          DISPATCH_DOCKER_CPUSET: ${{ inputs.docker_cpuset }}
+          DISPATCH_DOCKER_INFRA_CPUSET: ${{ inputs.docker_infra_cpuset }}
         run: |
           set -euo pipefail
 
@@ -331,6 +359,23 @@ jobs:
             fi
             if [[ -n "${dottrace_mode}" ]]; then dottrace="true"; else dottrace="false"; fi
             client_env="${DISPATCH_CLIENT_ENV:-}"
+            docker_cpu="$(printf '%s' "${DISPATCH_DOCKER_CPU:-}" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+            docker_cpuset="$(printf '%s' "${DISPATCH_DOCKER_CPUSET:-}" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+            docker_infra_cpuset="$(printf '%s' "${DISPATCH_DOCKER_INFRA_CPUSET:-}" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+            if [[ "${docker_cpu}" == "0" ]]; then docker_cpu="all"; fi
+            if [[ -n "${docker_cpu}" && ! "${docker_cpu}" =~ ^([1-9][0-9]?|all)$ ]]; then
+              echo "::error::docker_cpu must be a whole number of CPUs between 1 and 99, or 'all' (got '${docker_cpu}')."
+              exit 1
+            fi
+            cpuset_pattern='^([0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*|all)$'
+            if [[ -n "${docker_cpuset}" && ! "${docker_cpuset}" =~ ${cpuset_pattern} ]]; then
+              echo "::error::docker_cpuset must be a Docker cpuset list such as 2-7,10-15, or 'all' (got '${docker_cpuset}')."
+              exit 1
+            fi
+            if [[ -n "${docker_infra_cpuset}" && ! "${docker_infra_cpuset}" =~ ${cpuset_pattern} ]]; then
+              echo "::error::docker_infra_cpuset must be a Docker cpuset list such as 0-1,8-9, or 'all' (got '${docker_infra_cpuset}')."
+              exit 1
+            fi
             if [[ -n "${docker_images}" || "${enable_retrospective}" == "true" ]]; then
               mode="multi"
             fi
@@ -359,6 +404,9 @@ jobs:
             dottrace_mode=""
             trace_blocks=""
             client_env=""
+            docker_cpu=""
+            docker_cpuset=""
+            docker_infra_cpuset=""
             client="nethermind"
             measurement_source="auto"
           else
@@ -380,6 +428,9 @@ jobs:
             dottrace_mode=""
             trace_blocks=""
             client_env=""
+            docker_cpu=""
+            docker_cpuset=""
+            docker_infra_cpuset=""
             client="nethermind"
             measurement_source="auto"
           fi
@@ -594,6 +645,9 @@ jobs:
             echo "dottrace_mode=${dottrace_mode}"
             echo "trace_blocks=${trace_blocks}"
             echo "client_env=${client_env}"
+            echo "docker_cpu=${docker_cpu}"
+            echo "docker_cpuset=${docker_cpuset}"
+            echo "docker_infra_cpuset=${docker_infra_cpuset}"
             echo "client=${client}"
             echo "measurement_source=${measurement_source}"
             echo "client_snapshot_dir=${client_snapshot_dir}"
@@ -863,6 +917,9 @@ jobs:
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
           TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
           CLIENT_ENV: ${{ needs.resolve.outputs.client_env }}
+          DOCKER_CPU: ${{ needs.resolve.outputs.docker_cpu }}
+          DOCKER_CPUSET: ${{ needs.resolve.outputs.docker_cpuset }}
+          DOCKER_INFRA_CPUSET: ${{ needs.resolve.outputs.docker_infra_cpuset }}
         run: |
           set -euo pipefail
           if [[ -z "${AMOUNT}" ]]; then
@@ -968,6 +1025,27 @@ jobs:
               echo "Set client env ${env_key}=${env_value}."
             done
           fi
+
+          # Per-dispatch CPU budget override for the client and infra containers. Only the rendered copy
+          # changes; empty inputs leave the runner's resources block as is. `all` lifts a limit: expb
+          # passes no --cpus quota for cpu=0 and no --cpuset-cpus for a missing cpuset.
+          if [[ "${DOCKER_CPU:-}" == "all" ]]; then
+            "${YQ}" -i '.resources.cpu = 0' "${RENDERED_CONFIG_FILE}"
+          elif [[ -n "${DOCKER_CPU:-}" ]]; then
+            C="${DOCKER_CPU}" "${YQ}" -i '.resources.cpu = (strenv(C) | tonumber)' "${RENDERED_CONFIG_FILE}"
+          fi
+          for override in cpuset:DOCKER_CPUSET infra_cpuset:DOCKER_INFRA_CPUSET; do
+            key="${override%%:*}"
+            env_name="${override##*:}"
+            value="${!env_name:-}"
+            if [[ "${value}" == "all" ]]; then
+              K="${key}" "${YQ}" -i 'del(.resources[strenv(K)])' "${RENDERED_CONFIG_FILE}"
+            elif [[ -n "${value}" ]]; then
+              K="${key}" S="${value}" "${YQ}" -i '.resources[strenv(K)] = strenv(S)' "${RENDERED_CONFIG_FILE}"
+            fi
+          done
+          echo "Effective resources block:"
+          "${YQ}" '.resources' "${RENDERED_CONFIG_FILE}"
 
           expected_amount="$("${YQ}" -r ".scenarios.\"${scenario_key}\".amount // \"\"" "${RENDERED_CONFIG_FILE}")"
           echo "expected_amount=${expected_amount}" >> "${GITHUB_OUTPUT}"
@@ -1136,6 +1214,7 @@ jobs:
         working-directory: ${{ env.EXPB_DATA_DIR }}
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run.log
+          CPU_OVERRIDE: ${{ needs.resolve.outputs.docker_cpu }}${{ needs.resolve.outputs.docker_cpuset }}${{ needs.resolve.outputs.docker_infra_cpuset }}
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
           PERF: ${{ needs.resolve.outputs.perf }}
           DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
@@ -1236,6 +1315,34 @@ jobs:
             > "${fifo}" 2>&1 &
           expb_pid=$!
 
+          # With a CPU override in play, read the limits the kernel enforces on every expb container
+          # (client and infra) from the host cgroup, not from what expb asked Docker for. Best effort:
+          # the readout is printed after the run and never fails the step.
+          cgroup_report="${RUNNER_TEMP}/expb-container-cgroups.txt"
+          cgroup_pid=""
+          if [[ -n "${CPU_OVERRIDE:-}" ]]; then
+            (
+              for _ in $(seq 1 300); do
+                sleep 2
+                if docker ps --filter label=expb --format '{{.Names}}' 2>/dev/null | grep -Eqv -- '-(k6|alloy|payload-server)$'; then break; fi
+              done
+              sleep 30
+              for id in $(docker ps -q --no-trunc --filter label=expb 2>/dev/null); do
+                name="$(docker inspect -f '{{.Name}}' "${id}" 2>/dev/null)"
+                limits="$(docker inspect -f 'NanoCpus={{.HostConfig.NanoCpus}} CpusetCpus={{.HostConfig.CpusetCpus}}' "${id}" 2>/dev/null)"
+                cgroup=""
+                for dir in "/sys/fs/cgroup/system.slice/docker-${id}.scope" "/sys/fs/cgroup/docker/${id}"; do
+                  if [[ -d "${dir}" ]]; then
+                    cgroup="cpu.max='$(cat "${dir}/cpu.max" 2>/dev/null)' cpuset.cpus.effective='$(cat "${dir}/cpuset.cpus.effective" 2>/dev/null)'"
+                    break
+                  fi
+                done
+                echo "${name#/}: ${limits} ${cgroup:-cgroup dir not found}"
+              done
+            ) > "${cgroup_report}" 2>&1 &
+            cgroup_pid=$!
+          fi
+
           set +e
           wait "${expb_pid}"
           expb_exit_code=$?
@@ -1243,6 +1350,13 @@ jobs:
 
           rm -f "${fifo}"
           wait "${tee_pid}"
+
+          if [[ -n "${cgroup_pid}" ]]; then
+            kill "${cgroup_pid}" 2>/dev/null || true
+            wait "${cgroup_pid}" 2>/dev/null || true
+            echo "Container CPU limits as enforced by the host cgroup:"
+            cat "${cgroup_report}" 2>/dev/null || echo "(no readout captured)"
+          fi
 
           exit "${expb_exit_code}"
 
@@ -2357,6 +2471,9 @@ jobs:
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
           TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
           CLIENT_ENV: ${{ needs.resolve.outputs.client_env }}
+          DOCKER_CPU: ${{ needs.resolve.outputs.docker_cpu }}
+          DOCKER_CPUSET: ${{ needs.resolve.outputs.docker_cpuset }}
+          DOCKER_INFRA_CPUSET: ${{ needs.resolve.outputs.docker_infra_cpuset }}
           CLIENT: ${{ needs.resolve.outputs.client }}
           CLIENT_SNAPSHOT_DIR: ${{ needs.resolve.outputs.client_snapshot_dir }}
           SNAPSHOT_MOUNT_PATH: ${{ needs.resolve.outputs.snapshot_mount_path }}
@@ -2475,6 +2592,27 @@ jobs:
               echo "Set client env ${env_key}=${env_value}."
             done
           fi
+
+          # Per-dispatch CPU budget override for the client and infra containers. Only the rendered copy
+          # changes; empty inputs leave the runner's resources block as is. `all` lifts a limit: expb
+          # passes no --cpus quota for cpu=0 and no --cpuset-cpus for a missing cpuset.
+          if [[ "${DOCKER_CPU:-}" == "all" ]]; then
+            "${YQ}" -i '.resources.cpu = 0' "${RENDERED_CONFIG_FILE}"
+          elif [[ -n "${DOCKER_CPU:-}" ]]; then
+            C="${DOCKER_CPU}" "${YQ}" -i '.resources.cpu = (strenv(C) | tonumber)' "${RENDERED_CONFIG_FILE}"
+          fi
+          for override in cpuset:DOCKER_CPUSET infra_cpuset:DOCKER_INFRA_CPUSET; do
+            key="${override%%:*}"
+            env_name="${override##*:}"
+            value="${!env_name:-}"
+            if [[ "${value}" == "all" ]]; then
+              K="${key}" "${YQ}" -i 'del(.resources[strenv(K)])' "${RENDERED_CONFIG_FILE}"
+            elif [[ -n "${value}" ]]; then
+              K="${key}" S="${value}" "${YQ}" -i '.resources[strenv(K)] = strenv(S)' "${RENDERED_CONFIG_FILE}"
+            fi
+          done
+          echo "Effective resources block:"
+          "${YQ}" '.resources' "${RENDERED_CONFIG_FILE}"
 
           expected_amount="$("${YQ}" -r ".scenarios.\"${scenario_key}\".amount // \"\"" "${RENDERED_CONFIG_FILE}")"
           echo "expected_amount=${expected_amount}" >> "${GITHUB_OUTPUT}"
@@ -2670,6 +2808,7 @@ jobs:
         working-directory: ${{ env.EXPB_DATA_DIR }}
         env:
           RAW_RUN_LOG: ${{ runner.temp }}/expb-run-${{ matrix.tag }}-run${{ matrix.run }}.log
+          CPU_OVERRIDE: ${{ needs.resolve.outputs.docker_cpu }}${{ needs.resolve.outputs.docker_cpuset }}${{ needs.resolve.outputs.docker_infra_cpuset }}
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
           PERF: ${{ needs.resolve.outputs.perf }}
           DOTTRACE_MODE: ${{ needs.resolve.outputs.dottrace_mode }}
@@ -2766,6 +2905,34 @@ jobs:
             > "${fifo}" 2>&1 &
           expb_pid=$!
 
+          # With a CPU override in play, read the limits the kernel enforces on every expb container
+          # (client and infra) from the host cgroup, not from what expb asked Docker for. Best effort:
+          # the readout is printed after the run and never fails the step.
+          cgroup_report="${RUNNER_TEMP}/expb-container-cgroups.txt"
+          cgroup_pid=""
+          if [[ -n "${CPU_OVERRIDE:-}" ]]; then
+            (
+              for _ in $(seq 1 300); do
+                sleep 2
+                if docker ps --filter label=expb --format '{{.Names}}' 2>/dev/null | grep -Eqv -- '-(k6|alloy|payload-server)$'; then break; fi
+              done
+              sleep 30
+              for id in $(docker ps -q --no-trunc --filter label=expb 2>/dev/null); do
+                name="$(docker inspect -f '{{.Name}}' "${id}" 2>/dev/null)"
+                limits="$(docker inspect -f 'NanoCpus={{.HostConfig.NanoCpus}} CpusetCpus={{.HostConfig.CpusetCpus}}' "${id}" 2>/dev/null)"
+                cgroup=""
+                for dir in "/sys/fs/cgroup/system.slice/docker-${id}.scope" "/sys/fs/cgroup/docker/${id}"; do
+                  if [[ -d "${dir}" ]]; then
+                    cgroup="cpu.max='$(cat "${dir}/cpu.max" 2>/dev/null)' cpuset.cpus.effective='$(cat "${dir}/cpuset.cpus.effective" 2>/dev/null)'"
+                    break
+                  fi
+                done
+                echo "${name#/}: ${limits} ${cgroup:-cgroup dir not found}"
+              done
+            ) > "${cgroup_report}" 2>&1 &
+            cgroup_pid=$!
+          fi
+
           set +e
           wait "${expb_pid}"
           expb_exit_code=$?
@@ -2773,6 +2940,13 @@ jobs:
 
           rm -f "${fifo}"
           wait "${tee_pid}"
+
+          if [[ -n "${cgroup_pid}" ]]; then
+            kill "${cgroup_pid}" 2>/dev/null || true
+            wait "${cgroup_pid}" 2>/dev/null || true
+            echo "Container CPU limits as enforced by the host cgroup:"
+            cat "${cgroup_report}" 2>/dev/null || echo "(no readout captured)"
+          fi
 
           exit "${expb_exit_code}"
 
