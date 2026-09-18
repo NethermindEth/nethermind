@@ -168,6 +168,75 @@ public class HeaderValidatorTests
         }
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void When_orphaned_amsterdam_header_has_no_slot_number()
+    {
+        TestSpecProvider specProvider = new(Amsterdam.Instance);
+        _validator = new HeaderValidator(_blockTree, Always.Valid, specProvider,
+            new OneLoggerLogManager(new(_testLogger)));
+
+        _block = Build.A.Block
+            .WithNumber(6)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithEmptyRequestsHash()
+            .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
+            .TestObject;
+        _block.Header.SlotNumber = null;
+        _block.Header.Hash = _block.CalculateHash();
+
+        bool result = _validator.ValidateOrphaned(_block.Header, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(error, Is.EqualTo(BlockErrorMessages.MissingSlotNumber));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void When_orphaned_pre_fork_header_has_slot_number()
+    {
+        // Same presence rule as RequestsHash and BlockAccessListHash: a field from a
+        // fork that is not active must be rejected even without a parent to compare to.
+        _block.Header.SlotNumber = 7;
+        _block.Header.Hash = _block.CalculateHash();
+
+        bool result = _validator.ValidateOrphaned(_block.Header, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(error, Is.EqualTo(BlockErrorMessages.SlotNumberNotEnabled));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void When_orphaned_amsterdam_header_has_slot_number()
+    {
+        TestSpecProvider specProvider = new(Amsterdam.Instance);
+        _validator = new HeaderValidator(_blockTree, Always.Valid, specProvider,
+            new OneLoggerLogManager(new(_testLogger)));
+
+        _block = Build.A.Block
+            .WithNumber(6)
+            .WithSlotNumber(3)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithEmptyRequestsHash()
+            .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
+            .TestObject;
+        _block.Header.Hash = _block.CalculateHash();
+
+        bool result = _validator.ValidateOrphaned(_block.Header, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(error, Is.Null);
+        }
+    }
+
     private static IEnumerable<TestCaseData> CorruptedFieldCases()
     {
         yield return new TestCaseData(new Action<Block>(b => b.Header.ExtraData = new byte[33]))
