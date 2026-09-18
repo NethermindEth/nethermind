@@ -109,28 +109,45 @@ public class InclusionListValidatorTests
         return InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), _specProvider.GetSpec(block.Header), _txValidator);
     }
 
-    // Judging a frame transaction by the Profile 1 rules would read the account nonce it does not use. The
-    // well-formedness assertion keeps the case honest: without it the entry could pass for being malformed.
-    [Test]
-    public void Omitted_frame_transaction_is_not_judged()
+    public static IEnumerable<TestCaseData> FrameSkipCases
     {
-        Transaction frameTx = BuildFrameTx();
+        get
+        {
+            static TestCaseData Case(string name, Transaction[] il, bool satisfied, Transaction[]? blockTxs = null) =>
+                new(il, blockTxs ?? [], satisfied) { TestName = name };
+
+            // Judging a frame transaction by the Profile 1 rules would read the account nonce it does not use.
+            yield return Case("Omitted frame transaction is not judged", [BuildFrameTx()], true);
+            // Outside both EIP-8369 profiles, so excused for the same reason rather than for carrying blobs.
+            yield return Case("Omitted blob-carrying frame transaction is not judged", [BuildFrameTx(blobCount: 1)], true);
+            // The skip excuses the frame entry alone; hoisting it to the whole list would hide real censoring.
+            yield return Case("Ordinary entry beside an omitted frame transaction is still judged", [BuildFrameTx(), _validTx], false);
+            yield return Case("Ordinary entry beside an omitted frame transaction can satisfy the list", [BuildFrameTx(), _validTx], true, blockTxs: [_validTx]);
+        }
+    }
+
+    [TestCaseSource(nameof(FrameSkipCases))]
+    public void Frame_transaction_skip_is_per_entry(Transaction[] il, Transaction[] blockTxs, bool satisfied)
+    {
         Block block = Build.A.Block
             .WithGasLimit(30_000_000)
             .WithGasUsed(1_000_000)
-            .WithTransactions([])
-            .WithInclusionListTransactions([frameTx])
+            .WithTransactions(blockTxs)
+            .WithInclusionListTransactions(il)
             .TestObject;
         IReleaseSpec spec = _frameSpecProvider.GetSpec(block.Header);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((bool)_txValidator.IsWellFormed(frameTx, spec, block.GasLimit), Is.True);
-            Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.True);
+            // Keeps the frame cases honest: without this an entry could pass for being malformed.
+            foreach (Transaction tx in il)
+                if (tx.SupportsFrames) Assert.That((bool)_txValidator.IsWellFormed(tx, spec, block.GasLimit), Is.True);
+
+            Assert.That(InclusionListValidator.IsSatisfied(block, StateWith(TestItem.AddressA, 10.Ether, 0), spec, _txValidator), Is.EqualTo(satisfied));
         }
     }
 
-    private static Transaction BuildFrameTx() => new()
+    private static Transaction BuildFrameTx(int blobCount = 0) => new()
     {
         Type = TxType.FrameTx,
         ChainId = TestBlockchainIds.ChainId,
@@ -141,6 +158,8 @@ public class InclusionListValidatorTests
         GasLimit = 100_000,
         GasPrice = 1.GWei,
         DecodedMaxFeePerGas = 10.GWei,
+        MaxFeePerBlobGas = blobCount == 0 ? null : 1.GWei,
+        BlobVersionedHashes = blobCount == 0 ? null : Build.A.Transaction.WithBlobVersionedHashes(blobCount).TestObject.BlobVersionedHashes,
     };
 
     [Test]
