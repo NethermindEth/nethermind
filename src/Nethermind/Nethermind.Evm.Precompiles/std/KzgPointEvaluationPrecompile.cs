@@ -9,10 +9,6 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class KzgPointEvaluationPrecompile
 {
-    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
-    {
-        Metrics.KzgPointEvaluationPrecompile++;
-
-        return RunInternal(inputData);
-    }
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _) =>
+        RunInternal(inputData);
 }
