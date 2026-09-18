@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -12,7 +11,6 @@ using Nethermind.Int256;
 using Nethermind.Trie.Pruning;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Test;
 using NSubstitute;
 using NUnit.Framework;
