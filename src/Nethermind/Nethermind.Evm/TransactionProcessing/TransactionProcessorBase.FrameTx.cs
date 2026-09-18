@@ -6,6 +6,7 @@ using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
@@ -910,7 +911,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             TGasPolicy.ResetForHalt(ref state.Gas, stateReservoirSeed, 0);
         }
 
-        ulong combinedLimit = frame.ExecutionGasLimit + frame.StateGasLimit;
+        ulong combinedLimit = frame.ExecutionGasLimit.SaturatingAdd(frame.StateGasLimit);
         gasUsed = substate.IsError
             ? combinedLimit - (ulong)Math.Max(0, TGasPolicy.GetStateReservoir(in state.Gas))
             : TGasPolicy.GetPreRefundGas(in state.Gas, combinedLimit);

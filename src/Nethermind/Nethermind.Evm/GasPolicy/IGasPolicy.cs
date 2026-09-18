@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
@@ -18,7 +19,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <summary>Seeds a frame budget from EIP-8141 <c>limits = [execution, state]</c>; pre-EIP-8037 policies fall back to a single combined budget.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual TSelf FromFrameLimits(ulong executionGasLimit, ulong stateGasLimit) =>
-        TSelf.FromULong(executionGasLimit > ulong.MaxValue - stateGasLimit ? ulong.MaxValue : executionGasLimit + stateGasLimit);
+        TSelf.FromULong(executionGasLimit.SaturatingAdd(stateGasLimit));
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static virtual TSelf CreateSystemTransactionIntrinsicGas(ulong blockGasLimit) => TSelf.FromULong(0);
@@ -31,8 +32,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
 
     /// <summary>Cold account-access cost (EIP-2929), repriced by EIP-8038.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static virtual ulong GetColdAccountAccessCost(IReleaseSpec spec) =>
-        spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess;
+    static virtual ulong GetColdAccountAccessCost(IReleaseSpec spec) => spec.GasCosts.ColdAccountAccessCost;
 
     /// <summary>Zeros execution gas without changing state-gas accounting.</summary>
     static abstract void ClearExecutionGas(ref TSelf gas);

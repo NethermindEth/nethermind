@@ -285,7 +285,7 @@ public static class FrameTxValidation
         ulong total = 0;
         foreach (TxFrame frame in frames ?? [])
         {
-            total = Saturating(total, Saturating(frame.ExecutionGasLimit, frame.StateGasLimit));
+            total = total.SaturatingAdd(frame.ExecutionGasLimit.SaturatingAdd(frame.StateGasLimit));
         }
 
         return total;
@@ -304,10 +304,10 @@ public static class FrameTxValidation
         ulong total = 0;
         for (int i = 0; i < counted; i++)
         {
-            total = Saturating(total, frames[i].ExecutionGasLimit);
+            total = total.SaturatingAdd(frames[i].ExecutionGasLimit);
         }
 
-        return Saturating(total, SignatureVerificationWorkGas(transaction));
+        return total.SaturatingAdd(SignatureVerificationWorkGas(transaction));
     }
 
     /// <summary>
@@ -326,7 +326,7 @@ public static class FrameTxValidation
         ulong total = 0;
         foreach (TxFrameSignature signature in signatures ?? [])
         {
-            total = Saturating(total, SignatureVerificationGas(signature.Scheme));
+            total = total.SaturatingAdd(SignatureVerificationGas(signature.Scheme));
         }
 
         return total;
@@ -345,7 +345,7 @@ public static class FrameTxValidation
         ulong total = 0;
         for (int i = 0; i < counted; i++)
         {
-            total = Saturating(total, frames[i].StateGasLimit);
+            total = total.SaturatingAdd(frames[i].StateGasLimit);
         }
 
         return total;
@@ -479,9 +479,6 @@ public static class FrameTxValidation
 
         return null;
     }
-
-    private static ulong Saturating(ulong total, ulong addend) =>
-        addend > ulong.MaxValue - total ? ulong.MaxValue : total + addend;
 
     /// <summary>True if <paramref name="frame"/> is a well-formed EIP-8141 expiry-verifier VERIFY frame.</summary>
     /// <remarks>Position is not checked; the value and length checks let a caller read the deadline without re-validating.</remarks>
