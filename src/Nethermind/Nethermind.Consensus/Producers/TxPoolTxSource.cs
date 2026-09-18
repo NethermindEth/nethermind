@@ -543,7 +543,7 @@ namespace Nethermind.Consensus.Producers
                 else
                 {
                     count--;
-                    if (count > 0) SiftDown(entries.AsSpan(), count, entries[count].heapIndex, 0, comparer);
+                    if (count > 0) SiftAfterRemoval(entries.AsSpan(), count, entries[count].heapIndex, comparer);
                     entries.AsSpan()[entryIndex].bucket = null!;
                 }
 
@@ -566,6 +566,33 @@ namespace Nethermind.Consensus.Producers
                 if (comparer.Compare(tx, GetHeapTransaction(entries, child)) <= 0) break;
                 entries[index].heapIndex = entries[child].heapIndex;
                 index = child;
+            }
+            entries[index].heapIndex = item;
+        }
+
+        private static void SiftAfterRemoval(
+            Span<(Transaction[] bucket, int index, int heapIndex, ulong resource)> entries,
+            int count,
+            int item,
+            IComparer<Transaction> comparer)
+        {
+            Transaction tx = entries[item].bucket[entries[item].index];
+            int index = 0;
+            // The last heap item usually belongs near the bottom; compare it only on the ascent.
+            while (index < count / 2)
+            {
+                int child = index * 2 + 1;
+                if (child + 1 < count && comparer.Compare(GetHeapTransaction(entries, child + 1), GetHeapTransaction(entries, child)) < 0) child++;
+                entries[index].heapIndex = entries[child].heapIndex;
+                index = child;
+            }
+
+            while (index > 0)
+            {
+                int parent = (index - 1) / 2;
+                if (comparer.Compare(tx, GetHeapTransaction(entries, parent)) > 0) break;
+                entries[index].heapIndex = entries[parent].heapIndex;
+                index = parent;
             }
             entries[index].heapIndex = item;
         }

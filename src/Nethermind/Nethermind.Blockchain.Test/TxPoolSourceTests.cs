@@ -103,6 +103,19 @@ public class TxPoolSourceTests
     }
 
     [Test]
+    public void Ordering_preserves_equal_priority_root_on_removal([Values(2, 3, 4, 7, 16, 33)] int senders)
+    {
+        Transaction[] transactions = Enumerable.Range(0, senders)
+            .Select(i => new Transaction { SenderAddress = Address.FromNumber((UInt256)(i + 1)), GasLimit = 21_000 })
+            .ToArray();
+        Dictionary<AddressAsKey, Transaction[]> buckets = transactions.ToDictionary(tx => (AddressAsKey)tx.SenderAddress!, tx => new[] { tx });
+        IComparer<Transaction> comparer = Comparer<Transaction>.Create((_, _) => 0);
+        Transaction[] expected = transactions.Take(1).Concat(transactions.Skip(1).Reverse()).ToArray();
+
+        Assert.That(TxPoolTxSource.Order(buckets, comparer, _ => true, ulong.MaxValue), Is.EqualTo(expected));
+    }
+
+    [Test]
     public void Producer_comparer_uses_target_blocks_fee_rules([Values(9UL, 10UL)] ulong blockNumber)
     {
         using IContainer container = new ContainerBuilder()
