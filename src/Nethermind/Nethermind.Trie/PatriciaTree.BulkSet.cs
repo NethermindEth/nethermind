@@ -5,7 +5,6 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -17,7 +16,6 @@ public partial class PatriciaTree
     public const int MinEntriesToParallelizeThreshold = 128;
     private const int InPlaceSortThreshold = 32;
     private const int BSearchThreshold = 128;
-    private const int FullBranch = (1 << TrieNode.BranchesCount) - 1;
 
     [Flags]
     public enum Flags
@@ -51,7 +49,8 @@ public partial class PatriciaTree
     /// BulkSet multiple entries at the same time. It works by working each nibble level one at a time, partially
     /// sorting the <see cref="entries"/> then recurs on each nibble, traversing the top level branch only once.
     /// if <see cref="Flags.WasSorted"/> is on, the sort is skipped for a slightly faster set.
-    /// It will parallelize at the top level if the number of entries reached a certain threshold.
+    /// Levels whose entry count reaches <see cref="MinEntriesToParallelizeThreshold"/> fork their buckets onto
+    /// the <see cref="Rayon"/> pool, at any depth.
     /// </summary>
     /// <param name="entries"></param>
     /// <param name="flags"></param>
@@ -62,8 +61,6 @@ public partial class PatriciaTree
 #if ZK_EVM
         flags |= Flags.DoNotParallelize;
 #endif
-
-        TraverseStack traverseStack = GetTraverseStack();
 
         TreePath path = TreePath.Empty;
 
@@ -80,7 +77,6 @@ public partial class PatriciaTree
 
             TrieNode? newRoot = BulkSet(
                 ctx,
-                traverseStack,
                 entries.AsSpan(),
                 entries.AsSpan(),
                 ref path,
@@ -89,7 +85,6 @@ public partial class PatriciaTree
                 flags);
             RootRef = newRoot;
             _writeBeforeCommit += entries.Count;
-            ReturnTraverseStack(traverseStack);
             return;
         }
 
@@ -106,7 +101,6 @@ public partial class PatriciaTree
 
         TrieNode? newRoot2 = BulkSet(
             ctx2,
-            traverseStack,
             entries.AsSpan(),
             sortBuffer.AsSpan(),
             ref path,
@@ -116,25 +110,21 @@ public partial class PatriciaTree
         RootRef = newRoot2;
 
         _writeBeforeCommit += entries.Count;
-        ReturnTraverseStack(traverseStack);
     }
 
     private readonly record struct Context(BulkSetEntry[] OriginalEntriesArray, BulkSetEntry[] OriginalSortBufferArray);
 
     /// <param name="ctx">Just to reduce the param count</param>
-    /// <param name="traverseStack">Stack used in set. Parallel call use different stack.</param>
     /// <param name="entries">The entries</param>
     /// <param name="sortBuffer">Entry buffer used during sort. May be flipped between this and `entries` on recursion.</param>
     /// <param name="path"></param>
     /// <param name="node"></param>
     /// <param name="flipCount">Flip count, for parallelism.</param>
-    /// <param name="canParallelize"></param>
     /// <param name="flags"></param>
     /// <returns></returns>
     /// <exception cref="InvalidOperationException"></exception>
     private TrieNode? BulkSet(
         in Context ctx,
-        TraverseStack traverseStack,
         Span<BulkSetEntry> entries,
         Span<BulkSetEntry> sortBuffer,
         ref TreePath path,
@@ -145,7 +135,7 @@ public partial class PatriciaTree
         TrieNode? originalNode = node;
 
         if (entries.Length == 1)
-            return BulkSetOne(traverseStack, in entries[0], ref path, node);
+            return BulkSetOne(in entries[0], ref path, node);
 
         bool newBranch = false;
 
@@ -199,80 +189,50 @@ public partial class PatriciaTree
         bool hasRemove = false;
         int nonNullChildCount = 0;
 
-        if (!Core.Cpu.RuntimeInformation.IsSingleProcessor && entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && !flags.HasFlag(Flags.DoNotParallelize))
+        if (!Core.Cpu.RuntimeInformation.IsSingleProcessor
+            && entries.Length >= MinEntriesToParallelizeThreshold
+            && (nibMask & (nibMask - 1)) != 0
+            && !flags.HasFlag(Flags.DoNotParallelize))
         {
-            using ArrayPoolList<(
-                int startIdx,
-                int count,
-                int nibble,
-                TreePath appendedPath,
-                TrieNode? currentChild,
-                TrieNode? newChild
-                )> jobs = new(TrieNode.BranchesCount, TrieNode.BranchesCount);
+            using ArrayPoolList<BulkSetJob> jobs = new(TrieNode.BranchesCount, TrieNode.BranchesCount);
 
-            Context closureCtx = ctx;
-            BulkSetEntry[] originalEntriesArray = (flipCount % 2 == 0) ? ctx.OriginalEntriesArray : ctx.OriginalSortBufferArray;
-            BulkSetEntry[] originalBufferArray = (flipCount % 2 == 0) ? ctx.OriginalSortBufferArray : ctx.OriginalEntriesArray;
+            BulkSetEntry[] entriesArray = (flipCount % 2 == 0) ? ctx.OriginalEntriesArray : ctx.OriginalSortBufferArray;
             TrieNode.ChildIterator childIterator = node.CreateChildIterator();
 
-            while (nibMask != 0)
+            int remainingMask = nibMask;
+            while (remainingMask != 0)
             {
-                int nib = BitOperations.TrailingZeroCount(nibMask);
-                nibMask &= nibMask - 1;
+                int nib = BitOperations.TrailingZeroCount(remainingMask);
+                remainingMask &= remainingMask - 1;
                 int startRange = indexes[nib];
-
-                int endRange = nibMask != 0 ? indexes[BitOperations.TrailingZeroCount(nibMask)] : entries.Length;
-
-                Span<BulkSetEntry> jobEntry = entries.Slice(startRange, endRange - startRange);
+                int endRange = remainingMask != 0 ? indexes[BitOperations.TrailingZeroCount(remainingMask)] : entries.Length;
 
                 TreePath childPath = path.Append(nib);
                 TrieNode? child = childIterator.GetChildWithChildPath(TrieStore, ref childPath, nib);
-                jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
+                jobs[nib] = new BulkSetJob(GetSpanOffset(entriesArray, entries.Slice(startRange, endRange - startRange)), endRange - startRange, childPath, child);
             }
 
-            Parallel.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
-                GetTraverseStack,
-                (i, _, workerTraverseStack) =>
-                {
-                    (int startIdx, int count, int nib, TreePath childPath, TrieNode? child, TrieNode? _) = jobs[i];
+            BulkSetForked(new BulkSetForkState(this, ctx, jobs.UnsafeGetInternalArray(), flipCount, flags, nibMask));
 
-                    Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);
-                    Span<BulkSetEntry> bufferEntries = originalBufferArray.AsSpan(startIdx, count);
-
-                    TrieNode? newChild = BulkSet(
-                        in closureCtx,
-                        workerTraverseStack,
-                        jobEntries,
-                        bufferEntries,
-                        ref childPath,
-                        child,
-                        flipCount,
-                        flags & ~Flags.DoNotParallelize); // Only parallelize at top level.
-
-                    jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
-
-                    return workerTraverseStack;
-                },
-                ReturnTraverseStack
-            );
-
-            for (int i = 0; i < TrieNode.BranchesCount; i++)
+            remainingMask = nibMask;
+            while (remainingMask != 0)
             {
-                TrieNode? child = jobs[i].currentChild;
-                TrieNode? newChild = jobs[i].newChild;
+                int nib = BitOperations.TrailingZeroCount(remainingMask);
+                remainingMask &= remainingMask - 1;
+                ref BulkSetJob job = ref jobs.GetRef(nib);
 
-                if (!ShouldUpdateChild(originalNode, child, newChild)) continue;
+                if (!ShouldUpdateChild(originalNode, job.CurrentChild, job.NewChild)) continue;
 
-                if (newChild is null)
+                if (job.NewChild is null)
                     hasRemove = true;
 
-                if (newChild is not null)
+                if (job.NewChild is not null)
                     nonNullChildCount++;
 
                 if (node.IsSealed)
                     node = node.Clone();
 
-                node.SetChild(i, newChild);
+                node.SetChild(nib, job.NewChild);
             }
         }
         else
@@ -297,9 +257,8 @@ public partial class PatriciaTree
                     endRange = entries.Length;
 
                 TrieNode? newChild = (endRange - startRange == 1)
-                    ? BulkSetOne(traverseStack, entries[startRange], ref path, child)
+                    ? BulkSetOne(entries[startRange], ref path, child)
                     : BulkSet(in ctx,
-                        traverseStack,
                         entries[startRange..endRange],
                         sortBuffer[startRange..endRange],
                         ref path,
@@ -334,15 +293,70 @@ public partial class PatriciaTree
         return node;
     }
 
+    private struct BulkSetJob(int startIdx, int count, TreePath childPath, TrieNode? currentChild)
+    {
+        public readonly int StartIdx = startIdx;
+        public readonly int Count = count;
+        public readonly TreePath ChildPath = childPath;
+        public readonly TrieNode? CurrentChild = currentChild;
+        public TrieNode? NewChild;
+    }
+
+    private readonly record struct BulkSetForkState(PatriciaTree Tree, Context Ctx, BulkSetJob[] Jobs, int FlipCount, Flags Flags, int Mask);
+
+    /// <summary>
+    /// Recursively halves the set of populated nibbles in <see cref="BulkSetForkState.Mask"/> with
+    /// <see cref="Rayon.Join{TSa,TSb}"/> until one bucket is left, so uneven buckets are balanced by stealing
+    /// and each bucket may fork again at deeper levels.
+    /// </summary>
+    private static void BulkSetForked(in BulkSetForkState state)
+    {
+        int mask = state.Mask;
+        if ((mask & (mask - 1)) == 0)
+        {
+            state.Tree.BulkSetBucket(in state, BitOperations.TrailingZeroCount(mask));
+            return;
+        }
+
+        int upper = mask;
+        for (int i = BitOperations.PopCount((uint)mask) / 2; i > 0; i--)
+        {
+            upper &= upper - 1;
+        }
+
+        Rayon.Join(
+            state with { Mask = mask ^ upper }, static lowerHalf => BulkSetForked(in lowerHalf),
+            state with { Mask = upper }, static upperHalf => BulkSetForked(in upperHalf));
+    }
+
+    private void BulkSetBucket(in BulkSetForkState state, int nib)
+    {
+        ref BulkSetJob job = ref state.Jobs[nib];
+        BulkSetEntry[] entriesArray = (state.FlipCount % 2 == 0) ? state.Ctx.OriginalEntriesArray : state.Ctx.OriginalSortBufferArray;
+        BulkSetEntry[] bufferArray = (state.FlipCount % 2 == 0) ? state.Ctx.OriginalSortBufferArray : state.Ctx.OriginalEntriesArray;
+        TreePath childPath = job.ChildPath;
+        Context ctx = state.Ctx;
+        job.NewChild = BulkSet(
+            in ctx,
+            entriesArray.AsSpan(job.StartIdx, job.Count),
+            bufferArray.AsSpan(job.StartIdx, job.Count),
+            ref childPath,
+            job.CurrentChild,
+            state.FlipCount,
+            state.Flags);
+    }
+
     [SkipLocalsInit]
-    private TrieNode? BulkSetOne(TraverseStack traverseStack, in BulkSetEntry entry, ref TreePath path, TrieNode? node)
+    private TrieNode? BulkSetOne(in BulkSetEntry entry, ref TreePath path, TrieNode? node)
     {
         Span<byte> nibble = stackalloc byte[64];
         Nibbles.BytesToNibbleBytes(entry.Path.BytesAsSpan, nibble);
         Span<byte> remainingKey = nibble[path.Length..];
 
-        byte[]? value = entry.Value;
-        return SetNew(traverseStack, remainingKey, value, ref path, node);
+        TraverseStack traverseStack = GetTraverseStack();
+        TrieNode? result = SetNew(traverseStack, remainingKey, entry.Value, ref path, node);
+        ReturnTraverseStack(traverseStack);
+        return result;
     }
 
     private TrieNode MakeFakeBranch(ref TreePath currentPath, TrieNode existingNode)

@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <Compile Include="..\Nethermind.Core.Test\Threading\ParallelUnbalancedWorkTests.cs" Link="Threading\ParallelUnbalancedWorkTests.cs" />
+    <Compile Include="..\Nethermind.Core.Test\Threading\RayonTests.cs" Link="Threading\RayonTests.cs" />
   </ItemGroup>
 
   <Target Name="RequireZkEvm" BeforeTargets="PrepareForBuild" Condition="'$(EnableZkEvm)' != 'true'">

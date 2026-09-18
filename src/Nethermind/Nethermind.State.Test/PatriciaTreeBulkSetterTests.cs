@@ -31,6 +31,15 @@ public class PatriciaTreeBulkSetterTests
         }
         yield return new TestCaseData(GenRandomOfLength(100)).SetName("100");
         yield return new TestCaseData(GenRandomOfLength(1000)).SetName("1000");
+        // Forks at the top level with only two populated nibbles.
+        yield return new TestCaseData(GenRandomOfLength(1500).Select((kv, i) =>
+        {
+            byte[] key = kv.key.BytesToArray();
+            key[0] = (byte)((i % 2 == 0 ? 0x30 : 0xa0) | (key[0] & 0x0f));
+            return (new Hash256(key), kv.value);
+        }).ToList()).SetName("1500 skewed");
+        // Forks again one level below the top.
+        yield return new TestCaseData(GenRandomOfLength(20000)).SetName("20000");
 
         yield return new TestCaseData(new List<(Hash256 key, byte[] value)>()
         {
