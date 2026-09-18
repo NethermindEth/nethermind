@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
@@ -170,6 +171,73 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
             Assert.That(topFrame.Calls[2].Logs, Is.EqualTo([ExpectedTransferLog(Recipient, contractA, fundedAfter, 0UL)]).UsingPropertiesComparer(), "post-destruct funding log on call frame");
             Assert.That(topFrame.Logs, Is.EqualTo([ExpectedSelfDestructLog(contractA, fundedAfter, 3UL)]).UsingPropertiesComparer(), "finalization log must be reported to log tracers on the top frame");
         }
+    }
+
+    [Test(Description = "Multiple finalization logs must be reported in lexicographic address order")]
+    public void FinalizationSelfDestructLogs_WithLog_AreSortedByAddress()
+    {
+        const byte initBalance = 5;
+        Address inheritor = TestItem.AddressC;
+        byte[] funds = [11, 22, 33];
+
+        byte[] contractACode = Prepare.EvmCode
+            .CALLVALUE()
+            .Op(Instruction.ISZERO)
+            .PushData(6)
+            .JUMPI()
+            .STOP()
+            .JUMPDEST()
+            .SELFDESTRUCT(inheritor)
+            .Done;
+        byte[] initCodeA = Prepare.EvmCode
+            .ForInitOf(contractACode)
+            .Done;
+
+        Address[] created =
+        [
+            ContractAddress.From(Recipient, 0),
+            ContractAddress.From(Recipient, 1),
+            ContractAddress.From(Recipient, 2),
+        ];
+        Address[] sorted = [.. created];
+        Array.Sort(sorted, (a, b) => a.Bytes.SequenceCompareTo(b.Bytes));
+        Assert.That(created, Is.Not.EqualTo(sorted), "test requires hash order to differ from sorted order to discriminate the sort");
+        Address[] reverseSorted = [.. sorted];
+        Array.Reverse(reverseSorted);
+
+        byte[] factoryCode = Prepare.EvmCode
+            .Create(initCodeA, initBalance)
+            .Create(initCodeA, initBalance)
+            .Create(initCodeA, initBalance)
+            .Call(created[0], 100_000)
+            .Call(created[1], 100_000)
+            .Call(created[2], 100_000)
+            .CallWithValue(reverseSorted[0], 100_000, funds[0])
+            .CallWithValue(reverseSorted[1], 100_000, funds[1])
+            .CallWithValue(reverseSorted[2], 100_000, funds[2])
+            .STOP()
+            .Done;
+
+        (Block block, Transaction tx) = PrepareTx(Activation, 5_000_000UL, factoryCode, value: 0);
+        using NativeCallTracer tracer = new(tx, Amsterdam.Instance, GetGethTraceOptions(WithLog));
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+
+        Dictionary<Address, byte> funded = new()
+        {
+            [reverseSorted[0]] = funds[0],
+            [reverseSorted[1]] = funds[1],
+            [reverseSorted[2]] = funds[2],
+        };
+        NativeCallTracerLogEntry[] expected =
+        [
+            ExpectedSelfDestructLog(sorted[0], funded[sorted[0]], 9UL),
+            ExpectedSelfDestructLog(sorted[1], funded[sorted[1]], 9UL),
+            ExpectedSelfDestructLog(sorted[2], funded[sorted[2]], 9UL),
+        ];
+
+        Assert.That(topFrame.Logs, Is.EqualTo(expected).UsingPropertiesComparer(), "finalization logs must be reported in lexicographic address order");
     }
 
     private static IEnumerable<TestCaseData> TransferLogCases()

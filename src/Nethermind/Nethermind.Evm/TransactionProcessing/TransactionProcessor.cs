@@ -1446,18 +1446,37 @@ namespace Nethermind.Evm.TransactionProcessing
                         bool eip7708Enabled = spec.IsEip7708Enabled;
                         bool removeSelfdestructBurn = spec.IsEip8246Enabled;
                         bool tracingRefunds = tracer.IsTracingRefunds;
-                        foreach (Address toBeDestroyed in destroyList)
+                        bool tracingLogs = eip7708Enabled && tracer.IsTracingLogs;
+                        JournalCollection<LogEntry> logs = substate.Logs;
+                        int destroyCount = destroyList.Count;
+                        if (destroyCount > 1)
+                        {
+                            Address[] buffer = SafeArrayPool<Address>.Shared.Rent(destroyCount);
+                            destroyList.CopyTo(buffer, 0);
+                            buffer.AsSpan(0, destroyCount).Sort(default(AddressByBytesComparer));
+                            for (int i = 0; i < destroyCount; i++)
+                            {
+                                FinalizeDestroyedAccountInline(buffer[i]);
+                            }
+                            SafeArrayPool<Address>.Shared.Return(buffer);
+                        }
+                        else
+                        {
+                            FinalizeDestroyedAccountInline(destroyList.First);
+                        }
+
+                        void FinalizeDestroyedAccountInline(Address toBeDestroyed)
                         {
                             if (Logger.IsTrace) Logger.Trace($"Destroying account {toBeDestroyed}");
 
                             UInt256 balance = eip7708Enabled || removeSelfdestructBurn ? WorldState.GetBalance(toBeDestroyed) : default;
 
-                            // EIP-7708 logs the burn; suppressed once EIP-8246 stops burning.
+                            // EIP-7708 logs the self-destruct; suppressed once EIP-8246 stops burning.
                             if (eip7708Enabled && !removeSelfdestructBurn && !balance.IsZero)
                             {
                                 LogEntry selfDestructLog = TransferLog.CreateSelfDestruct(toBeDestroyed, balance);
-                                substate.Logs.Add(selfDestructLog);
-                                if (tracer.IsTracingLogs) tracer.ReportLog(selfDestructLog);
+                                logs.Add(selfDestructLog);
+                                if (tracingLogs) tracer.ReportLog(selfDestructLog);
                             }
 
                             DestroyAccount(WorldState, toBeDestroyed, in balance, commit, removeSelfdestructBurn);
