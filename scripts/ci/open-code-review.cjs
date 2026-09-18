@@ -106,6 +106,7 @@ function assess(result, preview, target, exitCode, expectedModel) {
     'Advisory review of `' + target.head + '`.',
     'Reviewed ' + ((coverage?.completed?.length || 0) + (coverage?.reused?.length || 0)) +
       ' / ' + (coverage?.selected?.length || 0) + ' selected files; excluded ' + excluded.length + '.',
+    'Static source review only; this action does not build the PR or run tests. File coverage does not measure review depth.',
     'Tokens: ' + (summary.input_tokens ?? 'unknown') + ' input, ' +
       (summary.output_tokens ?? 'unknown') + ' output. Elapsed: ' + quote(summary.elapsed || 'unknown') + '.',
     'Billed cost: see the dedicated LiteLLM key; OCR does not report the proxy charge.',

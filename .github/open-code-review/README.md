@@ -110,6 +110,9 @@ The review process has an 18-minute limit; the job has a 25-minute limit.
 `scripts/ci/open-code-review.cjs` generates rules from the trusted
 `.agents/rules/` files on each run, so the ArrayPool.Shared exception and other
 project guidance stay current. C# tests and MSBuild/solution files are included.
+OCR reads test code but does not build the PR or execute tests. The summary
+states this explicitly: completing every
+selected file is a coverage check, not evidence that every defect was found.
 OCR still excludes binary, deleted, secret, unsupported, and oversized files;
 the public summary discloses exclusions. Vendored test suites under
 `src/tests` and `src/bench_precompiles` are excluded.
