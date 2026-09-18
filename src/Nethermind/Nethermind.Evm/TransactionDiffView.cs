@@ -76,6 +76,7 @@ internal sealed class TransactionDiffView
             accounts.Add(account);
             if (hasBalance) balanceCount++;
             if (isDeployment) deployedCount++;
+            // Exact sizing holds because StorageChangeCount counts the same dictionary the fill pass enumerates.
             slotCount += accountSlots;
         }
         CollectionsMarshal.AsSpan(accounts).Sort(default(AddressOrder));

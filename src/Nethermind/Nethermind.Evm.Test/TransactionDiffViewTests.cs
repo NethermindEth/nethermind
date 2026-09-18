@@ -62,6 +62,7 @@ public class TransactionDiffViewTests
     {
         BlockAccessListAtIndex slice = new();
         slice.AddStorageChange(High, 2, UInt256.Zero, UInt256.One);
+        slice.AddStorageChange(Mid, 4, UInt256.Zero, UInt256.One);
         slice.AddStorageChange(Low, 7, UInt256.Zero, UInt256.One);
         slice.AddStorageChange(Low, 3, UInt256.Zero, UInt256.One);
 
@@ -71,10 +72,22 @@ public class TransactionDiffViewTests
         {
             new TransactionDiffView.SlotRef(Low, 3),
             new TransactionDiffView.SlotRef(Low, 7),
+            new TransactionDiffView.SlotRef(Mid, 4),
             new TransactionDiffView.SlotRef(High, 2),
         }));
-        Assert.That(view.TryGetSlotRun(Low, out int start, out int count), Is.True);
-        Assert.That((start, count), Is.EqualTo((0, 2)));
+        // A run past the first is what TXDIFF 0x06/0x07 misresolves if a start is ever left at zero.
+        Assert.Multiple(() =>
+        {
+            Assert.That(SlotRun(view, Low), Is.EqualTo((0, 2)));
+            Assert.That(SlotRun(view, Mid), Is.EqualTo((2, 1)));
+            Assert.That(SlotRun(view, High), Is.EqualTo((3, 1)));
+        });
+    }
+
+    private static (int Start, int Count) SlotRun(TransactionDiffView view, Address address)
+    {
+        Assert.That(view.TryGetSlotRun(address, out int start, out int count), Is.True);
+        return (start, count);
     }
 
     // TXDIFF 0x04: the EIP pins codehash_before to the empty-code hash for an undeployed contract.
