@@ -62,6 +62,7 @@ public class XdcSubnetBlockHeader(
         {
             MixHash = Hash256.Zero,
             RequestsHash = requestsHash,
+            SlotNumber = SlotNumber,
         };
     }
 
@@ -91,6 +92,7 @@ public class XdcSubnetBlockHeader(
             ParentBeaconBlockRoot = src.ParentBeaconBlockRoot,
             ExcessBlobGas = src.ExcessBlobGas,
             BlobGasUsed = src.BlobGasUsed,
+            SlotNumber = src.SlotNumber,
         };
 
         if (src is XdcBlockHeader xdc)
