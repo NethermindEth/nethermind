@@ -47,6 +47,11 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         topics: [TransferLog.TransferSignature, new(from.ToHash()), new(to.ToHash())], position
     );
 
+    private static NativeCallTracerLogEntry ExpectedSelfDestructLog(Address account, byte value, ulong position) => new(
+        TransferLog.Sender, data: Hash256.FromBytesWithPadding([value]).BytesToArray(),
+        topics: [TransferLog.SelfDestructSignature, new(account.ToHash())], position
+    );
+
     public sealed record TransferLogScenario(byte[]? RecipientCode, bool ExpectsChildFrame, string? Config = WithLog);
 
     [TestCaseSource(nameof(TransferLogCases))]
@@ -122,6 +127,51 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         return tracer.BuildResult();
     }
 
+    [Test(Description = "Destroy-list finalization log must reach log tracers, not just receipts")]
+    public void FinalizationSelfDestructLog_WithLog_AppearsInTopFrame()
+    {
+        const byte initBalance = 5;
+        const byte fundedAfter = 7;
+        Address inheritor = TestItem.AddressC;
+
+        byte[] contractACode = Prepare.EvmCode
+            .CALLVALUE()
+            .Op(Instruction.ISZERO)
+            .PushData(6)
+            .JUMPI()
+            .STOP()
+            .JUMPDEST()
+            .SELFDESTRUCT(inheritor)
+            .Done;
+        byte[] initCodeA = Prepare.EvmCode
+            .ForInitOf(contractACode)
+            .Done;
+
+        Address contractA = ContractAddress.From(Recipient, 0);
+
+        byte[] factoryCode = Prepare.EvmCode
+            .Create(initCodeA, initBalance)
+            .Call(contractA, 100_000)
+            .CallWithValue(contractA, 100_000, fundedAfter)
+            .STOP()
+            .Done;
+
+        (Block block, Transaction tx) = PrepareTx(Activation, 2_000_000UL, factoryCode, value: 0);
+        using NativeCallTracer tracer = new(tx, Amsterdam.Instance, GetGethTraceOptions(WithLog));
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(topFrame.Calls, Has.Count.EqualTo(3), "factory must create then call twice");
+            Assert.That(topFrame.Calls[0].Logs, Is.EqualTo([ExpectedTransferLog(Recipient, contractA, initBalance, 0UL)]).UsingPropertiesComparer(), "CREATE endowment log on create frame");
+            Assert.That(topFrame.Calls[1].Logs, Is.EqualTo([ExpectedTransferLog(contractA, inheritor, initBalance, 1UL)]).UsingPropertiesComparer(), "SELFDESTRUCT transfer log on call frame (position follows the SELFDESTRUCT child frame recorded first; geth records AddLog before the child frame, so cross-client position differs here)");
+            Assert.That(topFrame.Calls[2].Logs, Is.EqualTo([ExpectedTransferLog(Recipient, contractA, fundedAfter, 0UL)]).UsingPropertiesComparer(), "post-destruct funding log on call frame");
+            Assert.That(topFrame.Logs, Is.EqualTo([ExpectedSelfDestructLog(contractA, fundedAfter, 3UL)]).UsingPropertiesComparer(), "finalization log must be reported to log tracers on the top frame");
+        }
+    }
+
     private static IEnumerable<TestCaseData> TransferLogCases()
     {
         yield return new TestCaseData(new TransferLogScenario(null, false))
@@ -141,5 +191,57 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
 
         yield return new TestCaseData(new TransferLogScenario(Code.ForwardValue(TestItem.AddressC), false, WithLogAndOnlyTopCall))
             .SetName("nested value transfer is not hoisted into top frame under onlyTopCall");
+    }
+}
+
+[TestFixture]
+public class GethLikeCallTracerEip7708DeferredTests : VirtualMachineTestsBase
+{
+    // Deferred finalization path: EIP-7708 + EIP-8037 without EIP-8246, so destroyed accounts
+    // with residual balance emit Burn logs after PayFees (rather than inline SelfDestruct logs).
+    protected override ISpecProvider SpecProvider => new TestSpecProvider(new OverridableReleaseSpec(Prague.Instance) { IsEip7708Enabled = true, IsEip8037Enabled = true });
+
+    private static NativeCallTracerLogEntry ExpectedBurnLog(Address account, byte value, ulong position) => new(
+        TransferLog.Sender, data: Hash256.FromBytesWithPadding([value]).BytesToArray(),
+        topics: [TransferLog.BurnSignature, new(account.ToHash())], position
+    );
+
+    [Test(Description = "Deferred Burn finalization log must reach log tracers, not just receipts")]
+    public void FinalizationBurnLog_WithLog_AppearsInTopFrame()
+    {
+        const byte initBalance = 5;
+        const byte fundedAfter = 7;
+        Address inheritor = TestItem.AddressC;
+
+        byte[] contractACode = Prepare.EvmCode
+            .CALLVALUE()
+            .Op(Instruction.ISZERO)
+            .PushData(6)
+            .JUMPI()
+            .STOP()
+            .JUMPDEST()
+            .SELFDESTRUCT(inheritor)
+            .Done;
+        byte[] initCodeA = Prepare.EvmCode
+            .ForInitOf(contractACode)
+            .Done;
+
+        Address contractA = ContractAddress.From(Recipient, 0);
+
+        byte[] factoryCode = Prepare.EvmCode
+            .Create(initCodeA, initBalance)
+            .Call(contractA, 500_000)
+            .CallWithValue(contractA, 500_000, fundedAfter)
+            .STOP()
+            .Done;
+
+        (Block block, Transaction tx) = PrepareTx(Activation, 5_000_000UL, factoryCode, value: 0);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        using NativeCallTracer tracer = new(tx, spec, GethLikeCallTracerTests.GetGethTraceOptions(GethLikeCallTracerTests.WithLog));
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, spec), tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        NativeCallTracerCallFrame topFrame = (NativeCallTracerCallFrame)trace.CustomTracerResult!.Value!;
+
+        Assert.That(topFrame.Logs, Is.EqualTo([ExpectedBurnLog(contractA, fundedAfter, 3UL)]).UsingPropertiesComparer(), "deferred Burn log must be reported to log tracers on the top frame");
     }
 }
