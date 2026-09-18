@@ -50,8 +50,8 @@ public partial class PatriciaTree
     /// BulkSet multiple entries at the same time. It works by working each nibble level one at a time, partially
     /// sorting the <see cref="entries"/> then recurs on each nibble, traversing the top level branch only once.
     /// if <see cref="Flags.WasSorted"/> is on, the sort is skipped for a slightly faster set.
-    /// Levels whose entry count reaches <see cref="MinEntriesToParallelizeThreshold"/> fork their buckets onto
-    /// the <see cref="Rayon"/> pool, at any depth.
+    /// A level forks its buckets onto the <see cref="Rayon"/> pool, at any depth, as long as each side of a
+    /// fork carries at least <see cref="MinEntriesToParallelizeThreshold"/> entries.
     /// </summary>
     /// <param name="entries"></param>
     /// <param name="flags"></param>
@@ -191,7 +191,7 @@ public partial class PatriciaTree
         int nonNullChildCount = 0;
 
         if (!Core.Cpu.RuntimeInformation.IsSingleProcessor
-            && entries.Length >= MinEntriesToParallelizeThreshold
+            && entries.Length >= 2 * MinEntriesToParallelizeThreshold
             && (nibMask & (nibMask - 1)) != 0
             && !flags.HasFlag(Flags.DoNotParallelize))
         {
@@ -306,27 +306,47 @@ public partial class PatriciaTree
     private readonly record struct BulkSetForkState(PatriciaTree Tree, Context Ctx, BulkSetJob[] Jobs, int FlipCount, Flags Flags, int Mask);
 
     /// <summary>
-    /// Recursively halves the set of populated nibbles in <see cref="BulkSetForkState.Mask"/> with
-    /// <see cref="Rayon.Join{TSa,TSb}"/> until one bucket is left, so uneven buckets are balanced by stealing
-    /// and each bucket may fork again at deeper levels.
+    /// Recursively splits the populated nibbles in <see cref="BulkSetForkState.Mask"/> by entry count with
+    /// <see cref="Rayon.Join{TSa,TSb}"/>, so uneven buckets are balanced by stealing and each bucket may fork
+    /// again at deeper levels. A side that would fall below <see cref="MinEntriesToParallelizeThreshold"/>
+    /// entries is not worth a job of its own, so such a split is set sequentially instead.
     /// </summary>
     private static void BulkSetForked(in BulkSetForkState state)
     {
         int mask = state.Mask;
-        if ((mask & (mask - 1)) == 0)
+        int total = 0;
+        for (int remaining = mask; remaining != 0; remaining &= remaining - 1)
         {
-            state.Tree.BulkSetBucket(in state, BitOperations.TrailingZeroCount(mask));
+            total += state.Jobs[BitOperations.TrailingZeroCount(remaining)].Count;
+        }
+
+        // Lower half: buckets in nibble order until the next one would cross half of the entries.
+        int lower = 0;
+        int lowerCount = 0;
+        for (int remaining = mask; remaining != 0; remaining &= remaining - 1)
+        {
+            int nib = BitOperations.TrailingZeroCount(remaining);
+            int count = state.Jobs[nib].Count;
+            if (lowerCount > 0 && lowerCount + count > total / 2)
+                break;
+
+            lower |= 1 << nib;
+            lowerCount += count;
+        }
+
+        int upper = mask ^ lower;
+        if (upper == 0 || lowerCount < MinEntriesToParallelizeThreshold || total - lowerCount < MinEntriesToParallelizeThreshold)
+        {
+            for (int remaining = mask; remaining != 0; remaining &= remaining - 1)
+            {
+                state.Tree.BulkSetBucket(in state, BitOperations.TrailingZeroCount(remaining));
+            }
+
             return;
         }
 
-        int upper = mask;
-        for (int i = BitOperations.PopCount((uint)mask) / 2; i > 0; i--)
-        {
-            upper &= upper - 1;
-        }
-
         Rayon.Join(
-            state with { Mask = mask ^ upper }, static lowerHalf => BulkSetForked(in lowerHalf),
+            state with { Mask = lower }, static lowerHalf => BulkSetForked(in lowerHalf),
             state with { Mask = upper }, static upperHalf => BulkSetForked(in upperHalf));
     }
 
