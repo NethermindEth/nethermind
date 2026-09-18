@@ -130,8 +130,8 @@ public class PbtMetricsTests
             if (scenario == "selfdestruct") content.ClearStorage(addressHash);
             else
             {
-                content.Storages[headerStorageKey] = deleted ? default : slot;
-                content.Storages[storageKey] = deleted ? default : slot;
+                content.SetSlot(headerStorageKey, deleted ? default : slot);
+                content.SetSlot(storageKey, deleted ? default : slot);
             }
             if (!deleted) payload.AcquireLease();
             content.NodeGroups[groupKey.ToPath<PbtStorageNodePath>()] = deleted ? null : payload;

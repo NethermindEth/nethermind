@@ -151,18 +151,20 @@ public sealed class PbtReadOnlySnapshotBundle(
         return result;
     }
 
-    public EvmWord GetSlot(Address address, in UInt256 slot) => GetSlot(PbtStateKey.Storage(address, slot));
+    public EvmWord GetSlot(Address address, in UInt256 slot) =>
+        GetSlot(PbtStateKey.StorageRun(address, PbtKeyDerivation.AddressKeyHash(address), slot, out int index), index);
 
-    internal EvmWord GetSlot(in HashedKey<PbtStorageTreeKey> key)
+    /// <summary>Reads slot <paramref name="index"/> of the run keyed by <paramref name="runKey"/>; the newest layer holding the run answers.</summary>
+    internal EvmWord GetSlot(in HashedKey<PbtStorageTreeKey> runKey, int index)
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        int labelIndex = key.Key.Bytes[0] == Eip8297KeyDerivation.AccountZone ? 1 : 0;
-        ValueHash256 addressHash = PbtFlatState.StorageAddress(key.Key);
-        for (int index = snapshots.Count - 1; index >= 0; index--)
+        int labelIndex = runKey.Key.Bytes[0] == Eip8297KeyDerivation.AccountZone ? 1 : 0;
+        ValueHash256 addressHash = PbtFlatState.StorageAddress(runKey.Key);
+        for (int layer = snapshots.Count - 1; layer >= 0; layer--)
         {
-            PbtSnapshotContent content = snapshots[index].Content;
-            if (content.Storages.TryGetValue(key, out EvmWord value)
+            PbtSnapshotContent content = snapshots[layer].Content;
+            if (content.TryGetSlot(runKey, index, out EvmWord value)
                 || content.SelfDestructedStorageAddresses.ContainsKey(addressHash))
             {
                 if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabels[labelIndex]);
@@ -170,9 +172,22 @@ public sealed class PbtReadOnlySnapshotBundle(
             }
         }
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        EvmWord result = reader.GetSlot(key.Key);
+        EvmWord result = reader.GetSlot(SlotRun.SlotKey(runKey.Key, index));
         if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, (EvmWordSlot.IsZero(result) ? _readStoragePersistenceNullLabels : _readStoragePersistenceLabels)[labelIndex]);
         return result;
+    }
+
+    /// <summary>A caller-owned copy of the whole run keyed by <paramref name="runKey"/> as this view sees it.</summary>
+    internal ISlotRun RentRun(in HashedKey<PbtStorageTreeKey> runKey, in ValueHash256 addressHash)
+    {
+        GuardDispose();
+        for (int layer = snapshots.Count - 1; layer >= 0; layer--)
+        {
+            PbtSnapshotContent content = snapshots[layer].Content;
+            if (content.Storages.TryGetValue(runKey, out ISlotRun? run)) return run.Clone();
+            if (content.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return SlotRun.Empty;
+        }
+        return reader.RentSlotRun(runKey.Key);
     }
 
     internal CodeInfo? GetCode(in ValueHash256 codeHash)

@@ -32,6 +32,9 @@ public sealed class PbtSnapshotBundle(
     // Read-through memo of bytecode served by the read-only base; never snapshot content, so it is not persisted.
     private readonly ConcurrentDictionary<ValueHash256, CodeInfo> _codeMemo = new();
     private PbtTransientResource _transientResource = resourcePool.GetCachedResource(usage);
+    // Storage commits may write one run from several threads; a stripe serializes the read-modify-replace of a run.
+    private const int RunLockStripes = 64;
+    private readonly Lock[] _runLocks = CreateRunLocks();
     private bool _isDisposed;
 
     public ValueHash256 TreeRoot => snapshots.Count > 0 ? snapshots[^1].TreeRoot : readOnlyBundle.TreeRoot;
@@ -48,6 +51,13 @@ public sealed class PbtSnapshotBundle(
     }
 
     internal int PendingMutationCount => _accountBatch.Count + _codeBatch.Count + _storageBatch.Count;
+
+    private static Lock[] CreateRunLocks()
+    {
+        Lock[] locks = new Lock[RunLockStripes];
+        for (int stripe = 0; stripe < locks.Length; stripe++) locks[stripe] = new Lock();
+        return locks;
+    }
 
     private void SetPbtLeaf(PbtPath key, ValueHash256? value)
     {
@@ -167,16 +177,16 @@ public sealed class PbtSnapshotBundle(
     /// <inheritdoc cref="GetSlot(Address, in UInt256)"/>
     public EvmWord GetSlot(Address address, in ValueHash256 addressHash, in UInt256 slot)
     {
-        HashedKey<PbtStorageTreeKey> key = PbtStateKey.Storage(address, addressHash, slot);
-        if (WriteBuffer.Storages.TryGetValue(key, out EvmWord value)) return value;
+        HashedKey<PbtStorageTreeKey> runKey = PbtStateKey.StorageRun(address, addressHash, slot, out int index);
+        if (WriteBuffer.TryGetSlot(runKey, index, out EvmWord value)) return value;
         if (WriteBuffer.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return default;
-        for (int index = snapshots.Count - 1; index >= 0; index--)
+        for (int layer = snapshots.Count - 1; layer >= 0; layer--)
         {
-            PbtSnapshotContent content = snapshots[index].Content;
-            if (content.Storages.TryGetValue(key, out value)) return value;
+            PbtSnapshotContent content = snapshots[layer].Content;
+            if (content.TryGetSlot(runKey, index, out value)) return value;
             if (content.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return default;
         }
-        return readOnlyBundle.GetSlot(key);
+        return readOnlyBundle.GetSlot(runKey, index);
     }
 
     public void SetAccount(Address address, Account? account)
@@ -252,7 +262,39 @@ public sealed class PbtSnapshotBundle(
     {
         PbtStorageTreeKey key = PbtStateKey.Storage(address, slot);
         SetPbtLeaf(key, EvmWordSlot.IsZero(value) ? null : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value)));
-        WriteBuffer.Storages[key] = value;
+        HashedKey<PbtStorageTreeKey> runKey = SlotRun.RunKey(key);
+        int index = SlotRun.IndexOf(key);
+        lock (_runLocks[(uint)runKey.GetHashCode() % RunLockStripes])
+        {
+            if (WriteBuffer.Storages.TryGetValue(runKey, out ISlotRun? held))
+            {
+                WriteBuffer.SetRun(runKey, held.With(index, value));
+                return;
+            }
+            // The write buffer holds whole runs: the first write to a run starts from the run as currently visible.
+            ValueHash256 addressHash = PbtFlatState.StorageAddress(key);
+            if (FindLocalRun(runKey, addressHash) is { } local)
+            {
+                WriteBuffer.SetRun(runKey, local.With(index, value));
+                return;
+            }
+            ISlotRun rented = readOnlyBundle.RentRun(runKey, addressHash);
+            WriteBuffer.SetRun(runKey, rented.With(index, value));
+            SlotRun.Return(rented);
+        }
+    }
+
+    /// <summary>The run as the write buffer and local snapshots see it, borrowed; null when they say nothing about it.</summary>
+    private ISlotRun? FindLocalRun(in HashedKey<PbtStorageTreeKey> runKey, in ValueHash256 addressHash)
+    {
+        if (WriteBuffer.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return SlotRun.Empty;
+        for (int layer = snapshots.Count - 1; layer >= 0; layer--)
+        {
+            PbtSnapshotContent content = snapshots[layer].Content;
+            if (content.Storages.TryGetValue(runKey, out ISlotRun? run)) return run;
+            if (content.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return SlotRun.Empty;
+        }
+        return null;
     }
 
     public void SelfDestruct(Address address)

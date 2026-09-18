@@ -84,7 +84,11 @@ internal static class PbtFlatState
                 if (StorageAddress(key) == addressHash) removed.Add(key);
             foreach (PbtStorageTreeKey key in removed) visible.Remove(key);
         }
-        foreach ((HashedKey<PbtStorageTreeKey> key, EvmWord value) in content.Storages)
-            if (addressFilter is null || StorageAddress(key) == addressFilter.Value) visible[key] = value;
+        // A run is whole, so every one of its slots is written, zeros included, to mask persisted values.
+        foreach ((HashedKey<PbtStorageTreeKey> runKey, ISlotRun run) in content.Storages)
+        {
+            if (addressFilter is not null && StorageAddress(runKey) != addressFilter.Value) continue;
+            for (int index = 0; index < SlotRun.Width; index++) visible[SlotRun.SlotKey(runKey, index)] = run.Get(index);
+        }
     }
 }

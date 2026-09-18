@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -52,6 +53,39 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
+    public void First_write_to_a_run_seeds_the_whole_run_from_the_newest_layer_holding_it([Values] bool heldByLayer)
+    {
+        ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
+        // Slots 3, 5 and 6 share one run.
+        PbtStorageTreeKey persistedKey = PbtStateKey.Storage(TestItem.AddressA, 5);
+        PbtStorageTreeKey layerKey = PbtStateKey.Storage(TestItem.AddressA, 6);
+        EvmWord persisted = EvmWordSlot.FromStripped(Value(1));
+        EvmWord layer = EvmWordSlot.FromStripped(Value(2));
+        EvmWord local = EvmWordSlot.FromStripped(Value(3));
+        PbtResourcePool pool = new(new PbtConfig());
+        PbtSnapshotContent sharedContent = new();
+        if (heldByLayer) sharedContent.SetSlot(layerKey, layer);
+        PbtSnapshotPooledList sharedSnapshots = new(1)
+        {
+            new PbtSnapshot(StateId.PreGenesis, new StateId(1, default), default, sharedContent, pool, PbtResourcePool.Usage.MainBlockProcessing)
+        };
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(sharedSnapshots, new Reader(persistedKey, new ValueHash256(Value(1)))), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        bundle.SetSlot(TestItem.AddressA, 3, local);
+        EvmWord[] afterWrite = [bundle.GetSlot(TestItem.AddressA, 3), bundle.GetSlot(TestItem.AddressA, 5), bundle.GetSlot(TestItem.AddressA, 6)];
+        bundle.SetSlot(TestItem.AddressA, heldByLayer ? 6u : 5u, default);
+        KeyValuePair<PbtStorageTreeKey, EvmWord>[] afterClear = bundle.EnumerateStorage(addressHash).ToArray();
+        bundle.SelfDestruct(TestItem.AddressA);
+        bundle.SetSlot(TestItem.AddressA, 5, local);
+        using (Assert.EnterMultipleScope())
+        {
+            // A layer holding the run answers for all of it, so the persisted slot is masked when a layer holds the run.
+            Assert.That(afterWrite, Is.EqualTo(new[] { local, heldByLayer ? default : persisted, heldByLayer ? layer : default }));
+            Assert.That(afterClear.Select(slot => slot.Key), Is.EqualTo(new[] { PbtStateKey.Storage(TestItem.AddressA, 3) }));
+            Assert.That(new[] { bundle.GetSlot(TestItem.AddressA, 3), bundle.GetSlot(TestItem.AddressA, 5), bundle.GetSlot(TestItem.AddressA, 6) }, Is.EqualTo(new[] { default, local, default }));
+        }
+    }
+
+    [Test]
     public void Enumeration_merges_local_deletes_clears_and_same_layer_rewrites([Values] bool filtered)
     {
         ValueHash256 addressHash = PbtKeyDerivation.AddressKeyHash(TestItem.AddressA);
@@ -66,8 +100,8 @@ public class PbtSnapshotBundleTests
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent content = new();
         content.ClearStorage(addressHash);
-        content.Storages[rewritten] = original;
-        content.Storages[deleted] = original;
+        content.SetSlot(rewritten, original);
+        content.SetSlot(deleted, original);
         PbtSnapshotPooledList snapshots = new(1) { new PbtSnapshot(StateId.PreGenesis, new StateId(1, default), default, content, pool, PbtResourcePool.Usage.MainBlockProcessing) };
         using PbtSnapshotBundle bundle = new(snapshots, new PbtReadOnlySnapshotBundle(new(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing);
         bundle.SetSlot(TestItem.AddressA, 1, default);
@@ -273,7 +307,7 @@ public class PbtSnapshotBundleTests
         ValueHash256 local = new(Value(3));
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent sharedContent = new();
-        sharedContent.Storages[key] = EvmWordSlot.FromStripped(shared.Bytes);
+        sharedContent.SetSlot(key, EvmWordSlot.FromStripped(shared.Bytes));
         PbtSnapshotPooledList sharedSnapshots = new(1)
         {
             new PbtSnapshot(StateId.PreGenesis, new StateId(1, default), default, sharedContent, pool, PbtResourcePool.Usage.MainBlockProcessing)
@@ -293,8 +327,8 @@ public class PbtSnapshotBundleTests
         PbtStorageTreeKey prefix = PbtStateKey.StoragePrefix(TestItem.AddressA);
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent sharedContent = new();
-        sharedContent.Storages[matching] = EvmWordSlot.FromStripped(Value(1));
-        sharedContent.Storages[other] = EvmWordSlot.FromStripped(Value(2));
+        sharedContent.SetSlot(matching, EvmWordSlot.FromStripped(Value(1)));
+        sharedContent.SetSlot(other, EvmWordSlot.FromStripped(Value(2)));
         PbtSnapshotPooledList sharedSnapshots = new(1)
         {
             new PbtSnapshot(StateId.PreGenesis, new StateId(1, default), default, sharedContent, pool, PbtResourcePool.Usage.MainBlockProcessing)
@@ -962,7 +996,7 @@ public class PbtSnapshotBundleTests
             Assert.That(reader.GroupReadCount, Is.EqualTo(1));
             Assert.That(store.ApplyCount, Is.Zero);
             Assert.That(snapshot.Content.Storages, Has.Count.EqualTo(1));
-            Assert.That(snapshot.Content.Storages.TryGetValue(originalLeafKey, out EvmWord leaf) && leaf.Equals(EvmWordSlot.FromStripped(originalLeafValue.Bytes)), Is.True);
+            Assert.That(snapshot.Content.GetSlot(originalLeafKey), Is.EqualTo(EvmWordSlot.FromStripped(originalLeafValue.Bytes)));
             Assert.That(snapshot.Content.NodeGroups, Has.Count.EqualTo(1));
             Assert.That(foundGroup, Is.True);
             Assert.That(group!.GetSpan().ToArray(), Is.EqualTo(originalNode));
@@ -987,7 +1021,7 @@ public class PbtSnapshotBundleTests
         {
             Assert.That(snapshot.Content.Codes[value], Is.SameAs(code));
             Assert.That(snapshot.TreeRoot, Is.EqualTo(root));
-            Assert.That(snapshot.Content.Storages.TryGetValue(key, out EvmWord actual) && actual.Equals(EvmWordSlot.FromStripped(value.Bytes)), Is.True);
+            Assert.That(snapshot.Content.GetSlot(key), Is.EqualTo(EvmWordSlot.FromStripped(value.Bytes)));
         }
     }
 
@@ -1024,8 +1058,8 @@ public class PbtSnapshotBundleTests
             Assert.That(bundle.GetSlot(TestItem.AddressA, slot), Is.EqualTo(expected));
             Assert.That(bundle.GetSlot(TestItem.AddressB, slot), Is.EqualTo(original));
             Assert.That(newer.Content.SelfDestructedStorageAddresses.ContainsKey(PbtKeyDerivation.AddressKeyHash(TestItem.AddressA)), Is.True);
-            Assert.That(newer.Content.Storages.ContainsKey(PbtStateKey.Storage(TestItem.AddressA, slot)), Is.EqualTo(!clearLast));
-            Assert.That(older.Content.Storages[PbtStateKey.Storage(TestItem.AddressA, slot)], Is.EqualTo(original));
+            Assert.That(newer.Content.TryGetSlot(PbtStateKey.Storage(TestItem.AddressA, slot), out _), Is.EqualTo(!clearLast));
+            Assert.That(older.Content.GetSlot(PbtStateKey.Storage(TestItem.AddressA, slot)), Is.EqualTo(original));
         }
     }
 
@@ -1411,7 +1445,7 @@ public class PbtSnapshotBundleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(snapshot.Content.Storages, Has.Count.EqualTo(1));
-            Assert.That(snapshot.Content.Storages.ContainsKey(leafKey), Is.True);
+            Assert.That(snapshot.Content.TryGetSlot(leafKey, out _), Is.True);
             Assert.That(snapshot.Content.NodeGroups, Has.Count.EqualTo(1));
             Assert.That(foundGroup, Is.True);
             Assert.That(actual!.GetSpan().ToArray(), Is.EqualTo(node));
@@ -1450,6 +1484,19 @@ public class PbtSnapshotBundleTests
         public ValueHash256 CurrentRoot { get; set; }
         public Account? GetAccount(in ValueHash256 addressHash) => null;
         public EvmWord GetSlot(in PbtStorageTreeKey requested) => requested == key && value is { } word ? EvmWordSlot.FromStripped(word.Bytes) : default;
+        public ISlotRun RentSlotRun(in PbtStorageTreeKey runKey)
+        {
+            PbtStorageTreeKey wanted = runKey;
+            ISlotRun run = SlotRun.Empty;
+            foreach ((PbtStorageTreeKey slotKey, EvmWord word) in EnumerateStorageCore(null))
+            {
+                if (SlotRun.RunKey(slotKey) != wanted) continue;
+                ISlotRun previous = run;
+                run = run.With(SlotRun.IndexOf(slotKey), word);
+                SlotRun.Return(previous);
+            }
+            return run;
+        }
         public CodeInfo? GetCode(in ValueHash256 codeHash)
         {
             CodeReadCount++;

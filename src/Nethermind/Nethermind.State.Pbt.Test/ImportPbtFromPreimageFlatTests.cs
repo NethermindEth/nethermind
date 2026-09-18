@@ -161,7 +161,7 @@ public class ImportPbtFromPreimageFlatTests
                 if (zone != 0) key[^1] = PbtKeyDerivation.HeaderStorageOffset;
                 byte[] value = zone == 0
                     ? Nethermind.Serialization.Rlp.Rlp.Encode(new Account(1, 100)).Bytes
-                    : TestItem.KeccakA.Bytes.ToArray();
+                    : SlotRunTestExtensions.SingleSlotRow(TestItem.KeccakA.Bytes);
                 db.GetColumnDb(column).Set(key, value);
             }
         };
@@ -245,8 +245,8 @@ public class ImportPbtFromPreimageFlatTests
         await step.Execute(CancellationToken.None);
 
         using IPbtPersistence.IReader reader = target.CreateReader();
-        // Every account shares one code, which is staged once.
-        int expectedWrites = accountCount * (slotsPerAccount + 1) + 1;
+        // Every account shares one code, which is staged once; slots are staged as whole runs.
+        int expectedWrites = accountCount * ((slotsPerAccount + SlotRun.Width - 1) / SlotRun.Width + 1) + 1;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(exit.ExitCode, Is.Zero);
@@ -353,7 +353,7 @@ public class ImportPbtFromPreimageFlatTests
     /// <param name="clearKeyChunk">A value of 1 reopens the view after each deleted key, verifying the exclusive resume cursor.</param>
     [TestCase(10_000)]
     [TestCase(1)]
-    public async Task Import_mode_recovers_an_interrupted_epoch_16_attempt(int clearKeyChunk)
+    public async Task Import_mode_recovers_an_interrupted_epoch_17_attempt(int clearKeyChunk)
     {
         PbtConfig config = new() { ImportFromPreimageFlat = true };
 
@@ -404,7 +404,7 @@ public class ImportPbtFromPreimageFlatTests
         }
         byte[] maximumLengthKey = new byte[PbtStorageTreeKey.MaxLength];
         maximumLengthKey.AsSpan().Fill(0xFF);
-        pbtDb.GetColumnDb(PbtColumns.Storages)[maximumLengthKey] = TestItem.KeccakA.Bytes.ToArray();
+        pbtDb.GetColumnDb(PbtColumns.Storages)[maximumLengthKey] = SlotRunTestExtensions.SingleSlotRow(TestItem.KeccakA.Bytes);
 
         byte[] maximumGroupKey = new PbtStorageNodePath(Bytes.FromHexString(new string('f', 130) + "f0"), PbtFourLevelGroupGeometry.MaxGroupDepth)
             .ToStorageKey(PbtColumns.StorageNodeGroups, PbtNodeGroupKeyLayout.Padded);
@@ -424,7 +424,7 @@ public class ImportPbtFromPreimageFlatTests
         IDb metadata = pbtDb.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x00000010")));
+            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x00000011")));
             Assert.That(metadata.Get("rootNodeGroup"u8), Is.Not.Null);
             Assert.That(metadata.Get("currentState"u8), Is.Null);
             Assert.That(metadata.Get("validState"u8), Is.Null);
@@ -474,7 +474,7 @@ public class ImportPbtFromPreimageFlatTests
                 Array.Fill(storage, prefix);
                 storage[32] = zone;
                 if (zone == Eip8297KeyDerivation.AccountZone) storage[^1] = PbtKeyDerivation.HeaderStorageOffset;
-                Add(PbtColumns.Storages, storage, TestItem.KeccakA.Bytes.ToArray());
+                Add(PbtColumns.Storages, storage, SlotRunTestExtensions.SingleSlotRow(TestItem.KeccakA.Bytes));
             }
         }
         Add(PbtColumns.Codes, TestItem.KeccakB.Bytes.ToArray(), Bytes.FromHexString("0x01"));
@@ -667,7 +667,7 @@ public class ImportPbtFromPreimageFlatTests
         using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
         {
             batch.SetAccount(TestItem.AddressA, new Account(1, 100).WithChangedStorageRoot(TestItem.KeccakA));
-            // Slots 100 and 101 share a storage stem.
+            // Slots 100 and 101 share a storage stem and a slot run.
             batch.SetStorage(TestItem.AddressA, 100, (UInt256)0xAA);
             batch.SetStorage(TestItem.AddressA, 101, (UInt256)0xBB);
         }
@@ -685,7 +685,7 @@ public class ImportPbtFromPreimageFlatTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(report.Accounts.RecordCount, Is.EqualTo(1));
-            Assert.That(report.Storages.RecordCount, Is.EqualTo(2));
+            Assert.That(report.Storages.RecordCount, Is.EqualTo(1));
             Assert.That(report.NodeGroups.LeafCount, Is.EqualTo(4));
         }
     }
@@ -877,7 +877,7 @@ public class ImportPbtFromPreimageFlatTests
                         if (zone == 0xFF) storageKey.AsSpan(33).Fill(0xFF);
                         ValueHash256 value = TestItem.KeccakA.ValueHash256;
                         staging.SetSlot(new PbtStorageTreeKey(storageKey), EvmWordSlot.FromStripped(value.Bytes));
-                        expectedRows.Add($"{PbtColumns.Storages}:{Convert.ToHexString(PbtStorageKeyLayout.Encode(new PbtStorageTreeKey(storageKey), new byte[PbtStorageTreeKey.MaxLength]))}");
+                        expectedRows.Add($"{PbtColumns.Storages}:{Convert.ToHexString(PbtStorageKeyLayout.Encode(SlotRun.RunKey(new PbtStorageTreeKey(storageKey)), new byte[PbtStorageTreeKey.MaxLength]))}");
                         model[Convert.ToHexString(storageKey)] = value.Bytes.ToArray();
                     }
                 }
@@ -924,8 +924,10 @@ public class ImportPbtFromPreimageFlatTests
         using (IPersistence.IWriteBatch batch = source.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
         {
             batch.SetAccount(TestItem.AddressA, new Account(1, 100).WithChangedCodeHash(codeHash).WithChangedStorageRoot(TestItem.KeccakA));
-            for (uint slot = 0; slot < 100; slot++)
+            // One slot per run, so every storage row is one leaf and one page.
+            for (uint index = 0; index < 100; index++)
             {
+                UInt256 slot = index * SlotRun.Width;
                 batch.SetStorage(TestItem.AddressA, slot, (UInt256)0x01);
                 PbtReferenceModel.SetSlot(model, TestItem.AddressA, slot, 1);
             }

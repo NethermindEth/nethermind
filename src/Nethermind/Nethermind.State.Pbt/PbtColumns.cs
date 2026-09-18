@@ -30,7 +30,7 @@ public enum PbtColumns
     /// <summary>Whole accounts keyed by the PBT address hash.</summary>
     Accounts,
 
-    /// <summary>Storage words keyed by the address hash, zone and remaining bytes of their EIP-8297 storage key.</summary>
+    /// <summary>Runs of sixteen consecutive storage words (see <see cref="Persistence.SlotRunCodec"/>) keyed by the address hash, zone and remaining bytes of their EIP-8297 storage key with its low four bits cleared.</summary>
     Storages,
 
     /// <summary>Whole bytecode keyed by its code hash.</summary>

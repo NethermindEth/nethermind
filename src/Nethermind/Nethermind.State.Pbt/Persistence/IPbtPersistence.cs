@@ -27,6 +27,8 @@ public interface IPbtPersistence
 
         Account? GetAccount(in ValueHash256 addressHash);
         EvmWord GetSlot(in PbtStorageTreeKey key);
+        /// <summary>Gets a caller-owned copy of the persisted run keyed by <paramref name="runKey"/> (a <see cref="SlotRun.RunKey"/>); <see cref="SlotRun.Empty"/> when absent.</summary>
+        ISlotRun RentSlotRun(in PbtStorageTreeKey runKey);
         CodeInfo? GetCode(in ValueHash256 codeHash);
         /// <summary>Gets a caller-owned iterator over persisted accounts.</summary>
         IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts();
@@ -53,7 +55,8 @@ public interface IPbtPersistence
     public interface IWriteBatch : IDisposable
     {
         void SetAccount(in ValueHash256 addressHash, Account? account);
-        void SetSlot(in PbtStorageTreeKey key, in EvmWord value);
+        /// <summary>Stages the whole run keyed by <paramref name="runKey"/> (a <see cref="SlotRun.RunKey"/>); an empty run deletes it. The run is borrowed for the call.</summary>
+        void SetSlotRun(in PbtStorageTreeKey runKey, ISlotRun run);
         void SetCode(in ValueHash256 codeHash, CodeInfo code);
         void ClearStorage(in ValueHash256 addressHash);
         /// <summary>Stages a complete group replacement, or deletes the group when the payload is null.</summary>

@@ -334,6 +334,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         public ValueHash256 CurrentRoot => default;
         public Account? GetAccount(in ValueHash256 addressHash) => null;
         public EvmWord GetSlot(in PbtStorageTreeKey key) => default;
+        public ISlotRun RentSlotRun(in PbtStorageTreeKey runKey) => SlotRun.Empty;
         public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
         public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => new PbtIterator<KeyValuePair<ValueHash256, Account>>(((IEnumerable<KeyValuePair<ValueHash256, Account>>)[]).GetEnumerator());
         public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressHash = null) => new PbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>>(((IEnumerable<KeyValuePair<PbtStorageTreeKey, EvmWord>>)[]).GetEnumerator());

@@ -197,6 +197,7 @@ public class ImportPbtFromPreimageFlat(
 
         void CopyPartitions()
         {
+            SlotRunAccumulator runs = new();
             int partition;
             while ((partition = Interlocked.Increment(ref nextPartition)) < partitionCount)
             {
@@ -206,7 +207,7 @@ public class ImportPbtFromPreimageFlat(
                 using (FlatPersistence.IPersistenceReader reader = flatSource.CreateReader())
                 using (CopyBatch batch = new(pbtPersistence, CopyBatchSize))
                 {
-                    CopyAccounts(reader, batch, start, end, ref accounts, ref slots, cancellationToken);
+                    CopyAccounts(reader, batch, runs, start, end, ref accounts, ref slots, cancellationToken);
                     batch.Commit();
                 }
 
@@ -281,6 +282,7 @@ public class ImportPbtFromPreimageFlat(
     private void CopyAccounts(
         FlatPersistence.IPersistenceReader reader,
         CopyBatch batch,
+        SlotRunAccumulator runs,
         ValueHash256 start,
         ValueHash256 end,
         ref long accounts,
@@ -302,7 +304,7 @@ public class ImportPbtFromPreimageFlat(
                 ? codeDb.Get(account.CodeHash.Bytes) ?? throw new InvalidDataException($"Missing bytecode for {address} (code hash {account.CodeHash}) in the code database.")
                 : null;
 
-            if (account.HasStorage) CopySlots(reader, batch, accountKey, address, ref slots, cancellationToken);
+            if (account.HasStorage) CopySlots(reader, batch, runs, accountKey, address, ref slots, cancellationToken);
 
             batch.NextWrite().SetAccount(PbtKeyDerivation.AddressKeyHash(address), account);
             if (code is not null) batch.NextWrite().SetCode(account.CodeHash.ValueHash256, new CodeInfo(code));
@@ -323,6 +325,7 @@ public class ImportPbtFromPreimageFlat(
     private static void CopySlots(
         FlatPersistence.IPersistenceReader reader,
         CopyBatch batch,
+        SlotRunAccumulator runs,
         in ValueHash256 accountKey,
         Address address,
         ref long slots,
@@ -337,7 +340,7 @@ public class ImportPbtFromPreimageFlat(
             // In preimage mode, the key is the raw 32-byte big-endian slot.
             UInt256 slot = new(slotIterator.CurrentKey.Bytes, isBigEndian: true);
             EvmWord value = EvmWordSlot.FromStripped(slotIterator.CurrentValue);
-            batch.NextWrite().SetSlot(PbtStateKey.Storage(address, slot), value);
+            runs.Add(PbtStateKey.Storage(address, slot), value);
 
             if (++pendingSlots >= ProgressPublishInterval)
             {
@@ -346,6 +349,7 @@ public class ImportPbtFromPreimageFlat(
             }
         }
 
+        runs.FlushTo(batch.NextWrite);
         Interlocked.Add(ref slots, pendingSlots);
     }
 
@@ -603,10 +607,18 @@ public class ImportPbtFromPreimageFlat(
                 while (buffered.Count < EntryChunkSize && view.MoveNext())
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    EvmWord slot = PbtRocksDbPersistence.DecodeSlot(view.CurrentValue);
-                    buffered.Add(new(PbtStorageKeyLayout.Decode(view.CurrentKey), new ValueHash256(EvmWordSlot.AsReadOnlySpan(in slot))));
+                    PbtStorageTreeKey runKey = PbtStorageKeyLayout.Decode(view.CurrentKey);
+                    ISlotRun run = SlotRunCodec.Decode(view.CurrentValue);
+                    for (int index = 0; index < SlotRun.Width; index++)
+                    {
+                        if ((run.Mask & (1 << index)) == 0) continue;
+                        EvmWord slot = run.Get(index);
+                        buffered.Add(new(SlotRun.SlotKey(runKey, index), new ValueHash256(EvmWordSlot.AsReadOnlySpan(in slot))));
+                    }
+                    SlotRun.Return(run);
                 }
-                if (buffered.Count == EntryChunkSize) resumeFrom = AfterKey(view.CurrentKey);
+                // A row holds up to a run of slots, so a chunk may overshoot its size.
+                if (buffered.Count >= EntryChunkSize) resumeFrom = AfterKey(view.CurrentKey);
             }
             cancellationToken.ThrowIfCancellationRequested();
             if (resumeFrom is not null) progress.Publish(partition, resumeFrom);

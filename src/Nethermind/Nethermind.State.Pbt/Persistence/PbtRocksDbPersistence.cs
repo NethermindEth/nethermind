@@ -26,7 +26,7 @@ public class PbtRocksDbPersistence(
     private static ReadOnlySpan<byte> NodeGroupKeyLayoutKey => "nodeGroupKeyLayout"u8;
     private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
     internal static ReadOnlySpan<byte> RootNodeGroupKey => "rootNodeGroup"u8;
-    private const int SchemaEpoch = 16;
+    private const int SchemaEpoch = 17;
     private const byte ValidState = 1;
 
     private readonly IColumnsDb<PbtColumns> _db = Initialize(db, config.NodeGroupKeyLayout, config.ImportFromPreimageFlat);
@@ -183,14 +183,6 @@ public class PbtRocksDbPersistence(
         return maximum;
     }
 
-    /// <summary>Decodes a persisted slot value: the stripped big-endian bytes, RLP-wrapped as in the flat Storage column.</summary>
-    internal static EvmWord DecodeSlot(ReadOnlySpan<byte> value)
-    {
-        ReadOnlySpan<byte> stripped = new RlpReader(value).DecodeByteArraySpan();
-        if (stripped.Length > ValueHash256.MemorySize) throw new InvalidDataException("Invalid persisted PBT storage value length.");
-        return EvmWordSlot.FromStripped(stripped);
-    }
-
     private sealed class Reader(IColumnDbSnapshot<PbtColumns> snapshot, PbtNodeGroupKeyLayout layout) : IPbtPersistence.IReader
     {
         private readonly (StateId State, ValueHash256 Root) _current = ReadCurrentState(snapshot.GetColumn(PbtColumns.Metadata));
@@ -221,10 +213,25 @@ public class PbtRocksDbPersistence(
         public EvmWord GetSlot(in PbtStorageTreeKey key)
         {
             Span<byte> persistedKey = stackalloc byte[PbtStorageTreeKey.MaxLength];
-            ReadOnlySpan<byte> value = _storages.GetSpan(PbtStorageKeyLayout.Encode(key, persistedKey));
+            ReadOnlySpan<byte> value = _storages.GetSpan(PbtStorageKeyLayout.Encode(SlotRun.RunKey(key), persistedKey));
             try
             {
-                return value.IsNull() ? default : DecodeSlot(value);
+                return value.IsNull() ? default : SlotRunCodec.ReadSlot(value, SlotRun.IndexOf(key));
+            }
+            finally
+            {
+                _storages.DangerousReleaseMemory(value);
+            }
+        }
+
+        public ISlotRun RentSlotRun(in PbtStorageTreeKey runKey)
+        {
+            if (!SlotRun.IsRunKey(runKey)) throw new ArgumentException("A run key is required.", nameof(runKey));
+            Span<byte> persistedKey = stackalloc byte[PbtStorageTreeKey.MaxLength];
+            ReadOnlySpan<byte> value = _storages.GetSpan(PbtStorageKeyLayout.Encode(runKey, persistedKey));
+            try
+            {
+                return value.IsNull() ? SlotRun.Empty : SlotRunCodec.Decode(value);
             }
             finally
             {
@@ -268,7 +275,13 @@ public class PbtRocksDbPersistence(
             ReadOnlySpan<byte> prefix = addressHash is null ? [] : addressHash.Value.Bytes;
             using ISortedView view = storage.GetViewBetween(prefix, PrefixUpperBound(prefix, upper));
             while (view.MoveNext())
-                yield return new(PbtStorageKeyLayout.Decode(view.CurrentKey), DecodeSlot(view.CurrentValue));
+            {
+                PbtStorageTreeKey runKey = PbtStorageKeyLayout.Decode(view.CurrentKey);
+                ISlotRun run = SlotRunCodec.Decode(view.CurrentValue);
+                for (int index = 0; index < SlotRun.Width; index++)
+                    if ((run.Mask & (1 << index)) != 0) yield return new(SlotRun.SlotKey(runKey, index), run.Get(index));
+                SlotRun.Return(run);
+            }
         }
 
         private static Account DecodeAccount(ReadOnlySpan<byte> value)
@@ -357,23 +370,22 @@ public class PbtRocksDbPersistence(
             }
         }
 
-        public void SetSlot(in PbtStorageTreeKey key, in EvmWord value)
+        public void SetSlotRun(in PbtStorageTreeKey runKey, ISlotRun run)
         {
-            if (!IsStorageKey(key.Bytes)) throw new ArgumentException("A complete storage key is required.", nameof(key));
+            if (!IsStorageKey(runKey.Bytes) || !SlotRun.IsRunKey(runKey)) throw new ArgumentException("A complete storage run key is required.", nameof(runKey));
             IWriteBatch storage = _batch.GetColumnBatch(PbtColumns.Storages);
             Span<byte> persistedKey = stackalloc byte[PbtStorageTreeKey.MaxLength];
-            ReadOnlySpan<byte> encodedKey = PbtStorageKeyLayout.Encode(key, persistedKey);
-            if (EvmWordSlot.IsZero(value)) storage.Set(encodedKey, null, flags);
+            ReadOnlySpan<byte> encodedKey = PbtStorageKeyLayout.Encode(runKey, persistedKey);
+            if (run.Count == 0) storage.Set(encodedKey, null, flags);
             else
             {
-                Span<byte> encoded = stackalloc byte[ValueHash256.MemorySize + 1];
-                int length = Rlp.Encode(EvmWordSlot.AsReadOnlySpan(in value).WithoutLeadingZeros(), encoded);
-                storage.PutSpan(encodedKey, encoded[..length], flags);
+                Span<byte> encoded = stackalloc byte[SlotRunCodec.MaxEncodedLength];
+                storage.PutSpan(encodedKey, encoded[..SlotRunCodec.Encode(run, encoded)], flags);
             }
-            ValueHash256 addressHash = new(key.Bytes.Slice(1, ValueHash256.MemorySize));
+            ValueHash256 addressHash = new(runKey.Bytes.Slice(1, ValueHash256.MemorySize));
             if (!_stagedStorageKeys.TryGetValue(addressHash, out HashSet<PbtStorageTreeKey>? keys))
                 _stagedStorageKeys[addressHash] = keys = [];
-            keys.Add(key);
+            keys.Add(runKey);
         }
 
         public void SetCode(in ValueHash256 codeHash, CodeInfo code) =>

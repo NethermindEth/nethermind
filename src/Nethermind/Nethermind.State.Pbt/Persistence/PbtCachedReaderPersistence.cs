@@ -127,6 +127,7 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         public ValueHash256 CurrentRoot => inner.CurrentRoot;
         public Account? GetAccount(in ValueHash256 addressHash) => inner.GetAccount(addressHash);
         public EvmWord GetSlot(in PbtStorageTreeKey key) => inner.GetSlot(key);
+        public ISlotRun RentSlotRun(in PbtStorageTreeKey runKey) => inner.RentSlotRun(runKey);
         public CodeInfo? GetCode(in ValueHash256 codeHash) => inner.GetCode(codeHash);
         public IPbtIterator<KeyValuePair<ValueHash256, Account>> EnumerateAccounts() => inner.EnumerateAccounts();
         public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressHash = null) => inner.EnumerateStorage(addressHash);
@@ -143,7 +144,7 @@ public sealed class PbtCachedReaderPersistence : IPbtPersistence, IAsyncDisposab
         private bool _disposed;
 
         public void SetAccount(in ValueHash256 addressHash, Account? account) => inner.SetAccount(addressHash, account);
-        public void SetSlot(in PbtStorageTreeKey key, in EvmWord value) => inner.SetSlot(key, value);
+        public void SetSlotRun(in PbtStorageTreeKey runKey, ISlotRun run) => inner.SetSlotRun(runKey, run);
         public void SetCode(in ValueHash256 codeHash, CodeInfo code) => inner.SetCode(codeHash, code);
         public void ClearStorage(in ValueHash256 addressHash) => inner.ClearStorage(addressHash);
         public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> => inner.SetNodeGroup(groupKey, payload);

@@ -38,6 +38,14 @@ internal static class PbtStateKey
         return Eip8297KeyDerivation.StorageKey(address32, addressHash, slot);
     }
 
+    /// <summary>The <see cref="SlotRun.RunKey"/> of the slot's storage key, and the slot's index within the run.</summary>
+    public static PbtStorageTreeKey StorageRun(Address address, in ValueHash256 addressHash, in UInt256 slot, out int index)
+    {
+        PbtStorageTreeKey slotKey = Storage(address, addressHash, slot);
+        index = SlotRun.IndexOf(slotKey);
+        return SlotRun.RunKey(slotKey);
+    }
+
     public static PbtPath Code(Address address, in ValueHash256 codeHash, int chunkId) =>
         Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunkId);
 

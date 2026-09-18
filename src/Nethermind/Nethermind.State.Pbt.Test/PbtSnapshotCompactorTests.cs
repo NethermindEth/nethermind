@@ -35,8 +35,8 @@ public class PbtSnapshotCompactorTests
         TrackingMemoryProvider memoryProvider = new();
         PbtSnapshotContent older = new();
         PbtSnapshotContent newer = new();
-        older.Storages[key] = EvmWordSlot.FromStripped(TestItem.KeccakA.Bytes);
-        newer.Storages[key] = EvmWordSlot.FromStripped(TestItem.KeccakB.Bytes);
+        older.SetSlot(key, EvmWordSlot.FromStripped(TestItem.KeccakA.Bytes));
+        newer.SetSlot(key, EvmWordSlot.FromStripped(TestItem.KeccakB.Bytes));
         byte[] expected;
         using (RefCountingMemory olderPayload = CreateStorageLeafGroup(TestItem.KeccakA.ValueHash256))
         using (RefCountingMemory newerPayload = CreateStorageLeafGroup(TestItem.KeccakB.ValueHash256))
@@ -74,7 +74,7 @@ public class PbtSnapshotCompactorTests
             using RefCountingMemory? alternatePayloadLease = alternatePayload;
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(compacted.Content.Storages.TryGetValue(key, out EvmWord leaf) && leaf.Equals(EvmWordSlot.FromStripped(TestItem.KeccakB.Bytes)), Is.True);
+                Assert.That(compacted.Content.GetSlot(key), Is.EqualTo(EvmWordSlot.FromStripped(TestItem.KeccakB.Bytes)));
                 Assert.That(compacted.Content.NodeGroups.Count, Is.EqualTo(1));
                 Assert.That(found, Is.True);
                 Assert.That(alternateFound, Is.True);
@@ -109,13 +109,14 @@ public class PbtSnapshotCompactorTests
         Account account = Build.An.Account.WithNonce(7).WithBalance(9).WithStorageRoot(TestItem.KeccakB).WithCode(code.Code.ToArray()).TestObject;
         PbtSnapshotContent older = new();
         older.Accounts[addressHash] = Build.An.Account.TestObject;
-        older.Storages[key] = original;
-        older.Storages[otherSlot] = original;
-        older.Storages[otherAddress] = original;
+        older.SetSlot(key, original);
+        older.SetSlot(otherSlot, original);
+        older.SetSlot(otherAddress, original);
         PbtSnapshotContent clearing = new();
         clearing.ClearStorage(addressHash);
         PbtSnapshotContent writing = new();
-        writing.Storages[key] = replacement;
+        writing.SetSlot(key, replacement);
+        ISlotRun writtenRun = writing.Storages[SlotRun.RunKey(key)];
         writing.Accounts[addressHash] = account;
         writing.Codes[account.CodeHash.ValueHash256] = code;
         PbtSnapshot compacted;
@@ -132,10 +133,12 @@ public class PbtSnapshotCompactorTests
             Assert.That(compacted.Content.Accounts[addressHash], Is.SameAs(account));
             Assert.That(compacted.Content.Codes[account.CodeHash.ValueHash256], Is.SameAs(code));
             Assert.That(compacted.Content.SelfDestructedStorageAddresses.ContainsKey(addressHash), Is.True);
-            Assert.That(compacted.Content.Storages.ContainsKey(key), Is.EqualTo(!clearLast));
-            if (!clearLast) Assert.That(compacted.Content.Storages[key], Is.EqualTo(replacement));
-            Assert.That(compacted.Content.Storages.ContainsKey(otherSlot), Is.False);
-            Assert.That(compacted.Content.Storages[otherAddress], Is.EqualTo(original));
+            Assert.That(compacted.Content.TryGetSlot(key, out _), Is.EqualTo(!clearLast));
+            if (!clearLast) Assert.That(compacted.Content.GetSlot(key), Is.EqualTo(replacement));
+            if (!clearLast) Assert.That(compacted.Content.Storages[SlotRun.RunKey(key)], Is.Not.SameAs(writtenRun), "compaction copies runs, the source layer keeps its own");
+            // The rewritten run is whole, so the older layer's neighbouring slot does not survive the rewrite.
+            Assert.That(compacted.Content.GetSlot(otherSlot), Is.EqualTo(default(EvmWord)));
+            Assert.That(compacted.Content.GetSlot(otherAddress), Is.EqualTo(original));
         }
     }
 

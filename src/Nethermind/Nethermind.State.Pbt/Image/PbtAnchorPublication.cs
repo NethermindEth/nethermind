@@ -77,11 +77,19 @@ internal sealed class PbtAnchorPublication(
 
             using (LogicalBatch batch = new(target))
             {
+                SlotRunAccumulator runs = new();
+                Address? slotsAddress = null;
                 image.Replay((address, account, code) =>
                 {
                     batch.Next().SetAccount(PbtKeyDerivation.AddressKeyHash(address), account);
                     if (code.Length != 0) batch.Next().SetCode(account.CodeHash.ValueHash256, new CodeInfo(code));
-                }, (address, slot, value) => batch.Next().SetSlot(PbtStateKey.Storage(address, slot), EvmWordSlot.FromStripped(value.Bytes)), cancellationToken);
+                }, (address, slot, value) =>
+                {
+                    if (address != slotsAddress) runs.FlushTo(batch.Next);
+                    slotsAddress = address;
+                    runs.Add(PbtStateKey.Storage(address, slot), EvmWordSlot.FromStripped(value.Bytes));
+                }, cancellationToken);
+                runs.FlushTo(batch.Next);
                 batch.Commit();
             }
 
