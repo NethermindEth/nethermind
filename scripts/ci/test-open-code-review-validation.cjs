@@ -155,6 +155,7 @@ test('independent discovery sees no primary findings; validation reads evidence 
     }
     if (request === 3) {
       assert.equal(input.candidates.length, 2);
+      assert.equal(input.context.obligations, undefined);
       assert.doesNotMatch(JSON.stringify(body), /chain of thought/);
       assert.equal(body.messages.length, 2);
       return response([['read_source', f.ref]]);

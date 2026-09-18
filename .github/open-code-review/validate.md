@@ -29,13 +29,20 @@ read_diff when they are relevant. Report at most eight high-confidence defects.
 In validation, actively try to falsify EVERY candidate, including independent
 discoveries. Check the real caller, relevant safeguards, supported operating mode,
 project exceptions, and whether the problem was introduced in this range. Reject
-duplicates, pre-existing problems, intentional behavior, stylistic preferences,
+duplicates, unrelated pre-existing problems, intentional behavior, stylistic preferences,
 and speculative warnings. A confirmed finding needs an actual trigger, observable
 consequence, and smallest practical regression scenario; say explicitly that the
 scenario has not been executed. Do not infer a full process restart failure from
 an in-process reload path. The CI snapshot only describes named checks at this
 head: it does not prove that a proposed regression scenario ran, or that green CI
 rules out a defect. Pending/unavailable CI is not itself a code defect.
+
+For a new API or bugfix, also check whether it delivers the behavior promised by
+this PR. An incomplete fix can be relevant even if the old implementation failed
+the same scenario. Establish that the scenario falls within the promised scope;
+label it an incomplete fix rather than claiming a newly introduced regression.
+Preserving stored data and preserving its eligibility for processing are distinct
+contracts; a promise to retain one does not automatically justify restoring the other.
 
 Submit one decision per candidate: confirmed, rejected, or unverified. Confirmation
 needs citations to source you actually read and a concise publishable comment

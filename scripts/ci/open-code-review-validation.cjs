@@ -90,9 +90,11 @@ function finding(repository, changes, value) {
 async function runPass({ phase, repository, context, candidates, prompt, ask, usage, budget, deadline, maxRounds = 10 }) {
   const changes = repository.changes();
   const tools = toolsFor(phase);
+  const suppliedContext = phase === 'validation' ? { ...context, obligations: undefined } : context;
   const messages = [
-    { role: 'system', content: prompt + '\nCurrent phase: ' + phase + '. You have at most ' + maxRounds + ' requests; batch independent source reads (up to eight tools per request). Reserve the last request for submit_review.' },
-    { role: 'user', content: JSON.stringify({ context, ...(phase === 'validation' ? { candidates } : {}) }) },
+    { role: 'system', content: prompt + '\nCurrent phase: ' + phase + '. You have at most ' + maxRounds + ' requests; batch independent source reads (up to eight tools per request). Reserve the last request for submit_review.' +
+      (phase === 'validation' ? ' Submit only candidate decisions; do not repeat discovery checks.' : '') },
+    { role: 'user', content: JSON.stringify({ context: suppliedContext, ...(phase === 'validation' ? { candidates } : {}) }) },
   ];
   // Two bounded repairs accommodate malformed JSON/citations, including one last evidence read.
   for (let turn = 0; turn < maxRounds + 2; turn++) {

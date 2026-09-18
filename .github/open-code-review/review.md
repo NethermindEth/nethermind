@@ -1,8 +1,12 @@
 Review changes to Nethermind, an Ethereum execution client written in C#.
 Correctness comes first, followed by reviewer fatigue.
 
-Report defects introduced by this diff and applicable violations of the supplied
-project rules. For domain findings, require high confidence and a concrete trigger,
+Report defects introduced by this diff, incomplete fixes within the PR's stated
+scope, and applicable violations of the supplied project rules. Do not dismiss a
+gap in a new API or advertised fix solely because the older implementation also
+failed that scenario; check the actual promised behavior and supported callers.
+Do not expand that promise beyond the documented scope. For domain findings,
+require high confidence and a concrete trigger,
 consequence, and location in changed code. Verify suspected issues against callers
 and existing tests before reporting them. Keep each finding concise and suggest
 the smallest correction. Do not repeat compiler, formatter, or linter diagnostics.
