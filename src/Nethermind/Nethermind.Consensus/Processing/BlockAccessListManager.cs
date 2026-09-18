@@ -11,7 +11,6 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -70,10 +69,6 @@ public partial class BlockAccessListManager(
     private readonly bool _hasParentReaderPool =
         (prewarmerEnvFactory is not null && preBlockCaches is not null)
         || readOnlyTxProcessingEnvFactory is not null;
-
-    // Snapshot point for parallel workers' parent-reader scopes. Set only when
-    // ParallelExecutionEnabled; null on the sequential path so a stray scope opens fail fast.
-    private Hash256? _parentStateRoot;
 
     // Column-oriented validation index used by the fast path in ValidateBlockAccessList. The
     // suggested index is built once at PrepareForProcessing; the generated index mirrors its
@@ -168,7 +163,6 @@ public partial class BlockAccessListManager(
                 _suggestedChargeableStorageReads = suggestedReads;
             }
             _gasRemaining = suggestedBlock.GasUsed;
-            _parentStateRoot = ParallelExecutionEnabled ? stateProvider.StateRoot : null;
         }
 
         _balWarmupTask = StartBalReadWarmup(suggestedBlock);
@@ -224,7 +218,7 @@ public partial class BlockAccessListManager(
                 ? _parallelTxProcessorWithWorldStateManager!.Value
                 : _sequentialTxProcessorWithWorldStateManager.Value;
             CheckInitialized();
-            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _parentStateRoot, _readPlan);
+            _txProcessorWithWorldStateManager.Setup(block, _blockExecutionContext.Value, _readPlan);
         }
     }
 
@@ -314,7 +308,6 @@ public partial class BlockAccessListManager(
         _txProcessorWithWorldStateManager = null;
         _blockExecutionContext = null;
         _gasRemaining = null;
-        _parentStateRoot = null;
         GeneratedBlockAccessList.Reset();
         DisposableExtensions.DisposeAndNull(ref _suggestedValidationIndex);
         DisposableExtensions.DisposeAndNull(ref _generatedValidationIndex);

@@ -24,8 +24,14 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public bool IsInScope => State.IsInScope;
     public IWorldStateScopeProvider ScopeProvider => State.ScopeProvider;
 
-    public IDisposable BeginScope(BlockHeader? baseBlock)
-        => State.BeginScope(baseBlock);
+    public bool TryBeginScope(BlockHeader? baseBlock, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IDisposable? scopeCloser)
+        => State.TryBeginScope(baseBlock, out scopeCloser);
+
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out IDisposable? scopeCloser)
+        => State.TryBeginScopeAtTarget(targetBlock, out scopeCloser);
+
+    public bool HasStateForTargetBlock(BlockHeader targetBlock)
+        => State.HasStateForTargetBlock(targetBlock);
 
     public Task HintBal(ReadOnlyBlockAccessList bal)
         => State.HintBal(bal);

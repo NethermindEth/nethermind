@@ -42,7 +42,9 @@ public class ProofRpcModuleTests
     public async Task Setup()
     {
         _dbProvider = await TestMemDbProvider.InitAsync();
-        _worldStateManager = TestWorldStateFactory.CreateWorldStateManagerForTest(_dbProvider, LimboLogs.Instance);
+        // The proof tests target block 1, whose parent is the genesis header built below.
+        TestStateHeaderProvider stateHeaderProvider = new();
+        _worldStateManager = TestWorldStateFactory.CreateWorldStateManagerForTest(_dbProvider, stateHeaderProvider, LimboLogs.Instance);
 
         Hash256 stateRoot;
         IWorldState worldState = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
@@ -60,6 +62,7 @@ public class ProofRpcModuleTests
             .WithTransactions(receiptStorage)
             .OfChainLength(10);
         _blockTree = blockTreeBuilder.TestObject;
+        stateHeaderProvider.Parent = _blockTree.FindHeader(0, BlockTreeLookupOptions.None);
 
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider()))

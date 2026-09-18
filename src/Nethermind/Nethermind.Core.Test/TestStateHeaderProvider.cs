@@ -1,0 +1,25 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+
+namespace Nethermind.Core.Test;
+
+public sealed class TestStateHeaderProvider : IStateHeaderProvider
+{
+    public static TestStateHeaderProvider Instance { get; } = new();
+
+    public BlockHeader? Parent { get; set; }
+    public BlockHeader? LastTarget { get; private set; }
+
+    public TestStateHeaderProvider() { }
+
+    public BlockHeader? FindParentHeader(BlockHeader target)
+    {
+        LastTarget = target;
+        return Parent;
+    }
+
+    public ulong FinalizedBlockNumber => 0;
+
+    public BlockHeader? GetFinalizedHeader(ulong blockNumber) => null;
+}
