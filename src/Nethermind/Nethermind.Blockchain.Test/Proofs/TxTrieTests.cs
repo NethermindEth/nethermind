@@ -40,8 +40,8 @@ public class TxTrieTests(bool useEip2718)
         Array.Fill(values, new byte[otherLength]);
         values[1] = new byte[500];
         IndexedTrieRoot.Calculator<byte[], TestValueEncoder> calculator = new(values, new(multiBlock));
-        Assert.That(calculator.CanBatchMultiBlockLeavesSequentially(),
-            Is.EqualTo(Avx2.IsSupported && otherLength is > 124 and <= 2164));
+        Assert.That(calculator.TryGetMultiBlockLengths(new int[count]),
+            Is.EqualTo(otherLength is > 124 and <= 2164));
 
         using TrackingCappedArrayPool pool = new();
         TxTrie expected = new(ReadOnlySpan<Transaction>.Empty, bufferPool: pool, canBeParallel: false);
@@ -49,6 +49,32 @@ public class TxTrieTests(bool useEip2718)
         expected.UpdateRootHash(canBeParallel: false);
         Assert.That(calculator.Calculate(minItemsForParallel: IndexedTrieRoot.MinReceiptsForParallelRootHash),
             Is.EqualTo(expected.RootHash));
+    }
+
+    [Test]
+    public void Sequential_multi_block_batch_computes_each_length_once(
+        [Values(8, 16, 17, 64)] int count, [Values] bool multiBlock)
+    {
+        if (!Avx2.IsSupported) Assert.Ignore("Requires AVX2.");
+        byte[][] values = new byte[count][];
+        int[] lengthCalls = new int[count];
+        using TrackingCappedArrayPool pool = new();
+        TxTrie expected = new(ReadOnlySpan<Transaction>.Empty, bufferPool: pool, canBeParallel: false);
+        for (int i = 0; i < count; i++)
+        {
+            byte[] value = new byte[125 + i * 17];
+            value[0] = (byte)i;
+            values[i] = value;
+            expected.Set(Rlp.Encode(i).Bytes, value);
+        }
+        expected.UpdateRootHash(canBeParallel: false);
+
+        Hash256 actual = new IndexedTrieRoot.Calculator<byte[], TestValueEncoder>(values, new(multiBlock, lengthCalls)).Calculate();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lengthCalls, Is.All.EqualTo(1));
+            Assert.That(actual, Is.EqualTo(expected.RootHash));
+        }
     }
 
     [Test]
@@ -85,11 +111,15 @@ public class TxTrieTests(bool useEip2718)
         }
     }
 
-    private readonly struct TestValueEncoder(bool multiBlock) : IndexedTrieRoot.IValueEncoder<byte[]>
+    private readonly struct TestValueEncoder(bool multiBlock, int[]? lengthCalls = null) : IndexedTrieRoot.IValueEncoder<byte[]>
     {
         public IndexedTrieRoot.LeafBatching Batching => multiBlock ? IndexedTrieRoot.LeafBatching.MultiBlock : IndexedTrieRoot.LeafBatching.Encoded;
         public ReadOnlySpan<byte> GetEncodedValue(byte[] item) => multiBlock ? default : item;
-        public int GetLength(byte[] item) => item.Length;
+        public int GetLength(byte[] item)
+        {
+            if (lengthCalls is not null) lengthCalls[item[0]]++;
+            return item.Length;
+        }
         public void Encode<TWriter>(ref TWriter writer, byte[] item)
             where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(item);
     }

@@ -25,6 +25,7 @@ namespace Nethermind.State.Proofs;
 internal static class IndexedTrieRoot
 {
     internal const int LeafBatchSize = 16;
+    private const int PrecomputedBranchLength = -Keccak.Size;
     private const int Avx2HashBatchSize = 4;
     private const int MaxHashBatchSize = 8;
     private const int KeccakRate = 136;
@@ -82,7 +83,6 @@ internal static class IndexedTrieRoot
         ReadOnlySpan<NodeReference> leaves = default) where TEncoder : struct, IValueEncoder<T>
     {
         private const int BranchPrefixLength = 3;
-        private const int PrecomputedBranchLength = -Keccak.Size;
         private static int BranchBatchSize => Avx512F.IsSupported ? MaxHashBatchSize : Avx2HashBatchSize;
         private const int BranchChildCount = 16;
         private const int FullBranchLength = KeccakHash.Hash532InputLength;
@@ -96,19 +96,26 @@ internal static class IndexedTrieRoot
         public Hash256 Calculate(bool canBeParallel = true, int minItemsForParallel = MinItemsForParallelRootHash)
         {
             if (_items.IsEmpty) return Keccak.EmptyTreeHash;
-            if (CanBatchMultiBlockLeavesSequentially()) return CalculateMultiBlockSequential();
+            if (Avx2.IsSupported && _leaves.IsEmpty && _items.Length is >= MaxHashBatchSize and <= MinItemsForParallelRootHash
+                && encoder.Batching is LeafBatching.Encoded or LeafBatching.MultiBlock)
+            {
+                Span<int> lengths = stackalloc int[_items.Length];
+                if (TryGetMultiBlockLengths(lengths)) return CalculateMultiBlockSequential(lengths);
+            }
             // One batch is the floor: below it there is no fan-out, and a lone leaf gets the wrong depth.
             if (!canBeParallel || RuntimeInformation.IsSingleProcessor || _items.Length <= Math.Max(LeafBatchSize, minItemsForParallel))
                 return CalculateSequential();
             return CalculateParallel();
         }
 
-        internal bool CanBatchMultiBlockLeavesSequentially()
+        internal bool TryGetMultiBlockLengths(Span<int> lengths)
         {
-            if (!Avx2.IsSupported || !_leaves.IsEmpty || _items.Length is < MaxHashBatchSize or > MinItemsForParallelRootHash)
-                return false;
-            foreach (T item in _items)
-                if (!CanBatchMultiBlockLeaves(item)) return false;
+            for (int position = 0; position < _items.Length; position++)
+            {
+                int length = encoder.GetLength(_items[GetIndex(position)]);
+                if (length is <= MaxSingleBlockValueLength or > MaxMultiBlockValueLength) return false;
+                lengths[position] = length;
+            }
             return true;
         }
 
@@ -183,16 +190,11 @@ internal static class IndexedTrieRoot
             return new Calculator<T, TEncoder>(_items, encoder, references.AsSpan()).CalculateSequential();
         }
 
-        private bool CanBatchMultiBlockLeaves(T item)
-            => encoder.Batching is LeafBatching.Encoded or LeafBatching.MultiBlock
-                && encoder.GetLength(item)
-                is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength;
-
-        private Hash256 CalculateMultiBlockSequential()
+        private Hash256 CalculateMultiBlockSequential(ReadOnlySpan<int> lengths)
         {
             using ArrayPoolListRef<NodeReference> references = new(_items.Length, _items.Length);
             for (int start = 0; start < _items.Length; start += LeafBatchSize)
-                CalculateMultiBlockLeafBatch(start, Math.Min(start + LeafBatchSize, _items.Length), references.AsSpan());
+                CalculateMultiBlockLeafBatch(start, Math.Min(start + LeafBatchSize, _items.Length), references.AsSpan(), lengths);
             return new Calculator<T, TEncoder>(_items, encoder, references.AsSpan()).CalculateSequential();
         }
 
@@ -251,7 +253,7 @@ internal static class IndexedTrieRoot
         }
 
         [SkipLocalsInit]
-        private void CalculateMultiBlockLeafBatch(int start, int end, Span<NodeReference> references)
+        private void CalculateMultiBlockLeafBatch(int start, int end, Span<NodeReference> references, ReadOnlySpan<int> precomputedLengths = default)
         {
             int batchSize = Avx512F.IsSupported ? MaxHashBatchSize : Avx2HashBatchSize;
             const int metadataLength = LeafBatchSize * sizeof(int);
@@ -276,7 +278,9 @@ internal static class IndexedTrieRoot
                     depth = Math.Max(depth, CommonPrefix(key, GetKey(position + 1), 0));
                 T item = _items[GetIndex(position)];
                 ReadOnlySpan<byte> value = encoder.GetEncodedValue(item);
-                int valueLength = value.IsEmpty ? encoder.GetLength(item) : value.Length;
+                int valueLength = precomputedLengths.IsEmpty
+                    ? value.IsEmpty ? encoder.GetLength(item) : value.Length
+                    : precomputedLengths[position];
                 paddedLengths[slot] = 0;
                 if (valueLength <= MaxSingleBlockValueLength || valueLength > MaxMultiBlockValueLength)
                 {
@@ -641,7 +645,7 @@ internal static class IndexedTrieRoot
         {
             ValueHash256 hash = default;
             hashes.Slice(j * Keccak.Size, Keccak.Size).CopyTo(hash.BytesAsSpan);
-            references[positions[j]] = new NodeReference(hash, -Keccak.Size);
+            references[positions[j]] = new NodeReference(hash, PrecomputedBranchLength);
         }
     }
 
