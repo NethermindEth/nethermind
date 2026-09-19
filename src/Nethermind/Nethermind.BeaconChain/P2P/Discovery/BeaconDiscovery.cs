@@ -25,6 +25,7 @@ using Nethermind.Kademlia;
 using Nethermind.Libp2p.Core;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Discovery.Discv5.Kademlia;
@@ -352,7 +353,8 @@ public sealed class BeaconDiscovery(
     }
 
     /// <summary>Builds the local ENR and the private discv5 service graph, both of which need the resolved external IP.</summary>
-    private NettyDiscoveryV5Handler CreateDiscv5Services(IPAddress externalIp)
+    /// <remarks>Internal so a test can resolve the graph without binding a socket or reaching bootnodes.</remarks>
+    internal NettyDiscoveryV5Handler CreateDiscv5Services(IPAddress externalIp)
     {
         CryptoRandom cryptoRandom = new();
         PrivateKey nodeKey = LoadOrCreateIdentity(cryptoRandom);
@@ -369,6 +371,10 @@ public sealed class BeaconDiscovery(
             .AddKeyedSingleton<IProtectedPrivateKey>(IProtectedPrivateKey.NodeKey, new NodeKeyWrapper(nodeKey))
             .AddSingleton<INodeRecordProvider>(localEnr)
             .AddSingleton<IDiscv5RecordFilter>(AcceptAllDiscv5RecordFilter.Instance)
+            .AddSingleton<IForkInfo>(PermissiveForkInfo.Instance)
+            // The same resolver the local ENR was built from, so the adapter advertises that one address.
+            .AddSingleton(ipResolver)
+            .AddSingleton(new NetworkListenerState(new NetworkConfig(), ipResolver, logManager))
             .Build();
 
         _localEnr = localEnr;

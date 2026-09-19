@@ -18,6 +18,7 @@ using Nethermind.Db;
 using Nethermind.Libp2p.Core;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Enr;
 using NUnit.Framework;
 using KeyType = Nethermind.Libp2p.Core.Dto.KeyType;
@@ -133,6 +134,24 @@ public class BeaconDiscoveryTests
             NodeRecord record = NodeRecord.FromEnrString(enr);
             Assert.That(record.TryGetDiscoveryEndpoint(out IPEndPoint? discoveryEndpoint), Is.True, enr);
             Assert.That(discoveryEndpoint!.Port, Is.GreaterThan(0), enr);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Discv5_service_graph_resolves_without_binding_a_socket()
+    {
+        BeaconChainConfig config = new() { Discv5Port = 0 };
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
+        await using BeaconDiscovery discovery = new(config, BeaconChainSpec.Mainnet, store, new FixedIPResolver(PublicIp), Timestamper.Default, LimboLogs.Instance);
+
+        // Resolving the private container is what regressed; Start would mask it behind a bind and live traffic.
+        NettyDiscoveryV5Handler handler = discovery.CreateDiscv5Services(PublicIp);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(handler, Is.Not.Null);
+            Assert.That(discovery.LocalNodeRecord, Is.Not.Null);
         }
     }
 
