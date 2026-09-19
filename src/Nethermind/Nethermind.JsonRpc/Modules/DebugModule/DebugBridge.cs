@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipelines;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -32,6 +33,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugBridge : IDebugBridge
 {
+    // Debug bridges are scoped per RPC module, but rewinds and cleanup mutate the same tree.
+    private static readonly ConditionalWeakTable<IBlockTree, StrongBox<int>> HeadResetStates = [];
     private readonly ILogger _logger;
     private readonly IConfigProvider _configProvider;
     private readonly IGethStyleTracer _tracer;
@@ -108,25 +111,39 @@ public class DebugBridge : IDebugBridge
 
     public bool UpdateHeadBlock(Hash256 blockHash)
     {
-        BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
-        if (header is null)
+        StrongBox<int> resetState = HeadResetStates.GetOrCreateValue(_blockTree);
+        if (Interlocked.CompareExchange(ref resetState.Value, 1, 0) != 0)
         {
-            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockHash}: block is unknown.");
+            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockHash}: another head reset is in progress.");
             return false;
         }
 
-        // The scope provider rejects read-only flat history; the reader enforces trie pruning retention.
-        if (!_worldStateManager.GlobalWorldState.HasRoot(header)
-            || !_worldStateManager.GlobalStateReader.HasStateForBlock(header))
+        try
         {
-            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockHash}: state is unavailable for block processing.");
-            return false;
+            BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
+            if (header is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockHash}: block is unknown.");
+                return false;
+            }
+
+            // The scope provider rejects read-only flat history; the reader enforces trie pruning retention.
+            if (!_worldStateManager.GlobalWorldState.HasRoot(header)
+                || !_worldStateManager.GlobalStateReader.HasStateForBlock(header))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockHash}: state is unavailable for block processing.");
+                return false;
+            }
+
+            if (!_blockTree.TryRewindHead(blockHash)) return false;
+
+            _worldStateManager.DropStateNotReachableFrom(header);
+            return true;
         }
-
-        if (!_blockTree.TryRewindHead(blockHash)) return false;
-
-        _worldStateManager.DropStateNotReachableFrom(header);
-        return true;
+        finally
+        {
+            Volatile.Write(ref resetState.Value, 0);
+        }
     }
 
     public Task<bool> MigrateReceipts(ulong from, ulong to) => _receiptsMigration.Run(from, to);

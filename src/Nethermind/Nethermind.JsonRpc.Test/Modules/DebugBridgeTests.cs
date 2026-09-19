@@ -193,15 +193,83 @@ public class DebugBridgeTests
         }
     }
 
+    [Test]
+    public async Task Head_reset_refuses_overlapping_cleanup_across_modules([Values] bool firstByHash, [Values] bool cleanupThrows)
+    {
+        IPersistenceManager persistence = Substitute.For<IPersistenceManager>();
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true }))
+            .AddSingleton(persistence)
+            .Build();
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+        Block head = Build.A.Block.WithNumber(0).TestObject;
+        AddToMainChain(blockTree, head);
+        persistence.GetCurrentPersistedStateId().Returns(new StateId(head.Header));
+        IRpcModuleFactory<IDebugRpcModule> factory = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>();
+        IDebugRpcModule first = factory.Create();
+        IDebugRpcModule second = factory.Create();
+        TaskCompletionSource cleanupEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim releaseCleanup = new();
+        int cleanupCalls = 0;
+        persistence.When(manager => manager.DropStateNotReachableFrom(Arg.Any<StateId>()))
+            .Do(_ =>
+            {
+                if (Interlocked.Increment(ref cleanupCalls) != 1) return;
+                cleanupEntered.SetResult();
+                if (!releaseCleanup.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("cleanup was not released");
+                if (cleanupThrows) throw new InvalidOperationException("cleanup failure");
+            });
+        Task<Exception?> firstReset = Task.Run<Exception?>(() =>
+        {
+            try
+            {
+                Assert.That(ResetHead(first, head, firstByHash).Data, Is.True);
+                return null;
+            }
+            catch (InvalidOperationException exception)
+            {
+                return exception;
+            }
+        });
+        bool? overlappingResult = null;
+        int callsWhileBlocked = 0;
+        Exception? cleanupFailure;
+        try
+        {
+            await cleanupEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            overlappingResult = ResetHead(second, head, !firstByHash).Data;
+            callsWhileBlocked = Volatile.Read(ref cleanupCalls);
+        }
+        finally
+        {
+            releaseCleanup.Set();
+            cleanupFailure = await firstReset;
+        }
+        bool retryResult = ResetHead(second, head, !firstByHash).Data;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(overlappingResult, Is.False);
+            Assert.That(callsWhileBlocked, Is.EqualTo(1));
+            Assert.That(cleanupFailure?.Message, Is.EqualTo(cleanupThrows ? "cleanup failure" : null));
+            Assert.That(retryResult, Is.True, "the gate must be released after success or failure");
+            Assert.That(cleanupCalls, Is.EqualTo(2));
+            Assert.That(blockTree.Head!.Hash, Is.EqualTo(head.Hash));
+            Assert.That(container.Resolve<IDbProvider>().BlockInfosDb.Get(Keccak.Zero.Bytes), Is.EqualTo(head.Hash!.Bytes.ToArray()));
+        }
+    }
+
     private static void AssertCalls(Action assertion) => Assert.That(assertion, Throws.Nothing);
 
     private static ResultWrapper<bool> ResetHead(IContainer container, Block target, bool byHash)
     {
         IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
-        return byHash
-            ? debug.debug_resetHead(target.Hash!)
-            : debug.debug_setHead(new BlockParameter(target.Number));
+        return ResetHead(debug, target, byHash);
     }
+
+    private static ResultWrapper<bool> ResetHead(IDebugRpcModule debug, Block target, bool byHash) => byHash
+        ? debug.debug_resetHead(target.Hash!)
+        : debug.debug_setHead(new BlockParameter(target.Number));
 
     private static void AddToMainChain(IBlockTree blockTree, Block block)
     {
@@ -320,7 +388,7 @@ public class DebugBridgeTests
             worldStateManager,
             logManager);
 
-        List<(Hash256 Target, Hash256? LiveHead, byte[]? PersistedHead)> cleanupHeads = [];
+        List<(Hash256 CleanupTarget, Hash256? LiveHead, byte[]? PersistedHead)> cleanupHeads = [];
         worldStateManager.When(manager => manager.DropStateNotReachableFrom(Arg.Any<BlockHeader>()))
             .Do(call => cleanupHeads.Add((call.Arg<BlockHeader>().Hash!, blockTree.Head?.Hash, builder.BlockInfoDb.Get(Keccak.Zero.Bytes))));
 
