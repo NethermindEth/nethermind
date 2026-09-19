@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -44,7 +45,7 @@ namespace Nethermind.TxPool.Filters
                 if (!ecdsa.TryRecoverAddress(tx, out Address? senderAddress))
                 {
                     Metrics.PendingTransactionsUnresolvableSender++;
-                    if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, no sender.");
+                    if (logger.IsTrace) TraceUnresolvableSender(tx);
                     return AcceptTxResult.FailedToResolveSender;
                 }
                 tx.SenderAddress = senderAddress;
@@ -89,8 +90,16 @@ namespace Nethermind.TxPool.Filters
         {
             Metrics.PendingTransactionsMalformed++;
             // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
-            if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, invalid transaction: {result}");
-            return AcceptTxResult.Invalid.WithMessage($"{result}");
+            if (logger.IsTrace) TraceMalformed(tx, result);
+            return AcceptTxResult.Invalid.WithMessage(result.ToString());
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceUnresolvableSender(Transaction tx) =>
+            logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, no sender.");
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void TraceMalformed(Transaction tx, ValidationResult result) =>
+            logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, invalid transaction: {result}");
     }
 }
