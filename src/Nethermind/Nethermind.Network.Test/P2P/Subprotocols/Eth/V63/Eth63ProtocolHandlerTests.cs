@@ -14,6 +14,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
@@ -141,6 +142,36 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
             _ctx.ProtocolHandler.HandleMessage(getReceiptsPacket);
             _ctx.Session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(r => r.TxReceipts.Count == expectedCount));
+        }
+
+        [Test]
+        public void Should_not_exceed_hard_message_size_limit_for_receipts()
+        {
+            // Logs without topics or data are the cheapest way to build a receipt whose encoded size is
+            // dominated by bytes a per-field heuristic does not see.
+            LogEntry[] logs = new LogEntry[512];
+            for (int i = 0; i < logs.Length; i++)
+            {
+                logs[i] = new LogEntry(TestItem.AddressA, [], []);
+            }
+
+            TxReceipt[] receipts = [Build.A.Receipt.WithLogs(logs).TestObject];
+            _ctx.SyncServer.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
+
+            ReceiptsMessage? response = null;
+            _ctx.Session.When(s => s.DeliverMessage(Arg.Any<ReceiptsMessage>())).Do(c => response = (ReceiptsMessage)c[0]);
+
+            using GetReceiptsMessage getReceiptsMessage = new(
+                RepeatPooled(Keccak.Zero, NethermindSyncLimits.MaxHashesFetch));
+            Packet getReceiptsPacket =
+                new("eth", Eth63MessageCode.GetReceipts, _ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
+
+            _ctx.ProtocolHandler.HandleMessage(getReceiptsPacket);
+
+            Assert.That(response, Is.Not.Null);
+            Assert.That(response.TxReceipts, Is.Not.Empty);
+            Assert.That(_ctx._receiptMessageSerializer.GetLength(response, out _),
+                Is.LessThanOrEqualTo((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
         }
 
         private class Context

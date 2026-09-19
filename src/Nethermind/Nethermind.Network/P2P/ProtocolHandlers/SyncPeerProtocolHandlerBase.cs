@@ -414,14 +414,23 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 {
                     break;
                 }
-                sizeEstimate += MessageSizeEstimator.EstimateSize(blockTxReceipts);
 
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                ulong blockSize = MessageSizeEstimator.EstimateSize(blockTxReceipts);
+
+                // Cap the message size; return the prefix (receipts match request hashes positionally).
+                if (sizeEstimate + blockSize > HardOutgoingReceiptsMessageSizeLimit)
                 {
                     break;
                 }
 
                 txReceipts.Add(blockTxReceipts);
+                sizeEstimate += blockSize;
+
+                // Soft limit keeps the common-case response small.
+                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                {
+                    break;
+                }
             }
 
             return Task.FromResult(new ReceiptsMessage(txReceipts));

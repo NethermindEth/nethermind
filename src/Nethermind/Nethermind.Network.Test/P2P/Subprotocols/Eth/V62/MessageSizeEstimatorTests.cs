@@ -90,10 +90,30 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Estimate_tx_receipt_size()
+        public void Estimate_tx_receipt_size_matches_encoded_length()
         {
             TxReceipt txReceipt = Build.A.Receipt.TestObject;
-            Assert.That(MessageSizeEstimator.EstimateSize(txReceipt), Is.EqualTo(256 + 32));
+            Assert.That(MessageSizeEstimator.EstimateSize(txReceipt),
+                Is.EqualTo((ulong)Rlp.GetDecoderOrThrow<TxReceipt>().GetLength(txReceipt, RlpBehaviors.None)));
+        }
+
+        [Test]
+        public void Estimate_tx_receipt_counts_logs_without_topics_or_data()
+        {
+            const int logCount = 100;
+            LogEntry[] logs = new LogEntry[logCount];
+            for (int i = 0; i < logCount; i++)
+            {
+                logs[i] = new LogEntry(TestItem.AddressA, [], []);
+            }
+
+            ulong estimate = MessageSizeEstimator.EstimateSize(Build.A.Receipt.WithLogs(logs).TestObject);
+            ulong baseline = MessageSizeEstimator.EstimateSize(Build.A.Receipt.WithLogs().TestObject);
+
+            // Independent of the estimator internals: such a log still encodes its 20-byte address plus
+            // RLP framing, so the estimate must grow with the log count — the previous "data length plus
+            // topics" heuristic counted these logs as zero bytes.
+            Assert.That(estimate - baseline, Is.GreaterThanOrEqualTo((ulong)(logCount * Address.Size)));
         }
     }
 }
