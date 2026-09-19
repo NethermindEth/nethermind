@@ -1611,6 +1611,31 @@ public class RetryCacheTests
     }
 
     [Test]
+    public void HandlerBag_growth_and_reuse_preserve_pending_handlers([Values(1, 4, 9)] int count)
+    {
+        HandlerBag<ResourceRequestMessage> bag = new();
+        TestHandler[] handlers = new TestHandler[count + 1];
+        for (int i = 0; i < handlers.Length; i++) handlers[i] = new();
+
+        for (int cycle = 0; cycle < 2; cycle++)
+        {
+            long generation = bag.Activate();
+            for (int i = 0; i < count; i++)
+            {
+                Assert.That(bag.Add(handlers[i], handlers.Length, generation), Is.EqualTo(HandlerBagAddResult.Added));
+            }
+
+            Assert.That(bag.TryTake(generation, out IMessageHandler<ResourceRequestMessage> taken, out _), Is.True);
+            Assert.That(bag.Add(taken, handlers.Length, generation), Is.EqualTo(HandlerBagAddResult.Duplicate));
+            Assert.That(bag.Add(handlers[count], handlers.Length, generation), Is.EqualTo(HandlerBagAddResult.Added));
+            List<IMessageHandler<ResourceRequestMessage>> remaining = TakeAll(bag, generation);
+            remaining.Add(taken);
+            Assert.That(remaining, Is.EquivalentTo(handlers));
+            bag.Reset();
+        }
+    }
+
+    [Test]
     public void Announced_RetryHandlerReceivesCorrectResourceId()
     {
         int receivedResourceId = -1;

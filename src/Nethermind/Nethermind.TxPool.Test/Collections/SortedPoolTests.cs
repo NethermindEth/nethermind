@@ -135,6 +135,33 @@ namespace Nethermind.TxPool.Test.Collections
         }
 
         [Test]
+        public void Flat_snapshot_preserves_bucket_order_and_cached_snapshot_ownership([Values] bool cacheBuckets)
+        {
+            Transaction first = _transactions[1];
+            Transaction next = Build.A.Transaction.WithSenderAddress(first.SenderAddress!).WithNonce(1).WithGasPrice(10).TestObject;
+            Transaction other = _transactions[2];
+            InsertSnapshotTransaction(next);
+            InsertSnapshotTransaction(first);
+            InsertSnapshotTransaction(other);
+            if (cacheBuckets) _sortedPool.GetProductionSnapshot();
+
+            Transaction[] snapshot = _sortedPool.GetSnapshot();
+            Assert.That(snapshot, Is.EqualTo(new[] { first, next, other }));
+            Assert.That(_sortedPool.GetSnapshot(), Is.SameAs(snapshot));
+
+            _sortedPool.TryRemove(first.Hash!);
+            Transaction[] changed = _sortedPool.GetSnapshot();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(changed, Is.EqualTo(new[] { next, other }));
+                Assert.That(snapshot, Is.EqualTo(new[] { first, next, other }));
+            }
+
+            changed[0] = other;
+            Assert.That(_sortedPool.GetProductionSnapshot()[next.SenderAddress!], Is.EqualTo(new[] { next }));
+        }
+
+        [Test]
         public void Production_snapshot_discards_evicted_buckets()
         {
             for (int i = 1; i <= Capacity; i++) InsertSnapshotTransaction(_transactions[i]);

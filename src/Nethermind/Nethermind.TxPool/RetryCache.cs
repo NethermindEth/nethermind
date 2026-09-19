@@ -1143,7 +1143,8 @@ public enum AnnounceResult
 /// </summary>
 internal sealed class HandlerBag<TMessage>
 {
-    private readonly List<IMessageHandler<TMessage>> _handlers = [];
+    private IMessageHandler<TMessage>[] _handlers = [];
+    private int _handlerCount;
     private readonly Lock _lock = new();
     private bool _active;
     private int _pendingCount;
@@ -1181,7 +1182,8 @@ internal sealed class HandlerBag<TMessage>
                 processor.Process(_handlers[i]);
             }
 
-            _handlers.Clear();
+            Array.Clear(_handlers, 0, _handlerCount);
+            _handlerCount = 0;
             _pendingCount = 0;
             return true;
         }
@@ -1197,22 +1199,26 @@ internal sealed class HandlerBag<TMessage>
             if (!_active || generation != _generation)
                 return HandlerBagAddResult.Inactive;
 
-            if (_handlers.Count >= maxCount)
+            ReadOnlySpan<IMessageHandler<TMessage>> handlers = new(_handlers, 0, _handlerCount);
+            if (handlers.Length >= maxCount)
                 return HandlerBagAddResult.Full;
 
-            for (int i = 0; i < _handlers.Count; i++)
+            for (int i = 0; i < handlers.Length; i++)
             {
-                if (ReferenceEquals(_handlers[i], handler))
+                if (ReferenceEquals(handlers[i], handler))
                 {
                     return HandlerBagAddResult.Duplicate;
                 }
             }
 
-            _handlers.Add(handler);
-            if (_pendingCount < _handlers.Count - 1)
+            if (_handlerCount == _handlers.Length)
             {
-                (_handlers[_pendingCount], _handlers[^1]) = (_handlers[^1], _handlers[_pendingCount]);
+                Array.Resize(ref _handlers, Math.Min(maxCount, Math.Max(4, _handlerCount * 2)));
             }
+
+            _handlers[_handlerCount] = _handlers[_pendingCount];
+            _handlers[_pendingCount] = handler;
+            _handlerCount++;
 
             _pendingCount++;
             return HandlerBagAddResult.Added;
@@ -1301,7 +1307,8 @@ internal sealed class HandlerBag<TMessage>
         {
             _active = false;
             _pendingCount = 0;
-            _handlers.Clear();
+            Array.Clear(_handlers, 0, _handlerCount);
+            _handlerCount = 0;
         }
     }
 }

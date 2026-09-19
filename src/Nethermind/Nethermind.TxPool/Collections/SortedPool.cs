@@ -122,11 +122,8 @@ namespace Nethermind.TxPool.Collections
             int index = 0;
             foreach (KeyValuePair<TGroupKey, EnhancedSortedSet<TValue>> bucket in _buckets)
             {
-                foreach (TValue value in bucket.Value)
-                {
-                    snapshot[index] = value;
-                    index++;
-                }
+                CopyBucketTo(bucket.Value, snapshot.AsSpan(index, bucket.Value.Count));
+                index += bucket.Value.Count;
             }
 
             Volatile.Write(ref _snapshot, snapshot);
@@ -189,17 +186,31 @@ namespace Nethermind.TxPool.Collections
 
         private static TValue[] CopyBucketToArray(EnhancedSortedSet<TValue> bucket)
         {
-            // Avoid allocating the SortedSet enumerator's traversal stack for a single item.
-            if (bucket.Count == 1) return [bucket.Min!];
-
             TValue[] snapshot = new TValue[bucket.Count];
+            CopyBucketTo(bucket, snapshot);
+            return snapshot;
+        }
+
+        private static void CopyBucketTo(EnhancedSortedSet<TValue> bucket, Span<TValue> destination)
+        {
+            if (bucket is SnapshotBucket { Snapshot: not null } cached)
+            {
+                cached.Snapshot.AsSpan().CopyTo(destination);
+                return;
+            }
+
+            // Avoid allocating the SortedSet enumerator's traversal stack for a single item.
+            if (bucket.Count == 1)
+            {
+                destination[0] = bucket.Min!;
+                return;
+            }
+
             int index = 0;
             foreach (TValue value in bucket)
             {
-                snapshot[index++] = value;
+                destination[index++] = value;
             }
-
-            return snapshot;
         }
 
         /// <summary>
