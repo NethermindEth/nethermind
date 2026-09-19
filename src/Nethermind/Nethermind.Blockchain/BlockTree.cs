@@ -53,6 +53,7 @@ namespace Nethermind.Blockchain
         private readonly ISyncConfig _syncConfig;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
         private readonly IStateBoundary _stateBoundary;
+        private readonly BlockTreeMutationLock _mutationLock;
 
         public BlockHeader? Genesis { get; protected set; }
         public Block? Head { get; private set; }
@@ -118,7 +119,8 @@ namespace Nethermind.Blockchain
             ISyncConfig? syncConfig,
             IStateBoundary? stateBoundary,
             ILogManager? logManager,
-            ulong genesisBlockNumber = 0)
+            ulong genesisBlockNumber = 0,
+            BlockTreeMutationLock? mutationLock = null)
         {
             Logger = logManager?.GetClassLogger<BlockTree>() ?? throw new ArgumentNullException(nameof(logManager));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
@@ -132,6 +134,7 @@ namespace Nethermind.Blockchain
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
             _stateBoundary = stateBoundary ?? throw new ArgumentNullException(nameof(stateBoundary));
+            _mutationLock = mutationLock ?? new BlockTreeMutationLock();
             _oldestBlock = syncConfig.AncientBodiesBarrierCalc;
 
             _genesisBlockNumber = genesisBlockNumber;
@@ -982,6 +985,8 @@ namespace Nethermind.Blockchain
 
         public bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, params ReadOnlySpan<Block> preloadedBlocks)
         {
+            if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation)) return false;
+            using BlockTreeMutationLock.Scope mutationScope = mutation;
             PreloadedBlockLookup cache = PreloadedBlockLookup.Build(preloadedBlocks);
 
             // The head must have a body to be moved onto the main chain - preloaded by the caller or already in
@@ -1474,6 +1479,8 @@ namespace Nethermind.Blockchain
         /// <inheritdoc/>
         public bool TryRewindHead(Hash256 blockHash)
         {
+            if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation)) return false;
+            using BlockTreeMutationLock.Scope mutationScope = mutation;
             Block? block = FindBlock(blockHash, BlockTreeLookupOptions.None);
             if (block?.Hash is null)
             {
@@ -1864,6 +1871,21 @@ namespace Nethermind.Blockchain
         /// <param name="force">Should it force of deletion of valid blocks</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="startNumber"/> ot <paramref name="endNumber"/> do not satisfy the slice position rules</exception>
         public int DeleteChainSlice(in ulong startNumber, ulong? endNumber = null, bool force = false)
+        {
+            if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation)) throw new InvalidOperationException("Another chain mutation is in progress.");
+            using BlockTreeMutationLock.Scope mutationScope = mutation;
+            BlockAcceptingNewBlocks();
+            try
+            {
+                return DeleteChainSliceCore(startNumber, endNumber, force);
+            }
+            finally
+            {
+                ReleaseAcceptingNewBlocks();
+            }
+        }
+
+        private int DeleteChainSliceCore(ulong startNumber, ulong? endNumber, bool force)
         {
             int deleted = 0;
             endNumber ??= BestKnownNumber;

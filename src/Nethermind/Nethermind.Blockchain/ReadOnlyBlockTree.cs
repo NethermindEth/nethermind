@@ -66,8 +66,7 @@ namespace Nethermind.Blockchain
 
         /// <inheritdoc/>
         public bool TryRewindHead(Hash256 blockHash) =>
-            // Debug RPCs use this wrapper to rewind the live tree.
-            _wrapped.TryRewindHead(blockHash);
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(TryRewindHead)} calls");
 
         public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
 

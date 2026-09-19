@@ -22,12 +22,12 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Retrieves a representation of tree branches on a given chain level (Nethermind specific).", IsImplemented = true, IsSharable = true)]
     ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number);
 
-    [JsonRpcMethod(Description = "Deletes a slice of a chain from the tree on all branches (Nethermind specific). Returns zero without deleting when another debug chain mutation is in progress.", IsImplemented = true, IsSharable = true)]
+    [JsonRpcMethod(Description = "Deletes a slice of a chain from the tree on all branches (Nethermind specific). Requires paused, drained block processing; returns a resource-unavailable error when maintenance is unsafe.", IsImplemented = true, IsSharable = true)]
     ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false);
 
-    /// <inheritdoc cref="IDebugBridge.UpdateHeadBlock" path="/member/remarks"/>
+    /// <inheritdoc cref="IDebugBridge.UpdateHeadBlock(Hash256)" path="/member/remarks"/>
     [JsonRpcMethod(
-        Description = "Rewinds to a canonical block with state available for block processing and prunes abandoned flat-state snapshots; returns false for an unknown hash or a refused rewind (Nethermind specific).",
+        Description = "Rewinds to a canonical block with state available for block processing and prunes abandoned flat-state snapshots; returns false for an unknown hash or a refused rewind (Nethermind specific). Requires paused, drained block processing.",
         IsSharable = true)]
     ResultWrapper<bool> debug_resetHead(Hash256 blockHash);
 
@@ -70,8 +70,8 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]
     ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter);
 
-    /// <inheritdoc cref="IDebugBridge.UpdateHeadBlock" path="/member/remarks"/>
-    [JsonRpcMethod(Description = "Rewinds the head to a canonical block with state available for block processing, given by number, tag or hash, and prunes abandoned flat-state snapshots. Returns false for an unknown target or a refused rewind.", IsImplemented = true, IsSharable = true)]
+    /// <inheritdoc cref="IDebugBridge.UpdateHeadBlock(Hash256)" path="/member/remarks"/>
+    [JsonRpcMethod(Description = "Rewinds the head to a canonical block with state available for block processing, given by number, tag or hash, and prunes abandoned flat-state snapshots. Returns false for an unknown target or a refused rewind (Nethermind specific). Requires paused, drained block processing.", IsImplemented = true, IsSharable = true)]
     ResultWrapper<bool> debug_setHead(BlockParameter blockParameter);
 
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]

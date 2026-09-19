@@ -67,7 +67,7 @@ public class DebugRpcModule(
     public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false) =>
         startNumber < 0
             ? ResultWrapper<int>.Fail($"startNumber must be non-negative (got {startNumber})", ErrorCodes.InvalidParams)
-            : ResultWrapper<int>.Success(debugBridge.DeleteChainSlice((ulong)startNumber, force));
+            : debugBridge.DeleteChainSlice((ulong)startNumber, force);
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions? options = null)
     {
@@ -491,14 +491,8 @@ public class DebugRpcModule(
 
     public ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter) => throw new NotImplementedException();
 
-    public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter)
-    {
-        Block? block = debugBridge.GetBlock(blockParameter);
-        if (block?.Hash is { } hash) return debug_resetHead(hash);
-
-        if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockParameter}: block is unknown.");
-        return ResultWrapper<bool>.Success(false);
-    }
+    public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter) =>
+        ResultWrapper<bool>.Success(debugBridge.UpdateHeadBlock(blockParameter));
 
     public ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key)
     {

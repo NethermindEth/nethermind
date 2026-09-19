@@ -94,7 +94,7 @@ namespace Nethermind.Blockchain
         /// clears canonical markers above the target, and resets the best-suggested pointers.
         /// The caller must check state availability before rewinding.
         /// </remarks>
-        /// <returns>Whether the head could be rewound; false if rewinding is unsupported.</returns>
+        /// <returns>Whether the head could be rewound. The default implementation returns false.</returns>
         bool TryRewindHead(Hash256 blockHash) => false;
 
         void NewOldestBlock(ulong oldestBlock);
@@ -160,7 +160,7 @@ namespace Nethermind.Blockchain
         /// <param name="wereProcessed">Whether the branch blocks have been processed (full sync) or not (fast sync).</param>
         /// <param name="forceUpdateHeadBlock">Force updating <seealso cref="IBlockFinder.Head"/> regardless of <see cref="Block.TotalDifficulty"/>.</param>
         /// <param name="preloadedBlocks">Optional blocks the caller already holds, used as a hash→block cache during the walk.</param>
-        /// <returns><value>True</value> if the chain was updated; <value>False</value> if the branch could not be walked back to the main chain (a predecessor was missing) — in which case nothing is mutated.</returns>
+        /// <returns><value>True</value> if the chain was updated; <value>False</value> if a predecessor is missing or debug maintenance overlaps the update; neither refusal mutates the chain.</returns>
         bool TryUpdateMainChain(BlockHeader newHead, bool wereProcessed, bool forceUpdateHeadBlock = false, params ReadOnlySpan<Block> preloadedBlocks);
 
         void MarkChainAsProcessed(IReadOnlyList<Block> blocks);

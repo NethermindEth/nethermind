@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipelines;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,6 +14,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Tracing;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -33,8 +33,9 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugBridge : IDebugBridge
 {
-    // Debug bridges are scoped per RPC module, but head resets and slice deletions mutate the same tree.
-    private static readonly ConditionalWeakTable<IBlockTree, StrongBox<int>> ChainMutationStates = [];
+    private readonly BlockTreeMutationLock _mutationLock;
+    private readonly IBlockProcessingPauseControl _pauseControl;
+    private readonly IBlockProcessingQueue _processingQueue;
     private readonly ILogger _logger;
     private readonly IConfigProvider _configProvider;
     private readonly IGethStyleTracer _tracer;
@@ -62,9 +63,15 @@ public class DebugBridge : IDebugBridge
         IBadBlockStore badBlockStore,
         IBlockStore blockStore,
         IWorldStateManager worldStateManager,
-        ILogManager logManager)
+        ILogManager logManager,
+        BlockTreeMutationLock mutationLock,
+        IBlockProcessingPauseControl pauseControl,
+        IBlockProcessingQueue processingQueue)
     {
         _logger = logManager.GetClassLogger<DebugBridge>();
+        _mutationLock = mutationLock;
+        _pauseControl = pauseControl;
+        _processingQueue = processingQueue;
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -107,61 +114,66 @@ public class DebugBridge : IDebugBridge
 
     public ChainLevelInfo GetLevelInfo(ulong number) => _blockTree.FindLevel(number);
 
-    public int DeleteChainSlice(ulong startNumber, bool force = false)
+    public ResultWrapper<int> DeleteChainSlice(ulong startNumber, bool force = false)
     {
-        StrongBox<int> mutationState = ChainMutationStates.GetOrCreateValue(_blockTree);
-        if (Interlocked.CompareExchange(ref mutationState.Value, 1, 0) != 0)
+        if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation, maintenance: true))
         {
-            if (_logger.IsWarn) _logger.Warn($"Cannot delete the chain slice from {startNumber}: another debug chain mutation is in progress.");
-            return 0;
+            if (_logger.IsWarn) _logger.Warn($"Cannot delete the chain slice from {startNumber}: another chain mutation is in progress.");
+            return ResultWrapper<int>.Fail("Another chain mutation is in progress.", ErrorCodes.ResourceUnavailable);
         }
+        using BlockTreeMutationLock.Scope mutationScope = mutation;
+        if (!CanMutateChain()) return ResultWrapper<int>.Fail("Pause block processing and wait for it to drain before deleting chain levels.", ErrorCodes.ResourceUnavailable);
 
-        try
+        if (startNumber > 0 && _blockTree.Head?.Number >= startNumber)
         {
-            return _blockTree.DeleteChainSlice(startNumber, force: force);
+            BlockHeader? target = _blockTree.FindHeader(startNumber - 1, BlockTreeLookupOptions.RequireCanonical);
+            if (target is null || !HasProcessingState(target))
+                return ResultWrapper<int>.Fail("The new head has no state available for block processing.", ErrorCodes.ResourceUnavailable);
         }
-        finally
-        {
-            Volatile.Write(ref mutationState.Value, 0);
-        }
+        return ResultWrapper<int>.Success(_blockTree.DeleteChainSlice(startNumber, force: force));
     }
 
-    public bool UpdateHeadBlock(Hash256 blockHash)
+    public bool UpdateHeadBlock(Hash256 blockHash) => UpdateHeadBlock(new BlockParameter(blockHash));
+
+    public bool UpdateHeadBlock(BlockParameter blockParameter)
     {
-        StrongBox<int> mutationState = ChainMutationStates.GetOrCreateValue(_blockTree);
-        if (Interlocked.CompareExchange(ref mutationState.Value, 1, 0) != 0)
+        if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation, maintenance: true))
         {
-            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockHash}: another debug chain mutation is in progress.");
+            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockParameter}: another chain mutation is in progress.");
+            return false;
+        }
+        using BlockTreeMutationLock.Scope mutationScope = mutation;
+        if (!CanMutateChain()) return false;
+
+        BlockHeader? header = _blockTree.FindHeader(blockParameter);
+        if (header is null)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockParameter}: block is unknown.");
             return false;
         }
 
-        try
+        if (!HasProcessingState(header))
         {
-            BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
-            if (header is null)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockHash}: block is unknown.");
-                return false;
-            }
-
-            // The scope provider rejects read-only flat history; the reader enforces trie pruning retention.
-            if (!_worldStateManager.GlobalWorldState.HasRoot(header)
-                || !_worldStateManager.GlobalStateReader.HasStateForBlock(header))
-            {
-                if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockHash}: state is unavailable for block processing.");
-                return false;
-            }
-
-            if (!_blockTree.TryRewindHead(blockHash)) return false;
-
-            _worldStateManager.DropStateNotReachableFrom(header);
-            return true;
+            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockParameter}: state is unavailable for block processing.");
+            return false;
         }
-        finally
-        {
-            Volatile.Write(ref mutationState.Value, 0);
-        }
+
+        if (!_blockTree.TryRewindHead(header.Hash!)) return false;
+
+        _worldStateManager.DropStateNotReachableFrom(header);
+        return true;
     }
+
+    private bool CanMutateChain()
+    {
+        if (_pauseControl.IsPaused && _processingQueue.IsEmpty && !_blockTree.IsProcessingBlock) return true;
+        if (_logger.IsWarn) _logger.Warn("Cannot mutate the chain: pause block processing and wait for it to drain.");
+        return false;
+    }
+
+    private bool HasProcessingState(BlockHeader header) =>
+        // The scope provider rejects read-only flat history; the reader enforces trie pruning retention.
+        _worldStateManager.GlobalWorldState.HasRoot(header) && _worldStateManager.GlobalStateReader.HasStateForBlock(header);
 
     public Task<bool> MigrateReceipts(ulong from, ulong to) => _receiptsMigration.Run(from, to);
 

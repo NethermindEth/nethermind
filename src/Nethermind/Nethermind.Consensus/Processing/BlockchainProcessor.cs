@@ -79,6 +79,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly CompositeBlockTracer _compositeBlockTracer = new();
     private readonly Stopwatch _stopwatch = new();
     private readonly BlockProcessingPauseGate _pauseGate = new();
+    private readonly BlockTreeMutationLock _mutationLock;
 
     /// <summary>
     ///
@@ -92,6 +93,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     /// <param name="options"></param>
     /// <param name="processingStats"></param>
     /// <param name="blockTracers">Tracers seeded into the processor's composite tracer at construction.</param>
+    /// <param name="mutationLock">The node's shared chain-maintenance lock.</param>
     public BlockchainProcessor(
         IBlockTree blockTree,
         IBranchProcessor branchProcessor,
@@ -101,10 +103,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         ILogManager logManager,
         Options options,
         IProcessingStats processingStats,
-        IEnumerable<IBlockTracer>? blockTracers = null)
+        IEnumerable<IBlockTracer>? blockTracers = null,
+        BlockTreeMutationLock? mutationLock = null)
     {
         _logger = logManager.GetClassLogger<BlockchainProcessor>();
         _blockTree = blockTree;
+        _mutationLock = mutationLock ?? new BlockTreeMutationLock();
         _branchProcessor = branchProcessor;
         _specProvider = specProvider;
         _options = options;
@@ -218,6 +222,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     public void Resume()
     {
+        using BlockTreeMutationLock.Scope mutation = _mutationLock.Enter();
         if (_pauseGate.Resume() && _logger.IsInfo) _logger.Info("Block processing resumed.");
     }
 
@@ -347,13 +352,16 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             await _pauseGate.WaitWhilePausedAsync(CancellationToken);
 
             using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
-            // Have block, switch off background GC timer
-            GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
-            IsProcessingBlock = true;
+            using (BlockTreeMutationLock.Scope mutation = _mutationLock.Enter())
+            {
+                if (_pauseGate.IsPaused) continue;
+                IsProcessingBlock = true;
+            }
             bool previousMainThread = IsBlockProcessingThread;
             IsBlockProcessingThread = IsMainProcessor;
             try
             {
+                GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
                 ProcessBlocks();
             }
             finally

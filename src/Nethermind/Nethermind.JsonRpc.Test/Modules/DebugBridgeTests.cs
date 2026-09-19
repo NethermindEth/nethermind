@@ -42,6 +42,65 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public class DebugBridgeTests
 {
+    public enum ProcessingState { Running, PausedExecuting, PausedQueued, PausedIdle }
+
+    [Test]
+    public async Task Chain_mutation_requires_paused_and_drained_processing(
+        [Values] ChainMutation mutation, [Values] ProcessingState processingState)
+    {
+        await using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        Block head = Build.A.Block.WithParent(genesis).TestObject;
+        AddToMainChain(tree, genesis);
+        AddToMainChain(tree, head);
+        IBlockProcessingPauseControl pause = container.Resolve<IBlockProcessingPauseControl>();
+        if (processingState != ProcessingState.Running) pause.Pause();
+        tree.IsProcessingBlock = processingState == ProcessingState.PausedExecuting;
+        if (processingState == ProcessingState.PausedQueued)
+            await container.Resolve<IBlockProcessingQueue>().Enqueue(head, ProcessingOptions.None);
+        IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
+
+        int result = MutateChain(debug, genesis, mutation);
+
+        bool accepted = processingState == ProcessingState.PausedIdle;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(accepted ? 1 : mutation == ChainMutation.DeleteSlice ? ErrorCodes.ResourceUnavailable : 0));
+            Assert.That(tree.Head!.Hash, Is.EqualTo(accepted ? genesis.Hash : head.Hash));
+            Assert.That(container.Resolve<IDbProvider>().BlockInfosDb.Get(Keccak.Zero.Bytes),
+                Is.EqualTo((accepted ? genesis : head).Hash!.Bytes.ToArray()));
+        }
+        if (!accepted && processingState != ProcessingState.PausedQueued)
+        {
+            tree.IsProcessingBlock = false;
+            pause.Pause();
+            Assert.That(MutateChain(debug, genesis, mutation), Is.EqualTo(1), "refusal must release the lock");
+        }
+    }
+
+    [TestCase("latest", 2UL)]
+    [TestCase("safe", 1UL)]
+    [TestCase("finalized", 0UL)]
+    [TestCase("hash", 1UL)]
+    public async Task SetHead_resolves_tags_and_hashes(string parameter, ulong expectedNumber)
+    {
+        await using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        container.Resolve<IBlockProcessingPauseControl>().Pause();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        Block safe = Build.A.Block.WithParent(genesis).TestObject;
+        Block head = Build.A.Block.WithParent(safe).TestObject;
+        foreach (Block block in new[] { genesis, safe, head }) AddToMainChain(tree, block);
+        tree.ForkChoiceUpdated(genesis.Hash, safe.Hash);
+        IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
+
+        string response = await RpcTest.TestSerializedRequest(debug, "debug_setHead", parameter == "hash" ? safe.Hash!.ToString() : parameter);
+
+        Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
+        Assert.That(tree.Head!.Number, Is.EqualTo(expectedNumber));
+    }
+
     public enum TrieRetention { Pruned, AtBoundary, Archive }
 
     [Test]
@@ -56,11 +115,11 @@ public class DebugBridgeTests
             .Build();
         IWorldState worldState = container.Resolve<IMainProcessingContext>().WorldState;
         IWorldStateManager manager = container.Resolve<IWorldStateManager>();
+        container.Resolve<IBlockProcessingPauseControl>().Pause();
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         Block head = Build.A.Block.WithNumber(0).TestObject;
         AddToMainChain(blockTree, head);
         Block target = head;
-        ValueHash256 storageRoot = default;
         int targetNumber = retention == TrieRetention.AtBoundary ? 2 : 1;
         for (int i = 1; i <= 66; i++)
         {
@@ -73,25 +132,12 @@ public class DebugBridgeTests
                 head = Build.A.Block.WithParent(head).WithStateRoot(worldState.StateRoot).TestObject;
             }
             AddToMainChain(blockTree, head);
-            if (i == targetNumber)
-            {
-                target = head;
-                Assert.That(manager.GlobalStateReader.TryGetAccount(target.Header, TestItem.AddressA, out AccountStruct account), Is.True);
-                storageRoot = account.StorageRoot;
-            }
+            if (i == targetNumber) target = head;
         }
         manager.FlushCache(CancellationToken.None);
         TrieStore trieStore = (TrieStore)container.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore;
         Assert.That(trieStore.LastPersistedBlockNumber, Is.EqualTo(66));
-        INodeStorage nodes = container.Resolve<INodeStorage>();
-        Hash256 storageAddress = TestItem.AddressA.ToAccountPath.ToHash256();
-        Assert.That(nodes.KeyExists(storageAddress.ValueHash256, TreePath.Empty, storageRoot), Is.True);
-        if (retention == TrieRetention.Pruned)
-        {
-            nodes.Set(storageAddress, TreePath.Empty, storageRoot, null);
-            Assert.That(nodes.KeyExists(storageAddress.ValueHash256, TreePath.Empty, storageRoot), Is.False);
-        }
-        Assert.That(trieStore.HasRoot(target.StateRoot!), Is.True, "the root survives deletion of a storage descendant");
+        Assert.That(trieStore.HasRoot(target.StateRoot!), Is.True, "root presence alone does not enforce retention");
         ResultWrapper<bool> result = ResetHead(container, target, byHash);
 
         bool accepted = retention != TrieRetention.Pruned;
@@ -116,6 +162,7 @@ public class DebugBridgeTests
             .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, Layout = FlatLayout.Flat }))
             .Build();
         IWorldState state = container.Resolve<IMainProcessingContext>().WorldState;
+        container.Resolve<IBlockProcessingPauseControl>().Pause();
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         using (state.BeginScope(IWorldState.PreGenesis))
         {
@@ -176,6 +223,7 @@ public class DebugBridgeTests
             .AddModule(new TestNethermindModule())
             .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
             .Build();
+        container.Resolve<IBlockProcessingPauseControl>().Pause();
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         Block head = Build.A.Block.WithNumber(0).TestObject;
         AddToMainChain(blockTree, head);
@@ -199,11 +247,15 @@ public class DebugBridgeTests
     public async Task Chain_mutation_refuses_overlap_across_modules(
         [Values] ChainMutation firstMutation, [Values] ChainMutation secondMutation, [Values] bool mutationThrows)
     {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
         ObservedPersistenceManager? persistence = null;
         await using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true }))
+            .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
             .AddDecorator<IPersistenceManager>((_, inner) => persistence = new ObservedPersistenceManager(inner))
             .Build();
+        container.Resolve<IBlockProcessingPauseControl>().Pause();
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IWorldState state = container.Resolve<IMainProcessingContext>().WorldState;
         Block[] blocks = new Block[3];
@@ -223,7 +275,11 @@ public class DebugBridgeTests
         }
         IRpcModuleFactory<IDebugRpcModule> factory = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>();
         IDebugRpcModule first = factory.Create();
-        IDebugRpcModule second = factory.Create();
+        await using ILifetimeScope wrappedScope = container.BeginLifetimeScope(builder => builder
+            .AddSingleton<IBlockTree>(new BlockTreeOverlay(blockTree.AsReadOnly(), blockTree))
+            .AddSingleton<IGethStyleTracer>(Substitute.For<IGethStyleTracer>()));
+        IDebugRpcModule second = wrappedScope.Resolve<IDebugRpcModule>();
+        // Explicit rendezvous holds the mutation open; timeouts only prevent a hung test.
         TaskCompletionSource mutationEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using ManualResetEventSlim releaseMutation = new();
         InvalidOperationException injectedFailure = new("mutation failure");
@@ -265,6 +321,21 @@ public class DebugBridgeTests
         {
             await mutationEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
             overlappingResult = MutateChain(second, blocks[0], secondMutation);
+            Assert.That(blockTree.TryUpdateMainChain(blocks[2].Header, true, true, blocks[2]), Is.False,
+                "forkchoice and downloader writes must not move the head during maintenance");
+            string refusal = secondMutation == ChainMutation.DeleteSlice
+                ? "Cannot delete the chain slice from 1: another chain mutation is in progress."
+                : $"Cannot rewind the head to {(secondMutation == ChainMutation.ResetByHash ? blocks[0].Hash!.ToString() : "0")}: another chain mutation is in progress.";
+            AssertCalls(() => logger.Received().Warn(refusal));
+            await using (IContainer independent = new ContainerBuilder().AddModule(new TestNethermindModule()).Build())
+            {
+                independent.Resolve<IBlockProcessingPauseControl>().Pause();
+                IBlockTree independentTree = independent.Resolve<IBlockTree>();
+                Block genesis = Build.A.Block.WithNumber(0).TestObject;
+                AddToMainChain(independentTree, genesis);
+                Assert.That(ResetHead(independent, genesis, byHash: true).Data, Is.True,
+                    "maintenance on another node must remain independent");
+            }
             callsWhileBlocked = Volatile.Read(ref cleanupCalls);
             headWhileBlocked = blockTree.Head?.Hash;
             persistedHeadWhileBlocked = container.Resolve<IDbProvider>().BlockInfosDb.Get(Keccak.Zero.Bytes);
@@ -279,7 +350,7 @@ public class DebugBridgeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(overlappingResult, Is.Zero);
+            Assert.That(overlappingResult, Is.EqualTo(secondMutation == ChainMutation.DeleteSlice ? ErrorCodes.ResourceUnavailable : 0));
             Assert.That(callsWhileBlocked, Is.EqualTo(firstMutation == ChainMutation.DeleteSlice ? 0 : 1));
             Assert.That(headWhileBlocked, Is.EqualTo(blocks[1].Hash));
             Assert.That(persistedHeadWhileBlocked, Is.EqualTo(blocks[1].Hash!.Bytes.ToArray()));
@@ -312,8 +383,14 @@ public class DebugBridgeTests
     {
         ChainMutation.ResetByHash => debug.debug_resetHead(target.Hash!).Data ? 1 : 0,
         ChainMutation.ResetByNumber => debug.debug_setHead(new BlockParameter(target.Number)).Data ? 1 : 0,
-        _ => debug.debug_deleteChainSlice((long)target.Number + 1, force: true).Data,
+        _ => DeleteSlice(debug, target),
     };
+
+    private static int DeleteSlice(IDebugRpcModule debug, Block target)
+    {
+        ResultWrapper<int> result = debug.debug_deleteChainSlice((long)target.Number + 1, force: true);
+        return result.Result.ResultType == ResultType.Success ? result.Data : result.ErrorCode;
+    }
 
     private static void AssertCalls(Action assertion) => Assert.That(assertion, Throws.Nothing);
 
@@ -351,6 +428,7 @@ public class DebugBridgeTests
             }))
             .AddSingleton(persistence)
             .Build();
+        container.Resolve<IBlockProcessingPauseControl>().Pause();
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         Block genesis = Build.A.Block.WithNumber(0).TestObject;
         Block target = Build.A.Block.WithParent(genesis).WithStateRoot(TestItem.KeccakB).TestObject;
@@ -378,6 +456,9 @@ public class DebugBridgeTests
         Assert.That(worldState.GlobalStateReader.HasStateForBlock(target.Header), Is.EqualTo(state != UnavailableState.Missing), "only retained historical state is readable");
         Assert.That(worldState.GlobalWorldState.HasRoot(head.Header), Is.True, "persisted state remains writable");
         ResultWrapper<bool> result = ResetHead(container, target, byHash);
+        ResultWrapper<int> deletion = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create()
+            .debug_deleteChainSlice((long)head.Number, force: true);
+        Assert.That(deletion.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
 
         using (Assert.EnterMultipleScope())
         {
@@ -427,6 +508,10 @@ public class DebugBridgeTests
         IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
         worldStateManager.GlobalWorldState.HasRoot(Arg.Any<BlockHeader>()).Returns(target != Target.MissingState);
         worldStateManager.GlobalStateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        IBlockProcessingPauseControl pauseControl = Substitute.For<IBlockProcessingPauseControl>();
+        pauseControl.IsPaused.Returns(true);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue.IsEmpty.Returns(true);
         TestLogger logger = new();
         ILogManager logManager = new OneLoggerLogManager(new ILogger(logger));
         DebugBridge bridge = new(
@@ -442,7 +527,7 @@ public class DebugBridgeTests
             Substitute.For<IBadBlockStore>(),
             Substitute.For<IBlockStore>(),
             worldStateManager,
-            logManager);
+            logManager, new BlockTreeMutationLock(), pauseControl, processingQueue);
 
         List<(Hash256 CleanupTarget, Hash256? LiveHead, byte[]? PersistedHead)> cleanupHeads = [];
         worldStateManager.When(manager => manager.DropStateNotReachableFrom(Arg.Any<BlockHeader>()))

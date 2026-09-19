@@ -2910,10 +2910,48 @@ public class BlockTreeTests
     }
 
     [Test]
-    public void TryRewindHead_WithoutImplementation_RefusesTheRewind()
+    public void TryRewindHead_StatelessTree_is_unsupported()
     {
         IBlockTree blockTree = new StatelessBlockTree([]);
-        Assert.That(blockTree.TryRewindHead(TestItem.KeccakA), Is.False);
+        Assert.That(() => blockTree.TryRewindHead(TestItem.KeccakA), Throws.TypeOf<NotSupportedException>());
+    }
+
+    [Test]
+    public void TryRewindHead_missing_parent_releases_the_mutation_window()
+    {
+        (BlockTree tree, Block[] chain) = BuildCanonicalChain(3);
+        _rewindContainer!.Resolve<Nethermind.Blockchain.Headers.IHeaderStore>().Delete(chain[0].Hash!);
+        Assert.That(tree.TryRewindHead(chain[1].Hash!), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.CanAcceptNewBlocks, Is.True);
+            Assert.That(tree.Head!.Hash, Is.EqualTo(chain[^1].Hash));
+        }
+        Assert.That(tree.TryRewindHead(chain[^1].Hash!), Is.True);
+    }
+
+    [Test]
+    public void BlockTreeOverlay_rewinds_only_the_overlay()
+    {
+        (BlockTree baseTree, Block[] baseChain) = BuildCanonicalChain(3);
+        using IContainer overlayContainer = new ContainerBuilder().AddModule(new TestNethermindModule(Frontier.Instance)).Build();
+        BlockTree overlayTree = (BlockTree)overlayContainer.Resolve<IBlockTree>();
+        Block genesis = baseTree.FindBlock(0, BlockTreeLookupOptions.None)!;
+        overlayTree.SuggestBlock(genesis);
+        Assert.That(overlayTree.TryUpdateMainChain(genesis.Header, true, true, genesis), Is.True);
+        Block[] overlayChain = baseChain;
+        foreach (Block block in overlayChain)
+        {
+            overlayTree.SuggestBlock(block);
+            Assert.That(overlayTree.TryUpdateMainChain(block.Header, true, true, block), Is.True);
+        }
+        BlockTreeOverlay overlay = new(baseTree.AsReadOnly(), overlayTree);
+        Assert.That(overlay.TryRewindHead(overlayChain[0].Hash!), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(overlayTree.Head!.Hash, Is.EqualTo(overlayChain[0].Hash));
+            Assert.That(baseTree.Head!.Hash, Is.EqualTo(baseChain[^1].Hash));
+        }
     }
 
     private (BlockTree blockTree, Block[] chain) BuildCanonicalChain(int length)

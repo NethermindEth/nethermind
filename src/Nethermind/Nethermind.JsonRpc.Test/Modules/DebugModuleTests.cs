@@ -473,16 +473,14 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task DebugSetHead_ResolvesTargetAndReportsRewindResult([Values] bool updated)
+    public async Task DebugSetHead_PassesParameterAndReportsRewindResult([Values] bool updated)
     {
-        Block block = Build.A.Block.WithNumber(2).TestObject;
-        _debugBridge.GetBlock(new BlockParameter(2UL)).Returns(block);
-        _debugBridge.UpdateHeadBlock(block.Hash!).Returns(updated);
+        _debugBridge.UpdateHeadBlock(new BlockParameter(2UL)).Returns(updated);
 
         string response = await SerializedRequest("debug_setHead", "0x2");
 
         Assert.That(response, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":{(updated ? "true" : "false")},\"id\":67}}"));
-        _debugBridge.Received().UpdateHeadBlock(block.Hash!);
+        _debugBridge.Received().UpdateHeadBlock(new BlockParameter(2UL));
     }
 
     [Test]

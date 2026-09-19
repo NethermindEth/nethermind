@@ -1966,6 +1966,7 @@ public partial class EngineModuleTests
         Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(blocks[^1].BlockHash));
 
         IDebugRpcModule debug = chain.Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
+        chain.Container.Resolve<Nethermind.Consensus.Processing.IBlockProcessingPauseControl>().Pause();
         ResultWrapper<bool> rewind = byHash
             ? debug.debug_resetHead(blocks[0].BlockHash!)
             : debug.debug_setHead(new BlockParameter(blocks[0].BlockNumber));
@@ -1974,6 +1975,16 @@ public partial class EngineModuleTests
             Assert.That(rewind.Data, Is.True);
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(blocks[0].BlockHash));
         }
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> pausedForkchoice = await rpc.engine_forkchoiceUpdatedV1(
+            new ForkchoiceStateV1(blocks[^1].BlockHash!, Keccak.Zero, Keccak.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pausedForkchoice.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(blocks[0].BlockHash));
+        }
+
+        chain.Container.Resolve<Nethermind.Consensus.Processing.IBlockProcessingPauseControl>().Resume();
 
         // A different prevRandao makes this a genuinely new block rather than a replay of blocks[1].
         IReadOnlyList<ExecutionPayload> replacement = await ProduceBranchV1(rpc, chain, 1, blocks[0], setHead: true, TestItem.KeccakE);
