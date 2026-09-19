@@ -17,20 +17,20 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// <remarks>
 /// This is the "second fork without duplicating the whole state transition" seam: everything below
 /// this type still only knows about <see cref="BeaconStateFulu"/> (the 154-passing-test pipeline is
-/// untouched), and everything Gloas-specific — the containers, the upgrade, the fork check — lives
+/// untouched), and everything Gloas-specific - the containers, the upgrade, the fork check - lives
 /// beside it rather than threaded through it. The trade-off, made deliberately: this driver cannot yet
 /// process a Gloas block (see <see cref="ForkedStateTransition.Apply"/>), only detect and cross the
 /// boundary. A generic-parameter or interface-over-state redesign would let Gloas block processing slot
 /// in more uniformly later, but would mean rewriting all ~160 sites now for a fork whose own block
-/// pipeline (the ePBS split, two-dimensional fork choice) is explicitly out of this task's scope — that
+/// pipeline (the ePBS split, two-dimensional fork choice) is explicitly out of this task's scope - that
 /// is the cost the recon in this task weighed against doing the narrower thing here.
 /// <para/>
 /// A sealed, privately-constructed hierarchy of exactly the forks this driver can represent
-/// (<see cref="BeaconFork"/> lists the same three). <see cref="ForkedStateTransition"/> and
-/// <see cref="GloasForkTransition"/> switch over it (and over <see cref="BeaconFork"/> directly)
-/// without a discard arm, so adding a fourth fork here without updating every such switch is a
-/// compile error under this repo's <c>TreatWarningsAsErrors</c> (CS8509, non-exhaustive switch) —
-/// the goal being that an unhandled fork fails the build, not silently falls back to Fulu.
+/// (<see cref="BeaconFork"/> lists the same three). Every (state, fork) pairing is matched
+/// explicitly and the final arm throws, so an unhandled fork fails loudly at runtime rather than
+/// silently falling back to Fulu. This is a runtime guarantee, not a compile-time one: the tuple
+/// match carries a discard arm for the combinations that cannot occur, so adding a fork will not
+/// break the build. Add the new arms here and in <see cref="GloasForkTransition"/> by hand.
 /// </remarks>
 public abstract class ForkedBeaconState
 {
@@ -61,8 +61,8 @@ public abstract class ForkedBeaconState
 public static class ForkedStateTransition
 {
     /// <summary>
-    /// Advances <paramref name="state"/> to <paramref name="signedBlock"/>'s slot — upgrading it across
-    /// the Gloas boundary along the way if that slot range crosses <c>spec.GloasForkEpoch</c> — and then
+    /// Advances <paramref name="state"/> to <paramref name="signedBlock"/>'s slot - upgrading it across
+    /// the Gloas boundary along the way if that slot range crosses <c>spec.GloasForkEpoch</c> - and then
     /// applies the block.
     /// </summary>
     /// <remarks>
@@ -70,7 +70,7 @@ public static class ForkedStateTransition
     /// unmodified Fulu pipeline right up to the boundary slot, then <see cref="GloasForkTransition.UpgradeToGloas"/>
     /// runs. Applying a block whose target fork is Gloas is not: this driver has no Gloas
     /// <c>ProcessBlock</c> (the ePBS bid/envelope split and its own epoch/slot processing are a
-    /// separate, larger piece of work — see the two-dimensional fork choice note in this task's scope).
+    /// separate, larger piece of work - see the two-dimensional fork choice note in this task's scope).
     /// That gap fails loudly here rather than silently running the Fulu pipeline against a Gloas state
     /// or block.
     /// </remarks>
