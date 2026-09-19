@@ -1102,27 +1102,23 @@ public class PbtNodeGroupTests
     {
         using PbtNodeGroupStore store = new();
         using PbtTreeHarness expected = new();
+        PbtLeafModel leaves = new();
         (byte[] Key, byte[]? Value)[] initial = [(PbtStoreTestExtensions.ZoneKey("000000"), Value(1))];
         (byte[] Key, byte[]? Value)[] changes = [(PbtStoreTestExtensions.ZoneKey("000001"), Value(2)), (PbtStoreTestExtensions.ZoneKey("000002"), Value(3))];
         ValueHash256 root = default;
         if (split)
         {
-            using PbtPartitionBatches initialBatch = PbtStoreTestExtensions.PreparePartitions(initial);
+            using PbtPartitionBatches initialBatch = PbtStoreTestExtensions.PreparePartitions(leaves, initial);
             root = TrieUpdater.UpdateRoot(store, default, initialBatch, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, true, null);
             expected.ApplyBatch(initial);
         }
         TrieUpdaterMetrics metrics = new();
         if (partitioned)
         {
-            using PbtPartitionBatches batch = PbtStoreTestExtensions.PreparePartitions(changes);
+            using PbtPartitionBatches batch = PbtStoreTestExtensions.PreparePartitions(leaves, changes);
             root = TrieUpdater.UpdateRoot(store, root, batch, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, true, null, metrics);
         }
-        else
-        {
-            using PbtWriteBatchBuilder<PbtStorageTreeKey> builder = new(0);
-            foreach ((byte[] key, byte[]? value) in changes) builder.Set(new(key), new ValueHash256(value!));
-            root = TrieUpdater.UpdateRoot(store, root, builder.Build(), metrics);
-        }
+        else root = TrieUpdater.UpdateRoot(store, root, PbtTreeHarness.PrepareBatch(leaves, changes), metrics);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.EqualTo(expected.ApplyBatch(changes)));
@@ -1294,7 +1290,7 @@ public class PbtNodeGroupTests
             subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, null, ref frontier, sourceBuffer);
             Assert.That(subtree.IsEmpty, Is.True);
 
-            subtree = new(groupPath, new(new PbtWriteOperation<PbtStorageTreeKey>(new(key), new ValueHash256(Value(1)))));
+            subtree = new(groupPath, new(new PbtStorageTreeKey(key), new ValueHash256(Value(1))));
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(groupPath, ref frontier, slot, ref subtree, 0);
             Assert.That(frontier.Mask, Is.EqualTo(1u << TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryPosition(slot)));
             subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.TakeBoundary(ref reader, writer, groupPath, ref frontier, slot, sourceBuffer);
@@ -1308,7 +1304,7 @@ public class PbtNodeGroupTests
                 Assert.That(subtree.IsEmpty, Is.True);
             }
 
-            subtree = new(groupPath, new(new PbtWriteOperation<PbtStorageTreeKey>(new(key), new ValueHash256(Value(1)))));
+            subtree = new(groupPath, new(new PbtStorageTreeKey(key), new ValueHash256(Value(1))));
             TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.SetBoundary(groupPath, ref frontier, slot, ref subtree, 0);
             subtree = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.Compose(ref reader, writer, groupPath, null, ref frontier, sourceBuffer);
             Assert.That(writer.Write(groupPath, 30, 0, ref subtree, null), Is.EqualTo(expected.ApplyBatch([(key, Value(1))])));
@@ -1658,23 +1654,17 @@ public class PbtNodeGroupTests
     {
         byte[] Key(string hex) => parallel ? PbtStoreTestExtensions.ZoneKey(hex) : Bytes.FromHexString(hex);
         using PbtNodeGroupStore store = new();
+        PbtLeafModel leaves = new();
         ValueHash256 root = default;
         TrieUpdaterMetrics Apply(params (byte[] Key, byte[]? Value)[] changes)
         {
             TrieUpdaterMetrics metrics = new();
             if (parallel)
             {
-                using PbtPartitionBatches partitions = PbtStoreTestExtensions.PreparePartitions(changes);
+                using PbtPartitionBatches partitions = PbtStoreTestExtensions.PreparePartitions(leaves, changes);
                 root = TrieUpdater.UpdateRoot(store, root, partitions, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, true, null, metrics);
             }
-            else
-            {
-                using PbtWriteBatchBuilder<PbtStorageTreeKey> batch = new(0);
-                foreach ((byte[] key, byte[]? value) in changes)
-                    if (value is null) batch.Delete(new PbtStorageTreeKey(key));
-                    else batch.Set(new PbtStorageTreeKey(key), new ValueHash256(value));
-                root = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.UpdateRoot(store, root, batch.Build(), metrics);
-            }
+            else root = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.UpdateRoot(store, root, PbtTreeHarness.PrepareBatch(leaves, changes), metrics);
             PbtStoreTestExtensions.AssertSubtreeBytes(store.ExportPhysicalPayloads());
             return metrics;
         }
@@ -1729,20 +1719,19 @@ public class PbtNodeGroupTests
             oracle.Insert(keyBytes, Value(1));
         }
         ValueHash256 root = expected.ApplyBatch(initial);
+        PbtLeafModel leaves = new();
+        leaves.Apply(initial);
         using PoisoningStore store = new(PbtNodeGroupStore.FromPhysicalPayloads(expected.PhysicalPayloads));
-        using PbtWriteBatchBuilder<PbtTreeKey> batch = new(0);
         List<(byte[] Key, byte[]? Value)> changes = [];
         foreach (string key in deletedKeys.Split(','))
         {
             byte[] keyBytes = Key(key);
-            batch.Delete(new PbtTreeKey(keyBytes));
             changes.Add((keyBytes, null));
             oracle.Delete(keyBytes);
         }
         if (replaceSurvivor)
         {
             byte[] key = Key("0000");
-            batch.Set(new PbtTreeKey(key), new ValueHash256(Value(2)));
             changes.Add((key, Value(2)));
             oracle.Insert(key, Value(2));
         }
@@ -1751,10 +1740,19 @@ public class PbtNodeGroupTests
         ValueHash256 actualRoot;
         if (parallel)
         {
-            using PbtPartitionBatches partitions = PbtStoreTestExtensions.PreparePartitions(changes);
+            using PbtPartitionBatches partitions = PbtStoreTestExtensions.PreparePartitions(leaves, changes);
             actualRoot = TrieUpdater.UpdateRoot(store, root, partitions, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, true, null);
         }
-        else actualRoot = TrieUpdater<PbtTreeKey, PbtNodePath>.UpdateRoot(store, root, batch.Build());
+        else
+        {
+            using PbtWriteBatchBuilder<PbtTreeKey> batch = new(0);
+            foreach ((byte[] runKey, ISlotRun run) in leaves.Complete(changes))
+            {
+                batch.SetRun(new PbtTreeKey(runKey), run);
+                SlotRun.Return(run);
+            }
+            actualRoot = TrieUpdater<PbtTreeKey, PbtNodePath>.UpdateRoot(store, root, batch.Build());
+        }
 
         if (releasedDepths is not null)
             Assert.That(store.ReleasedGroupDepths, Is.EqualTo(releasedDepths), "payloads are poisoned when their owning frame releases them");

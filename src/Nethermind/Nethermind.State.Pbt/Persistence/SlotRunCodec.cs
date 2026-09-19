@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Numerics;
 using Nethermind.Core.Crypto;
+using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.Persistence;
 
@@ -14,7 +15,7 @@ namespace Nethermind.State.Pbt.Persistence;
 /// </summary>
 internal static class SlotRunCodec
 {
-    internal const int HeaderLength = 1 + sizeof(ushort);
+    private const int HeaderLength = SlotRun.EncodedHeaderLength;
     private const byte MaxType = 4;
 
     public static ISlotRun Decode(ReadOnlySpan<byte> encoded)

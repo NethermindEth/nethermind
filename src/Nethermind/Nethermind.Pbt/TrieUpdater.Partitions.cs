@@ -273,6 +273,7 @@ public static partial class TrieUpdater
 
         public override void Dispose()
         {
+            PbtWriteBatch<TKey>.ReturnRuns(operations.AsSpan());
             operations.Dispose();
             table.Dispose();
         }
@@ -296,6 +297,6 @@ internal static partial class TrieUpdater<TKey, TPath>
     {
         Span<byte> buffer = stackalloc byte[plan.GetBufferSize(operations.Length, bitDepth)];
         PartitionOutcome partition = plan.WithBuffer(buffer).BucketSort(operations, bitDepth, context.Metrics);
-        return FoldBoundaryFromPartition(context, ref reader, writer, current, operations, ref path, bitDepth, partition);
+        return FoldBoundaryFromPartition(context, ref reader, writer, current, operations, ref path, bitDepth, partition, hasRun: false, default);
     }
 }

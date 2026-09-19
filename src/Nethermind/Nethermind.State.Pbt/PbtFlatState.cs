@@ -88,7 +88,7 @@ internal static class PbtFlatState
         foreach ((HashedKey<PbtStorageTreeKey> runKey, ISlotRun run) in content.Storages)
         {
             if (addressFilter is not null && StorageAddress(runKey) != addressFilter.Value) continue;
-            for (int index = 0; index < SlotRun.Width; index++) visible[SlotRun.SlotKey(runKey, index)] = run.Get(index);
+            for (int index = 0; index < SlotRun.Width; index++) visible[SlotRun.SlotKey(runKey.Key, index)] = run.Get(index);
         }
     }
 }

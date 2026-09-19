@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Pbt;
 
@@ -46,15 +45,27 @@ public sealed class PbtWriteBatch<TKey> : IDisposable where TKey : struct, IPbtK
     /// <inheritdoc/>
     public void Dispose()
     {
+        if (_operations is not null) ReturnRuns(_operations.AsSpan());
         _operations?.Dispose();
         _table?.Dispose();
         _operations = null;
         _table = null;
     }
+
+    /// <summary>Returns the runs of consumed operations to their pools; the consumer owns them once it took the operations.</summary>
+    internal static void ReturnRuns(ReadOnlySpan<PbtWriteOperation<TKey>> operations)
+    {
+        foreach (ref readonly PbtWriteOperation<TKey> operation in operations)
+            if (operation.Run is not null) SlotRun.Return(operation.Run);
+    }
 }
 
-internal readonly record struct PbtWriteOperation<TKey>(TKey Key, ValueHash256 Value) where TKey : struct, IPbtKey<TKey>
+/// <summary>One run key and the whole run that replaces the leaves under it; the run is owned by the batch or its consumer.</summary>
+internal readonly record struct PbtWriteOperation<TKey>(TKey Key, ISlotRun Run) where TKey : struct, IPbtKey<TKey>
 {
-    internal static PbtWriteOperation<TKey> Set(TKey key, in ValueHash256 value) => new(key, value);
-    internal static PbtWriteOperation<TKey> Delete(TKey key) => new(key, default);
+    /// <summary>The bits of <see cref="Key"/> that identify the run: everything above the slot nibble.</summary>
+    internal int KeyBitLength => Key.BitLength - PbtFourLevelGroupGeometry.LevelsPerGroup;
+
+    /// <summary>Whether the run leaves no leaf under its key.</summary>
+    internal bool IsDelete => Run.Count == 0;
 }

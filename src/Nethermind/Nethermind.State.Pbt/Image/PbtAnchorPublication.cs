@@ -140,11 +140,14 @@ internal sealed class PbtAnchorPublication(
                     {
                         foreach (RebuildEntry entry in PbtSnapshotCodec.ReadLeaves(copiedSnapshot, count, linked.Token))
                         {
+                            // A chunk is folded whole, so it may only end between slot runs.
+                            if (chunk.Count >= 2048 && SlotRun.RunKey(entry.Key) != SlotRun.RunKey(chunk[^1].Key))
+                            {
+                                await channel.Writer.WriteAsync(chunk, linked.Token);
+                                chunk = null;
+                                chunk = new(2048);
+                            }
                             chunk.Add(entry);
-                            if (chunk.Count != 2048) continue;
-                            await channel.Writer.WriteAsync(chunk, linked.Token);
-                            chunk = null;
-                            chunk = new(2048);
                         }
                         if (chunk.Count != 0)
                         {

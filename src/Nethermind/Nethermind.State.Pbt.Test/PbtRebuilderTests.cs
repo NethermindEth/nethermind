@@ -60,6 +60,8 @@ public class PbtRebuilderTests
         AddAccount(TestItem.AddressB, 0, 42, bigCode);               // multi-group code contract
         AddSlot(TestItem.AddressB, 5, 0xAB);                        // header-region slot (< 64)
         AddSlot(TestItem.AddressB, 70, 0x07);                       // storage-zone slot (>= 64)
+        AddSlot(TestItem.AddressB, 71, 0x08);                       // same run as 70: a window may not split them
+        AddSlot(TestItem.AddressB, 72, 0x09);
         AddSlot(TestItem.AddressB, 1000, 0x1234);
         AddAccount(TestItem.AddressC, 2, 7, smallCode);             // single-chunk contract
         AddSlot(TestItem.AddressC, 3, 0x99);
@@ -83,13 +85,20 @@ public class PbtRebuilderTests
     {
         PbtRebuilder rebuilder = new(target, new PbtConfig(), logManager ?? LimboLogs.Instance);
         Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateUnbounded<ArrayPoolList<RebuildEntry>>();
-        for (int offset = 0; offset < leaves.Count; offset += chunkSize)
+        int capacity = Math.Min(chunkSize, leaves.Count);
+        ArrayPoolList<RebuildEntry> chunk = new(capacity);
+        foreach (RebuildEntry leaf in leaves)
         {
-            int count = Math.Min(chunkSize, leaves.Count - offset);
-            ArrayPoolList<RebuildEntry> chunk = new(count);
-            for (int index = 0; index < count; index++) chunk.Add(leaves[offset + index]);
-            channel.Writer.TryWrite(chunk);
+            // As every producer does, end a chunk only between slot runs.
+            if (chunk.Count >= chunkSize && SlotRun.RunKey(leaf.Key) != SlotRun.RunKey(chunk[^1].Key))
+            {
+                channel.Writer.TryWrite(chunk);
+                chunk = new(capacity);
+            }
+            chunk.Add(leaf);
         }
+        if (chunk.Count != 0) channel.Writer.TryWrite(chunk);
+        else chunk.Dispose();
         channel.Writer.Complete();
 
         return await rebuilder.Rebuild(channel.Reader, targetState, CancellationToken.None, windowSize);
@@ -97,6 +106,7 @@ public class PbtRebuilderTests
 
     [TestCase(1, 3)]
     [TestCase(3, 1)]
+    [TestCase(1, 1)]
     [TestCase(int.MaxValue, 0)]
     public async Task Rebuild_matches_reference_root_across_channel_chunks(int chunkSize, int windowSize)
     {
@@ -111,15 +121,11 @@ public class PbtRebuilderTests
         ValueHash256 root = await Rebuild(leaves, chunkSize, targetState, target, windowSize: windowSize);
 
         using PbtNodeGroupStore incrementalStore = new();
+        PbtLeafModel incrementalLeaves = new();
         ValueHash256 incrementalRoot = default;
         using IPbtPersistence.IReader reader = target.CreateReader();
         foreach ((PbtStorageTreeKey key, ValueHash256 value) in leaves)
-        {
-            using PbtWriteBatchBuilder<PbtStorageTreeKey> incrementalChange = new(0);
-            incrementalChange.Set(key, value);
-            using PbtWriteBatch<PbtStorageTreeKey> preparedChange = incrementalChange.Build();
-            incrementalRoot = TrieUpdater.UpdateRoot(incrementalStore, incrementalRoot, preparedChange);
-        }
+            incrementalRoot = TrieUpdater.UpdateRoot(incrementalStore, incrementalRoot, PbtTreeHarness.PrepareBatch(incrementalLeaves, [(key.Bytes.ToArray(), value.Bytes.ToArray())]));
 
         int physicalNodeCount = 0;
         using IPbtIterator<PbtStorageNodePath> groupKeys = reader.EnumerateNodeGroupKeys();

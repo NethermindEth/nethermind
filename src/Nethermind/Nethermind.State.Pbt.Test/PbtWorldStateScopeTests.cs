@@ -441,7 +441,8 @@ public class PbtWorldStateScopeTests
                 using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressA, 1);
                 storage.Set((UInt256)(uint)(1000 + index), (UInt256)0xab);
             });
-            Assert.That(abandoned.Bundle.PendingMutationCount, Is.EqualTo(32));
+            // Slots 1000..1031 span three runs: 992..1007, 1008..1023 and the next stem's 1024..1039.
+            Assert.That(abandoned.Bundle.PendingMutationCount, Is.EqualTo(3));
             if (foldBeforeAbandon) abandoned.UpdateRootHash();
             for (uint index = 0; index < 32; index++)
                 Assert.That(abandoned.CreateStorageTree(TestItem.AddressA).Get(1000 + index), Is.EqualTo((UInt256)0xab));
