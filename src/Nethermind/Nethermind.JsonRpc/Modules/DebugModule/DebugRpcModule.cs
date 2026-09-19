@@ -494,9 +494,10 @@ public class DebugRpcModule(
     public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter)
     {
         Block? block = debugBridge.GetBlock(blockParameter);
-        return block?.Hash is { } hash
-            ? debug_resetHead(hash)
-            : ResultWrapper<bool>.Success(false);
+        if (block?.Hash is { } hash) return debug_resetHead(hash);
+
+        if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockParameter}: block is unknown.");
+        return ResultWrapper<bool>.Success(false);
     }
 
     public ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key)

@@ -110,8 +110,13 @@ public class DebugBridge : IDebugBridge
     public bool UpdateHeadBlock(Hash256 blockHash)
     {
         BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
-        if (header is null) return false;
+        if (header is null)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockHash}: block is unknown.");
+            return false;
+        }
 
+        // The scope provider rejects read-only flat history; the reader enforces trie pruning retention.
         if (!_worldStateManager.GlobalWorldState.HasRoot(header)
             || !_worldStateManager.GlobalStateReader.HasStateForBlock(header))
         {

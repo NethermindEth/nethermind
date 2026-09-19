@@ -91,11 +91,7 @@ public class DebugBridgeTests
             Assert.That(nodes.KeyExists(storageAddress.ValueHash256, TreePath.Empty, storageRoot), Is.False);
         }
         Assert.That(trieStore.HasRoot(target.StateRoot!), Is.True, "the root survives deletion of a storage descendant");
-        IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
-
-        ResultWrapper<bool> result = byHash
-            ? debug.debug_resetHead(target.Hash!)
-            : debug.debug_setHead(new BlockParameter(target.Number));
+        ResultWrapper<bool> result = ResetHead(container, target, byHash);
 
         bool accepted = retention != TrieRetention.Pruned;
         Hash256 expectedHead = (accepted ? target : head).Hash!;
@@ -145,11 +141,7 @@ public class DebugBridgeTests
             head = Build.A.Block.WithParent(target).WithStateRoot(state.StateRoot).TestObject;
         }
         AddToMainChain(blockTree, head);
-        IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
-
-        ResultWrapper<bool> result = byHash
-            ? debug.debug_resetHead(target.Hash!)
-            : debug.debug_setHead(new BlockParameter(target.Number));
+        ResultWrapper<bool> result = ResetHead(container, target, byHash);
 
         using (Assert.EnterMultipleScope())
         {
@@ -177,7 +169,12 @@ public class DebugBridgeTests
     [TestCase("debug_resetHead", "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
     public async Task Head_reset_unknown_target_returns_false_without_changing_head(string method, string parameter)
     {
-        await using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
+            .Build();
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         Block head = Build.A.Block.WithNumber(0).TestObject;
         AddToMainChain(blockTree, head);
@@ -187,10 +184,20 @@ public class DebugBridgeTests
 
         using (Assert.EnterMultipleScope())
         {
+            string expectedTarget = parameter == "0x42" ? "66" : parameter;
+            logger.Received(1).Warn($"Cannot rewind the head to {expectedTarget}: block is unknown.");
             Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":false,\"id\":67}"));
             Assert.That(blockTree.Head!.Hash, Is.EqualTo(head.Hash));
             Assert.That(container.Resolve<IDbProvider>().BlockInfosDb.Get(Keccak.Zero.Bytes), Is.EqualTo(head.Hash!.Bytes.ToArray()));
         }
+    }
+
+    private static ResultWrapper<bool> ResetHead(IContainer container, Block target, bool byHash)
+    {
+        IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
+        return byHash
+            ? debug.debug_resetHead(target.Hash!)
+            : debug.debug_setHead(new BlockParameter(target.Number));
     }
 
     private static void AddToMainChain(IBlockTree blockTree, Block block)
@@ -243,11 +250,7 @@ public class DebugBridgeTests
         IWorldStateManager worldState = container.Resolve<IWorldStateManager>();
         Assert.That(worldState.GlobalStateReader.HasStateForBlock(target.Header), Is.EqualTo(state != UnavailableState.Missing), "only retained historical state is readable");
         Assert.That(worldState.GlobalWorldState.HasRoot(head.Header), Is.True, "persisted state remains writable");
-        IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
-
-        ResultWrapper<bool> result = byHash
-            ? debug.debug_resetHead(target.Hash!)
-            : debug.debug_setHead(new BlockParameter(target.Number));
+        ResultWrapper<bool> result = ResetHead(container, target, byHash);
 
         using (Assert.EnterMultipleScope())
         {
