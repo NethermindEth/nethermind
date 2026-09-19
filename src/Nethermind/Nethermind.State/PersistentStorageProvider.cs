@@ -785,15 +785,18 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     private sealed class DefaultableDictionary()
     {
         private bool _missingAreDefault;
+        private bool _clearedNonEmptyStorage;
         private Dictionary<UInt256, StorageChangeTrace> _dictionary = new(UInt256Comparer.Instance);
         private Dictionary<UInt256, StorageChangeTrace>? _spare;
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public int Count => _dictionary.Count;
         public bool HasClear => _missingAreDefault;
+        public bool ClearedNonEmptyStorage => _clearedNonEmptyStorage;
 
         public void Reset(int capacity)
         {
             _missingAreDefault = false;
+            _clearedNonEmptyStorage = false;
             if (_spare is not null && _spare.Capacity > _dictionary.Capacity)
             {
                 _dictionary = _spare;
@@ -810,13 +813,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 _dictionary.ClearAndTrim(capacity, capacity);
             }
         }
-        public void ClearAndSetMissingAsDefault()
+        public void ClearAndSetMissingAsDefault(bool clearedNonEmptyStorage = false)
         {
             _missingAreDefault = true;
+            // Preserve a non-empty clear when multiple clears occur before the root is flushed.
+            _clearedNonEmptyStorage |= clearedNonEmptyStorage;
             _dictionary.Clear();
         }
 
-        public ClearSnapshot ClearRevertibly()
+        public ClearSnapshot ClearRevertibly(bool clearedNonEmptyStorage)
         {
             Dictionary<UInt256, StorageChangeTrace>? previousEntries = null;
             if (_dictionary.Count != 0)
@@ -826,8 +831,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 _spare = null;
             }
 
-            ClearSnapshot snapshot = new(previousEntries, _missingAreDefault);
+            ClearSnapshot snapshot = new(previousEntries, _missingAreDefault, _clearedNonEmptyStorage);
             _missingAreDefault = true;
+            // Preserve a non-empty clear when multiple clears occur before the root is flushed.
+            _clearedNonEmptyStorage |= clearedNonEmptyStorage;
             return snapshot;
         }
 
@@ -849,6 +856,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
 
             _missingAreDefault = snapshot.MissingAreDefault;
+            _clearedNonEmptyStorage = snapshot.ClearedNonEmptyStorage;
         }
 
         public ref StorageChangeTrace GetValueRefOrAddDefault(in UInt256 storageCellIndex, out bool exists)
@@ -874,11 +882,16 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public Dictionary<UInt256, StorageChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
 
-        public void UnmarkClear() => _missingAreDefault = false;
+        public void UnmarkClear()
+        {
+            _missingAreDefault = false;
+            _clearedNonEmptyStorage = false;
+        }
 
         public readonly record struct ClearSnapshot(
             Dictionary<UInt256, StorageChangeTrace>? PreviousEntries,
-            bool MissingAreDefault);
+            bool MissingAreDefault,
+            bool ClearedNonEmptyStorage);
     }
 
     private sealed class PerContractState : IReturnable
@@ -1004,7 +1017,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             EnsureStorageTree();
             _wasCleared = true;
             ForgetLastRead();
-            BlockChange.ClearAndSetMissingAsDefault();
+            BlockChange.ClearAndSetMissingAsDefault(ClearsPersistedStorage);
         }
 
         public DefaultableDictionary.ClearSnapshot ClearRevertibly()
@@ -1013,13 +1026,29 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             // Stays set if the clear is reverted: a cache then drops slots it could have kept, never keeps stale ones.
             _wasCleared = true;
             ForgetLastRead();
-            return BlockChange.ClearRevertibly();
+            return BlockChange.ClearRevertibly(ClearsPersistedStorage);
         }
 
         public void RestoreClear(DefaultableDictionary.ClearSnapshot snapshot)
         {
             ForgetLastRead();
             BlockChange.Restore(snapshot);
+        }
+
+        /// <summary>Whether a clear would drop storage that is already persisted.</summary>
+        /// <remarks>
+        /// Scopes <see cref="Db.Metrics.StorageCleared"/> to clears that discard committed state.
+        /// <see cref="IWorldStateScopeProvider.IStorageTree.RootHash"/> is the last committed root, so
+        /// storage written and cleared inside one commit window is not counted; post-Byzantium that
+        /// window is the whole block, before it a single transaction.
+        /// </remarks>
+        private bool ClearsPersistedStorage
+        {
+            get
+            {
+                EnsureStorageTree();
+                return _backend.RootHash != Keccak.EmptyTreeHash;
+            }
         }
 
         public void Return()
@@ -1141,6 +1170,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (BlockChange.HasClear)
             {
                 storageWriteBatch.Clear();
+                if (BlockChange.ClearedNonEmptyStorage) Db.Metrics.IncrementStorageCleared();
                 BlockChange.UnmarkClear(); // Note: Until the storage write batch is disposed, this BlockCache will pass read through the uncleared storage tree
             }
 
