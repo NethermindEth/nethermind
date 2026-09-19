@@ -19,11 +19,6 @@ namespace Nethermind.BeaconChain.Engine;
 public static class PayloadConverter
 {
     /// <summary>Maps the beacon <see cref="Types.ExecutionPayload"/> field-by-field onto the engine API <see cref="ExecutionPayloadV3"/>.</summary>
-    /// <exception cref="OverflowException">
-    /// The block number or a gas field exceeds <see cref="long.MaxValue"/>. The values came from a
-    /// real chain, so an overflow means the payload is invalid — callers should report INVALID
-    /// rather than crash.
-    /// </exception>
     public static ExecutionPayloadV3 ToExecutionPayloadV3(Types.ExecutionPayload payload)
     {
         Types.Transaction[] transactions = payload.Transactions ?? [];
@@ -55,9 +50,9 @@ public static class PayloadConverter
             ReceiptsRoot = payload.ReceiptsRoot!,
             LogsBloom = payload.LogsBloom!,
             PrevRandao = payload.PrevRandao!,
-            BlockNumber = InRange(payload.BlockNumber),
-            GasLimit = InRange(payload.GasLimit),
-            GasUsed = InRange(payload.GasUsed),
+            BlockNumber = payload.BlockNumber,
+            GasLimit = payload.GasLimit,
+            GasUsed = payload.GasUsed,
             Timestamp = payload.Timestamp,
             ExtraData = payload.ExtraData ?? [],
             BaseFeePerGas = payload.BaseFeePerGas,
@@ -68,10 +63,6 @@ public static class PayloadConverter
             ExcessBlobGas = payload.ExcessBlobGas,
         };
     }
-
-    /// <summary>Returns a block number or gas field unchanged, rejecting values no Ethereum chain can reach.</summary>
-    /// <exception cref="OverflowException">The value exceeds <see cref="long.MaxValue"/>.</exception>
-    private static ulong InRange(ulong value) => checked((ulong)(long)value);
 
     /// <summary>The EIP-4844 <c>kzg_to_versioned_hash</c> over each commitment: SHA-256 with the first byte replaced by the version <c>0x01</c>.</summary>
     public static Hash256?[] ToBlobVersionedHashes(SszKzgCommitment[]? commitments)
