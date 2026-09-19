@@ -722,6 +722,50 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private void WarmupTransactions(BlockState blockState, ParallelOptions parallelOptions)
     {
+        int txCount = blockState.Block.Transactions.Length;
+        if (txCount == 0 || parallelOptions.CancellationToken.IsCancellationRequested) return;
+
+        // Senders may still be arriving while the block is already being processed (recovery runs in
+        // ascending index order, see RecoverSignatures.RecoverDataAsync), so each pass warms what is
+        // recovered and the next pass picks up the rest, until nothing is left ahead of the main thread.
+        bool[] claimed = ArrayPool<bool>.Shared.Rent(txCount);
+        Array.Clear(claimed, 0, txCount);
+        do
+        {
+            WarmupRecoveredTransactions(blockState, parallelOptions, claimed);
+        }
+        while (WaitForMoreSenders(blockState.Block.Transactions, claimed, parallelOptions.CancellationToken));
+
+        ArrayPool<bool>.Shared.Return(claimed);
+    }
+
+    /// <summary>
+    /// Waits until a transaction no pass has claimed yet has its sender recovered; <c>false</c> once the main
+    /// thread has passed every unclaimed transaction or the block is done.
+    /// </summary>
+    private bool WaitForMoreSenders(Transaction[] txs, bool[] claimed, CancellationToken cancellationToken)
+    {
+        int lastPending = Array.LastIndexOf(claimed, false, txs.Length - 1);
+        if (lastPending < 0) return false;
+
+        SpinWait spinner = default;
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            if (MainThreadTxIndex >= lastPending) return false;
+
+            for (int i = 0; i <= lastPending; i++)
+            {
+                if (!claimed[i] && txs[i].SenderAddress is not null) return true;
+            }
+
+            spinner.SpinOnce(sleep1Threshold: -1);
+        }
+
+        return false;
+    }
+
+    private void WarmupRecoveredTransactions(BlockState blockState, ParallelOptions parallelOptions, bool[] claimed)
+    {
         if (parallelOptions.CancellationToken.IsCancellationRequested) return;
 
         try
@@ -735,7 +779,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             // execution never consumes its writes — so the split only trades warm relevance for
             // parallelism, never correctness.
             using ArrayPoolList<WarmupJob> senderGroups =
-                GroupTransactionsBySender(block, parallelOptions.MaxDegreeOfParallelism, blockState.SpeculativelyWarmed);
+                GroupTransactionsBySender(block, parallelOptions.MaxDegreeOfParallelism, blockState.SpeculativelyWarmed, claimed);
+            if (senderGroups.Count == 0) return;
 
             try
             {
@@ -789,19 +834,22 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
-    internal static ArrayPoolList<WarmupJob> GroupTransactionsBySender(Block block, int maxWorkers, ISet<Hash256>? speculativelyWarmed = null)
+    internal static ArrayPoolList<WarmupJob> GroupTransactionsBySender(Block block, int maxWorkers, ISet<Hash256>? speculativelyWarmed = null, bool[]? claimed = null)
     {
         Dictionary<AddressAsKey, ArrayPoolList<(int, Transaction)>> groups = [];
 
         for (int i = 0; i < block.Transactions.Length; i++)
         {
+            if (claimed is not null && claimed[i]) continue;
+
             Transaction tx = block.Transactions[i];
             if (tx.SenderAddress is not Address sender)
             {
-                // Invalid signature leaves the sender null; the block will be rejected — nothing to warm.
+                // Not recovered yet (a later pass picks it up) or an invalid signature (the block will be rejected).
                 continue;
             }
 
+            if (claimed is not null) claimed[i] = true;
             ref ArrayPoolList<(int, Transaction)>? list = ref CollectionsMarshal.GetValueRefOrAddDefault(groups, sender, out _);
             (list ??= new(4)).Add((i, tx));
         }
