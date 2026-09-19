@@ -10,8 +10,17 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-/// <summary>Enforces the EIP-8141 validation-prefix opcode rules during mempool prefix simulation,
-/// and captures the resolved payer.</summary>
+/// <summary>Enforces the EIP-8141 validation-prefix opcode rules during prefix simulation, and captures the
+/// resolved payer.</summary>
+/// <remarks>
+/// The storage surface is parameterised because EIP-8141's mempool rule and EIP-8369's Profile 2 draw it
+/// differently: EIP-8141 admits every slot of <paramref name="sender"/> alone, Profile 2 admits the first
+/// <paramref name="storageSlotBound"/> slots of <paramref name="sender"/> and the payer. Defaults reproduce
+/// the EIP-8141 rule exactly.
+/// </remarks>
+/// <param name="payer">A second account whose storage the prefix may read, or <c>null</c> for
+/// <paramref name="sender"/> only.</param>
+/// <param name="storageSlotBound">Slots below which a read is in surface, or <c>0</c> for no slot bound.</param>
 /// <param name="timeout">Wall-clock bound on the simulation, or <see cref="TimeSpan.Zero"/> for none.</param>
 /// <param name="timeProvider">The clock <paramref name="timeout"/> is measured against; the system clock by default.</param>
 /// <param name="token">Cancels the simulation cooperatively; polled by the interpreter.</param>
@@ -22,7 +31,9 @@ public sealed class FrameTxValidationTracer(
     IReleaseSpec spec,
     TimeSpan timeout = default,
     TimeProvider? timeProvider = null,
-    CancellationToken token = default)
+    CancellationToken token = default,
+    Address? payer = null,
+    UInt256 storageSlotBound = default)
     : TxTracer, ITxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer
 {
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
@@ -69,6 +80,15 @@ public sealed class FrameTxValidationTracer(
 
     /// <summary>The first violation recorded; later ones do not overwrite it.</summary>
     public string? ViolationReason { get; private set; }
+
+    /// <summary>True when the prefix touched storage outside the permitted surface, as opposed to breaking
+    /// one of the opcode rules or simply executing and failing.</summary>
+    /// <remarks>
+    /// A caller reconstructing state from a partial projection must treat this apart from a failed prefix:
+    /// an out-of-surface read would have been served from whatever the projection falls back to, so the
+    /// execution it produced decides nothing.
+    /// </remarks>
+    public bool OutsideSurface { get; private set; }
 
     public Address? Payer { get; private set; }
 
@@ -199,15 +219,36 @@ public sealed class FrameTxValidationTracer(
 
     public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
     {
-        // SLOAD may read only tx.sender storage, including transitively via CALL*/DELEGATECALL.
-        if (!Violated && address != sender) Violate("SLOAD outside tx.sender storage");
+        // SLOAD may read only in-surface storage, including transitively via CALL*/DELEGATECALL.
+        if (!Violated && !InSurface(address, in storageIndex)) ViolateSurface("SLOAD", address, in storageIndex);
     }
 
     public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
     {
-        // The carve-out is the deploy frame's alone, and covers tx.sender's storage only. Every other prefix
-        // frame is static, so this is belt-and-braces -- but that is an invariant held in another file.
-        if (!Violated && (!_inDeployFrame || address != sender)) Violate("SSTORE outside tx.sender storage");
+        // The carve-out is the deploy frame's alone, and covers tx.sender's storage only -- never the payer's,
+        // whose slots are readable but not writable. Every other prefix frame is static.
+        if (Violated) return;
+        if (!_inDeployFrame) Violate("SSTORE outside tx.sender storage");
+        else if (address != sender || !InSlotBound(in storageIndex)) ViolateSurface("SSTORE", address, in storageIndex);
+    }
+
+    /// <summary>Whether a storage cell the prefix touched is inside the configured surface.</summary>
+    private bool InSurface(Address address, in UInt256 slot) =>
+        (address == sender || (payer is not null && address == payer)) && InSlotBound(in slot);
+
+    private bool InSlotBound(in UInt256 slot) => storageSlotBound.IsZero || slot < storageSlotBound;
+
+    /// <summary>Records an out-of-surface storage access, which <see cref="OutsideSurface"/> reports apart
+    /// from the other trace-rule violations even though both fail the same eligibility condition.</summary>
+    private void ViolateSurface(string op, Address address, in UInt256 slot)
+    {
+        if (Violated) return;
+        OutsideSurface = true;
+        // The default surface keeps its original wording; a widened or slot-bounded one names the cell,
+        // since the address alone no longer says which half of the rule failed.
+        Violate(payer is null && storageSlotBound.IsZero
+            ? $"{op} outside tx.sender storage"
+            : $"{op} outside the permitted storage surface at {address}:{slot}");
     }
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
