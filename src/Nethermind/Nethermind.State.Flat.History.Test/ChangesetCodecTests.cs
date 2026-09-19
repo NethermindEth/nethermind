@@ -120,6 +120,19 @@ public class ChangesetCodecTests
             "a row read back short is corruption, not an empty changeset: it must not decode to a shorter but plausible write list");
     }
 
+    [Test]
+    public void Nonce_RejectsOverflowButAcceptsLeadingZeroPadding([Values(8, 9, 32)] int length, [Values] bool padded)
+    {
+        byte[] nonce = new byte[length];
+        nonce[padded ? length - 1 : 0] = 1;
+        byte[] buffer = new byte[ChangesetCodec.MaxAccountEntryLength];
+        int written = ChangesetCodec.WriteAccount(buffer, TestItem.AddressA, [], nonce, [], deleted: false, storageCleared: false);
+        if (length > sizeof(ulong) && !padded)
+            Assert.That(() => Read(buffer.AsSpan(0, written)), Throws.InstanceOf<InvalidDataException>());
+        else
+            Assert.That(() => Read(buffer.AsSpan(0, written)), Throws.Nothing);
+    }
+
     private static void Read(ReadOnlySpan<byte> changeset)
     {
         ChangesetCodec.Enumerator entries = ChangesetCodec.Read(changeset);

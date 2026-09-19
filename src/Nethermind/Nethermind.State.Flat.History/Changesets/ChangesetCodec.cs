@@ -134,7 +134,11 @@ internal static class ChangesetCodec
                 case AccountKind:
                     Fields = TakeByte();
                     if ((Fields & BalanceField) != 0) Balance = TakeLengthPrefixed();
-                    if ((Fields & NonceField) != 0) Nonce = TakeLengthPrefixed();
+                    if ((Fields & NonceField) != 0)
+                    {
+                        Nonce = TakeLengthPrefixed();
+                        if (Nonce.TrimStart((byte)0).Length > sizeof(ulong)) ThrowMalformed();
+                    }
                     if ((Fields & CodeField) != 0) CodeHash = Take(Hash256.Size);
                     return true;
                 case StorageKind:
