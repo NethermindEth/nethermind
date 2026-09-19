@@ -66,6 +66,21 @@ public class NodeFilterTests
     }
 
     [Test]
+    public void WouldAccept_IsReadOnlyAndTouchAccountsForThePublicIpv6Subnet()
+    {
+        NodeFilter filter = CreateFilter();
+        IPAddress first = IPAddress.Parse("2001:db8::1");
+        IPAddress sameSubnet = IPAddress.Parse("2001:db8::2");
+
+        Assert.That(filter.WouldAccept(first), Is.True);
+        Assert.That(filter.WouldAccept(sameSubnet), Is.True, "a read-only probe must not consume filter capacity");
+
+        filter.Touch(first);
+
+        Assert.That(filter.WouldAccept(sameSubnet), Is.False, "a successful dial must account for the IPv6 /64");
+    }
+
+    [Test]
     public void ThreadSafety_ConcurrentSetCalls()
     {
         NodeFilter filter = CreateFilter(size: 1000, exactMatchOnly: true);

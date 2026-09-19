@@ -3,13 +3,16 @@
 
 using System;
 using System.Linq;
+using System.Net;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Timers;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Network.Enr;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NUnit.Framework;
@@ -144,6 +147,38 @@ public class NetworkStorageTests
             Assert.That(persistedNode.Port, Is.EqualTo(peer.Port));
             Assert.That(persistedNode.Host, Is.EqualTo(peer.Host));
             Assert.That(persistedNode.Reputation, Is.EqualTo(peer.Reputation));
+        }
+    }
+
+    [Test]
+    public void Replacing_cached_enode_with_enr_updates_current_and_reloaded_snapshots()
+    {
+        MemDb db = new();
+        NetworkStorage storage = new(db, LimboLogs.Instance);
+        NetworkNode enode = new(TestItem.PublicKeyA, "192.168.1.1", 30303, 1L);
+        storage.UpdateNode(enode);
+        Assert.That(storage.GetPersistedNodes().Single(), Is.SameAs(enode), "prime the cached snapshot");
+
+        NodeRecord record = new() { EnrSequence = 1 };
+        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        record.SetEntry(new IpEntry(IPAddress.Parse("192.168.1.2")));
+        record.SetEntry(new TcpEntry(30304));
+        record.SetEntry(new UdpEntry(30305));
+        new NodeRecordSigner(new EthereumEcdsa(0), TestItem.PrivateKeyA).Sign(record);
+        NetworkNode enr = new(record.ToString()) { Reputation = 2L };
+
+        storage.UpdateNode(enr);
+
+        NetworkNode current = storage.GetPersistedNodes().Single();
+        NetworkNode reloaded = new NetworkStorage(db, LimboLogs.Instance).GetPersistedNodes().Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(current, Is.SameAs(enr));
+            Assert.That(current.IsEnr, Is.True);
+            Assert.That(current.Reputation, Is.EqualTo(2L));
+            Assert.That(reloaded.IsEnr, Is.True);
+            Assert.That(reloaded.Enr!.EnrSequence, Is.EqualTo(1));
+            Assert.That(reloaded.Reputation, Is.EqualTo(2L));
         }
     }
 

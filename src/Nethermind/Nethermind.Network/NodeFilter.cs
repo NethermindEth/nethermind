@@ -66,11 +66,22 @@ public sealed class NodeFilter
 
         // Benign race: two threads may both accept the same key concurrently.
         // The filter is advisory — a double-accept is harmless.
-        if (_cache.TryGet(key, out long lastSeen) && now - lastSeen < _timeoutMs)
+        if (WasSeenRecently(key, now))
             return false;
 
         _cache.Set(key, now);
         return true;
+    }
+
+    /// <summary>
+    /// Checks whether an address would be accepted without recording it.
+    /// </summary>
+    internal bool WouldAccept(IPAddress ipAddress, bool exactOnly = false)
+    {
+        if (_cache is null) return true;
+
+        long now = Environment.TickCount64;
+        return !WasSeenRecently(GetKey(ipAddress, exactOnly), now);
     }
 
     public void Touch(IPAddress ipAddress, bool exactOnly = false)
@@ -90,6 +101,10 @@ public sealed class NodeFilter
             : (_parsedCurrentIp is { } current
                 ? IpSubnetKey.CreateNodeFilterKey(ipAddress, in current)
                 : IpSubnetKey.DefaultKey(ipAddress));
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool WasSeenRecently(IpSubnetKey key, long now)
+        => _cache!.TryGet(key, out long lastSeen) && now - lastSeen < _timeoutMs;
 
     /// <summary>
     /// Allocation-free key for an IP address or a masked subnet prefix, suitable for hash lookups and prefix checks.

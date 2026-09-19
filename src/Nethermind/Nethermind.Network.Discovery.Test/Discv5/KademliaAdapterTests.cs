@@ -470,7 +470,6 @@ public class KademliaAdapterTests
             new NettyDiscoveryV5Handler(LimboLogs.Instance),
             _packetCodec,
             nodeRecordProvider,
-            ipResolver,
             new DiscoveryConfig(),
             new KademliaConfig<Node> { CurrentNodeId = currentNode },
             new CryptoRandom(),
@@ -551,7 +550,6 @@ public class KademliaAdapterTests
     private sealed class RejectingRefreshAdapter(NodeRecord record)
         : KademliaAdapterBase(
             "test",
-            CreateIpResolver(IPAddress.Any),
             LimboLogs.Instance.GetClassLogger<RejectingRefreshAdapter>(),
             CreateListenerState(CreateIpResolver(IPAddress.Any), IPAddress.Any))
     {
