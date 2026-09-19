@@ -379,6 +379,7 @@ namespace Nethermind.Db.Test
             fileSystem.File.Returns(file);
 
             string markerFile = Path.Join(Path.GetTempPath(), "test", "test", "corrupt.marker");
+            string repairedMarker = Path.Join(Path.GetTempPath(), "test", "test", "repaired.marker");
             file.Exists(markerFile).Returns(true);
 
             bool didRepair = false;
@@ -395,7 +396,34 @@ namespace Nethermind.Db.Test
             }
 
             Assert.That(didRepair, Is.True);
+            file.Received().WriteAllText(repairedMarker, Arg.Any<string>());
             file.Received().Delete(markerFile);
+        }
+
+        [Test]
+        public void If_no_corrupt_marker_on_open_then_repaired_marker_is_not_written()
+        {
+            IDbConfig config = new DbConfig();
+
+            IFile file = Substitute.For<IFile>();
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            fileSystem.File.Returns(file);
+
+            bool didRepair = false;
+
+            try
+            {
+                _ = new RepairTrackingDbOnTheRocks(Path.Join(Path.GetTempPath(), "test"), GetRocksDbSettings("test", "test"), config, _rocksdbConfigFactory,
+                    LimboLogs.Instance,
+                    fileSystem: fileSystem,
+                    onRepair: () => didRepair = true);
+            }
+            catch (Exception)
+            {
+            }
+
+            Assert.That(didRepair, Is.False);
+            file.DidNotReceive().WriteAllText(Arg.Is<string>(path => path.Contains("repaired.marker")), Arg.Any<string>());
         }
 
         [Test]

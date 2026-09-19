@@ -17,6 +17,8 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
 
     public void Clear() => BasePersistence.ClearAllColumns(db);
 
+    public bool WasRepairedOnOpen => db.WasRepairedOnOpen;
+
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None)
     {
         IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot();

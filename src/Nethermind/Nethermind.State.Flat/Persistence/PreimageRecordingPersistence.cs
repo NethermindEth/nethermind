@@ -34,6 +34,7 @@ public class PreimageRecordingPersistence(IPersistence inner, IDb preimageDb) : 
 
     public void Flush() => _inner.Flush();
     public void Clear() => _inner.Clear();
+    public bool WasRepairedOnOpen => _inner.WasRepairedOnOpen;
 
     private class RecordingWriteBatch(IPersistence.IWriteBatch inner, IWriteBatch preimageWriteBatch, IDb preimageDb) : IPersistence.IWriteBatch
     {
