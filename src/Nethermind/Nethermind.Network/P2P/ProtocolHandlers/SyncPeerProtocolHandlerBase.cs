@@ -21,6 +21,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Stats.SyncLimits;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using MemoryAllowance = Nethermind.TxPool.MemoryAllowance;
@@ -29,6 +30,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 {
     public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
     {
+        // A block with no transactions contributes nothing to the size estimate, so the byte budget alone
+        // does not bound how many blocks a receipts request may look up. Peers ask for at most
+        // MaxReceiptFetch blocks per request, so the same 2x headroom go-ethereum allows is ample.
+        private const int MaxReceiptsLookups = 2 * NethermindSyncLimits.MaxReceiptFetch;
+
         internal static ulong SoftOutgoingMessageSizeLimit = 2UL.MiB;
         internal static ulong HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
         internal static ulong HardOutgoingBodiesMessageSizeLimit = 15UL.MiB;
@@ -401,7 +407,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             ArrayPoolList<TxReceipt[]> txReceipts = new(hashes.Length);
 
             ulong sizeEstimate = 0;
-            for (int i = 0; i < hashes.Length; i++)
+            for (int i = 0; i < hashes.Length && i < MaxReceiptsLookups; i++)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {

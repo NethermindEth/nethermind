@@ -374,6 +374,32 @@ public class SnapStateServerTests
     }
 
     [Test]
+    public void TestGetTrieNodes_BoundsLookupsForPathsThatResolveToNothing()
+    {
+        using ISnapServerContext context = CreateContext();
+        FillAccountWithDefaultStorage(context);
+
+        // Nibbles a,b,c,d in compact form. The storage trie is only two levels deep, so every one
+        // of these resolves to no node at all and contributes nothing to the response size.
+        byte[] absentStoragePath = [0x00, 0xab, 0xcd];
+
+        const int requestCount = 5000;
+        byte[][] group = new byte[requestCount + 1][];
+        group[0] = TestItem.Tree.AccountAddress0.BytesToArray();
+        for (int i = 1; i <= requestCount; i++) group[i] = absentStoragePath;
+
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList([new PathGroup { Group = group }]);
+        using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The account lookup takes the first of the budget, the storage lookups the rest.
+            Assert.That(result.Count, Is.EqualTo(ISnapStateServer.MaxTrieNodeLookups - 1));
+            Assert.That(result[0].Length, Is.Zero);
+        }
+    }
+
+    [Test]
     public void TestGetTrieNodes_RespectsRequestedResponseByteLimit()
     {
         using ISnapServerContext context = CreateContext();
