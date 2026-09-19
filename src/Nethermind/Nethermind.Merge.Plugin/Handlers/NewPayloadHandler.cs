@@ -82,7 +82,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         IMergeConfig mergeConfig,
         IReceiptConfig receiptConfig,
         IStateReader stateReader,
-        IEthereumEcdsa ecdsa,
+        RecoverSignatures senderRecovery,
         ISpecProvider specProvider,
         ITxValidator txValidator,
         ILogManager logManager)
@@ -100,7 +100,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _stateReader = stateReader;
         _specProvider = specProvider;
         _txValidator = txValidator;
-        _senderRecovery = new RecoverSignatures(ecdsa, specProvider, logManager);
+        _senderRecovery = senderRecovery;
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
@@ -475,8 +475,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return;
 
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
-        // Deliberately not awaited: RecoverSignatures tracks the in-flight recovery for the pipeline.
-        _senderRecovery.RecoverDataAsync(request.BlockHash, transactions.Data, spec);
+        _senderRecovery.StartRecovery(request.BlockHash, transactions.Data, spec);
     }
 
     private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions)
@@ -551,7 +550,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // probably the block is already in the processing queue as a result
                 // of a previous newPayload or the block being discovered during syncing
                 // but add it to the processing queue just in case.
-                RecoverSignatures.WaitForLeadingSenders(block.Hash!, block.Transactions);
+                _senderRecovery.WaitForLeadingSenders(block.Transactions);
                 await _processingQueue.Enqueue(block, processingOptions);
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }

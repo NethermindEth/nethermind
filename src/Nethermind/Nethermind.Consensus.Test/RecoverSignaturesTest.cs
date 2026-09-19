@@ -12,7 +12,6 @@ using Nethermind.Logging;
 using System;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 
@@ -119,73 +118,120 @@ public class RecoverSignaturesTest
 
 #nullable enable
 
+    private const int DrainTimeoutMs = 10_000;
+    private const int PollMs = 5;
+
     [Test]
-    public async Task RecoverDataAsync_WhileInFlight_RecoverDataReturnsWithoutWaiting()
+    public void StartRecovery_WhileRunning_PipelineStepLeavesTheBlockAlone()
     {
         using ManualResetEventSlim gate = new();
-        GatedEcdsa ecdsa = new(_ecdsa, gate, passThrough: 0);
         Transaction[] txs =
         [
             Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject,
             Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithSenderAddress(null).TestObject,
         ];
-        // The block constructor copies the array, as the engine payload path does: the registry must not depend on array identity.
+        // The block constructor copies the array, as the engine payload path does.
         Block block = new(Build.A.BlockHeader.TestObject, txs, []);
-        RecoverSignatures sut = new(ecdsa, CreateSpecProvider(), Substitute.For<ILogManager>());
+        RecoverSignatures sut = CreateSut(gate, txs[0], txs[1]);
 
-        Task recovery = sut.RecoverDataAsync(block.Hash!, txs, ReleaseSpecSubstitute.Create());
+        sut.StartRecovery(block.Hash!, txs, ReleaseSpecSubstitute.Create());
 
-        Assert.That(RecoverSignatures.IsRecoveryInFlight(block.Hash), Is.True);
+        Assert.That(sut.IsRecoveryInFlight(block.Transactions), Is.True);
         sut.RecoverData(block);
-        Assert.That(txs[0].SenderAddress, Is.Null, "the pipeline step must not recover behind the in-flight task");
+        Assert.That(txs[0].SenderAddress, Is.Null, "the pipeline step must not recover behind the running recovery");
 
-        gate.Set();
-        await recovery;
-
-        Assert.That(txs.Select(tx => tx.SenderAddress), Is.EqualTo(new[] { TestItem.AddressA, TestItem.AddressB }));
-        Assert.That(RecoverSignatures.IsRecoveryInFlight(block.Hash), Is.False);
+        ReleaseAndDrain(gate, sut, txs);
+        Assert.That(txs.Select(static tx => tx.SenderAddress), Is.EqualTo(new[] { TestItem.AddressA, TestItem.AddressB }));
     }
 
     [Test]
-    public async Task WaitForLeadingSenders_ReturnsOnceTheLeadingBatchIsRecovered()
+    public void StartRecovery_ResentPayload_DoesNotStartASecondRecovery()
     {
-        int leading = Environment.ProcessorCount;
         using ManualResetEventSlim gate = new();
-        GatedEcdsa ecdsa = new(_ecdsa, gate, passThrough: leading);
-        Transaction[] txs = Enumerable.Range(0, leading + 2)
-            .Select(nonce => Build.A.Transaction.WithNonce((ulong)nonce).SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject)
-            .ToArray();
-        RecoverSignatures sut = new(ecdsa, CreateSpecProvider(), Substitute.For<ILogManager>());
+        Transaction[] first = SignedTransactions(2);
+        Transaction[] resent = SignedTransactions(2);
+        RecoverSignatures sut = CreateSut(gate, first[0], first[1]);
 
-        Task recovery = sut.RecoverDataAsync(TestItem.KeccakA, txs, ReleaseSpecSubstitute.Create());
-        Task waited = Task.Run(() => RecoverSignatures.WaitForLeadingSenders(TestItem.KeccakA, txs));
+        sut.StartRecovery(TestItem.KeccakA, first, ReleaseSpecSubstitute.Create());
+        sut.StartRecovery(TestItem.KeccakA, resent, ReleaseSpecSubstitute.Create());
 
-        Assert.That(await Task.WhenAny(waited, Task.Delay(TimeSpan.FromSeconds(10))), Is.SameAs(waited), "waiting must end once the leading senders are in, not when recovery completes");
-        Assert.That(txs.Take(leading).All(tx => tx.SenderAddress is not null), Is.True);
+        Assert.That(sut.IsRecoveryInFlight(first), Is.True);
+        Assert.That(sut.IsRecoveryInFlight(resent), Is.False, "the resent payload's own transactions stay with the pipeline");
 
-        gate.Set();
-        await recovery;
-        Assert.That(txs.All(tx => tx.SenderAddress == TestItem.AddressA), Is.True);
+        ReleaseAndDrain(gate, sut, first);
     }
 
-    private static ISpecProvider CreateSpecProvider()
+    [Test]
+    public void WaitForLeadingSenders_ReturnsOnceTheLeadingBatchIsRecovered()
+    {
+        int leading = RecoverSignatures.LeadingSenderCount;
+        using ManualResetEventSlim gate = new();
+        Transaction[] txs = SignedTransactions(leading + 2);
+        // Only the tail is parked, so the wait can end on the leading senders but never on completion.
+        RecoverSignatures sut = CreateSut(gate, txs[leading], txs[leading + 1]);
+
+        sut.StartRecovery(TestItem.KeccakA, txs, ReleaseSpecSubstitute.Create());
+        sut.WaitForLeadingSenders(txs, TimeSpan.FromMilliseconds(DrainTimeoutMs));
+
+        Assert.That(txs.Take(leading).All(static tx => tx.SenderAddress is not null), Is.True);
+        Assert.That(sut.IsRecoveryInFlight(txs), Is.True, "the wait must end on the leading senders, not on completion");
+
+        ReleaseAndDrain(gate, sut, txs);
+        Assert.That(txs.All(static tx => tx.SenderAddress == TestItem.AddressA), Is.True);
+    }
+
+    [Test]
+    public void WaitForLeadingSenders_GivesUpWhenTheHeadDoesNotArrive()
+    {
+        using ManualResetEventSlim gate = new();
+        Transaction[] txs = SignedTransactions(RecoverSignatures.LeadingSenderCount + 2);
+        RecoverSignatures sut = CreateSut(gate, txs[0]);
+
+        sut.StartRecovery(TestItem.KeccakA, txs, ReleaseSpecSubstitute.Create());
+        sut.WaitForLeadingSenders(txs, TimeSpan.FromMilliseconds(20));
+
+        Assert.That(txs[0].SenderAddress, Is.Null, "a sender that never arrives must not hold the caller");
+
+        ReleaseAndDrain(gate, sut, txs);
+    }
+
+    private static Transaction[] SignedTransactions(int count) =>
+        Enumerable.Range(0, count)
+            .Select(static nonce => Build.A.Transaction.WithNonce((ulong)nonce).SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject)
+            .ToArray();
+
+    private static RecoverSignatures CreateSut(ManualResetEventSlim gate, params Transaction[] parked)
     {
         IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
-        return specProvider;
+        GatedEcdsa ecdsa = new(_ecdsa, gate, parked.Select(static tx => tx.Signature!).ToArray());
+        return new RecoverSignatures(ecdsa, specProvider, Substitute.For<ILogManager>());
     }
 
-    /// <summary>Delegates to a real ecdsa, letting the first <c>passThrough</c> address recoveries through and parking the rest on a gate.</summary>
-    private sealed class GatedEcdsa(IEthereumEcdsa inner, ManualResetEventSlim gate, int passThrough) : IEthereumEcdsa
+    /// <summary>Lets the parked recoveries through and waits for the work item, so no thread outlives the gate.</summary>
+    private static void ReleaseAndDrain(ManualResetEventSlim gate, RecoverSignatures sut, Transaction[] txs)
     {
-        private int _recoveries;
+        gate.Set();
+        Assert.That(() => sut.IsRecoveryInFlight(txs), Is.False.After(DrainTimeoutMs, PollMs));
+    }
 
+    /// <summary>Delegates to a real ecdsa, parking the recoveries of the given signatures on a gate.</summary>
+    private sealed class GatedEcdsa(IEthereumEcdsa inner, ManualResetEventSlim gate, Signature[] parked) : IEthereumEcdsa
+    {
         public ulong ChainId => inner.ChainId;
 
         public Address? RecoverAddress(Signature signature, in ValueHash256 message)
         {
-            if (Interlocked.Increment(ref _recoveries) > passThrough) gate.Wait();
+            foreach (Signature candidate in parked)
+            {
+                if (ReferenceEquals(candidate, signature))
+                {
+                    gate.Wait();
+                    break;
+                }
+            }
+
             return inner.RecoverAddress(signature, in message);
         }
 

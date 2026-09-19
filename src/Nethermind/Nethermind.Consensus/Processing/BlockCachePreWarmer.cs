@@ -726,15 +726,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (txCount == 0 || parallelOptions.CancellationToken.IsCancellationRequested) return;
 
         // Senders may still be arriving while the block is already being processed (recovery runs in
-        // ascending index order, see RecoverSignatures.RecoverDataAsync), so each pass warms what is
+        // ascending index order, see RecoverSignatures.StartRecovery), so each pass warms what is
         // recovered and the next pass picks up the rest, until nothing is left ahead of the main thread.
         bool[] claimed = ArrayPool<bool>.Shared.Rent(txCount);
         Array.Clear(claimed, 0, txCount);
+        int firstUnclaimed = 0;
         do
         {
             WarmupRecoveredTransactions(blockState, parallelOptions, claimed);
         }
-        while (WaitForMoreSenders(blockState.Block.Transactions, claimed, parallelOptions.CancellationToken));
+        while (WaitForMoreSenders(blockState.Block.Transactions, claimed, ref firstUnclaimed, parallelOptions.CancellationToken));
 
         ArrayPool<bool>.Shared.Return(claimed);
     }
@@ -743,22 +744,25 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// Waits until a transaction no pass has claimed yet has its sender recovered; <c>false</c> once the main
     /// thread has passed every unclaimed transaction or the block is done.
     /// </summary>
-    private bool WaitForMoreSenders(Transaction[] txs, bool[] claimed, CancellationToken cancellationToken)
+    /// <param name="firstUnclaimed">Lower bound of the unclaimed range; a claim is never released, so it only moves forward.</param>
+    private bool WaitForMoreSenders(Transaction[] txs, bool[] claimed, ref int firstUnclaimed, CancellationToken cancellationToken)
     {
+        while (firstUnclaimed < txs.Length && claimed[firstUnclaimed]) firstUnclaimed++;
+        if (firstUnclaimed == txs.Length) return false;
+
         int lastPending = Array.LastIndexOf(claimed, false, txs.Length - 1);
-        if (lastPending < 0) return false;
 
+        // A sender that never arrives leaves the tail unclaimed for the whole block, so the spin has to fall
+        // back to sleeping rather than hold a core against the recovery it waits for.
         SpinWait spinner = default;
-        while (!cancellationToken.IsCancellationRequested)
+        while (!cancellationToken.IsCancellationRequested && MainThreadTxIndex < lastPending)
         {
-            if (MainThreadTxIndex >= lastPending) return false;
-
-            for (int i = 0; i <= lastPending; i++)
+            for (int i = firstUnclaimed; i <= lastPending; i++)
             {
                 if (!claimed[i] && txs[i].SenderAddress is not null) return true;
             }
 
-            spinner.SpinOnce(sleep1Threshold: -1);
+            spinner.SpinOnce();
         }
 
         return false;

@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.IO;
-using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -29,24 +28,26 @@ namespace Nethermind.Consensus.Processing
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         private readonly ILogger _logger = logManager?.GetClassLogger<RecoverSignatures>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        // Keyed by block hash: the engine handler knows it from the payload before the block object exists, and
-        // the block copies the transaction array, so the array itself cannot be the key. Entries are removed on completion.
-        private static readonly ConcurrentDictionary<Hash256, Task> s_inFlight = new();
-
-        private static readonly ParallelOptions s_backgroundOptions = ParallelUnbalancedWork.DefaultOptions;
+        private Recovery? _current;
 
         /// <summary>
         /// Senders to have in place before a block is enqueued: enough for the prewarmer's first pass to cover the
         /// processing thread's first few milliseconds, a fraction of the time recovering them all would take.
         /// </summary>
-        private static readonly int LeadingSenderCount = Environment.ProcessorCount * 4;
+        internal static readonly int LeadingSenderCount = Environment.ProcessorCount * 4;
+
+        /// <summary>
+        /// Upper bound on <see cref="WaitForLeadingSenders(Transaction[])"/>: the head arrives in a fraction of a
+        /// millisecond, so only a saturated thread pool can reach it, and then the caller must go on regardless.
+        /// </summary>
+        private static readonly TimeSpan LeadingSenderTimeout = TimeSpan.FromMilliseconds(2);
 
         public void RecoverData(Block block)
         {
             IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
 
             Transaction[] txs = block.Transactions;
-            if (txs.Length != 0 && !IsRecoveryInFlight(block.Hash) && !AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
+            if (txs.Length != 0 && !IsRecoveryInFlight(txs) && !AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
             {
                 RecoverData(txs, releaseSpec);
             }
@@ -81,41 +82,48 @@ namespace Nethermind.Consensus.Processing
         }
 
         /// <summary>
-        /// Recovers senders and EIP-7702 authorities on the thread pool and returns without waiting, marking the
-        /// block as in flight so <see cref="RecoverData(Block)"/> lets it proceed to processing meanwhile.
+        /// Queues recovery of senders and EIP-7702 authorities on the thread pool and returns without waiting, so
+        /// that <see cref="RecoverData(Block)"/> lets the block proceed to processing meanwhile.
         /// </summary>
         /// <remarks>
         /// Recovery runs in ascending transaction order, so consumers that tolerate a not-yet-recovered sender
         /// (the transaction processor recovers inline, the prewarmer warms transactions as their senders arrive)
         /// rarely wait. A failure is logged and left to the processing path, whose own attempt rejects the block.
+        /// <paramref name="blockHash"/> only suppresses a duplicate start, so a hash that does not match the
+        /// transactions costs at most one redundant recovery.
         /// </remarks>
-        public Task RecoverDataAsync(Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec)
+        public void StartRecovery(Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec)
         {
             if (txs.Length == 0 || AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
-                return Task.CompletedTask;
+                return;
 
-            Task task = new(() =>
-            {
-                try
-                {
-                    RecoverData(txs, releaseSpec, skipErrors: false, s_backgroundOptions);
-                }
-                catch (Exception e)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Early sender recovery failed: {e}");
-                }
-            });
-            s_inFlight[blockHash] = task;
-            task.ContinueWith(static (_, state) => s_inFlight.TryRemove((Hash256)state!, out _), blockHash, TaskContinuationOptions.ExecuteSynchronously);
-            task.Start(TaskScheduler.Default);
-            return task;
+            // A resent newPayload decodes its own transaction objects, so nothing else deduplicates this.
+            Recovery? current = Volatile.Read(ref _current);
+            if (current is not null && !current.IsCompleted && current.BlockHash == blockHash)
+                return;
+
+            Recovery recovery = new(this, blockHash, txs, releaseSpec);
+            Volatile.Write(ref _current, recovery);
+            ThreadPool.UnsafeQueueUserWorkItem(recovery, preferLocal: false);
         }
 
-        internal static bool IsRecoveryInFlight(Hash256? blockHash) => blockHash is not null && s_inFlight.TryGetValue(blockHash, out Task? task) && !task.IsCompleted;
+        internal bool IsRecoveryInFlight(Transaction[] txs) => InFlightFor(txs) is not null;
+
+        /// <summary>The running recovery covering <paramref name="txs"/>, or <c>null</c> when there is none.</summary>
+        /// <remarks><see cref="Block"/>'s constructor copies the transaction array, so only the shared
+        /// transaction objects can identify the recovery.</remarks>
+        private Recovery? InFlightFor(Transaction[] txs)
+        {
+            Recovery? current = Volatile.Read(ref _current);
+            return current is not null && !current.IsCompleted && ReferenceEquals(current.Transactions[0], txs[0])
+                ? current
+                : null;
+        }
 
         /// <summary>
-        /// Blocks until the first <see cref="LeadingSenderCount"/> transactions have their senders, or the in-flight
-        /// recovery has ended; returns at once when no recovery is in flight for <paramref name="blockHash"/>.
+        /// Blocks until the first <see cref="LeadingSenderCount"/> transactions have their senders, the running
+        /// recovery has ended, or <see cref="LeadingSenderTimeout"/> elapses; returns at once when no recovery is
+        /// running for <paramref name="txs"/>.
         /// </summary>
         /// <remarks>
         /// Recovery hands out transactions in ascending order to every core, so that head lands within the first
@@ -123,15 +131,19 @@ namespace Nethermind.Consensus.Processing
         /// place spares the processing thread an inline recovery on its very first transactions and gives the
         /// prewarmer a non-empty first pass.
         /// </remarks>
-        public static void WaitForLeadingSenders(Hash256 blockHash, Transaction[] txs)
+        public void WaitForLeadingSenders(Transaction[] txs) => WaitForLeadingSenders(txs, LeadingSenderTimeout);
+
+        internal void WaitForLeadingSenders(Transaction[] txs, TimeSpan timeout)
         {
-            if (!s_inFlight.TryGetValue(blockHash, out Task? task)) return;
+            if (InFlightFor(txs) is not Recovery recovery) return;
 
             int leading = Math.Min(LeadingSenderCount, txs.Length);
+            long start = Stopwatch.GetTimestamp();
             SpinWait spinner = default;
-            while (!task.IsCompleted && !HasLeadingSenders(txs, leading))
+            while (!recovery.IsCompleted && !HasLeadingSenders(txs, leading))
             {
-                spinner.SpinOnce(sleep1Threshold: -1);
+                if (Stopwatch.GetElapsedTime(start) >= timeout) return;
+                spinner.SpinOnce();
             }
         }
 
@@ -147,10 +159,7 @@ namespace Nethermind.Consensus.Processing
 
         /// <summary>Recovers senders and EIP-7702 authorities for transactions not yet attached to a <see cref="Block"/>.</summary>
         /// <param name="skipErrors">When set, recovery failures leave <see cref="Transaction.SenderAddress"/> null instead of throwing.</param>
-        public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors = false) =>
-            RecoverData(txs, releaseSpec, skipErrors, ParallelUnbalancedWork.DefaultOptions);
-
-        private void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors, ParallelOptions parallelOptions)
+        public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors = false)
         {
             if (txs.Length == 0)
                 return;
@@ -163,7 +172,6 @@ namespace Nethermind.Consensus.Processing
                 ParallelUnbalancedWork.For(
                     0,
                     txs.Length,
-                    parallelOptions,
                     (recover: this, txs, releaseSpec, skipErrors),
                     RecoverSingle);
             }
@@ -234,6 +242,31 @@ namespace Nethermind.Consensus.Processing
                 foreach (AuthorizationTuple tuple in tx.AuthorizationList.AsSpan())
                 {
                     tuple.Authority ??= _ecdsa.RecoverAddress(tuple);
+                }
+            }
+        }
+
+        private sealed class Recovery(RecoverSignatures owner, Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec) : IThreadPoolWorkItem
+        {
+            private volatile bool _completed;
+
+            public Hash256 BlockHash => blockHash;
+            public Transaction[] Transactions => txs;
+            public bool IsCompleted => _completed;
+
+            void IThreadPoolWorkItem.Execute()
+            {
+                try
+                {
+                    owner.RecoverData(txs, releaseSpec);
+                }
+                catch (Exception e)
+                {
+                    if (owner._logger.IsDebug) owner._logger.Debug($"Early sender recovery failed: {e}");
+                }
+                finally
+                {
+                    _completed = true;
                 }
             }
         }

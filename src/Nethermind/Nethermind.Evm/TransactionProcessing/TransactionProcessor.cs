@@ -1038,7 +1038,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (Logger.IsDebug) Logger.Debug($"TX sender account does not exist {sender} - trying to recover it");
 
-                // EIP-2780 message calls were already recovered before intrinsic gas.
+                // Message calls under EIP-2780 were re-recovered against this state before intrinsic gas;
+                // repeating it here would only redo that work.
                 if (tx.Signature is not null && (!spec.IsEip2780Enabled || !tx.IsMessageCall))
                     tx.SenderAddress = Ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
 
