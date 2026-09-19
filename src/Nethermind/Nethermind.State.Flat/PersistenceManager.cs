@@ -160,7 +160,7 @@ public class PersistenceManager(
         // longest chain, then the latest state, only when the committed seed is absent or disconnected.
         if (snapshotsDepth > _backstopReorgDepth)
         {
-            (PersistedSnapshot? persisted, Snapshot? inMemory) = snapshotRepository.FindSnapshotToPersistWithFallback(currentPersistedState, latestSnapshot);
+            (PersistedSnapshot? persisted, Snapshot? inMemory) = snapshotRepository.FindSnapshotToPersistWithFallback(currentPersistedState, latestSnapshot, _compactSize);
             if (persisted is not null || inMemory is not null)
             {
                 if (_logger.IsWarn) _logger.Warn(
@@ -443,7 +443,7 @@ public class PersistenceManager(
             (PersistedSnapshot? persisted, Snapshot? snapshotToPersist) =
                 snapshotRepository.FindSnapshotToPersist(seed.Value, currentPersistedState, _compactSize);
             if (persisted is null && snapshotToPersist is null)
-                (persisted, snapshotToPersist) = snapshotRepository.FindSnapshotToPersistWithFallback(currentPersistedState, latestStateId.Value);
+                (persisted, snapshotToPersist) = snapshotRepository.FindSnapshotToPersistWithFallback(currentPersistedState, latestStateId.Value, _compactSize);
 
             if (persisted is not null)
             {

@@ -1342,6 +1342,43 @@ public class PersistenceManagerTests
     }
 
     [Test]
+    public void FlushToPersistence_WhenBacklogIsPersistedOnly_DrainsConvertedChunks()
+    {
+        PersistBase(Block0, CreateStateId(16));
+        PersistBase(CreateStateId(16), CreateStateId(32));
+        StateId offChain = CreateStateId(100_001);
+        CreateSnapshot(CreateStateId(100_000), offChain);
+        _snapshotRepository.SetLastCommittedStateId(offChain);
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        StateId flushed = _persistenceManager.FlushToPersistence(CancellationToken.None);
+
+        Assert.That(flushed, Is.EqualTo(CreateStateId(32)), "persisted-only candidates must remain visible to fallback");
+        _persistence.Received(2).CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+    }
+
+    [Test]
+    public void FindSnapshotToPersistWithFallback_WhenWideChunkIsNonCanonical_UsesNarrowChunkOnSameChain()
+    {
+        StateId narrow = CreateStateId(1);
+        StateId head = CreateStateId(16);
+        CreateSnapshot(Block0, narrow);
+        CreateSnapshot(narrow, head);
+        CreateSnapshot(Block0, head, compacted: true);
+        _snapshotRepository.SetLastCommittedStateId(head);
+        _finalizedStateProvider.SetFinalizedStateRootAt(1, new Hash256(narrow.StateRoot.Bytes));
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, TestItem.KeccakA);
+
+        (PersistedSnapshot? persisted, Snapshot? inMemory) =
+            _snapshotRepository.FindSnapshotToPersistWithFallback(Block0, head, (ulong)_config.CompactSize);
+        using (persisted)
+        using (inMemory)
+        {
+            Assert.That(persisted?.To ?? inMemory?.To, Is.EqualTo(narrow), "rejecting a wide edge must not reject the entire connected seed");
+        }
+    }
+
+    [Test]
     public void FindSnapshotToPersistWithFallback_WhenSiblingsExist_UsesCanonicalRoot(
         [Values] bool preGenesis, [Values] bool canonicalRootKnown, [Values(1, 255)] byte canonicalRootByte)
     {
@@ -1358,7 +1395,7 @@ public class PersistenceManagerTests
             _finalizedStateProvider.SetFinalizedStateRootAt(candidateBlock, new Hash256(canonical.StateRoot.Bytes));
 
         (PersistedSnapshot? persisted, Snapshot? inMemory) =
-            _snapshotRepository.FindSnapshotToPersistWithFallback(persistedState, offChain);
+            _snapshotRepository.FindSnapshotToPersistWithFallback(persistedState, offChain, (ulong)_config.CompactSize);
         using (persisted)
         using (inMemory)
         {
@@ -1389,7 +1426,7 @@ public class PersistenceManagerTests
         _snapshotRepository.SetLastCommittedStateId(committed);
 
         (PersistedSnapshot? persisted, Snapshot? inMemory) =
-            _snapshotRepository.FindSnapshotToPersistWithFallback(persistedState, committed);
+            _snapshotRepository.FindSnapshotToPersistWithFallback(persistedState, committed, (ulong)_config.CompactSize);
         using (persisted)
         using (inMemory)
         {
