@@ -3,11 +3,12 @@
 
 using System;
 using System.IO;
-using System.Runtime.CompilerServices;
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -28,9 +29,9 @@ namespace Nethermind.Consensus.Processing
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         private readonly ILogger _logger = logManager?.GetClassLogger<RecoverSignatures>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        // Keyed by the transaction array: the engine handler starts recovery before the block object exists,
-        // and the processing pipeline sees the same array through Block.Transactions.
-        private static readonly ConditionalWeakTable<Transaction[], Task> s_inFlight = [];
+        // Keyed by block hash: the engine handler knows it from the payload before the block object exists, and
+        // the block copies the transaction array, so the array itself cannot be the key. Entries are removed on completion.
+        private static readonly ConcurrentDictionary<Hash256, Task> s_inFlight = new();
 
         /// <summary>One recovery batch: the transactions all cores pick up first.</summary>
         private static readonly int LeadingSenderCount = Environment.ProcessorCount;
@@ -40,7 +41,7 @@ namespace Nethermind.Consensus.Processing
             IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
 
             Transaction[] txs = block.Transactions;
-            if (txs.Length != 0 && !IsRecoveryInFlight(txs) && !AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
+            if (txs.Length != 0 && !IsRecoveryInFlight(block.Hash) && !AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
             {
                 RecoverData(txs, releaseSpec);
             }
@@ -76,14 +77,14 @@ namespace Nethermind.Consensus.Processing
 
         /// <summary>
         /// Recovers senders and EIP-7702 authorities on the thread pool and returns without waiting, marking the
-        /// array as in flight so <see cref="RecoverData(Block)"/> lets the block proceed to processing meanwhile.
+        /// block as in flight so <see cref="RecoverData(Block)"/> lets it proceed to processing meanwhile.
         /// </summary>
         /// <remarks>
         /// Recovery runs in ascending transaction order, so consumers that tolerate a not-yet-recovered sender
         /// (the transaction processor recovers inline, the prewarmer warms transactions as their senders arrive)
         /// rarely wait. A failure is logged and left to the processing path, whose own attempt rejects the block.
         /// </remarks>
-        public Task RecoverDataAsync(Transaction[] txs, IReleaseSpec releaseSpec)
+        public Task RecoverDataAsync(Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec)
         {
             if (txs.Length == 0 || AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
                 return Task.CompletedTask;
@@ -99,17 +100,17 @@ namespace Nethermind.Consensus.Processing
                     if (_logger.IsDebug) _logger.Debug($"Early sender recovery failed: {e}");
                 }
             });
-            s_inFlight.AddOrUpdate(txs, task);
-            task.ContinueWith(static (_, state) => s_inFlight.Remove((Transaction[])state!), txs, TaskContinuationOptions.ExecuteSynchronously);
+            s_inFlight[blockHash] = task;
+            task.ContinueWith(static (_, state) => s_inFlight.TryRemove((Hash256)state!, out _), blockHash, TaskContinuationOptions.ExecuteSynchronously);
             task.Start(TaskScheduler.Default);
             return task;
         }
 
-        internal static bool IsRecoveryInFlight(Transaction[] txs) => s_inFlight.TryGetValue(txs, out Task? task) && !task.IsCompleted;
+        internal static bool IsRecoveryInFlight(Hash256? blockHash) => blockHash is not null && s_inFlight.TryGetValue(blockHash, out Task? task) && !task.IsCompleted;
 
         /// <summary>
         /// Blocks until the first <see cref="LeadingSenderCount"/> transactions have their senders, or the in-flight
-        /// recovery has ended; returns at once when no recovery is in flight for <paramref name="txs"/>.
+        /// recovery has ended; returns at once when no recovery is in flight for <paramref name="blockHash"/>.
         /// </summary>
         /// <remarks>
         /// Recovery hands out transactions in ascending order to every core, so that head lands within the first
@@ -117,9 +118,9 @@ namespace Nethermind.Consensus.Processing
         /// place spares the processing thread an inline recovery on its very first transactions and gives the
         /// prewarmer a non-empty first pass.
         /// </remarks>
-        public static void WaitForLeadingSenders(Transaction[] txs)
+        public static void WaitForLeadingSenders(Hash256 blockHash, Transaction[] txs)
         {
-            if (!s_inFlight.TryGetValue(txs, out Task? task)) return;
+            if (!s_inFlight.TryGetValue(blockHash, out Task? task)) return;
 
             int leading = Math.Min(LeadingSenderCount, txs.Length);
             SpinWait spinner = default;

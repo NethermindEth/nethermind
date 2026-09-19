@@ -129,12 +129,13 @@ public class RecoverSignaturesTest
             Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject,
             Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).WithSenderAddress(null).TestObject,
         ];
-        Block block = Build.A.Block.WithTransactions(txs).TestObject;
+        // The block constructor copies the array, as the engine payload path does: the registry must not depend on array identity.
+        Block block = new(Build.A.BlockHeader.TestObject, txs, []);
         RecoverSignatures sut = new(ecdsa, CreateSpecProvider(), Substitute.For<ILogManager>());
 
-        Task recovery = sut.RecoverDataAsync(txs, ReleaseSpecSubstitute.Create());
+        Task recovery = sut.RecoverDataAsync(block.Hash!, txs, ReleaseSpecSubstitute.Create());
 
-        Assert.That(RecoverSignatures.IsRecoveryInFlight(txs), Is.True);
+        Assert.That(RecoverSignatures.IsRecoveryInFlight(block.Hash), Is.True);
         sut.RecoverData(block);
         Assert.That(txs[0].SenderAddress, Is.Null, "the pipeline step must not recover behind the in-flight task");
 
@@ -142,7 +143,7 @@ public class RecoverSignaturesTest
         await recovery;
 
         Assert.That(txs.Select(tx => tx.SenderAddress), Is.EqualTo(new[] { TestItem.AddressA, TestItem.AddressB }));
-        Assert.That(RecoverSignatures.IsRecoveryInFlight(txs), Is.False);
+        Assert.That(RecoverSignatures.IsRecoveryInFlight(block.Hash), Is.False);
     }
 
     [Test]
@@ -156,8 +157,8 @@ public class RecoverSignaturesTest
             .ToArray();
         RecoverSignatures sut = new(ecdsa, CreateSpecProvider(), Substitute.For<ILogManager>());
 
-        Task recovery = sut.RecoverDataAsync(txs, ReleaseSpecSubstitute.Create());
-        Task waited = Task.Run(() => RecoverSignatures.WaitForLeadingSenders(txs));
+        Task recovery = sut.RecoverDataAsync(TestItem.KeccakA, txs, ReleaseSpecSubstitute.Create());
+        Task waited = Task.Run(() => RecoverSignatures.WaitForLeadingSenders(TestItem.KeccakA, txs));
 
         Assert.That(await Task.WhenAny(waited, Task.Delay(TimeSpan.FromSeconds(10))), Is.SameAs(waited), "waiting must end once the leading senders are in, not when recovery completes");
         Assert.That(txs.Take(leading).All(tx => tx.SenderAddress is not null), Is.True);

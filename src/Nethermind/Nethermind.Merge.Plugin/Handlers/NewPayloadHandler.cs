@@ -476,7 +476,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
         // Deliberately not awaited: RecoverSignatures tracks the in-flight recovery for the pipeline.
-        _senderRecovery.RecoverDataAsync(transactions.Data, spec);
+        _senderRecovery.RecoverDataAsync(request.BlockHash, transactions.Data, spec);
     }
 
     private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions)
@@ -551,7 +551,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // probably the block is already in the processing queue as a result
                 // of a previous newPayload or the block being discovered during syncing
                 // but add it to the processing queue just in case.
-                RecoverSignatures.WaitForLeadingSenders(block.Transactions);
+                RecoverSignatures.WaitForLeadingSenders(block.Hash!, block.Transactions);
                 await _processingQueue.Enqueue(block, processingOptions);
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }
