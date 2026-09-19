@@ -194,7 +194,13 @@ public class ValidateSubmissionHandler(
             return false;
         }
 
-        using Scope<ProcessingEnv> scope = _blockProcessorEnv.BuildAndOverride(parentHeader);
+        if (!_blockProcessorEnv.TryBuildAndOverrideAtTarget(block.Header, stateOverride: null, specOverride: null, out Scope<ProcessingEnv>? scope))
+        {
+            error = $"No state available for parent of block {block.Header.ToString(BlockHeader.Format.FullHashAndNumber)}";
+            return false;
+        }
+
+        using IDisposable processingScope = scope;
         IWorldState worldState = scope.Component.WorldState;
         IBlockProcessor blockProcessor = scope.Component.BlockProcessor;
 
@@ -203,7 +209,7 @@ public class ValidateSubmissionHandler(
             return false;
         }
 
-        UInt256 feeRecipientBalanceBefore = worldState.HasStateForBlock(parentHeader) ? (worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero) : UInt256.Zero;
+        UInt256 feeRecipientBalanceBefore = worldState.AccountExists(feeRecipient) ? worldState.GetBalance(feeRecipient) : UInt256.Zero;
 
         BlockReceiptsTracer blockReceiptsTracer = new();
 

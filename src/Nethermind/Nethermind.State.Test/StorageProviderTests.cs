@@ -96,7 +96,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Empty_commit_restore()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         provider.Commit(Frontier.Instance);
         provider.Restore(Snapshot.Empty);
@@ -201,7 +201,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Oversized_per_contract_state_dictionary_is_trimmed_on_reset([Values(1_024, 16_384)] int changeCount)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         for (int i = 0; i < changeCount; i++)
         {
@@ -229,7 +229,7 @@ public class StorageProviderTests(bool useFlat)
     {
         const int OversizedCapacity = CoreCollectionExtensions.DefaultTrimAboveCapacity + 1;
 
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         object[] collections =
         [
@@ -299,7 +299,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Same_address_same_index_different_values_restore([Range(-1, 2)] int snapshot)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         Snapshot[] snapshots = new Snapshot[4];
         snapshots[0] = provider.TakeSnapshot();
@@ -317,7 +317,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Keep_in_cache()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[1], isBigEndian: true));
         provider.Commit(Frontier.Instance);
@@ -394,7 +394,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Original_value_tracks_transaction_start_across_stacked_writes()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell cell = new(ctx.Address1, 1);
 
@@ -461,7 +461,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Same_address_different_index([Range(-1, 2)] int snapshot)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[1], isBigEndian: true));
         provider.Set(new StorageCell(ctx.Address1, 2), new UInt256(_values[2], isBigEndian: true));
@@ -475,7 +475,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Commit_restore()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[1], isBigEndian: true));
         provider.Set(new StorageCell(ctx.Address1, 2), new UInt256(_values[2], isBigEndian: true));
@@ -512,7 +512,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Commit_no_changes()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[1], isBigEndian: true));
         provider.Set(new StorageCell(ctx.Address1, 2), new UInt256(_values[2], isBigEndian: true));
@@ -527,7 +527,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Commit_no_changes_2()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         provider.Get(new StorageCell(ctx.Address1, 1), out _);
         provider.Get(new StorageCell(ctx.Address1, 1), out _);
@@ -597,6 +597,33 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
+    /// <summary>Only <c>IStorageTree.IsKnownEmpty</c> may suppress reads for missing slots.</summary>
+    [Test]
+    public void Storage_of_a_backend_that_cannot_prove_emptiness_is_still_read()
+    {
+        using Context ctx = new(useFlat, setInitialState: false);
+        WorldState provider = new(new UnknownEmptinessScopeProvider(ctx.StateProvider.ScopeProvider), LogManager);
+
+        Hash256 stateRoot;
+        using (IDisposable _ = provider.BeginScope(IWorldState.PreGenesis))
+        {
+            provider.CreateAccount(ctx.Address1, 0);
+            provider.Set(new StorageCell(ctx.Address1, 1), new UInt256(_values[1], isBigEndian: true));
+            provider.Set(new StorageCell(ctx.Address1, 2), new UInt256(_values[2], isBigEndian: true));
+            provider.Commit(Frontier.Instance);
+            provider.CommitTree(0);
+            stateRoot = provider.StateRoot;
+        }
+
+        using (IDisposable _ = provider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).TestObject))
+        {
+            provider.Get(new StorageCell(ctx.Address1, 1), out UInt256 firstSlot);
+            provider.Get(new StorageCell(ctx.Address1, 2), out UInt256 secondSlot);
+            Assert.That(firstSlot, Is.EqualTo(new UInt256(_values[1], isBigEndian: true)));
+            Assert.That(secondSlot, Is.EqualTo(new UInt256(_values[2], isBigEndian: true)));
+        }
+    }
+
     [Test]
     public void Storage_root_collect_recomputes_all_changed_contracts_amid_warm_reads()
     {
@@ -650,7 +677,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Can_commit_when_exactly_at_capacity_regression()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         // block 1
         WorldState storageProvider = BuildStorageProvider(ctx);
         for (int i = 0; i < Resettable.StartCapacity; i++)
@@ -672,7 +699,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Can_tload_uninitialized_locations()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         // Should be 0 if not set
         provider.GetTransientState(new StorageCell(ctx.Address1, 1), out UInt256 storageValue13);
@@ -694,7 +721,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Can_tload_after_tstore()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
 
         provider.SetTransientState(new StorageCell(ctx.Address1, 2), new UInt256(_values[1], isBigEndian: true));
@@ -709,7 +736,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Tload_same_address_same_index_different_values_restore([Range(-1, 2)] int snapshot)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         Snapshot[] snapshots = new Snapshot[4];
         snapshots[0] = provider.TakeSnapshot();
@@ -888,7 +915,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Commit_resets_transient_state()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
 
         provider.SetTransientState(new StorageCell(ctx.Address1, 2), new UInt256(_values[1], isBigEndian: true));
@@ -1060,7 +1087,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Reset_resets_transient_state()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
 
         provider.SetTransientState(new StorageCell(ctx.Address1, 2), new UInt256(_values[1], isBigEndian: true));
@@ -1079,7 +1106,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Transient_state_restores_independent_of_persistent_state([Range(-1, 2)] int snapshot)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         Snapshot[] snapshots = new Snapshot[4];
 
@@ -1122,7 +1149,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Persistent_state_restores_independent_of_transient_state([Range(-1, 2)] int snapshot)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         Snapshot[] snapshots = new Snapshot[4];
 
@@ -1512,7 +1539,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Clearing_unaccessed_empty_storage_is_a_noop([Values] bool accountExists)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         if (accountExists)
         {
@@ -1532,7 +1559,7 @@ public class StorageProviderTests(bool useFlat)
     {
         const int ReadCount = 64;
 
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell existingCell = new(ctx.Address1, 1);
 
@@ -1588,7 +1615,7 @@ public class StorageProviderTests(bool useFlat)
     {
         // tx1 destroys a contract without touching any storage cell; tx2 (same block)
         // revives the address and writes — a leaked mark would drop tx2's write at commit.
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell cell = new(ctx.Address1, 1);
 
@@ -1635,7 +1662,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Same_block_revival_reads_zero_for_unrewritten_slots()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell rewritten = new(ctx.Address1, 1);
         StorageCell untouched = new(ctx.Address1, 2);
@@ -1708,7 +1735,7 @@ public class StorageProviderTests(bool useFlat)
         // Block production spans the whole block in one round (no per-tx Commit), so the
         // journaled clear must be used there: a redeploy after the destroy writes on top of
         // the zeroing and must survive, while un-rewritten slots stay zero.
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell rewritten = new(ctx.Address1, 1);
         StorageCell untouched = new(ctx.Address1, 2);
@@ -1875,7 +1902,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Commit_reports_latest_surviving_write_once([Values] bool clearStorage, [Values] bool restore)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell first = new(ctx.Address1, 100);
         StorageCell second = new(ctx.Address1, 101);
@@ -1923,7 +1950,7 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Commit_ReadOnlyRound_ReportsStorageReadsToTracer()
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell readCell = new(TestItem.AddressA, 1);
 
@@ -1948,7 +1975,7 @@ public class StorageProviderTests(bool useFlat)
     [TestCase(RoundBoundary.CommitAfterWrite)]
     public void Original_available_after_repeat_read(RoundBoundary boundary)
     {
-        using Context ctx = new(useFlat);
+        using Context ctx = new(useFlat, preBlockCaches: null);
         WorldState provider = BuildStorageProvider(ctx);
         StorageCell cell = new(ctx.Address1, 1);
 
@@ -2159,6 +2186,8 @@ public class StorageProviderTests(bool useFlat)
     {
         PreBlockCaches caches = new(TestPreBlockCachesConfig.Small);
         IWorldStateScopeProvider.IScope mainScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.ITrieWarmupSession trieWarmupSession = Substitute.For<IWorldStateScopeProvider.ITrieWarmupSession>();
+        mainScope.CreateTrieWarmupSession().Returns(trieWarmupSession);
         caches.MainScope = mainScope;
 
         using Context ctx = new(useFlat, preBlockCaches: populator ? caches : null);
@@ -2166,9 +2195,9 @@ public class StorageProviderTests(bool useFlat)
         ctx.StateProvider.Set(new StorageCell(ctx.Address1, 42), new UInt256(_values[1], isBigEndian: true));
 
         if (populator)
-            mainScope.Received(1).HintWarmSlot(new ValueAddress(ctx.Address1.Bytes), (UInt256)42);
+            trieWarmupSession.Received(1).HintWarmSlot(new ValueAddress(ctx.Address1.Bytes), (UInt256)42);
         else
-            mainScope.DidNotReceiveWithAnyArgs().HintWarmSlot(default, default);
+            trieWarmupSession.DidNotReceiveWithAnyArgs().HintWarmSlot(default, default);
     }
 
     private class Context : IDisposable
@@ -2185,13 +2214,13 @@ public class StorageProviderTests(bool useFlat)
             IWorldStateScopeProvider scopeProvider;
             if (useFlat)
             {
-                (scopeProvider, _container) = TestWorldStateFactory.CreateFlatScopeProvider();
+                (scopeProvider, _container) = TestWorldStateFactory.CreateFlatScopeProvider(UnavailableStateHeaderProvider.Instance);
             }
             else
             {
                 scopeProvider = new TrieStoreScopeProvider(
                     TestTrieStoreFactory.Build(new MemDb(), LimboLogs.Instance),
-                    new MemDb(), LimboLogs.Instance);
+                    new MemDb(), TestStateHeaderProvider.Unavailable, LimboLogs.Instance);
             }
 
             if (preBlockCaches is not null)
@@ -2240,7 +2269,11 @@ public class StorageProviderTests(bool useFlat)
 
         public bool HasRoot(BlockHeader baseBlock) => scopeProvider.HasRoot(baseBlock);
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock, LocalMetrics metrics) => new ScopeDecorator(scopeProvider.BeginScope(baseBlock, metrics), writtenData);
+        public bool TryBeginScope(BlockHeader baseBlock, LocalMetrics metrics, out IWorldStateScopeProvider.IScope scope)
+        {
+            scope = new ScopeDecorator(scopeProvider.BeginScope(baseBlock, metrics), writtenData);
+            return true;
+        }
 
         private class ScopeDecorator(IWorldStateScopeProvider.IScope baseScope, WrittenData writtenData) : IWorldStateScopeProvider.IScope
         {
@@ -2319,6 +2352,54 @@ public class StorageProviderTests(bool useFlat)
     {
         Snapshot,
         ResetKeepingBlockChanges,
+    }
+
+    private sealed class UnknownEmptinessScopeProvider(IWorldStateScopeProvider baseProvider) : IWorldStateScopeProvider
+    {
+        public bool HasRoot(BlockHeader baseBlock) => baseProvider.HasRoot(baseBlock);
+
+        public bool TryBeginScope(BlockHeader baseBlock, LocalMetrics metrics, out IWorldStateScopeProvider.IScope scope)
+        {
+            scope = new ScopeDecorator(baseProvider.BeginScope(baseBlock, metrics));
+            return true;
+        }
+
+        private sealed class ScopeDecorator(IWorldStateScopeProvider.IScope baseScope) : IWorldStateScopeProvider.IScope
+        {
+            public Hash256 RootHash => baseScope.RootHash;
+
+            public void UpdateRootHash() => baseScope.UpdateRootHash();
+
+            public Account Get(Address address) => baseScope.Get(address);
+
+            public void HintGet(Address address, Account account) => baseScope.HintGet(address, account);
+
+            public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink = null)
+                => baseScope.HintBal(bal, sink);
+
+            public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
+
+            public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) =>
+                new StorageTreeDecorator(baseScope.CreateStorageTree(address));
+
+            public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
+                baseScope.StartWriteBatch(estimatedAccountNum);
+
+            public void Commit(ulong blockNumber) => baseScope.Commit(blockNumber);
+
+            public void Dispose() => baseScope.Dispose();
+        }
+
+        private sealed class StorageTreeDecorator(IWorldStateScopeProvider.IStorageTree baseStorageTree) : IWorldStateScopeProvider.IStorageTree
+        {
+            public Hash256 RootHash => baseStorageTree.RootHash;
+
+            public bool IsKnownEmpty => false;
+
+            public void Get(in UInt256 index, out UInt256 value) => baseStorageTree.Get(in index, out value);
+
+            public void HintSet(in UInt256 index) => baseStorageTree.HintSet(in index);
+        }
     }
 
     private sealed class ReadCollectingStorageTracer : IWorldStateTracer

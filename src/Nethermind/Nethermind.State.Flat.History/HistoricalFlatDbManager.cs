@@ -38,7 +38,7 @@ public sealed class HistoricalFlatDbManager(
         // blocks on that mix produces a corrupt state root and cascades into invalid-block deletions.
         if (usage is ResourcePool.Usage.MainBlockProcessing or ResourcePool.Usage.PostMainBlockProcessing)
         {
-            throw new InvalidOperationException(
+            throw new StateUnavailableException(
                 $"Main block processing requested a writable scope at historical state {baseBlock}; history serves read-only execution.");
         }
 

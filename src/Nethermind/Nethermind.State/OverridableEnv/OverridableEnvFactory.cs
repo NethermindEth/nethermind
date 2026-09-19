@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -38,18 +39,15 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
         private readonly IOverridableCodeInfoRepository _codeInfoRepository = childLifetimeScope.Resolve<IOverridableCodeInfoRepository>();
         private readonly IWorldState _worldState = childLifetimeScope.Resolve<IWorldState>();
 
-        public IDisposable BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null)
+        public bool TryBuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, BlockOverride? blockOverride, [NotNullWhen(true)] out IDisposable? scope)
         {
-            if (_worldScopeCloser is not null) throw new InvalidOperationException("Previous overridable world scope was not closed");
-
-            Reset();
-
-            if (specOverride is not null)
-                overridableSpecProvider.SetOverride(specOverride);
-
             // Open the scope on the real base block first (its committed (number, root) state), then apply the block
             // override (e.g. eth_call blockOverride.number) on top.
-            _worldScopeCloser = _worldState.BeginScope(header);
+            if (!TryOpen(specOverride, () => _worldState.TryBeginScope(header, out _worldScopeCloser)))
+            {
+                scope = null;
+                return false;
+            }
 
             try
             {
@@ -67,13 +65,56 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
                     }
                 }
 
-                return new Scope(this);
+                scope = new Scope(this);
+                return true;
             }
             catch
             {
                 Reset();
                 throw;
             }
+        }
+
+        public bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, [NotNullWhen(true)] out IDisposable? scope)
+        {
+            if (!TryOpen(specOverride, () => _worldState.TryBeginScopeAtTarget(targetBlock, out _worldScopeCloser)))
+            {
+                scope = null;
+                return false;
+            }
+
+            try
+            {
+                // Committed on top of the parent state at the target's height, where the target's own commit lands too.
+                if (stateOverride is not null)
+                {
+                    _worldState.ApplyStateOverrides(_codeInfoRepository, stateOverride, specProvider.GetSpec(targetBlock), targetBlock.Number);
+                }
+
+                scope = new Scope(this);
+                return true;
+            }
+            catch
+            {
+                Reset();
+                throw;
+            }
+        }
+
+        /// <summary>Resets, applies the spec override and opens the world scope through <paramref name="beginScope"/>, resetting again when that fails.</summary>
+        private bool TryOpen(IReleaseSpec? specOverride, Func<bool> beginScope)
+        {
+            if (_worldScopeCloser is not null) throw new InvalidOperationException("Previous overridable world scope was not closed");
+
+            Reset();
+
+            if (specOverride is not null)
+                overridableSpecProvider.SetOverride(specOverride);
+
+            if (beginScope()) return true;
+
+            Reset();
+            return false;
         }
 
         private class Scope(OverridableEnv env) : IDisposable

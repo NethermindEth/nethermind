@@ -16,7 +16,6 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.History")]
@@ -28,7 +27,7 @@ namespace Nethermind.State.Flat;
 public class PersistenceManager(
     IFlatDbConfig configuration,
     ICompactionSchedule schedule,
-    IFinalizedStateProvider finalizedStateProvider,
+    IStateHeaderProvider finalizedStateProvider,
     IPersistence persistence,
     ISnapshotRepository snapshotRepository,
     IStatePersistenceBarrier persistenceBarrier,
@@ -98,7 +97,7 @@ public class PersistenceManager(
     ///   <c>head - nextBoundary &gt;= MinReorgDepth</c> (the depth remaining above the new base)
     ///   → seed = canonical state at
     ///   the next boundary block (<c>persistedBlock + CompactSize</c>). Looked up via
-    ///   <see cref="IFinalizedStateProvider"/> — the boundary is always locally synced even
+    ///   <see cref="IStateHeaderProvider"/> — the boundary is always locally synced even
     ///   during catch-up sync where the CL-reported finalized tip is beyond the chain head.</item>
     ///   <item>Backstop fallback (if the finalized trigger persisted nothing): if
     ///   <c>snapshotsDepth &gt; </c> the backstop depth (<c>LongFinalityMaxReorgDepth</c> when long
@@ -138,7 +137,7 @@ public class PersistenceManager(
         if (finalizedBlockNumber >= nextBoundary
             && latestSnapshot.BlockNumber.SaturatingSub(nextBoundary) >= _minReorgDepth)
         {
-            Hash256? canonicalRoot = finalizedStateProvider.GetFinalizedStateRootAt(nextBoundary);
+            Hash256? canonicalRoot = finalizedStateProvider.GetFinalizedHeader(nextBoundary)?.StateRoot;
             if (canonicalRoot is not null)
             {
                 (PersistedSnapshot? persisted, Snapshot? inMemory) = snapshotRepository.FindSnapshotToPersist(
@@ -422,7 +421,7 @@ public class PersistenceManager(
             ulong finalizedBlockNumber = finalizedStateProvider.FinalizedBlockNumber;
             if (currentPersistedState == StateId.PreGenesis || finalizedBlockNumber > currentPersistedState.BlockNumber)
             {
-                Hash256? finalizedStateRoot = finalizedStateProvider.GetFinalizedStateRootAt(finalizedBlockNumber);
+                Hash256? finalizedStateRoot = finalizedStateProvider.GetFinalizedHeader(finalizedBlockNumber)?.StateRoot;
                 if (finalizedStateRoot is not null)
                     seed = new StateId(finalizedBlockNumber, finalizedStateRoot);
             }

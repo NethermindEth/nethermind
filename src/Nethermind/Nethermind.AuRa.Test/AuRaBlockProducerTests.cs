@@ -72,7 +72,7 @@ namespace Nethermind.AuRa.Test
                     block.TrySetTransactions(TransactionSource.GetTransactions(BlockTree.Head!.Header, block.Header, block.GasLimit).ToArray());
                     return block;
                 });
-                StateProvider.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(x => true);
+                StateProvider.HasStateForTargetBlock(Arg.Any<BlockHeader>()).Returns(x => true);
                 InitProducer();
             }
 
