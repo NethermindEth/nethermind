@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -35,6 +36,9 @@ namespace Nethermind.Consensus.Processing;
 public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 {
     private const int MinTransactionsForReactiveWarming = 3;
+
+    /// <summary>How long a warmup pass spins for the next sender before falling back to sleeping.</summary>
+    private static readonly TimeSpan SenderArrivalWindow = TimeSpan.FromMilliseconds(1);
 
     private readonly int _concurrencyLevel;
     // Speculative warming runs in the idle gap alongside RPC, so it is capped below the reactive level to leave cores free.
@@ -752,8 +756,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
         int lastPending = Array.LastIndexOf(claimed, false, txs.Length - 1);
 
-        // A sender that never arrives leaves the tail unclaimed for the whole block, so the spin has to fall
-        // back to sleeping rather than hold a core against the recovery it waits for.
+        long start = Stopwatch.GetTimestamp();
         SpinWait spinner = default;
         while (!cancellationToken.IsCancellationRequested && MainThreadTxIndex < lastPending)
         {
@@ -762,7 +765,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 if (!claimed[i] && txs[i].SenderAddress is not null) return true;
             }
 
-            spinner.SpinOnce();
+            // Past the window the sender may never arrive at all (an invalid signature aborts the recovery
+            // loop), and a spinning core would starve the very recovery this waits for.
+            if (Stopwatch.GetElapsedTime(start) < SenderArrivalWindow) spinner.SpinOnce(sleep1Threshold: -1);
+            else Thread.Sleep(1);
         }
 
         return false;

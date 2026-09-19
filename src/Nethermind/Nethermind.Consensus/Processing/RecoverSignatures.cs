@@ -143,7 +143,7 @@ namespace Nethermind.Consensus.Processing
             while (!recovery.IsCompleted && !HasLeadingSenders(txs, leading))
             {
                 if (Stopwatch.GetElapsedTime(start) >= timeout) return;
-                spinner.SpinOnce();
+                spinner.SpinOnce(sleep1Threshold: -1);
             }
         }
 
