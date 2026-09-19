@@ -1950,4 +1950,44 @@ public class BlockCachePreWarmerTests
             }
         }
     }
+
+    [Test]
+    public void GroupTransactionsBySender_ClaimsGroupedTransactionsAndPicksUpLateSendersNextPass()
+    {
+        Transaction late = GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000);
+        late.SenderAddress = null;
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000),
+            late,
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 100_000)).TestObject;
+        bool[] claimed = new bool[3];
+
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> firstPass = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4, claimed: claimed);
+        try
+        {
+            Assert.That(firstPass.Count, Is.EqualTo(1), "the unrecovered tx is left for a later pass");
+            Assert.That(claimed, Is.EqualTo(new[] { true, false, true }));
+        }
+        finally
+        {
+            DisposeGroups(firstPass);
+        }
+
+        late.SenderAddress = TestItem.AddressB;
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> secondPass = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4, claimed: claimed);
+        try
+        {
+            Assert.That(secondPass.Count, Is.EqualTo(1));
+            Assert.That(FindGroup(secondPass, TestItem.AddressB)[0].Index, Is.EqualTo(1));
+            Assert.That(claimed, Is.All.True);
+        }
+        finally
+        {
+            DisposeGroups(secondPass);
+        }
+
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> thirdPass = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4, claimed: claimed);
+        Assert.That(thirdPass.Count, Is.Zero);
+        thirdPass.Dispose();
+    }
 }
