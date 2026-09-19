@@ -16,8 +16,9 @@ public static class TaskExtensions
     /// </summary>
     public static async Task<bool> DelaySafe(int millisecondsDelay, CancellationToken cancellationToken)
     {
-        try { await Task.Delay(millisecondsDelay, cancellationToken); return true; }
-        catch (OperationCanceledException) { return false; }
+        Task delay = Task.Delay(millisecondsDelay, cancellationToken);
+        await delay.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        return delay.IsCompletedSuccessfully;
     }
 
     /// <summary>
@@ -26,8 +27,9 @@ public static class TaskExtensions
     /// </summary>
     public static async Task<bool> DelaySafe(TimeSpan delay, CancellationToken cancellationToken)
     {
-        try { await Task.Delay(delay, cancellationToken); return true; }
-        catch (OperationCanceledException) { return false; }
+        Task delayTask = Task.Delay(delay, cancellationToken);
+        await delayTask.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        return delayTask.IsCompletedSuccessfully;
     }
 
     public static bool IsFailedButNotCanceled(this Task? task)

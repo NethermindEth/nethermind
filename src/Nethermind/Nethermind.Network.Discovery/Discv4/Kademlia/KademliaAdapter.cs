@@ -74,25 +74,32 @@ public class KademliaAdapter(
 
     private async Task<bool> EnsureOutgoingMessageBondedPeer(Node node, NodeSession nodeSession, CancellationToken token)
     {
+        if (token.IsCancellationRequested) return false;
         IPEndPoint endpoint = node.DiscoveryAddress;
         // If we received a ping from this endpoint, our pong should have bonded us from their point of view.
         if (nodeSession.NotTooManyFailure && nodeSession.HasReceivedPingFrom(endpoint)) return true;
 
-        if (Logger.IsTrace) Logger.Trace($"Ensure session for node {node}");
-        if (!await Ping(node, token)) return false;
+        if (Logger.IsTrace) TraceEnsureSession(node);
+        if (!await PingCore(node, token)) return false;
         // We send them ping. But expect that eventually they send back another a ping so that we can pong.
         // Give some time for peer to process pong. Such is the logic from geth codebase.
-        await Task.Delay(_waitAfterPongDelay, token);
+        if (!await Nethermind.Core.Extensions.TaskExtensions.DelaySafe(_waitAfterPongDelay, token)) return false;
 
-        if (Logger.IsTrace) Logger.Trace($"Node {node} pong sent.");
+        if (Logger.IsTrace) TracePongSent(node);
         return true;
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceEnsureSession(Node node) => Logger.Trace($"Ensure session for node {node}");
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TracePongSent(Node node) => Logger.Trace($"Node {node} pong sent.");
 
     private async Task<DiscoveryResponse<T>> RunAuthenticatedRequest<T>(Node node, NodeSession session, Func<CancellationToken, Task<DiscoveryResponse<T>>> callRequest, CancellationToken token)
     {
         if (!await EnsureOutgoingMessageBondedPeer(node, session, token))
         {
-            session.OnAuthenticatedRequestFailure();
+            if (!token.IsCancellationRequested) session.OnAuthenticatedRequestFailure();
             return DiscoveryResponse<T>.None;
         }
 
@@ -101,7 +108,7 @@ public class KademliaAdapter(
         {
             session.ResetAuthenticatedRequestFailure();
         }
-        else
+        else if (!token.IsCancellationRequested)
         {
             session.OnAuthenticatedRequestFailure();
         }
@@ -167,7 +174,7 @@ public class KademliaAdapter(
         using CancellationTokenSource timeoutCts = new(timeout);
         using CancellationTokenSource sendCts = CancellationTokenSource.CreateLinkedTokenSource(token, timeoutCts.Token);
         using CancellationTokenRegistration cancelRegistration = token.Register(
-            static state => ((TaskCompletionSource<DiscoveryResponse<T>>)state!).TrySetCanceled(),
+            static state => ((TaskCompletionSource<DiscoveryResponse<T>>)state!).TrySetResult(DiscoveryResponse<T>.None),
             messageHandler.TaskCompletionSource);
         using CancellationTokenRegistration timeoutRegistration = timeoutCts.Token.Register(
             static state => ((TaskCompletionSource<DiscoveryResponse<T>>)state!).TrySetResult(DiscoveryResponse<T>.None),
@@ -180,15 +187,14 @@ public class KademliaAdapter(
             {
                 await SendMessage(session, msg, sendCts.Token);
             }
-            catch (OperationCanceledException) when (!token.IsCancellationRequested && timeoutCts.IsCancellationRequested)
+            catch (OperationCanceledException) when (sendCts.IsCancellationRequested)
             {
                 messageHandler.TaskCompletionSource.TrySetResult(DiscoveryResponse<T>.None);
             }
 
             DiscoveryResponse<T> response = await messageHandler.TaskCompletionSource.Task;
-            if (!response.HasResponse)
+            if (!response.HasResponse && !token.IsCancellationRequested)
             {
-                token.ThrowIfCancellationRequested();
                 nodeHealthTracker.Value.OnRequestFailed(receiver);
             }
 
@@ -205,7 +211,11 @@ public class KademliaAdapter(
     {
         if (MsgSender is { } sender)
         {
-            await (isResponse ? _responseRateLimiter : _outboundRateLimiter).WaitAsync(token);
+            if (token.IsCancellationRequested) return;
+            Task ready = (isResponse ? _responseRateLimiter : _outboundRateLimiter).WaitAsync(token);
+            await ready.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            if (token.IsCancellationRequested) return;
+            await ready;
 
             session.RecordStatsForOutgoingMsg(msg);
             await sender.SendMsg(msg);
@@ -216,6 +226,14 @@ public class KademliaAdapter(
 
     public async Task<bool> Ping(Node receiver, CancellationToken token)
     {
+        bool result = await PingCore(receiver, token);
+        token.ThrowIfCancellationRequested();
+        return result;
+    }
+
+    private async Task<bool> PingCore(Node receiver, CancellationToken token)
+    {
+        if (token.IsCancellationRequested) return false;
         NodeSession session = GetSession(receiver);
         PongMsg? pong = await TryBond(receiver, session, token);
         if (pong is null)
@@ -224,6 +242,7 @@ public class KademliaAdapter(
         }
 
         await RefreshRemoteRecordIfNewer(receiver, pong.EnrSequence, token);
+        if (token.IsCancellationRequested) return false;
         PublishNode(receiver, session, signedPing: null, pong.EnrSequence);
         return true;
     }
@@ -304,6 +323,7 @@ public class KademliaAdapter(
             return CallAndWaitForResponse(MsgType.Neighbors, new NeighbourMsgHandler(discoveryConfig.BucketSize, LocalIp), receiver, session, msg, _findNeighbourTimeout, token);
         }, token);
 
+        token.ThrowIfCancellationRequested();
         return response.HasResponse ? response.Value : null;
     }
 
@@ -314,7 +334,7 @@ public class KademliaAdapter(
 
     protected override async ValueTask<NodeRecord?> RequestRemoteRecord(Node node, ulong requestedSequence, CancellationToken token)
     {
-        EnrResponseMsg? response = await SendEnrRequest(node, token);
+        EnrResponseMsg? response = await SendEnrRequestCore(node, token);
         return response?.NodeRecord;
     }
 
@@ -333,6 +353,13 @@ public class KademliaAdapter(
     }
 
     public async Task<EnrResponseMsg?> SendEnrRequest(Node receiver, CancellationToken token)
+    {
+        EnrResponseMsg? response = await SendEnrRequestCore(receiver, token);
+        token.ThrowIfCancellationRequested();
+        return response;
+    }
+
+    private async Task<EnrResponseMsg?> SendEnrRequestCore(Node receiver, CancellationToken token)
     {
         NodeSession session = GetSession(receiver);
         DiscoveryResponse<EnrResponseMsg> response = await RunAuthenticatedRequest(receiver, session, token =>

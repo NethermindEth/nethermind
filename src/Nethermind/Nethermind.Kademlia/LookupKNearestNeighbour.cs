@@ -193,7 +193,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             {
                 while (!Volatile.Read(ref finished))
                 {
-                    token.ThrowIfCancellationRequested();
+                    if (token.IsCancellationRequested) break;
                     if (!TryGetNodeToQuery(out TKadKey toQueryHash, out TNode toQueryNode))
                     {
                         if (queryingTask > 0)
@@ -261,7 +261,15 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             try
             {
                 // targetHash is implied in findNeighbourOp
-                TNode[]? ret = await findNeighbourOp(node, cts.Token);
+                Task<TNode[]?> request = findNeighbourOp(node, cts.Token);
+                await ((Task)request).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                if (request.IsCanceled && cts.IsCancellationRequested)
+                {
+                    if (!token.IsCancellationRequested) nodeHealthTracker.OnRequestFailed(node);
+                    return null;
+                }
+
+                TNode[]? ret = await request;
                 if (ret is null) return null;
 
                 nodeHealthTracker.OnIncomingMessageFrom(node);
@@ -273,9 +281,9 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                 nodeHealthTracker.OnRequestFailed(node);
                 return null;
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
-                throw;
+                return null;
             }
             catch (Exception e)
             {

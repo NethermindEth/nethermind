@@ -313,14 +313,37 @@ public class CodecTests
         Assert.That(decodedNodes.Records[0].ToString(), Is.EqualTo(expectedRecord.ToString()));
     }
 
+    private static string[] InvalidEnrKinds =>
+        ["oversized", "scalar", "empty-record", "missing-sequence", "missing-value", "eth-scalar", "eth-flat", "eth-empty", "signature"];
+
     [Test]
-    public void MessageCodec_Skips_Invalid_Enrs_In_Nodes()
+    public void MessageCodec_Skips_Invalid_Enrs_In_Nodes([ValueSource(nameof(InvalidEnrKinds))] string invalidKind)
     {
         NodeRecord expectedRecord = CreateNodeRecord(new PrivateKey(GethNodeBPrivateKey));
         byte[] invalidRecord = new byte[304];
         invalidRecord[0] = 0xf9;
         invalidRecord[1] = 0x01;
         invalidRecord[2] = 0x2d;
+
+        if (invalidKind == "scalar") invalidRecord = Rlp.Encode(new byte[] { 1, 2, 3 }).Bytes;
+        if (invalidKind == "empty-record") invalidRecord = Rlp.Encode(Array.Empty<Rlp>()).Bytes;
+        if (invalidKind == "missing-sequence") invalidRecord = Rlp.Encode([Rlp.Encode(new byte[64])]).Bytes;
+        if (invalidKind == "missing-value") invalidRecord = Rlp.Encode(Rlp.Encode(new byte[64]), Rlp.Encode(1), Rlp.Encode("eth"u8)).Bytes;
+        if (invalidKind.StartsWith("eth-", StringComparison.Ordinal))
+        {
+            Rlp eth = invalidKind switch
+            {
+                "eth-scalar" => Rlp.Encode(new byte[] { 1, 2, 3 }),
+                "eth-flat" => Rlp.Encode(Rlp.Encode(new byte[] { 1, 2, 3, 4 }), Rlp.Encode(0)),
+                _ => Rlp.Encode(Array.Empty<Rlp>())
+            };
+            invalidRecord = Rlp.Encode(Rlp.Encode(new byte[64]), Rlp.Encode(1), Rlp.Encode("eth"u8), eth).Bytes;
+        }
+        if (invalidKind == "signature")
+        {
+            invalidRecord = (byte[])expectedRecord.ToRlpBytes().Clone();
+            invalidRecord[5] ^= 1;
+        }
 
         Rlp data = Rlp.Encode(
             Rlp.Encode(new byte[] { 1 }),
@@ -330,8 +353,25 @@ public class CodecTests
         message[0] = (byte)MessageType.Nodes;
         data.Bytes.CopyTo(message.AsSpan(1));
 
-        using Discv5Message decoded = MessageCodec.Decode(message);
+        int exceptions = 0;
+        int threadId = Environment.CurrentManagedThreadId;
+        void OnException(object? sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs args)
+        {
+            if (Environment.CurrentManagedThreadId == threadId) exceptions++;
+        }
 
+        Discv5Message decoded;
+        AppDomain.CurrentDomain.FirstChanceException += OnException;
+        try
+        {
+            decoded = MessageCodec.Decode(message);
+        }
+        finally
+        {
+            AppDomain.CurrentDomain.FirstChanceException -= OnException;
+        }
+        using Discv5Message ownedDecoded = decoded;
+        Assert.That(exceptions, Is.Zero);
         Assert.That(decoded, Is.InstanceOf<NodesMsg>());
         NodesMsg nodes = (NodesMsg)decoded;
         Assert.That(nodes.Records.Count, Is.EqualTo(1));

@@ -146,7 +146,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _adapter = CreateAdapter(FailsafeRequestTimeoutMs);
         }
 
-        private KademliaAdapter CreateAdapter(int requestTimeoutMs, NetworkListenerState? listenerState = null)
+        private KademliaAdapter CreateAdapter(int requestTimeoutMs, NetworkListenerState? listenerState = null, int bondWaitTime = 1)
         {
             if (listenerState is null)
             {
@@ -164,7 +164,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                     EnrTimeout = requestTimeoutMs,
                     PingTimeout = requestTimeoutMs,
                     SendNodeTimeout = requestTimeoutMs,
-                    BondWaitTime = 1,
+                    BondWaitTime = bondWaitTime,
                 },
                 _kademliaConfig,
                 _nodeRecordProvider,
@@ -875,6 +875,63 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             Assert.That(result, Is.Null);
             await _msgSender.Received(1).SendMsg(Arg.Is<DiscoveryMsg>(m => m is PingMsg));
             await _msgSender.DidNotReceive().SendMsg(Arg.Is<DiscoveryMsg>(m => m is FindNodeMsg));
+        }
+
+        public enum CancellationStage { WaitingForPong, BondDelay, EnrRefresh }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Cancelled_request_throws_only_at_public_boundary(
+            [Values(NoResponseRequest.FindNeighbours, NoResponseRequest.SendEnrRequest)] NoResponseRequest request,
+            [Values] CancellationStage stage,
+            CancellationToken token)
+        {
+            await _adapter.DisposeAsync();
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, bondWaitTime: FailsafeRequestTimeoutMs);
+            if (stage != CancellationStage.WaitingForPong)
+            {
+                ConfigureBondCallback(pongEnrSequence: stage == CancellationStage.EnrRefresh ? 2UL : null);
+            }
+
+            NodeSession session = _adapter.GetSession(_receiver);
+            for (int i = 0; i < NodeSession.AuthenticatedRequestFailureLimit; i++) session.OnAuthenticatedRequestFailure();
+            Assert.That(session.NotTooManyFailure, Is.True);
+
+            using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+            AsyncLocal<bool> observing = new() { Value = true };
+            int exceptions = 0;
+            void OnException(object? sender, System.Runtime.ExceptionServices.FirstChanceExceptionEventArgs args)
+            {
+                if (observing.Value && args.Exception is OperationCanceledException) Interlocked.Increment(ref exceptions);
+            }
+
+            Task operation;
+            AppDomain.CurrentDomain.FirstChanceException += OnException;
+            try
+            {
+                operation = request == NoResponseRequest.FindNeighbours
+                    ? _adapter.FindNeighbours(_receiver, TestItem.PublicKeyC, caller.Token)
+                    : _adapter.SendEnrRequest(_receiver, caller.Token);
+                Assert.That(operation.IsCompleted, Is.False);
+                await caller.CancelAsync();
+                await operation.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            }
+            finally
+            {
+                observing.Value = false;
+                AppDomain.CurrentDomain.FirstChanceException -= OnException;
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(operation.IsCanceled, Is.True);
+                Assert.That(exceptions, Is.EqualTo(1));
+                Assert.That(session.NotTooManyFailure, Is.True);
+                Assert.That(session.HasPendingBondingPing(_receiver.DiscoveryAddress), Is.False);
+                Assert.That(_receiver.RequestingEnrSequence, Is.Zero);
+            }
+            _nodeHealthTracker.DidNotReceive().OnRequestFailed(Arg.Any<Node>());
+            await _msgSender.DidNotReceive().SendMsg(Arg.Is<DiscoveryMsg>(m => m is FindNodeMsg || m is EnrRequestMsg));
         }
 
         [Test]
