@@ -91,8 +91,8 @@ public static class InclusionListValidator
         if (!txValidator.IsWellFormed(tx, spec, block.GasLimit)) return false;
         if (tx.MaxFeePerGas < block.BaseFeePerGas) return false;
 
-        // A sponsored frame transaction is paid by the payer its validation prefix nominates, never by its
-        // sender, whose own balance says nothing about whether the transaction was appendable.
+        // A sponsored frame transaction is paid by the payer its validation prefix nominates, not by its
+        // sender. Always recomputed, never read from Transaction.PayerAddress, so the two cannot disagree.
         Address payer = tx.SupportsFrames ? FrameTxValidation.GetPrefixPaymaster(tx) ?? tx.SenderAddress : tx.SenderAddress;
 
         accountCache ??= [];

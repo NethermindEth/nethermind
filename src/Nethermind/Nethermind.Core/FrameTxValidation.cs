@@ -436,6 +436,8 @@ public static class FrameTxValidation
         {
             // A non-VERIFY frame ends the prefix, so nothing past it can install a payer.
             if (frames[i].Mode != FrameMode.Verify) break;
+            // A mask, not the whole-byte equality the recognized shapes use: this walk deliberately also keys
+            // sponsors installed through layouts those shapes reject.
             if ((frames[i].Flags & FrameFlags.ApprovePayment) == 0) continue;
 
             Address? resolved = frames[i].Target ?? transaction.SenderAddress;
