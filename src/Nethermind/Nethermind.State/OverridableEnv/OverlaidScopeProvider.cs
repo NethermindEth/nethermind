@@ -70,8 +70,14 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
 
     private sealed class StorageTree(IWorldStateScopeProvider.IStorageTree inner, Address address, StateReadOverlaySlot slot) : IWorldStateScopeProvider.IStorageTree
     {
-        public Hash256 RootHash =>
-            slot.Current is { } overlay && overlay.HasStorage(address) && inner.RootHash == Keccak.EmptyTreeHash ? OverlaidRoot : inner.RootHash;
+        public Hash256 RootHash
+        {
+            get
+            {
+                Hash256 root = inner.RootHash;
+                return slot.Current is { } overlay && overlay.HasStorage(address) && root == Keccak.EmptyTreeHash ? OverlaidRoot : root;
+            }
+        }
 
         public void Get(in UInt256 index, out UInt256 value)
         {

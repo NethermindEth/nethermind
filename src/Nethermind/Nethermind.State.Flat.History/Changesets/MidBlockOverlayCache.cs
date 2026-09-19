@@ -23,7 +23,7 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
 
     /// <summary>The cache lock covers only the slot bookkeeping; the fold, which reads the column, runs outside it
     /// on an overlay nobody else can see mid-fold, so a cold block being folded never holds up a trace of another.</summary>
-    public bool TryRent(ulong block, in ValueHash256 hash, ushort beforeTransaction, out Lease lease, long version = 0)
+    public bool TryRent(ulong block, in ValueHash256 hash, ushort beforeTransaction, out Lease lease, long version)
     {
         MidBlockOverlay overlay;
         lock (_lock)

@@ -11,7 +11,7 @@ namespace Nethermind.State.Flat.History.Changesets;
 /// <summary>What a run of consecutive covered blocks wrote, newest block first, so that a trace of the block after
 /// them reads a key those blocks touched from memory and only a key they never touched from the parent state. Each
 /// node holds one block flattened to its final values and points at the node before it; a node never changes once
-/// built, so any number of traces may read a chain while a newer node is added ahead of it.
+/// published, so any number of traces may read a chain while a newer node is added ahead of it.
 /// The rows hold what the transactions wrote; what the block wrote after them (withdrawals, the end-of-block system
 /// calls, a reward) is not in them, so an address any block of the chain can have written afterwards is refused by
 /// the whole chain and always read from the parent state, where that block's real value is. The refusal is

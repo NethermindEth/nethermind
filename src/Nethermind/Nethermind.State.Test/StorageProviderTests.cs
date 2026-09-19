@@ -121,6 +121,25 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Cancelled_clear_reporting_does_not_leak_into_the_next_commit()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+        provider.Set(cell, 17);
+        provider.Commit(Frontier.Instance);
+        provider.ClearStorage(ctx.Address1);
+        ReadCollectingStorageTracer cancelled = new() { CancelOnClear = true };
+
+        Assert.Throws<OperationCanceledException>(() => provider.Commit(Frontier.Instance, cancelled));
+        provider.Set(cell, 19);
+        ReadCollectingStorageTracer next = new();
+        provider.Commit(Frontier.Instance, next);
+
+        Assert.That(next.Clears, Is.Empty);
+    }
+
+    [Test]
     public void Empty_commit_restore()
     {
         using Context ctx = new(useFlat);
@@ -2353,6 +2372,7 @@ public class StorageProviderTests(bool useFlat)
         public System.Collections.Generic.List<StorageCell> Reads { get; } = [];
         public System.Collections.Generic.List<(StorageCell Cell, byte[] Before, byte[] After)> Changes { get; } = [];
         public List<Address> Clears { get; } = [];
+        public bool CancelOnClear { get; init; }
         public List<(StorageCell Cell, byte[] Value)> Restores { get; } = [];
 
         public bool IsTracingState => false;
@@ -2365,7 +2385,11 @@ public class StorageProviderTests(bool useFlat)
         public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
         public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) => Changes.Add((storageCell, before, after));
         public void ReportStorageRead(in StorageCell storageCell) => Reads.Add(storageCell);
-        public void ReportStorageClear(Address address) => Clears.Add(address);
+        public void ReportStorageClear(Address address)
+        {
+            if (CancelOnClear) throw new OperationCanceledException();
+            Clears.Add(address);
+        }
         public void ReportStorageRestore(in StorageCell storageCell, byte[] value) => Restores.Add((storageCell, value));
     }
 }

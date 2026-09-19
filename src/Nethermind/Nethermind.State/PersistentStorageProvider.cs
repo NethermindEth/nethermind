@@ -289,15 +289,21 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         base.CommitCore(tracer);
         EndOriginalsRound();
         _destroyedThisRound.ClearAndTrim();
-        if (tracer.IsTracingStorage)
+        try
         {
-            foreach (StorageClearChange clear in _storageClearJournal) tracer.ReportStorageClear(clear.Address);
+            if (tracer.IsTracingStorage)
+            {
+                foreach (StorageClearChange clear in _storageClearJournal) tracer.ReportStorageClear(clear.Address);
+            }
+            if (trace is not null)
+            {
+                ReportChanges(tracer, trace);
+            }
         }
-        if (trace is not null)
+        finally
         {
-            ReportChanges(tracer, trace);
+            _storageClearJournal.Clear();
         }
-        _storageClearJournal.Clear();
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

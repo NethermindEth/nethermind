@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using Nethermind.Core.Collections;
 using Nethermind.Db;
 using Nethermind.Logging;
 
@@ -130,7 +131,8 @@ public sealed class TransactionChangesetBuilder(
     private void ReconcileFloor(ulong minimum)
     {
         _stalledTops.RemoveWhere(top => top < minimum);
-        List<ulong> tops = [.. _completedByTop.Keys];
+        using ArrayPoolList<ulong> tops = new(_completedByTop.Count);
+        foreach (ulong top in _completedByTop.Keys) tops.Add(top);
         foreach (ulong top in tops)
         {
             if (top < minimum) _completedByTop.Remove(top);
