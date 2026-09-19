@@ -49,6 +49,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         IBlockchainBridge blockchainBridge,
         ISpecProvider specProvider,
         IBlocksConfig blocksConfig,
+        IPrefixStateSeedSource prefixSeeds,
         ILogManager logManager)
         : ITraceRpcModule
     {
@@ -490,7 +491,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
             CancellationToken cancellationToken = timeout.Token;
-            tracer2.Execute(blockToExecute, TransactionTraceBoundary.Wrap(tracer.WithCancellation(cancellationToken), transactionHash));
+            tracer2.Execute(blockToExecute, TransactionTraceBoundary.Wrap(tracer.WithCancellation(cancellationToken), transactionHash, prefixSeeds));
             return tracer.BuildResult();
         }
 
@@ -623,7 +624,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 blockToExecute = block.WithReplacedHeader(AdjustHeaderForSpec(block.Header, baseHeader, specOverride));
             }
             using Scope<ITracer> env = tracerEnv.BuildAndOverride(baseHeader, specOverride: specOverride);
-            env.Component.Execute(blockToExecute, TransactionTraceBoundary.Wrap(tracer.WithCancellation(ct), transactionHash));
+            env.Component.Execute(blockToExecute, TransactionTraceBoundary.Wrap(tracer.WithCancellation(ct), transactionHash, prefixSeeds));
         }
 
         /// <summary>

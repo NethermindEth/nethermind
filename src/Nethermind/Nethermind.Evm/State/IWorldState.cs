@@ -95,6 +95,9 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void WarmUp(Address address);
 
+    /// <summary>Layers a transaction prefix over cached block-start account changes.</summary>
+    void ApplyAccountOverlay(IStateReadOverlay overlay);
+
     /// <summary>
     /// Clear all storage at specified address
     /// </summary>

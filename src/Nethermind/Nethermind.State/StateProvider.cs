@@ -896,6 +896,18 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     internal Account? GetPureRead(Address address) => GetState(address);
 
+    /// <summary>Layers a transaction prefix over cached block-start account changes.</summary>
+    internal void ApplyAccountOverlay(IStateReadOverlay overlay)
+    {
+        if (_blockChanges.Count == 0) return;
+
+        foreach (AddressAsKey key in _blockChanges.Keys)
+        {
+            ref ChangeTrace change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
+            if (overlay.TryGetAccount(key.Value, change.After, out Account? account)) change.After = account;
+        }
+    }
+
     private Account? GetState(Address address)
     {
         AddressAsKey addressAsKey = address;

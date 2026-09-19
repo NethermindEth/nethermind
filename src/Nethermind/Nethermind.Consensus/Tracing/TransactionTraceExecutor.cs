@@ -18,7 +18,8 @@ public sealed class TransactionTraceExecutor(
     ITransactionProcessorAdapter transactionProcessor,
     IWorldState state,
     IBlockAccessListManager balManager,
-    BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessed = null)
+    BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessed = null,
+    StateReadOverlaySlot? readOverlay = null)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
     public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(in context);
@@ -33,7 +34,32 @@ public sealed class TransactionTraceExecutor(
         inner.SetupTxTimingMetrics(block);
         if (balManager.Enabled) balManager.NextTransaction();
 
-        for (int i = 0; i < block.Transactions.Length; i++)
+        // A seeded prefix stands in for the transactions ahead of the target: they are neither executed nor traced,
+        // and a block access list under construction would miss them, so seeding yields to it.
+        int first = 0;
+        if (boundary.Seeds is { } seeds && readOverlay is not null && !balManager.Enabled)
+        {
+            int target = boundary.IndexOf(block);
+            if (target > 0 && seeds.TrySeed(block, target, readOverlay) && readOverlay.Current is { } overlay)
+            {
+                state.ApplyAccountOverlay(overlay);
+                first = target;
+            }
+        }
+
+        try
+        {
+            return Execute(block, options, tracer, token, boundary, first);
+        }
+        finally
+        {
+            readOverlay?.Disarm();
+        }
+    }
+
+    private TxReceipt[] Execute(Block block, ProcessingOptions options, BlockReceiptsTracer tracer, CancellationToken token, TransactionTraceBoundary boundary, int first)
+    {
+        for (int i = first; i < block.Transactions.Length; i++)
         {
             token.ThrowIfCancellationRequested();
             Transaction tx = block.Transactions[i];
@@ -50,7 +76,7 @@ public sealed class TransactionTraceExecutor(
             }
 
             if (!result) BlockProcessor.BlockValidationTransactionsExecutor.ThrowInvalidTransactionException(result, block.Header, tx, i);
-            transactionProcessed?.OnTransactionProcessed(new TxProcessedEventArgs(i, tx, block.Header, tracer.TxReceipts[i]));
+            transactionProcessed?.OnTransactionProcessed(new TxProcessedEventArgs(i, tx, block.Header, tracer.TxReceipts[i - first]));
             if (balManager.Enabled)
             {
                 balManager.NextTransaction();

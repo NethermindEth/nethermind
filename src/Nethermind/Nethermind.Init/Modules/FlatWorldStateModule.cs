@@ -13,6 +13,9 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.State.Flat.History.Changesets;
+using Nethermind.Core.Container;
+using Nethermind.Core.Specs;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -184,19 +187,42 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         if (flatDbConfig.HistoryEnabled)
         {
             builder.AddModule(new FlatHistoryModule());
+            if (flatDbConfig.HistoryTransactionIndexEnabled)
+            {
+                builder
+                    .AddSingleton<InlineChangesetCapture>(ctx =>
+                    {
+                        IBlockTree blockTree = ctx.Resolve<IBlockTree>();
+                        ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
+                        return new InlineChangesetCapture(
+                            ctx.Resolve<TransactionChangesetIndex>(),
+                            block => !specProvider.GetSpec(block.Header).BlockLevelAccessListsEnabled && IsFarFromTheTip(blockTree, block),
+                            ctx.Resolve<ILogManager>());
+                    })
+                    .AddSingleton<IMainProcessingModule, InlineChangesetCaptureModule>();
+            }
         }
         else if (flatDbConfig.IsHistoryWindowed()
             || !string.IsNullOrWhiteSpace(flatDbConfig.HistorySliceAddresses)
             || flatDbConfig.HistoryVerifyEveryBlock
             || flatDbConfig.ArchiveProofBuildEnabled
-            || flatDbConfig.ArchiveProofServeEnabled)
+            || flatDbConfig.ArchiveProofServeEnabled
+            || flatDbConfig.HistoryTransactionIndexEnabled
+            || flatDbConfig.HistoryTransactionIndexRetrofitFromBlock != 0)
         {
             throw new InvalidConfigurationException(
                 "FlatDb.HistoryRetention, FlatDb.HistorySliceAddresses, FlatDb.HistoryVerifyEveryBlock, " +
-                "FlatDb.ArchiveProofBuildEnabled and FlatDb.ArchiveProofServeEnabled all require FlatDb.HistoryEnabled: " +
+                "FlatDb.ArchiveProofBuildEnabled, FlatDb.ArchiveProofServeEnabled, FlatDb.HistoryTransactionIndexEnabled and " +
+                "FlatDb.HistoryTransactionIndexRetrofitFromBlock all require FlatDb.HistoryEnabled: " +
                 "with it off no history is captured, so these settings would be silently ignored. Enable FlatDb.HistoryEnabled or unset them.", -1);
         }
     }
+
+    /// <summary>A block this far below the best header the node knows of is sync, not the tip: no reorg reaches it.</summary>
+    internal const ulong InlineCaptureTipDistance = 256;
+
+    private static bool IsFarFromTheTip(IBlockTree blockTree, Block block) =>
+        blockTree.BestSuggestedHeader is { } best && best.Number >= block.Number + InlineCaptureTipDistance;
 
     internal class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
     {

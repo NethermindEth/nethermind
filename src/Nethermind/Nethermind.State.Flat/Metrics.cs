@@ -11,6 +11,10 @@ namespace Nethermind.State.Flat;
 
 public static class Metrics
 {
+    [CounterMetric]
+    [Description("Transaction changeset rows the codec could not read. A trace of the block a row belongs to falls back to replaying it, so the answer is right and slow; anything above zero means the changeset column carries damage.")]
+    public static long UnreadableTransactionChangesetRows { get; set; }
+
     [GaugeMetric]
     [Description("Average snapshot bundle size in terms of num of snapshot")]
     public static long SnapshotBundleSize { get; set; }
