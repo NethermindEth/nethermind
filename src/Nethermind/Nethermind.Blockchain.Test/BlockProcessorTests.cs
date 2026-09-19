@@ -53,7 +53,6 @@ using Nethermind.Evm;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
-using Nethermind.Init.Steps;
 using Nethermind.Db;
 using FlatHistoryColumns = Nethermind.State.Flat.FlatHistoryColumns;
 using Nethermind.State.Flat.History.Changesets;
