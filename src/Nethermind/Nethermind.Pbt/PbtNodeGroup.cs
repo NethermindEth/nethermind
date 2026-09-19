@@ -19,7 +19,7 @@ namespace Nethermind.Pbt;
 /// subsequent offsets strictly increase; a node ends at the next offset or the footer's beginning.
 /// Position 30 is reserved for the root and may only be present in the depth-zero root group. The
 /// group key is deliberately kept outside this payload. Prefixless branches at relative depths 1–3
-/// are implicit: only their descendants are stored. Availability describes physical entries.
+/// may be omitted: only their descendants need be stored. Availability describes physical entries.
 /// </remarks>
 public static class PbtNodeGroupCodec
 {

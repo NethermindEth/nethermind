@@ -100,6 +100,9 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "The persisted node-group key layout: Padded (the group path zero-padded to the column key length, then its nibble count) or Variable (the group path bytes, then 0 for a byte-aligned path or 1 for a nibble-aligned one). Fixed when the pbt database is created; a populated database created with the other layout is rejected.", DefaultValue = "Padded", HiddenFromDocs = true)]
     PbtNodeGroupKeyLayout NodeGroupKeyLayout { get; set; }
 
+    [ConfigItem(Description = "Leave prefixless branches at relative depths 1-3 out of stored node groups and recompute them from their children on read. Off stores every node. Both layouts are readable, so the setting can change on an existing database; groups convert as they are rewritten.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool OmitPrefixlessBranches { get; set; }
+
     [ConfigItem(Description = "RocksDB options shared by every column of the pbt database. Applied on top of the global database options, and overridden in turn by the per-column options below.", HiddenFromDocs = true)]
     string RocksDbOptions { get; set; }
 

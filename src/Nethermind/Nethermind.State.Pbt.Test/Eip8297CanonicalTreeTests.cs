@@ -213,7 +213,7 @@ public class Eip8297CanonicalTreeTests
         using PbtWriteBatchSet<PbtPath>? prepared = mode == 1 ? PbtWriteBatchSet<PbtPath>.Create(batch) : null;
         Action update = () =>
         {
-            if (mode == 2) TrieUpdater.UpdateRoot(store, default, new PbtPartitionBatches { Account = batch }, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, null);
+            if (mode == 2) TrieUpdater.UpdateRoot(store, default, new PbtPartitionBatches { Account = batch }, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, true, null);
             else if (prepared is not null) TrieUpdater.UpdateRoot(store, default, prepared);
             else TrieUpdater.UpdateRoot(store, default, batch);
         };
@@ -1344,7 +1344,7 @@ public class Eip8297CanonicalTreeTests
             AssertPreparedLevel(prepared.Account.Entries, prepared.Account.Plan.Precalculated, 8);
             AssertPreparedLevel(prepared.Code.Entries, prepared.Code.Plan.Precalculated, 8);
             AssertPreparedLevel(prepared.Storage.Entries, prepared.Storage.Plan.Precalculated, 8);
-            preparedRoot = TrieUpdater.UpdateRoot(preparedStore, initialRoot, prepared, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, null, metrics);
+            preparedRoot = TrieUpdater.UpdateRoot(preparedStore, initialRoot, prepared, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, true, null, metrics);
         }
         else
         {
@@ -2473,7 +2473,7 @@ public class Eip8297CanonicalTreeTests
     {
         if (!parallel) return TrieUpdater.UpdateRoot(store, root, Batch(changes), null, memoryProvider);
         using PbtPartitionBatches partitions = PbtStoreTestExtensions.PreparePartitions(changes);
-        return TrieUpdater.UpdateRoot(store, root, partitions, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, null, null, memoryProvider);
+        return TrieUpdater.UpdateRoot(store, root, partitions, PbtTreeHarness.FoldQuota(), FoldFanOut.Default, true, null, null, memoryProvider);
     }
 
     private static (List<(byte[] Key, byte[]? Value)> Initial, List<(byte[] Key, byte[]? Value)> Changes) Scenario(string name) => name switch

@@ -24,6 +24,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     private const int CompactionSlackRatio = 2;
     private readonly int _bitDepth;
     private readonly IRefCountingMemoryProvider _memoryProvider;
+    private readonly bool _omitPrefixlessBranches;
     private RefCountingMemory? _memory;
     private OffsetBuffer _offsets;
     private uint _availability;
@@ -33,12 +34,13 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     private int _pendingLength;
     private bool _disposed;
 
-    internal PbtNodeGroupWriter(int bitDepth, IRefCountingMemoryProvider memoryProvider)
+    internal PbtNodeGroupWriter(int bitDepth, IRefCountingMemoryProvider memoryProvider, bool omitPrefixlessBranches)
     {
         ArgumentNullException.ThrowIfNull(memoryProvider);
         Debug.Assert(PbtFourLevelGroupGeometry.IsGroupDepth(bitDepth), "A group key depth must be a four-level boundary.");
         _bitDepth = bitDepth;
         _memoryProvider = memoryProvider;
+        _omitPrefixlessBranches = omitPrefixlessBranches;
     }
 
     internal int WrittenCount => _written;
@@ -70,7 +72,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         ValidateReservedNode();
         ReadOnlySpan<byte> encoding = _memory!.GetSpan().Slice(PbtNodeGroupCodec.HeaderLength + _written, _pendingLength);
         ValidateEncoding(path, encoding);
-        if (!PbtNodeGroupCodec.ShouldOmit(_pendingPosition, encoding))
+        if (!(_omitPrefixlessBranches && PbtNodeGroupCodec.ShouldOmit(_pendingPosition, encoding)))
         {
             _offsets[_pendingPosition] = (ushort)_written;
             _availability |= 1u << _pendingPosition;
