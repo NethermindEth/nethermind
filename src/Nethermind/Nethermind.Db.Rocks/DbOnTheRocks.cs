@@ -360,18 +360,26 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         string corruptMarker = CorruptMarkerPath;
 
-        if (!_fileSystem.File.Exists(corruptMarker))
+        if (_fileSystem.File.Exists(corruptMarker))
         {
+            if (_logger.IsWarn) _logger.Warn($"Corrupted DB marker detected for db {_fullPath}. Attempting repair...");
+            RepairDb(dbOptions, _fullPath!);
+
+            WasRepairedOnOpen = true;
+            _fileSystem.File.WriteAllText(RepairedMarkerPath, DateTime.UtcNow.ToString("O"));
+            if (_logger.IsWarn) _logger.Warn("Repair completed. Some data may be lost. Wrote repaired.marker.");
+            _fileSystem.File.Delete(corruptMarker);
             return;
         }
 
-        if (_logger.IsWarn) _logger.Warn($"Corrupted DB marker detected for db {_fullPath}. Attempting repair...");
-        RepairDb(dbOptions, _fullPath!);
+        if (_fileSystem.File.Exists(RepairedMarkerPath))
+            WasRepairedOnOpen = true;
+    }
 
-        WasRepairedOnOpen = true;
-        _fileSystem.File.WriteAllText(RepairedMarkerPath, DateTime.UtcNow.ToString("O"));
-        if (_logger.IsWarn) _logger.Warn("Repair completed. Some data may be lost. Wrote repaired.marker.");
-        _fileSystem.File.Delete(corruptMarker);
+    public void AcknowledgeRepair()
+    {
+        WasRepairedOnOpen = false;
+        _fileSystem.File.Delete(RepairedMarkerPath);
     }
 
     protected virtual void RepairDb(DbOptions dbOptions, string path) => RocksDb.Repair(dbOptions, path);

@@ -427,6 +427,64 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void If_repaired_marker_exists_without_corrupt_marker_then_WasRepairedOnOpen_is_true()
+        {
+            IDbConfig config = new DbConfig();
+
+            IFile file = Substitute.For<IFile>();
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            fileSystem.File.Returns(file);
+
+            string fullPath = DbOnTheRocks.GetFullDbPath(DbPath, DbPath);
+            string repairedMarker = Path.Join(fullPath, "repaired.marker");
+            string corruptMarker = Path.Join(fullPath, "corrupt.marker");
+            file.Exists(repairedMarker).Returns(true);
+            file.Exists(corruptMarker).Returns(false);
+
+            RocksDbSharp.Native native = Substitute.For<RocksDbSharp.Native>();
+
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "test"), config, _rocksdbConfigFactory,
+                LimboLogs.Instance,
+                fileSystem: fileSystem,
+                rocksDbNative: native);
+
+            using (Assert.EnterMultipleScope())
+            {
+                native.DidNotReceive().rocksdb_repair_db(Arg.Any<IntPtr>(), Arg.Any<string>(), out Arg.Any<IntPtr>());
+                Assert.That(db.WasRepairedOnOpen, Is.True);
+            }
+        }
+
+        [Test]
+        public void AcknowledgeRepair_deletes_repaired_marker_and_clears_flag()
+        {
+            IDbConfig config = new DbConfig();
+
+            IFile file = Substitute.For<IFile>();
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            fileSystem.File.Returns(file);
+
+            string fullPath = DbOnTheRocks.GetFullDbPath(DbPath, DbPath);
+            string repairedMarker = Path.Join(fullPath, "repaired.marker");
+            file.Exists(repairedMarker).Returns(true);
+
+            RocksDbSharp.Native native = Substitute.For<RocksDbSharp.Native>();
+
+            using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "test"), config, _rocksdbConfigFactory,
+                LimboLogs.Instance,
+                fileSystem: fileSystem,
+                rocksDbNative: native);
+
+            ((IDbMeta)db).AcknowledgeRepair();
+
+            using (Assert.EnterMultipleScope())
+            {
+                file.Received().Delete(repairedMarker);
+                Assert.That(db.WasRepairedOnOpen, Is.False);
+            }
+        }
+
+        [Test]
         public void TestExtractOptions()
         {
             string options = "compression=kSnappyCompression;optimize_filters_for_hits=true;optimize_filters_for_hits=false;memtable_whole_key_filtering=true;memtable_prefix_bloom_size_ratio=0.02;advise_random_on_open=true;block_based_table_factory.block_size=16000;block_based_table_factory.pin_l0_filter_and_index_blocks_in_cache=true;block_based_table_factory.cache_index_and_filter_blocks_with_high_priority=true;block_based_table_factory.format_version=5;block_based_table_factory.index_type=kTwoLevelIndexSearch;block_based_table_factory.partition_filters=true;block_based_table_factory.metadata_block_size=4096;";
