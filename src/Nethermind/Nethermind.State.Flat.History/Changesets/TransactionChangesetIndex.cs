@@ -99,11 +99,14 @@ public sealed class TransactionChangesetIndex
     /// before the one asked for; anything else is answered by the replay the node did before the index existed.</summary>
     internal bool TryRentOverlay(ulong block, Hash256 blockHash, ushort beforeTransaction, out MidBlockOverlayCache.Lease lease)
     {
-        lease = default;
-        return Covers(block)
-            && _store.TryGetBlockHash(block, out ValueHash256 indexed)
-            && indexed == blockHash
-            && _overlays.TryRent(block, in indexed, beforeTransaction, out lease);
+        lock (BlockLock(block))
+        {
+            lease = default;
+            return Covers(block)
+                && _store.TryGetBlockHash(block, out ValueHash256 indexed)
+                && indexed == blockHash
+                && _overlays.TryRent(block, in indexed, beforeTransaction, out lease);
+        }
     }
 
     /// <summary>The whole block for a trace of every transaction: rows in memory, and the chain of the consecutive
@@ -129,15 +132,6 @@ public sealed class TransactionChangesetIndex
             && PostTransactionWriters.TryCollect(block, _specProvider.GetSpec(block.Header), excluded);
         covered = new CoveredBlock(rows, number == 0 ? null : _consecutive.EndingAt(number - 1, block.ParentHash), chainable ? _consecutive : null, excluded);
         return true;
-        // Keep the identity check and fold on the same committed version of this height.
-        lock (BlockLock(block))
-        {
-            lease = default;
-            return Covers(block)
-                && _store.TryGetBlockHash(block, out ValueHash256 indexed)
-                && indexed == blockHash
-                && _overlays.TryRent(block, in indexed, beforeTransaction, out lease);
-        }
     }
 
     /// <summary>One block's rows, written into a batch of their own. The caller claims coverage only once
