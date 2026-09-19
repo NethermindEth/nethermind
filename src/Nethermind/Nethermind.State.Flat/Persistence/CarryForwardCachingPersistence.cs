@@ -4,7 +4,9 @@
 using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -30,11 +32,20 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private readonly Lock _lock = new();
     private StateId _basis;
     private long _generation;
+    private readonly ILogger _logger;
 
-    public CarryForwardCachingPersistence(IPersistence inner, int maxEntriesPerKind = DefaultMaxEntriesPerKind)
+    // Measurement probe: per-block read classification, logged on every commit.
+    private readonly ConcurrentDictionary<(Address, UInt256), byte> _mainMissedSlots = new();
+    private readonly ConcurrentDictionary<Address, byte> _mainMissedAccounts = new();
+    private int _slotMainHit, _slotMainMiss, _slotOtherHit, _slotOtherMiss, _slotLate, _slotBypass;
+    private int _accMainHit, _accMainMiss, _accOtherHit, _accOtherMiss, _accLate, _accBypass;
+    private int _clears;
+
+    public CarryForwardCachingPersistence(IPersistence inner, int maxEntriesPerKind = DefaultMaxEntriesPerKind, ILogManager? logManager = null)
     {
         _inner = inner;
         _maxEntriesPerKind = maxEntriesPerKind;
+        _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<CarryForwardCachingPersistence>();
         using IPersistence.IPersistenceReader reader = inner.CreateReader();
         _basis = reader.CurrentState;
     }
@@ -103,13 +114,53 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             {
                 _slots.Clear();
                 _slotCount = 0;
+                _clears++;
             }
             if (_slots.TryAdd(key, slot)) _slotCount++;
         }
     }
 
+    private void RecordSlotMiss(bool main, in (Address, UInt256) key)
+    {
+        if (main)
+        {
+            Interlocked.Increment(ref _slotMainMiss);
+            _mainMissedSlots.TryAdd(key, 0);
+        }
+        else
+        {
+            Interlocked.Increment(ref _slotOtherMiss);
+            if (_mainMissedSlots.ContainsKey(key)) Interlocked.Increment(ref _slotLate);
+        }
+    }
+
+    private void RecordAccountMiss(bool main, Address address)
+    {
+        if (main)
+        {
+            Interlocked.Increment(ref _accMainMiss);
+            _mainMissedAccounts.TryAdd(address, 0);
+        }
+        else
+        {
+            Interlocked.Increment(ref _accOtherMiss);
+            if (_mainMissedAccounts.ContainsKey(address)) Interlocked.Increment(ref _accLate);
+        }
+    }
+
+    private void LogAndResetProbe(in StateId to)
+    {
+        if (_logger.IsInfo) _logger.Info($"FlatReadProbe block={to} slots main={_slotMainHit}/{_slotMainMiss} other={_slotOtherHit}/{_slotOtherMiss} late={_slotLate} bypass={_slotBypass} acc main={_accMainHit}/{_accMainMiss} other={_accOtherHit}/{_accOtherMiss} late={_accLate} bypass={_accBypass} cache={_slotCount}/{_accountCount} clears={_clears}");
+        _slotMainHit = _slotMainMiss = _slotOtherHit = _slotOtherMiss = _slotLate = _slotBypass = 0;
+        _accMainHit = _accMainMiss = _accOtherHit = _accOtherMiss = _accLate = _accBypass = 0;
+        _clears = 0;
+        _mainMissedSlots.Clear();
+        _mainMissedAccounts.Clear();
+    }
+
     private void OnCommitted(in StateId to, HashSet<Address>? writtenAccounts, HashSet<(Address, UInt256)>? writtenSlots, bool clearAll)
     {
+        LogAndResetProbe(to);
         using (_lock.EnterScope())
         {
             _generation++;
@@ -159,9 +210,16 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         public Account? GetAccount(Address address)
         {
             bool current = parent.IsCurrent(generation);
-            if (current && parent._accounts.TryGetValue(address, out Account? cached)) return cached;
+            bool main = ProcessingThread.IsBlockProcessingThread;
+            if (!current) Interlocked.Increment(ref parent._accBypass);
+            if (current && parent._accounts.TryGetValue(address, out Account? cached))
+            {
+                Interlocked.Increment(ref main ? ref parent._accMainHit : ref parent._accOtherHit);
+                return cached;
+            }
 
             Account? account = inner.GetAccount(address);
+            parent.RecordAccountMiss(main, address);
             if (current) parent.TryCacheAccount(address, account, generation);
             return account;
         }
@@ -170,13 +228,17 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         {
             (Address, UInt256) key = (address, slot);
             bool current = parent.IsCurrent(generation);
+            bool main = ProcessingThread.IsBlockProcessingThread;
+            if (!current) Interlocked.Increment(ref parent._slotBypass);
             if (current && parent._slots.TryGetValue(key, out CachedSlot cached))
             {
+                Interlocked.Increment(ref main ? ref parent._slotMainHit : ref parent._slotOtherHit);
                 if (cached.Found) outValue = cached.Value;
                 return cached.Found;
             }
 
             bool found = inner.TryGetSlot(address, slot, ref outValue);
+            parent.RecordSlotMiss(main, key);
             if (current) parent.TryCacheSlot(key, new CachedSlot(found, found ? outValue : default), generation);
             return found;
         }
