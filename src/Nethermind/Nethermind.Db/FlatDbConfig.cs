@@ -20,6 +20,7 @@ public class FlatDbConfig : IFlatDbConfig
     public int HistoryVerifySegments { get; set; } = 0;
     public long HistoryVerifyMaxRows { get; set; } = 0;
     public bool HistoryTransactionIndexEnabled { get; set; } = false;
+    public int HistoryTransactionIndexTraceParallelism { get; set; } = 0;
     public int HistoryTransactionIndexDutyCyclePercent { get; set; } = 25;
     public ulong HistoryTransactionIndexRetrofitFromBlock { get; set; } = 0;
     public int HistoryTransactionIndexWorkers { get; set; } = 1;

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
@@ -22,12 +23,14 @@ public sealed class TransactionTraceExecutor(
     StateReadOverlaySlot? readOverlay = null)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
+    public bool CanSeed => readOverlay is not null && !balManager.ForceConstructGeneratedBlockAccessList;
+
     public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(in context);
 
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions options, BlockReceiptsTracer tracer, CancellationToken token)
     {
         TransactionTraceBoundary? boundary = TransactionTraceBoundary.Get(tracer.OtherTracer, options);
-        if (boundary is null || balManager.ForceConstructGeneratedBlockAccessList || boundary.IsTracingRewards)
+        if (boundary is null || balManager.ForceConstructGeneratedBlockAccessList || (boundary.IsTracingRewards && !boundary.SkipsTransactions))
             return inner.ProcessTransactions(block, options, tracer, token);
 
         Metrics.ResetBlockStats();
@@ -37,9 +40,9 @@ public sealed class TransactionTraceExecutor(
         // A seeded prefix stands in for the transactions ahead of the target: they are neither executed nor traced,
         // and a block access list under construction would miss them, so seeding yields to it.
         int first = 0;
+        int target = boundary.IndexOf(block);
         if (boundary.Seeds is { } seeds && readOverlay is not null && !balManager.Enabled)
         {
-            int target = boundary.IndexOf(block);
             if (target > 0 && seeds.TrySeed(block, target, readOverlay) && readOverlay.Current is { } overlay)
             {
                 state.ApplyAccountOverlay(overlay);
@@ -47,13 +50,18 @@ public sealed class TransactionTraceExecutor(
             }
         }
 
+        if (boundary.IsSeedRequired && first != target)
+            throw new InvalidOperationException("The indexed trace could not install its transaction prefix.");
+
         try
         {
             return Execute(block, options, tracer, token, boundary, first);
         }
         finally
         {
-            readOverlay?.Disarm();
+            // What follows the transactions, the rewards and withdrawals, must see the seeded end state too when the
+            // seed stood for the whole block; the environment disarms the slot when its scope closes.
+            if (!boundary.SkipsTransactions) readOverlay?.Disarm();
         }
     }
 

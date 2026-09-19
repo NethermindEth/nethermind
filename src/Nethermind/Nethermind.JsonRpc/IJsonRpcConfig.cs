@@ -143,6 +143,10 @@ public interface IJsonRpcConfig : IConfig
     public int? DebugModuleConcurrentInstances { get; set; }
 
     [ConfigItem(
+        Description = "The number of concurrent instances of the Trace RPC module (`trace_block`, `trace_transaction`, `trace_replay*`, etc.). Calls beyond this cap return `LimitExceeded`. Defaults to the number of logical processors capped at 16.")]
+    public int? TraceModuleConcurrentInstances { get; set; }
+
+    [ConfigItem(
         Description = """
             The number of concurrent instances for non-sharable calls:
 

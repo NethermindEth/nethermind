@@ -110,4 +110,65 @@ public class OverlaidScopeProviderTests
 
         public bool HasStorage(Address address) => address == TestItem.AddressA;
     }
+
+    [Test]
+    public void TheStateUnderOneBlocksOverlays_IsReadFromTheScopeOnce([Values(2, 12)] int cacheBits)
+    {
+        BlockReadCache cache = new(accountSetsBits: cacheBits);
+        IStateReadOverlay first = Substitute.For<IStateReadOverlay>();
+        IStateReadOverlay second = Substitute.For<IStateReadOverlay>();
+
+        _slot.Arm(first, Substitute.For<IDisposable>(), cache);
+        Account one = _scope.Get(TestItem.AddressA);
+        _slot.Arm(second, Substitute.For<IDisposable>(), cache);
+        Account two = _scope.Get(TestItem.AddressA);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(one, Is.EqualTo(Underlying));
+            Assert.That(two, Is.EqualTo(Underlying), "the second transaction of the block reads the same state as the first");
+            _inner.Received(1).Get(TestItem.AddressA);
+        }
+    }
+
+    [Test]
+    public void ACachedAccount_IsStillOverlaidByTheTransactionsOwnWrites()
+    {
+        BlockReadCache cache = new();
+        IStateReadOverlay plain = Substitute.For<IStateReadOverlay>();
+        IStateReadOverlay writing = Substitute.For<IStateReadOverlay>();
+        writing.TryGetAccount(TestItem.AddressA, Arg.Any<Account>(), out Arg.Any<Account>())
+            .Returns(c => { c[2] = Overlaid; return true; });
+
+        _slot.Arm(plain, Substitute.For<IDisposable>(), cache);
+        _scope.Get(TestItem.AddressA);
+        _slot.Arm(writing, Substitute.For<IDisposable>(), cache);
+        Account overlaid = _scope.Get(TestItem.AddressA);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(overlaid, Is.EqualTo(Overlaid), "the cache holds the state under the overlay, not the answer");
+            _inner.Received(1).Get(TestItem.AddressA);
+        }
+    }
+
+    [Test]
+    public void AStorageSlot_IsReadFromTheTreeOnceForTheBlock([Values(4, 14)] int cacheBits)
+    {
+        BlockReadCache cache = new(storageSetsBits: cacheBits);
+        IStateReadOverlay overlay = Substitute.For<IStateReadOverlay>();
+        IWorldStateScopeProvider.IStorageTree tree = _scope.CreateStorageTree(TestItem.AddressA);
+
+        _slot.Arm(overlay, Substitute.For<IDisposable>(), cache);
+        tree.Get(1, out UInt256 first);
+        _slot.Arm(Substitute.For<IStateReadOverlay>(), Substitute.For<IDisposable>(), cache);
+        tree.Get(1, out UInt256 second);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo((UInt256)99));
+            Assert.That(second, Is.EqualTo((UInt256)99));
+            _innerTree.Received(1).Get(Arg.Any<UInt256>(), out Arg.Any<UInt256>());
+        }
+    }
 }

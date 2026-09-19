@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 
@@ -16,15 +18,19 @@ public sealed class TransactionChangesetIndex
     private readonly IColumnsDb<FlatHistoryColumns> _columns;
     private readonly TransactionChangesetStore _store;
     private readonly MidBlockOverlayCache _overlays;
+    private readonly ConsecutiveBlockOverlays _consecutive = new();
     private readonly Lock[] _blockLocks = [.. Enumerable.Range(0, 64).Select(static _ => new Lock())];
 
     private Lock BlockLock(ulong block) => _blockLocks[block % (ulong)_blockLocks.Length];
 
-    public TransactionChangesetIndex(IColumnsDb<FlatHistoryColumns> columns, IFlatDbConfig config)
+    private readonly ISpecProvider? _specProvider;
+
+    public TransactionChangesetIndex(IColumnsDb<FlatHistoryColumns> columns, IFlatDbConfig config, ISpecProvider? specProvider = null)
     {
         ArgumentNullException.ThrowIfNull(columns);
         ArgumentNullException.ThrowIfNull(config);
 
+        _specProvider = specProvider;
         _columns = columns;
         _store = new TransactionChangesetStore(columns.GetColumnDb(FlatHistoryColumns.TransactionChangesets));
         _overlays = new MidBlockOverlayCache(_store);
@@ -36,6 +42,16 @@ public sealed class TransactionChangesetIndex
     public bool Covers(ulong block) => Enabled && _store.Covers(block);
 
     public bool TryGetCoverage(out ulong fromBlock, out ulong toBlock) => _store.TryGetCoverage(out fromBlock, out toBlock);
+
+    /// <summary>Publishes the covered range, so that what the index can answer is visible from outside the process:
+    /// a retrofit's progress, and the range a trace benchmark has to stay inside to be measuring the index at all.</summary>
+    public void ReportCoverage()
+    {
+        if (!Enabled || !TryGetCoverage(out ulong from, out ulong to)) return;
+
+        Flat.Metrics.TransactionChangesetIndexFrom = (long)from;
+        Flat.Metrics.TransactionChangesetIndexTo = (long)to;
+    }
 
     public BlockCapture StartBlock(ulong block) => new(this, block);
 
@@ -83,7 +99,6 @@ public sealed class TransactionChangesetIndex
     /// before the one asked for; anything else is answered by the replay the node did before the index existed.</summary>
     internal bool TryRentOverlay(ulong block, Hash256 blockHash, ushort beforeTransaction, out MidBlockOverlayCache.Lease lease)
     {
-        // Keep the identity check and fold on the same committed version of this height.
         lock (BlockLock(block))
         {
             lease = default;
@@ -92,6 +107,31 @@ public sealed class TransactionChangesetIndex
                 && indexed == blockHash
                 && _overlays.TryRent(block, in indexed, beforeTransaction, out lease);
         }
+    }
+
+    /// <summary>The whole block for a trace of every transaction: rows in memory, and the chain of the consecutive
+    /// blocks traced before it when the block continues one. A block joins the chain only when the chain can refuse
+    /// every address the block wrote after its transactions, which needs the block's fork and proof of stake.</summary>
+    internal bool TryOpenBlock(Block block, [NotNullWhen(true)] out ICoveredBlock? covered)
+    {
+        covered = null;
+        ulong number = (ulong)block.Number;
+        if (!Covers(number) || block.Hash is null || block.ParentHash is null) return false;
+        BlockChangesets? rows;
+        lock (BlockLock(number))
+        {
+            if (!BlockChangesets.TryRead(_store, number, block.Hash, block.Transactions.Length, out rows)) return false;
+        }
+
+        HashSet<AddressAsKey> excluded = [];
+        // IsPostMerge is set while a block is processed and is not decoded from a stored header, so a block read back
+        // for a trace would never chain; the difficulty the header does carry is what says proof of stake.
+        bool chainable = block.Header.IsPoS()
+            && _specProvider is not null
+            && PostTransactionWriters.Describes(_specProvider.SealEngine)
+            && PostTransactionWriters.TryCollect(block, _specProvider.GetSpec(block.Header), excluded);
+        covered = new CoveredBlock(rows, number == 0 ? null : _consecutive.EndingAt(number - 1, block.ParentHash), chainable ? _consecutive : null, excluded);
+        return true;
     }
 
     /// <summary>One block's rows, written into a batch of their own. The caller claims coverage only once

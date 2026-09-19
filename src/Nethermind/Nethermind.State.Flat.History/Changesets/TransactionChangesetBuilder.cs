@@ -57,6 +57,7 @@ public sealed class TransactionChangesetBuilder(
             for (int worker = 0; worker < _workers; worker++) _threads.Add(StartThread(Retrofit, $"Transaction changeset retrofit {worker}"));
         }
 
+        index.ReportCoverage();
         if (_logger.IsInfo) _logger.Info(
             $"Transaction changeset index building at {_dutyCyclePercent}% duty cycle" +
             (_retrofitFromBlock == 0 ? "." : $", retrofitting down to block {_retrofitFromBlock} on {(RetrofitOnWorkers ? _workers : 1)} thread(s)."));
@@ -302,6 +303,7 @@ public sealed class TransactionChangesetBuilder(
 
     private void ReportProgress()
     {
+        index.ReportCoverage();
         if (!_logger.IsInfo) return;
 
         long now = Stopwatch.GetTimestamp();

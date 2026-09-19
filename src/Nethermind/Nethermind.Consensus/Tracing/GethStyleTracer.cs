@@ -38,7 +38,8 @@ public class GethStyleTracer(
     ChangeableTransactionProcessorAdapter transactionProcessorAdapter,
     IFileSystem fileSystem,
     IOverridableEnv<GethStyleTracer.BlockProcessingComponents> blockProcessingEnv,
-    IPrefixStateSeedSource prefixSeeds
+    IPrefixStateSeedSource prefixSeeds,
+    IParallelBlockTracer? parallelTracer = null
 ) : IGethStyleTracer
 {
     public GethLikeTxTrace? Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
@@ -234,6 +235,14 @@ public class GethStyleTracer(
         ArgumentNullException.ThrowIfNull(block);
 
         BlockHeader parent = FindParent(block);
+        if (writer is null && options.StateOverrides is null && parallelTracer is not null && !IsJavaScriptTracer(options)
+            && parallelTracer.TryTrace(block, parent,
+                (state, txHash) => CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, specProvider),
+                afterTransactions: null, cancellationToken, out IReadOnlyList<GethLikeTxTrace>? parallel))
+        {
+            return new GethLikeTxTraceCollection(parallel);
+        }
+
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
 
         long destroyRefund = (long)specProvider.GetSpec(block.Header).GasCosts.DestroyRefund;
@@ -256,6 +265,10 @@ public class GethStyleTracer(
             throw;
         }
     }
+
+    /// <summary>A JavaScript tracer owns a script engine; one per worker at once is not a cost a block trace should pay.</summary>
+    private static bool IsJavaScriptTracer(GethTraceOptions options) =>
+        options.Tracer is { Length: > 0 } tracer && !GethLikeNativeTracerFactory.IsNativeTracer(tracer);
 
     private BlockHeader? FindParent(Block block)
     {
