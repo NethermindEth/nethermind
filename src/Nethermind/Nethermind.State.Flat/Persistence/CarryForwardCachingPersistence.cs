@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -40,6 +41,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private int _slotMainHit, _slotMainMiss, _slotOtherHit, _slotOtherMiss, _slotLate, _slotBypass;
     private int _accMainHit, _accMainMiss, _accOtherHit, _accOtherMiss, _accLate, _accBypass;
     private int _clears;
+    private readonly ConcurrentDictionary<Address, int> _mainMissedSlotsByAddress = new();
+    private readonly ConcurrentDictionary<Address, int> _mainMissedAccountsByAddress = new();
 
     public CarryForwardCachingPersistence(IPersistence inner, int maxEntriesPerKind = DefaultMaxEntriesPerKind, ILogManager? logManager = null)
     {
@@ -126,6 +129,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         {
             Interlocked.Increment(ref _slotMainMiss);
             _mainMissedSlots.TryAdd(key, 0);
+            _mainMissedSlotsByAddress.AddOrUpdate(key.Item1, 1, static (_, c) => c + 1);
         }
         else
         {
@@ -140,6 +144,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         {
             Interlocked.Increment(ref _accMainMiss);
             _mainMissedAccounts.TryAdd(address, 0);
+            _mainMissedAccountsByAddress.AddOrUpdate(address, 1, static (_, c) => c + 1);
         }
         else
         {
@@ -154,9 +159,15 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         _slotMainHit = _slotMainMiss = _slotOtherHit = _slotOtherMiss = _slotLate = _slotBypass = 0;
         _accMainHit = _accMainMiss = _accOtherHit = _accOtherMiss = _accLate = _accBypass = 0;
         _clears = 0;
+        if (_logger.IsInfo) _logger.Info($"FlatReadProbeTop block={to.BlockNumber} slotAddrs={_mainMissedSlotsByAddress.Count} top={Top(_mainMissedSlotsByAddress)} accAddrs={_mainMissedAccountsByAddress.Count} top={Top(_mainMissedAccountsByAddress)}");
         _mainMissedSlots.Clear();
         _mainMissedAccounts.Clear();
+        _mainMissedSlotsByAddress.Clear();
+        _mainMissedAccountsByAddress.Clear();
     }
+
+    private static string Top(ConcurrentDictionary<Address, int> counts) =>
+        string.Join(",", counts.OrderByDescending(static kv => kv.Value).Take(8).Select(static kv => $"{kv.Key}:{kv.Value}"));
 
     private void OnCommitted(in StateId to, HashSet<Address>? writtenAccounts, HashSet<(Address, UInt256)>? writtenSlots, bool clearAll)
     {
