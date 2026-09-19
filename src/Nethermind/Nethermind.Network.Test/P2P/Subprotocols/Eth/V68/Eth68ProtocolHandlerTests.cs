@@ -319,6 +319,115 @@ public class Eth68ProtocolHandlerTests
     }
 
     [Test]
+    public void transaction_knowledge_is_independent_for_each_peer([Values] bool receivedFromPeer)
+    {
+        Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+        if (receivedFromPeer)
+        {
+            HandleIncomingStatusMessage();
+            using NewPooledTransactionHashesMessage68 message = new(
+                new ArrayPoolList<byte>(1) { (byte)tx.Type },
+                new ArrayPoolList<int>(1) { tx.GetLength() },
+                new ArrayPoolList<Hash256>(1) { tx.Hash! });
+            HandleZeroMessage(message, Eth68MessageCode.NewPooledTransactionHashes);
+        }
+        else
+        {
+            _handler.SendNewTransactions([tx], sendFullTx: false);
+        }
+
+        _session.ClearReceivedCalls();
+        _handler.SendNewTransactions([tx], sendFullTx: false);
+        _session.DidNotReceive().DeliverMessage(Arg.Any<NewPooledTransactionHashesMessage68>());
+
+        using Eth68ProtocolHandler otherPeer = CreateHandler(Substitute.For<ITxPoolConfig>());
+        otherPeer.SendNewTransactions([tx], sendFullTx: false);
+        otherPeer.SendNewTransactions([tx], sendFullTx: false);
+        _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage68>(m => m.Hashes[0] == tx.Hash));
+
+        _handler.SendNewTransactions([tx], sendFullTx: true);
+        _session.Received(1).DeliverMessage(Arg.Any<TransactionsMessage>());
+    }
+
+    [Test]
+    public void shared_hash_cache_handles_capacity([Values(0, 1, 8, 17)] int capacity)
+    {
+        TransactionHashCache cache = new(capacity);
+        TransactionHashCache.PeerCache peer = cache.CreatePeerCache();
+        ValueHash256 hash = TestItem.KeccakA.ValueHash256;
+        Assert.That(peer.Set(in hash), Is.True);
+        Assert.That(peer.Set(in hash), Is.EqualTo(capacity == 0));
+    }
+
+    [Test]
+    public void shared_hash_slot_reuse_does_not_suppress_new_transactions()
+    {
+        TransactionHashCache cache = new(8);
+        TransactionHashCache.PeerCache first = cache.CreatePeerCache();
+        TransactionHashCache.PeerCache second = cache.CreatePeerCache();
+        for (int i = 0; i < 64; i++)
+        {
+            ValueHash256 hash = Keccak.Compute(i.ToString()).ValueHash256;
+            Assert.That(first.Set(in hash), Is.True);
+            Assert.That(first.Set(in hash), Is.False);
+            Assert.That(second.Set(in hash), Is.True);
+            Assert.That(second.Set(in hash), Is.False);
+        }
+
+        ValueHash256 evicted = Keccak.Compute("0").ValueHash256;
+        Assert.That(first.Set(in evicted), Is.True);
+        Assert.That(second.Set(in evicted), Is.True);
+    }
+
+    [Test]
+    public void shared_hash_cache_keeps_recently_announced_transactions()
+    {
+        TransactionHashCache cache = new(8);
+        TransactionHashCache.PeerCache peer = cache.CreatePeerCache();
+        ValueHash256 active = TestItem.KeccakA.ValueHash256;
+        Assert.That(peer.Set(in active), Is.True);
+        for (int i = 0; i < 64; i++)
+        {
+            ValueHash256 hash = Keccak.Compute(i.ToString()).ValueHash256;
+            Assert.That(peer.Set(in hash), Is.True);
+            Assert.That(peer.Set(in active), Is.False);
+        }
+    }
+
+    [Test]
+    public void concurrent_eviction_does_not_suppress_first_announcements()
+    {
+        TransactionHashCache cache = new(8);
+        ValueHash256[] hashes = new ValueHash256[1024];
+        for (int i = 0; i < hashes.Length; i++) hashes[i] = Keccak.Compute(i.ToString()).ValueHash256;
+        int suppressed = 0;
+        Parallel.For(0, 4, _ =>
+        {
+            TransactionHashCache.PeerCache peer = cache.CreatePeerCache();
+            foreach (ValueHash256 hash in hashes)
+            {
+                if (!peer.Set(in hash)) Interlocked.Increment(ref suppressed);
+            }
+        });
+        Assert.That(suppressed, Is.Zero);
+    }
+
+    [Test]
+    public void concurrent_announcements_are_deduplicated_per_peer()
+    {
+        TransactionHashCache cache = new(8);
+        TransactionHashCache.PeerCache[] peers = [cache.CreatePeerCache(), cache.CreatePeerCache()];
+        int[] announcements = new int[peers.Length];
+        ValueHash256 hash = TestItem.KeccakA.ValueHash256;
+        Parallel.For(0, 1024, i =>
+        {
+            int peer = i % peers.Length;
+            if (peers[peer].Set(in hash)) Interlocked.Increment(ref announcements[peer]);
+        });
+        Assert.That(announcements, Is.EqualTo(new[] { 1, 1 }));
+    }
+
+    [Test]
     public void should_send_blob_tx_announcement_in_NewPooledTransactionHashesMessage68()
     {
         Transaction tx = Build.A.Transaction.WithNonce(0UL).WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
