@@ -15,6 +15,7 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Init.Modules;
 using Nethermind.Merge.Plugin;
 
@@ -43,7 +44,9 @@ public class BeaconChainModule : Module
 
         builder
             .AddSingleton<BeaconChainService>()
-            .AddSingleton(BeaconChainSpec.Mainnet)
+            // Derived from the execution layer's chain id, never a separate config knob: the two
+            // sides must never be able to disagree about which chain they follow.
+            .AddSingleton<BeaconChainSpec, ISpecProvider>(specProvider => BeaconChainSpec.ForChainId(specProvider.ChainId))
             .AddSingleton<BeaconChainStore>()
             .AddSingleton<PubkeyCache>()
             .AddSingleton<CheckpointSync>()

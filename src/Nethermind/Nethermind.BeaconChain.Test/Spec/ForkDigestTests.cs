@@ -22,4 +22,12 @@ public class ForkDigestTests
     [TestCase(500000ul, "0x8c9f62fe")] // beyond BPO2 the digest is stable
     public void Computes_mainnet_fork_digest(ulong epoch, string expected) =>
         Assert.That(ForkDigest.Compute(BeaconChainSpec.Mainnet, epoch), Is.EqualTo(Bytes.FromHexString(expected)));
+
+    // Expected digest reproduced independently in Python: sha256(fork_version ++ 28 zero bytes ++
+    // genesis_validators_root)[:4], XOR-masked per EIP-7892 with sha256(le64(2048) ++ le64(9))[:4]
+    // (the pre-BPO Electra blob params Fulu inherits at its own activation epoch). The same routine
+    // reproduces every mainnet vector above byte-for-byte, which is the cross-check for this value.
+    [Test]
+    public void Computes_hoodi_fork_digest_at_the_fulu_epoch() =>
+        Assert.That(ForkDigest.Compute(BeaconChainSpec.Hoodi, BeaconChainSpec.Hoodi.FuluForkEpoch), Is.EqualTo(Bytes.FromHexString("0xe2abcca4")));
 }
