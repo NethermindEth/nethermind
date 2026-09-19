@@ -460,7 +460,7 @@ public class PbtWorldStateScopeTests
         RecordingTrieWarmer warmer = new(acceptSlot: false);
         await using PbtTestContext ctx = new(trieWarmer: warmer);
         using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
-        if (slot < 0) scope.HintGet(TestItem.AddressA, null);
+        if (slot < 0) scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
         else if (singleProducer) scope.CreateStorageTree(TestItem.AddressA).HintSet((UInt256)(uint)slot);
         else scope.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), (UInt256)(uint)slot);
 
@@ -471,6 +471,18 @@ public class PbtWorldStateScopeTests
             Assert.That(warmer.MpmcSlotJobs, Is.EqualTo(slot >= 0 ? 1 : 0));
             Assert.That(ExecuteHint(warmer, slot), Is.True);
         }
+    }
+
+    [Test]
+    public async Task Account_read_hint_does_not_queue_warmup_jobs()
+    {
+        RecordingTrieWarmer warmer = new();
+        await using PbtTestContext ctx = new(trieWarmer: warmer);
+        using PbtWorldStateScope scope = (PbtWorldStateScope)ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        scope.HintGet(TestItem.AddressA, null);
+        scope.Get(TestItem.AddressA);
+
+        Assert.That(warmer.AddressJobs, Is.Zero);
     }
 
     [Test]
@@ -601,7 +613,7 @@ public class PbtWorldStateScopeTests
             using PbtWorldStateScope scope = CreateCountingScope(reader, cache, warmer);
             if (warm)
             {
-                if (slot < 0) scope.HintGet(TestItem.AddressA, null);
+                if (slot < 0) scope.HintWarmAccount(new ValueAddress(TestItem.AddressA.Bytes));
                 else scope.HintWarmSlot(new ValueAddress(TestItem.AddressA.Bytes), (UInt256)(uint)slot);
                 Assert.That(ExecuteHint(warmer, slot), Is.True);
                 Assert.That(reader.GroupReads, Is.GreaterThan(0));

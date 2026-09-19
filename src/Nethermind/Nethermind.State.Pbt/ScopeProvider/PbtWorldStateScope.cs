@@ -97,7 +97,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     // A read rewrites nothing at commit, so its trie path needs no warming; changes hint through HintWarmAccount.
     public Account? Get(Address address) => Bundle.GetAccount(address);
 
-    public void HintGet(Address address, Account? account) => HintWarmAccount(new ValueAddress(address.Bytes));
+    public void HintGet(Address address, Account? account) { }
 
     public void HintWarmAccount(in ValueAddress address)
     {
