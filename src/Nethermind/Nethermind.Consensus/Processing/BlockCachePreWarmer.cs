@@ -659,7 +659,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (!addressWarmer.HasBal)
             {
                 WarmupTransactions(blockState, parallelOptions);
-                WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
             }
 
             if (_logger.IsDebug) DebugPreWarming("Finished", suggestedBlock.Number, isPreparation, transactionCount);
@@ -679,45 +678,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         void DebugPreWarming(string state, ulong blockNumber, bool isPreparation, int transactionCount) =>
             _logger.Debug(
                 $"{state} pre-warming caches for {(isPreparation ? "preparation" : "validation")} of block {blockNumber} with {transactionCount} {(isPreparation ? "new transactions" : "transactions")}.");
-    }
-
-    private void WarmupWithdrawals(ParallelOptions parallelOptions, IReleaseSpec spec, Block block, BlockHeader? parent)
-    {
-        if (parallelOptions.CancellationToken.IsCancellationRequested) return;
-
-        try
-        {
-            if (spec.WithdrawalsEnabled && block.Withdrawals is not null)
-            {
-                ParallelUnbalancedWork.For(0, block.Withdrawals.Length, parallelOptions, (EnvPool: _envPool, Block: block, Parent: parent),
-                    static (i, state) =>
-                    {
-                        IReadOnlyTxProcessorSource env = state.EnvPool.Get();
-                        try
-                        {
-                            using IReadOnlyTxProcessingScope scope = env.Build(state.Parent);
-                            scope.WorldState.WarmUp(state.Block.Withdrawals![i].Address);
-                        }
-                        catch (MissingTrieNodeException)
-                        {
-                        }
-                        finally
-                        {
-                            state.EnvPool.Return(env);
-                        }
-
-                        return state;
-                    });
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Ignore, block completed cancel
-        }
-        catch (Exception ex)
-        {
-            _logger.DebugError("Error pre-warming withdrawal", ex);
-        }
     }
 
     private void WarmupTransactions(BlockState blockState, ParallelOptions parallelOptions)
@@ -1010,7 +970,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             try
             {
                 Address? beneficiary = block.Header.GasBeneficiary;
-                if (SystemTxAccessLists is not null || beneficiary is not null)
+                if (SystemTxAccessLists is not null || beneficiary is not null || block.Withdrawals is not null)
                 {
                     IReadOnlyTxProcessorSource env = envPool.Get();
                     try
@@ -1018,6 +978,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                         using IReadOnlyTxProcessingScope scope = env.Build(parent);
 
                         WarmupSender(beneficiary, null, scope.WorldState);
+                        if (block.Withdrawals is not null)
+                        {
+                            // Withdrawal recipients are applied at block end; warming them here rather than after
+                            // every transaction keeps their account reads off the main thread on dense blocks.
+                            foreach (Withdrawal withdrawal in block.Withdrawals) WarmupSender(withdrawal.Address, null, scope.WorldState);
+                        }
 
                         if (SystemTxAccessLists is not null)
                         {
