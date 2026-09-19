@@ -46,6 +46,21 @@ namespace Nethermind.Core.Test
             Assert.That(KeccakCache.Compute(span), Is.EqualTo(ValueKeccak.Compute(span)));
         }
 
+        [Test]
+        public void Unsupported_lengths_are_not_cached([Values(0, 93, 128, 192)] int length)
+        {
+            byte[] input = new byte[length];
+            new Random(513).NextBytes(input);
+            ValueHash256 expected = ValueKeccak.Compute(input);
+            Assert.That(KeccakCache.TryGet(input, out _), Is.False);
+            KeccakCache.Store(input, in expected);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(KeccakCache.TryGet(input, out _), Is.False);
+                Assert.That(KeccakCache.Compute(input), Is.EqualTo(expected));
+            }
+        }
+
         private string[] GetBucketCollisions()
         {
             Random random = new(13);

@@ -74,7 +74,8 @@ internal struct KeyHashBatch
     internal void Flush(Span<PatriciaTree.BulkSetEntry> entries)
     {
         if (_count == 0) return;
-        int batchSize = _count == MaximumBatchSize ? MaximumBatchSize : _count >= MinimumBatchSize ? MinimumBatchSize : 0;
+        int batchSize = Avx512F.IsSupported && _count == MaximumBatchSize ? MaximumBatchSize
+            : Avx2.IsSupported && _count >= MinimumBatchSize ? MinimumBatchSize : 0;
         if (batchSize != 0)
         {
             Unsafe.SkipInit(out Scratch scratch);

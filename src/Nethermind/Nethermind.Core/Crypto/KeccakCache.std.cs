@@ -73,7 +73,11 @@ public static unsafe partial class KeccakCache
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static bool TryGet(ReadOnlySpan<byte> input, out ValueHash256 keccak256)
     {
-        Debug.Assert(input.Length is > 0 and <= Entry.MaxPayloadLength);
+        if (input.Length is 0 or > Entry.MaxPayloadLength)
+        {
+            Unsafe.SkipInit(out keccak256);
+            return false;
+        }
         ref Entry e = ref GetEntry(input, out uint combined);
         return TryRead(input, ref e, combined, out keccak256);
     }
@@ -81,7 +85,7 @@ public static unsafe partial class KeccakCache
     /// <summary>Stores a previously computed Keccak-256 hash of <paramref name="input"/>.</summary>
     internal static void Store(ReadOnlySpan<byte> input, in ValueHash256 keccak256)
     {
-        Debug.Assert(input.Length is > 0 and <= Entry.MaxPayloadLength);
+        if (input.Length is 0 or > Entry.MaxPayloadLength) return;
         ref Entry e = ref GetEntry(input, out uint combined);
         Write(input, ref e, combined, in keccak256);
     }

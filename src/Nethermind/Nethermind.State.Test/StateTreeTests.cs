@@ -18,6 +18,34 @@ namespace Nethermind.Store.Test;
 public class StateTreeTests
 {
     [Test]
+    public void Key_hash_batch_flush_supports_all_pending_counts(
+        [Range(1, 8)] int count, [Values(20, 32)] int length)
+    {
+        KeyHashBatch batch = new();
+        batch.Initialize(length);
+        PatriciaTree.BulkSetEntry[] entries = new PatriciaTree.BulkSetEntry[count];
+        ValueHash256[] expected = new ValueHash256[count];
+        Random random = new(7152);
+        for (int i = 0; i < count; i++)
+        {
+            byte[] input = new byte[length];
+            random.NextBytes(input);
+            expected[i] = ValueKeccak.Compute(input);
+            entries[i] = new(default, [(byte)i]);
+            batch.AddMissing(input, i);
+        }
+        batch.Flush(entries);
+        for (int i = 0; i < count; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entries[i].Path, Is.EqualTo(expected[i]));
+                Assert.That(entries[i].Value, Is.EqualTo(new byte[] { (byte)i }));
+            }
+        }
+    }
+
+    [Test]
     public void Batched_account_updates_match_individual_updates(
         [Values(0, 1, 3, 4, 5, 7, 8, 9, 16, 33, 128)] int count, [Values] bool warm)
     {

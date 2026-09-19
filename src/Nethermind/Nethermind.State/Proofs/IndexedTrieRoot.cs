@@ -70,6 +70,8 @@ internal static class IndexedTrieRoot
     {
         private Vector256<byte> _element0;
     }
+
+    /// <summary>Provides 4544 bytes for eight full branch inputs, output hashes, and positions.</summary>
     [InlineArray((BranchBatchBufferLength + VectorByteLength - 1) / VectorByteLength)]
     private struct BranchBatchBuffer
     {
@@ -101,12 +103,17 @@ internal static class IndexedTrieRoot
             return CalculateParallel();
         }
 
-        private bool CanBatchMultiBlockLeavesSequentially()
-            => Avx2.IsSupported && _leaves.IsEmpty && _items.Length is >= MaxHashBatchSize and <= MinItemsForParallelRootHash
-                && CanBatchMultiBlockLeaves(_items[GetIndex(0)]);
+        internal bool CanBatchMultiBlockLeavesSequentially()
+        {
+            if (!Avx2.IsSupported || !_leaves.IsEmpty || _items.Length is < MaxHashBatchSize or > MinItemsForParallelRootHash)
+                return false;
+            foreach (T item in _items)
+                if (!CanBatchMultiBlockLeaves(item)) return false;
+            return true;
+        }
 
         [SkipLocalsInit]
-        private void BatchTerminalBranches(Span<NodeReference> references)
+        internal void BatchTerminalBranches(Span<NodeReference> references)
         {
             Unsafe.SkipInit(out BranchBatchBuffer scratch);
             Span<byte> memory = MemoryMarshal.AsBytes((Span<Vector256<byte>>)scratch);
@@ -115,7 +122,7 @@ internal static class IndexedTrieRoot
             Span<byte> hashes = memory.Slice(blocks.Length, BranchBatchSize * Keccak.Size);
             Span<int> positions = MemoryMarshal.Cast<byte, int>(memory.Slice(blocks.Length + hashes.Length, BranchBatchSize * sizeof(int)));
             int pending = 0;
-            for (int start = 0; start <= references.Length - (BranchBatchSize - pending) * BranchChildCount; start++)
+            for (int start = 0; start <= references.Length - BranchChildCount; start++)
             {
                 // Sixteen aligned consecutive indices share every RLP key nibble except the last.
                 int index = GetIndex(start);
@@ -148,17 +155,13 @@ internal static class IndexedTrieRoot
                 positions[pending++] = start;
                 start += BranchChildCount - 1;
                 if (pending != BranchBatchSize) continue;
-                if (Avx512F.IsSupported)
-                    KeccakHash.ComputeHash532Bytes8Avx512(ref MemoryMarshal.GetReference(blocks), ref MemoryMarshal.GetReference(hashes));
-                else
-                    KeccakHash.ComputePaddedMultiBlocks4Avx2(ref MemoryMarshal.GetReference(blocks), inputLength, ref MemoryMarshal.GetReference(hashes));
-                for (int j = 0; j < BranchBatchSize; j++)
-                {
-                    ValueHash256 hash = default;
-                    hashes.Slice(j * Keccak.Size, Keccak.Size).CopyTo(hash.BytesAsSpan);
-                    references[positions[j]] = new NodeReference(hash, PrecomputedBranchLength);
-                }
+                HashTerminalBranches(blocks, hashes, positions[..pending], references, inputLength);
                 pending = 0;
+            }
+            if (Avx512F.IsSupported && pending >= 2)
+            {
+                blocks[(pending * inputLength)..].Clear();
+                HashTerminalBranches(blocks, hashes, positions[..pending], references, inputLength);
             }
         }
 
@@ -625,6 +628,21 @@ internal static class IndexedTrieRoot
     private readonly record struct Key(ulong Value, int Length)
     {
         public int Nibble(int depth) => (int)(Value >> ((Length - depth - 1) * 4)) & 15;
+    }
+
+    private static void HashTerminalBranches(Span<byte> blocks, Span<byte> hashes, ReadOnlySpan<int> positions,
+        Span<NodeReference> references, int inputLength)
+    {
+        if (Avx512F.IsSupported)
+            KeccakHash.ComputeHash532Bytes8Avx512(ref MemoryMarshal.GetReference(blocks), ref MemoryMarshal.GetReference(hashes));
+        else
+            KeccakHash.ComputePaddedMultiBlocks4Avx2(ref MemoryMarshal.GetReference(blocks), inputLength, ref MemoryMarshal.GetReference(hashes));
+        for (int j = 0; j < positions.Length; j++)
+        {
+            ValueHash256 hash = default;
+            hashes.Slice(j * Keccak.Size, Keccak.Size).CopyTo(hash.BytesAsSpan);
+            references[positions[j]] = new NodeReference(hash, -Keccak.Size);
+        }
     }
 
     internal readonly record struct NodeReference(ValueHash256 Value, int Length)

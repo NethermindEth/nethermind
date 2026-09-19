@@ -197,10 +197,10 @@ namespace Nethermind.State.Proofs
                 }
             }
             int tailStart = 0;
-            if (pending >= (Avx512F.IsSupported ? 2 : Avx2HashBatchSize))
+            if (Avx512F.IsSupported && pending >= 2)
             {
-                SetStoragePaths(blocks, hashes, j - pending, Avx512F.IsSupported ? pending : Avx2HashBatchSize);
-                tailStart = Avx512F.IsSupported ? pending : Avx2HashBatchSize;
+                SetStoragePaths(blocks, hashes, j - pending, pending);
+                tailStart = pending;
             }
             for (int i = tailStart; i < pending; i++)
                 _fullStoragePaths[j - pending + i] = Nibbles.FromBytes(ValueKeccak.Compute(blocks.Slice(i * rate, Keccak.Size)).Bytes);

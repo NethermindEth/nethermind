@@ -323,7 +323,7 @@ namespace Nethermind.Trie
             [InlineArray(Avx2HashBatchSize * (KeccakHash.Hash532PaddedLength + Hash256.Size) / VectorByteLength)]
             private struct Avx2BranchHashBuffer
             {
-                private Vector256<ulong> _element0;
+                private Vector256<byte> _element0;
             }
 
             [SkipLocalsInit]
@@ -337,7 +337,7 @@ namespace Nethermind.Trie
                 Unsafe.SkipInit(out Avx2BranchHashBuffer narrowBuffer);
                 Span<byte> storage = Avx512F.IsSupported
                     ? MemoryMarshal.AsBytes((Span<Vector256<byte>>)wideBuffer)
-                    : MemoryMarshal.AsBytes((Span<Vector256<ulong>>)narrowBuffer);
+                    : MemoryMarshal.AsBytes((Span<Vector256<byte>>)narrowBuffer);
                 Span<byte> inputs = storage[..(batchSize * inputLength)];
                 Span<byte> hashes = storage[(batchSize * inputLength)..];
                 do

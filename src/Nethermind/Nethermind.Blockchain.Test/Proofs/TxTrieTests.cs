@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.IO;
 using System.Linq;
+using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -29,6 +30,69 @@ public class TxTrieTests(bool useEip2718)
     private static readonly int[] MultiBlockLengths = [31, 100, 132, 133, 134, 135, 261, 262, 263, 264, 300, 1000, 2164, 2165, 8192];
 
     private static readonly int[] RootCounts = [0, 1, 2, 7, 8, 9, 15, 16, 17, 18, 19, 20, 21, 22, 23, 31, 32, 33, 63, 64, 65, 79, 80, 81, 127, 128, 129, 143, 144, 145, 255, 256, 257, 271, 272, 273, 4096];
+
+    [Test]
+    public void Sequential_multi_block_batch_requires_all_items_to_be_eligible(
+        [Values(8, 17, 40, 64)] int count, [Values(124, 125, 2164, 2165)] int otherLength,
+        [Values] bool multiBlock)
+    {
+        byte[][] values = new byte[count][];
+        Array.Fill(values, new byte[otherLength]);
+        values[1] = new byte[500];
+        IndexedTrieRoot.Calculator<byte[], TestValueEncoder> calculator = new(values, new(multiBlock));
+        Assert.That(calculator.CanBatchMultiBlockLeavesSequentially(),
+            Is.EqualTo(Avx2.IsSupported && otherLength is > 124 and <= 2164));
+
+        using TrackingCappedArrayPool pool = new();
+        TxTrie expected = new(ReadOnlySpan<Transaction>.Empty, bufferPool: pool, canBeParallel: false);
+        for (int i = 0; i < count; i++) expected.Set(Rlp.Encode(i).Bytes, values[i]);
+        expected.UpdateRootHash(canBeParallel: false);
+        Assert.That(calculator.Calculate(minItemsForParallel: IndexedTrieRoot.MinReceiptsForParallelRootHash),
+            Is.EqualTo(expected.RootHash));
+    }
+
+    [Test]
+    public void Terminal_branch_batches_include_eligible_tail(
+        [Values(144, 160, 176, 200, 256, 272, 400)] int count)
+    {
+        if (!Avx2.IsSupported) Assert.Ignore("Requires AVX2.");
+        byte[][] values = new byte[count][];
+        IndexedTrieRoot.NodeReference[] references = new IndexedTrieRoot.NodeReference[count];
+        for (int i = 0; i < count; i++)
+            references[i] = new(ValueKeccak.Compute(BitConverter.GetBytes(i)), Keccak.Size);
+        IndexedTrieRoot.NodeReference[] original = (IndexedTrieRoot.NodeReference[])references.Clone();
+        IndexedTrieRoot.Calculator<byte[], TestValueEncoder> calculator = new(values, default);
+        calculator.BatchTerminalBranches(references);
+
+        int eligible = count / 16 - 1;
+        int expectedBatched = Avx512F.IsSupported
+            ? eligible - (eligible % 8 == 1 ? 1 : 0)
+            : eligible / 4 * 4;
+        Assert.That(references.Count(reference => reference.Length == -Keccak.Size), Is.EqualTo(expectedBatched));
+        byte[] branch = new byte[KeccakHash.Hash532InputLength];
+        for (int i = 0; i < count; i++)
+        {
+            if (references[i].Length != -Keccak.Size)
+            {
+                Assert.That(references[i], Is.EqualTo(original[i]));
+                continue;
+            }
+            RlpWriter writer = new(branch);
+            writer.StartSequence(16 * Rlp.LengthOfKeccakRlp + 1);
+            for (int j = 0; j < 16; j++) writer.Encode(original[i + j].Value);
+            writer.Encode(ReadOnlySpan<byte>.Empty);
+            Assert.That(references[i].Value, Is.EqualTo(ValueKeccak.Compute(branch)));
+        }
+    }
+
+    private readonly struct TestValueEncoder(bool multiBlock) : IndexedTrieRoot.IValueEncoder<byte[]>
+    {
+        public IndexedTrieRoot.LeafBatching Batching => multiBlock ? IndexedTrieRoot.LeafBatching.MultiBlock : IndexedTrieRoot.LeafBatching.Encoded;
+        public ReadOnlySpan<byte> GetEncodedValue(byte[] item) => multiBlock ? default : item;
+        public int GetLength(byte[] item) => item.Length;
+        public void Encode<TWriter>(ref TWriter writer, byte[] item)
+            where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(item);
+    }
 
     [Test]
     public void Root_matches_mutable_trie([ValueSource(nameof(RootCounts))] int count, [Values] bool cached)

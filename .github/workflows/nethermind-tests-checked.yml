@@ -44,11 +44,13 @@ jobs:
             dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
             hw-intrinsic: ''
             artifact: checked
+            avx512: 1
           - &no_intrinsics
             label: no-intrinsics
             dotnet-args: ''
             hw-intrinsic: 0
             artifact: release
+            avx512: 1
         project:
           - Ethereum.Abi.Test
           - Ethereum.Basic.Test
@@ -150,8 +152,10 @@ jobs:
           if [[ "${{ matrix.variant.label }}" == "avx2" ]]; then
             for target in \
               'Nethermind.Core.Test:KeccakTests|KeccakCacheTests' \
+              'Ethereum.Trie.Test:StorageTrieTests' \
+              'Nethermind.State.Flat.History.Test:NodeViewsTests' \
               'Nethermind.Trie.Test:TrieNodeTests' \
-              'Nethermind.State.Test:StateTreeTests|ScopeProviderTests' \
+              'Nethermind.State.Test:StateTreeTests|ScopeProviderTests|AccountProofCollectorTests' \
               'Nethermind.Blockchain.Test:TxTrieTests|ReceiptTrieTests|WithdrawalTrieTests'; do
               project="${target%%:*}"
               names="${target#*:}"

@@ -391,8 +391,9 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         private void AddUnhashedEntry(ReadOnlySpan<byte> preimage, ReadOnlySpan<byte> encoded, bool isZero)
         {
             PendingHashes pending = _pendingHashes ??= new();
-            pending.Batch.AddMissing(preimage, _bulkWrite!.Count);
+            int index = _bulkWrite!.Count;
             _bulkWrite.Add(StorageTree.CreateBulkSetEntry(default, encoded, isZero));
+            pending.Batch.AddMissing(preimage, index);
             if (pending.Batch.IsFull) pending.Batch.Flush(_bulkWrite.AsSpan());
         }
 
