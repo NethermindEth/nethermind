@@ -31,6 +31,18 @@ public class TransactionChangesetIndexModuleTests
         Assert.That(budget.Degree, Is.EqualTo(expected));
     }
 
+    [Test]
+    public void ParallelTraceBudget_WhenAutomatic_UsesAvailableProcessorsUpToTheLimit()
+    {
+        using ParallelTraceBudget budget = new(0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(budget.Degree, Is.InRange(1, 16));
+            Assert.That(budget.Degree, Is.LessThanOrEqualTo(Environment.ProcessorCount));
+            if (Environment.ProcessorCount <= 16) Assert.That(budget.Degree, Is.EqualTo(Environment.ProcessorCount));
+        }
+    }
+
     [TestCase(true, typeof(ChangesetPrefixStateSeedSource), TestName = "WithFlatHistory_TheChangesetSeedSourceWinsOverTheNullDefault")]
     [TestCase(false, typeof(NullPrefixStateSeedSource), TestName = "WithoutFlatHistory_TheNullDefaultKeepsTheReplay")]
     public void The_prefix_seed_source_follows_the_flat_history_switch(bool historyEnabled, Type expected)

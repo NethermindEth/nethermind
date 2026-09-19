@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -69,8 +70,8 @@ public partial class DebugRpcModuleTests
             Assert.That(supplied.Hash, Is.EqualTo(original.Hash));
         }
         string sender = TestItem.AddressB.ToString();
-        UInt256 before = expected["result"]![1]!["result"]![sender]!["balance"]!.Value<string>()!.HexToBytes().ToUInt256();
-        UInt256 after = actual["result"]![1]!["result"]![sender]!["balance"]!.Value<string>()!.HexToBytes().ToUInt256();
+        UInt256 before = Bytes.FromHexString(expected["result"]![1]!["result"]![sender]!["balance"]!.Value<string>()!).ToUInt256();
+        UInt256 after = Bytes.FromHexString(actual["result"]![1]!["result"]![sender]!["balance"]!.Value<string>()!).ToUInt256();
         Assert.That(after, Is.EqualTo(before - 99), "the second transaction must see the modified first transfer, not the indexed prefix");
     }
 

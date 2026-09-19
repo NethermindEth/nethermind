@@ -46,6 +46,11 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     private bool _disposed;
     private int _inFlight;
 
+    internal bool IsDisposing
+    {
+        get { lock (_runs) return _disposed; }
+    }
+
     /// <summary>Owns the supplied environments, but borrows the budget. Dispose the tracer before the budget.</summary>
     public ParallelBlockTracer(Func<IOverridableEnv<Components>> buildEnvironment, IPrefixStateSeedSource seeds, ParallelTraceBudget budget, ILogManager logManager)
     {
@@ -325,9 +330,6 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         primary?.Throw();
     }
 
-    /// <summary>Waits for the runs already under way, however long their requests take, and refuses the ones that
-    /// arrive from here on so they are replayed instead. A run is not finished until its workers are, so once the
-    /// count reaches zero nothing is holding an environment or a thread.</summary>
     /// <summary>Waits for active requests, then releases owned workers and environments; the shared budget remains owned by its caller.</summary>
     public void Dispose()
     {

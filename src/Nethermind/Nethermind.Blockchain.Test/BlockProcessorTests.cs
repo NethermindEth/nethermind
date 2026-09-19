@@ -699,14 +699,13 @@ public class BlockProcessorTests
             }
         });
 
-        using ManualResetEventSlim disposalEntered = new(false);
         Task? disposal = null;
         bool finishedWhileTracing = false;
         try
         {
             Assert.That(started.Wait(TimeSpan.FromSeconds(10)), Is.True, "precondition: the run holds an environment");
-            disposal = Task.Run(() => { disposalEntered.Set(); parallel.Dispose(); });
-            Assert.That(disposalEntered.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            disposal = Task.Run(parallel.Dispose);
+            Assert.That(SpinWait.SpinUntil(() => parallel.IsDisposing, TimeSpan.FromSeconds(10)), Is.True);
             finishedWhileTracing = disposal.Wait(TimeSpan.FromMilliseconds(250));
         }
         finally
