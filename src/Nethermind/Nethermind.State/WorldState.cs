@@ -159,6 +159,7 @@ namespace Nethermind.State
             _persistentStorageProvider.Reset(resetBlockChanges);
             _transientStorageProvider.Reset(resetBlockChanges);
         }
+        /// <summary>Refuses an overlay before changing accounts if locally cached storage would hide its values.</summary>
         public bool TryApplyAccountOverlay(IStateReadOverlay overlay)
         {
             if (_persistentStorageProvider.HasCachedStorage(overlay)) return false;

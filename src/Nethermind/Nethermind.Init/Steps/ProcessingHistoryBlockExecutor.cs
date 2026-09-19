@@ -100,6 +100,9 @@ public sealed class ProcessingHistoryBlockExecutorFactory(
         if (last is null) return null;
         if (!specProvider.GetSpec(last).BlockLevelAccessListsEnabled) return upperBound;
 
+        BlockHeader? first = blockTree.FindHeader(lowerBound, BlockTreeLookupOptions.RequireCanonical);
+        if (first is null || specProvider.GetSpec(first).BlockLevelAccessListsEnabled) return null;
+
         ForkBoundary? boundary = Volatile.Read(ref _boundary);
         if (boundary is not null && boundary.LastSupported < upperBound)
         {
@@ -108,10 +111,8 @@ public sealed class ProcessingHistoryBlockExecutorFactory(
             if (before?.Hash == boundary.SupportedHash && after?.Hash == boundary.UnsupportedHash
                 && !specProvider.GetSpec(before).BlockLevelAccessListsEnabled && specProvider.GetSpec(after).BlockLevelAccessListsEnabled)
                 return lowerBound <= boundary.LastSupported ? boundary.LastSupported : null;
+            Interlocked.CompareExchange(ref _boundary, null, boundary);
         }
-
-        BlockHeader? first = blockTree.FindHeader(lowerBound, BlockTreeLookupOptions.RequireCanonical);
-        if (first is null || specProvider.GetSpec(first).BlockLevelAccessListsEnabled) return null;
 
         ulong lower = lowerBound;
         ulong upper = upperBound;
