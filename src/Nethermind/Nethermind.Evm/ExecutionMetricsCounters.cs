@@ -32,6 +32,12 @@ internal struct ExecutionMetricsCounters
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void AddSLoad(int count)
+    {
+        if (ExecutionMetricsFlag.IsActive) SLoad += count;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void IncrementSStore()
     {
         if (ExecutionMetricsFlag.IsActive) SStore++;
