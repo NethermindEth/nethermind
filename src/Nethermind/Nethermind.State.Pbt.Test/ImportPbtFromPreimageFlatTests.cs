@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Buffers.Binary;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -482,6 +483,7 @@ public class ImportPbtFromPreimageFlatTests
         long[] expectedGroups = new long[PbtFourLevelGroupGeometry.MaxPathDepth + 1];
         long[] expectedNodes = new long[expectedGroups.Length];
         long[] expectedPayloads = new long[expectedGroups.Length];
+        Dictionary<PbtColumns, (long[] Groups, long[] Payloads, long[] Nodes)> expectedByColumn = [];
         long encodingBytes = 0;
         (int Depth, byte Prefix, PbtColumns Column)[] groups =
         [
@@ -514,6 +516,11 @@ public class ImportPbtFromPreimageFlatTests
             expectedPayloads[depth] += writer.WrittenSpan.Length;
             expectedNodes[node.BitDepth]++;
             encodingBytes += encoding.Length;
+            if (!expectedByColumn.TryGetValue(column, out (long[] Groups, long[] Payloads, long[] Nodes) byColumn))
+                expectedByColumn[column] = byColumn = (new long[expectedGroups.Length], new long[expectedGroups.Length], new long[expectedGroups.Length]);
+            byColumn.Groups[depth]++;
+            byColumn.Payloads[depth] += writer.WrittenSpan.Length;
+            byColumn.Nodes[node.BitDepth]++;
         }
         db.Recording = true;
         db.RecordAllColumns = true;
@@ -557,9 +564,26 @@ public class ImportPbtFromPreimageFlatTests
             }
             Assert.That(report.NodeGroups.KeyBytes, Is.EqualTo(groupKeyBytes));
             Assert.That(report.NodeGroups.ValueBytes, Is.EqualTo(groupValueBytes));
+            foreach ((PbtColumns column, PbtScanReport.NodeGroupStats stats) in new[]
+            {
+                (PbtColumns.AccountNodeGroups, report.AccountNodeGroups),
+                (PbtColumns.CodeNodeGroups, report.CodeNodeGroups),
+                (PbtColumns.StorageNodeGroups, report.StorageNodeGroups),
+                (PbtColumns.Metadata, report.MetadataRoot),
+            })
+            {
+                (long[] groupsByDepth, long[] payloadsByDepth, long[] nodesByDepth) = expectedByColumn[column];
+                Assert.That(stats.GroupsByDepth, Is.EqualTo(groupsByDepth), column.ToString());
+                Assert.That(stats.PayloadBytesByDepth, Is.EqualTo(payloadsByDepth), column.ToString());
+                Assert.That(stats.NodesByDepth, Is.EqualTo(nodesByDepth), column.ToString());
+                Assert.That(stats.NodeCount, Is.EqualTo(groupsByDepth.Sum()), column.ToString());
+            }
             Assert.That(formatted, Does.Contain("not hash or reachability verification"));
-            Assert.That(formatted, Does.Contain("Node groups and contained nodes by bit depth"));
-            Assert.That(formatted, Does.Contain("Node-group occupancy"));
+            foreach (string label in new[] { "all partitions", nameof(PbtColumns.AccountNodeGroups), nameof(PbtColumns.CodeNodeGroups), nameof(PbtColumns.StorageNodeGroups) })
+            {
+                Assert.That(formatted, Does.Contain($"Node groups and contained nodes by bit depth ({label})"));
+                Assert.That(formatted, Does.Contain($"Node-group occupancy ({label})"));
+            }
         }
     }
 

@@ -100,9 +100,9 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
                         stats.KeyBytes += view.CurrentKey.Length;
                         stats.ValueBytes += view.CurrentValue.Length;
                         if (columnName == PbtColumns.Metadata)
-                            ScanGroup(new PbtNodePath([], 0), view.CurrentValue, shard.NodeGroups);
+                            ScanGroup(new PbtNodePath([], 0), view.CurrentValue, (PbtScanReport.NodeGroupStats)stats);
                         else if (IsNodeGroupColumn(columnName))
-                            ScanGroup(PbtNodeGroupKey.Decode(config.NodeGroupKeyLayout, view.CurrentKey), view.CurrentValue, shard.NodeGroups);
+                            ScanGroup(PbtNodeGroupKey.Decode(config.NodeGroupKeyLayout, view.CurrentKey), view.CurrentValue, (PbtScanReport.NodeGroupStats)stats);
                         if (++pending == ProgressPublishInterval)
                         {
                             Interlocked.Add(ref scanned, pending);
@@ -226,14 +226,14 @@ public sealed class PbtScanReport
     public ColumnStats Storages { get; } = new();
     /// <summary>Stored whole-bytecode records, including unreferenced code.</summary>
     public ColumnStats Codes { get; } = new();
-    /// <summary>Stored account and shared account/code node groups.</summary>
-    public ColumnStats AccountNodeGroups { get; } = new();
-    /// <summary>Stored code node groups.</summary>
-    public ColumnStats CodeNodeGroups { get; } = new();
-    /// <summary>Stored storage node groups.</summary>
-    public ColumnStats StorageNodeGroups { get; } = new();
+    /// <summary>Stored account and shared account/code node groups, with their locally decoded shape.</summary>
+    public NodeGroupStats AccountNodeGroups { get; } = new();
+    /// <summary>Stored code node groups, with their locally decoded shape.</summary>
+    public NodeGroupStats CodeNodeGroups { get; } = new();
+    /// <summary>Stored storage node groups, with their locally decoded shape.</summary>
+    public NodeGroupStats StorageNodeGroups { get; } = new();
     /// <summary>The root node group stored in metadata, excluding other metadata records.</summary>
-    public ColumnStats MetadataRoot { get; } = new();
+    public NodeGroupStats MetadataRoot { get; } = new();
     /// <summary>Aggregate stored node groups across partition columns and the metadata root, with their locally decoded shape.</summary>
     public NodeGroupStats NodeGroups { get; } = new();
 
@@ -263,22 +263,9 @@ public sealed class PbtScanReport
         NodeGroups.MergeFrom(other.CodeNodeGroups);
         NodeGroups.MergeFrom(other.StorageNodeGroups);
         NodeGroups.MergeFrom(other.MetadataRoot);
-        NodeGroups.NodeCount += other.NodeGroups.NodeCount;
-        NodeGroups.LeafCount += other.NodeGroups.LeafCount;
-        NodeGroups.BranchCount += other.NodeGroups.BranchCount;
-        NodeGroups.NodeEncodingBytes += other.NodeGroups.NodeEncodingBytes;
-        AddInto(NodeGroups.GroupsByDepth, other.NodeGroups.GroupsByDepth);
-        AddInto(NodeGroups.PayloadBytesByDepth, other.NodeGroups.PayloadBytesByDepth);
-        AddInto(NodeGroups.NodesByDepth, other.NodeGroups.NodesByDepth);
-        AddInto(NodeGroups.GroupsByOccupancy, other.NodeGroups.GroupsByOccupancy);
     }
 
-    private static void AddInto(long[] target, long[] source)
-    {
-        for (int index = 0; index < target.Length; index++) target[index] += source[index];
-    }
-
-    /// <summary>Formats stored sizes and node-group histograms.</summary>
+    /// <summary>Formats stored sizes and node-group histograms, aggregated and per partition column.</summary>
     public string Format()
     {
         StringBuilder report = new();
@@ -292,18 +279,26 @@ public sealed class PbtScanReport
             string label = column == PbtColumns.Metadata ? "Metadata (root only)" : column.ToString();
             report.AppendLine($"  {label,-20} {stats.RecordCount,15:N0} {stats.KeyBytes,18:N0} {stats.ValueBytes,18:N0} {stats.TotalBytes,18:N0} {stats.AverageRecordBytes,12:N1}");
         }
-        report.AppendLine($"Contained nodes: {NodeGroups.NodeCount:N0} ({NodeGroups.LeafCount:N0} leaves, {NodeGroups.BranchCount:N0} branches), {NodeGroups.NodeEncodingBytes:N0} encoding bytes (excluding group keys and footers)");
-        report.AppendLine("Node groups and contained nodes by bit depth");
-        report.AppendLine($"  {"depth",6} {"groups",15} {"payload bytes",18} {"nodes",15}");
-        for (int depth = 0; depth < NodeGroups.NodesByDepth.Length; depth++)
-            if (NodeGroups.GroupsByDepth[depth] != 0 || NodeGroups.NodesByDepth[depth] != 0)
-                report.AppendLine($"  {depth,6} {NodeGroups.GroupsByDepth[depth],15:N0} {NodeGroups.PayloadBytesByDepth[depth],18:N0} {NodeGroups.NodesByDepth[depth],15:N0}");
-        report.AppendLine("Node-group occupancy");
-        report.AppendLine($"  {"nodes",6} {"groups",15}");
-        for (int occupancy = 0; occupancy < NodeGroups.GroupsByOccupancy.Length; occupancy++)
-            if (NodeGroups.GroupsByOccupancy[occupancy] != 0)
-                report.AppendLine($"  {occupancy,6} {NodeGroups.GroupsByOccupancy[occupancy],15:N0}");
+        AppendNodeGroupShape(report, "all partitions", NodeGroups);
+        AppendNodeGroupShape(report, nameof(PbtColumns.AccountNodeGroups), AccountNodeGroups);
+        AppendNodeGroupShape(report, nameof(PbtColumns.CodeNodeGroups), CodeNodeGroups);
+        AppendNodeGroupShape(report, nameof(PbtColumns.StorageNodeGroups), StorageNodeGroups);
         return report.ToString();
+    }
+
+    private static void AppendNodeGroupShape(StringBuilder report, string label, NodeGroupStats stats)
+    {
+        report.AppendLine($"Contained nodes ({label}): {stats.NodeCount:N0} ({stats.LeafCount:N0} leaves, {stats.BranchCount:N0} branches), {stats.NodeEncodingBytes:N0} encoding bytes (excluding group keys and footers)");
+        report.AppendLine($"Node groups and contained nodes by bit depth ({label})");
+        report.AppendLine($"  {"depth",6} {"groups",15} {"payload bytes",18} {"nodes",15}");
+        for (int depth = 0; depth < stats.NodesByDepth.Length; depth++)
+            if (stats.GroupsByDepth[depth] != 0 || stats.NodesByDepth[depth] != 0)
+                report.AppendLine($"  {depth,6} {stats.GroupsByDepth[depth],15:N0} {stats.PayloadBytesByDepth[depth],18:N0} {stats.NodesByDepth[depth],15:N0}");
+        report.AppendLine($"Node-group occupancy ({label})");
+        report.AppendLine($"  {"nodes",6} {"groups",15}");
+        for (int occupancy = 0; occupancy < stats.GroupsByOccupancy.Length; occupancy++)
+            if (stats.GroupsByOccupancy[occupancy] != 0)
+                report.AppendLine($"  {occupancy,6} {stats.GroupsByOccupancy[occupancy],15:N0}");
     }
 
     /// <summary>Actual persisted row sizes, with each key and value counted once.</summary>
@@ -347,5 +342,23 @@ public sealed class PbtScanReport
         public long[] NodesByDepth { get; } = new long[PbtFourLevelGroupGeometry.MaxPathDepth + 1];
         /// <summary>Stored groups by the number of nodes they contain.</summary>
         public long[] GroupsByOccupancy { get; } = new long[PbtFourLevelGroupGeometry.PositionCount + 1];
+
+        internal void MergeFrom(NodeGroupStats other)
+        {
+            base.MergeFrom(other);
+            NodeCount += other.NodeCount;
+            LeafCount += other.LeafCount;
+            BranchCount += other.BranchCount;
+            NodeEncodingBytes += other.NodeEncodingBytes;
+            AddInto(GroupsByDepth, other.GroupsByDepth);
+            AddInto(PayloadBytesByDepth, other.PayloadBytesByDepth);
+            AddInto(NodesByDepth, other.NodesByDepth);
+            AddInto(GroupsByOccupancy, other.GroupsByOccupancy);
+        }
+
+        private static void AddInto(long[] target, long[] source)
+        {
+            for (int index = 0; index < target.Length; index++) target[index] += source[index];
+        }
     }
 }
