@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.IO;
 using System.Linq;
 using System.Runtime.Intrinsics.X86;
@@ -65,11 +66,11 @@ public class TxTrieTests(bool useEip2718)
 
     [Test]
     public void Parallel_multi_block_batch_computes_each_length_once(
-        [Values(65, 129, 255)] int count, [Values(-1, 0, 1, 17)] int outlierIndex,
-        [Values(124, 2165)] int outlierLength) =>
-        AssertRootAndLengthCalls(count, true, outlierIndex, outlierLength, true);
+        [Values(65, 129, 255, 257)] int count, [Values(-1, 0, 1, 17)] int outlierIndex,
+        [Values(124, 2165)] int outlierLength, [Values] bool allOtherValuesEligible) =>
+        AssertRootAndLengthCalls(count, true, outlierIndex, outlierLength, true, allOtherValuesEligible);
 
-    private static void AssertRootAndLengthCalls(int count, bool multiBlock, int outlierIndex, int outlierLength, bool canBeParallel)
+    private static void AssertRootAndLengthCalls(int count, bool multiBlock, int outlierIndex, int outlierLength, bool canBeParallel, bool allOtherValuesEligible = false)
     {
         if (!Avx2.IsSupported) Assert.Ignore("Requires AVX2.");
         byte[][] values = new byte[count][];
@@ -78,8 +79,8 @@ public class TxTrieTests(bool useEip2718)
         TxTrie expected = new(ReadOnlySpan<Transaction>.Empty, bufferPool: pool, canBeParallel: false);
         for (int i = 0; i < count; i++)
         {
-            byte[] value = new byte[i == outlierIndex ? outlierLength : 125 + i * 17];
-            value[0] = (byte)i;
+            byte[] value = new byte[i == outlierIndex ? outlierLength : 125 + (allOtherValuesEligible ? i % 120 : i) * 17];
+            BinaryPrimitives.WriteInt32LittleEndian(value, i);
             values[i] = value;
             expected.Set(Rlp.Encode(i).Bytes, value);
         }
@@ -158,7 +159,7 @@ public class TxTrieTests(bool useEip2718)
         public ReadOnlySpan<byte> GetEncodedValue(byte[] item) => multiBlock ? default : item;
         public int GetLength(byte[] item)
         {
-            if (lengthCalls is not null) Interlocked.Increment(ref lengthCalls[item[0]]);
+            if (lengthCalls is not null) Interlocked.Increment(ref lengthCalls[BinaryPrimitives.ReadInt32LittleEndian(item)]);
             return reportedLength ?? item.Length;
         }
         public void Encode<TWriter>(ref TWriter writer, byte[] item)

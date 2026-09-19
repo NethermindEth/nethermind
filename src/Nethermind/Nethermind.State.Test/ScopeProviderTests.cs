@@ -3,10 +3,13 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Autofac;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -14,6 +17,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -98,6 +103,44 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
+    [NonParallelizable]
+    public void Account_write_batch_uses_simd_for_cold_keys([Values(3, 4, 7, 8, 9)] int count, [Values] bool warm)
+    {
+        ConfigProvider config = new();
+        config.GetConfig<IFlatDbConfig>().Enabled = useFlat;
+        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule(config)).Build();
+        IWorldStateScopeProvider provider = container.Resolve<IWorldStateManager>().GlobalWorldState;
+        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null);
+        Address[] addresses = new Address[count];
+        HashSet<uint> buckets = [];
+        Random random = new(9213);
+        for (int i = 0; i < count; i++)
+        {
+            byte[] bytes = new byte[Address.Size];
+            do
+            {
+                random.NextBytes(bytes);
+            } while (KeccakCache.TryGet(bytes, out _) || !buckets.Add(KeccakCache.GetBucket(bytes)));
+            addresses[i] = new Address(bytes);
+            if (warm) KeccakCache.ComputeTo(bytes, out _);
+        }
+
+        long before = KeyHashBatch.BatchedKeys;
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch write = scope.StartWriteBatch(count))
+        {
+            for (int i = 0; i < count; i++) write.Set(addresses[i], new Account(1, (UInt256)(i + 1)));
+        }
+
+        int expectedBatched = !warm && Avx2.IsSupported ? count / 4 * 4 : 0;
+        Assert.That(KeyHashBatch.BatchedKeys - before, Is.EqualTo(expectedBatched), "keys hashed by an executed SIMD kernel");
+        for (int i = 0; i < count; i++)
+        {
+            AssertCachedHash(addresses[i].Bytes);
+            Assert.That(scope.Get(addresses[i]).Balance, Is.EqualTo((UInt256)(i + 1)));
+        }
+    }
+
+    [Test]
     public void Test_CanSaveToStorage(
         [Values(1, TrieStoreScopeProvider.StorageTreeBulkWriteBatch.MIN_ENTRIES_TO_BATCH + 1)] int estimatedEntries,
         [Values(1, 3, 32)] int valueLength,
@@ -154,10 +197,14 @@ public class ScopeProviderTests(bool useFlat)
         using IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null);
         UInt256[] indices = new UInt256[count];
         Random random = new(6513 + count);
+        HashSet<uint> buckets = [KeccakCache.GetBucket(TestItem.AddressA.Bytes)];
         byte[] bytes = new byte[Hash256.Size];
         for (int i = 0; i < count; i++)
         {
-            random.NextBytes(bytes);
+            do
+            {
+                random.NextBytes(bytes);
+            } while (KeccakCache.TryGet(bytes, out _) || !buckets.Add(KeccakCache.GetBucket(bytes)));
             indices[i] = includeLookupSlots && i % 3 == 0 ? (UInt256)i : new UInt256(bytes, isBigEndian: true);
         }
         for (int round = 0; round < 2; round++)
@@ -172,14 +219,20 @@ public class ScopeProviderTests(bool useFlat)
             for (int i = 0; i < count; i++)
             {
                 indices[i].ToBigEndian(bytes);
-                tree.Get(indices[i], out UInt256 value);
-                using (Assert.EnterMultipleScope())
+                if (!(includeLookupSlots && i % 3 == 0))
                 {
-                    Assert.That(KeccakCache.Compute(bytes), Is.EqualTo(ValueKeccak.Compute(bytes)), "cached slot hash");
-                    Assert.That(value, Is.EqualTo(round == 1 && i % 2 == 0 ? UInt256.Zero : (UInt256)(i + 1)), "slot value");
+                    AssertCachedHash(bytes);
                 }
+                tree.Get(indices[i], out UInt256 value);
+                Assert.That(value, Is.EqualTo(round == 1 && i % 2 == 0 ? UInt256.Zero : (UInt256)(i + 1)), "slot value");
             }
         }
+    }
+
+    private static void AssertCachedHash(ReadOnlySpan<byte> preimage)
+    {
+        Assert.That(KeccakCache.TryGet(preimage, out ValueHash256 cached), Is.True, "write populated the hash before reading");
+        Assert.That(cached, Is.EqualTo(ValueKeccak.Compute(preimage)), "cached hash");
     }
 
     [Test]

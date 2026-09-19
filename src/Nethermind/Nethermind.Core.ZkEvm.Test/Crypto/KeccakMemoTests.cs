@@ -47,6 +47,34 @@ public class KeccakMemoTests
         }
     }
 
+    [Test]
+    public void Cache_forwarders_reject_unsupported_lengths([Values(0, 1, 7, 65, 128, 192)] int length)
+    {
+        byte[] input = Pattern(length, seed: 79);
+        ValueHash256 digest = Digest(length);
+        ulong[] memo = (ulong[])typeof(KeccakCache).GetField("Memo", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.GetValue(null)!;
+        ulong[] before = (ulong[])memo.Clone();
+
+        Assert.That(KeccakCache.TryGet(input, out _), Is.False);
+        KeccakCache.Store(input, digest);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(KeccakCache.TryGet(input, out _), Is.False);
+            Assert.That(memo, Is.EqualTo(before), "unsupported stores must not modify any memo slot");
+        }
+    }
+
+    [Test]
+    public void Cache_forwarders_preserve_supported_lengths([Values(8, 20, 32, 64)] int length)
+    {
+        byte[] input = Pattern(length, seed: 83);
+        ValueHash256 digest = Digest(length);
+        KeccakCache.Store(input, digest);
+        Assert.That(KeccakCache.TryGet(input, out ValueHash256 actual), Is.True);
+        Assert.That(actual, Is.EqualTo(digest));
+    }
+
     public static IEnumerable<TestCaseData> PadAlikePairs()
     {
         foreach ((int shorter, int longer) in new[] { (8, 16), (9, 16), (20, 32), (31, 32), (63, 64) })

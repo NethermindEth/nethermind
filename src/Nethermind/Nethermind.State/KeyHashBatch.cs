@@ -13,6 +13,9 @@ namespace Nethermind.State;
 
 internal struct KeyHashBatch
 {
+    [ThreadStatic]
+    internal static long BatchedKeys;
+
     private const int MaximumBatchSize = 8;
     internal const int MinimumBatchSize = 4;
     private const int Rate = 136;
@@ -95,6 +98,7 @@ internal struct KeyHashBatch
             else
                 KeccakHash.ComputePaddedBlocks4Avx2(ref inputs[0], ref hashes[0]);
 
+            BatchedKeys += batchSize;
             for (int i = 0; i < batchSize; i++)
             {
                 ValueHash256 hash = new(hashes.Slice(i * Hash256.Size, Hash256.Size));
