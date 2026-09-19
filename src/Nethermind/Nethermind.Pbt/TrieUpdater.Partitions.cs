@@ -238,7 +238,6 @@ public static partial class TrieUpdater
         internal override void Fold()
         {
             long start = Stopwatch.GetTimestamp();
-            TrieUpdater<TKey, TPath>.HashLeaves(operations, foldQuota, Metrics);
             Span<byte> pathBuffer = stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)];
             PbtTraversalPath path = new(pathBuffer);
             path.AppendMut(Zone >> 4);

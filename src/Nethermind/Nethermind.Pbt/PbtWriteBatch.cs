@@ -53,9 +53,6 @@ public sealed class PbtWriteBatch<TKey> : IDisposable where TKey : struct, IPbtK
     }
 }
 
-/// <summary>A complete-key mutation; a default <paramref name="Value"/> denotes a deletion.</summary>
-/// <remarks>The updater replaces each set value with its leaf hash in place before folding, so the value is
-/// the 32-byte leaf value until the batch is taken and the leaf hash afterwards.</remarks>
 internal readonly record struct PbtWriteOperation<TKey>(TKey Key, ValueHash256 Value) where TKey : struct, IPbtKey<TKey>
 {
     internal static PbtWriteOperation<TKey> Set(TKey key, in ValueHash256 value) => new(key, value);

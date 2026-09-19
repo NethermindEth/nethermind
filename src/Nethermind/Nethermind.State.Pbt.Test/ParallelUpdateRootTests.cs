@@ -471,32 +471,6 @@ public class ParallelUpdateRootTests
         }
     }
 
-    [Test]
-    public void Leaves_are_hashed_once_ahead_of_the_fold([Values(1, 4)] int foldConcurrency, [Values(1, 300, 3000)] int keysPerZone)
-    {
-        (byte[] Key, byte[]? Value)[] initial = RandomZoneEntries(new Random(keysPerZone), keysPerZone);
-        using PbtNodeGroupStore store = new();
-        using PbtTreeHarness sequential = new();
-        ConcurrencyController foldQuota = new(foldConcurrency);
-        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), foldQuota, FoldFanOut.Default, true, null);
-        ValueHash256 sequentialRoot = sequential.ApplyBatch(initial);
-
-        TrieUpdaterMetrics unchangedMetrics = new();
-        ValueHash256 unchangedRoot = TrieUpdater.UpdateRoot(store, root, PreparePartitions(initial), foldQuota, FoldFanOut.Default, true, null, unchangedMetrics);
-        TrieUpdaterMetrics serialMetrics = new();
-        TrieUpdater.UpdateRoot(store, root, PreparePartitions(initial), new ConcurrencyController(1), FoldFanOut.Default, true, null, serialMetrics);
-        (byte[] Key, byte[]? Value)[] changes = Changes(initial);
-        ValueHash256 changedRoot = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), foldQuota, FoldFanOut.Default, true, null);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(root, Is.EqualTo(sequentialRoot));
-            Assert.That(unchangedRoot, Is.EqualTo(root), "rewriting every leaf with its value is a no-op");
-            Assert.That(unchangedMetrics.NodeHashes, Is.GreaterThanOrEqualTo(initial.Length).And.EqualTo(serialMetrics.NodeHashes), "every leaf is hashed once whether the pre-hash runs in parallel or not");
-            Assert.That(changedRoot, Is.EqualTo(sequential.ApplyBatch(changes)));
-            Assert.That(AvailableWorkers(foldQuota), Is.EqualTo(foldConcurrency - 1));
-        }
-    }
-
     private static int AvailableWorkers(ConcurrencyController quota)
     {
         int taken = 0;
