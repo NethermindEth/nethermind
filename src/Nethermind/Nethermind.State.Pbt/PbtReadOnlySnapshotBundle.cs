@@ -26,6 +26,9 @@ public sealed class PbtReadOnlySnapshotBundle(
     private static readonly StringLabel[] _readStorageSnapshotLabels = [new("storage_snapshot"), new("storage_header_snapshot")];
     private static readonly StringLabel[] _readStoragePersistenceLabels = [new("storage_persistence"), new("storage_header_persistence")];
     private static readonly StringLabel[] _readStoragePersistenceNullLabels = [new("storage_persistence_null"), new("storage_header_persistence_null")];
+    private static readonly StringLabel[] _readRunSnapshotLabels = [new("storage_run_snapshot"), new("storage_run_header_snapshot")];
+    private static readonly StringLabel[] _readRunPersistenceLabels = [new("storage_run_persistence"), new("storage_run_header_persistence")];
+    private static readonly StringLabel[] _readRunPersistenceNullLabels = [new("storage_run_persistence_null"), new("storage_run_header_persistence_null")];
     private static readonly StringLabel[] _readNodeGroupSnapshotLabels = [new("node_group_account_snapshot"), new("node_group_code_snapshot"), new("node_group_storage_snapshot")];
     private static readonly StringLabel[] _readNodeGroupSnapshotNullLabels = [new("node_group_account_snapshot_null"), new("node_group_code_snapshot_null"), new("node_group_storage_snapshot_null")];
     private static readonly StringLabel[] _readNodeGroupPersistenceLabels = [new("node_group_account_persistence"), new("node_group_code_persistence"), new("node_group_storage_persistence")];
@@ -178,13 +181,21 @@ public sealed class PbtReadOnlySnapshotBundle(
     internal ISlotRun RentRun(in HashedKey<PbtStorageTreeKey> runKey, in ValueHash256 addressHash)
     {
         GuardDispose();
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        int labelIndex = runKey.Key.Bytes[0] == Eip8297KeyDerivation.AccountZone ? 1 : 0;
         for (int layer = snapshots.Count - 1; layer >= 0; layer--)
         {
             PbtSnapshotContent content = snapshots[layer].Content;
-            if (content.TryGetSlotRun(runKey, out ISlotRun? run)) return run.Clone();
-            if (content.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return SlotRun.Empty;
+            if (content.TryGetSlotRun(runKey, out ISlotRun? run) || content.SelfDestructedStorageAddresses.ContainsKey(addressHash))
+            {
+                if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readRunSnapshotLabels[labelIndex]);
+                return run?.Clone() ?? SlotRun.Empty;
+            }
         }
-        return reader.GetSlotRun(runKey.Key);
+        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        ISlotRun persisted = reader.GetSlotRun(runKey.Key);
+        if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, (persisted.Count == 0 ? _readRunPersistenceNullLabels : _readRunPersistenceLabels)[labelIndex]);
+        return persisted;
     }
 
     internal CodeInfo? GetCode(in ValueHash256 codeHash)

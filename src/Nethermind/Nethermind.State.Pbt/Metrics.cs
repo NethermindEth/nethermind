@@ -87,6 +87,7 @@ public static class Metrics
     /// Snapshot hits include tombstones and cleared storage, except node-group tombstones which report as <c>_snapshot_null</c>.
     /// Persistence timings exclude the preceding unsuccessful snapshot walk and distinguish missing values (null or zero storage).
     /// Storage reads of header-embedded slots (below <see cref="PbtKeyDerivation.HeaderStorageOffset"/>) report as <c>storage_header_*</c>.
+    /// Whole-run reads, which seed a scope's write buffer before its first write to a run, report as <c>storage_run_*</c> and <c>storage_run_header_*</c>.
     /// </remarks>
     [DetailedMetric]
     [Description("Time of a read through the pbt read-only snapshot bundle, by read type, node-group partition, tier and result (Stopwatch ticks)")]

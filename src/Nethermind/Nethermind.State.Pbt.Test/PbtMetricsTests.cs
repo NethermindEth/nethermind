@@ -148,6 +148,8 @@ public class PbtMetricsTests
         Account? actualAccount = bundle.GetAccount(TestItem.AddressA);
         EvmWord actualHeaderSlot = bundle.GetSlot(SlotRun.RunKey(headerStorageKey), SlotRun.IndexOf(headerStorageKey));
         EvmWord actualSlot = bundle.GetSlot(SlotRun.RunKey(storageKey), SlotRun.IndexOf(storageKey));
+        ISlotRun headerRun = bundle.RentRun(SlotRun.RunKey(headerStorageKey), addressHash);
+        ISlotRun storageRun = bundle.RentRun(SlotRun.RunKey(storageKey), addressHash);
         using RefCountingMemory? actualGroup = bundle.GetNodeGroup(groupKey);
         CodeInfo? actualCode = bundle.GetCode(codeHash);
 
@@ -160,14 +162,18 @@ public class PbtMetricsTests
             Assert.That(actualAccount, Is.EqualTo(empty ? null : account));
             Assert.That(actualHeaderSlot, Is.EqualTo(empty ? default : slot));
             Assert.That(actualSlot, Is.EqualTo(empty ? default : slot));
+            Assert.That(SlotRun.LeafValue(headerRun, SlotRun.IndexOf(headerStorageKey)), Is.EqualTo(new ValueHash256(EvmWordSlot.AsReadOnlySpan(in actualHeaderSlot))));
+            Assert.That(SlotRun.LeafValue(storageRun, SlotRun.IndexOf(storageKey)), Is.EqualTo(new ValueHash256(EvmWordSlot.AsReadOnlySpan(in actualSlot))));
             Assert.That(actualGroup, Is.SameAs(empty ? null : payload));
             Assert.That(actualCode, Is.SameAs(scenario == "missing" ? null : code));
             Assert.That(_readOnlyBundleTime.Labels, Is.EqualTo(detailedMetrics
-                ? new[] { $"account_{tier}", $"storage_header_{tier}", $"storage_{tier}", $"node_group_{partition}_{groupTier}", $"code_{codeTier}" }
+                ? new[] { $"account_{tier}", $"storage_header_{tier}", $"storage_{tier}", $"storage_run_header_{tier}", $"storage_run_{tier}", $"node_group_{partition}_{groupTier}", $"code_{codeTier}" }
                 : []));
-            Assert.That(_readOnlyBundleTime.Observations, Has.Count.EqualTo(detailedMetrics ? 5 : 0));
+            Assert.That(_readOnlyBundleTime.Observations, Has.Count.EqualTo(detailedMetrics ? 7 : 0));
             Assert.That(_readOnlyBundleTime.Observations, Is.All.GreaterThanOrEqualTo(0));
         }
+        SlotRun.Return(headerRun);
+        SlotRun.Return(storageRun);
     }
 
     [Test]
