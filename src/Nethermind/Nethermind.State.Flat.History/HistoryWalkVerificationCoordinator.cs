@@ -161,7 +161,8 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
 
                     if (_metadata.TryGetWalkInProgress(out ulong pendingFrom, out ulong pendingTo))
                     {
-                        if (TipCovers(pendingFrom, pendingTo) && VerifiedReaches(pendingFrom))
+                        if (TipCovers(pendingFrom, pendingTo) && VerifiedReaches(pendingFrom)
+                            && (_retrofit is null || CoverageIncludes(from, pendingTo)))
                         {
                             DiscardWalk();
                             if (_logger.IsInfo) _logger.Info(
@@ -169,9 +170,18 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
                             return;
                         }
 
-                        from = pendingFrom;
-                        to = pendingTo;
-                        if (_logger.IsInfo) _logger.Info($"History walk verification resuming the interrupted run over [{from}, {to}].");
+                        if (_retrofit is not null && (pendingFrom % _retrofit.WindowGranularity != 0
+                            || (pendingFrom > from && !CoverageIncludes(from, pendingFrom - 1))))
+                        {
+                            DiscardWalk();
+                            if (_logger.IsInfo) _logger.Info($"History walk restarting over [{from}, {to}]: the interrupted range [{pendingFrom}, {pendingTo}] is not aligned for proof building or leaves an unbuilt proof prefix.");
+                        }
+                        else
+                        {
+                            from = pendingFrom;
+                            to = pendingTo;
+                            if (_logger.IsInfo) _logger.Info($"History walk verification resuming the interrupted run over [{from}, {to}].");
+                        }
                     }
                     while (true)
                     {
@@ -233,6 +243,9 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
 
     private bool TipCovers(ulong fromInclusive, ulong toInclusive) =>
         _metadata.TryGetTipSeries(out ulong start, out ulong frontier) && start <= fromInclusive && frontier >= toInclusive;
+
+    private bool CoverageIncludes(ulong fromInclusive, ulong toInclusive) =>
+        _metadata.TryGetCoverage(out ulong start, out ulong frontier) && start <= fromInclusive && frontier >= toInclusive;
 
     private bool VerifiedReaches(ulong fromInclusive) =>
         fromInclusive > 0 && _metadata.TryGetWalkVerified(out ulong _, out ulong verified) && verified >= fromInclusive - 1;

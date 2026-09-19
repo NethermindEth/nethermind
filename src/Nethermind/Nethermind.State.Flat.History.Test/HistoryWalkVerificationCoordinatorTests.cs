@@ -56,12 +56,12 @@ public class HistoryWalkVerificationCoordinatorTests
     private readonly List<CommitmentReclaimer> _reclaimers = [];
     private readonly List<CommitmentMetadata> _metadatas = [];
 
-    private FakeHeaders CreateEmptyHeaders(HistoryRowFormat rowFormat)
+    private FakeHeaders CreateEmptyHeaders(HistoryRowFormat rowFormat, ulong lastBlock = 8)
     {
         ValueHash256 emptyRoot = new(Keccak.EmptyTreeHash.Bytes);
         FakeHeaders headers = new();
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
-        for (ulong block = 0; block <= 8; block++)
+        for (ulong block = 0; block <= lastBlock; block++)
         {
             headers.Roots[block] = emptyRoot;
             HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), block, emptyRoot, rowFormat.FormatVersion);
@@ -245,6 +245,38 @@ public class HistoryWalkVerificationCoordinatorTests
         {
             Assert.That(coordinator.LastVerdict, Is.Not.Null, "an earlier verify-only run proved the rows but built no commitments; enabling the build must walk again to build them");
             Assert.That(metadata.TryGetCoverage(out ulong from, out ulong to) && from == 0 && to == 8, Is.True);
+        }
+    }
+
+    [TestCase(4UL, false)]
+    [TestCase(4UL, true)]
+    [TestCase(512UL, false)]
+    [TestCase(512UL, true)]
+    public async Task AnUnfinishedVerifyOnlyTail_DoesNotSkipTheUnbuiltProofPrefix(ulong pendingFrom, bool tipCoversTail)
+    {
+        ulong watermark = pendingFrom + 4;
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        FakeHeaders headers = CreateEmptyHeaders(rowFormat, watermark);
+        CommitmentMetadata metadata = CreateMetadata();
+        metadata.MarkWalkVerified(0, pendingFrom - 1);
+        metadata.BeginWalk(pendingFrom, watermark, HistoryWalkRun.WorkItems);
+        if (tipCoversTail) metadata.AdvanceTipSeries(pendingFrom, watermark, out _);
+        availability.PublishWatermark(watermark, rowFormat.FormatVersion);
+
+        using HistoryWalkVerificationCoordinator coordinator = new(
+            _db, _historyColumns, headers, availability, rowFormat, config,
+            CreateRetrofit(metadata, config, rowFormat), metadata, LimboLogs.Instance, TimeSpan.FromMilliseconds(10));
+
+        coordinator.Start();
+        await coordinator.VerificationLoop;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(coordinator.LastVerdict?.Verified, Is.True);
+            Assert.That(metadata.TryGetCoverage(out ulong from, out ulong to) && from == 0 && to == watermark, Is.True,
+                "verification-only progress cannot replace proof coverage, even when the tip committed the pending tail");
+            Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False);
         }
     }
 
