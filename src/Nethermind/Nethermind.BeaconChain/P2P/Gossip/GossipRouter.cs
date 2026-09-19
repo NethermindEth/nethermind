@@ -9,7 +9,9 @@ using System.Threading;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
@@ -151,6 +153,8 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
     private void Handle<T>(string name, byte[] message, Func<byte[], T> decode, Func<T, GossipDropReason?>? validate, Action<T> raise) where T : class
     {
+        Metrics.BeaconChainGossipReceivedByTopic.Increment(new StringLabel(name));
+
         SnappyDecodeResult snappy = Eth2MessageId.TryDecompress(message, Eth2MessageId.MaxGossipSize, out byte[]? payload);
         if (snappy != SnappyDecodeResult.Decoded)
         {
@@ -226,6 +230,7 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     private void Drop(string name, GossipDropReason reason)
     {
         Metrics.BeaconChainGossipDropped++;
+        Metrics.BeaconChainGossipRejectedByTopic.Increment(new GossipRejectKey(name, reason));
         Interlocked.Increment(ref _dropCounts[(int)reason]);
         if (_logger.IsTrace) _logger.Trace($"Dropped {name} gossip message: {reason}");
     }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -33,7 +34,24 @@ public sealed class GoodbyeProtocol : ReqRespProtocolBase, ISessionProtocol<ulon
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
     {
         Stream stream = new ChannelStreamAdapter(downChannel);
+        using IDisposable? inboundSlot = TryEnterInbound(context, Id);
+        if (inboundSlot is null)
+        {
+            return;
+        }
+
         using CancellationTokenSource cts = StartTimeout(RespTimeout);
-        Eth2PingProtocol.DecodeUint64(await ReqRespFraming.ReadRequestAsync(stream, sizeof(ulong), cts.Token));
+        try
+        {
+            Eth2PingProtocol.DecodeUint64(await ReqRespFraming.ReadRequestAsync(stream, sizeof(ulong), cts.Token));
+        }
+        catch (Eth2ReqRespException)
+        {
+            RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
+        }
+        catch (OperationCanceledException)
+        {
+            RecordFailure(Id, ReqRespFailureReason.Timeout);
+        }
     }
 }
