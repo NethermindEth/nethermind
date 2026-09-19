@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -50,7 +51,11 @@ public class NodeViewsTests
             }
 
             for (int i = 0; i < rlps.Length; i++) expected[i] = rlps[i] is { } rlp ? NodeViews.FromRlp(rlp) : NodeView.Empty;
+            long before = NodeViews.BatchedBranchHashes;
             NodeViews.FromChildrenRlp(rlps, actual);
+            int expectedBatched = Avx512F.IsSupported ? fullBranches - (fullBranches % 8 < 3 ? fullBranches % 8 : 0)
+                : Avx2.IsSupported ? fullBranches / 4 * 4 : 0;
+            Assert.That(NodeViews.BatchedBranchHashes - before, Is.EqualTo(expectedBatched), "child views hashed by SIMD");
             for (int i = 0; i < rlps.Length; i++)
             {
                 using (Assert.EnterMultipleScope())

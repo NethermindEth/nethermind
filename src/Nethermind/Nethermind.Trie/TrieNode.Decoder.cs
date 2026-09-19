@@ -32,6 +32,11 @@ namespace Nethermind.Trie
         private const int StackallocByteThreshold = 384;
         internal const int FullBranchRlpLength = KeccakHash.Hash532InputLength;
 
+        /// <summary>Diagnostic count of child branches hashed in four- or eight-lane batches on the current thread.</summary>
+        /// <remarks>Read deltas on the encoding thread; scalar and two-lane hashes are excluded. Production behavior must not depend on it.</remarks>
+        [ThreadStatic]
+        internal static long BatchedBranchHashes;
+
         private class TrieNodeDecoder
         {
             private const int HashPairSize = 2;
@@ -366,6 +371,7 @@ namespace Nethermind.Trie
                         KeccakHash.ComputeHash532Bytes8Avx512(ref inputs[0], ref hashes[0]);
                     else
                         KeccakHash.ComputePaddedMultiBlocks4Avx2(ref inputs[0], inputLength, ref hashes[0]);
+                    BatchedBranchHashes += batchCount;
                     for (int i = 0; i < batchCount; i++)
                     {
                         int index = BitOperations.TrailingZeroCount(batchMask);

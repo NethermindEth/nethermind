@@ -183,7 +183,7 @@ jobs:
               dotnet test --project "../$project/$project.csproj" -c release --no-build --no-restore \
                 --hangdump --hangdump-timeout 8m --hangdump-type Mini -- --filter "$filter"
             done
-            echo "${{ matrix.variant.label }}: all seven focused test projects passed with runtime ISA assertions enabled." >> "$GITHUB_STEP_SUMMARY"
+            echo "${{ matrix.variant.label }}: all selected test projects passed with runtime ISA assertions enabled." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           dotnet restore ${{ matrix.project }}.csproj

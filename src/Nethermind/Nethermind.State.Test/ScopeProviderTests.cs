@@ -209,12 +209,16 @@ public class ScopeProviderTests(bool useFlat)
         }
         for (int round = 0; round < 2; round++)
         {
+            long before = KeyHashBatch.BatchedKeys;
             using (IWorldStateScopeProvider.IWorldStateWriteBatch write = scope.StartWriteBatch(1))
             {
                 if (round == 0) write.Set(TestItem.AddressA, new Account(100, 100));
                 using IWorldStateScopeProvider.IStorageWriteBatch storage = write.CreateStorageWriteBatch(TestItem.AddressA, Math.Max(17, count));
                 for (int i = 0; i < count; i++) storage.Set(indices[i], round == 1 && i % 2 == 0 ? UInt256.Zero : (UInt256)(i + 1));
             }
+            int misses = count - (includeLookupSlots ? (count + 2) / 3 : 0);
+            int expectedBatched = round == 0 && Avx2.IsSupported ? misses / 4 * 4 : 0;
+            Assert.That(KeyHashBatch.BatchedKeys - before, Is.EqualTo(expectedBatched), "storage keys hashed by SIMD");
             IWorldStateScopeProvider.IStorageTree tree = scope.CreateStorageTree(TestItem.AddressA);
             for (int i = 0; i < count; i++)
             {

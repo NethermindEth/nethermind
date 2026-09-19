@@ -4,6 +4,8 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
@@ -53,7 +55,7 @@ public class KeccakMemoTests
         byte[] input = Pattern(length, seed: 79);
         ValueHash256 digest = Digest(length);
         ulong[] memo = (ulong[])typeof(KeccakCache).GetField("Memo", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.GetValue(null)!;
-        ulong[] before = (ulong[])memo.Clone();
+        byte[] before = SHA256.HashData(MemoryMarshal.AsBytes(memo.AsSpan()));
 
         Assert.That(KeccakCache.TryGet(input, out _), Is.False);
         KeccakCache.Store(input, digest);
@@ -61,7 +63,7 @@ public class KeccakMemoTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(KeccakCache.TryGet(input, out _), Is.False);
-            Assert.That(memo, Is.EqualTo(before), "unsupported stores must not modify any memo slot");
+            Assert.That(SHA256.HashData(MemoryMarshal.AsBytes(memo.AsSpan())), Is.EqualTo(before), "unsupported stores must not modify any memo slot");
         }
     }
 

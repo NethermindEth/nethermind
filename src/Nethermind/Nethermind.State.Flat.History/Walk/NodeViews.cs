@@ -16,6 +16,11 @@ namespace Nethermind.State.Flat.History.Walk;
 
 internal static class NodeViews
 {
+    /// <summary>Diagnostic count of child branches hashed by SIMD on the current thread.</summary>
+    /// <remarks>Read deltas on the initializing thread; scalar hashes and padding lanes are excluded. Production behavior must not depend on it.</remarks>
+    [ThreadStatic]
+    internal static long BatchedBranchHashes;
+
     private const int MaxNibbles = 2 * Hash256.Size;
     private const int Avx2HashBatchSize = 4;
     private const int Avx512HashBatchSize = 8;
@@ -130,6 +135,7 @@ internal static class NodeViews
                 KeccakHash.ComputeHash532Bytes8Avx512(ref inputs[0], ref hashes[0]);
             else
                 KeccakHash.ComputePaddedMultiBlocks4Avx2(ref inputs[0], inputLength, ref hashes[0]);
+            BatchedBranchHashes += count;
             for (int i = 0; i < count; i++)
             {
                 int index = BitOperations.TrailingZeroCount(batch);
