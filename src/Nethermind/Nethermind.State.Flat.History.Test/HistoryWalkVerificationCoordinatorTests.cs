@@ -376,6 +376,39 @@ public class HistoryWalkVerificationCoordinatorTests
     }
 
     [Test]
+    public async Task InterruptedBuild_WithVerificationAhead_RetainsTheBuiltPrefix([Values] bool legacyCheckpoint)
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        const ulong watermark = 520;
+        FakeHeaders headers = CreateEmptyHeaders(rowFormat, watermark);
+        CommitmentMetadata metadata = CreateMetadata();
+        Assert.That(metadata.TryPublishVerifiedCoverage(0, 514, out _, out _), Is.True);
+        metadata.MarkWalkVerified(0, watermark);
+        metadata.BeginWalk(515, watermark, HistoryWalkRun.WorkItems, buildCommitments: true);
+        if (legacyCheckpoint) WalkCheckpointTestHelper.RemoveMode(_historyColumns, metadata);
+        availability.PublishWatermark(watermark, rowFormat.FormatVersion);
+
+        using HistoryWalkVerificationCoordinator coordinator = new(
+            _db, _historyColumns, headers, availability, rowFormat, config,
+            CreateRetrofit(metadata, config, rowFormat), metadata, LimboLogs.Instance);
+
+        coordinator.Start();
+        await coordinator.VerificationLoop;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(coordinator.LastVerdict?.Verified, Is.True);
+            Assert.That(coordinator.LastVerdict?.BlocksCompared, Is.EqualTo(9UL),
+                "verification ahead of proof coverage must not discard the built prefix or skip the unbuilt tail");
+            Assert.That(metadata.TryGetCoverage(out ulong from, out ulong to), Is.True);
+            Assert.That(from, Is.Zero);
+            Assert.That(to, Is.EqualTo(watermark));
+            Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False);
+        }
+    }
+
+    [Test]
     public async Task InterruptedVerification_WithTipSeries_SkipsOnlyACompleteTail([Values(6UL, 7UL)] ulong tipStart)
     {
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true };

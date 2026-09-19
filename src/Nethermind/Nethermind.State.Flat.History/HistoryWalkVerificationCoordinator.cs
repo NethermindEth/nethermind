@@ -264,14 +264,15 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
     /// <summary>Finds a completed contiguous prefix of the requested range.</summary>
     /// <remarks>A verified prefix is required even when tip capture has published coverage from genesis:
     /// tip capture alone does not replace the first walk and its epoch snapshots. In build mode, published coverage
-    /// must also include that prefix and may extend it with contiguous tip commitments.</remarks>
+    /// must contain the requested start; its frontier may trail verification or extend past it with contiguous
+    /// tip commitments. Verification alone cannot stand in for unbuilt proofs.</remarks>
     private bool TryGetCompletedPrefix(ulong from, out ulong completedTo)
     {
         if (!_metadata.TryGetWalkVerified(out ulong verifiedFrom, out completedTo)
             || verifiedFrom > from || completedTo < from) return false;
         if (_retrofit is null) return true;
         if (!_metadata.TryGetCoverage(out ulong coveredFrom, out ulong coveredTo)
-            || coveredFrom > from || coveredTo < completedTo) return false;
+            || coveredFrom > from || coveredTo < from) return false;
 
         completedTo = coveredTo;
         return true;
