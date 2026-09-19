@@ -77,12 +77,18 @@ public class NettyDiscoveryHandler(
 
     public override void ChannelReadComplete(IChannelHandlerContext context) => context.Flush();
 
-    public async Task SendMsg(DiscoveryMsg discoveryMsg)
+    public Task SendMsg(DiscoveryMsg discoveryMsg)
+        => Channel.EventLoop.InEventLoop
+            ? SendMsgCore(discoveryMsg)
+            : Channel.EventLoop.SubmitAsync(static (handler, message) =>
+                ((NettyDiscoveryHandler)handler).SendMsgCore((DiscoveryMsg)message), this, discoveryMsg).Unwrap();
+
+    private async Task SendMsgCore(DiscoveryMsg discoveryMsg)
     {
         IByteBuffer msgBuffer;
         try
         {
-            if (_logger.IsTrace) _logger.Trace($"Sending message: {discoveryMsg}");
+            if (_logger.IsTrace) TraceSending(discoveryMsg);
             msgBuffer = Serialize(discoveryMsg, Channel.Allocator);
         }
         catch (Exception e)
@@ -113,13 +119,20 @@ public class NettyDiscoveryHandler(
         }
         catch (Exception e)
         {
-            if (_logger.IsTrace) _logger.Trace($"Error when sending a discovery message Msg: {discoveryMsg} ,Exp: {e}");
+            if (_logger.IsTrace) TraceSendFailure(discoveryMsg, e);
         }
 
         Interlocked.Add(ref Metrics.DiscoveryBytesSent, size);
         Metrics.DiscoveryMessagesSent.Increment(discoveryMsg.MsgType);
         Metrics.DiscoveryMessagesSentByProtocol.Increment(new DiscoveryMessageKey("discv4", FastEnum.GetName(discoveryMsg.MsgType)!));
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceSending(DiscoveryMsg message) => _logger.Trace($"Sending message: {message}");
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceSendFailure(DiscoveryMsg message, Exception exception) =>
+        _logger.Trace($"Error when sending a discovery message Msg: {message} ,Exp: {exception}");
 
     private bool TryAcceptPacket(DatagramPacket packet, out MsgType type, out bool shouldForward, out EndPoint address)
     {

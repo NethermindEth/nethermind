@@ -146,7 +146,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _adapter = CreateAdapter(FailsafeRequestTimeoutMs);
         }
 
-        private KademliaAdapter CreateAdapter(int requestTimeoutMs, NetworkListenerState? listenerState = null, int bondWaitTime = 1)
+        private KademliaAdapter CreateAdapter(int requestTimeoutMs, NetworkListenerState? listenerState = null, int bondWaitTime = 1, IEcdsa? ecdsa = null)
         {
             if (listenerState is null)
             {
@@ -172,7 +172,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 _nodeStatsManager,
                 _timestamper,
                 Substitute.For<IProcessExitSource>(),
-                new Ecdsa(),
+                ecdsa ?? new Ecdsa(),
                 _logManager,
                 listenerState)
             {
@@ -341,6 +341,30 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             forgedRecord.SetEntry(new TcpEntry(30305));
             forgedRecord.Signature = validSignature;
             return forgedRecord;
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Repeated_publication_does_not_reverify_an_already_published_candidate(CancellationToken token)
+        {
+            IEcdsa ecdsa = Substitute.For<IEcdsa>();
+            Ecdsa real = new();
+            ecdsa.RecoverCompressedPublicKey(Arg.Any<Signature>(), Arg.Any<ValueHash256>())
+                .Returns(ci => real.RecoverCompressedPublicKey(ci.Arg<Signature>(), ci.Arg<ValueHash256>()));
+            await _adapter.DisposeAsync();
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, ecdsa: ecdsa);
+            _receiver.Enr = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyB,
+                _receiver.Address.Address, tcpPort: 30303, udpPort: 30303);
+            ConfigureBondCallback();
+
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+            Assert.That((await ReadPeerCandidate(token)).Id, Is.EqualTo(_receiver.Id));
+            ecdsa.Received().RecoverCompressedPublicKey(Arg.Any<Signature>(), Arg.Any<ValueHash256>());
+            ecdsa.ClearReceivedCalls();
+
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+            await AssertNoPeerCandidate(token);
+            ecdsa.DidNotReceive().RecoverCompressedPublicKey(Arg.Any<Signature>(), Arg.Any<ValueHash256>());
         }
 
         [Test]
@@ -716,6 +740,45 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         [Test]
         [CancelAfter(10000)]
+        public async Task Authenticated_requests_reuse_only_usable_endpoint_bonds(
+            [Values("none", "expiry", "endpoint", "failures")] string invalidation, CancellationToken token)
+        {
+            ConfigureBondCallback();
+            _msgSender.SendMsg(Arg.Any<EnrRequestMsg>()).Returns(ci =>
+            {
+                EnrRequestMsg sent = (EnrRequestMsg)ci[0]!;
+                sent.Hash = TestItem.KeccakA.ValueHash256;
+                return _adapter.OnIncomingMsg(AddReceiverFarAddress(
+                    new EnrResponseMsg(_receiver.Address, _selfNodeRecord, TestItem.KeccakA)));
+            });
+
+            Assert.That(await _adapter.SendEnrRequest(_receiver, token), Is.Not.Null);
+            Assert.That(await _adapter.SendEnrRequest(_receiver, token), Is.Not.Null);
+            await _msgSender.Received(1).SendMsg(Arg.Any<PingMsg>());
+
+            switch (invalidation)
+            {
+                case "expiry":
+                    DateTime later = _timestamper.UtcNow + NodeSession.BondTimeout + TimeSpan.FromSeconds(1);
+                    _timestamper.UtcNow.Returns(later);
+                    _timestamper.UnixTime.Returns(new UnixTime(later));
+                    break;
+                case "endpoint":
+                    _receiver = new Node(_receiver.Id, "192.168.1.3", 30304);
+                    break;
+                case "failures":
+                    NodeSession session = _adapter.GetSession(_receiver);
+                    for (int i = 0; i <= NodeSession.AuthenticatedRequestFailureLimit; i++) session.OnAuthenticatedRequestFailure();
+                    break;
+            }
+
+            Assert.That(await _adapter.SendEnrRequest(_receiver, token), Is.Not.Null);
+            await _msgSender.Received(invalidation == "none" ? 1 : 2).SendMsg(Arg.Any<PingMsg>());
+            await _msgSender.Received(3).SendMsg(Arg.Any<EnrRequestMsg>());
+        }
+
+        [Test]
+        [CancelAfter(10000)]
         public async Task SendEnrRequest_should_ping_then_enr_request_and_return_response(CancellationToken token)
         {
             ConfigureBondCallback();
@@ -785,6 +848,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             bool result = await _adapter.Ping(_receiver, token);
 
             Assert.That(result, Is.True);
+            await _msgSender.Received(1).SendMsg(Arg.Any<PingMsg>());
             if (shouldRequestEnr)
             {
                 await _msgSender.Received(1).SendMsg(Arg.Is<EnrRequestMsg>(m => m.FarAddress!.Equals(_receiver.Address)));
@@ -887,11 +951,18 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             CancellationToken token)
         {
             await _adapter.DisposeAsync();
-            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, bondWaitTime: FailsafeRequestTimeoutMs);
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs,
+                bondWaitTime: stage == CancellationStage.EnrRefresh ? 0 : FailsafeRequestTimeoutMs);
             if (stage != CancellationStage.WaitingForPong)
             {
                 ConfigureBondCallback(pongEnrSequence: stage == CancellationStage.EnrRefresh ? 2UL : null);
             }
+            TaskCompletionSource enrSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _msgSender.SendMsg(Arg.Any<EnrRequestMsg>()).Returns(_ =>
+            {
+                enrSent.TrySetResult();
+                return Task.CompletedTask;
+            });
 
             NodeSession session = _adapter.GetSession(_receiver);
             for (int i = 0; i < NodeSession.AuthenticatedRequestFailureLimit; i++) session.OnAuthenticatedRequestFailure();
@@ -912,6 +983,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 operation = request == NoResponseRequest.FindNeighbours
                     ? _adapter.FindNeighbours(_receiver, TestItem.PublicKeyC, caller.Token)
                     : _adapter.SendEnrRequest(_receiver, caller.Token);
+                if (stage == CancellationStage.EnrRefresh) await enrSent.Task.WaitAsync(token);
                 Assert.That(operation.IsCompleted, Is.False);
                 await caller.CancelAsync();
                 await operation.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
@@ -931,7 +1003,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 Assert.That(_receiver.RequestingEnrSequence, Is.Zero);
             }
             _nodeHealthTracker.DidNotReceive().OnRequestFailed(Arg.Any<Node>());
-            await _msgSender.DidNotReceive().SendMsg(Arg.Is<DiscoveryMsg>(m => m is FindNodeMsg || m is EnrRequestMsg));
+            await _msgSender.DidNotReceive().SendMsg(Arg.Any<FindNodeMsg>());
+            await _msgSender.Received(stage == CancellationStage.EnrRefresh ? 1 : 0).SendMsg(Arg.Any<EnrRequestMsg>());
         }
 
         [Test]

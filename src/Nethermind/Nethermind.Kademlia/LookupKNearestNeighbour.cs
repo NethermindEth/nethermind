@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
@@ -148,8 +147,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
         token = cts.Token;
 
-        ConcurrentDictionary<TKadKey, TNode> queried = new();
-        ConcurrentDictionary<TKadKey, TNode> seen = new();
+        HashSet<TKadKey> seen = [];
 
         IComparer<TKadKey> comparer = Comparer<TKadKey>.Create((h1, h2) =>
             distance.Compare(h1, h2, targetHash));
@@ -173,7 +171,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         foreach (TNode node in routingTable.GetKNearestNeighbour(targetHash))
         {
             TKadKey nodeHash = nodeHashProvider.GetHash(node);
-            if (!seen.TryAdd(nodeHash, node))
+            if (!seen.Add(nodeHash))
             {
                 continue;
             }
@@ -216,7 +214,6 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                             break;
                         }
 
-                        queried.TryAdd(toQueryHash, toQueryNode);
                         TNode[]? neighbours = await WrappedFindNeighbourOp(toQueryNode);
                         if (neighbours is null) continue;
 
@@ -338,11 +335,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                 {
                     TKadKey neighbourHash = nodeHashProvider.GetHash(neighbour);
 
-                    // Already queried, we ignore
-                    if (queried.ContainsKey(neighbourHash)) continue;
-
-                    // When seen already dont record
-                    if (!seen.TryAdd(neighbourHash, neighbour)) continue;
+                    if (!seen.Add(neighbourHash)) continue;
 
                     bestSeen.Enqueue((neighbourHash, neighbour), neighbourHash);
                     if (!TryPublish(neighbour))

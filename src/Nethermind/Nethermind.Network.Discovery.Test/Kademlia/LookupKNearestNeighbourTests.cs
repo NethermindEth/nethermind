@@ -206,6 +206,30 @@ public class LookupKNearestNeighbourTests
 
     [Test]
     [CancelAfter(10000)]
+    public async Task Lookup_deduplicates_overlapping_and_cyclic_responses([Values(1, 3)] int alpha, CancellationToken token)
+    {
+        (LookupKNearestNeighbour<int, int, int> lookup, _, _) =
+            CreateLookup(alpha, TimeSpan.FromSeconds(10), [Seed1, Seed1, Seed2, Seed3]);
+        ConcurrentDictionary<int, int> requests = new();
+        int[] graph = [Seed1, Seed2, Seed3, N1, N2];
+
+        int[] result = await lookup.Lookup(Self, 8, async (node, _) =>
+        {
+            requests.AddOrUpdate(node, 1, static (_, count) => count + 1);
+            await Task.Yield();
+            return graph;
+        }, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EquivalentTo(graph));
+            Assert.That(requests.Select(static entry => entry.Key), Is.EquivalentTo(graph));
+            Assert.That(requests.Select(static entry => entry.Value), Is.All.EqualTo(1));
+        }
+    }
+
+    [Test]
+    [CancelAfter(10000)]
     public async Task Lookup_nodes_should_stream_routing_table_nodes_before_network_lookup_finishes(CancellationToken token)
     {
         (LookupKNearestNeighbour<int, int, int> lookup, _, _) =
