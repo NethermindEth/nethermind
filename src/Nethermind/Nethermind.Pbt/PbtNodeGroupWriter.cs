@@ -27,6 +27,7 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     private readonly bool _omitPrefixlessBranches;
     private RefCountingMemory? _memory;
     private OffsetBuffer _offsets;
+    private DescendantDeltaBuffer _descendantDeltas;
     private uint _availability;
     private int _written;
     private int _lastPosition = -1;
@@ -46,6 +47,20 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     internal int WrittenCount => _written;
     internal uint Availability => _availability;
     internal int LastPosition => _lastPosition;
+
+    /// <summary>The size change folded below boundary slot <paramref name="slot"/> since this frame was opened.</summary>
+    internal long DescendantDelta(int slot) => _descendantDeltas[slot];
+
+    /// <summary>The summed size change folded below every boundary slot.</summary>
+    internal long DescendantDelta()
+    {
+        long descendantDelta = 0;
+        foreach (long slotDelta in _descendantDeltas) descendantDelta += slotDelta;
+        return descendantDelta;
+    }
+
+    /// <summary>Records the size change of the groups folded below <paramref name="slot"/>.</summary>
+    internal void AddDescendantDelta(int slot, long delta) => _descendantDeltas[slot] += delta;
 
     /// <summary>Reserves the exact encoding length for the next position without committing it.</summary>
     internal Span<byte> GetSpan(int position, int encodingLength)
@@ -135,8 +150,8 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     }
 
     /// <summary>Finishes the footer and transfers the output lease, or returns null for an empty group.</summary>
-    /// <param name="descendantBytes">The summed subtree sizes of the groups physically stored below this one; ignored for an empty group.</param>
-    internal RefCountingMemory? Detach(long descendantBytes)
+    /// <param name="descendantBytes">The summed payload lengths of the groups physically stored below each boundary slot, or empty for none; ignored for an empty group.</param>
+    internal RefCountingMemory? Detach(ReadOnlySpan<long> descendantBytes)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ValidateCommitted();
@@ -145,13 +160,12 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
             Dispose();
             return null;
         }
-        ArgumentOutOfRangeException.ThrowIfNegative(descendantBytes);
 
         PbtNodeGroupCodec.Header.CopyTo(_memory!.GetSpan());
-        int trailerLength = PbtNodeGroupCodec.GetTrailerLength(_availability);
+        int trailerLength = PbtNodeGroupCodec.GetTrailerLength(_availability, PbtNodeGroupCodec.DescendantMask(descendantBytes));
         Span<byte> footer = _memory!.GetSpan().Slice(PbtNodeGroupCodec.HeaderLength + _written, trailerLength);
         int length = PbtNodeGroupCodec.HeaderLength + _written + trailerLength;
-        PbtNodeGroupCodec.WriteFooter(footer, _offsets, _availability, length + descendantBytes);
+        PbtNodeGroupCodec.WriteFooter(footer, _offsets, _availability, descendantBytes);
         RefCountingMemory memory = _memory;
         if (memory.GetSpan().Length >= length * CompactionSlackRatio)
         {
@@ -222,5 +236,11 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
     private struct OffsetBuffer
     {
         private ushort _element;
+    }
+
+    [InlineArray(PbtNodeGroupCodec.DescendantSlots)]
+    private struct DescendantDeltaBuffer
+    {
+        private long _element;
     }
 }

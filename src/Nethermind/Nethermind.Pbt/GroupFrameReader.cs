@@ -18,7 +18,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     private readonly ValueHash256 _groupHash;
     private readonly TrieUpdaterMetrics? _metrics;
     private RefCountingMemory? _lease;
-    private long _subtreeBytes;
+    private DescendantBuffer _descendantBytes;
     private bool _loaded;
     private OffsetBuffer _offsets;
     private LengthBuffer _lengths;
@@ -47,7 +47,7 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
         {
             _metrics?.IncrementGroupParses();
             PbtNodeGroupReader reader = new(path, _lease.GetSpan());
-            _subtreeBytes = reader.SubtreeBytes;
+            for (int slot = 0; slot < PbtNodeGroupCodec.DescendantSlots; slot++) _descendantBytes[slot] = reader.DescendantBytes(slot);
             for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
             {
                 if (position == PbtFourLevelGroupGeometry.RootPosition && BitDepth != 0) continue;
@@ -73,17 +73,36 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     /// </remarks>
     internal readonly bool HasPayload => _lease is not null;
 
+    /// <summary>Whether the frame has been loaded or declared absent, so its descendant sizes are final.</summary>
+    internal readonly bool IsResolved => _loaded;
+
     /// <summary>The stored payload's length, or zero when nothing was loaded.</summary>
     internal readonly int PayloadLength => _lease?.GetSpan().Length ?? 0;
 
-    /// <summary>The stored payload's subtree size minus its own length, or zero when nothing was loaded.</summary>
-    internal readonly long DescendantBytes => _subtreeBytes - PayloadLength;
+    /// <summary>The summed payload lengths of the groups physically stored below boundary slot <paramref name="slot"/>, without loading.</summary>
+    /// <remarks>Read only once the frame is resolved, or for a frame whose input is empty or a leaf, which has no descendants.</remarks>
+    internal readonly long DescendantBytes(int slot) => _descendantBytes[slot];
 
-    /// <summary>The stored payload's subtree size, loading the group; zero when nothing is stored.</summary>
+    /// <summary>Declares the group absent and records the descendants its spanning branch keeps below <paramref name="slot"/>.</summary>
+    /// <remarks>
+    /// A branch whose prefix spans past this group is the only node under its parent's boundary slot, so the
+    /// parent's size for that slot is exactly this group's size below the branch. Declaring the group absent
+    /// makes any later load a no-op instead of a store miss.
+    /// </remarks>
+    internal void InheritDescendants(int slot, long descendantBytes)
+    {
+        Debug.Assert(!_loaded, "Descendants are inherited before the frame is loaded.");
+        _descendantBytes[slot] = descendantBytes;
+        _loaded = true;
+    }
+
+    /// <summary>The stored payload's length plus its descendant sizes, loading the group; zero when nothing is stored.</summary>
     internal long SubtreeBytes(scoped in PbtTraversalPath path)
     {
         EnsureLoaded(path);
-        return _subtreeBytes;
+        long subtreeBytes = PayloadLength;
+        foreach (long slotBytes in _descendantBytes) subtreeBytes += slotBytes;
+        return subtreeBytes;
     }
 
     internal ReadOnlyMemory<byte> GetEncoding(scoped in PbtTraversalPath path, int position)
@@ -182,6 +201,12 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
     private struct HashBuffer
     {
         private ValueHash256 _element;
+    }
+
+    [InlineArray(PbtNodeGroupCodec.DescendantSlots)]
+    private struct DescendantBuffer
+    {
+        private long _element;
     }
 
     [InlineArray(PbtNodeGroupCodec.PositionCount)]

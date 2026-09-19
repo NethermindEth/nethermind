@@ -2472,13 +2472,13 @@ public class Eip8297CanonicalTreeTests
             records.Add(new(PbtFourLevelGroupGeometry.PathOf(groupKey, nodes.CurrentPosition), nodes.Current));
         byte[] expectedPayload = new byte[payloads[0].Payload.Length];
         BufferWriter writer = new(expectedPayload);
-        PbtNodeGroupCodec.Encode(ref writer, groupKey, records, 0);
+        PbtNodeGroupCodec.Encode(ref writer, groupKey, records, default);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
             Assert.That(reader.Count, Is.EqualTo(storedNodes));
             Assert.That(payloads[0].Payload.Length, Is.EqualTo(PbtNodeGroupCodec.HeaderLength + leafCount / 2 * pairBranchLength + (leafCount > 2 ? prefixlessBranchLength : 0)
-                + storedNodes * sizeof(ushort) + sizeof(uint) + PbtNodeGroupCodec.SubtreeBytesLength));
+                + storedNodes * sizeof(ushort) + sizeof(uint) + PbtNodeGroupCodec.DescendantMaskLength));
             Assert.That(payloads[0].Payload.ToArray(), Is.EqualTo(expectedPayload));
             Assert.That(provider.RentCount, Is.EqualTo(expectedRentCount));
             Assert.That(provider.RequestedLengths[0], Is.EqualTo(initialCapacity), "one pool bucket up front");
@@ -2691,7 +2691,7 @@ public class Eip8297CanonicalTreeTests
                 BufferWriter writer = new(MemoryProvider);
                 try
                 {
-                    PbtNodeGroupCodec.Encode(ref writer, storageGroupKey, records, 0);
+                    PbtNodeGroupCodec.Encode(ref writer, storageGroupKey, records, default);
                     RefCountingMemory payload = writer.Detach()!;
                     return payload;
                 }

@@ -47,7 +47,7 @@ public class PbtFormatInteropTests
     }
 
     [Test]
-    public void Physical_import_rejects_unsupported_group_formats([Values(0, 1, 2, 3)] int format)
+    public void Physical_import_rejects_unsupported_group_formats([Values(0, 1, 2, 3, 4)] int format)
     {
         using PbtTreeHarness tree = new();
         tree.ApplyBatch([(Bytes.FromHexString("00"), Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000001"))]);
@@ -55,6 +55,7 @@ public class PbtFormatInteropTests
         byte[] payload = physical.Payload.ToArray();
         if (format == 0) payload = payload[PbtNodeGroupCodec.HeaderLength..];
         else if (format is 1 or 2) payload[0] = (byte)(format + 1);
+        else if (format == 4) payload[0] = 4;
         else
         {
             byte[] legacyPayload = new byte[5 + 36 + 66];
@@ -119,9 +120,9 @@ public class PbtFormatInteropTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(mixedRoot, Is.EqualTo("0xd6100f64e772fe72648dbef668e718b9625d3d7907e18e62618c54c07f7af13e"));
-            Assert.That(mixedPayload, Is.EqualTo("0x5908e0170eb9ec337344c0c4f2b15c043152f0f59c232d60e46a5dce829495aa"));
+            Assert.That(mixedPayload, Is.EqualTo("0xaa40a9a54471b87452b1944990e03839bbad1112943cac6132e5ffc544132037"));
             Assert.That(singletonRoot, Is.EqualTo("0x3039f167d1d69a8b3739e88307abc9c4e71193e29f330c06a5b1edae10cafde7"));
-            Assert.That(singletonPayload, Is.EqualTo("0xecf8489a01970d9516eca533621ffcda6394404e669ac8e92ad5a61bb7134b33"));
+            Assert.That(singletonPayload, Is.EqualTo("0x308b386338934c025b53105d34f769b3a3f0fde3b2eed1d517a270b2b1a3dc81"));
             Assert.That(tree.RootHash.ToString(), Is.EqualTo(mixedRoot));
             Assert.That(tree.CanonicalRecords(), Is.EqualTo(mixedRecords));
             Assert.That(PhysicalDigest(tree), Is.EqualTo(mixedPayload));

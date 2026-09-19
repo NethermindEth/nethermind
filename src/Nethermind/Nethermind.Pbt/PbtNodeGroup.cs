@@ -9,14 +9,17 @@ namespace Nethermind.Pbt;
 
 /// <summary>Encodes and reads a four-level node group's canonical node payload.</summary>
 /// <remarks>
-/// The physical payload starts with version byte 4, followed by entries and a variable-size footer.
+/// The physical payload starts with version byte 5, followed by entries and a variable-size footer.
 /// Entries are complete branch encodings in ascending post-order position order, with no padding or
 /// separators; leaves are inlined in their parent branch's trailer (see <see cref="PbtNodeCodec"/>),
 /// so the only leaf entry is the root of a single-leaf tree. The footer contains one little-endian
 /// unsigned 16-bit offset per physically stored node, in the same order, followed by a little-endian
-/// unsigned 32-bit availability bitmap and a little-endian unsigned 48-bit subtree size: the length of
-/// this payload plus the subtree sizes of every group physically stored below it, which fan-out
-/// decisions read without opening descendants. Offsets are relative to the beginning of the entries
+/// unsigned 32-bit availability bitmap, one little-endian unsigned 48-bit descendant size per set bit
+/// of the closing little-endian unsigned 16-bit descendant mask, in ascending boundary-slot order, and
+/// that mask. Bit <c>n</c> of the mask is set exactly when the groups physically stored below boundary
+/// slot <c>n</c> have a nonzero summed payload length, which is the size recorded for the slot. Keeping
+/// the sizes per slot lets a group created between existing groups take its descendants' size from its
+/// parent instead of reading them. Offsets are relative to the beginning of the entries
 /// section. The first offset is zero, and subsequent offsets strictly increase; a node ends at the next
 /// offset or the footer's beginning. Position 30 is reserved for the root and may only be present in
 /// the depth-zero root group. The group key is deliberately kept outside this payload. Prefixless
@@ -26,46 +29,82 @@ namespace Nethermind.Pbt;
 public static class PbtNodeGroupCodec
 {
     internal const int HeaderLength = 1;
-    internal static ReadOnlySpan<byte> Header => "\x04"u8;
+    internal static ReadOnlySpan<byte> Header => "\x05"u8;
 
     /// <summary>The number of positions represented by the offset table.</summary>
     public const int PositionCount = PbtFourLevelGroupGeometry.PositionCount;
 
-    /// <summary>The number of bytes in the subtree-size field that ends the footer.</summary>
-    public const int SubtreeBytesLength = 6;
+    /// <summary>The number of boundary slots a group records descendant sizes for.</summary>
+    public const int DescendantSlots = PbtFourLevelGroupGeometry.BoundarySlots;
 
-    /// <summary>The maximum number of bytes in the packed offset, availability and subtree-size footer.</summary>
-    public const int MaxTrailerLength = PositionCount * sizeof(ushort) + sizeof(uint) + SubtreeBytesLength;
+    /// <summary>The number of bytes in one descendant-size field.</summary>
+    public const int DescendantBytesLength = 6;
 
-    /// <summary>The largest subtree size the 48-bit field can hold.</summary>
-    public const long MaxSubtreeBytes = (1L << (8 * SubtreeBytesLength)) - 1;
+    /// <summary>The number of bytes in the descendant mask that ends the footer.</summary>
+    public const int DescendantMaskLength = sizeof(ushort);
+
+    /// <summary>The maximum number of bytes in the packed offset, availability and descendant-size footer.</summary>
+    public const int MaxTrailerLength = PositionCount * sizeof(ushort) + sizeof(uint) + DescendantSlots * DescendantBytesLength + DescendantMaskLength;
+
+    /// <summary>The largest descendant size a 48-bit field can hold.</summary>
+    public const long MaxDescendantBytes = (1L << (8 * DescendantBytesLength)) - 1;
 
     private const int MaxOffset = ushort.MaxValue;
     private const uint ReservedRootBit = 1u << PbtFourLevelGroupGeometry.RootPosition;
     private const uint AllowedPositionBits = (1u << PositionCount) - 1;
 
-    /// <summary>Checks a payload's header, footer length, availability bits and subtree size without parsing its nodes.</summary>
+    /// <summary>Checks a payload's header, footer length, availability bits and descendant sizes without parsing its nodes.</summary>
     /// <returns>The availability bitmap.</returns>
     internal static uint ValidateFraming(int groupDepth, ReadOnlySpan<byte> payload)
     {
         if (payload.Length < HeaderLength || !payload[..HeaderLength].SequenceEqual(Header))
             throw new InvalidDataException("Unsupported or missing PBT node group format header.");
-        if (payload.Length < HeaderLength + sizeof(uint) + SubtreeBytesLength) throw new InvalidDataException("Truncated PBT node group footer.");
-        if (ReadSubtreeBytes(payload) < payload.Length) throw new InvalidDataException("PBT node group subtree size is smaller than its payload.");
+        if (payload.Length < HeaderLength + sizeof(uint) + DescendantMaskLength) throw new InvalidDataException("Truncated PBT node group footer.");
+        ushort descendantMask = ReadDescendantMask(payload);
+        int descendantsLength = DescendantsLength(descendantMask);
+        if (payload.Length < HeaderLength + sizeof(uint) + descendantsLength) throw new InvalidDataException("Truncated PBT node group footer.");
+        for (int slot = 0; slot < DescendantSlots; slot++)
+            if ((descendantMask & (1 << slot)) != 0 && ReadDescendantBytes(payload, descendantMask, slot) == 0)
+                throw new InvalidDataException("PBT node group descendant mask marks an empty slot.");
         payload = payload[HeaderLength..];
-        uint availability = BinaryPrimitives.ReadUInt32LittleEndian(payload[^(sizeof(uint) + SubtreeBytesLength)..]);
+        uint availability = BinaryPrimitives.ReadUInt32LittleEndian(payload[^(sizeof(uint) + descendantsLength)..]);
         if (availability == 0 || (availability & ~AllowedPositionBits) != 0 || (groupDepth != 0 && (availability & ReservedRootBit) != 0))
             throw new InvalidDataException("Invalid PBT node group availability bits.");
-        if (payload.Length < GetTrailerLength(availability)) throw new InvalidDataException("Truncated PBT node group offset table.");
+        if (payload.Length < GetTrailerLength(availability, descendantMask)) throw new InvalidDataException("Truncated PBT node group offset table.");
         return availability;
     }
 
-    /// <summary>Reads the subtree size that ends a payload, without validating anything else.</summary>
+    /// <summary>Reads the descendant mask that ends a payload, without validating anything else.</summary>
+    public static ushort ReadDescendantMask(ReadOnlySpan<byte> payload) => BinaryPrimitives.ReadUInt16LittleEndian(payload[^DescendantMaskLength..]);
+
+    /// <summary>Reads the descendant size of each boundary slot into <paramref name="descendantBytes"/>, without validating anything else.</summary>
+    /// <param name="descendantBytes">Receives one size per boundary slot; slots without descendants read as zero.</param>
+    public static void ReadDescendantBytes(ReadOnlySpan<byte> payload, Span<long> descendantBytes)
+    {
+        if (descendantBytes.Length != DescendantSlots) throw new ArgumentException("One size per boundary slot is required.", nameof(descendantBytes));
+        ushort descendantMask = ReadDescendantMask(payload);
+        for (int slot = 0; slot < DescendantSlots; slot++)
+            descendantBytes[slot] = (descendantMask & (1 << slot)) == 0 ? 0 : ReadDescendantBytes(payload, descendantMask, slot);
+    }
+
+    /// <summary>Reads the payload length plus the descendant sizes of every boundary slot.</summary>
     public static long ReadSubtreeBytes(ReadOnlySpan<byte> payload)
     {
-        ReadOnlySpan<byte> field = payload[^SubtreeBytesLength..];
+        Span<long> descendantBytes = stackalloc long[DescendantSlots];
+        ReadDescendantBytes(payload, descendantBytes);
+        long subtreeBytes = payload.Length;
+        foreach (long slotBytes in descendantBytes) subtreeBytes += slotBytes;
+        return subtreeBytes;
+    }
+
+    private static long ReadDescendantBytes(ReadOnlySpan<byte> payload, ushort descendantMask, int slot)
+    {
+        int fieldsAfter = BitOperations.PopCount((uint)(descendantMask >> (slot + 1)));
+        ReadOnlySpan<byte> field = payload[^(DescendantMaskLength + (fieldsAfter + 1) * DescendantBytesLength)..];
         return BinaryPrimitives.ReadUInt32LittleEndian(field) | ((long)BinaryPrimitives.ReadUInt16LittleEndian(field[sizeof(uint)..]) << 32);
     }
+
+    private static int DescendantsLength(ushort descendantMask) => BitOperations.PopCount(descendantMask) * DescendantBytesLength + DescendantMaskLength;
 
     /// <summary>
     /// Validates and writes a canonical group payload directly through <paramref name="writer"/>.
@@ -79,12 +118,12 @@ public static class PbtNodeGroupCodec
     /// <param name="writer">The destination writer, passed by reference because it is mutable.</param>
     /// <param name="groupKey">The four-level key identifying the group.</param>
     /// <param name="nodes">Nodes belonging to this group, each with its complete canonical path and encoding.</param>
-    /// <param name="descendantBytes">The summed subtree sizes of the groups physically stored below this one.</param>
-    public static void Encode<TPath>(ref BufferWriter writer, TPath groupKey, IReadOnlyList<PbtNodeRecord> nodes, long descendantBytes)
+    /// <param name="descendantBytes">The summed payload lengths of the groups physically stored below each boundary slot, or empty for none.</param>
+    public static void Encode<TPath>(ref BufferWriter writer, TPath groupKey, IReadOnlyList<PbtNodeRecord> nodes, ReadOnlySpan<long> descendantBytes)
         where TPath : struct, IPbtNodePath<TPath>
     {
         ArgumentNullException.ThrowIfNull(nodes);
-        ArgumentOutOfRangeException.ThrowIfNegative(descendantBytes);
+        ushort descendantMask = DescendantMask(descendantBytes);
         ValidateGroupKey(groupKey);
         if (nodes.Count == 0) throw new InvalidDataException("A PBT node group cannot be empty.");
         if (nodes.Count > PositionCount) throw new InvalidDataException("A PBT node group has too many nodes.");
@@ -134,8 +173,8 @@ public static class PbtNodeGroupCodec
                 offset = checked(offset + encoding.Length);
             }
 
-            int trailerLength = GetTrailerLength(availability);
-            WriteFooter(writer.GetSpan(trailerLength), offsets, availability, HeaderLength + offset + trailerLength + descendantBytes);
+            int trailerLength = GetTrailerLength(availability, descendantMask);
+            WriteFooter(writer.GetSpan(trailerLength), offsets, availability, descendantBytes);
             writer.Advance(trailerLength);
         }
         catch
@@ -145,10 +184,10 @@ public static class PbtNodeGroupCodec
         }
     }
 
-    internal static void Encode<TPath>(ref BufferWriter writer, TPath groupKey, scoped ReadOnlySpan<ReadOnlyMemory<byte>> encodings, scoped ReadOnlySpan<bool> present, long descendantBytes)
+    internal static void Encode<TPath>(ref BufferWriter writer, TPath groupKey, scoped ReadOnlySpan<ReadOnlyMemory<byte>> encodings, scoped ReadOnlySpan<bool> present, ReadOnlySpan<long> descendantBytes)
         where TPath : struct, IPbtNodePath<TPath>
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(descendantBytes);
+        ushort descendantMask = DescendantMask(descendantBytes);
         ValidateGroupKey(groupKey);
         if (encodings.Length != PositionCount || present.Length != PositionCount)
             throw new ArgumentException("A PBT node group must have one slot per position.");
@@ -186,8 +225,8 @@ public static class PbtNodeGroupCodec
                 offset = checked(offset + encoding.Length);
             }
 
-            int trailerLength = GetTrailerLength(availability);
-            WriteFooter(writer.GetSpan(trailerLength), offsets, availability, HeaderLength + offset + trailerLength + descendantBytes);
+            int trailerLength = GetTrailerLength(availability, descendantMask);
+            WriteFooter(writer.GetSpan(trailerLength), offsets, availability, descendantBytes);
             writer.Advance(trailerLength);
         }
         catch
@@ -197,11 +236,28 @@ public static class PbtNodeGroupCodec
         }
     }
 
-    internal static int GetTrailerLength(uint availability) => BitOperations.PopCount(availability) * sizeof(ushort) + sizeof(uint) + SubtreeBytesLength;
+    internal static int GetTrailerLength(uint availability, ushort descendantMask) =>
+        BitOperations.PopCount(availability) * sizeof(ushort) + sizeof(uint) + DescendantsLength(descendantMask);
 
-    internal static void WriteFooter(Span<byte> footer, ReadOnlySpan<ushort> offsets, uint availability, long subtreeBytes)
+    /// <summary>Validates per-slot descendant sizes and returns the mask of nonzero slots; an empty span means no descendants.</summary>
+    internal static ushort DescendantMask(ReadOnlySpan<long> descendantBytes)
     {
-        if ((ulong)subtreeBytes > MaxSubtreeBytes) throw new InvalidDataException("PBT node group subtree size exceeds the uint48 limit.");
+        if (descendantBytes.IsEmpty) return 0;
+        if (descendantBytes.Length != DescendantSlots) throw new ArgumentException("One size per boundary slot is required.", nameof(descendantBytes));
+        ushort descendantMask = 0;
+        for (int slot = 0; slot < DescendantSlots; slot++)
+        {
+            long slotBytes = descendantBytes[slot];
+            ArgumentOutOfRangeException.ThrowIfNegative(slotBytes, nameof(descendantBytes));
+            if (slotBytes > MaxDescendantBytes) throw new InvalidDataException("PBT node group descendant size exceeds the uint48 limit.");
+            if (slotBytes != 0) descendantMask |= (ushort)(1 << slot);
+        }
+        return descendantMask;
+    }
+
+    internal static void WriteFooter(Span<byte> footer, ReadOnlySpan<ushort> offsets, uint availability, ReadOnlySpan<long> descendantBytes)
+    {
+        ushort descendantMask = DescendantMask(descendantBytes);
         int offsetIndex = 0;
         for (int position = 0; position < PositionCount; position++)
         {
@@ -211,8 +267,15 @@ public static class PbtNodeGroupCodec
         }
         BinaryPrimitives.WriteUInt32LittleEndian(footer[offsetIndex..], availability);
         Span<byte> field = footer[(offsetIndex + sizeof(uint))..];
-        BinaryPrimitives.WriteUInt32LittleEndian(field, (uint)subtreeBytes);
-        BinaryPrimitives.WriteUInt16LittleEndian(field[sizeof(uint)..], (ushort)(subtreeBytes >> 32));
+        for (int slot = 0; slot < DescendantSlots; slot++)
+        {
+            if ((descendantMask & (1 << slot)) == 0) continue;
+            long slotBytes = descendantBytes[slot];
+            BinaryPrimitives.WriteUInt32LittleEndian(field, (uint)slotBytes);
+            BinaryPrimitives.WriteUInt16LittleEndian(field[sizeof(uint)..], (ushort)(slotBytes >> 32));
+            field = field[DescendantBytesLength..];
+        }
+        BinaryPrimitives.WriteUInt16LittleEndian(field, descendantMask);
     }
 
     private static readonly int PrefixlessBranchLength = PbtNodeCodec.BranchLength(0, 0, 0);
@@ -258,11 +321,12 @@ public static class PbtNodeGroupCodec
 public readonly ref struct PbtNodeGroupReader
 {
     private readonly int _groupDepth;
+    private readonly int _payloadLength;
     private readonly ReadOnlySpan<byte> _payload;
     private readonly OffsetBuffer _offsets;
     private readonly LengthBuffer _lengths;
     private readonly uint _availability;
-    private readonly long _subtreeBytes;
+    private readonly DescendantBuffer _descendantBytes;
     private readonly bool _initialized;
 
     /// <summary>Validates and borrows a complete node-group payload.</summary>
@@ -274,9 +338,11 @@ public readonly ref struct PbtNodeGroupReader
         int groupDepth = path.BitDepth;
         if (!PbtFourLevelGroupGeometry.IsGroupDepth(groupDepth)) throw new ArgumentException("A group key depth must be a four-level boundary.", nameof(path));
         uint availability = PbtNodeGroupCodec.ValidateFraming(groupDepth, payload);
-        long subtreeBytes = PbtNodeGroupCodec.ReadSubtreeBytes(payload);
+        DescendantBuffer descendantBytes = default;
+        PbtNodeGroupCodec.ReadDescendantBytes(payload, descendantBytes);
+        int payloadLength = payload.Length;
         payload = payload[PbtNodeGroupCodec.HeaderLength..];
-        int trailerLength = PbtNodeGroupCodec.GetTrailerLength(availability);
+        int trailerLength = PbtNodeGroupCodec.GetTrailerLength(availability, PbtNodeGroupCodec.ReadDescendantMask(payload));
         int entriesLength = payload.Length - trailerLength;
         if (entriesLength > ushort.MaxValue) throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
         ReadOnlySpan<byte> footer = payload[entriesLength..];
@@ -323,14 +389,31 @@ public readonly ref struct PbtNodeGroupReader
         _offsets = offsets;
         _lengths = lengths;
         _availability = availability;
-        _subtreeBytes = subtreeBytes;
+        _descendantBytes = descendantBytes;
+        _payloadLength = payloadLength;
         _initialized = true;
     }
 
     /// <summary>Gets the availability bits.</summary>
     public uint Availability { get { EnsureInitialized(); return _availability; } }
-    /// <summary>Gets the payload length plus the subtree sizes of every group physically stored below this one.</summary>
-    public long SubtreeBytes { get { EnsureInitialized(); return _subtreeBytes; } }
+    /// <summary>Gets the summed payload lengths of the groups physically stored below boundary slot <paramref name="slot"/>.</summary>
+    public long DescendantBytes(int slot)
+    {
+        EnsureInitialized();
+        if ((uint)slot >= PbtNodeGroupCodec.DescendantSlots) throw new ArgumentOutOfRangeException(nameof(slot));
+        return _descendantBytes[slot];
+    }
+    /// <summary>Gets the payload length plus the descendant sizes of every boundary slot.</summary>
+    public long SubtreeBytes
+    {
+        get
+        {
+            EnsureInitialized();
+            long subtreeBytes = _payloadLength;
+            foreach (long slotBytes in _descendantBytes) subtreeBytes += slotBytes;
+            return subtreeBytes;
+        }
+    }
     /// <summary>Gets the number of nodes in this group.</summary>
     public int Count { get { EnsureInitialized(); return BitOperations.PopCount(_availability); } }
     /// <summary>Gets a borrowed canonical node encoding at a position.</summary>
@@ -462,4 +545,5 @@ public readonly ref struct PbtNodeGroupReader
     }
     [InlineArray(PbtNodeGroupCodec.PositionCount)] private struct OffsetBuffer { private ushort _element; }
     [InlineArray(PbtNodeGroupCodec.PositionCount)] private struct LengthBuffer { private int _element; }
+    [InlineArray(PbtNodeGroupCodec.DescendantSlots)] private struct DescendantBuffer { private long _element; }
 }

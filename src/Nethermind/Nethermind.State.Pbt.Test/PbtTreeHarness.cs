@@ -96,17 +96,24 @@ internal static class PbtStoreTestExtensions
         return new PbtNodeGroupReader(cursor, payload);
     }
 
-    /// <summary>Asserts every stored subtree size equals the summed payload lengths of the group and the groups keyed below it.</summary>
+    /// <summary>Asserts every stored descendant size equals the summed payload lengths of the groups keyed below that boundary slot.</summary>
     internal static void AssertSubtreeBytes(IReadOnlyList<PbtPhysicalPayload> payloads)
     {
         using (Assert.EnterMultipleScope())
         {
             foreach (PbtPhysicalPayload group in payloads)
             {
-                long expected = 0;
+                int groupDepth = group.Key.BitDepth;
+                long[] expected = new long[PbtNodeGroupCodec.DescendantSlots];
                 foreach (PbtPhysicalPayload candidate in payloads)
-                    if (candidate.Key.MatchesPrefix(group.Key, group.Key.BitDepth)) expected += candidate.Payload.Length;
-                Assert.That(PbtNodeGroupCodec.ReadSubtreeBytes(group.Payload.Span), Is.EqualTo(expected), $"subtree bytes of group {Convert.ToHexString(group.Key.ToEncodedArray())}");
+                {
+                    if (candidate.Key.BitDepth <= groupDepth || !candidate.Key.MatchesPrefix(group.Key, groupDepth)) continue;
+                    int slot = (candidate.Key.GetByte(groupDepth >> 3) >> (4 - (groupDepth & 4))) & 0xF;
+                    expected[slot] += candidate.Payload.Length;
+                }
+                long[] stored = new long[PbtNodeGroupCodec.DescendantSlots];
+                PbtNodeGroupCodec.ReadDescendantBytes(group.Payload.Span, stored);
+                Assert.That(stored, Is.EqualTo(expected), $"descendant bytes of group {Convert.ToHexString(group.Key.ToEncodedArray())}");
             }
         }
     }
@@ -283,7 +290,7 @@ internal static class PbtStoreTestExtensions
         BufferWriter writer = new(memoryProvider ?? PooledRefCountingMemoryProvider.Instance);
         try
         {
-            PbtNodeGroupCodec.Encode(ref writer, location.GroupKey, records, 0);
+            PbtNodeGroupCodec.Encode(ref writer, location.GroupKey, records, default);
             using RefCountingMemory payload = writer.Detach()!;
             store.SetNodeGroup(location.GroupKey, encoding is null || encoding[0] == 0 ? default : PbtNodeCodec.Hash(new PbtNodeReader(encoding)), payload);
         }

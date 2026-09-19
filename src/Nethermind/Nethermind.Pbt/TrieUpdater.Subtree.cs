@@ -242,7 +242,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     {
         internal TPath GroupPath = groupPath;
         internal Subtree Node = node;
-        /// <summary>The change in stored subtree size across the groups this result was folded from.</summary>
+        /// <summary>The change in stored size across the groups this result was folded from, still owed to the caller's boundary slot.</summary>
         internal long SizeDelta;
         internal readonly bool IsEmpty => Node.IsEmpty;
         internal readonly TraversalSubtree Borrow(Span<byte> buffer) => new(PbtTraversalPath.FromPath(buffer, GroupPath), Node);
@@ -296,8 +296,6 @@ internal static partial class TrieUpdater<TKey, TPath>
         private AnchorBuffer _anchors;
         private ushort _anchorMask;
         internal uint Mask;
-        /// <summary>The summed size change of the groups folded below this frame's boundary slots.</summary>
-        internal long DescendantDelta;
 
         internal TraversalSubtree Take(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path, int slot, Span<byte> scratch)
         {
