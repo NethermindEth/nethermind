@@ -9,6 +9,8 @@ using System.Threading.Tasks;
 using Multiformats.Address;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Attributes;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Libp2p.Core;
 using Nethermind.Logging;
@@ -113,6 +115,16 @@ public class PeerManager(
         }
     }
 
+    // GoodbyeReason is const ulong, not an enum, so the wire value is resolved to a name by hand
+    // for a bounded-cardinality metric label instead of the raw number.
+    private static string GoodbyeReasonName(ulong reason) => reason switch
+    {
+        GoodbyeReason.ClientShutdown => "ClientShutdown",
+        GoodbyeReason.IrrelevantNetwork => "IrrelevantNetwork",
+        GoodbyeReason.Fault => "Fault",
+        _ => "Other",
+    };
+
     private string[] StaticPeerAddresses() =>
         config.StaticPeers?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
 
@@ -182,6 +194,7 @@ public class PeerManager(
         if (_logger.IsInfo) _logger.Info($"Dropping beacon chain peer {peer.Id}: {detail}");
         _peers.TryRemove(peer.Id, out _);
         Metrics.BeaconChainPeersDropped++;
+        Metrics.BeaconChainPeersDroppedByReason.Increment(new StringLabel(GoodbyeReasonName(reason)));
         Metrics.BeaconChainPeerCount = _peers.Count;
         PeerDropped?.Invoke(peer.Id);
         await p2p.GoodbyeAsync(peer.Session, reason, token);
