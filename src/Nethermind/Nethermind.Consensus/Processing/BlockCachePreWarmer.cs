@@ -32,7 +32,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Processing;
 
-public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
+public sealed partial class BlockCachePreWarmer : IBlockCachePreWarmer
 {
     private const int MinTransactionsForReactiveWarming = 3;
 
@@ -616,7 +616,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     /// <summary>Reports main-thread progress (called via <see cref="PrewarmerTxAdapter"/>) so warming can skip already-started txs.</summary>
     /// <remarks>Only the single main execution thread writes, in ascending tx order, so a plain release store publishes progress to the polling warmup workers — no interlocked read-modify-write is needed.</remarks>
-    public void OnBeforeTxExecution() => Volatile.Write(ref _mainThreadTxIndex, _mainThreadTxIndex + 1);
+    public void OnBeforeTxExecution()
+    {
+        int next = _mainThreadTxIndex + 1;
+        Volatile.Write(ref _mainThreadTxIndex, next);
+        if (_preBlockCaches is not null) _preBlockCaches.MainTxIndex = next;
+    }
 
     public CacheType ClearCaches()
     {
@@ -658,8 +663,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
             if (!addressWarmer.HasBal)
             {
+                // Produced blocks have no fixed transaction order to follow, so re-warming applies to validation only.
+                if (!isPreparation && _preBlockCaches is not null) blockState.Lookahead = new LookaheadRewarmer(transactionCount);
                 WarmupTransactions(blockState, parallelOptions);
                 WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
+                if (blockState.Lookahead is not null) RewarmOnCommits(blockState, parallelOptions);
             }
 
             if (_logger.IsDebug) DebugPreWarming("Finished", suggestedBlock.Number, isPreparation, transactionCount);
@@ -926,6 +934,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             // Non-null guaranteed: GroupTransactionsBySender filters null-sender txs
             Address senderAddress = tx.SenderAddress!;
             IWorldState worldState = scope.WorldState;
+            using PreBlockCaches.ReadSet? reads = blockState.Lookahead is null ? null : blockState.PreWarmer._preBlockCaches!.BeginReadSet();
 
             if (!worldState.AccountExists(senderAddress))
             {
@@ -939,6 +948,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
 
             TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+            if (reads is not null) blockState.Lookahead!.Publish(txIndex, reads);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
         }
@@ -1140,7 +1150,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null);
+    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null)
+    {
+        public LookaheadRewarmer? Lookahead { get; set; }
+    }
 
     /// <summary>
     /// Per-worker state for the transaction-warming loop: one env rented for the worker's

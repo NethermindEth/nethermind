@@ -15,7 +15,7 @@ using Nethermind.Logging;
 [assembly: InternalsVisibleTo("Nethermind.State.Test")]
 namespace Nethermind.Evm.State;
 
-public class PreBlockCaches
+public partial class PreBlockCaches
 {
     private readonly Func<CacheType>[] _clearCaches;
 
@@ -87,12 +87,19 @@ public class PreBlockCaches
     /// </remarks>
     public void BeginConsumerScope()
     {
+        ClearCommitted();
         Interlocked.Increment(ref _consumerScopes);
         ConsumerScopeOpened?.Invoke();
     }
 
     /// <returns>The number of consumer scopes still open.</returns>
-    public int EndConsumerScope() => Interlocked.Decrement(ref _consumerScopes);
+    public int EndConsumerScope()
+    {
+        int stillOpen = Interlocked.Decrement(ref _consumerScopes);
+        // The committed overlay describes the block just processed; nothing after it may speculate on it.
+        if (stillOpen == 0) ClearCommitted();
+        return stillOpen;
+    }
 
     /// <summary>
     /// Starts a thread-local capture of backing-store storage misses made through this block cache.

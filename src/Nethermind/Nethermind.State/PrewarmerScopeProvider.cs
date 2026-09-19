@@ -148,20 +148,23 @@ public class PrewarmerScopeProvider(
             IWorldStateScopeProvider.IStorageTree baseTree = baseScope.CreateStorageTree(address);
             return storageReadCapture is not null
                 ? new CapturingStorageTreeWrapper(baseTree, storageReadCapture, storageCache, address)
-                : new StorageTreeWrapper(baseTree, storageCache, address, isPrewarmer, _metrics);
+                : new StorageTreeWrapper(baseTree, preBlockCaches, address, isPrewarmer, _metrics);
         }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
+            IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = baseScope.StartWriteBatch(estimatedAccountNum);
+            // Only the consumer commits state; its per-transaction writes feed the lookahead re-warming.
+            if (!isPrewarmer) writeBatch = preBlockCaches.WrapCommittedWrites(writeBatch);
             if (!_measureMetric)
             {
-                return baseScope.StartWriteBatch(estimatedAccountNum);
+                return writeBatch;
             }
 
             _writeBatchTime = Stopwatch.GetTimestamp();
             long sw = Stopwatch.GetTimestamp();
             return new WriteBatchLifetimeMeasurer(
-                baseScope.StartWriteBatch(estimatedAccountNum),
+                writeBatch,
                 _metricObserver,
                 sw,
                 isPrewarmer);
@@ -213,6 +216,13 @@ public class PrewarmerScopeProvider(
         public Account? Get(Address address)
         {
             AddressAsKey addressAsKey = address;
+            if (isPrewarmer)
+            {
+                // Committed values of this block come first, so a re-warm reads what the main thread is about to read.
+                preBlockCaches.CurrentReadSet?.RecordAccount(in addressAsKey);
+                if (preBlockCaches.TryGetCommitted(in addressAsKey, out Account? committed)) return committed;
+            }
+
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
             if (preBlockCache.TryGetValue(in addressAsKey, out Account? account))
             {
@@ -291,13 +301,14 @@ public class PrewarmerScopeProvider(
 
     private sealed class StorageTreeWrapper(
         IWorldStateScopeProvider.IStorageTree baseStorageTree,
-        SeqlockCache<StorageCell, UInt256> preBlockCache,
+        PreBlockCaches preBlockCaches,
         Address address,
         bool isPrewarmer,
         LocalMetrics metrics) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
-        private readonly SeqlockCache<StorageCell, UInt256> preBlockCache = preBlockCache;
+        private readonly PreBlockCaches preBlockCaches = preBlockCaches;
+        private readonly SeqlockCache<StorageCell, UInt256> preBlockCache = preBlockCaches.StorageCache;
         private readonly Address address = address;
         private readonly bool isPrewarmer = isPrewarmer;
         private readonly LocalMetrics _metrics = metrics;
@@ -310,6 +321,12 @@ public class PrewarmerScopeProvider(
         public void Get(in UInt256 index, out UInt256 value)
         {
             StorageCell storageCell = new(address, in index); // TODO: Make the dictionary use UInt256 directly
+            if (isPrewarmer)
+            {
+                preBlockCaches.CurrentReadSet?.RecordSlot(in storageCell);
+                if (preBlockCaches.TryGetCommitted(in storageCell, out value)) return;
+            }
+
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
             if (preBlockCache.TryGetValue(in storageCell, out value))
             {
