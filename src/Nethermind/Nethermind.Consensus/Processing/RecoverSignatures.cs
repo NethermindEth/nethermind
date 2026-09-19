@@ -33,18 +33,13 @@ namespace Nethermind.Consensus.Processing
         // the block copies the transaction array, so the array itself cannot be the key. Entries are removed on completion.
         private static readonly ConcurrentDictionary<Hash256, Task> s_inFlight = new();
 
-        // Past the head, half the cores still recover senders several times faster than execution consumes them;
-        // the prewarmer runs on the other half until recovery is done (see BlockCachePreWarmer).
-        private static readonly ParallelOptions s_sharedOptions = new() { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 2) };
-
-        /// <summary>Cores the background recovery keeps for itself once the leading batch is recovered.</summary>
-        internal static int SharedRecoveryWidth => s_sharedOptions.MaxDegreeOfParallelism;
+        private static readonly ParallelOptions s_backgroundOptions = ParallelUnbalancedWork.DefaultOptions;
 
         /// <summary>
         /// Senders to have in place before a block is enqueued: enough for the prewarmer's first pass to cover the
         /// processing thread's first few milliseconds, a fraction of the time recovering them all would take.
         /// </summary>
-        internal static readonly int LeadingSenderCount = Environment.ProcessorCount * 4;
+        private static readonly int LeadingSenderCount = Environment.ProcessorCount * 4;
 
         public void RecoverData(Block block)
         {
@@ -62,7 +57,7 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        private static bool AllSendersRecovered(ReadOnlySpan<Transaction> txs, bool checkAuthorities)
+        private static bool AllSendersRecovered(Transaction[] txs, bool checkAuthorities)
         {
             foreach (Transaction tx in txs)
             {
@@ -103,9 +98,7 @@ namespace Nethermind.Consensus.Processing
             {
                 try
                 {
-                    int head = Math.Min(LeadingSenderCount, txs.Length);
-                    RecoverRange(txs, 0, head, releaseSpec, skipErrors: false, ParallelUnbalancedWork.DefaultOptions);
-                    RecoverRange(txs, head, txs.Length, releaseSpec, skipErrors: false, s_sharedOptions);
+                    RecoverData(txs, releaseSpec, skipErrors: false, s_backgroundOptions);
                 }
                 catch (Exception e)
                 {
@@ -155,32 +148,31 @@ namespace Nethermind.Consensus.Processing
         /// <summary>Recovers senders and EIP-7702 authorities for transactions not yet attached to a <see cref="Block"/>.</summary>
         /// <param name="skipErrors">When set, recovery failures leave <see cref="Transaction.SenderAddress"/> null instead of throwing.</param>
         public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors = false) =>
-            RecoverRange(txs, 0, txs.Length, releaseSpec, skipErrors, ParallelUnbalancedWork.DefaultOptions);
+            RecoverData(txs, releaseSpec, skipErrors, ParallelUnbalancedWork.DefaultOptions);
 
-        private void RecoverRange(Transaction[] txs, int fromInclusive, int toExclusive, IReleaseSpec releaseSpec, bool skipErrors, ParallelOptions parallelOptions)
+        private void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors, ParallelOptions parallelOptions)
         {
-            int count = toExclusive - fromInclusive;
-            if (count <= 0)
+            if (txs.Length == 0)
                 return;
 
-            if (AllSendersRecovered(txs.AsSpan(fromInclusive, count), checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
+            if (AllSendersRecovered(txs, checkAuthorities: releaseSpec.IsAuthorizationListEnabled))
                 return;
 
-            if (count > 3)
+            if (txs.Length > 3)
             {
                 ParallelUnbalancedWork.For(
-                    fromInclusive,
-                    toExclusive,
+                    0,
+                    txs.Length,
                     parallelOptions,
                     (recover: this, txs, releaseSpec, skipErrors),
                     RecoverSingle);
             }
             else
             {
-                for (int i = fromInclusive; i < toExclusive; i++)
+                foreach (Transaction tx in txs)
                 {
-                    if (skipErrors) TryRecover(txs[i], releaseSpec);
-                    else Recover(txs[i], releaseSpec);
+                    if (skipErrors) TryRecover(tx, releaseSpec);
+                    else Recover(tx, releaseSpec);
                 }
             }
         }
