@@ -30,7 +30,7 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// them against. That substitution is exact, not approximate: validators, balances and randao_mixes
 /// are copied unchanged into the new state and the slot does not advance across the upgrade, so
 /// every accessor pre and post would read would agree. This is what "let a second fork exist
-/// without duplicating the whole state transition" means in practice for this one function — it
+/// without duplicating the whole state transition" means in practice for this one function - it
 /// borrows the existing, already-tested Fulu accessors instead of porting them to a second concrete
 /// type that would return identical answers.
 /// </remarks>
@@ -38,7 +38,7 @@ public static class GloasForkTransition
 {
     /// <summary>
     /// Spec <c>upgrade_to_gloas</c>. Runs when <c>pre.Slot % SLOTS_PER_EPOCH == 0 &amp;&amp;
-    /// compute_epoch_at_slot(pre.Slot) == GLOAS_FORK_EPOCH</c> — the caller (see
+    /// compute_epoch_at_slot(pre.Slot) == GLOAS_FORK_EPOCH</c> - the caller (see
     /// <see cref="ForkedStateTransition"/>) is responsible for advancing <paramref name="pre"/> to
     /// exactly that boundary slot before calling this.
     /// </summary>
@@ -98,7 +98,7 @@ public static class GloasForkTransition
             PendingPartialWithdrawals = pre.PendingPartialWithdrawals,
             PendingConsolidations = pre.PendingConsolidations,
             ProposerLookahead = pre.ProposerLookahead,
-            // [New in Gloas:EIP7732] Builders() — empty registry; builders only ever enter through
+            // [New in Gloas:EIP7732] Builders() - empty registry; builders only ever enter through
             // onboarding below or, from here on, BuilderDepositRequest.
             Builders = [],
             NextWithdrawalBuilderIndex = 0,
@@ -126,7 +126,7 @@ public static class GloasForkTransition
                 // here resolves in the gloas module's own namespace (every other bare container name
                 // in this function - Validators, Builders, BlobKZGCommitments - is unambiguously the
                 // Gloas type), so this is ExecutionRequestsGloas's zero-value root, not the pre-Gloas
-                // ExecutionRequests' — see 'unresolved' for the case this reading could be wrong.
+                // ExecutionRequests' - see 'unresolved' for the case this reading could be wrong.
                 ExecutionRequestsRoot = SszRoots.HashTreeRoot(new ExecutionRequestsGloas()),
             },
             PayloadExpectedWithdrawals = [],

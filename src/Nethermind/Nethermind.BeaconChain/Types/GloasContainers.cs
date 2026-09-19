@@ -89,7 +89,7 @@ public partial class BuilderExitRequest
 /// Gloas <c>PayloadTimelinessCommittee</c> (specs/gloas/beacon-chain.md, "New <c>PayloadTimelinessCommittee</c>"):
 /// <c>Vector[ValidatorIndex, PTC_SIZE]</c>. Wrapped in a single-field container (not marked
 /// <c>isCollectionItself</c>: that flag only special-cases a sole List/ProgressiveList field) so it can
-/// be addressed as an element of <see cref="BeaconStateGloas.PtcWindow"/> — a container with exactly one
+/// be addressed as an element of <see cref="BeaconStateGloas.PtcWindow"/> - a container with exactly one
 /// fixed-size field serializes and merkleizes identically to the bare vector (merkleize of one chunk is
 /// that chunk), so this is wire- and root-identical to the spec type without any generator changes.
 /// </summary>
