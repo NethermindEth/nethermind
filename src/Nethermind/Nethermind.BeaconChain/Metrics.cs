@@ -1,10 +1,20 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.ComponentModel;
+using Nethermind.BeaconChain.P2P.Gossip;
+using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Metric;
 
 namespace Nethermind.BeaconChain;
+
+/// <summary>Label key for the gossip-rejection metric: topic name plus <see cref="GossipDropReason"/>.</summary>
+public readonly record struct GossipRejectKey(string Topic, GossipDropReason Reason) : IMetricLabels
+{
+    public string[] Labels => [Topic, Reason.ToString()];
+}
 
 public class Metrics
 {
@@ -40,6 +50,10 @@ public class Metrics
     [Description("Beacon chain peers dropped.")]
     public static ulong BeaconChainPeersDropped { get; set; }
 
+    [KeyIsLabel("reason")]
+    [Description("Beacon chain peers dropped, by goodbye reason.")]
+    public static ConcurrentDictionary<StringLabel, long> BeaconChainPeersDroppedByReason { get; } = new();
+
     [CounterMetric]
     [Description("Outbound dials attempted toward discovered beacon chain peers.")]
     public static ulong BeaconChainDialAttempts { get; set; }
@@ -59,6 +73,18 @@ public class Metrics
     [CounterMetric]
     [Description("Gossip messages dropped during decode-level validation.")]
     public static ulong BeaconChainGossipDropped { get; set; }
+
+    [KeyIsLabel("topic")]
+    [Description("Gossip messages received per beacon chain topic, before validation.")]
+    public static ConcurrentDictionary<StringLabel, long> BeaconChainGossipReceivedByTopic { get; } = new();
+
+    [KeyIsLabel("topic", "reason")]
+    [Description("Gossip messages dropped during decode-level validation, per topic and drop reason.")]
+    public static ConcurrentDictionary<GossipRejectKey, long> BeaconChainGossipRejectedByTopic { get; } = new();
+
+    [KeyIsLabel("protocol_id", "reason")]
+    [Description("Eth2 req/resp failures per protocol id and reason: timeouts, peer-attributable invalid messages, limit violations (chunk cap, concurrent-request cap), and peer error responses.")]
+    public static ConcurrentDictionary<ReqRespFailureKey, long> BeaconChainReqRespFailures { get; } = new();
 
     [CounterMetric]
     [Description("In-process engine_newPayload calls issued by the embedded driver.")]

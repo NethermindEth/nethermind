@@ -36,13 +36,14 @@ public sealed class BeaconBlocksByRangeProtocolV2(BeaconChainSpec spec, BeaconCh
             await WriteRequestAndEofAsync(downChannel, stream, BeaconBlocksByRangeRequest.Encode(request), cts.Token);
         }
 
-        IReadOnlyList<SignedBeaconBlock> blocks = await ReadBlockChunksAsync(stream, (int)Math.Min(request.Count, MaxRequestBlocks));
+        IReadOnlyList<SignedBeaconBlock> blocks = await ReadBlockChunksAsync(stream, (int)Math.Min(request.Count, MaxRequestBlocks), Id);
         ulong? previousSlot = null;
         foreach (SignedBeaconBlock block in blocks)
         {
             ulong slot = block.Message!.Slot;
             if (slot < request.StartSlot || slot >= request.StartSlot + request.Count || slot <= previousSlot)
             {
+                RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
                 throw new Eth2ReqRespException($"Block slot {slot} outside the requested range or out of order");
             }
 
@@ -55,7 +56,14 @@ public sealed class BeaconBlocksByRangeProtocolV2(BeaconChainSpec spec, BeaconCh
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
     {
         Stream stream = new ChannelStreamAdapter(downChannel);
-        using CancellationTokenSource cts = StartTimeout(RespTimeout);
+        using IDisposable? inboundSlot = TryEnterInbound(context, Id);
+        if (inboundSlot is null)
+        {
+            return;
+        }
+
+        using BoundedTimeout timeout = StartBoundedTimeout(RespTimeout, MaxBlocksResponseDuration);
+        CancellationTokenSource cts = timeout.Cts;
         try
         {
             byte[] requestSsz = await ReqRespFraming.ReadRequestAsync(stream, RequestLength, cts.Token);
@@ -87,7 +95,16 @@ public sealed class BeaconBlocksByRangeProtocolV2(BeaconChainSpec spec, BeaconCh
         }
         catch (Eth2ReqRespException e)
         {
+            if (e.ResponseCode != ReqRespFraming.ResponseCode.ResourceUnavailable)
+            {
+                RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
+            }
+
             await ReqRespFraming.WriteErrorChunkAsync(stream, e.ResponseCode, e.Message, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            RecordFailure(Id, ReqRespFailureReason.Timeout);
         }
     }
 }
