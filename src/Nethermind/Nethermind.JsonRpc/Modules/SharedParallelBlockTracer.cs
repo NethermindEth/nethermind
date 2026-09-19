@@ -13,12 +13,13 @@ using Nethermind.State.OverridableEnv;
 namespace Nethermind.JsonRpc.Modules;
 
 /// <summary>One parallel block tracer per module factory, shared by every module instance the factory creates: the
-/// workers' processing environments are the expensive part, and a node-wide cap on them is the point. Built the
+/// environments are retained per factory; active workers share the node-wide budget. Built the
 /// first time a module asks, with the same container configuration the module's own environment gets.</summary>
 public sealed class SharedParallelBlockTracer(
     IOverridableEnvFactory envFactory,
     ILifetimeScope rootLifetimeScope,
     IPrefixStateSeedSource prefixSeeds,
+    ParallelTraceBudget budget,
     ILogManager logManager,
     Func<ContainerBuilder, ContainerBuilder> configureProcessing)
 {
@@ -28,13 +29,13 @@ public sealed class SharedParallelBlockTracer(
     /// <summary>Null on a node without the index: nothing to seed from, nothing to build.</summary>
     public IParallelBlockTracer? Get()
     {
-        if (!prefixSeeds.Enabled) return null;
+        if (!prefixSeeds.Enabled || budget.Degree < 2) return null;
 
         lock (_lock)
         {
             if (_tracer is null)
             {
-                _tracer = new ParallelBlockTracer(BuildEnvironment, prefixSeeds, ParallelBlockTracer.Degree, logManager);
+                _tracer = new ParallelBlockTracer(BuildEnvironment, prefixSeeds, budget.Degree, logManager, budget.Slots);
                 rootLifetimeScope.Disposer.AddInstanceForDisposal(_tracer);
             }
 

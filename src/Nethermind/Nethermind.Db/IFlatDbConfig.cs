@@ -55,6 +55,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Index, per transaction, what each transaction of a block wrote, so that a trace of one transaction resolves the state before it instead of replaying the transactions ahead of it. Captured inline while syncing, when the node executes each block anyway, and re-executed in the background behind the history watermark at the tip and for the retrofit; never on the tip's processing path. Kept in its own column. Off by default; a node that leaves it off pays nothing.", DefaultValue = "false")]
     bool HistoryTransactionIndexEnabled { get; set; }
 
+    [ConfigItem(Description = "Maximum active indexed block-tracing workers shared by debug and trace RPC. 0 uses the processor count capped at 16; 1 disables parallel block tracing. Explicit values are clamped to 1-16. Each namespace keeps its own environment pool and up to twice this many background workers.", DefaultValue = "0")]
+    int HistoryTransactionIndexTraceParallelism { get; set; }
+
     [ConfigItem(Description = "Share of its wall clock the transaction index builder may spend working; it sleeps out the rest so that re-executing blocks stays invisible to the RPC the node is serving. 100 lets it run flat out.", DefaultValue = "25")]
     int HistoryTransactionIndexDutyCyclePercent { get; set; }
 

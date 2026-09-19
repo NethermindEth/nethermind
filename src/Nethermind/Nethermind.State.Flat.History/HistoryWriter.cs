@@ -411,16 +411,16 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     private static string DescribeTiersCore(in StateId stateId, ISnapshotRepository snapshotRepository)
     {
         bool inMemoryBase = snapshotRepository.TryLeaseInMemoryState(stateId, SnapshotTier.InMemoryBase, out Snapshot? baseSnapshot);
+        using Snapshot? baseLease = baseSnapshot;
         string baseSpan = inMemoryBase ? $"{baseSnapshot!.From.BlockNumber}->{baseSnapshot.To.BlockNumber}" : "none";
-        baseSnapshot?.Dispose();
 
         bool inMemoryCompacted = snapshotRepository.TryLeaseInMemoryState(stateId, SnapshotTier.InMemoryCompacted, out Snapshot? compacted);
+        using Snapshot? compactedLease = compacted;
         string compactedSpan = inMemoryCompacted ? $"{compacted!.From.BlockNumber}->{compacted.To.BlockNumber}" : "none";
-        compacted?.Dispose();
 
         bool persistedBase = snapshotRepository.TryLeaseBasePersistedSnapshot(stateId, out PersistedSnapshot? persisted);
+        using PersistedSnapshot? persistedLease = persisted;
         string persistedSpan = persistedBase ? $"{persisted!.From.BlockNumber}->{persisted.To.BlockNumber}" : "none";
-        persisted?.Dispose();
 
         int statesAtBlock;
         using (ArrayPoolList<StateId> states = snapshotRepository.GetStatesAtBlockNumber(stateId.BlockNumber)) statesAtBlock = states.Count;

@@ -11,9 +11,17 @@ namespace Nethermind.State.Flat;
 
 public static class Metrics
 {
+    private static long _unreadableTransactionChangesetRows;
+
     [CounterMetric]
-    [Description("Transaction changeset rows the codec could not read. A trace of the block a row belongs to falls back to replaying it, so the answer is right and slow; anything above zero means the changeset column carries damage.")]
-    public static long UnreadableTransactionChangesetRows { get; set; }
+    [Description("Times a transaction changeset row could not be read. Repeated attempts on the same damaged row count separately; tracing falls back to replay.")]
+    public static long UnreadableTransactionChangesetRows
+    {
+        get => Volatile.Read(ref _unreadableTransactionChangesetRows);
+        set => Interlocked.Exchange(ref _unreadableTransactionChangesetRows, value);
+    }
+
+    public static void RecordUnreadableTransactionChangesetRow() => Interlocked.Increment(ref _unreadableTransactionChangesetRows);
 
     [GaugeMetric]
     [Description("Average snapshot bundle size in terms of num of snapshot")]

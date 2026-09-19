@@ -43,6 +43,7 @@ using NUnit.Framework;
 using System;
 using System.Collections.Concurrent;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Security;
@@ -359,9 +360,9 @@ public class BlockProcessorTests
     }
 
     [Test]
-    public async Task ParallelBlockTracer_TracesTheRewardsOnTheStateAfterTheLastTransaction()
+    public async Task ParallelBlockTracer_TracesTheRewardsOnTheStateAfterTheLastTransaction([Values] bool amsterdam, [Values] bool stream)
     {
-        IReleaseSpec spec = Prague.Instance;
+        IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Prague.Instance;
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
         ChangesetPrefixStateSeedSource seeds = new(index);
@@ -375,9 +376,24 @@ public class BlockProcessorTests
         using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, degree: 3, LimboLogs.Instance);
 
         IReadOnlyCollection<ParityLikeTxTrace> sequential = TraceWholeBlockThroughTraceEnvironment(chain, parent, block, _ => new ParityLikeBlockTracer(types));
-        bool traced = parallel.TryTrace(block, parent,
-            (_, txHash) => new ParityLikeBlockTracer(txHash, types & ~ParityTraceTypes.Rewards),
-            _ => new ParityLikeBlockTracer(types), CancellationToken.None, out IReadOnlyList<ParityLikeTxTrace>? traces);
+        List<ParityLikeTxTrace> emitted = [];
+        IReadOnlyList<ParityLikeTxTrace>? traces = null;
+        bool traced = stream
+            ? parallel.TryStream(block, parent,
+                (_, txHash) => new ParityLikeBlockTracer(txHash, types & ~ParityTraceTypes.Rewards),
+                _ => new ParityLikeBlockTracer(types), batch => emitted.AddRange(batch), CancellationToken.None)
+            : parallel.TryTrace(block, parent,
+                (_, txHash) => new ParityLikeBlockTracer(txHash, types & ~ParityTraceTypes.Rewards),
+                _ => new ParityLikeBlockTracer(types), CancellationToken.None, out traces);
+
+        Assert.That(traced, Is.EqualTo(!amsterdam), "BAL processing must fall back before emitting any parallel results");
+        if (amsterdam)
+        {
+            Assert.That(emitted, Is.Empty, "a fallback must not leave a partial streamed response");
+            Assert.That(traces, Is.Null);
+            return;
+        }
+        if (stream) traces = emitted;
 
         using (Assert.EnterMultipleScope())
         {
@@ -388,6 +404,15 @@ public class BlockProcessorTests
                 "state diffs of each transaction and the reward traced on the seeded end state equal the replay");
             Assert.That(traces![^1].Action!.RewardType, Is.EqualTo("block"), "the reward comes last, as in the replay");
         }
+    }
+
+    [Test]
+    public void ParallelBlockTracer_WhenWorkersCancel_PreservesThePrimaryFailure()
+    {
+        InvalidOperationException primary = new("state read failed");
+        Task[] tasks = [Task.FromException(new OperationCanceledException())];
+        Exception? actual = Assert.Throws<InvalidOperationException>(() => ParallelBlockTracer.Await(tasks, ExceptionDispatchInfo.Capture(primary)));
+        Assert.That(actual, Is.SameAs(primary), "worker cleanup must not replace the caller's failure");
     }
 
     [Test]

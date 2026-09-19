@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -14,7 +15,9 @@ internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBl
 {
     // One per block, handed to every worker: they all stand on the same parent state, so the first to read a key
     // reads it for all of them.
-    private readonly BlockReadCache _reads = new();
+    private readonly BlockReadCache _reads = new(
+        accountSetsBits: Math.Clamp(BitOperations.Log2((uint)Math.Max(1, rows.Rows.Length)) + 2, 2, 12),
+        storageSetsBits: Math.Clamp(BitOperations.Log2((uint)Math.Max(1, rows.Rows.Length)) + 4, 4, 14));
 
     public IPrefixStateSeedSource CreateWorkerSeeds() => new WorkerSeeds(rows, earlierBlocks, _reads);
 

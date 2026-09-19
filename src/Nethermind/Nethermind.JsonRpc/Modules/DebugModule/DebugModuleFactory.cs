@@ -18,10 +18,11 @@ public class DebugModuleFactory(
     ILifetimeScope rootLifetimeScope,
     IBlockValidationModule[] validationBlockProcessingModules,
     IPrefixStateSeedSource prefixSeeds,
+    ParallelTraceBudget parallelBudget,
     ILogManager logManager
 ) : IRpcModuleFactory<IDebugRpcModule>
 {
-    private readonly SharedParallelBlockTracer _parallelTracer = new(envFactory, rootLifetimeScope, prefixSeeds, logManager,
+    private readonly SharedParallelBlockTracer _parallelTracer = new(envFactory, rootLifetimeScope, prefixSeeds, parallelBudget, logManager,
         builder => ConfigureTracerContainer(builder, validationBlockProcessingModules));
 
     private static ContainerBuilder ConfigureTracerContainer(ContainerBuilder builder, IBlockValidationModule[] validationBlockProcessingModules) =>

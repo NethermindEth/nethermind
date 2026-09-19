@@ -112,9 +112,9 @@ public class OverlaidScopeProviderTests
     }
 
     [Test]
-    public void TheStateUnderOneBlocksOverlays_IsReadFromTheScopeOnce()
+    public void TheStateUnderOneBlocksOverlays_IsReadFromTheScopeOnce([Values(2, 12)] int cacheBits)
     {
-        BlockReadCache cache = new();
+        BlockReadCache cache = new(accountSetsBits: cacheBits);
         IStateReadOverlay first = Substitute.For<IStateReadOverlay>();
         IStateReadOverlay second = Substitute.For<IStateReadOverlay>();
 
@@ -153,9 +153,9 @@ public class OverlaidScopeProviderTests
     }
 
     [Test]
-    public void AStorageSlot_IsReadFromTheTreeOnceForTheBlock()
+    public void AStorageSlot_IsReadFromTheTreeOnceForTheBlock([Values(4, 14)] int cacheBits)
     {
-        BlockReadCache cache = new();
+        BlockReadCache cache = new(storageSetsBits: cacheBits);
         IStateReadOverlay overlay = Substitute.For<IStateReadOverlay>();
         IWorldStateScopeProvider.IStorageTree tree = _scope.CreateStorageTree(TestItem.AddressA);
 

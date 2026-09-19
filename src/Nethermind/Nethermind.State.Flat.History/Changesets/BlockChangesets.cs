@@ -67,7 +67,7 @@ internal sealed class BlockChangesets
             }
             catch (InvalidDataException)
             {
-                Flat.Metrics.UnreadableTransactionChangesetRows++;
+                Flat.Metrics.RecordUnreadableTransactionChangesetRow();
                 return false;
             }
         }
