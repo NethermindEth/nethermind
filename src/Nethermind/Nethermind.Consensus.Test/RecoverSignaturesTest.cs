@@ -149,7 +149,7 @@ public class RecoverSignaturesTest
     [Test]
     public async Task WaitForLeadingSenders_ReturnsOnceTheLeadingBatchIsRecovered()
     {
-        int leading = Environment.ProcessorCount;
+        int leading = RecoverSignatures.LeadingSenderCount;
         using ManualResetEventSlim gate = new();
         GatedEcdsa ecdsa = new(_ecdsa, gate, passThrough: leading);
         Transaction[] txs = Enumerable.Range(0, leading + 2)

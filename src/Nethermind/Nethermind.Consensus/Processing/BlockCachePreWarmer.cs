@@ -739,6 +739,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         ArrayPool<bool>.Shared.Return(claimed);
     }
 
+    private static ParallelOptions SharePassWithRecovery(BlockState blockState, ParallelOptions parallelOptions)
+    {
+        int width = parallelOptions.MaxDegreeOfParallelism;
+        if (width <= 0 || !RecoverSignatures.IsRecoveryInFlight(blockState.Block.Hash)) return parallelOptions;
+
+        return new ParallelOptions
+        {
+            MaxDegreeOfParallelism = Math.Max(1, width - RecoverSignatures.SharedRecoveryWidth),
+            CancellationToken = parallelOptions.CancellationToken,
+        };
+    }
+
     /// <summary>
     /// Waits until a transaction no pass has claimed yet has its sender recovered; <c>false</c> once the main
     /// thread has passed every unclaimed transaction or the block is done.
@@ -766,6 +778,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private void WarmupRecoveredTransactions(BlockState blockState, ParallelOptions parallelOptions, bool[] claimed)
     {
+        // While recovery still holds its share of the cores, warm on the rest; a pass that starts after it is
+        // done runs at full width.
+        parallelOptions = SharePassWithRecovery(blockState, parallelOptions);
+
         if (parallelOptions.CancellationToken.IsCancellationRequested) return;
 
         try
