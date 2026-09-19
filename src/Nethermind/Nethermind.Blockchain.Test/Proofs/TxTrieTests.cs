@@ -63,6 +63,12 @@ public class TxTrieTests(bool useEip2718)
         [Values(124, 2165)] int outlierLength, [Values] bool canBeParallel) =>
         AssertRootAndLengthCalls(count, multiBlock, outlierIndex, outlierLength, canBeParallel);
 
+    [Test]
+    public void Parallel_multi_block_batch_computes_each_length_once(
+        [Values(65, 129, 255)] int count, [Values(-1, 0, 1, 17)] int outlierIndex,
+        [Values(124, 2165)] int outlierLength) =>
+        AssertRootAndLengthCalls(count, true, outlierIndex, outlierLength, true);
+
     private static void AssertRootAndLengthCalls(int count, bool multiBlock, int outlierIndex, int outlierLength, bool canBeParallel)
     {
         if (!Avx2.IsSupported) Assert.Ignore("Requires AVX2.");
@@ -84,7 +90,7 @@ public class TxTrieTests(bool useEip2718)
         using (Assert.EnterMultipleScope())
         {
             if (multiBlock || outlierIndex < 0) Assert.That(lengthCalls, Is.All.EqualTo(1));
-            else Assert.That(lengthCalls, Is.All.LessThanOrEqualTo(1));
+            else Assert.That(lengthCalls, Is.All.LessThanOrEqualTo(1).And.Some.EqualTo(1));
             Assert.That(actual, Is.EqualTo(expected.RootHash));
         }
     }

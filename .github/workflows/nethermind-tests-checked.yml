@@ -158,6 +158,13 @@ jobs:
           NETHERMIND_TEST_REQUIRE_AVX2: ${{ matrix.variant.require-avx2 }}
           NETHERMIND_TEST_REQUIRE_AVX512: ${{ matrix.variant.require-avx512 }}
         run: |
+          if [[ "${{ matrix.variant.label }}" == "avx512" ]]; then
+            if ! grep -qw avx512f /proc/cpuinfo || ! grep -qw avx512vl /proc/cpuinfo; then
+              echo "::warning::AVX-512 tests skipped: this hosted runner lacks AVX-512F/VL."
+              echo "AVX-512 tests skipped: hosted runner lacks AVX-512F/VL; no AVX-512 coverage on this run." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          fi
           if [[ "${{ matrix.variant.label }}" == "avx2" || "${{ matrix.variant.label }}" == "avx512" ]]; then
             for target in \
               'Nethermind.Core.Test:KeccakTests|KeccakCacheTests' \

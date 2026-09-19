@@ -80,7 +80,7 @@ internal static class IndexedTrieRoot
     }
 
     internal readonly ref struct Calculator<T, TEncoder>(ReadOnlySpan<T> items, TEncoder encoder,
-        ReadOnlySpan<NodeReference> leaves = default, Span<int> valueLengths = default) where TEncoder : struct, IValueEncoder<T>
+        ReadOnlySpan<NodeReference> leaves = default, Span<int> valueLengths = default, int valueLengthsStart = 0) where TEncoder : struct, IValueEncoder<T>
     {
         private const int BranchPrefixLength = 3;
         private static int BranchBatchSize => Avx512F.IsSupported ? MaxHashBatchSize : Avx2HashBatchSize;
@@ -219,10 +219,13 @@ internal static class IndexedTrieRoot
             {
                 Parallel.For(0, (_items.Length - 1) / LeafBatchSize + 1, RuntimeInformation.ParallelOptionsLogicalCores, batch =>
                 {
-                    Calculator<T, TEncoder> calculator = new(inputs.AsSpan(), leafEncoder,
-                        valueLengths: valueLengths is null ? default : valueLengths.AsSpan());
                     int start = batch * LeafBatchSize;
                     int end = start + Math.Min(LeafBatchSize, inputs.Count - start);
+                    Span<int> batchLengths = stackalloc int[leafEncoder.Batching == LeafBatching.MultiBlock && valueLengths is null ? LeafBatchSize : 0];
+                    batchLengths.Fill(-1);
+                    Calculator<T, TEncoder> calculator = new(inputs.AsSpan(), leafEncoder,
+                        valueLengths: valueLengths is null ? batchLengths : valueLengths.AsSpan(),
+                        valueLengthsStart: valueLengths is null ? start : 0);
                     if (Avx2.IsSupported && leafEncoder.Batching == LeafBatching.MultiBlock
                         && calculator.GetLength(start) is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength)
                     {
@@ -572,7 +575,7 @@ internal static class IndexedTrieRoot
         private int GetLength(int position)
         {
             if (_valueLengths.IsEmpty) return encoder.GetLength(_items[GetIndex(position)]);
-            ref int length = ref _valueLengths[position];
+            ref int length = ref _valueLengths[position - valueLengthsStart];
             if (length < 0) length = encoder.GetLength(_items[GetIndex(position)]);
             return length;
         }
