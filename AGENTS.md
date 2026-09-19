@@ -142,10 +142,9 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - Workflow file: [`.github/workflows/run-expb-reproducible-benchmarks.yml`](./.github/workflows/run-expb-reproducible-benchmarks.yml)
 - Execution runner: chosen by the `arch` input — `amd64` (default) runs on `reproducible-benchmarks`
   with snapshots under `/mnt/sda`; `arm64` runs on `reproducible-benchmarks-arm` with snapshots under
-  `/data`. ARM requires flat layout; it supports Nethermind and the Reth Fusaka snapshot at
-  `/data/reth/reth-25490000`, while Geth requires amd64. Reference-client runs are
-  workflow-dispatch Fusaka runs with explicit `docker_images` and `state_layout=flat`; the workflow
-  rejects Nethermind-only flags and environment settings. **Never compare timings across the two boxes.**
+  `/data`. The ARM box carries a single snapshot set — Nethermind in the **flat** layout — so it
+  refuses any other client, layout, or an image it would have to build; the amd64 box takes all of
+  them. **Never compare timings across the two boxes.**
 
 ### What the workflow does
 
@@ -161,7 +160,6 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 - Runs `expb execute-scenarios` with per-payload metrics and logs.
 - Handles termination gracefully with cleanup grace period.
 - Metrics: one table per payload set with three column groups, each as Master, PR and delta. "Request (k6)" is the per-payload newPayload request time from expb's pipe table (k6's time to first byte today), the figure the consensus client waits for. "Processing" is the client's own block processing time from the SSE data feed (`[payload-server] client_metric` lines) with an MGas/s row derived from it; use it for EVM and state changes. "Request - processing" is the per-payload difference, the request path and GC. A change that moves time between windows shows as opposite deltas in the first two groups and a matching move in the third. Columns without a comparable baseline read n/a; without SSE data only the request group has values.
-- `measurement_source=auto` uses SSE when available; `engine-api` skips SSE and uses K6 request timing, and is forced for other clients.
 - On successful `master` push runs, caches timing aggregates (AVG/MEDIAN/P90-P99/MIN/MAX). On PR runs, posts a comparison comment.
 - The `single-summary` job aggregates across runs and payload sets into `GITHUB_STEP_SUMMARY` (per-run table + mean/best/worst when `run_count > 1`).
 - The `dottrace` input selects a profiling mode — `false` (default), `sampling`, `tracing`, or `timeline` (`true` is a legacy alias for `sampling`) — and passes `--dottrace --dottrace-mode <mode>` to expb. Pick by question: `sampling` for "where does time go" (low overhead, the default choice), `tracing` for exact **call counts** (~4x overhead, so read its counts and distrust its times), `timeline` for waits/locks/GC over time. dotTrace snapshots (`.dtp` + chunk files; `.dtt` for timeline) are zipped and uploaded as artifacts.
@@ -241,11 +239,22 @@ This repository contains a dedicated workflow for reproducible payload benchmark
 
 `run-rpc-benchmarks` measures state-reading JSON-RPC (`eth_call`, `eth_getBalance`, `trace_*`,
 `debug_*`) against a parked DB snapshot on the same two benchmark runners as expb — pick the box with
-`arch`, and always pass `docker_image` explicitly so the runner pulls a prebuilt tag rather than
-building one. For an A/B use `benchmark_tool=jsonbench-sweep` with `tool_config.clients` listing one
-`nethermind@<image>` per arm (the first is the response-parity baseline, compared byte-for-byte), then
-dispatch the same config a second time with the arms swapped, because position artifacts on this rig
-reach ~10% and have pointed in opposite directions on different workloads.
+`arch`, and pass `docker_image` explicitly so the runner pulls a prebuilt tag rather than building one.
+The default preset (`benchmark_tool=corpus-ab`) compares `docker_image` against the **cached master baseline**:
+after every master push that changes `src/Nethermind/**`, `Publish Docker image` completes and a `workflow_run`
+trigger records `nethermind:master-<sha7>` alone on the corpus (`corpus-baseline` preset) — its aggregates go to the
+GitHub Actions cache (`rpc-corpus-baseline-<arch>-<corpus>-<cell>-<run id>`, newest wins), its parity responses stay
+on the runner under `<expb data dir>/rpc-bench/baselines/`. A PR run therefore executes only the PR image and the
+comment names the master image, date and run the baseline came from; with no cache yet it runs `nethermind:master`
+itself. `<cell>` is a hash of every knob that shapes the cell (request count, warm-up, seed, replay passes, rps,
+`node_env_vars`, cpu cap/cpuset/memory, …), so changing any of them misses the cache on purpose and the run measures
+master in-job — never compare a cached baseline across cell shapes. Only **amd64** baselines refresh automatically
+(the `workflow_run` path takes the default `arch`), so an `arch=arm64` corpus-ab always takes that two-arm fallback at
+~2x the runtime unless you record an arm64 baseline by hand (`-f benchmark_tool=corpus-baseline -f arch=arm64`).
+Cached aggregates and on-runner parity responses are separate state and can come from different master vintages.
+`baseline_image=<image>` forces a real two-arm A/B in one job; `rounds=2` (A B B A) adds an in-run A/A control at
+twice the cost — the frequency cap and seeded requests make single rounds land within ~1–1.5%, so 1 is the default.
+More than two arms: `tool_config.clients` (`nethermind@<image>` per arm) overrides the derived list.
 
 ### What the runners actually hold
 
@@ -254,7 +263,10 @@ Both boxes carry **one** private `eth_call` corpus, `eth-call-corpus-20260805T10
 sweep discovers it by glob and prints `Corpus scenarios: …` / `corpus OK: 497 records` — read those lines
 rather than assuming a corpus set. Pin one with `corpus_glob` when more are added.
 
-The canonical cell is **100 rps for 120 s after a discarded 60 s warm-up at 400 rps**. Rates are
+The canonical cell is **20,000 requests at 100 rps per arm after a discarded 60 s warm-up at 400 rps**, plus a
+40-pass closed-loop per-record replay (`timings_passes: 40`); the request sequence is seeded so every arm replays
+identical requests, the CPU frequency is capped for the job, and the PR image is compared against the cached master
+baseline (see `scripts/rpc-bench/README.md`, "Triggering" and "Fixed corpus A/B"). Rates are
 the thing to get right:
 
 | rate | usable? |
@@ -277,8 +289,8 @@ corpus (`corpus-v2`, ~1.1 GB) rather than these JSONL corpora, and with a seeded
 its own stale timings — use the json-bench per-category config for an A/B instead.
 
 ```bash
+# default preset corpus-ab: docker_image (the PR build) vs the cached master baseline on the private corpus,
+# 20k requests at 100 rps, 40-pass replay; every knob is a plain input, JSON is only for overrides
 gh workflow run run-rpc-benchmarks.yml --ref <branch> \
-  -f arch=amd64 -f benchmark_tool=jsonbench-sweep \
-  -f docker_image=nethermindeth/nethermind:master-<sha> \
-  -f tool_config='{"clients":"nethermind@nethermindeth/nethermind:master-<sha> nethermind@nethermindeth/nethermind:<pr-tag>","rps_list":"100","duration":"120s"}'
+  -f arch=amd64 -f docker_image=nethermindeth/nethermind:<pr-tag> -f baseline_image=nethermindeth/nethermind:master-<sha>
 ```
