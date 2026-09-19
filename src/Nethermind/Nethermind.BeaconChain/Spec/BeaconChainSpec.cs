@@ -20,11 +20,10 @@ public readonly record struct BlobScheduleEntry(ulong Epoch, ulong MaxBlobsPerBl
 /// concrete state for (<see cref="Nethermind.BeaconChain.Types.BeaconStateElectra"/>,
 /// <see cref="Nethermind.BeaconChain.Types.BeaconStateFulu"/>,
 /// <see cref="Nethermind.BeaconChain.Types.BeaconStateGloas"/>), matching how this codebase never
-/// modeled a Phase0/Altair/Bellatrix/Capella/Deneb state type either. Adding a member here without also
-/// extending every <c>switch</c> over this enum in <c>StateTransition/ForkedStateTransition.cs</c> and
-/// <c>StateTransition/GloasForkTransition.cs</c> is refused at compile time by those switches' exhaustive
-/// (no discard arm) pattern matches, per <c>TreatWarningsAsErrors</c> (CS8509) — the same "unhandled fork
-/// is a build failure, not a silent Fulu fallback" contract those files document.
+/// modeled a Phase0/Altair/Bellatrix/Capella/Deneb state type either. Adding a member here means
+/// extending the matches in <c>StateTransition/ForkedStateTransition.cs</c> and
+/// <c>StateTransition/GloasForkTransition.cs</c> by hand: they throw on an unrecognised fork rather
+/// than falling back to Fulu, but they do not fail the build, so the compiler will not remind you.
 /// </summary>
 public enum BeaconFork
 {
@@ -85,6 +84,13 @@ public class BeaconChainSpec
 
     public ulong GetSlotAtTime(ulong unixTime) => unixTime < GenesisTime ? 0 : (unixTime - GenesisTime) / SecondsPerSlot;
 
+    /// <summary>The fork version live at <paramref name="epoch"/>, from the <see cref="Forks"/> schedule.</summary>
+    /// <remarks>
+    /// This and <see cref="ForkAtEpoch"/> read different fields, so a spec whose scalar fork epochs
+    /// disagree with its <see cref="Forks"/> entries would compute a digest for one fork while
+    /// processing state as another, and silently lose every peer at the boundary. The shipped specs
+    /// are held consistent by a test rather than by construction.
+    /// </remarks>
     public byte[] VersionForEpoch(ulong epoch) => Forks.Last(f => f.Epoch <= epoch).Version;
 
     /// <summary>
