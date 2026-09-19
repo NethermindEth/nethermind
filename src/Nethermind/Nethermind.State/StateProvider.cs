@@ -899,6 +899,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     /// <summary>Layers a transaction prefix over cached block-start account changes.</summary>
     internal void ApplyAccountOverlay(IStateReadOverlay overlay)
     {
+        InvalidateFrontCache();
+        _nullAccountReads.ClearAndTrim();
         if (_blockChanges.Count == 0) return;
 
         foreach (AddressAsKey key in _blockChanges.Keys)

@@ -23,7 +23,7 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
 
     /// <summary>The cache lock covers only the slot bookkeeping; the fold, which reads the column, runs outside it
     /// on an overlay nobody else can see mid-fold, so a cold block being folded never holds up a trace of another.</summary>
-    public bool TryRent(ulong block, in ValueHash256 hash, ushort beforeTransaction, out Lease lease)
+    public bool TryRent(ulong block, in ValueHash256 hash, ushort beforeTransaction, out Lease lease, long version = 0)
     {
         MidBlockOverlay overlay;
         lock (_lock)
@@ -31,7 +31,7 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
             MidBlockOverlay? cached = _overlays.Get(block);
             // The hash, not the height: the rows of a height can be replaced by a sibling's between two rents, and a
             // prefix folded from the one it replaced is not a prefix of this block at all.
-            bool shareable = cached is not null && cached.Hash == hash && !cached.Extending
+            bool shareable = cached is not null && cached.Hash == hash && cached.Version == version && !cached.Extending
                 && cached.Folded <= beforeTransaction && (cached.Folded == beforeTransaction || cached.Pins == 0);
             if (shareable)
             {
@@ -41,6 +41,7 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
             {
                 overlay = new MidBlockOverlay();
                 overlay.Reset(block, hash);
+                overlay.Version = version;
                 _overlays.Set(block, overlay);
             }
 

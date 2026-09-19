@@ -28,6 +28,7 @@ internal sealed class MidBlockOverlay
     internal int Pins { get; set; }
 
     internal bool Extending { get; set; }
+    internal long Version { get; set; }
 
     internal Dictionary<AddressAsKey, AccountOverlay>.Enumerator Accounts => _accounts.GetEnumerator();
 

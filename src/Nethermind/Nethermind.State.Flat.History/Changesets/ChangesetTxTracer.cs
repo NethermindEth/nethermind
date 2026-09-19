@@ -15,6 +15,10 @@ internal sealed class ChangesetTxTracer(ChangesetCollector collector) : TxTracer
 
     public override bool IsTracingStorage => true;
 
+    public override void ReportStorageClear(Address address) => collector.StorageCleared(address);
+
+    public override void ReportStorageRestore(in StorageCell storageCell, byte[] value) => collector.Storage(storageCell, value);
+
     public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
         if (after is { } value) collector.Balance(address, value);
@@ -31,9 +35,7 @@ internal sealed class ChangesetTxTracer(ChangesetCollector collector) : TxTracer
     /// this transaction, or created over an account that could only have held storage the create wipes. Either way
     /// its slots read as zero from here on, which no write record can say. Setting or revoking a delegation leaves
     /// storage alone, and a revocation is told apart from a destroy-and-recreate that deploys empty code by what was
-    /// there before: a delegation designator, or real code. One wipe stays invisible: a create over an account that
-    /// held storage but no code and no nonce is not reported at all; only a pre-Spurious-Dragon leftover can be such
-    /// an account.</summary>
+    /// there before: a delegation designator, or real code.</summary>
     public override void ReportCodeChange(Address address, byte[]? before, byte[]? after)
     {
         if (after is null)

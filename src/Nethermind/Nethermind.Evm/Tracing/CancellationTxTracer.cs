@@ -178,6 +178,18 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
+    public void ReportStorageClear(Address address)
+    {
+        token.ThrowIfCancellationRequested();
+        if (innerTracer.IsTracingStorage) innerTracer.ReportStorageClear(address);
+    }
+
+    public void ReportStorageRestore(in StorageCell storageCell, byte[] value)
+    {
+        token.ThrowIfCancellationRequested();
+        if (innerTracer.IsTracingStorage) innerTracer.ReportStorageRestore(storageCell, value);
+    }
+
     public void ReportStorageRead(in StorageCell storageCell)
     {
         token.ThrowIfCancellationRequested();

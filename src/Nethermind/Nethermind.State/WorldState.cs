@@ -159,7 +159,11 @@ namespace Nethermind.State
             _persistentStorageProvider.Reset(resetBlockChanges);
             _transientStorageProvider.Reset(resetBlockChanges);
         }
-        public void ApplyAccountOverlay(IStateReadOverlay overlay) => _stateProvider.ApplyAccountOverlay(overlay);
+        public bool TryApplyAccountOverlay(IStateReadOverlay overlay)
+        {
+            _stateProvider.ApplyAccountOverlay(overlay);
+            return true;
+        }
 
         public void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default)
         {

@@ -92,7 +92,7 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public void WarmUp(AccessList? accessList, CancellationToken cancellationToken = default)
         => State.WarmUp(accessList, cancellationToken);
 
-    public void ApplyAccountOverlay(IStateReadOverlay overlay) => State.ApplyAccountOverlay(overlay);
+    public virtual bool TryApplyAccountOverlay(IStateReadOverlay overlay) => State.TryApplyAccountOverlay(overlay);
 
     public void WarmUp(Address address)
         => State.WarmUp(address);

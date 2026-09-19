@@ -48,6 +48,40 @@ public class TransactionChangesetBuilderTests
     }
 
     [Test]
+    public void TryBuildNext_WhenWatermarkIsPastSupportedFork_IndexesSupportedHistory([Values] bool alreadyCovered)
+    {
+        Capture(upTo: 20);
+        _config.HistoryTransactionIndexRetrofitFromBlock = 17;
+        _executor.LastSupportedBlock = 18;
+        TransactionChangesetIndex index = Index();
+        if (alreadyCovered) index.TryClaim(18, 18);
+        using TransactionChangesetBuilder builder = Builder(index);
+
+        while (builder.TryBuildNext()) { }
+
+        Assert.That(_executor.Executed, Is.EqualTo(alreadyCovered ? new ulong[] { 17 } : new ulong[] { 18, 17 }),
+            "unsupported tip blocks must not prevent bootstrap or the single-worker backward walk");
+    }
+
+    [Test]
+    public void TryClaimChunk_WhenFloorAdvances_TrimsOrRetiresRetry([Values(200UL, 299UL)] ulong floor)
+    {
+        Capture(upTo: 300);
+        _config.HistoryTransactionIndexRetrofitFromBlock = 1;
+        _config.HistoryTransactionIndexWorkers = 2;
+        using TransactionChangesetBuilder builder = Builder();
+        builder.TryBuildNext();
+        Assert.That(builder.TryClaimChunk(out TransactionChangesetBuilder.Chunk chunk), Is.True);
+        builder.Requeue(chunk with { Attempts = TransactionChangesetBuilder.WarnAfterAttempts });
+        _availability.PublishGlobalFloor(floor);
+
+        bool claimed = builder.TryClaimChunk(out TransactionChangesetBuilder.Chunk retried);
+
+        Assert.That(claimed, Is.EqualTo(floor < chunk.Top), "expired work must never be retried");
+        if (claimed) Assert.That((retried.Bottom, retried.Top), Is.EqualTo((floor + 1, chunk.Top)));
+    }
+
+    [Test]
     public void TheFirstBlockBuilt_IsTheWatermark()
     {
         Capture(upTo: 20);
@@ -299,6 +333,8 @@ public class TransactionChangesetBuilderTests
         using TransactionChangesetBuilder builder = Builder();
         builder.TryBuildNext();
         _executor.Executed.Clear();
+        _executor.RunsOpened = 0;
+        _executor.RunsDisposed = 0;
 
         builder.TryClaimChunk(out TransactionChangesetBuilder.Chunk chunk);
         builder.BuildChunk(chunk, _executor);
@@ -308,6 +344,8 @@ public class TransactionChangesetBuilderTests
             Assert.That(_executor.Executed[0], Is.EqualTo(172UL), "a run starts at the bottom of its chunk and carries the state upward");
             Assert.That(_executor.Executed[^1], Is.EqualTo(299UL));
             Assert.That(_executor.Executed, Is.Ordered.Ascending);
+            Assert.That(_executor.RunsOpened, Is.EqualTo(1));
+            Assert.That(_executor.RunsDisposed, Is.EqualTo(1));
         }
     }
 
@@ -341,7 +379,7 @@ public class TransactionChangesetBuilderTests
 
         TimeSpan rest = builder.RestFor(TimeSpan.FromSeconds(10), built);
 
-        Assert.That(rest, Is.EqualTo(TimeSpan.FromSeconds(30) + (built ? TimeSpan.Zero : TransactionChangesetBuilder.IdleDelay)),
+        Assert.That(rest, Is.EqualTo(TimeSpan.FromSeconds(30) + (built ? TimeSpan.Zero : TimeSpan.FromSeconds(2))),
             "a chunk that fails after most of its work must still rest off that work, or the duty cycle is silently 100%");
     }
 
@@ -351,7 +389,7 @@ public class TransactionChangesetBuilderTests
         _config.HistoryTransactionIndexDutyCyclePercent = 100;
         using TransactionChangesetBuilder builder = Builder();
 
-        Assert.That(builder.RestFor(TimeSpan.Zero, built: false), Is.EqualTo(TransactionChangesetBuilder.IdleDelay));
+        Assert.That(builder.RestFor(TimeSpan.Zero, built: false), Is.EqualTo(TimeSpan.FromSeconds(2)));
     }
 
     [Test]
@@ -495,10 +533,20 @@ public class TransactionChangesetBuilderTests
         public bool Throw { get; set; }
 
         public Action<IBlockTracer>? Writes { get; set; }
+        public ulong LastSupportedBlock { get; set; } = ulong.MaxValue;
+        public int RunsOpened { get; set; }
+        public int RunsDisposed { get; set; }
+
+        public ulong? GetLastSupportedBlock(ulong lowerBound, ulong upperBound) => Math.Min(LastSupportedBlock, upperBound) is ulong supported && supported >= lowerBound ? supported : null;
 
         public IHistoryBlockExecutor Create() => this;
 
-        public IHistoryBlockRun? BeginRun(ulong firstBlock) => Fail ? null : new Run(this, firstBlock);
+        public IHistoryBlockRun? BeginRun(ulong firstBlock)
+        {
+            if (Fail) return null;
+            RunsOpened++;
+            return new Run(this, firstBlock);
+        }
 
         public bool TryExecute(ulong block, IBlockTracer tracer, CancellationToken cancellationToken)
         {
@@ -530,9 +578,7 @@ public class TransactionChangesetBuilderTests
 
             public bool TryExecuteNext(IBlockTracer tracer, CancellationToken cancellationToken) => executor.TryExecute(_next++, tracer, cancellationToken);
 
-            public void Dispose()
-            {
-            }
+            public void Dispose() => executor.RunsDisposed++;
         }
     }
 }

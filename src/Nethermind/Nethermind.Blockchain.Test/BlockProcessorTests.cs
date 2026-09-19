@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
+using Nethermind.Init.Modules;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
@@ -54,7 +55,6 @@ using Nethermind.Evm;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
-using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.Db;
 using FlatHistoryColumns = Nethermind.State.Flat.FlatHistoryColumns;
@@ -163,20 +163,46 @@ public class BlockProcessorTests
     {
         IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Prague.Instance;
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
-            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false }));
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false })
+            .AddModule(new FlatHistoryModule()));
         Block block = await AddThreeTransferBlock(chain);
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindBlock((ulong)block.Number, BlockTreeLookupOptions.RequireCanonical).Returns(block);
-        BlockHeader parent = chain.BlockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.None)!;
-        blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.None).Returns(parent);
         using StampedExecutionArtifacts artifacts = new(block);
-        ProcessingHistoryBlockExecutorFactory factory = new(blockTree, chain.SpecProvider,
-            chain.Container.Resolve<IOverridableEnvFactory>(), chain.Container, chain.Container.Resolve<IBlockValidationModule[]>());
+        IHistoryBlockExecutorFactory factory = chain.Container.Resolve<IHistoryBlockExecutorFactory>();
         using IHistoryBlockExecutor executor = factory.Create();
 
         Assert.That(executor.TryExecute((ulong)block.Number, NullBlockTracer.Instance, CancellationToken.None), Is.EqualTo(!amsterdam),
             "BAL-enabled blocks cannot use prefix seeds and must not be indexed");
         artifacts.AssertUntouched(block);
+    }
+
+    [Test]
+    public async Task HistoryBlockExecutor_ConsecutiveRun_MatchesIndependentBlockCapture()
+    {
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance, configure: builder => builder.AddModule(new FlatHistoryModule()));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block first = await AddThreeTransferBlock(chain);
+        Block second = await AddThreeTransferBlock(chain, firstNonce: 3);
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> expectedDb = new();
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> actualDb = new();
+        FlatDbConfig config = new() { HistoryTransactionIndexEnabled = true };
+        TransactionChangesetIndex expected = new(expectedDb, config);
+        TransactionChangesetIndex actual = new(actualDb, config);
+        IndexThroughTheCapture(chain, expected, first, parent, Prague.Instance);
+        IndexThroughTheCapture(chain, expected, second, first.Header, Prague.Instance);
+
+        using IHistoryBlockExecutor executor = chain.Container.Resolve<IHistoryBlockExecutorFactory>().Create();
+        using IHistoryBlockRun? run = executor.BeginRun((ulong)first.Number);
+        Assert.That(run, Is.Not.Null);
+        foreach (Block block in new[] { first, second })
+        {
+            using TransactionChangesetIndex.BlockCapture capture = actual.StartBlock((ulong)block.Number);
+            Assert.That(run!.TryExecuteNext(capture.Tracer, CancellationToken.None), Is.True);
+            Assert.That(capture.Commit() && actual.TryClaim((ulong)block.Number, (ulong)block.Number), Is.True);
+        }
+
+        Assert.That(actualDb.GetColumnDb(FlatHistoryColumns.TransactionChangesets).GetAll(ordered: true),
+            Is.EqualTo(expectedDb.GetColumnDb(FlatHistoryColumns.TransactionChangesets).GetAll(ordered: true)).Using<KeyValuePair<byte[], byte[]>>(
+                (left, right) => left.Key.AsSpan().SequenceEqual(right.Key) && left.Value.AsSpan().SequenceEqual(right.Value)));
     }
 
     private static Task<BasicTestBlockchain> CreatePrefixReplayChain(IReleaseSpec spec, IPrefixStateSeedSource? seeds = null, Action<ContainerBuilder>? configure = null) =>
@@ -189,12 +215,12 @@ public class BlockProcessorTests
             configure?.Invoke(builder);
         });
 
-    private static async Task<Block> AddThreeTransferBlock(BasicTestBlockchain chain, Address? to = null, int firstNonce = 0)
+    private static async Task<Block> AddThreeTransferBlock(BasicTestBlockchain chain, Address? to = null, ulong firstNonce = 0)
     {
         Transaction[] transactions = new Transaction[3];
         for (int i = 0; i < transactions.Length; i++)
         {
-            transactions[i] = Build.A.Transaction.WithTo(to ?? TestItem.AddressC).WithNonce((ulong)(firstNonce + i))
+            transactions[i] = Build.A.Transaction.WithTo(to ?? TestItem.AddressC).WithNonce(firstNonce + (ulong)i)
                 .WithValue((UInt256)(i + 1)).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         }
         Block block = await chain.AddBlock(transactions);
@@ -217,9 +243,11 @@ public class BlockProcessorTests
         Assert.That(boundary.IsComplete, Is.False, "a new block must reset the boundary");
     }
 
-    [TestCase("callTracer")]
-    [TestCase("prestateTracer")]
-    public async Task TransactionTraceBoundary_WhenThePrefixIsSeeded_ExecutesOnlyTheTargetWithTheSameTrace(string tracerName)
+    [TestCase("callTracer", true)]
+    [TestCase("callTracer", false)]
+    [TestCase("prestateTracer", true)]
+    [TestCase("prestateTracer", false)]
+    public async Task TransactionTraceBoundary_WhenThePrefixIsSeeded_ExecutesOnlyTheTargetWithTheSameTrace(string tracerName, bool supportsOverlay)
     {
         IReleaseSpec spec = Prague.Instance;
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
@@ -240,13 +268,51 @@ public class BlockProcessorTests
         }
 
         string expected = ReplayThroughTraceEnvironment(chain, parent, block, target, traceOptions, seeds: null, out int replayed);
-        string actual = ReplayThroughTraceEnvironment(chain, parent, block, target, traceOptions, seeds, out int seeded);
+        string actual = ReplayThroughTraceEnvironment(chain, parent, block, target, traceOptions, seeds, out int seeded, supportsOverlay);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(replayed, Is.EqualTo(3), "the unbounded replay is the oracle");
-            Assert.That(seeded, Is.EqualTo(1), "with the prefix seeded, only the target executes");
+            Assert.That(seeded, Is.EqualTo(supportsOverlay ? 1 : 3), "a world state refusing overlays must replay the prefix");
             Assert.That(actual, Is.EqualTo(expected), "a trace read through the prefix overlay must match a trace over a replayed prefix, prestate included");
+        }
+    }
+
+    [Test]
+    public async Task ChangesetCapture_WhenCreateReturnsEmptyCode_PreservesCommittedStorageClear([Values] bool revert)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        Address created = ContractAddress.From(TestItem.PrivateKeyB.Address, 0);
+        StorageCell cell = new(created, UInt256.One);
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, configure: builder => builder.WithGenesisPostProcessor((_, state) =>
+        {
+            state.CreateAccount(created, 1);
+            state.Set(cell, 17);
+        }));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Transaction creation = Build.A.Transaction.WithCode(revert ? [0x60, 0x00, 0x60, 0x00, 0xfd] : [0x00])
+            .WithGasLimit(200_000).WithNonce(0).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = await chain.AddBlock(creation);
+        IndexThroughTheCapture(chain, index, block, parent, spec);
+        UInt256 executed;
+        using (chain.MainWorldState.BeginScope(block.Header)) chain.MainWorldState.Get(cell, out executed);
+        StateReadOverlaySlot slot = new();
+        try
+        {
+            Assert.That(new ChangesetPrefixStateSeedSource(index).TrySeed(block, 1, slot), Is.True);
+            using IDisposable scope = chain.MainWorldState.BeginScope(parent);
+            if (!slot.Current!.TryGetStorage(created, UInt256.One, out UInt256 overlaid)) chain.MainWorldState.Get(cell, out overlaid);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(executed, Is.EqualTo((UInt256)(revert ? 17 : 0)), "execution is the independent storage-clear oracle");
+                Assert.That(overlaid, Is.EqualTo(executed), "a seed must reflect committed clears and exclude reverted clears");
+            }
+        }
+        finally
+        {
+            slot.Disarm();
         }
     }
 
@@ -809,16 +875,20 @@ public class BlockProcessorTests
 
     /// <summary>Runs the block the way the debug RPC does: its own read-only processing environment, where the prefix
     /// overlay can be armed on the read path.</summary>
-    private static string ReplayThroughTraceEnvironment(BasicTestBlockchain chain, BlockHeader parent, Block block, Hash256 target, GethTraceOptions traceOptions, IPrefixStateSeedSource? seeds, out int executed)
+    private static string ReplayThroughTraceEnvironment(BasicTestBlockchain chain, BlockHeader parent, Block block, Hash256 target, GethTraceOptions traceOptions, IPrefixStateSeedSource? seeds, out int executed, bool supportsOverlay = true)
     {
         IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
         IOverridableEnv env = chain.Container.Resolve<IOverridableEnvFactory>().Create();
-        using ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder => builder
+        using ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder =>
+        {
+            builder
             .AddModule(validation)
             .AddModule(new TransactionTraceModule(validation))
             .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
             .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
-            .AddModule(env));
+            .AddModule(env);
+            if (!supportsOverlay) builder.AddDecorator<IWorldState, OverlayRefusingState>();
+        });
         BlockchainProcessorFacade processor = scope.Resolve<BlockchainProcessorFacade>();
         IWorldState state = scope.Resolve<IWorldState>();
         using IDisposable pinned = env.BuildAndOverride(parent);
@@ -828,6 +898,11 @@ public class BlockProcessorTests
         executed = recording.Started;
         using GethLikeTxTraceCollection result = new(tracer.BuildResult());
         return chain.JsonSerializer.Serialize(result);
+    }
+
+    private sealed class OverlayRefusingState(IWorldState state) : WorldStateDecorator(state)
+    {
+        public override bool TryApplyAccountOverlay(IStateReadOverlay overlay) => false;
     }
 
     private sealed class RefusingSeedSource : IPrefixStateSeedSource

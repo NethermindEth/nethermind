@@ -19,7 +19,8 @@ public sealed class TransactionChangesetIndex
     private readonly TransactionChangesetStore _store;
     private readonly MidBlockOverlayCache _overlays;
     private readonly ConsecutiveBlockOverlays _consecutive = new();
-    private readonly Lock[] _blockLocks = [.. Enumerable.Range(0, 64).Select(static _ => new Lock())];
+    private readonly Lock[] _blockLocks = new Lock[64];
+    private readonly long[] _blockVersions = new long[64];
 
     private Lock BlockLock(ulong block) => _blockLocks[block % (ulong)_blockLocks.Length];
 
@@ -31,16 +32,21 @@ public sealed class TransactionChangesetIndex
         ArgumentNullException.ThrowIfNull(config);
 
         _specProvider = specProvider;
+        for (int i = 0; i < _blockLocks.Length; i++) _blockLocks[i] = new Lock();
+
         _columns = columns;
         _store = new TransactionChangesetStore(columns.GetColumnDb(FlatHistoryColumns.TransactionChangesets));
         _overlays = new MidBlockOverlayCache(_store);
         Enabled = config.HistoryTransactionIndexEnabled;
     }
 
+    /// <summary>Whether capture and indexed reads are enabled by configuration.</summary>
     public bool Enabled { get; }
 
+    /// <summary>Whether the enabled index claims complete rows at this height; readers also validate block identity.</summary>
     public bool Covers(ulong block) => Enabled && _store.Covers(block);
 
+    /// <summary>Returns the inclusive contiguous stored range. Outputs are ignored when false.</summary>
     public bool TryGetCoverage(out ulong fromBlock, out ulong toBlock) => _store.TryGetCoverage(out fromBlock, out toBlock);
 
     /// <summary>Publishes the covered range, so that what the index can answer is visible from outside the process:
@@ -58,6 +64,7 @@ public sealed class TransactionChangesetIndex
         Flat.Metrics.TransactionChangesetIndexTo = (long)to;
     }
 
+    /// <summary>Creates a caller-owned capture. Dispose after committing, or to discard an incomplete capture.</summary>
     public BlockCapture StartBlock(ulong block) => new(this, block);
 
     /// <summary>Writes a whole block's changesets, already collected, and claims it when it touches coverage.</summary>
@@ -83,7 +90,7 @@ public sealed class TransactionChangesetIndex
         }
         finally
         {
-            lock (BlockLock(number)) batch.Dispose();
+            CommitBatch(number, batch);
         }
 
         return _store.TryExtendCoverage(number, number);
@@ -104,13 +111,37 @@ public sealed class TransactionChangesetIndex
     /// before the one asked for; anything else is answered by the replay the node did before the index existed.</summary>
     internal bool TryRentOverlay(ulong block, Hash256 blockHash, ushort beforeTransaction, out MidBlockOverlayCache.Lease lease)
     {
+        long version;
+        ValueHash256 indexed;
+        lease = default;
         lock (BlockLock(block))
         {
-            lease = default;
-            return Covers(block)
-                && _store.TryGetBlockHash(block, out ValueHash256 indexed)
-                && indexed == blockHash
-                && _overlays.TryRent(block, in indexed, beforeTransaction, out lease);
+            if (!Covers(block) || !_store.TryGetBlockHash(block, out indexed) || indexed != blockHash) return false;
+            version = _blockVersions[block % (ulong)_blockVersions.Length];
+        }
+
+        if (!_overlays.TryRent(block, in indexed, beforeTransaction, out lease, version)) return false;
+        lock (BlockLock(block))
+        {
+            if (version == _blockVersions[block % (ulong)_blockVersions.Length] && Covers(block)) return true;
+        }
+        lease.Dispose();
+        lease = default;
+        return false;
+    }
+
+    private void CommitBatch(ulong block, IColumnsWriteBatch<FlatHistoryColumns> batch)
+    {
+        lock (BlockLock(block))
+        {
+            try
+            {
+                batch.Dispose();
+            }
+            finally
+            {
+                _blockVersions[block % (ulong)_blockVersions.Length]++;
+            }
         }
     }
 
@@ -122,10 +153,15 @@ public sealed class TransactionChangesetIndex
         covered = null;
         ulong number = (ulong)block.Number;
         if (!Covers(number) || block.Hash is null || block.ParentHash is null) return false;
-        BlockChangesets? rows;
+        long version;
         lock (BlockLock(number))
         {
-            if (!BlockChangesets.TryRead(_store, number, block.Hash, block.Transactions.Length, out rows)) return false;
+            version = _blockVersions[number % (ulong)_blockVersions.Length];
+        }
+        if (!BlockChangesets.TryRead(_store, number, block.Hash, block.Transactions.Length, out BlockChangesets? rows)) return false;
+        lock (BlockLock(number))
+        {
+            if (version != _blockVersions[number % (ulong)_blockVersions.Length] || !Covers(number)) return false;
         }
 
         HashSet<AddressAsKey> excluded = [];
@@ -158,6 +194,7 @@ public sealed class TransactionChangesetIndex
             _tracer = new ChangesetBlockTracer(index._store, _batch.GetColumnBatch(FlatHistoryColumns.TransactionChangesets));
         }
 
+        /// <summary>Records one block into this capture; valid until disposal.</summary>
         public IBlockTracer Tracer => _tracer;
 
         /// <summary>Publishes a complete capture; otherwise discards the batch so an existing block stays intact.</summary>
@@ -167,17 +204,18 @@ public sealed class TransactionChangesetIndex
 
             _written = true;
             if (!_tracer.Complete) _batch.Clear();
-            lock (_index.BlockLock(_block)) _batch.Dispose();
+            _index.CommitBatch(_block, _batch);
             return _tracer.Complete;
         }
 
+        /// <summary>Discards uncommitted rows and releases the tracer. Committed rows remain durable.</summary>
         public void Dispose()
         {
             _tracer.Dispose();
             if (!_written)
             {
                 _batch.Clear();
-                lock (_index.BlockLock(_block)) _batch.Dispose();
+                _index.CommitBatch(_block, _batch);
             }
         }
     }
