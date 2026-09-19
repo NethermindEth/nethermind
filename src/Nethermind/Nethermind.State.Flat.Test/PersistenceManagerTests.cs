@@ -1252,73 +1252,6 @@ public class PersistenceManagerTests
     }
 
     [Test]
-    public async Task AddToPersistence_WhenTheLastCommittedStateIsOffChain_PersistsTheChainThatReachesThePersistedState()
-    {
-        // A backstop shallow enough for the fixture's chain to reach it; the seed it picks is what this covers.
-        FlatDbConfig config = new()
-        {
-            CompactSize = _config.CompactSize,
-            CompactionOffset = 0,
-            MinReorgDepth = 8,
-            MaxInMemoryBaseSnapshotCount = _config.MaxInMemoryBaseSnapshotCount,
-            MaxReorgDepth = 32,
-            LongFinalityMaxReorgDepth = 32,
-            EnableLongFinality = true
-        };
-        using PersistenceManager manager = new(
-            config,
-            _tier.Resolve<ICompactionSchedule>(),
-            _finalizedStateProvider,
-            _persistence,
-            _snapshotRepository,
-            NullStatePersistenceBarrier.Instance,
-            LimboLogs.Instance,
-            _persistedSnapshotCompactor,
-            _tier.Loader,
-            Substitute.For<IProcessExitSource>());
-
-        // A chain of CompactSize chunks, deep enough for the backstop to fire.
-        StateId first = CreateStateId(16);
-        StateId second = CreateStateId(32);
-        StateId third = CreateStateId(48);
-        _ = CreateSnapshot(Block0, first);
-        _ = CreateSnapshot(first, second);
-        _ = CreateSnapshot(second, third);
-        // The engine commits a state at the tip while the node is still syncing from genesis: its parent is a
-        // block this node has never had, so nothing chains from it down to the persisted state.
-        StateId offChainParent = CreateStateId(100_000, rootByte: 0xAA);
-        StateId offChain = CreateStateId(100_001, rootByte: 0xBB);
-        _ = CreateSnapshot(offChainParent, offChain);
-        _snapshotRepository.SetLastCommittedStateId(offChain);
-        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
-
-        await manager.AddToPersistence(third);
-
-        Assert.That(manager.GetCurrentPersistedStateId(), Is.EqualTo(first),
-            "an off-chain committed state must not stop the synced chain from persisting");
-    }
-
-    // The shutdown flush drains and prunes both tiers, so a seed it cannot assemble from costs the whole
-    // in-memory tier - and the history capture that would have run over it.
-    [Test]
-    public void FlushToPersistence_WhenTheLastCommittedStateIsOffChain_PersistsTheChainThatReachesThePersistedState()
-    {
-        StateId first = CreateStateId(16);
-        StateId second = CreateStateId(32);
-        _ = CreateSnapshot(Block0, first);
-        _ = CreateSnapshot(first, second);
-        StateId offChainParent = CreateStateId(100_000, rootByte: 0xAA);
-        StateId offChain = CreateStateId(100_001, rootByte: 0xBB);
-        _ = CreateSnapshot(offChainParent, offChain);
-        _snapshotRepository.SetLastCommittedStateId(offChain);
-        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
-
-        StateId flushed = _persistenceManager.FlushToPersistence(CancellationToken.None);
-
-        Assert.That(flushed, Is.EqualTo(second), "the flush must drain the chain that reaches the persisted state");
-    }
-
-    [Test]
     public void FlushToPersistence_WhenEveryBlockHasABase_PersistsFullChunks()
     {
         StateId previous = Block0;
@@ -1330,9 +1263,7 @@ public class PersistenceManagerTests
         }
         CreateSnapshot(Block0, CreateStateId(16), compacted: true);
         CreateSnapshot(CreateStateId(16), CreateStateId(32), compacted: true);
-        StateId offChain = CreateStateId(100_001);
-        CreateSnapshot(CreateStateId(100_000), offChain);
-        _snapshotRepository.SetLastCommittedStateId(offChain);
+        _snapshotRepository.SetLastCommittedStateId(CreateStateId(32));
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
 
         StateId flushed = _persistenceManager.FlushToPersistence(CancellationToken.None);
@@ -1346,14 +1277,12 @@ public class PersistenceManagerTests
     {
         PersistBase(Block0, CreateStateId(16));
         PersistBase(CreateStateId(16), CreateStateId(32));
-        StateId offChain = CreateStateId(100_001);
-        CreateSnapshot(CreateStateId(100_000), offChain);
-        _snapshotRepository.SetLastCommittedStateId(offChain);
+        _snapshotRepository.SetLastCommittedStateId(CreateStateId(32));
         _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
 
         StateId flushed = _persistenceManager.FlushToPersistence(CancellationToken.None);
 
-        Assert.That(flushed, Is.EqualTo(CreateStateId(32)), "persisted-only candidates must remain visible to fallback");
+        Assert.That(flushed, Is.EqualTo(CreateStateId(32)), "persisted-only candidates must remain visible to the committed seed");
         _persistence.Received(2).CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
     }
 
@@ -1379,7 +1308,7 @@ public class PersistenceManagerTests
     }
 
     [Test]
-    public void FindSnapshotToPersist_WhenWideChunkIsNonCanonical_UsesNarrowChunkOnSameChain([Values] bool fallback)
+    public void FindSnapshotToPersist_WhenWideChunkIsNonCanonical_UsesNarrowChunkOnSameChain()
     {
         StateId narrow = CreateStateId(1);
         StateId head = CreateStateId(16);
@@ -1391,92 +1320,11 @@ public class PersistenceManagerTests
         _finalizedStateProvider.SetFinalizedStateRootAt(16, TestItem.KeccakA);
 
         (PersistedSnapshot? persisted, Snapshot? inMemory) =
-            fallback
-                ? _snapshotRepository.FindSnapshotToPersistWithFallback(Block0, head, (ulong)_config.CompactSize)
-                : _snapshotRepository.FindSnapshotToPersist(head, Block0, (ulong)_config.CompactSize);
+            _snapshotRepository.FindSnapshotToPersist(head, Block0, (ulong)_config.CompactSize);
         using (persisted)
         using (inMemory)
         {
             Assert.That(persisted?.To ?? inMemory?.To, Is.EqualTo(narrow), "rejecting a wide edge must not reject the entire connected seed");
-        }
-    }
-
-    [Test]
-    public void FindSnapshotToPersistWithFallback_WhenSiblingsExist_UsesCanonicalRoot(
-        [Values] bool preGenesis, [Values] bool canonicalRootKnown, [Values(1, 255)] byte canonicalRootByte)
-    {
-        StateId persistedState = preGenesis ? StateId.PreGenesis : Block0;
-        ulong candidateBlock = preGenesis ? 0UL : 1UL;
-        StateId canonical = CreateStateId(candidateBlock, canonicalRootByte);
-        StateId orphan = CreateStateId(candidateBlock, 128);
-        CreateSnapshot(persistedState, canonical);
-        CreateSnapshot(persistedState, orphan);
-        StateId offChain = CreateStateId(100_001);
-        CreateSnapshot(CreateStateId(100_000), offChain);
-        _snapshotRepository.SetLastCommittedStateId(offChain);
-        if (canonicalRootKnown)
-            _finalizedStateProvider.SetFinalizedStateRootAt(candidateBlock, new Hash256(canonical.StateRoot.Bytes));
-
-        (PersistedSnapshot? persisted, Snapshot? inMemory) =
-            _snapshotRepository.FindSnapshotToPersistWithFallback(persistedState, offChain, (ulong)_config.CompactSize);
-        using (persisted)
-        using (inMemory)
-        {
-            Assert.That(persisted?.To ?? inMemory?.To, Is.EqualTo(canonicalRootKnown ? canonical : (StateId?)null),
-                "known canonical roots must win regardless of hash order; unknown sibling roots must not be guessed");
-        }
-        Assert.That(_finalizedStateProvider.GetLookupCount(candidateBlock), Is.EqualTo(1),
-            "both sibling candidates share a single root lookup, including an unavailable root");
-        if (!canonicalRootKnown)
-        {
-            _finalizedStateProvider.SetFinalizedStateRootAt(candidateBlock, new Hash256(canonical.StateRoot.Bytes));
-            (PersistedSnapshot? retryPersisted, Snapshot? retryInMemory) =
-                _snapshotRepository.FindSnapshotToPersistWithFallback(persistedState, offChain, (ulong)_config.CompactSize);
-            using (retryPersisted)
-            using (retryInMemory)
-            {
-                Assert.That(retryPersisted?.To ?? retryInMemory?.To, Is.EqualTo(canonical),
-                    "a missing root must be retried on the next selection after finality becomes available");
-            }
-            Assert.That(_finalizedStateProvider.GetLookupCount(candidateBlock), Is.EqualTo(2));
-        }
-    }
-
-    [Test]
-    public void FindSnapshotToPersistWithFallback_WhenTargetIsPreGenesis_RequiresConnectedAncestry([Values] bool connected, [Values(0UL, 16UL)] ulong compactSize)
-    {
-        StateId genesis = CreateStateId(0);
-        StateId head = CreateStateId(1);
-        if (connected) CreateSnapshot(StateId.PreGenesis, genesis);
-        CreateSnapshot(genesis, head);
-
-        _snapshotRepository.SetLastCommittedStateId(head);
-        (PersistedSnapshot? persisted, Snapshot? inMemory) =
-            _snapshotRepository.FindSnapshotToPersistWithFallback(StateId.PreGenesis, head, compactSize);
-        using (persisted)
-        using (inMemory)
-        {
-            Assert.That(persisted?.To ?? inMemory?.To, Is.EqualTo(connected && compactSize != 0 ? genesis : (StateId?)null),
-                "the sentinel sorts below genesis but still requires a traversable edge to it");
-        }
-    }
-
-    [Test]
-    public void FindSnapshotToPersistWithFallback_WhenCommittedChainHasNoCandidate_DoesNotChooseAnOrphan([Values] bool preGenesis)
-    {
-        StateId persistedState = preGenesis ? StateId.PreGenesis : Block0;
-        StateId committed = CreateStateId(32);
-        CreateSnapshot(persistedState, committed, compacted: true);
-        CreateSnapshot(persistedState, CreateStateId(8, 128));
-        _snapshotRepository.SetLastCommittedStateId(committed);
-
-        (PersistedSnapshot? persisted, Snapshot? inMemory) =
-            _snapshotRepository.FindSnapshotToPersistWithFallback(persistedState, committed, (ulong)_config.CompactSize);
-        using (persisted)
-        using (inMemory)
-        {
-            Assert.That(persisted?.To ?? inMemory?.To, Is.Null,
-                "a connected committed chain without a compact-sized chunk must not fall through to another fork");
         }
     }
 

@@ -104,9 +104,7 @@ public class PersistenceManager(
     ///   <item>Backstop fallback (if the finalized trigger persisted nothing): if
     ///   <c>snapshotsDepth &gt; </c> the backstop depth (<c>LongFinalityMaxReorgDepth</c> when long
     ///   finality is enabled, otherwise <c>MaxReorgDepth</c>, raised to at least
-    ///   <c>MinReorgDepth + CompactSize</c>) → seed = the committed head, and where that head cannot
-    ///   serve at all (it reaches no persisted ancestor) the longest chain then the latest state, so an
-    ///   off-chain committed head cannot hold persistence still.</item>
+    ///   <c>MinReorgDepth + CompactSize</c>) -> seed = the committed head.</item>
     ///   <item>Otherwise → no candidate; Phase 1 doesn't run, fall through to Phase 2.</item>
     /// </list>
     /// Phase 2 runs only with <see cref="_enableLongFinality"/> enabled AND
@@ -158,10 +156,12 @@ public class PersistenceManager(
         // once MinReorgDepth is configured near the backstop depth, so deep state would never persist.
         // Seed from the committed head so the forced persist follows the canonical chain rather than an
         // arbitrary/longest fork (which RemoveSiblingAndDescendents would then orphan); fall back to the
-        // longest chain, then the latest state, only when the committed seed is absent or disconnected.
+        // longest chain, then the latest state, only when nothing was committed this session.
         if (snapshotsDepth > _backstopReorgDepth)
         {
-            (PersistedSnapshot? persisted, Snapshot? inMemory) = snapshotRepository.FindSnapshotToPersistWithFallback(currentPersistedState, latestSnapshot, _compactSize);
+            StateId backstopSeed = snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.GetLastSnapshotId() ?? latestSnapshot;
+            (PersistedSnapshot? persisted, Snapshot? inMemory) =
+                snapshotRepository.FindSnapshotToPersist(backstopSeed, currentPersistedState, _compactSize);
             if (persisted is not null || inMemory is not null)
             {
                 if (_logger.IsWarn) _logger.Warn(
@@ -447,8 +447,6 @@ public class PersistenceManager(
 
             (PersistedSnapshot? persisted, Snapshot? snapshotToPersist) =
                 snapshotRepository.FindSnapshotToPersist(seed.Value, currentPersistedState, _compactSize);
-            if (persisted is null && snapshotToPersist is null)
-                (persisted, snapshotToPersist) = snapshotRepository.FindSnapshotToPersistWithFallback(currentPersistedState, latestStateId.Value, _compactSize);
 
             if (persisted is not null)
             {

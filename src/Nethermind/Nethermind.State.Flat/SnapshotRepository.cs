@@ -131,19 +131,13 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     public (PersistedSnapshot? Persisted, Snapshot? InMemory) FindSnapshotToPersist(
         in StateId seed, in StateId currentPersistedState, ulong compactSize)
     {
-        FindPersistPolicy policy = new(currentPersistedState, compactSize, finality: this);
-        return FindSnapshotToPersist(seed, currentPersistedState, ref policy);
-    }
-
-    private (PersistedSnapshot? Persisted, Snapshot? InMemory) FindSnapshotToPersist(
-        in StateId seed, in StateId currentPersistedState, ref FindPersistPolicy policy)
-    {
         // currentPersistedState == PreGenesis (nothing persisted) must not early-return: its
         // ulong.MaxValue height would make any seed look "at or below" it. Height() restores the
         // signed ordering, and the seed - PreGenesis subtraction is modular-correct (seed + 1).
         if (Height(seed) <= Height(currentPersistedState)) return (null, null);
 
         int estimatedSize = (int)Math.Clamp(seed.BlockNumber - currentPersistedState.BlockNumber, 4, 4096);
+        FindPersistPolicy policy = new(currentPersistedState, compactSize, this);
         using AssembledSnapshotResult result = WalkAndAssemble(seed, estimatedSize, ref policy);
 
         // Candidate is the chain terminus (oldest); re-lease it and let the `using` drop the rest. The
@@ -159,84 +153,6 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             Snapshot inMemory = result.InMemory[0];
             inMemory.TryAcquire();
             return (null, inMemory);
-        }
-        return (null, null);
-    }
-
-    /// <inheritdoc />
-    public (PersistedSnapshot? Persisted, Snapshot? InMemory) FindSnapshotToPersistWithFallback(
-        in StateId currentPersistedState, in StateId latestSnapshot, ulong compactSize)
-    {
-        if (compactSize == 0) return (null, null);
-        HashSet<ulong>? unavailableRoots = null;
-        StateId? committed = GetLastCommittedStateId();
-        if (committed is not null)
-        {
-            (PersistedSnapshot? persisted, Snapshot? inMemory) = FindFromSeed(committed, currentPersistedState, compactSize, ref unavailableRoots);
-            if (persisted is not null || inMemory is not null) return (persisted, inMemory);
-            // A connected committed chain must not be replaced by a longer orphan merely because no chunk is ready.
-            if (CanReachState(committed.Value, currentPersistedState)) return (null, null);
-        }
-
-        StateId? longest = GetLastSnapshotId();
-        if (longest != committed)
-        {
-            (PersistedSnapshot? persisted, Snapshot? inMemory) = FindFromSeed(longest, currentPersistedState, compactSize, ref unavailableRoots);
-            if (persisted is not null || inMemory is not null) return (persisted, inMemory);
-        }
-
-        if (latestSnapshot != committed && latestSnapshot != longest)
-        {
-            (PersistedSnapshot? persisted, Snapshot? inMemory) = FindFromSeed(latestSnapshot, currentPersistedState, compactSize, ref unavailableRoots);
-            if (persisted is not null || inMemory is not null) return (persisted, inMemory);
-        }
-
-        return FindCandidateAbovePersistedState(currentPersistedState, compactSize, ref unavailableRoots);
-    }
-
-    private (PersistedSnapshot? Persisted, Snapshot? InMemory) FindFromSeed(StateId? seed, in StateId currentPersistedState, ulong compactSize, ref HashSet<ulong>? unavailableRoots)
-    {
-        if (seed is null) return (null, null);
-        FindPersistPolicy policy = new(currentPersistedState, compactSize, finality: this, unavailableRoots);
-        (PersistedSnapshot? Persisted, Snapshot? InMemory) result = FindSnapshotToPersist(seed.Value, currentPersistedState, ref policy);
-        unavailableRoots = policy.UnavailableRoots;
-        return result;
-    }
-
-    private (PersistedSnapshot? Persisted, Snapshot? InMemory) FindCandidateAbovePersistedState(in StateId currentPersistedState, ulong compactSize, ref HashSet<ulong>? unavailableRoots)
-    {
-        bool nothingPersisted = currentPersistedState == StateId.PreGenesis;
-        ulong floor = nothingPersisted ? 0 : currentPersistedState.BlockNumber + 1;
-        ulong ceiling = nothingPersisted ? compactSize - 1 : currentPersistedState.BlockNumber + compactSize;
-        using ArrayPoolList<StateId> inMemoryStates = GetStatesUpToBlock(ceiling);
-        using ArrayPoolList<StateId> persistedStates = GetPersistedStatesInRange(floor, ceiling);
-        using ArrayPoolList<StateId> ordered = new(inMemoryStates.Count + persistedStates.Count);
-        foreach (StateId state in inMemoryStates)
-            if (state.BlockNumber >= floor) ordered.Add(state);
-        foreach (StateId state in persistedStates) ordered.Add(state);
-        ordered.Sort(static (left, right) => left.CompareTo(right));
-        int count = 0;
-        for (int i = 0; i < ordered.Count; i++)
-            if (count == 0 || ordered[i] != ordered[count - 1]) ordered[count++] = ordered[i];
-        ordered.ReduceCount(count);
-        // Widest chunks first, including when a per-block base exists at every intermediate height.
-        for (int i = ordered.Count - 1; i >= 0; i--)
-        {
-            StateId candidate = ordered[i];
-            Hash256? canonicalRoot = GetFinalizedRoot(candidate.BlockNumber, ref unavailableRoots);
-            if (canonicalRoot is not null)
-            {
-                if (candidate.StateRoot != canonicalRoot) continue;
-            }
-            else if ((i > 0 && ordered[i - 1].BlockNumber == candidate.BlockNumber)
-                || (i + 1 < ordered.Count && ordered[i + 1].BlockNumber == candidate.BlockNumber))
-            {
-                // Without chain information, root ordering is not a safe tie breaker between siblings.
-                continue;
-            }
-
-            (PersistedSnapshot? persisted, Snapshot? inMemory) = FindFromSeed(candidate, currentPersistedState, compactSize, ref unavailableRoots);
-            if (persisted is not null || inMemory is not null) return (persisted, inMemory);
         }
         return (null, null);
     }
@@ -1134,11 +1050,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     // FindSnapshotToPersist navigation: walk From-edges down to currentPersistedState, winning at the first
     // edge reaching it that spans at most CompactSize. The >CompactSize large-compacted is a navigation-only
     // skip-pointer (followed above the target, never won onto it). Dedup runs only on retained edges, so a
-    // skipped edge can't shadow the real candidate edge to the same target. With finality supplied, a terminal
+    // skipped edge can't shadow the real candidate edge to the same target. A terminal
     // edge conflicting with a known finalized root is skipped so a narrower canonical edge can still win.
-    private struct FindPersistPolicy(StateId currentPersistedState, ulong compactSize, SnapshotRepository? finality = null, HashSet<ulong>? unavailableRoots = null) : IAssemblePolicy
+    private struct FindPersistPolicy(StateId currentPersistedState, ulong compactSize, SnapshotRepository finality) : IAssemblePolicy
     {
-        public HashSet<ulong>? UnavailableRoots = unavailableRoots;
+        private HashSet<ulong>? _unavailableRoots;
         // LargeCompacted (>CompactSize) leads as a navigation-only skip-pointer; the rest are candidates,
         // CompactSized (the ==CompactSize boundary unit) first.
         public ReadOnlySpan<SnapshotTier> EdgePriority =>
@@ -1150,7 +1066,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 // Any chunk spanning at most CompactSize is persistable; a wider large-compacted is skip-only.
                 // from == PreGenesis makes to - from wrap to to + 1 (the genesis-spanning span), as intended.
                 return to.BlockNumber - from.BlockNumber <= compactSize
-                    && (finality?.GetFinalizedRoot(to.BlockNumber, ref UnavailableRoots) is not { } root || to.StateRoot == root)
+                    && (finality.GetFinalizedRoot(to.BlockNumber, ref _unavailableRoots) is not { } root || to.StateRoot == root)
                     ? AssembleStep.WinAndStop : AssembleStep.Skip;
             return Height(from) > Height(currentPersistedState) ? AssembleStep.Traverse : AssembleStep.Skip;
         }
