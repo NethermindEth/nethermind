@@ -834,7 +834,7 @@ public class BlockProcessorTests
         public void Dispose() => (inner as IDisposable)?.Dispose();
     }
 
-    private static IOverridableEnv<ParallelBlockTracer.Components> BuildParallelEnvironment(
+    private static ParallelBlockTracer.OwnedEnvironment BuildParallelEnvironment(
         BasicTestBlockchain chain, bool? hideRewardBoundary = null, bool refuseOverlay = false, bool refuseNonEmpty = false)
     {
         IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
@@ -1050,6 +1050,37 @@ public class BlockProcessorTests
         tracer.IsTracingRewards = true;
         boundary.EndTxTrace();
         Assert.That(boundary.IsComplete, Is.False);
+    }
+
+    [Test]
+    public async Task TransactionTraceBoundary_WhenRewardSeedRefused_EmitsOnlyTheReward()
+    {
+        RefusingSeedSource seeds = new();
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance, seeds,
+            builder => builder.AddSingleton<IRewardCalculatorSource>(new ZeroRewardToTheBeneficiary()));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain, parent.Beneficiary);
+        using ParallelBlockTracer.OwnedEnvironment environment = BuildParallelEnvironment(chain);
+        using Scope<ParallelBlockTracer.Components> scope = environment.BuildAndOverride(parent);
+        ParityLikeBlockTracer tracer = new(ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.Rewards);
+        TransactionTraceBoundary boundary = TransactionTraceBoundary.AfterTransactions(tracer, seeds);
+
+        scope.Component.Processor.Process(block, TraceProcessingOptions.ReadOnlyReplay, boundary, CancellationToken.None);
+
+        IReadOnlyCollection<ParityLikeTxTrace> traces = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seeds.AskedFor, Is.EqualTo(block.Transactions.Length));
+            Assert.That(boundary.HasExecuted, Is.True);
+            Assert.That(traces, Has.Count.EqualTo(1), "replayed transactions must not produce entries in the reward pass");
+        }
+        ParityLikeTxTrace reward = traces.Single();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reward.Action!.RewardType, Is.EqualTo("block"));
+            Assert.That(reward.TransactionHash, Is.Null);
+            Assert.That(reward.StateChanges, Is.Not.Null, "the reward placeholder must retain state tracing");
+        }
     }
 
     [Test]

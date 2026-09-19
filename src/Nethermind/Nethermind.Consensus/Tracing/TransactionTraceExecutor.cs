@@ -24,7 +24,9 @@ public sealed class TransactionTraceExecutor(
     StateReadOverlaySlot? readOverlay = null)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
-    /// <summary>Whether this scope accepts account overlays without requiring full BAL construction.</summary>
+    /// <summary>Probes basic overlay support without requiring full BAL construction.</summary>
+    /// <remarks>Applies an empty overlay on a fresh scope, which may invalidate account caches. This does not
+    /// guarantee that a populated overlay will be accepted; conditional refusal falls back to prefix replay.</remarks>
     public bool CanSeed => readOverlay is not null && !balManager.ForceConstructGeneratedBlockAccessList
         && state.TryApplyAccountOverlay(EmptyOverlay.Instance);
 
