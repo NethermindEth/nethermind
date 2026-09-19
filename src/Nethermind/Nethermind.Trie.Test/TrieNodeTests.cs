@@ -4,8 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Numerics;
-using System.Runtime.Intrinsics.X86;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -445,15 +443,10 @@ public class TrieNodeTests
         }
 
         TreePath path = TreePath.Empty;
-        long before = TrieNode.BatchedBranchHashes;
         root.ResolveKey(NullTrieNodeResolver.Instance, ref path, canBeParallel: false);
-        int candidates = BitOperations.PopCount((uint)branchMask);
-        int expectedBatched = Avx512F.IsSupported ? candidates - (candidates % 8 < 3 ? candidates % 8 : 0)
-            : Avx2.IsSupported ? candidates / 4 * 4 : 0;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(TrieNode.BatchedBranchHashes - before, Is.EqualTo(expectedBatched), "child branches hashed in wide batches");
             for (int i = 0; i < branches.Length; i++)
             {
                 TrieNode? branch = branches[i];

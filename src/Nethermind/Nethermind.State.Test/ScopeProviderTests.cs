@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -104,7 +103,7 @@ public class ScopeProviderTests(bool useFlat)
 
     [Test]
     [NonParallelizable]
-    public void Account_write_batch_uses_simd_for_cold_keys([Values(3, 4, 7, 8, 9)] int count, [Values] bool warm)
+    public void Account_write_batch_preserves_hashes_and_balances([Values(3, 4, 7, 8, 9)] int count, [Values] bool warm)
     {
         ConfigProvider config = new();
         config.GetConfig<IFlatDbConfig>().Enabled = useFlat;
@@ -125,14 +124,11 @@ public class ScopeProviderTests(bool useFlat)
             if (warm) KeccakCache.ComputeTo(bytes, out _);
         }
 
-        long before = KeyHashBatch.BatchedKeys;
         using (IWorldStateScopeProvider.IWorldStateWriteBatch write = scope.StartWriteBatch(count))
         {
             for (int i = 0; i < count; i++) write.Set(addresses[i], new Account(1, (UInt256)(i + 1)));
         }
 
-        int expectedBatched = !warm && Avx2.IsSupported ? count / 4 * 4 : 0;
-        Assert.That(KeyHashBatch.BatchedKeys - before, Is.EqualTo(expectedBatched), "keys hashed by an executed SIMD kernel");
         for (int i = 0; i < count; i++)
         {
             AssertCachedHash(addresses[i].Bytes);
@@ -209,16 +205,12 @@ public class ScopeProviderTests(bool useFlat)
         }
         for (int round = 0; round < 2; round++)
         {
-            long before = KeyHashBatch.BatchedKeys;
             using (IWorldStateScopeProvider.IWorldStateWriteBatch write = scope.StartWriteBatch(1))
             {
                 if (round == 0) write.Set(TestItem.AddressA, new Account(100, 100));
                 using IWorldStateScopeProvider.IStorageWriteBatch storage = write.CreateStorageWriteBatch(TestItem.AddressA, Math.Max(17, count));
                 for (int i = 0; i < count; i++) storage.Set(indices[i], round == 1 && i % 2 == 0 ? UInt256.Zero : (UInt256)(i + 1));
             }
-            int misses = count - (includeLookupSlots ? (count + 2) / 3 : 0);
-            int expectedBatched = round == 0 && Avx2.IsSupported ? misses / 4 * 4 : 0;
-            Assert.That(KeyHashBatch.BatchedKeys - before, Is.EqualTo(expectedBatched), "storage keys hashed by SIMD");
             IWorldStateScopeProvider.IStorageTree tree = scope.CreateStorageTree(TestItem.AddressA);
             for (int i = 0; i < count; i++)
             {

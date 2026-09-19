@@ -13,14 +13,6 @@ namespace Nethermind.State;
 
 internal struct KeyHashBatch
 {
-    /// <summary>Diagnostic count of keys hashed by SIMD on the current thread.</summary>
-    /// <remarks>
-    /// Only synchronous callers on the flushing thread can compare deltas. Scalar hashes are excluded;
-    /// production behavior must not depend on this counter.
-    /// </remarks>
-    [ThreadStatic]
-    internal static long BatchedKeys;
-
     private const int MaximumBatchSize = 8;
     /// <summary>The AVX2 lane width, also the minimum account-batching threshold for both state backends.</summary>
     internal const int MinimumBatchSize = 4;
@@ -104,7 +96,6 @@ internal struct KeyHashBatch
             else
                 KeccakHash.ComputePaddedBlocks4Avx2(ref inputs[0], ref hashes[0]);
 
-            BatchedKeys += batchSize;
             for (int i = 0; i < batchSize; i++)
             {
                 ValueHash256 hash = new(hashes.Slice(i * Hash256.Size, Hash256.Size));
