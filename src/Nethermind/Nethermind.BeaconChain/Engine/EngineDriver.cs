@@ -48,16 +48,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     {
         BeaconBlock message = block.Message!;
         BeaconBlockBody body = message.Body!;
-        ExecutionPayloadV3 payload;
-        try
-        {
-            payload = PayloadConverter.ToExecutionPayloadV3(body.ExecutionPayload!);
-        }
-        catch (OverflowException e)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Execution payload at slot {message.Slot} has out-of-range fields: {e.Message}");
-            return LastNewPayloadStatus = PayloadStatusV1.Invalid(null, e.Message);
-        }
+        ExecutionPayloadV3 payload = PayloadConverter.ToExecutionPayloadV3(body.ExecutionPayload!);
 
         Metrics.BeaconChainNewPayloadCalls++;
         // EIP-4788: the payload's parent_beacon_block_root is the parent root of the beacon block carrying it.
