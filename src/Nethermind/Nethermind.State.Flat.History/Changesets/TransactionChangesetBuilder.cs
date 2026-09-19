@@ -42,6 +42,7 @@ public sealed class TransactionChangesetBuilder(
     private string? _lastFailure;
     private long _lastFailureReportedAt;
     private bool _wasRetrofitting;
+    private ulong? _reportedUnsupportedBoundary;
     private long _builtSinceReport;
     private int _disposed;
 
@@ -102,7 +103,6 @@ public sealed class TransactionChangesetBuilder(
         lock (_chunks)
         {
             availability.TryGetGlobalFloor(out ulong floor);
-            if (floor == ulong.MaxValue) return false;
             ulong minimum = Math.Max(_retrofitFromBlock, floor + 1);
             ReconcileFloor(minimum);
             while (_retry.TryPop(out chunk))
@@ -163,7 +163,6 @@ public sealed class TransactionChangesetBuilder(
         {
             _stalledTops.Remove(chunk.Top);
             availability.TryGetGlobalFloor(out ulong floor);
-            if (floor == ulong.MaxValue) return;
             ReconcileFloor(floor + 1);
             if (chunk.Top <= floor) return;
             _completedByTop[chunk.Top] = Math.Max(chunk.Bottom, floor + 1);
@@ -364,7 +363,12 @@ public sealed class TransactionChangesetBuilder(
         block = 0;
         if (!index.Enabled || !availability.TryGetWatermark(out ulong watermark)) return false;
         availability.TryGetGlobalFloor(out ulong floor);
-        if (floor == ulong.MaxValue || executors.GetLastSupportedBlock(floor + 1, watermark) is not { } supported) return false;
+        if (executors.GetLastSupportedBlock(floor + 1, watermark) is not { } supported) return false;
+        if (supported < watermark && _reportedUnsupportedBoundary != supported)
+        {
+            _reportedUnsupportedBoundary = supported;
+            if (_logger.IsInfo) _logger.Info($"Transaction changeset index limited to block {supported}: later blocks require block-level access lists.");
+        }
         watermark = Math.Min(watermark, supported);
 
         if (!index.TryGetCoverage(out ulong from, out ulong to))

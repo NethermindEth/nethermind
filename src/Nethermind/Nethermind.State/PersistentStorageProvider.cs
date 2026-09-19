@@ -51,6 +51,13 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     // The low bit belongs to StorageChangeTrace.IsInitialValue; zero means never captured.
     private ulong _originalsRound = 2;
 
+    internal bool HasCachedStorage(IStateReadOverlay overlay)
+    {
+        foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
+            if ((storage.Value.EstimatedChanges != 0 || storage.Value.HasJournalledWrites) && overlay.HasStorage(storage.Key.Value)) return true;
+        return false;
+    }
+
     private void EndOriginalsRound()
     {
         _lastCapturedCell = default;
@@ -318,6 +325,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     {
         Debug.Assert(TStorageTracing.IsActive == (trace is not null));
         Debug.Assert(HasDestroyedAccounts.IsActive == (_destroyedThisRound.Count != 0));
+        bool hasStorageClears = _storageClearJournal.Count != 0;
 
         // SaveChange and backend hints must not re-enter the journal while its heads are enumerated.
         foreach (HeadChange head in _intraBlockCache.Values)
@@ -345,7 +353,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
 
             if (_originalValues.TryGetValue(change.StorageCell, out UInt256 initialValue) &&
-                initialValue == change.Value && !WasCleared(change.StorageCell.Address))
+                initialValue == change.Value && (!hasStorageClears || !WasCleared(change.StorageCell.Address)))
             {
                 // no need to update the tree if the value is the same
             }
