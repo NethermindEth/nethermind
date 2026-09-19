@@ -26,6 +26,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
     private static ReadOnlySpan<byte> DemotedThroughEpochKey => [Marker, 0x0A];
     private static ReadOnlySpan<byte> WalkVerifiedKey => [Marker, 0x0B];
     private static ReadOnlySpan<byte> CarriedEpochKey => [Marker, 0x0C];
+    private static ReadOnlySpan<byte> WalkModeKey => [Marker, 0x0D];
     private const byte WalkItemMarker = 0x05;
     private const int WalkItemKeyLength = 4;
     private const byte WalkItemProgressMarker = 0x06;
@@ -372,7 +373,10 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
 
     public bool TryGetWalkInProgress(out ulong fromInclusive, out ulong toInclusive) => TryReadRange(WalkRangeKey, out fromInclusive, out toInclusive);
 
-    public void BeginWalk(ulong fromInclusive, ulong toInclusive, int items, CancellationToken token = default)
+    public bool WalkModeMatches(bool buildCommitments) =>
+        _column.Get(WalkModeKey) is { Length: 1 } mode && mode[0] == (buildCommitments ? (byte)1 : (byte)0);
+
+    public void BeginWalk(ulong fromInclusive, ulong toInclusive, int items, CancellationToken token = default, bool buildCommitments = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _reclaimTurn.Wait(token);
@@ -380,9 +384,12 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
         {
             lock (_lock)
             {
-                if (TryReadRange(WalkRangeKey, out ulong from, out ulong to) && from == fromInclusive && to == toInclusive) return;
+                if (TryReadRange(WalkRangeKey, out ulong from, out ulong to) && from == fromInclusive && to == toInclusive
+                    && WalkModeMatches(buildCommitments)) return;
 
+                _column.Remove(WalkRangeKey);
                 ClearWalkItems(items);
+                _column.PutSpan(WalkModeKey, [buildCommitments ? (byte)1 : (byte)0]);
                 WriteRange(WalkRangeKey, fromInclusive, toInclusive);
             }
         }
@@ -491,6 +498,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
         {
             ClearWalkItems(items);
             _column.Remove(WalkRangeKey);
+            _column.Remove(WalkModeKey);
         }
     }
 

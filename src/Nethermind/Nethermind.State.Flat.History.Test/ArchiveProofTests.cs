@@ -102,6 +102,41 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void SwitchingFromVerificationToBuilding_ReplaysCompletedStorageItems([Values] bool legacyCheckpoint)
+    {
+        ArchiveProofRetrofit retrofit = CreateRetrofit(TestPolicy);
+        CommitmentMetadata metadata = retrofit.Metadata;
+        using CancellationTokenSource interrupt = new();
+        Assert.That(() => CreateVerifyOnlyVerifier(metadata).VerifyRangeParallel(
+            0, _chain.Head, workers: 1, AccountSubtreeReplayer.DefaultCheckpointBlocks,
+            onCheckpoint: null, interrupt.Token,
+            onItemDone: item => { if (item == ContractStorageItem) interrupt.Cancel(); }),
+            Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(metadata.IsWalkItemDone(ContractStorageItem), Is.True);
+        if (legacyCheckpoint)
+            _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments).Remove([0xFE, 0x0D]);
+
+        retrofit.Prepare();
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(
+            _historyColumns, new FlatDbConfig { HistoryEnabled = true });
+        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true,
+            LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit, metadata);
+        bool storageReplayed = false;
+        HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(
+            0, _chain.Head, workers: 1, AccountSubtreeReplayer.DefaultCheckpointBlocks,
+            onCheckpoint: null, CancellationToken.None,
+            onItemDone: item => { if (item == ContractStorageItem) storageReplayed = true; });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict.Verified, Is.True);
+            Assert.That(storageReplayed, Is.True, "verification-only completion does not imply storage commitments were emitted");
+            Assert.That(retrofit.PublishCoverage(0, _chain.Head), Is.True);
+        }
+        AssertProofMatchesTheTrie(Contract, 65, ContractSlots);
+    }
+
+    [Test]
     public void A_build_interrupted_inside_a_subtree_resumes_from_its_last_checkpoint_and_yields_the_same_proofs()
     {
         ArchiveProofRetrofit retrofit = CreateRetrofit(TestPolicy);

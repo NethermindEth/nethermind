@@ -172,7 +172,7 @@ public class HistoryWalkVerificationCoordinatorTests
         FakeHeaders headers = CreateEmptyHeaders(rowFormat);
 
         CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
-        metadata.BeginWalk(0, 2, HistoryWalkRun.WorkItems);
+        metadata.BeginWalk(0, 2, HistoryWalkRun.WorkItems, buildCommitments: true);
         metadata.AdvanceTipSeries(3, 8, out _);
 
         using HistoryWalkVerificationCoordinator coordinator = new(
@@ -248,11 +248,9 @@ public class HistoryWalkVerificationCoordinatorTests
         }
     }
 
-    [TestCase(4UL, false)]
-    [TestCase(4UL, true)]
-    [TestCase(512UL, false)]
-    [TestCase(512UL, true)]
-    public async Task AnUnfinishedVerifyOnlyTail_DoesNotSkipTheUnbuiltProofPrefix(ulong pendingFrom, bool tipCoversTail)
+    [Test]
+    public async Task AnUnfinishedBuildTail_DoesNotSkipTheUnbuiltProofPrefix(
+        [Values(4UL, 512UL)] ulong pendingFrom, [Values] bool tipCoversTail)
     {
         ulong watermark = pendingFrom + 4;
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
@@ -260,7 +258,7 @@ public class HistoryWalkVerificationCoordinatorTests
         FakeHeaders headers = CreateEmptyHeaders(rowFormat, watermark);
         CommitmentMetadata metadata = CreateMetadata();
         metadata.MarkWalkVerified(0, pendingFrom - 1);
-        metadata.BeginWalk(pendingFrom, watermark, HistoryWalkRun.WorkItems);
+        metadata.BeginWalk(pendingFrom, watermark, HistoryWalkRun.WorkItems, buildCommitments: true);
         if (tipCoversTail) metadata.AdvanceTipSeries(pendingFrom, watermark, out _);
         availability.PublishWatermark(watermark, rowFormat.FormatVersion);
 
@@ -274,9 +272,83 @@ public class HistoryWalkVerificationCoordinatorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(coordinator.LastVerdict?.Verified, Is.True);
-            Assert.That(metadata.TryGetCoverage(out ulong from, out ulong to) && from == 0 && to == watermark, Is.True,
+            Assert.That(metadata.TryGetCoverage(out ulong from, out ulong to), Is.True,
                 "verification-only progress cannot replace proof coverage, even when the tip committed the pending tail");
+            Assert.That(from, Is.Zero);
+            Assert.That(to, Is.EqualTo(watermark));
             Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void WalkCheckpoint_ReusesCompletedItemsOnlyInTheSameMode(
+        [Values] bool previousBuild, [Values] bool nextBuild)
+    {
+        CommitmentMetadata metadata = CreateMetadata();
+        metadata.BeginWalk(0, 8, HistoryWalkRun.WorkItems, buildCommitments: previousBuild);
+        metadata.MarkWalkItemDone(HistoryWalkRun.WorkItems - 1, []);
+
+        metadata.BeginWalk(0, 8, HistoryWalkRun.WorkItems, buildCommitments: nextBuild);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadata.WalkModeMatches(nextBuild), Is.True);
+            Assert.That(metadata.IsWalkItemDone(HistoryWalkRun.WorkItems - 1), Is.EqualTo(previousBuild == nextBuild));
+        }
+        metadata.ClearWalk(HistoryWalkRun.WorkItems);
+        Assert.That(metadata.WalkModeMatches(nextBuild), Is.False);
+    }
+
+    [Test]
+    public async Task AnInterruptedVerificationOnlyWalk_RestartsTheRequestedBuildRange([Values] bool legacyCheckpoint)
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        FakeHeaders headers = CreateEmptyHeaders(rowFormat);
+        CommitmentMetadata metadata = CreateMetadata();
+        metadata.BeginWalk(0, 2, HistoryWalkRun.WorkItems);
+        metadata.MarkWalkItemDone(HistoryWalkRun.WorkItems - 1, []);
+        if (legacyCheckpoint)
+            _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments).Remove([0xFE, 0x0D]);
+        availability.PublishWatermark(8, rowFormat.FormatVersion);
+
+        using HistoryWalkVerificationCoordinator coordinator = new(
+            _db, _historyColumns, headers, availability, rowFormat, config,
+            CreateRetrofit(metadata, config, rowFormat), metadata, LimboLogs.Instance);
+
+        coordinator.Start();
+        await coordinator.VerificationLoop;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(coordinator.LastVerdict?.Verified, Is.True);
+            Assert.That(coordinator.LastVerdict!.BlocksCompared, Is.EqualTo(9UL));
+            Assert.That(metadata.TryGetCoverage(out ulong from, out ulong to) && from == 0 && to == 8, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task AnUnalignedBuildTail_WithBuiltPrefix_RestartsAtAnAlignedBoundary()
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        FakeHeaders headers = CreateEmptyHeaders(rowFormat);
+        CommitmentMetadata metadata = CreateMetadata();
+        Assert.That(metadata.TryPublishVerifiedCoverage(0, 3, out _, out _), Is.True);
+        metadata.BeginWalk(4, 8, HistoryWalkRun.WorkItems, buildCommitments: true);
+        availability.PublishWatermark(8, rowFormat.FormatVersion);
+
+        using HistoryWalkVerificationCoordinator coordinator = new(
+            _db, _historyColumns, headers, availability, rowFormat, config,
+            CreateRetrofit(metadata, config, rowFormat), metadata, LimboLogs.Instance);
+
+        coordinator.Start();
+        await coordinator.VerificationLoop;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(coordinator.LastVerdict?.Verified, Is.True);
+            Assert.That(metadata.TryGetCoverage(out ulong from, out ulong to) && from == 0 && to == 8, Is.True);
         }
     }
 

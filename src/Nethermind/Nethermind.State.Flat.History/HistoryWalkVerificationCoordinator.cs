@@ -100,18 +100,15 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         if (!_metadata.TryGetWalkInProgress(out ulong from, out ulong to)) return;
 
         DiscardWalk();
+        _retrofit?.ResumeReclaim();
         if (_logger.IsInfo) _logger.Info($"History walk verification is off, so the run interrupted over [{from}, {to}] is abandoned: its checkpoint and scratch series are deleted and commitment reclaim no longer waits for it. Turning FlatDb.HistoryVerifyEveryBlock back on starts a new walk.");
     }
 
     private void DiscardWalk()
     {
         _metadata.ClearWalk(HistoryWalkRun.WorkItems);
-        using (SeriesWriter scratch = new(_history))
-        {
-            scratch.DeleteAllScratch();
-        }
-
-        _retrofit?.ResumeReclaim();
+        using SeriesWriter scratch = new(_history);
+        scratch.DeleteAllScratch();
     }
 
     /// <summary>Whether this instance actually started its background verification - false means
@@ -165,16 +162,18 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
                             && (_retrofit is null || CoverageIncludes(from, pendingTo)))
                         {
                             DiscardWalk();
+                            _retrofit?.ResumeReclaim();
                             if (_logger.IsInfo) _logger.Info(
                                 $"History walk verification dropped its unfinished run over [{pendingFrom}, {pendingTo}]: the tip has committed those blocks itself, and a walk over them would scan the whole key space to find them.");
                             return;
                         }
 
-                        if (_retrofit is not null && (pendingFrom % _retrofit.WindowGranularity != 0
-                            || (pendingFrom > from && !CoverageIncludes(from, pendingFrom - 1))))
+                        if (!_metadata.WalkModeMatches(_retrofit is not null)
+                            || (_retrofit is not null && (pendingFrom % _retrofit.WindowGranularity != 0
+                            || (pendingFrom > from && !CoverageIncludes(from, pendingFrom - 1)))))
                         {
                             DiscardWalk();
-                            if (_logger.IsInfo) _logger.Info($"History walk restarting over [{from}, {to}]: the interrupted range [{pendingFrom}, {pendingTo}] is not aligned for proof building or leaves an unbuilt proof prefix.");
+                            if (_logger.IsWarn) _logger.Warn($"History walk restarting over [{from}, {to}]: the interrupted range [{pendingFrom}, {pendingTo}] has an incompatible or unknown mode, is not aligned for proof building, or leaves an unbuilt proof prefix.");
                         }
                         else
                         {
