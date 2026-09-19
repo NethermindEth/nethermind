@@ -143,6 +143,23 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             _ctx.Session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(r => r.TxReceipts.Count == expectedCount));
         }
 
+        [Test]
+        public void Should_bound_receipt_lookups_for_blocks_without_transactions()
+        {
+            // A block with no transactions has no receipts, and an empty receipt array adds nothing
+            // to the size estimate, so the soft size limit alone never ends the loop.
+            _ctx.SyncServer.GetReceipts(Arg.Any<Hash256>()).Returns([]);
+
+            using GetReceiptsMessage getReceiptsMessage = new(
+                RepeatPooled(Keccak.Zero, NethermindSyncLimits.MaxHashesFetch));
+            Packet getReceiptsPacket =
+                new("eth", Eth63MessageCode.GetReceipts, _ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
+
+            _ctx.ProtocolHandler.HandleMessage(getReceiptsPacket);
+
+            _ctx.SyncServer.Received(2 * NethermindSyncLimits.MaxReceiptFetch).GetReceipts(Arg.Any<Hash256>());
+        }
+
         private class Context
         {
             private readonly MessageSerializationService _serializationService;
