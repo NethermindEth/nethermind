@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -90,11 +93,20 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Estimate_tx_receipt_size_matches_encoded_length()
+        public void Estimate_receipts_matches_serialized_block_size()
         {
-            TxReceipt txReceipt = Build.A.Receipt.TestObject;
-            Assert.That(MessageSizeEstimator.EstimateSize(txReceipt),
-                Is.EqualTo((ulong)Rlp.GetDecoderOrThrow<TxReceipt>().GetLength(txReceipt, RlpBehaviors.None)));
+            TxReceipt[] receipts =
+            [
+                Build.A.Receipt.WithLogs(new LogEntry(TestItem.AddressA, [1, 2, 3], [TestItem.KeccakA])).TestObject,
+                Build.A.Receipt.WithLogs(new LogEntry(TestItem.AddressB, [], [])).TestObject
+            ];
+
+            using ReceiptsMessage message = new(new ArrayPoolList<TxReceipt[]>(1) { receipts });
+            new ReceiptsMessageSerializer(MainnetSpecProvider.Instance).GetLength(message, out int contentLength);
+
+            // The outgoing size caps are only sound if a block's estimate covers every byte the
+            // serializer writes for that block, framing included.
+            Assert.That(MessageSizeEstimator.EstimateSize(receipts), Is.EqualTo((ulong)contentLength));
         }
 
         [Test]

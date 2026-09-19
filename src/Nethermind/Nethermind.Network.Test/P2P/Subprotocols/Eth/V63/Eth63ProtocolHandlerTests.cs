@@ -145,7 +145,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         }
 
         [Test]
-        public void Should_not_exceed_hard_message_size_limit_for_receipts()
+        public void Should_not_exceed_message_size_limits_for_receipts_with_sparse_logs()
         {
             // Logs without topics or data are the cheapest way to build a receipt whose encoded size is
             // dominated by bytes a per-field heuristic does not see.
@@ -155,7 +155,33 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 logs[i] = new LogEntry(TestItem.AddressA, [], []);
             }
 
+            ReceiptsMessage response = ServeReceipts([Build.A.Receipt.WithLogs(logs).TestObject]);
+
+            Assert.That(response.TxReceipts, Is.Not.Empty);
+            Assert.That(_ctx._receiptMessageSerializer.GetLength(response, out _),
+                Is.LessThanOrEqualTo((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
+        }
+
+        [Test]
+        public void Should_serve_nothing_when_a_single_block_exceeds_hard_message_size_limit()
+        {
+            // eth/63-69 cannot page a block's receipts, so one above the hard limit is unservable.
+            byte[] logData = new byte[1.KiB];
+            LogEntry[] logs = new LogEntry[11 * 1024];
+            for (int i = 0; i < logs.Length; i++)
+            {
+                logs[i] = new LogEntry(TestItem.AddressA, logData, []);
+            }
+
             TxReceipt[] receipts = [Build.A.Receipt.WithLogs(logs).TestObject];
+            Assert.That(MessageSizeEstimator.EstimateSize(receipts),
+                Is.GreaterThan(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
+
+            Assert.That(ServeReceipts(receipts).TxReceipts, Is.Empty);
+        }
+
+        private ReceiptsMessage ServeReceipts(TxReceipt[] receipts)
+        {
             _ctx.SyncServer.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
 
             ReceiptsMessage? response = null;
@@ -169,9 +195,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             _ctx.ProtocolHandler.HandleMessage(getReceiptsPacket);
 
             Assert.That(response, Is.Not.Null);
-            Assert.That(response.TxReceipts, Is.Not.Empty);
-            Assert.That(_ctx._receiptMessageSerializer.GetLength(response, out _),
-                Is.LessThanOrEqualTo((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
+            return response;
         }
 
         private class Context

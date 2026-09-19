@@ -58,7 +58,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 estimate += EstimateSize(receipts[i], decoder);
             }
 
-            return estimate;
+            // A block's receipts go on the wire inside their own sequence.
+            return estimate > int.MaxValue ? estimate : (ulong)Rlp.LengthOfSequence((int)estimate);
         }
 
         private static ulong EstimateSize(TxReceipt? receipt, IRlpDecoder<TxReceipt> decoder)
