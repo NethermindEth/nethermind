@@ -23,10 +23,13 @@ public sealed class TransactionTraceExecutor(
     StateReadOverlaySlot? readOverlay = null)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
+    /// <summary>Whether this execution scope has an overlay slot and does not require full BAL construction.</summary>
     public bool CanSeed => readOverlay is not null && !balManager.ForceConstructGeneratedBlockAccessList;
 
+    /// <inheritdoc />
     public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(in context);
 
+    /// <inheritdoc />
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions options, BlockReceiptsTracer tracer, CancellationToken token)
     {
         TransactionTraceBoundary? boundary = TransactionTraceBoundary.Get(tracer.OtherTracer, options);
@@ -40,9 +43,9 @@ public sealed class TransactionTraceExecutor(
         // A seeded prefix stands in for the transactions ahead of the target: they are neither executed nor traced,
         // and a block access list under construction would miss them, so seeding yields to it.
         int first = 0;
-        int target = boundary.IndexOf(block);
         if (boundary.Seeds is { } seeds && readOverlay is not null && !balManager.Enabled)
         {
+            int target = boundary.IndexOf(block);
             if (target > 0 && seeds.TrySeed(block, target, readOverlay) && readOverlay.Current is { } overlay)
             {
                 state.ApplyAccountOverlay(overlay);
@@ -50,7 +53,7 @@ public sealed class TransactionTraceExecutor(
             }
         }
 
-        if (boundary.IsSeedRequired && first != target)
+        if (boundary.IsSeedRequired && first != boundary.IndexOf(block))
             throw new InvalidOperationException("The indexed trace could not install its transaction prefix.");
 
         try

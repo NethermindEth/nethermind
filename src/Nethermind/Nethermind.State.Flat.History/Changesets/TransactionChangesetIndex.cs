@@ -47,7 +47,12 @@ public sealed class TransactionChangesetIndex
     /// a retrofit's progress, and the range a trace benchmark has to stay inside to be measuring the index at all.</summary>
     public void ReportCoverage()
     {
-        if (!Enabled || !TryGetCoverage(out ulong from, out ulong to)) return;
+        if (!Enabled || !TryGetCoverage(out ulong from, out ulong to))
+        {
+            Flat.Metrics.TransactionChangesetIndexFrom = 0;
+            Flat.Metrics.TransactionChangesetIndexTo = 0;
+            return;
+        }
 
         Flat.Metrics.TransactionChangesetIndexFrom = (long)from;
         Flat.Metrics.TransactionChangesetIndexTo = (long)to;

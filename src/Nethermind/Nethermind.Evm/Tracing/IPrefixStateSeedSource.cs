@@ -21,7 +21,11 @@ public interface IPrefixStateSeedSource
 
     /// <summary>Opens a block every transaction of which can be seeded, so that its transactions may be traced in any
     /// order and in parallel, each on the state before it. False means the block is traced by replaying it.</summary>
-    bool TryOpenBlock(Block block, [NotNullWhen(true)] out ICoveredBlock? covered);
+    bool TryOpenBlock(Block block, [NotNullWhen(true)] out ICoveredBlock? covered)
+    {
+        covered = null;
+        return false;
+    }
 }
 
 public sealed class NullPrefixStateSeedSource : IPrefixStateSeedSource

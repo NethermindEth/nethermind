@@ -35,7 +35,7 @@ public sealed class SharedParallelBlockTracer(
         {
             if (_tracer is null)
             {
-                _tracer = new ParallelBlockTracer(BuildEnvironment, prefixSeeds, budget.Degree, logManager, budget.Slots);
+                _tracer = new ParallelBlockTracer(BuildEnvironment, prefixSeeds, budget, logManager);
                 rootLifetimeScope.Disposer.AddInstanceForDisposal(_tracer);
             }
 

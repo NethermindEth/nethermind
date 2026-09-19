@@ -18,24 +18,28 @@ public sealed class BlockReadCache(int accountSetsBits = 12, int storageSetsBits
     private readonly SeqlockCache<AddressAsKey, Account> _accounts = new(accountSetsBits);
     private readonly SeqlockCache<StorageCell, UInt256> _slots = new(storageSetsBits);
 
+    /// <summary>Returns a cached parent account; true with null means known absent, false means a cache miss.</summary>
     public bool TryGetAccount(Address address, out Account? account)
     {
         AddressAsKey key = address;
         return _accounts.TryGetValue(in key, out account);
     }
 
+    /// <summary>Caches a parent-state account or its absence. Do not mix parent states in one cache.</summary>
     public void SetAccount(Address address, Account? account)
     {
         AddressAsKey key = address;
         _accounts.Set(in key, account);
     }
 
+    /// <summary>Returns a cached parent slot, including known zero. Ignore the output when false.</summary>
     public bool TryGetSlot(Address address, in UInt256 index, out UInt256 value)
     {
         StorageCell cell = new(address, in index);
         return _slots.TryGetValue(in cell, out value);
     }
 
+    /// <summary>Caches a parent-state slot; concurrent accesses are supported.</summary>
     public void SetSlot(Address address, in UInt256 index, in UInt256 value)
     {
         StorageCell cell = new(address, in index);

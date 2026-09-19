@@ -5,7 +5,6 @@ using Autofac;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.History;
@@ -70,7 +69,7 @@ public class FlatHistoryModule : Module
             .Bind<IHistoricalTrieVisitor, ArchiveProofSource>()
             .AddSingleton<HistoryWalkVerificationCoordinator>()
             .AddStep(typeof(StartHistoryWalkVerification))
-            .AddSingleton<TransactionChangesetIndex, IColumnsDb<FlatHistoryColumns>, IFlatDbConfig, ISpecProvider>((columns, config, specs) => new TransactionChangesetIndex(columns, config, specs))
+            .AddSingleton<TransactionChangesetIndex>()
             .AddSingleton<IHistoryBlockExecutorFactory, ProcessingHistoryBlockExecutorFactory>()
             .AddSingleton<TransactionChangesetBuilder>()
             .AddStep(typeof(StartTransactionChangesetBuilder))

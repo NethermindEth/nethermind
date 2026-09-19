@@ -41,6 +41,25 @@ public class ChangesetPrefixStateSeedSourceTests
     public void TearDown() => _columns.Dispose();
 
     [Test]
+    public void SingleTransactionOnlyProvider_DefaultsToWholeBlockRefusal()
+    {
+        IPrefixStateSeedSource legacy = new SingleTransactionOnlyProvider();
+        bool opened = legacy.TryOpenBlock(_block, out ICoveredBlock? covered);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(opened, Is.False);
+            Assert.That(covered, Is.Null);
+            Assert.That(legacy.TrySeed(_block, 1, new StateReadOverlaySlot()), Is.True);
+        }
+    }
+
+    private sealed class SingleTransactionOnlyProvider : IPrefixStateSeedSource
+    {
+        public bool Enabled => true;
+        public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot) => true;
+    }
+
+    [Test]
     public void ACoveredPrefix_ArmsTheSlotWithItsOverlay()
     {
         StateReadOverlaySlot slot = new();

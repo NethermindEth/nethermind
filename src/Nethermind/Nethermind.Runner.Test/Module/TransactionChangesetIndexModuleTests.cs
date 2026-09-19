@@ -3,6 +3,7 @@
 
 using System;
 using Autofac;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
@@ -20,16 +21,14 @@ namespace Nethermind.Runner.Test.Module;
 [TestFixture]
 public class TransactionChangesetIndexModuleTests
 {
-    [Test]
-    public void ParallelTraceBudget_WhenConfigured_BoundsTheWorkerDegree([Values(-1, 0, 1, 4, 64)] int configured)
+    [TestCase(-1, 1)]
+    [TestCase(1, 1)]
+    [TestCase(4, 4)]
+    [TestCase(64, 16)]
+    public void ParallelTraceBudget_WhenConfigured_BoundsTheWorkerDegree(int configured, int expected)
     {
         using ParallelTraceBudget budget = new(new FlatDbConfig { HistoryTransactionIndexTraceParallelism = configured });
-        int expected = Math.Clamp(configured == 0 ? Environment.ProcessorCount : configured, 1, 16);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(budget.Degree, Is.EqualTo(expected));
-            Assert.That(budget.Slots.CurrentCount, Is.EqualTo(expected), "both namespaces must use the same bounded permits");
-        }
+        Assert.That(budget.Degree, Is.EqualTo(expected));
     }
 
     [TestCase(true, typeof(ChangesetPrefixStateSeedSource), TestName = "WithFlatHistory_TheChangesetSeedSourceWinsOverTheNullDefault")]

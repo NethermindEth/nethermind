@@ -21,7 +21,8 @@ using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.Consensus.Tracing;
 
-/// <summary>Runs the transactions of a covered block on as many processing environments as there are workers. Each
+/// <summary>Traces covered blocks concurrently and returns or emits results in transaction order.</summary>
+/// <remarks>Runs the transactions of a covered block on as many processing environments as there are workers. Each
 /// transaction is traced alone through the same seeded path a single-transaction trace takes: the worker's seed
 /// source arms the writes of the transactions before it, only the target executes, and its trace is byte for byte
 /// what the replay would have produced. Workers take transactions in ascending order off one cursor, so each folds
@@ -32,13 +33,12 @@ namespace Nethermind.Consensus.Tracing;
 /// the first block and kept: they spend their time blocked in state reads, and a thread pool hands out threads for
 /// blocked work too slowly for a block to ever see the whole degree. There are twice as many threads as the degree
 /// and the degree is enforced per transaction by a semaphore, so two blocks traced at once interleave transaction by
-/// transaction instead of the second waiting for the whole of the first. The calling thread is one of the workers.</summary>
+/// transaction instead of the second waiting for the whole of the first. The calling thread is one of the workers.</remarks>
 public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 {
     private readonly ShareableOverridableEnvSource<Components> _environments;
     private readonly IPrefixStateSeedSource _seeds;
-    private readonly SemaphoreSlim _slots;
-    private readonly bool _ownsSlots;
+    private readonly ParallelTraceBudget _slots;
     private readonly Workers _workers;
     private readonly int _degree;
     private readonly ILogger _logger;
@@ -46,17 +46,18 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     private bool _disposed;
     private int _inFlight;
 
-    public ParallelBlockTracer(Func<IOverridableEnv<Components>> buildEnvironment, IPrefixStateSeedSource seeds, int degree, ILogManager logManager, SemaphoreSlim? sharedSlots = null)
+    /// <summary>Owns the supplied environments, but borrows the budget. Dispose the tracer before the budget.</summary>
+    public ParallelBlockTracer(Func<IOverridableEnv<Components>> buildEnvironment, IPrefixStateSeedSource seeds, ParallelTraceBudget budget, ILogManager logManager)
     {
-        _degree = Math.Max(1, degree);
+        _degree = budget.Degree;
         _environments = new ShareableOverridableEnvSource<Components>(buildEnvironment, _degree);
-        _ownsSlots = sharedSlots is null;
-        _slots = sharedSlots ?? new SemaphoreSlim(_degree, _degree);
+        _slots = budget;
         _workers = new Workers(2 * _degree);
         _seeds = seeds;
         _logger = logManager.GetClassLogger<ParallelBlockTracer>();
     }
 
+    /// <inheritdoc />
     public bool TryTrace<TTrace>(
         Block block,
         BlockHeader parent,
@@ -66,6 +67,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         [NotNullWhen(true)] out IReadOnlyList<TTrace>? traces) =>
         Run(block, parent, forTransaction, afterTransactions, emit: null, token, out traces);
 
+    /// <inheritdoc />
     public bool TryStream<TTrace>(
         Block block,
         BlockHeader parent,
@@ -94,6 +96,8 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 
         try
         {
+            if (!_seeds.TryOpenBlock(block, out ICoveredBlock? covered)) return false;
+            using ICoveredBlock coverage = covered;
             _slots.Wait(token);
             try
             {
@@ -105,9 +109,6 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                 _slots.Release();
             }
 
-            if (!_seeds.TryOpenBlock(block, out ICoveredBlock? covered)) return false;
-
-            using (covered)
             {
                 Transaction[] transactions = block.Transactions;
                 IReadOnlyCollection<TTrace>?[] results = new IReadOnlyCollection<TTrace>?[transactions.Length + 1];
@@ -127,7 +128,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                     for (; queued < tasks.Length; queued++)
                     {
                         IPrefixStateSeedSource seeds = covered.CreateWorkerSeeds();
-                        tasks[queued] = _workers.Run(() => TraceMany(block, parent, transactions, cursor, seeds, forTransaction, results, emitter, stop));
+                        tasks[queued] = QueueWorker(() => TraceMany(block, parent, transactions, cursor, seeds, forTransaction, results, emitter, stop), stop.Token);
                     }
 
                     TraceMany(block, parent, transactions, cursor, callerSeeds, forTransaction, results, emitter, stop);
@@ -174,6 +175,8 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             Leave();
         }
     }
+
+    internal Task QueueWorker(Action action, CancellationToken token) => _workers.Run(action, token);
 
     private bool Enter()
     {
@@ -325,6 +328,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     /// <summary>Waits for the runs already under way, however long their requests take, and refuses the ones that
     /// arrive from here on so they are replayed instead. A run is not finished until its workers are, so once the
     /// count reaches zero nothing is holding an environment or a thread.</summary>
+    /// <summary>Waits for active requests, then releases owned workers and environments; the shared budget remains owned by its caller.</summary>
     public void Dispose()
     {
         lock (_runs)
@@ -335,7 +339,6 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 
         _workers.Dispose();
         _environments.Dispose();
-        if (_ownsSlots) _slots.Dispose();
     }
 
     /// <summary>Threads started when the first block asks and kept for the next one. A job is one worker's share of
@@ -359,24 +362,57 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             return threads;
         });
 
-        public Task Run(Action job)
+        public Task Run(Action job, CancellationToken token)
         {
             _ = _threads.Value;
-            TaskCompletionSource done = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            _jobs.Add(() =>
+            QueuedJob queued = new(job, token);
+            _jobs.Add(queued.Execute);
+            return queued.Completion;
+        }
+
+        private sealed class QueuedJob
+        {
+            private readonly TaskCompletionSource _done = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            private readonly CancellationTokenRegistration _registration;
+            private Action? _action;
+            private int _state;
+
+            public QueuedJob(Action action, CancellationToken token)
             {
+                _action = action;
+                _registration = token.UnsafeRegister(static state => ((QueuedJob)state!).Cancel(), this);
+            }
+
+            public Task Completion => _done.Task;
+
+            private void Cancel()
+            {
+                if (Interlocked.CompareExchange(ref _state, 2, 0) != 0) return;
+                Interlocked.Exchange(ref _action, null);
+                _done.TrySetCanceled();
+            }
+
+            public void Execute()
+            {
+                if (Interlocked.CompareExchange(ref _state, 1, 0) != 0)
+                {
+                    _registration.Dispose();
+                    return;
+                }
                 try
                 {
-                    job();
-                    done.SetResult();
+                    Interlocked.Exchange(ref _action, null)!();
+                    _done.SetResult();
                 }
                 catch (Exception e)
                 {
-                    done.SetException(e);
+                    _done.SetException(e);
                 }
-            });
-
-            return done.Task;
+                finally
+                {
+                    _registration.Dispose();
+                }
+            }
         }
 
         private void Work()
@@ -432,15 +468,18 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         public int Next() => Interlocked.Increment(ref _next);
     }
 
+    /// <summary>Processing services owned by one leased environment; never share its world state between active workers.</summary>
     public record Components(IWorldState WorldState, BlockchainProcessorFacade Processor, ISpecProvider SpecProvider, TransactionTraceExecutor? Executor = null);
 
     /// <summary>An environment together with the lifetime scope it was resolved from, so the pool that retires it
     /// retires the scope too.</summary>
     public sealed class OwnedEnvironment(IOverridableEnv<Components> inner, ILifetimeScope scope) : IOverridableEnv<Components>, IDisposable
     {
+        /// <inheritdoc />
         public Scope<Components> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null) =>
             inner.BuildAndOverride(header, stateOverride, specOverride, blockOverride);
 
+        /// <summary>Releases the scope owning the processing services.</summary>
         public void Dispose() => scope.Dispose();
     }
 }

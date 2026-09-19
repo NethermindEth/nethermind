@@ -139,7 +139,7 @@ public interface IJsonRpcConfig : IConfig
     public long? MaxLogsResponseBodySize { get; set; }
 
     [ConfigItem(
-        Description = "The number of concurrent instances of the Debug RPC module (`debug_trace*`, `debug_getRawBlock`, etc.). Calls beyond this cap return `LimitExceeded`. Defaults to the number of logical processors.")]
+        Description = "The number of concurrent instances of the Debug RPC module (`debug_trace*`, `debug_getRawBlock`, etc.). Calls beyond this cap return `LimitExceeded`. Defaults to the number of logical processors capped at 16.")]
     public int? DebugModuleConcurrentInstances { get; set; }
 
     [ConfigItem(
