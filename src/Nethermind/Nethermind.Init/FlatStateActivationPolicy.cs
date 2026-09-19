@@ -62,9 +62,9 @@ public sealed class FlatStateActivationPolicy(
         {
             if (flatDbConfig.OnRepair == FlatDbOnRepair.Resync)
             {
-                persistence.Clear();
                 if (logger.IsError)
                     logger.Error("Flat DB was auto-repaired by RocksDB; wiping flat state and re-entering state sync (FlatDb.OnRepair=Resync).");
+                persistence.Clear();
                 return true;
             }
 

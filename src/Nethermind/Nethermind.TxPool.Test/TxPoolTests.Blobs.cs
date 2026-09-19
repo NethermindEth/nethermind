@@ -25,7 +25,9 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Evm.State;
 using Nethermind.TxPool.Collections;
+using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 using System.Collections;
@@ -527,6 +529,33 @@ namespace Nethermind.TxPool.Test
 
             Assert.That(() => _txPool.GetPendingBlobTransactionsCount(), Is.Zero.After(Timeout, 10));
             storage.DidNotReceiveWithAnyArgs().TryGetMany(default, default, default);
+        }
+
+        [Test]
+        public void ctor_does_not_throw_when_head_state_is_unavailable_with_persistent_blobs()
+        {
+            // Soak #13577: after a Flat repair resync, headers/HEAD remain but state was Clear()'d.
+            // Persistent blob txs are reloaded and TxPool ctor used to die in UpdateBucketsWithoutRevalidation
+            // (MissingTrieNodeException from TryGetAccount) → docker restart loop.
+            Transaction transaction = CreateBlobTx(TestItem.PrivateKeyA, releaseSpec: Cancun.Instance);
+            IBlobTxStorage storage = Substitute.For<IBlobTxStorage>();
+            storage.GetAll().Returns([new LightTransaction(transaction)]);
+
+            IReadOnlyStateProvider throwingState = Substitute.For<IReadOnlyStateProvider>();
+            throwingState.TryGetAccount(Arg.Any<Address>(), out Arg.Any<AccountStruct>())
+                .Returns(_ => throw new MissingTrieNodeException(
+                    "State for block 11739434 is unavailable", null, TreePath.Empty, Keccak.Zero));
+
+            ChainHeadInfoProvider headInfo = new(
+                new ChainHeadSpecProvider(GetCancunSpecProvider(), _blockTree),
+                _blockTree,
+                throwingState);
+
+            Assert.DoesNotThrow(() => _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.Storage, PersistentBlobStorageSize = 1 },
+                GetCancunSpecProvider(),
+                chainHeadInfoProvider: headInfo,
+                txStorage: storage));
         }
 
         [Test]
