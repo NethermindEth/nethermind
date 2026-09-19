@@ -74,6 +74,23 @@ public class TransactionChangesetIndexTests
     }
 
     [Test]
+    public void IncompleteSiblingCapture_PreservesThePreviouslyIndexedBlock()
+    {
+        Capture(transactions: 3);
+        Block original = _block;
+        _block = Build.A.Block.WithNumber(7).WithDifficulty(99).WithTransactions(_block.Transactions).TestObject;
+
+        Assert.That(Capture(transactions: 2), Is.False);
+        Assert.That(_index.TryRentOverlay(7, original.Hash!, 2, out MidBlockOverlayCache.Lease lease), Is.True,
+            "an incomplete replacement must not overwrite the hash or rows of a covered block");
+        using (lease)
+        {
+            lease.Overlay.TryGetAccount(TestItem.AddressA, out MidBlockOverlay.AccountOverlay? account);
+            Assert.That(account!.Balance, Is.EqualTo((UInt256)2));
+        }
+    }
+
+    [Test]
     public void ACaptureThatDidNotSeeTheWholeBlock_ClaimsNothing()
     {
         bool committed = Capture(transactions: 2);

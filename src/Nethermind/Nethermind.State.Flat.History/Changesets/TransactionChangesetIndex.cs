@@ -55,6 +55,11 @@ public sealed class TransactionChangesetIndex
                 _store.Write(number, (ushort)i, collectors[i]!.Pack(), rows);
             }
         }
+        catch
+        {
+            batch.Clear();
+            throw;
+        }
         finally
         {
             lock (BlockLock(number)) batch.Dispose();
@@ -110,13 +115,13 @@ public sealed class TransactionChangesetIndex
 
         public IBlockTracer Tracer => _tracer;
 
-        /// <summary>False when the tracer did not see the whole block: the rows are written but must not be claimed,
-        /// and the next pass builds the block again.</summary>
+        /// <summary>Publishes a complete capture; otherwise discards the batch so an existing block stays intact.</summary>
         public bool Commit()
         {
             if (_written) throw new InvalidOperationException($"The changeset capture of block {_block} was already committed.");
 
             _written = true;
+            if (!_tracer.Complete) _batch.Clear();
             lock (_index.BlockLock(_block)) _batch.Dispose();
             return _tracer.Complete;
         }
@@ -126,6 +131,7 @@ public sealed class TransactionChangesetIndex
             _tracer.Dispose();
             if (!_written)
             {
+                _batch.Clear();
                 lock (_index.BlockLock(_block)) _batch.Dispose();
             }
         }
