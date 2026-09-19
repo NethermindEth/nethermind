@@ -56,7 +56,23 @@ public sealed class FlatStateActivationPolicy(
             if (logger.IsInfo) logger.Info("State backend: patricia (flat DB disabled).");
             return false;
         }
-        using IPersistence.IPersistenceReader reader = flatPersistence.Value.CreateReader();
+
+        IPersistence persistence = flatPersistence.Value;
+        if (persistence.WasRepairedOnOpen)
+        {
+            if (flatDbConfig.OnRepair == FlatDbOnRepair.Resync)
+            {
+                persistence.Clear();
+                if (logger.IsError)
+                    logger.Error("Flat DB was auto-repaired by RocksDB; wiping flat state and re-entering state sync (FlatDb.OnRepair=Resync).");
+                return true;
+            }
+
+            if (logger.IsError)
+                logger.Error("Flat DB was auto-repaired by RocksDB; keeping repaired data (FlatDb.OnRepair=Ignore). This node may diverge.");
+        }
+
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         if (reader.CurrentState != StateId.PreGenesis)
         {
             if (logger.IsInfo) logger.Info("State backend: flat (existing flat DB detected).");

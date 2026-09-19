@@ -24,6 +24,9 @@ public interface IPersistence
     void Flush();
     void Clear();
 
+    /// <summary>True when the underlying flat DB ran a RocksDB repair during this process open.</summary>
+    bool WasRepairedOnOpen => false;
+
     public interface IPersistenceReader : IDisposable
     {
         Account? GetAccount(Address address);

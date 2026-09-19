@@ -74,29 +74,137 @@ public class FlatStateActivationPolicyTests
         Assert.That(warned, Is.EqualTo(expectWarn));
     }
 
+    // Soak #13577: repair left CurrentState intact ("already have state") and leftover patricia
+    // state/ from a 1.39→2.0 migrate would steal the backend if Clear() fell through.
+    [Test]
+    public void Repaired_with_resync_stays_flat_and_clears_even_when_patricia_exists()
+    {
+        PolicySetup setup = CreateSetup(
+            enabled: true,
+            importFromPruning: false,
+            flatHasData: true,
+            patriciaHasData: true,
+            layout: FlatLayout.Flat,
+            availableMemoryBytes: 32.GiB,
+            logManager: LimboLogs.Instance,
+            wasRepairedOnOpen: true,
+            onRepair: FlatDbOnRepair.Resync);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(setup.Policy.ShouldTurnOnFlatDb(), Is.True);
+            setup.Persistence.Received(1).Clear();
+        }
+    }
+
+    [Test]
+    public void Repaired_with_resync_clears_so_finder_sees_pregenesis()
+    {
+        PolicySetup setup = CreateSetup(
+            enabled: true,
+            importFromPruning: false,
+            flatHasData: true,
+            patriciaHasData: false,
+            layout: FlatLayout.Flat,
+            availableMemoryBytes: 32.GiB,
+            logManager: LimboLogs.Instance,
+            wasRepairedOnOpen: true,
+            onRepair: FlatDbOnRepair.Resync,
+            configurePersistence: (persistence, reader) =>
+                persistence.When(p => p.Clear()).Do(_ => reader.CurrentState.Returns(StateId.PreGenesis)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(setup.Policy.ShouldTurnOnFlatDb(), Is.True);
+            setup.Persistence.Received(1).Clear();
+            Assert.That(setup.Reader.CurrentState, Is.EqualTo(StateId.PreGenesis));
+        }
+    }
+
+    [Test]
+    public void Repaired_with_ignore_does_not_clear()
+    {
+        TestLogger testLogger = new();
+        PolicySetup setup = CreateSetup(
+            enabled: true,
+            importFromPruning: false,
+            flatHasData: true,
+            patriciaHasData: false,
+            layout: FlatLayout.Flat,
+            availableMemoryBytes: 32.GiB,
+            logManager: new OneLoggerLogManager(new ILogger(testLogger)),
+            wasRepairedOnOpen: true,
+            onRepair: FlatDbOnRepair.Ignore);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(setup.Policy.ShouldTurnOnFlatDb(), Is.True);
+            setup.Persistence.DidNotReceive().Clear();
+            Assert.That(testLogger.LogList.Any(l => l.Contains(nameof(FlatDbOnRepair.Ignore))), Is.True);
+        }
+    }
+
+    [Test]
+    public void Not_repaired_does_not_clear()
+    {
+        PolicySetup setup = CreateSetup(
+            enabled: true,
+            importFromPruning: false,
+            flatHasData: true,
+            patriciaHasData: false,
+            layout: FlatLayout.Flat,
+            availableMemoryBytes: 32.GiB,
+            logManager: LimboLogs.Instance,
+            wasRepairedOnOpen: false,
+            onRepair: FlatDbOnRepair.Resync);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(setup.Policy.ShouldTurnOnFlatDb(), Is.True);
+            setup.Persistence.DidNotReceive().Clear();
+        }
+    }
+
     private static FlatStateActivationPolicy CreatePolicy(
         bool enabled, bool importFromPruning, bool flatHasData, bool patriciaHasData,
         FlatLayout layout, long availableMemoryBytes, ILogManager logManager)
+        => CreateSetup(enabled, importFromPruning, flatHasData, patriciaHasData, layout, availableMemoryBytes, logManager).Policy;
+
+    private readonly record struct PolicySetup(
+        FlatStateActivationPolicy Policy,
+        IPersistence Persistence,
+        IPersistence.IPersistenceReader Reader);
+
+    private static PolicySetup CreateSetup(
+        bool enabled, bool importFromPruning, bool flatHasData, bool patriciaHasData,
+        FlatLayout layout, long availableMemoryBytes, ILogManager logManager,
+        bool wasRepairedOnOpen = false, FlatDbOnRepair onRepair = FlatDbOnRepair.Resync,
+        Action<IPersistence, IPersistence.IPersistenceReader> configurePersistence = null)
     {
         IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
         flatDbConfig.Enabled.Returns(enabled);
         flatDbConfig.ImportFromPruningTrieState.Returns(importFromPruning);
         flatDbConfig.Layout.Returns(layout);
+        flatDbConfig.OnRepair.Returns(onRepair);
 
         IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
         reader.CurrentState.Returns(flatHasData ? new StateId(1, Nethermind.Core.Crypto.Keccak.Zero) : StateId.PreGenesis);
         IPersistence flatPersistence = Substitute.For<IPersistence>();
         flatPersistence.CreateReader().Returns(reader);
+        flatPersistence.WasRepairedOnOpen.Returns(wasRepairedOnOpen);
+        configurePersistence?.Invoke(flatPersistence, reader);
 
         MemDb patriciaDb = new();
         if (patriciaHasData)
             patriciaDb.Set([1], [1]);
 
-        return new FlatStateActivationPolicy(
+        FlatStateActivationPolicy policy = new(
             flatDbConfig,
             new TestHardwareInfo(availableMemoryBytes),
             new Lazy<IPersistence>(() => flatPersistence),
             new Lazy<IDb>(() => patriciaDb),
             logManager);
+
+        return new PolicySetup(policy, flatPersistence, reader);
     }
 }

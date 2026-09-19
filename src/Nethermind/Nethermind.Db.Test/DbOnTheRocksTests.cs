@@ -316,6 +316,7 @@ namespace Nethermind.Db.Test
             fileSystem.File.Returns(file);
 
             string markerFile = Path.Join(Path.GetTempPath(), "test", "test", "corrupt.marker");
+            string repairedMarker = Path.Join(Path.GetTempPath(), "test", "test", "repaired.marker");
             file.Exists(markerFile).Returns(true);
 
             RocksDbSharp.Native native = Substitute.For<RocksDbSharp.Native>();
@@ -331,8 +332,38 @@ namespace Nethermind.Db.Test
             {
             }
 
-            native.Received().rocksdb_repair_db(Arg.Any<IntPtr>(), Arg.Any<string>(), out Arg.Any<IntPtr>());
-            file.Received().Delete(markerFile);
+            Received.InOrder(() =>
+            {
+                native.rocksdb_repair_db(Arg.Any<IntPtr>(), Arg.Any<string>(), out Arg.Any<IntPtr>());
+                file.WriteAllText(repairedMarker, Arg.Any<string>());
+                file.Delete(markerFile);
+            });
+        }
+
+        [Test]
+        public void If_no_corrupt_marker_on_open_then_repaired_marker_is_not_written()
+        {
+            IDbConfig config = new DbConfig();
+
+            IFile file = Substitute.For<IFile>();
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            fileSystem.File.Returns(file);
+
+            RocksDbSharp.Native native = Substitute.For<RocksDbSharp.Native>();
+
+            try
+            {
+                _ = new DbOnTheRocks(Path.Join(Path.GetTempPath(), "test"), GetRocksDbSettings("test", "test"), config, _rocksdbConfigFactory,
+                    LimboLogs.Instance,
+                    fileSystem: fileSystem,
+                    rocksDbNative: native);
+            }
+            catch (Exception)
+            {
+            }
+
+            native.DidNotReceive().rocksdb_repair_db(Arg.Any<IntPtr>(), Arg.Any<string>(), out Arg.Any<IntPtr>());
+            file.DidNotReceive().WriteAllText(Arg.Is<string>(path => path.Contains("repaired.marker")), Arg.Any<string>());
         }
 
         [Test]

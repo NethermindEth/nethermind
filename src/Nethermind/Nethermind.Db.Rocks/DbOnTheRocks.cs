@@ -93,6 +93,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private ITunableDb.TuneType _currentTune = ITunableDb.TuneType.Default;
 
     private string CorruptMarkerPath => Path.Join(_fullPath, "corrupt.marker");
+    private string RepairedMarkerPath => Path.Join(_fullPath, "repaired.marker");
+
+    public bool WasRepairedOnOpen { get; private set; }
 
     private readonly List<IDisposable> _metricsUpdaters = [];
 
@@ -362,7 +365,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (_logger.IsWarn) _logger.Warn($"Corrupted DB marker detected for db {_fullPath}. Attempting repair...");
         _rocksDbNative.rocksdb_repair_db(dbOptions.Handle, _fullPath);
 
-        if (_logger.IsWarn) _logger.Warn($"Repair completed. Some data may be lost. Consider a full resync.");
+        WasRepairedOnOpen = true;
+        _fileSystem.File.WriteAllText(RepairedMarkerPath, DateTime.UtcNow.ToString("O"));
+        if (_logger.IsWarn) _logger.Warn("Repair completed. Some data may be lost. Wrote repaired.marker.");
         _fileSystem.File.Delete(corruptMarker);
     }
 
