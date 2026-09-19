@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,6 +27,7 @@ public sealed class MetaDataProtocolV3(LocalMetadataSource metadataSource) : Req
             ?? throw new Eth2ReqRespException("Peer closed the stream without responding");
         if (chunk.Result != ReqRespFraming.ResponseCode.Success)
         {
+            RecordFailure(Id, ReqRespFailureReason.PeerError);
             throw ErrorChunkToException(chunk);
         }
 
@@ -36,7 +38,20 @@ public sealed class MetaDataProtocolV3(LocalMetadataSource metadataSource) : Req
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
     {
         Stream stream = new ChannelStreamAdapter(downChannel);
+        using IDisposable? inboundSlot = TryEnterInbound(context, Id);
+        if (inboundSlot is null)
+        {
+            return;
+        }
+
         using CancellationTokenSource cts = StartTimeout(RespTimeout);
-        await ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, default, MetaDataV3.Encode(metadataSource.Current), cts.Token);
+        try
+        {
+            await ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, default, MetaDataV3.Encode(metadataSource.Current), cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            RecordFailure(Id, ReqRespFailureReason.Timeout);
+        }
     }
 }
