@@ -33,12 +33,13 @@ public partial class DebugRpcModuleTests
         TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
         ChangesetPrefixStateSeedSource seeds = new(index);
         ExecutionCount counter = new();
+        using ParallelTraceBudget budget = new(2);
         JsonRpcConfig rpc = new() { EnableTracingStreamMode = false, Timeout = 100 };
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithConfig(rpc)
             .Build(builder => builder
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
                 .AddSingleton<IPrefixStateSeedSource>(seeds)
-                .AddSingleton(new ParallelTraceBudget(2))
+                .AddSingleton(budget)
                 .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new BudgetCountingAdapter(inner, counter)));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
@@ -55,7 +56,7 @@ public partial class DebugRpcModuleTests
             Assert.That(capture.Commit() && index.TryClaim((ulong)block.Number, (ulong)block.Number), Is.True);
         }
 
-        ParallelTraceBudget budget = chain.Container.Resolve<ParallelTraceBudget>();
+        Assert.That(chain.Container.Resolve<ParallelTraceBudget>(), Is.SameAs(budget));
         counter.Enabled = true;
         budget.Wait(CancellationToken.None);
         budget.Wait(CancellationToken.None);
