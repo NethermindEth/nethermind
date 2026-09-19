@@ -168,12 +168,24 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
                             return;
                         }
 
-                        if (!_metadata.WalkModeMatches(_retrofit is not null)
-                            || (_retrofit is not null && (pendingFrom % _retrofit.WindowGranularity != 0
-                            || (pendingFrom > from && !CoverageIncludes(from, pendingFrom - 1)))))
+                        string? restartReason = GetRestartReason(from, pendingFrom);
+                        if (restartReason is not null)
                         {
                             DiscardWalk();
-                            if (_logger.IsWarn) _logger.Warn($"History walk restarting over [{from}, {to}]: the interrupted range [{pendingFrom}, {pendingTo}] has an incompatible or unknown mode, is not aligned for proof building, or leaves an unbuilt proof prefix.");
+                            if (TryGetCompletedPrefix(from, out ulong completedTo))
+                            {
+                                if (completedTo >= to)
+                                {
+                                    _retrofit?.ResumeReclaim();
+                                    if (_logger.IsWarn) _logger.Warn($"History walk discarded checkpoint [{pendingFrom}, {pendingTo}]: {restartReason}; the requested range [{from}, {to}] is already complete.");
+                                    return;
+                                }
+
+                                ulong granularity = _retrofit?.WindowGranularity ?? 1;
+                                ulong next = completedTo + 1;
+                                from = Math.Max(from, next - next % granularity);
+                            }
+                            if (_logger.IsWarn) _logger.Warn($"History walk restarting over [{from}, {to}]: {restartReason} in the interrupted range [{pendingFrom}, {pendingTo}].");
                         }
                         else
                         {
@@ -238,6 +250,23 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         {
             if (_logger.IsError) _logger.Error("History walk verification crashed; the archive's content is UNVERIFIED, not disproven.", e);
         }
+    }
+
+    private string? GetRestartReason(ulong from, ulong pendingFrom)
+    {
+        if (!_metadata.TryGetWalkMode(out bool buildCommitments)) return "checkpoint mode is missing or invalid (legacy checkpoints require a one-time restart)";
+        if (buildCommitments != (_retrofit is not null)) return "checkpoint mode differs from the requested mode";
+        if (_retrofit is null) return null;
+        if (pendingFrom % _retrofit.WindowGranularity != 0) return "checkpoint start is not aligned for proof building";
+        return pendingFrom > from && !CoverageIncludes(from, pendingFrom - 1) ? "checkpoint leaves an unbuilt proof prefix" : null;
+    }
+
+    private bool TryGetCompletedPrefix(ulong from, out ulong completedTo)
+    {
+        bool found = _retrofit is not null
+            ? _metadata.TryGetCoverage(out ulong completedFrom, out completedTo)
+            : _metadata.TryGetWalkVerified(out completedFrom, out completedTo);
+        return found && completedFrom <= from && completedTo >= from;
     }
 
     private bool TipCovers(ulong fromInclusive, ulong toInclusive) =>

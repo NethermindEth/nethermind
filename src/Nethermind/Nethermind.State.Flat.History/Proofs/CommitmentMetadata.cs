@@ -373,10 +373,20 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
 
     public bool TryGetWalkInProgress(out ulong fromInclusive, out ulong toInclusive) => TryReadRange(WalkRangeKey, out fromInclusive, out toInclusive);
 
+    /// <summary>Whether the checkpoint records the requested walk mode.</summary>
+    /// <remarks>Missing or invalid mode records match neither mode; legacy checkpoints must be restarted.</remarks>
     public bool WalkModeMatches(bool buildCommitments) =>
-        _column.Get(WalkModeKey) is { Length: 1 } mode && mode[0] == (buildCommitments ? (byte)1 : (byte)0);
+        TryGetWalkMode(out bool recordedBuild) && recordedBuild == buildCommitments;
 
-    public void BeginWalk(ulong fromInclusive, ulong toInclusive, int items, CancellationToken token = default, bool buildCommitments = false)
+    /// <summary>Reads the checkpoint mode, returning false when it is missing or invalid.</summary>
+    internal bool TryGetWalkMode(out bool buildCommitments)
+    {
+        byte[]? mode = _column.Get(WalkModeKey);
+        buildCommitments = mode is [1];
+        return mode is [0] or [1];
+    }
+
+    public void BeginWalk(ulong fromInclusive, ulong toInclusive, int items, bool buildCommitments, CancellationToken token = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _reclaimTurn.Wait(token);

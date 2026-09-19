@@ -108,7 +108,7 @@ public class HistoryWalkVerificationCoordinatorTests
         FlatDbConfig config = new() { HistoryEnabled = true };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
         using CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
-        metadata.BeginWalk(0, 100, HistoryWalkRun.WorkItems);
+        metadata.BeginWalk(0, 100, HistoryWalkRun.WorkItems, buildCommitments: false);
         using (SeriesWriter scratch = new(_historyColumns))
         {
             scratch.WriteEmpty(SeriesScope.Accounts.Key(TreePath.FromNibble([0x1, 0x2]), scratch: true), 7);
@@ -300,16 +300,16 @@ public class HistoryWalkVerificationCoordinatorTests
     }
 
     [Test]
-    public async Task AnInterruptedVerificationOnlyWalk_RestartsTheRequestedBuildRange([Values] bool legacyCheckpoint)
+    public async Task InterruptedWalk_WithIncompatibleMode_RestartsTheRequestedBuildRange([Values] bool legacyCheckpoint)
     {
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
         FakeHeaders headers = CreateEmptyHeaders(rowFormat);
         CommitmentMetadata metadata = CreateMetadata();
-        metadata.BeginWalk(0, 2, HistoryWalkRun.WorkItems);
+        metadata.BeginWalk(0, 2, HistoryWalkRun.WorkItems, buildCommitments: legacyCheckpoint);
         metadata.MarkWalkItemDone(HistoryWalkRun.WorkItems - 1, []);
         if (legacyCheckpoint)
-            _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments).Remove([0xFE, 0x0D]);
+            WalkCheckpointTestHelper.RemoveMode(_historyColumns, metadata);
         availability.PublishWatermark(8, rowFormat.FormatVersion);
 
         using HistoryWalkVerificationCoordinator coordinator = new(
@@ -322,21 +322,31 @@ public class HistoryWalkVerificationCoordinatorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(coordinator.LastVerdict?.Verified, Is.True);
-            Assert.That(coordinator.LastVerdict!.BlocksCompared, Is.EqualTo(9UL));
-            Assert.That(metadata.TryGetCoverage(out ulong from, out ulong to) && from == 0 && to == 8, Is.True);
+            Assert.That(coordinator.LastVerdict?.BlocksCompared, Is.EqualTo(9UL));
+            Assert.That(metadata.TryGetCoverage(out ulong from, out ulong to), Is.True);
+            Assert.That(from, Is.Zero);
+            Assert.That(to, Is.EqualTo(8UL));
         }
     }
 
     [Test]
-    public async Task AnUnalignedBuildTail_WithBuiltPrefix_RestartsAtAnAlignedBoundary()
+    public async Task InterruptedWalk_WithCompletedPrefix_RestartsOnlyTheUnfinishedTail(
+        [Values] bool buildCommitments, [Values] bool legacyCheckpoint, [Values] bool fullyCovered)
     {
-        FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = buildCommitments };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
-        FakeHeaders headers = CreateEmptyHeaders(rowFormat);
+        const ulong watermark = 520;
+        const ulong coveredTo = 514;
+        FakeHeaders headers = CreateEmptyHeaders(rowFormat, watermark);
         CommitmentMetadata metadata = CreateMetadata();
-        Assert.That(metadata.TryPublishVerifiedCoverage(0, 3, out _, out _), Is.True);
-        metadata.BeginWalk(4, 8, HistoryWalkRun.WorkItems, buildCommitments: true);
-        availability.PublishWatermark(8, rowFormat.FormatVersion);
+        ulong completedTo = fullyCovered ? watermark : coveredTo;
+        if (buildCommitments)
+            Assert.That(metadata.TryPublishVerifiedCoverage(0, completedTo, out _, out _), Is.True);
+        else
+            metadata.MarkWalkVerified(0, completedTo);
+        metadata.BeginWalk(coveredTo + 1, watermark, HistoryWalkRun.WorkItems, buildCommitments: true);
+        if (legacyCheckpoint) WalkCheckpointTestHelper.RemoveMode(_historyColumns, metadata);
+        availability.PublishWatermark(watermark, rowFormat.FormatVersion);
 
         using HistoryWalkVerificationCoordinator coordinator = new(
             _db, _historyColumns, headers, availability, rowFormat, config,
@@ -347,8 +357,21 @@ public class HistoryWalkVerificationCoordinatorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(coordinator.LastVerdict?.Verified, Is.True);
-            Assert.That(metadata.TryGetCoverage(out ulong from, out ulong to) && from == 0 && to == 8, Is.True);
+            if (fullyCovered)
+                Assert.That(coordinator.LastVerdict, Is.Null, "completed ranges must not be replayed after discarding an incompatible checkpoint");
+            else
+            {
+                Assert.That(coordinator.LastVerdict?.Verified, Is.True);
+                Assert.That(coordinator.LastVerdict?.BlocksCompared, Is.EqualTo(buildCommitments ? 9UL : 6UL),
+                    "build resumes at aligned block 512; verification resumes at block 515, never genesis");
+            }
+            bool hasRange = buildCommitments
+                ? metadata.TryGetCoverage(out ulong from, out ulong to)
+                : metadata.TryGetWalkVerified(out from, out to);
+            Assert.That(hasRange, Is.True);
+            Assert.That(from, Is.Zero);
+            Assert.That(to, Is.EqualTo(watermark));
+            Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False);
         }
     }
 
@@ -397,7 +420,7 @@ public class HistoryWalkVerificationCoordinatorTests
 
         CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
         metadata.TryPublishVerifiedCoverage(0, 3, out _, out _);
-        metadata.BeginWalk(4, 8, HistoryWalkRun.WorkItems);
+        metadata.BeginWalk(4, 8, HistoryWalkRun.WorkItems, buildCommitments: false);
         metadata.AdvanceTipSeries(2, 8, out _);
         using (SeriesWriter scratch = new(_historyColumns))
         {
@@ -440,7 +463,7 @@ public class HistoryWalkVerificationCoordinatorTests
         }
 
         CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
-        metadata.BeginWalk(0, 8, HistoryWalkRun.WorkItems);
+        metadata.BeginWalk(0, 8, HistoryWalkRun.WorkItems, buildCommitments: false);
         metadata.AdvanceTipSeries(0, 8, out _);
         availability.PublishWatermark(8, rowFormat.FormatVersion);
 

@@ -102,25 +102,25 @@ public class ArchiveProofTests
     }
 
     [Test]
-    public void SwitchingFromVerificationToBuilding_ReplaysCompletedStorageItems([Values] bool legacyCheckpoint)
+    public void InterruptedWalk_WithIncompatibleMode_ReplaysCompletedStorageItems([Values] bool legacyCheckpoint)
     {
         ArchiveProofRetrofit retrofit = CreateRetrofit(TestPolicy);
         CommitmentMetadata metadata = retrofit.Metadata;
+        retrofit.Prepare();
+        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(
+            _historyColumns, new FlatDbConfig { HistoryEnabled = true });
+        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true,
+            LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit, metadata);
+        HistoryWalkVerifier interruptedVerifier = legacyCheckpoint ? verifier : CreateVerifyOnlyVerifier(metadata);
         using CancellationTokenSource interrupt = new();
-        Assert.That(() => CreateVerifyOnlyVerifier(metadata).VerifyRangeParallel(
+        Assert.That(() => interruptedVerifier.VerifyRangeParallel(
             0, _chain.Head, workers: 1, AccountSubtreeReplayer.DefaultCheckpointBlocks,
             onCheckpoint: null, interrupt.Token,
             onItemDone: item => { if (item == ContractStorageItem) interrupt.Cancel(); }),
             Throws.InstanceOf<OperationCanceledException>());
         Assert.That(metadata.IsWalkItemDone(ContractStorageItem), Is.True);
         if (legacyCheckpoint)
-            _historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments).Remove([0xFE, 0x0D]);
-
-        retrofit.Prepare();
-        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(
-            _historyColumns, new FlatDbConfig { HistoryEnabled = true });
-        HistoryWalkVerifier verifier = new(_historyColumns, _chain, rowFormat, rlpWrapSlots: true,
-            LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, retrofit, metadata);
+            WalkCheckpointTestHelper.RemoveMode(_historyColumns, metadata);
         bool storageReplayed = false;
         HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(
             0, _chain.Head, workers: 1, AccountSubtreeReplayer.DefaultCheckpointBlocks,
@@ -130,7 +130,7 @@ public class ArchiveProofTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(verdict.Verified, Is.True);
-            Assert.That(storageReplayed, Is.True, "verification-only completion does not imply storage commitments were emitted");
+            Assert.That(storageReplayed, Is.True, "completed items are reusable only with a known matching mode");
             Assert.That(retrofit.PublishCoverage(0, _chain.Head), Is.True);
         }
         AssertProofMatchesTheTrie(Contract, 65, ContractSlots);
@@ -1277,7 +1277,7 @@ public class ArchiveProofTests
         bool joined = HoldingTheReclaimTurn(metadata, () =>
         {
             using CancellationTokenSource giveUp = new(TimeSpan.FromMilliseconds(200));
-            Assert.That(() => metadata.BeginWalk(0, 10, HistoryWalkRun.WorkItems, giveUp.Token), Throws.InstanceOf<OperationCanceledException>(),
+            Assert.That(() => metadata.BeginWalk(0, 10, HistoryWalkRun.WorkItems, buildCommitments: false, giveUp.Token), Throws.InstanceOf<OperationCanceledException>(),
                 "a walk waits for a running carry-forward, but a node stopping in that wait must not park behind it");
         });
 
