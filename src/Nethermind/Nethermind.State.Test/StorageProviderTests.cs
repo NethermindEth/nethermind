@@ -129,7 +129,9 @@ public class StorageProviderTests(bool useFlat)
         provider.Set(cell, 17);
         provider.Commit(Frontier.Instance);
         provider.ClearStorage(ctx.Address1);
-        provider.GetOriginal(new StorageCell(ctx.Address2, 1), out _);
+        StorageCell readCell = new(ctx.Address2, 1);
+        provider.Get(readCell, out _);
+        provider.GetOriginal(readCell, out _);
         ReadCollectingStorageTracer cancelled = new() { CancelOnClear = !cancelOnRead, CancelOnRead = cancelOnRead };
 
         Assert.Throws<OperationCanceledException>(() => provider.Commit(Frontier.Instance, cancelled));
