@@ -2,10 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Text;
 using System.Threading;
 using Nethermind.Core;
@@ -23,6 +27,8 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
 {
     private const int MaxPooledKeys = 128;
     private const int TransactionLockCount = 64;
+    private const int ProcessedTransactionKeyLength = sizeof(ulong) + sizeof(int);
+    private const int ProcessedBlockIndexLength = 1 + sizeof(int);
 
     // Sidecar-free records live in the full-txs column under a key shape (prefix + hash) that
     // cannot collide with the 64-byte timestamp-prefixed full-tx keys.
@@ -33,6 +39,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
     private static ReadOnlySpan<byte> SpecChangeValidationMarkerKey => "spec-change-validation"u8;
     private static readonly Lock[] _transactionLocks = CreateTransactionLocks();
     private readonly ConcurrentQueue<byte[]> _keyPool = new();
+    private readonly Lock _processedTransactionsLock = new();
     private int _pooledKeyCount;
     private readonly IColumnsDb<BlobTxsColumns> _database = database;
     private readonly IDb _fullBlobTxsDb = database.GetColumnDb(BlobTxsColumns.FullBlobTxs);
@@ -375,6 +382,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         }
     }
 
+    [SkipLocalsInit]
     public void AddBlobTransactionsFromBlock(ulong blockNumber, in ArrayPoolListRef<Transaction> blockBlobTransactions)
     {
         if (blockBlobTransactions.Count == 0)
@@ -382,17 +390,63 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
             return;
         }
 
-        EncodeAndSaveTxs(blockBlobTransactions, _processedBlobTxsDb, blockNumber);
+        using Lock.Scope locked = _processedTransactionsLock.EnterScope();
+        using IColumnsWriteBatch<BlobTxsColumns> batch = _database.StartWriteBatch();
+        try
+        {
+            IWriteBatch processed = batch.GetColumnBatch(BlobTxsColumns.ProcessedTxs);
+            int previousCount = GetProcessedTransactionCount(blockNumber);
+            Unsafe.SkipInit(out Vector128<byte> keyStorage);
+            Span<byte> key = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref keyStorage, 1))[..ProcessedTransactionKeyLength];
+            BinaryPrimitives.WriteUInt64BigEndian(key, blockNumber);
+            SaveProcessedTransactions(processed, key, blockBlobTransactions.AsSpan());
+
+            RemoveProcessedTransactionRecords(processed, key, blockBlobTransactions.Count, previousCount);
+            // Zero cannot start the legacy RLP list. Payload keys are longer than any legacy block-number key.
+            Unsafe.SkipInit(out ulong indexStorage);
+            Span<byte> index = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref indexStorage, 1))[..ProcessedBlockIndexLength];
+            index[0] = 0;
+            BinaryPrimitives.WriteInt32BigEndian(index[1..], blockBlobTransactions.Count);
+            processed.PutSpan(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), index);
+        }
+        catch
+        {
+            batch.Clear();
+            throw;
+        }
     }
 
+    [SkipLocalsInit]
     public bool TryGetBlobTransactionsFromBlock(ulong blockNumber, [NotNullWhen(true)] out Transaction[]? blockBlobTransactions)
     {
-        byte[]? bytes = _processedBlobTxsDb.Get(blockNumber);
+        using Lock.Scope locked = _processedTransactionsLock.EnterScope();
+        using MemoryManager<byte>? bytes = _processedBlobTxsDb.GetOwnedMemory(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _));
 
         if (bytes is not null)
         {
-            RlpReader ctx = new(bytes);
-            blockBlobTransactions = _txDecoder.DecodeNonNullArray(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
+            ReadOnlySpan<byte> encoded = bytes.GetSpan();
+            if (encoded[0] != 0)
+            {
+                RlpReader ctx = new(encoded);
+                blockBlobTransactions = _txDecoder.DecodeNonNullArray(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
+                return true;
+            }
+
+            int count = DecodeProcessedTransactionCount(encoded);
+            Transaction[] transactions = new Transaction[count];
+            Unsafe.SkipInit(out Vector128<byte> keyStorage);
+            Span<byte> key = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref keyStorage, 1))[..ProcessedTransactionKeyLength];
+            BinaryPrimitives.WriteUInt64BigEndian(key, blockNumber);
+            for (int i = 0; i < count; i++)
+            {
+                BinaryPrimitives.WriteInt32BigEndian(key[sizeof(ulong)..], i);
+                using MemoryManager<byte> payload = _processedBlobTxsDb.GetOwnedMemory(key)
+                    ?? throw new RlpException($"Missing processed blob transaction {i} for block {blockNumber}.");
+                RlpReader reader = new(payload.GetSpan());
+                transactions[i] = _txDecoder.Decode(ref reader, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage)
+                    ?? throw new RlpException($"Null processed blob transaction {i} for block {blockNumber}.");
+            }
+            blockBlobTransactions = transactions;
             return true;
         }
 
@@ -400,8 +454,77 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         return false;
     }
 
+    [SkipLocalsInit]
     public void DeleteBlobTransactionsFromBlock(ulong blockNumber)
-        => _processedBlobTxsDb.Delete(blockNumber);
+    {
+        using Lock.Scope locked = _processedTransactionsLock.EnterScope();
+        using IColumnsWriteBatch<BlobTxsColumns> batch = _database.StartWriteBatch();
+        try
+        {
+            IWriteBatch processed = batch.GetColumnBatch(BlobTxsColumns.ProcessedTxs);
+            Unsafe.SkipInit(out Vector128<byte> keyStorage);
+            Span<byte> key = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref keyStorage, 1))[..ProcessedTransactionKeyLength];
+            BinaryPrimitives.WriteUInt64BigEndian(key, blockNumber);
+            RemoveProcessedTransactionRecords(processed, key, 0, GetProcessedTransactionCount(blockNumber));
+            processed.Delete(blockNumber);
+        }
+        catch
+        {
+            batch.Clear();
+            throw;
+        }
+    }
+
+    private int GetProcessedTransactionCount(ulong blockNumber)
+    {
+        ReadOnlySpan<byte> index = _processedBlobTxsDb.GetSpan(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _));
+        try
+        {
+            return !index.IsEmpty && index[0] == 0 ? DecodeProcessedTransactionCount(index) : 0;
+        }
+        finally
+        {
+            _processedBlobTxsDb.DangerousReleaseMemory(index);
+        }
+    }
+
+    private static int DecodeProcessedTransactionCount(ReadOnlySpan<byte> index)
+    {
+        if (index.Length != ProcessedBlockIndexLength || BinaryPrimitives.ReadInt32BigEndian(index[1..]) <= 0)
+            throw new RlpException("Invalid processed blob transaction index.");
+        return BinaryPrimitives.ReadInt32BigEndian(index[1..]);
+    }
+
+    private static void RemoveProcessedTransactionRecords(IWriteBatch batch, Span<byte> key, int start, int count)
+    {
+        for (int i = start; i < count; i++)
+        {
+            BinaryPrimitives.WriteInt32BigEndian(key[sizeof(ulong)..], i);
+            batch.Remove(key);
+        }
+    }
+
+    private static void SaveProcessedTransactions(IWriteBatch batch, Span<byte> key, ReadOnlySpan<Transaction> transactions)
+    {
+        const RlpBehaviors behaviors = RlpBehaviors.InMempoolForm | RlpBehaviors.Storage;
+        int maxLength = 0;
+        foreach (Transaction transaction in transactions)
+        {
+            maxLength = Math.Max(maxLength, _txDecoder.GetLength(transaction, behaviors));
+        }
+
+        using ArrayPoolSpan<byte> rented = new(maxLength);
+        Span<byte> buffer = rented;
+        Span<byte> transactionIndex = key.Slice(sizeof(ulong), sizeof(int));
+        int index = 0;
+        foreach (Transaction transaction in transactions)
+        {
+            BinaryPrimitives.WriteInt32BigEndian(transactionIndex, index++);
+            RlpWriter writer = new(buffer);
+            _txDecoder.EncodeTx(ref writer, transaction, behaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
+            batch.PutSpan(key, buffer[..writer.Position]);
+        }
+    }
 
     private static bool TryDecodeFullTx(
         byte[]? txBytes,
@@ -486,12 +609,6 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         }
 
         return locks;
-    }
-
-    private void EncodeAndSaveTxs(in ArrayPoolListRef<Transaction> blockBlobTransactions, IDb db, ulong blockNumber)
-    {
-        using ArrayPoolSpan<byte> rlp = _txDecoder.EncodeToArrayPoolSpan(blockBlobTransactions.AsSpan(), RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
-        db.PutSpan(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), rlp);
     }
 }
 
