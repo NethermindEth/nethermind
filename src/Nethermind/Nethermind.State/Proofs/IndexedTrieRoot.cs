@@ -80,7 +80,7 @@ internal static class IndexedTrieRoot
     }
 
     internal readonly ref struct Calculator<T, TEncoder>(ReadOnlySpan<T> items, TEncoder encoder,
-        ReadOnlySpan<NodeReference> leaves = default) where TEncoder : struct, IValueEncoder<T>
+        ReadOnlySpan<NodeReference> leaves = default, Span<int> valueLengths = default) where TEncoder : struct, IValueEncoder<T>
     {
         private const int BranchPrefixLength = 3;
         private static int BranchBatchSize => Avx512F.IsSupported ? MaxHashBatchSize : Avx2HashBatchSize;
@@ -92,6 +92,7 @@ internal static class IndexedTrieRoot
         private const int MaxMultiBlockValueLength = 16 * KeccakRate - 12;
         private readonly ReadOnlySpan<T> _items = items;
         private readonly ReadOnlySpan<NodeReference> _leaves = leaves;
+        private readonly Span<int> _valueLengths = valueLengths;
 
         public Hash256 Calculate(bool canBeParallel = true, int minItemsForParallel = MinItemsForParallelRootHash)
         {
@@ -100,8 +101,16 @@ internal static class IndexedTrieRoot
                 && encoder.Batching is LeafBatching.Encoded or LeafBatching.MultiBlock)
             {
                 Span<int> lengths = stackalloc int[_items.Length];
-                if (TryGetMultiBlockLengths(lengths)) return CalculateMultiBlockSequential(lengths);
+                lengths.Fill(-1);
+                bool canBatch = TryGetMultiBlockLengths(lengths);
+                Calculator<T, TEncoder> calculator = new(_items, encoder, valueLengths: lengths);
+                return canBatch ? calculator.CalculateMultiBlockSequential() : calculator.CalculateRegular(canBeParallel, minItemsForParallel);
             }
+            return CalculateRegular(canBeParallel, minItemsForParallel);
+        }
+
+        private Hash256 CalculateRegular(bool canBeParallel, int minItemsForParallel)
+        {
             // One batch is the floor: below it there is no fan-out, and a lone leaf gets the wrong depth.
             if (!canBeParallel || RuntimeInformation.IsSingleProcessor || _items.Length <= Math.Max(LeafBatchSize, minItemsForParallel))
                 return CalculateSequential();
@@ -113,8 +122,8 @@ internal static class IndexedTrieRoot
             for (int position = 0; position < _items.Length; position++)
             {
                 int length = encoder.GetLength(_items[GetIndex(position)]);
-                if (length is <= MaxSingleBlockValueLength or > MaxMultiBlockValueLength) return false;
                 lengths[position] = length;
+                if (length is <= MaxSingleBlockValueLength or > MaxMultiBlockValueLength) return false;
             }
             return true;
         }
@@ -190,11 +199,11 @@ internal static class IndexedTrieRoot
             return new Calculator<T, TEncoder>(_items, encoder, references.AsSpan()).CalculateSequential();
         }
 
-        private Hash256 CalculateMultiBlockSequential(ReadOnlySpan<int> lengths)
+        private Hash256 CalculateMultiBlockSequential()
         {
             using ArrayPoolListRef<NodeReference> references = new(_items.Length, _items.Length);
             for (int start = 0; start < _items.Length; start += LeafBatchSize)
-                CalculateMultiBlockLeafBatch(start, Math.Min(start + LeafBatchSize, _items.Length), references.AsSpan(), lengths);
+                CalculateMultiBlockLeafBatch(start, Math.Min(start + LeafBatchSize, _items.Length), references.AsSpan());
             return new Calculator<T, TEncoder>(_items, encoder, references.AsSpan()).CalculateSequential();
         }
 
@@ -202,17 +211,20 @@ internal static class IndexedTrieRoot
         {
             Debug.Assert(_items.Length > 1);
             using ArrayPoolList<T> inputs = new(_items);
+            // Workers populate the cache only within their disjoint leaf ranges.
+            using ArrayPoolList<int>? valueLengths = _valueLengths.IsEmpty ? null : new(_valueLengths);
             using ArrayPoolList<NodeReference> references = new(_items.Length, _items.Length);
             TEncoder leafEncoder = encoder;
             try
             {
                 Parallel.For(0, (_items.Length - 1) / LeafBatchSize + 1, RuntimeInformation.ParallelOptionsLogicalCores, batch =>
                 {
-                    Calculator<T, TEncoder> calculator = new(inputs.AsSpan(), leafEncoder);
+                    Calculator<T, TEncoder> calculator = new(inputs.AsSpan(), leafEncoder,
+                        valueLengths: valueLengths is null ? default : valueLengths.AsSpan());
                     int start = batch * LeafBatchSize;
                     int end = start + Math.Min(LeafBatchSize, inputs.Count - start);
                     if (Avx2.IsSupported && leafEncoder.Batching == LeafBatching.MultiBlock
-                        && leafEncoder.GetLength(inputs[calculator.GetIndex(start)]) is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength)
+                        && calculator.GetLength(start) is > MaxSingleBlockValueLength and <= MaxMultiBlockValueLength)
                     {
                         calculator.CalculateMultiBlockLeafBatch(start, end, references.AsSpan());
                         return;
@@ -237,7 +249,7 @@ internal static class IndexedTrieRoot
                         int depth = position == 0 ? 0 : CommonPrefix(key, calculator.GetKey(position - 1), 0);
                         if (position + 1 < inputs.Count)
                             depth = Math.Max(depth, CommonPrefix(key, calculator.GetKey(position + 1), 0));
-                        references[position] = calculator.Leaf(key, depth + 1, inputs[calculator.GetIndex(position)]);
+                        references[position] = calculator.Leaf(key, depth + 1, position);
                     }
                 });
             }
@@ -253,7 +265,7 @@ internal static class IndexedTrieRoot
         }
 
         [SkipLocalsInit]
-        private void CalculateMultiBlockLeafBatch(int start, int end, Span<NodeReference> references, ReadOnlySpan<int> precomputedLengths = default)
+        private void CalculateMultiBlockLeafBatch(int start, int end, Span<NodeReference> references)
         {
             int batchSize = Avx512F.IsSupported ? MaxHashBatchSize : Avx2HashBatchSize;
             const int metadataLength = LeafBatchSize * sizeof(int);
@@ -278,13 +290,11 @@ internal static class IndexedTrieRoot
                     depth = Math.Max(depth, CommonPrefix(key, GetKey(position + 1), 0));
                 T item = _items[GetIndex(position)];
                 ReadOnlySpan<byte> value = encoder.GetEncodedValue(item);
-                int valueLength = precomputedLengths.IsEmpty
-                    ? value.IsEmpty ? encoder.GetLength(item) : value.Length
-                    : precomputedLengths[position];
+                int valueLength = value.IsEmpty ? GetLength(position) : value.Length;
                 paddedLengths[slot] = 0;
                 if (valueLength <= MaxSingleBlockValueLength || valueLength > MaxMultiBlockValueLength)
                 {
-                    references[position] = Leaf(key, depth + 1, item);
+                    references[position] = Leaf(key, depth + 1, position);
                     continue;
                 }
                 Span<byte> path = paths.Slice(slot * MaxEncodedPathLength, MaxEncodedPathLength);
@@ -369,10 +379,10 @@ internal static class IndexedTrieRoot
                     depth = Math.Max(depth, CommonPrefix(key, GetKey(position + 1), 0));
                 T item = _items[GetIndex(position)];
                 ReadOnlySpan<byte> value = encoder.GetEncodedValue(item);
-                int valueLength = value.IsEmpty ? encoder.GetLength(item) : value.Length;
+                int valueLength = value.IsEmpty ? GetLength(position) : value.Length;
                 if (valueLength < (encoder.Batching == LeafBatching.SmallValues ? 2 : Keccak.Size) || valueLength > MaxSingleBlockValueLength)
                 {
-                    references[position] = Leaf(key, depth + 1, item);
+                    references[position] = Leaf(key, depth + 1, position);
                     continue;
                 }
                 int pathLength = EncodePath(key, depth + 1, key.Length - depth - 1, isLeaf: true, path);
@@ -442,7 +452,7 @@ internal static class IndexedTrieRoot
         {
             Key first = GetKey(start);
             if (end - start == 1)
-                return TPrecomputed.IsActive ? _leaves[start] : Leaf(first, depth, _items[GetIndex(start)]);
+                return TPrecomputed.IsActive ? _leaves[start] : Leaf(first, depth, start);
 
             Key last = GetKey(end - 1);
             int commonDepth = CommonPrefix(first, last, depth);
@@ -518,12 +528,13 @@ internal static class IndexedTrieRoot
         }
 
         [SkipLocalsInit]
-        private NodeReference Leaf(Key key, int depth, T item)
+        private NodeReference Leaf(Key key, int depth, int position)
         {
+            T item = _items[GetIndex(position)];
             Span<byte> path = stackalloc byte[6];
             int pathLength = EncodePath(key, depth, key.Length - depth, isLeaf: true, path);
             ReadOnlySpan<byte> encodedValue = encoder.GetEncodedValue(item);
-            int valueLength = encodedValue.IsEmpty ? encoder.GetLength(item) : encodedValue.Length;
+            int valueLength = encodedValue.IsEmpty ? GetLength(position) : encodedValue.Length;
             Debug.Assert(valueLength > 0, "Empty encodings require trie deletion semantics.");
             Span<byte> shortValue = stackalloc byte[1];
             if (valueLength == 1)
@@ -556,6 +567,14 @@ internal static class IndexedTrieRoot
             }
             Debug.Assert(writer.Position == totalLength);
             return NodeReference.FromRlp(buffer.AsSpan(0, writer.Position));
+        }
+
+        private int GetLength(int position)
+        {
+            if (_valueLengths.IsEmpty) return encoder.GetLength(_items[GetIndex(position)]);
+            ref int length = ref _valueLengths[position];
+            if (length < 0) length = encoder.GetLength(_items[GetIndex(position)]);
+            return length;
         }
 
         private int GetIndex(int position)

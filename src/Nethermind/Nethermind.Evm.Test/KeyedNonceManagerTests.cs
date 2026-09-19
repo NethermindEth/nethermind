@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -57,9 +58,13 @@ public class KeyedNonceManagerTests
 
         KeyedNonceManager.StorageIndices(TestItem.AddressA, keys, indices);
 
+        byte[] preimage = new byte[64];
+        TestItem.AddressA.Bytes.CopyTo(preimage.AsSpan(12, Address.Size));
         for (int i = 0; i < count; i++)
         {
-            Assert.That(indices[i], Is.EqualTo(KeyedNonceManager.StorageSlot(TestItem.AddressA, keys[i]).Index));
+            keys[i].ToBigEndian(preimage.AsSpan(32));
+            UInt256 expected = new(ValueKeccak.Compute(preimage).Bytes, isBigEndian: true);
+            Assert.That(indices[i], Is.EqualTo(expected));
         }
     }
 

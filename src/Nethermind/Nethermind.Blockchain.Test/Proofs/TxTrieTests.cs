@@ -6,6 +6,7 @@ using System.Buffers;
 using System.IO;
 using System.Linq;
 using System.Runtime.Intrinsics.X86;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -53,7 +54,16 @@ public class TxTrieTests(bool useEip2718)
 
     [Test]
     public void Sequential_multi_block_batch_computes_each_length_once(
-        [Values(8, 16, 17, 64)] int count, [Values] bool multiBlock)
+        [Values(8, 16, 17, 64)] int count, [Values] bool multiBlock) =>
+        AssertRootAndLengthCalls(count, multiBlock, -1, 0, true);
+
+    [Test]
+    public void Mixed_root_reuses_lengths_when_batch_admission_fails(
+        [Values(17, 64)] int count, [Values] bool multiBlock, [Values(0, 1)] int outlierIndex,
+        [Values(124, 2165)] int outlierLength, [Values] bool canBeParallel) =>
+        AssertRootAndLengthCalls(count, multiBlock, outlierIndex, outlierLength, canBeParallel);
+
+    private static void AssertRootAndLengthCalls(int count, bool multiBlock, int outlierIndex, int outlierLength, bool canBeParallel)
     {
         if (!Avx2.IsSupported) Assert.Ignore("Requires AVX2.");
         byte[][] values = new byte[count][];
@@ -62,19 +72,44 @@ public class TxTrieTests(bool useEip2718)
         TxTrie expected = new(ReadOnlySpan<Transaction>.Empty, bufferPool: pool, canBeParallel: false);
         for (int i = 0; i < count; i++)
         {
-            byte[] value = new byte[125 + i * 17];
+            byte[] value = new byte[i == outlierIndex ? outlierLength : 125 + i * 17];
             value[0] = (byte)i;
             values[i] = value;
             expected.Set(Rlp.Encode(i).Bytes, value);
         }
         expected.UpdateRootHash(canBeParallel: false);
 
-        Hash256 actual = new IndexedTrieRoot.Calculator<byte[], TestValueEncoder>(values, new(multiBlock, lengthCalls)).Calculate();
+        Hash256 actual = new IndexedTrieRoot.Calculator<byte[], TestValueEncoder>(values, new(multiBlock, lengthCalls))
+            .Calculate(canBeParallel, IndexedTrieRoot.MinReceiptsForParallelRootHash);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(lengthCalls, Is.All.EqualTo(1));
+            if (multiBlock || outlierIndex < 0) Assert.That(lengthCalls, Is.All.EqualTo(1));
+            else Assert.That(lengthCalls, Is.All.LessThanOrEqualTo(1));
             Assert.That(actual, Is.EqualTo(expected.RootHash));
         }
+    }
+
+    [Test]
+    public void Encoded_leaf_length_takes_precedence_over_length_hint(
+        [Values(8, 17, 64, 65)] int count, [Values(124, 136, 2165)] int actualLength,
+        [Values(125, 2164)] int reportedLength)
+    {
+        byte[][] values = new byte[count][];
+        Random random = new(4231);
+        using TrackingCappedArrayPool pool = new();
+        TxTrie expected = new(ReadOnlySpan<Transaction>.Empty, bufferPool: pool, canBeParallel: false);
+        for (int i = 0; i < count; i++)
+        {
+            byte[] value = new byte[actualLength];
+            random.NextBytes(value);
+            values[i] = value;
+            expected.Set(Rlp.Encode(i).Bytes, value);
+        }
+        expected.UpdateRootHash(canBeParallel: false);
+
+        Hash256 actual = new IndexedTrieRoot.Calculator<byte[], TestValueEncoder>(values, new(false, reportedLength: reportedLength)).Calculate();
+
+        Assert.That(actual, Is.EqualTo(expected.RootHash));
     }
 
     [Test]
@@ -111,14 +146,14 @@ public class TxTrieTests(bool useEip2718)
         }
     }
 
-    private readonly struct TestValueEncoder(bool multiBlock, int[]? lengthCalls = null) : IndexedTrieRoot.IValueEncoder<byte[]>
+    private readonly struct TestValueEncoder(bool multiBlock, int[]? lengthCalls = null, int? reportedLength = null) : IndexedTrieRoot.IValueEncoder<byte[]>
     {
         public IndexedTrieRoot.LeafBatching Batching => multiBlock ? IndexedTrieRoot.LeafBatching.MultiBlock : IndexedTrieRoot.LeafBatching.Encoded;
         public ReadOnlySpan<byte> GetEncodedValue(byte[] item) => multiBlock ? default : item;
         public int GetLength(byte[] item)
         {
-            if (lengthCalls is not null) lengthCalls[item[0]]++;
-            return item.Length;
+            if (lengthCalls is not null) Interlocked.Increment(ref lengthCalls[item[0]]);
+            return reportedLength ?? item.Length;
         }
         public void Encode<TWriter>(ref TWriter writer, byte[] item)
             where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(item);

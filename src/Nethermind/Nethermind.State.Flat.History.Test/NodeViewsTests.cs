@@ -56,8 +56,9 @@ public class NodeViewsTests
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(actual[i].Kind, Is.EqualTo(expected[i].Kind));
-                    Assert.That(actual[i].Hash, Is.EqualTo(expected[i].Hash));
-                    Assert.That(actual[i].Rlp.ToArray(), Is.EqualTo(expected[i].Rlp.ToArray()));
+                    ValueHash256 expectedHash = rlps[i] is { } encoded ? ValueKeccak.Compute(encoded) : Keccak.EmptyTreeHash.ValueHash256;
+                    Assert.That(actual[i].Hash, Is.EqualTo(expectedHash));
+                    Assert.That(actual[i].Rlp.ToArray(), Is.EqualTo(rlps[i] ?? []));
                 }
             }
             NodeView expectedParent = NodeViews.Combine(expected);

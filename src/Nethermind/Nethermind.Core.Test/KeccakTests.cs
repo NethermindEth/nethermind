@@ -21,6 +21,14 @@ namespace Nethermind.Core.Test
         public void Check_instruction_set_expectations()
         {
             TestContext.Progress.WriteLine($"AVX2={Avx2.IsSupported}; AVX512F={Avx512F.IsSupported}");
+            if (Environment.GetEnvironmentVariable("NETHERMIND_TEST_REQUIRE_AVX512") == "1")
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(Avx512F.IsSupported, Is.True, "The AVX-512 job requires AVX-512F hardware.");
+                    Assert.That(Avx512F.VL.IsSupported, Is.True, "The AVX-512 job requires AVX-512VL hardware.");
+                }
+            }
             if (Environment.GetEnvironmentVariable("NETHERMIND_TEST_REQUIRE_AVX2") == "1")
             {
                 using (Assert.EnterMultipleScope())
