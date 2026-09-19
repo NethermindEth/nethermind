@@ -94,6 +94,33 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Committed_clear_restores_a_slot_rewritten_to_its_original_value()
+    {
+        using Context ctx = new(useFlat);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell cell = new(ctx.Address1, 1);
+        provider.Set(cell, 17);
+        provider.Commit(Frontier.Instance);
+        provider.Get(cell, out UInt256 original);
+        provider.ClearStorage(ctx.Address1);
+        provider.Set(cell, original);
+        ReadCollectingStorageTracer tracer = new();
+
+        provider.Commit(Frontier.Instance, tracer);
+        provider.Get(cell, out UInt256 committed);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(committed, Is.EqualTo((UInt256)17), "the clear must not discard the restoring write");
+            Assert.That(tracer.Clears, Is.EqualTo(new[] { ctx.Address1 }));
+            Assert.That(tracer.Restores, Has.Count.EqualTo(1));
+            Assert.That(tracer.Restores[0].Cell, Is.EqualTo(cell));
+            Assert.That(tracer.Restores[0].Value, Is.EqualTo(new byte[] { 17 }));
+            Assert.That(tracer.Changes, Is.Empty, "ordinary storage tracers still receive only net changes");
+        }
+    }
+
+    [Test]
     public void Empty_commit_restore()
     {
         using Context ctx = new(useFlat);
@@ -2325,6 +2352,8 @@ public class StorageProviderTests(bool useFlat)
     {
         public System.Collections.Generic.List<StorageCell> Reads { get; } = [];
         public System.Collections.Generic.List<(StorageCell Cell, byte[] Before, byte[] After)> Changes { get; } = [];
+        public List<Address> Clears { get; } = [];
+        public List<(StorageCell Cell, byte[] Value)> Restores { get; } = [];
 
         public bool IsTracingState => false;
         public bool IsTracingStorage => true;
@@ -2336,5 +2365,7 @@ public class StorageProviderTests(bool useFlat)
         public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
         public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) => Changes.Add((storageCell, before, after));
         public void ReportStorageRead(in StorageCell storageCell) => Reads.Add(storageCell);
+        public void ReportStorageClear(Address address) => Clears.Add(address);
+        public void ReportStorageRestore(in StorageCell storageCell, byte[] value) => Restores.Add((storageCell, value));
     }
 }

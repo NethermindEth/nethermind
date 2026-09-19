@@ -282,12 +282,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         base.CommitCore(tracer);
         EndOriginalsRound();
         _destroyedThisRound.ClearAndTrim();
-        _storageClearJournal.Clear();
-
+        if (tracer.IsTracingStorage)
+        {
+            foreach (StorageClearChange clear in _storageClearJournal) tracer.ReportStorageClear(clear.Address);
+        }
         if (trace is not null)
         {
             ReportChanges(tracer, trace);
         }
+        _storageClearJournal.Clear();
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -342,7 +345,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
 
             if (_originalValues.TryGetValue(change.StorageCell, out UInt256 initialValue) &&
-                initialValue == change.Value)
+                initialValue == change.Value && !WasCleared(change.StorageCell.Address))
             {
                 // no need to update the tree if the value is the same
             }
@@ -607,7 +610,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     }
 
     [SkipLocalsInit]
-    private static void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, StorageChangeTrace> trace)
+    private void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, StorageChangeTrace> trace)
     {
         Unsafe.SkipInit(out EvmWord beforeBuffer);
         Unsafe.SkipInit(out EvmWord afterBuffer);
@@ -620,7 +623,18 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             {
                 tracer.ReportStorageChange(address, before.IsZero ? StorageTree.ZeroBytes : before.ToMinimalBigEndian(ref beforeBuffer).ToArray(), after.IsZero ? StorageTree.ZeroBytes : after.ToMinimalBigEndian(ref afterBuffer).ToArray());
             }
+            else if (!after.IsZero && WasCleared(address.Address))
+            {
+                tracer.ReportStorageRestore(address, after.ToMinimalBigEndian(ref afterBuffer).ToArray());
+            }
         }
+    }
+
+    private bool WasCleared(Address address)
+    {
+        foreach (StorageClearChange clear in _storageClearJournal)
+            if (clear.Address == address) return true;
+        return false;
     }
 
     /// <summary>

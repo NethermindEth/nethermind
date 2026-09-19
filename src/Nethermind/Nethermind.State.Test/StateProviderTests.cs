@@ -69,13 +69,28 @@ public class StateProviderTests(bool useFlat)
         state.CreateAccount(_address1, 7, 3);
         state.Commit(Frontier.Instance);
 
-        state.ApplyAccountOverlay(new BalanceOverlay(_address1));
+        Assert.That(state.TryApplyAccountOverlay(new BalanceOverlay(_address1)), Is.True);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(state.GetBalance(_address1), Is.EqualTo((UInt256)99), "the prefix replaces the cached balance");
             Assert.That(state.GetNonce(_address1), Is.EqualTo(3), "the block-start nonce is not flushed to the scope and must survive");
         }
+    }
+
+    [Test]
+    public void ApplyAccountOverlay_WhenMissingAccountWasCached_UsesCreatedAccount()
+    {
+        using Context ctx = new(useFlat);
+        IWorldState state = ctx.WorldState;
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        state.WarmUp(_address1);
+        Assert.That(state.GetBalance(_address1), Is.EqualTo(UInt256.Zero));
+        state.Commit(Frontier.Instance);
+
+        Assert.That(state.TryApplyAccountOverlay(new BalanceOverlay(_address1)), Is.True);
+
+        Assert.That(state.GetBalance(_address1), Is.EqualTo((UInt256)99), "cached misses must not hide the prefix-created account");
     }
 
     [Test]
@@ -679,7 +694,7 @@ public class StateProviderTests(bool useFlat)
     {
         public bool TryGetAccount(Address candidate, Account? underlying, out Account? overlaid)
         {
-            overlaid = underlying?.WithChangedBalance(99);
+            overlaid = (underlying ?? Account.TotallyEmpty).WithChangedBalance(99);
             return candidate == address;
         }
 

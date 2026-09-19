@@ -101,19 +101,39 @@ public sealed class TransactionChangesetBuilder(
 
         lock (_chunks)
         {
-            if (_retry.TryPop(out chunk)) return true;
+            availability.TryGetGlobalFloor(out ulong floor);
+            if (floor == ulong.MaxValue) return false;
+            ulong minimum = Math.Max(_retrofitFromBlock, floor + 1);
+            ReconcileFloor(minimum);
+            while (_retry.TryPop(out chunk))
+            {
+                if (chunk.Top < minimum) continue;
+                chunk = chunk with { Bottom = Math.Max(chunk.Bottom, minimum) };
+                return true;
+            }
             if (_stalledTops.Count > 0) return false;
 
             ulong top = _nextChunkTop ?? from - 1;
             if (from == 0 || top < _retrofitFromBlock || _retrofitFromBlock == 0) return false;
 
             ulong bottom = top >= ChunkBlocks - 1 + _retrofitFromBlock ? top - (ChunkBlocks - 1) : _retrofitFromBlock;
-            while (!CanExecute(bottom) && bottom < top) bottom++;
-            if (!CanExecute(bottom)) return false;
+            bottom = Math.Max(bottom, minimum);
+            if (bottom > top) return false;
 
             chunk = new Chunk(bottom, top);
             _nextChunkTop = bottom == 0 ? null : bottom - 1;
             return true;
+        }
+    }
+
+    private void ReconcileFloor(ulong minimum)
+    {
+        _stalledTops.RemoveWhere(top => top < minimum);
+        List<ulong> tops = [.. _completedByTop.Keys];
+        foreach (ulong top in tops)
+        {
+            if (top < minimum) _completedByTop.Remove(top);
+            else _completedByTop[top] = Math.Max(_completedByTop[top], minimum);
         }
     }
 
@@ -142,7 +162,11 @@ public sealed class TransactionChangesetBuilder(
         lock (_chunks)
         {
             _stalledTops.Remove(chunk.Top);
-            _completedByTop[chunk.Top] = chunk.Bottom;
+            availability.TryGetGlobalFloor(out ulong floor);
+            if (floor == ulong.MaxValue) return;
+            ReconcileFloor(floor + 1);
+            if (chunk.Top <= floor) return;
+            _completedByTop[chunk.Top] = Math.Max(chunk.Bottom, floor + 1);
             while (index.TryGetCoverage(out ulong from, out _) && from > 0 && _completedByTop.Remove(from - 1, out ulong bottom))
             {
                 index.TryClaim(bottom, from - 1);
@@ -339,6 +363,9 @@ public sealed class TransactionChangesetBuilder(
     {
         block = 0;
         if (!index.Enabled || !availability.TryGetWatermark(out ulong watermark)) return false;
+        availability.TryGetGlobalFloor(out ulong floor);
+        if (floor == ulong.MaxValue || executors.GetLastSupportedBlock(floor + 1, watermark) is not { } supported) return false;
+        watermark = Math.Min(watermark, supported);
 
         if (!index.TryGetCoverage(out ulong from, out ulong to))
         {

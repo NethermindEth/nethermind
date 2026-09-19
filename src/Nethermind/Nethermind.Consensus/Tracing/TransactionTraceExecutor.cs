@@ -36,19 +36,18 @@ public sealed class TransactionTraceExecutor(
 
         // A seeded prefix stands in for the transactions ahead of the target: they are neither executed nor traced,
         // and a block access list under construction would miss them, so seeding yields to it.
-        int first = 0;
-        if (boundary.Seeds is { } seeds && readOverlay is not null && !balManager.Enabled)
-        {
-            int target = boundary.IndexOf(block);
-            if (target > 0 && seeds.TrySeed(block, target, readOverlay) && readOverlay.Current is { } overlay)
-            {
-                state.ApplyAccountOverlay(overlay);
-                first = target;
-            }
-        }
-
         try
         {
+            int first = 0;
+            if (boundary.Seeds is { } seeds && readOverlay is not null && !balManager.Enabled)
+            {
+                int target = boundary.IndexOf(block);
+                if (target > 0 && seeds.TrySeed(block, target, readOverlay) && readOverlay.Current is { } overlay)
+                {
+                    if (state.TryApplyAccountOverlay(overlay)) first = target;
+                    else readOverlay.Disarm();
+                }
+            }
             return Execute(block, options, tracer, token, boundary, first);
         }
         finally

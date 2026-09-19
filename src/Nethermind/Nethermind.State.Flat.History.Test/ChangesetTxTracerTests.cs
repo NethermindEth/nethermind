@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.State.Flat.History.Changesets;
@@ -14,33 +15,20 @@ public class ChangesetTxTracerTests
     private static readonly byte[] OtherContract = [0x60, 0x01, 0x55];
     private static readonly byte[] Delegation = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressB.Bytes];
 
-    [Test]
-    public void ContractCodeReplacingContractCode_IsAWipe() =>
-        Assert.That(ReportsWipe(Contract, OtherContract), Is.True, "only a destroy and re-create inside one transaction can put new code where code already was");
+    [TestCaseSource(nameof(CodeChanges))]
+    public void ReportCodeChange_WhenCodeChanges_ReportsExpectedWipe(byte[]? before, byte[] after, bool expected, string reason) =>
+        Assert.That(ReportsWipe(before, after), Is.EqualTo(expected), reason);
 
-    [Test]
-    public void ContractCodeOnAnAccountThatExistedWithoutCode_IsAWipe() =>
-        Assert.That(ReportsWipe([], Contract), Is.True, "a create over an existing account wipes whatever storage it held");
-
-    [Test]
-    public void EmptyCodeReplacingContractCode_IsAWipe() =>
-        Assert.That(ReportsWipe(Contract, []), Is.True, "a destroy and re-create whose init code returns nothing still wiped the storage");
-
-    [Test]
-    public void ContractCodeOnAFreshAccount_IsNotAWipe() =>
-        Assert.That(ReportsWipe(null, Contract), Is.False);
-
-    [Test]
-    public void SettingADelegation_IsNotAWipe() =>
-        Assert.That(ReportsWipe([], Delegation), Is.False, "a delegated account keeps its storage");
-
-    [Test]
-    public void RevokingADelegation_IsNotAWipe() =>
-        Assert.That(ReportsWipe(Delegation, []), Is.False, "revoking a delegation writes empty code and leaves the authority's storage alone");
-
-    [Test]
-    public void ReplacingADelegation_IsNotAWipe() =>
-        Assert.That(ReportsWipe(Delegation, [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressC.Bytes]), Is.False);
+    private static TestCaseData[] CodeChanges =>
+    [
+        new TestCaseData(Contract, OtherContract, true, "recreation replaces existing code").SetName("ContractCodeReplacingContractCode_IsAWipe"),
+        new TestCaseData(Array.Empty<byte>(), Contract, true, "creation clears existing storage").SetName("ContractCodeOnAnAccountThatExistedWithoutCode_IsAWipe"),
+        new TestCaseData(Contract, Array.Empty<byte>(), true, "empty runtime recreation still clears storage").SetName("EmptyCodeReplacingContractCode_IsAWipe"),
+        new TestCaseData(null, Contract, false, "a fresh account has no storage to clear").SetName("ContractCodeOnAFreshAccount_IsNotAWipe"),
+        new TestCaseData(Array.Empty<byte>(), Delegation, false, "delegation keeps storage").SetName("SettingADelegation_IsNotAWipe"),
+        new TestCaseData(Delegation, Array.Empty<byte>(), false, "revocation keeps storage").SetName("RevokingADelegation_IsNotAWipe"),
+        new TestCaseData(Delegation, (byte[])[.. Eip7702Constants.DelegationHeader, .. TestItem.AddressC.Bytes], false, "replacement delegation keeps storage").SetName("ReplacingADelegation_IsNotAWipe")
+    ];
 
     private static bool ReportsWipe(byte[]? before, byte[] after)
     {

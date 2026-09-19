@@ -37,6 +37,25 @@ public class MidBlockOverlayCacheTests
     public void TearDown() => _columns.Dispose();
 
     [Test]
+    public void TryRent_WhenGenerationChanges_DiscardsThePreviousFold()
+    {
+        Assert.That(_cache.TryRent(Block, in HashA, 2, out MidBlockOverlayCache.Lease first, version: 1), Is.True);
+        using (first)
+        {
+            WriteBalance(1, 99);
+            Assert.That(_cache.TryRent(Block, in HashA, 2, out MidBlockOverlayCache.Lease second, version: 2), Is.True);
+            using (second)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(BalanceOf(first.Overlay), Is.EqualTo((UInt256)2), "existing readers retain their immutable prefix");
+                    Assert.That(BalanceOf(second.Overlay), Is.EqualTo((UInt256)99), "a fold from an invalidated version must not be reused");
+                }
+            }
+        }
+    }
+
+    [Test]
     public void TracingTheNextTransactionOfABlock_ExtendsTheOverlayInsteadOfRebuildingIt()
     {
         MidBlockOverlay first;

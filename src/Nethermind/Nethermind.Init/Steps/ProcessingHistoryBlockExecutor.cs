@@ -88,6 +88,36 @@ public sealed class ProcessingHistoryBlockExecutorFactory(
     ILifetimeScope rootLifetimeScope,
     IBlockValidationModule[] validationModules) : IHistoryBlockExecutorFactory
 {
+    public ulong? GetLastSupportedBlock(ulong lowerBound, ulong upperBound)
+    {
+        if (lowerBound > upperBound) return null;
+        BlockHeader? last = blockTree.FindHeader(upperBound, BlockTreeLookupOptions.RequireCanonical);
+        if (last is null) return null;
+        if (!specProvider.GetSpec(last).BlockLevelAccessListsEnabled) return upperBound;
+
+        ulong lower = lowerBound;
+        ulong upper = upperBound;
+        ulong? supported = null;
+        while (lower <= upper)
+        {
+            ulong middle = lower + (upper - lower) / 2;
+            BlockHeader? header = blockTree.FindHeader(middle, BlockTreeLookupOptions.RequireCanonical);
+            if (header is null) return null;
+            if (specProvider.GetSpec(header).BlockLevelAccessListsEnabled)
+            {
+                if (middle == 0) break;
+                upper = middle - 1;
+            }
+            else
+            {
+                supported = middle;
+                if (middle == upperBound) break;
+                lower = middle + 1;
+            }
+        }
+        return supported;
+    }
+
     public IHistoryBlockExecutor Create()
     {
         IOverridableEnv env = envFactory.Create();

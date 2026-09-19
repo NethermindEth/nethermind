@@ -15,6 +15,7 @@ public interface IStateReadOverlay
     /// overlay sees it, null for one it knows to be gone.</summary>
     bool TryGetAccount(Address address, Account? underlying, out Account? overlaid);
 
+    /// <summary>True supplies a known slot value, including zero after a clear. False requires an underlying read; the out value is ignored.</summary>
     bool TryGetStorage(Address address, in UInt256 index, out UInt256 value);
 
     /// <summary>Whether the overlay holds any slot of the account, so a read of its storage must reach the overlay
@@ -28,8 +29,10 @@ public sealed class StateReadOverlaySlot
     private IStateReadOverlay? _current;
     private IDisposable? _lease;
 
+    /// <summary>The borrowed overlay for the current scope; null when disarmed.</summary>
     public IStateReadOverlay? Current => _current;
 
+    /// <summary>Takes ownership of the lease, replacing and releasing any previous one.</summary>
     public void Arm(IStateReadOverlay overlay, IDisposable lease)
     {
         Disarm();
@@ -37,6 +40,7 @@ public sealed class StateReadOverlaySlot
         _lease = lease;
     }
 
+    /// <summary>Clears the overlay and releases its lease. Repeated calls are harmless.</summary>
     public void Disarm()
     {
         _current = null;

@@ -18,13 +18,18 @@ public interface IHistoryBlockExecutor : IDisposable
     IHistoryBlockRun? BeginRun(ulong firstBlock);
 }
 
+/// <summary>One caller-owned sequential replay scope. Dispose before reusing its executor.</summary>
 public interface IHistoryBlockRun : IDisposable
 {
     /// <summary>Executes the next block of the run, ascending. False when it is not available; the run is then over.</summary>
     bool TryExecuteNext(IBlockTracer tracer, CancellationToken cancellationToken);
 }
 
+/// <summary>Creates isolated executors; each executor and its runs belong to one worker.</summary>
 public interface IHistoryBlockExecutorFactory
 {
+    /// <summary>Returns a caller-owned executor, which must be disposed after its final run.</summary>
     IHistoryBlockExecutor Create();
+    /// <summary>Returns the last supported canonical height at or below the bound, or null when it cannot be determined.</summary>
+    ulong? GetLastSupportedBlock(ulong lowerBound, ulong upperBound) => lowerBound <= upperBound ? upperBound : null;
 }
