@@ -113,6 +113,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         changes.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table);
         using ArrayPoolList<PbtWriteOperation<TKey>> ownedOperations = operations;
         using ArrayPoolList<int> ownedTable = table;
+        HashLeaves(operations, null, metrics);
         return UpdateRoot(store, currentRoot, operations.AsSpan(), changes.ShardNibbleIndex == 0 ? plan : default, metrics, memoryProvider);
     }
 
@@ -123,7 +124,61 @@ internal static partial class TrieUpdater<TKey, TPath>
         changes.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> precalculated);
         using ArrayPoolList<PbtWriteOperation<TKey>> ownedOperations = operations;
         using ArrayPoolList<int> ownedTable = precalculated;
+        HashLeaves(operations, null, metrics);
         return UpdateRoot(store, currentRoot, operations.AsSpan(), new(precalculated.AsSpan(), 0, false), metrics, memoryProvider);
+    }
+
+    /// <summary>Replaces every set operation's value with its leaf hash in place, leaving deletions untouched.</summary>
+    /// <remarks>
+    /// A leaf hash depends only on the key and value, so all leaves are hashed as a flat loop ahead of the fold,
+    /// in parallel chunks when <paramref name="foldQuota"/> admits it; a null quota hashes serially.
+    /// </remarks>
+    internal static void HashLeaves(ArrayPoolList<PbtWriteOperation<TKey>> operations, ConcurrencyController? foldQuota, TrieUpdaterMetrics? metrics)
+    {
+        const int LeafHashChunk = 256;
+
+        PbtWriteOperation<TKey>[] array = operations.UnsafeGetInternalArray();
+        int count = operations.Count;
+        int chunks = (count + LeafHashChunk - 1) / LeafHashChunk;
+        int hashed = 0;
+        if (chunks <= 1 || foldQuota is null || !foldQuota.TryRequestConcurrencyQuota())
+        {
+            hashed = HashLeaves(array, 0, count);
+        }
+        else
+        {
+            int callerThreadId = Environment.CurrentManagedThreadId;
+            int admissionSlotClaimed = 0;
+            try
+            {
+                ParallelUnbalancedWork.For(0, chunks, ParallelUnbalancedWork.DefaultOptions,
+                    () => TakeWorkerQuota(foldQuota, callerThreadId, ref admissionSlotClaimed),
+                    (chunk, tookQuota) =>
+                    {
+                        int start = chunk * LeafHashChunk;
+                        Interlocked.Add(ref hashed, HashLeaves(array, start, Math.Min(LeafHashChunk, count - start)));
+                        return tookQuota;
+                    },
+                    tookQuota => ReturnWorkerQuota(foldQuota, tookQuota));
+            }
+            finally
+            {
+                ReturnAdmissionSlot(foldQuota, ref admissionSlotClaimed);
+            }
+        }
+        metrics?.AddNodeHashes(hashed);
+    }
+
+    private static int HashLeaves(PbtWriteOperation<TKey>[] operations, int start, int count)
+    {
+        int hashed = 0;
+        foreach (ref PbtWriteOperation<TKey> operation in operations.AsSpan(start, count))
+        {
+            if (operation.Value == default) continue;
+            operation = new(operation.Key, PbtNodeCodec.HashLeaf(operation.Key.Bytes, operation.Value.Bytes));
+            hashed++;
+        }
+        return hashed;
     }
 
     // Path buffers are cleared by the PbtTraversalPath constructor and the bucket buffer is written by
@@ -170,11 +225,11 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (operations.IsEmpty) return current.Materialize();
 
         // At an empty subtree or leaf, a single update needs no partition unless it inserts a different key beside the leaf.
-        // A default value denotes deletion, including a no-op when the key is absent.
+        // Values already hold the leaf hash (see HashLeaves); a default value denotes deletion, including a no-op when the key is absent.
         if (current.IsEmpty)
         {
             if (operations.Length == 1)
-                return operations[0].Value == default ? default : new OwnedSubtree(default, CreateLeaf(operations[0], metrics));
+                return operations[0].Value == default ? default : new OwnedSubtree(default, new Subtree(operations[0].Key, operations[0].Value));
         }
         else if (current.IsLeaf)
         {
@@ -185,8 +240,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 {
                     if (operation.Value == default) return default;
                     // The stored leaf has no value; an unchanged value shows as an unchanged hash.
-                    Subtree leaf = CreateLeaf(operation, metrics);
-                    return leaf.LeafHash == current.Node.LeafHash ? current.Materialize() : new OwnedSubtree(default, leaf);
+                    return operation.Value == current.Node.LeafHash ? current.Materialize() : new OwnedSubtree(default, new Subtree(operation.Key, operation.Value));
                 }
                 if (operation.Value == default) return current.Materialize();
             }
@@ -531,15 +585,6 @@ internal static partial class TrieUpdater<TKey, TPath>
 
     internal static int BoundaryPosition(int slot) => 2 * slot - BitOperations.PopCount((uint)slot);
 
-    /// <summary>Creates the leaf an insert produces, hashing it once for its parent.</summary>
-    private static Subtree CreateLeaf(in PbtWriteOperation<TKey> operation, TrieUpdaterMetrics? metrics)
-    {
-        metrics?.IncrementNodeHashes();
-        TKey key = operation.Key;
-        ValueHash256 value = operation.Value;
-        return new(key, PbtNodeCodec.HashLeaf(key.Bytes, value.Bytes));
-    }
-
     internal static TraversalSubtree TakeBoundary(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path,
         scoped ref Frontier frontier, int slot, Span<byte> sourceBuffer)
     {
@@ -797,4 +842,5 @@ internal sealed class TrieUpdaterMetrics
     internal void IncrementGroupParses() => GroupParses++;
     internal void IncrementGroupFrameResolutions() => GroupFrameResolutions++;
     internal void IncrementNodeHashes() => NodeHashes++;
+    internal void AddNodeHashes(int count) => NodeHashes += count;
 }
