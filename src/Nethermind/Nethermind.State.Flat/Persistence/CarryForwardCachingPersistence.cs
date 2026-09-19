@@ -155,6 +155,18 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     private void LogAndResetProbe(in StateId to)
     {
+        try
+        {
+            LogAndResetProbeCore(to);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"FlatReadProbe failed: {e}");
+        }
+    }
+
+    private void LogAndResetProbeCore(in StateId to)
+    {
         if (_logger.IsInfo) _logger.Info($"FlatReadProbe block={to} slots main={_slotMainHit}/{_slotMainMiss} other={_slotOtherHit}/{_slotOtherMiss} late={_slotLate} bypass={_slotBypass} acc main={_accMainHit}/{_accMainMiss} other={_accOtherHit}/{_accOtherMiss} late={_accLate} bypass={_accBypass} cache={_slotCount}/{_accountCount} clears={_clears}");
         _slotMainHit = _slotMainMiss = _slotOtherHit = _slotOtherMiss = _slotLate = _slotBypass = 0;
         _accMainHit = _accMainMiss = _accOtherHit = _accOtherMiss = _accLate = _accBypass = 0;
@@ -166,8 +178,14 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         _mainMissedAccountsByAddress.Clear();
     }
 
-    private static string Top(ConcurrentDictionary<Address, int> counts) =>
-        string.Join(",", counts.OrderByDescending(static kv => kv.Value).Take(8).Select(static kv => $"{kv.Key}:{kv.Value}"));
+    private static string Top(ConcurrentDictionary<Address, int> counts)
+    {
+        // Enumerate rather than copy: other threads still add while this runs, and ICollection.CopyTo races.
+        List<KeyValuePair<Address, int>> entries = [];
+        foreach (KeyValuePair<Address, int> kv in counts) entries.Add(kv);
+        entries.Sort(static (a, b) => b.Value.CompareTo(a.Value));
+        return string.Join(",", entries.Take(8).Select(static kv => $"{kv.Key}:{kv.Value}"));
+    }
 
     private void OnCommitted(in StateId to, HashSet<Address>? writtenAccounts, HashSet<(Address, UInt256)>? writtenSlots, bool clearAll)
     {
