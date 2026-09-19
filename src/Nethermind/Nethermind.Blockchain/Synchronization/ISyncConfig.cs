@@ -111,7 +111,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Whether to use the Snap sync mode.", DefaultValue = "false")]
     public bool SnapSync { get; set; }
 
-    [ConfigItem(Description = "The number of account range partitions to create. Increases the Snap sync request concurrency. Allowed values are between 1 and 256.", DefaultValue = "8")]
+    [ConfigItem(Description = "The number of account range partitions to create. Increases the Snap sync request concurrency at the cost of more partition boundaries to heal. Allowed values are between 1 and 256.", DefaultValue = "8")]
     int SnapSyncAccountRangePartitionCount { get; set; }
 
     [ConfigItem(Description = "_Technical._ Whether to heal the state left by Snap sync using block access lists instead of trie nodes. Only applies to the flat state layout.", DefaultValue = "true", HiddenFromDocs = true)]
@@ -148,7 +148,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Configure the blocks database for write optimizations during sync.", DefaultValue = nameof(ITunableDb.TuneType.EnableBlobFiles), HiddenFromDocs = true)]
     ITunableDb.TuneType BlocksDbTuneDbMode { get; set; }
 
-    [ConfigItem(Description = "The max number of threads used for syncing. `0` to use the number of logical processors.", DefaultValue = "0")]
+    [ConfigItem(Description = "The max number of threads used for syncing. `0` to use the number of logical processors. Snap and state sync allow up to twice this many in-flight requests while limiting concurrent response processing to this value.", DefaultValue = "0")]
     public int MaxProcessingThreads { get; set; }
 
     [ConfigItem(Description = "Enables healing trie from network when state is corrupted.", DefaultValue = "true", HiddenFromDocs = true)]

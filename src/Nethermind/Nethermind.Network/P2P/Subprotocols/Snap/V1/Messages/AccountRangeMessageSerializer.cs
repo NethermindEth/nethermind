@@ -5,6 +5,7 @@ using System;
 using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -69,7 +70,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                 {
                     int length = ctx.ReadSequenceLength();
                     int checkPosition = ctx.Position + length;
-                    pathsWithAccounts.Add(new PathWithAccount(ctx.DecodeKeccak(), _decoder.DecodeGuardNotNull(ref ctx)));
+                    ValueHash256 path = ctx.DecodeValueKeccak() ?? throw new RlpException("Account path cannot be null.");
+                    pathsWithAccounts.Add(new PathWithAccount(path, _decoder.DecodeGuardNotNull(ref ctx)));
                     ctx.Check(checkPosition);
                 }
 
