@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
@@ -24,6 +25,15 @@ public readonly record struct BlobScheduleEntry(ulong Epoch, ulong MaxBlobsPerBl
 /// </remarks>
 public class BeaconChainSpec
 {
+    /// <summary>
+    /// The execution-layer chain id this spec was selected for (<c>0</c> for ad hoc specs built
+    /// outside <see cref="ForChainId"/>, e.g. in tests).
+    /// </summary>
+    public ulong ChainId { get; init; }
+
+    /// <summary>Default checkpoint-sync provider for this network, used when no override is configured.</summary>
+    public string? CheckpointSyncUrl { get; init; }
+
     public required ulong SecondsPerSlot { get; init; }
     public required ulong SlotsPerEpoch { get; init; }
     public required ulong GenesisTime { get; init; }
@@ -70,6 +80,8 @@ public class BeaconChainSpec
 
     public static BeaconChainSpec Mainnet { get; } = new()
     {
+        ChainId = BlockchainIds.Mainnet,
+        CheckpointSyncUrl = "https://mainnet.checkpoint.sigp.io",
         SecondsPerSlot = 12,
         SlotsPerEpoch = 32,
         GenesisTime = 1606824023,
@@ -92,5 +104,46 @@ public class BeaconChainSpec
         ElectraForkEpoch = 364032,
         FuluForkEpoch = 411392,
         MaxBlobsPerBlockElectra = 9,
+    };
+
+    public static BeaconChainSpec Hoodi { get; } = new()
+    {
+        ChainId = BlockchainIds.Hoodi,
+        CheckpointSyncUrl = "https://checkpoint-sync.hoodi.ethpandaops.io",
+        SecondsPerSlot = 12,
+        SlotsPerEpoch = 32,
+        GenesisTime = 1742213400,
+        GenesisValidatorsRoot = new Hash256(Bytes.FromHexString("0x212f13fc4df078b6cb7db228f1c8307566dcecf900867401a92023d7ba99cb5f")),
+        Forks =
+        [
+            new(Bytes.FromHexString("0x10000910"), 0), // phase0
+            new(Bytes.FromHexString("0x20000910"), 0), // altair
+            new(Bytes.FromHexString("0x30000910"), 0), // bellatrix
+            new(Bytes.FromHexString("0x40000910"), 0), // capella
+            new(Bytes.FromHexString("0x50000910"), 0), // deneb
+            new(Bytes.FromHexString("0x60000910"), 2048), // electra
+            new(Bytes.FromHexString("0x70000910"), 50688), // fulu
+        ],
+        BlobSchedule =
+        [
+            new(52480, 15), // BPO1
+            new(54016, 21), // BPO2
+        ],
+        ElectraForkEpoch = 2048,
+        FuluForkEpoch = 50688,
+        MaxBlobsPerBlockElectra = 9,
+    };
+
+    /// <summary>Selects the beacon chain spec for the execution layer's chain id.</summary>
+    /// <exception cref="UnsupportedBeaconNetworkException">
+    /// <paramref name="chainId"/> is not a network the embedded beacon chain driver supports.
+    /// Never falls back to <see cref="Mainnet"/>: following the wrong chain silently is worse
+    /// than refusing to start.
+    /// </exception>
+    public static BeaconChainSpec ForChainId(ulong chainId) => chainId switch
+    {
+        BlockchainIds.Mainnet => Mainnet,
+        BlockchainIds.Hoodi => Hoodi,
+        _ => throw new UnsupportedBeaconNetworkException(chainId),
     };
 }
