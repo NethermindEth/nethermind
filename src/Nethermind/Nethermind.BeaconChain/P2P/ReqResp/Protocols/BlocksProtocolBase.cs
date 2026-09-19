@@ -17,44 +17,66 @@ public abstract class BlocksProtocolBase(BeaconChainSpec spec) : ReqRespProtocol
     /// <summary>The spec <c>MAX_REQUEST_BLOCKS_DENEB</c>.</summary>
     public const ulong MaxRequestBlocks = 128;
 
+    /// <summary>
+    /// Not a spec constant (the spec has no overall-response-deadline concept — see
+    /// <see cref="StartBoundedTimeout"/>): bounds the total wall-clock time a streamed blocks
+    /// response (or its being written) may take, closing a stream that would otherwise stay open
+    /// indefinitely by keeping every individual chunk just under <see cref="ReqRespProtocolBase.RespTimeout"/>.
+    /// </summary>
+    protected static readonly TimeSpan MaxBlocksResponseDuration = TimeSpan.FromSeconds(60);
+
     protected BeaconChainSpec Spec { get; } = spec;
 
     /// <summary>The context bytes of a block chunk: the fork digest of the block's slot epoch.</summary>
     protected byte[] ContextBytesFor(SignedBeaconBlock block) => ForkDigest.Compute(Spec, Spec.GetEpoch(block.Message!.Slot));
 
-    protected async Task<IReadOnlyList<SignedBeaconBlock>> ReadBlockChunksAsync(Stream stream, int maxBlocks)
+    /// <param name="overallTimeout">Overrides <see cref="MaxBlocksResponseDuration"/>; test-only seam, production call sites omit it.</param>
+    protected async Task<IReadOnlyList<SignedBeaconBlock>> ReadBlockChunksAsync(Stream stream, int maxBlocks, string protocolId, TimeSpan? overallTimeout = null)
     {
         List<SignedBeaconBlock> blocks = [];
-        using CancellationTokenSource cts = StartTimeout(TtfbTimeout + RespTimeout);
-        while (await ReqRespFraming.ReadResponseChunkAsync(stream, ReqRespFraming.ForkContextLength, ReqRespFraming.MaxPayloadSize, cts.Token) is { } chunk)
+        using BoundedTimeout timeout = StartBoundedTimeout(TtfbTimeout + RespTimeout, overallTimeout ?? MaxBlocksResponseDuration);
+        CancellationTokenSource cts = timeout.Cts;
+        try
         {
-            if (chunk.Result != ReqRespFraming.ResponseCode.Success)
+            while (await ReqRespFraming.ReadResponseChunkAsync(stream, ReqRespFraming.ForkContextLength, ReqRespFraming.MaxPayloadSize, cts.Token) is { } chunk)
             {
-                throw ErrorChunkToException(chunk);
-            }
+                if (chunk.Result != ReqRespFraming.ResponseCode.Success)
+                {
+                    RecordFailure(protocolId, ReqRespFailureReason.PeerError);
+                    throw ErrorChunkToException(chunk);
+                }
 
-            if (blocks.Count >= maxBlocks)
-            {
-                throw new Eth2ReqRespException($"Peer responded with more than the requested {maxBlocks} blocks");
-            }
+                if (blocks.Count >= maxBlocks)
+                {
+                    RecordFailure(protocolId, ReqRespFailureReason.LimitExceeded);
+                    throw new Eth2ReqRespException($"Peer responded with more than the requested {maxBlocks} blocks");
+                }
 
-            SignedBeaconBlock block;
-            try
-            {
-                SignedBeaconBlock.Decode(chunk.Payload, out block);
-            }
-            catch (Exception e) when (e is not Eth2ReqRespException and not OperationCanceledException)
-            {
-                throw new Eth2ReqRespException($"Malformed block chunk: {e.Message}");
-            }
+                SignedBeaconBlock block;
+                try
+                {
+                    SignedBeaconBlock.Decode(chunk.Payload, out block);
+                }
+                catch (Exception e) when (e is not Eth2ReqRespException and not OperationCanceledException)
+                {
+                    RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
+                    throw new Eth2ReqRespException($"Malformed block chunk: {e.Message}");
+                }
 
-            if (!chunk.ContextBytes.AsSpan().SequenceEqual(ContextBytesFor(block)))
-            {
-                throw new Eth2ReqRespException($"Block chunk context bytes do not match the fork digest of slot {block.Message!.Slot}");
-            }
+                if (!chunk.ContextBytes.AsSpan().SequenceEqual(ContextBytesFor(block)))
+                {
+                    RecordFailure(protocolId, ReqRespFailureReason.InvalidMessage);
+                    throw new Eth2ReqRespException($"Block chunk context bytes do not match the fork digest of slot {block.Message!.Slot}");
+                }
 
-            blocks.Add(block);
-            cts.CancelAfter(RespTimeout);
+                blocks.Add(block);
+                cts.CancelAfter(RespTimeout);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            RecordFailure(protocolId, ReqRespFailureReason.Timeout);
+            throw;
         }
 
         return blocks;

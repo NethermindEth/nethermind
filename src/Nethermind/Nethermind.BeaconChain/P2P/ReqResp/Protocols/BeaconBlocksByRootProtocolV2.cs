@@ -28,18 +28,26 @@ public sealed class BeaconBlocksByRootProtocolV2(BeaconChainSpec spec, BeaconCha
 
     public async Task<IReadOnlyList<SignedBeaconBlock>> DialAsync(IChannel downChannel, ISessionContext context, Hash256[] request)
     {
+        if (request.Length > (int)MaxRequestBlocks)
+        {
+            // Never trust an oversized ask on the wire: reject it before dialing rather than let the
+            // listen side's fixed-size ReadRequestAsync bound be the only thing catching this.
+            throw new ArgumentOutOfRangeException(nameof(request), request.Length, $"Cannot request more than {MaxRequestBlocks} block roots in a single request");
+        }
+
         Stream stream = new ChannelStreamAdapter(downChannel);
         using (CancellationTokenSource cts = StartTimeout(RespTimeout))
         {
             await WriteRequestAndEofAsync(downChannel, stream, BeaconBlocksByRootRequest.Encode(new BeaconBlocksByRootRequest { Roots = request }), cts.Token);
         }
 
-        IReadOnlyList<SignedBeaconBlock> blocks = await ReadBlockChunksAsync(stream, request.Length);
+        IReadOnlyList<SignedBeaconBlock> blocks = await ReadBlockChunksAsync(stream, request.Length, Id);
         HashSet<Hash256> requestedRoots = [.. request];
         foreach (SignedBeaconBlock block in blocks)
         {
             if (!requestedRoots.Remove(SszRoots.HashTreeRoot(block.Message!)))
             {
+                RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
                 throw new Eth2ReqRespException("Peer responded with a block that was not requested");
             }
         }
@@ -50,7 +58,14 @@ public sealed class BeaconBlocksByRootProtocolV2(BeaconChainSpec spec, BeaconCha
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
     {
         Stream stream = new ChannelStreamAdapter(downChannel);
-        using CancellationTokenSource cts = StartTimeout(RespTimeout);
+        using IDisposable? inboundSlot = TryEnterInbound(context, Id);
+        if (inboundSlot is null)
+        {
+            return;
+        }
+
+        using BoundedTimeout timeout = StartBoundedTimeout(RespTimeout, MaxBlocksResponseDuration);
+        CancellationTokenSource cts = timeout.Cts;
         try
         {
             byte[] requestSsz = await ReqRespFraming.ReadRequestAsync(stream, MaxRequestLength, cts.Token);
@@ -74,7 +89,12 @@ public sealed class BeaconBlocksByRootProtocolV2(BeaconChainSpec spec, BeaconCha
         }
         catch (Eth2ReqRespException e)
         {
+            RecordFailure(Id, ReqRespFailureReason.InvalidMessage);
             await ReqRespFraming.WriteErrorChunkAsync(stream, e.ResponseCode, e.Message, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            RecordFailure(Id, ReqRespFailureReason.Timeout);
         }
     }
 }
