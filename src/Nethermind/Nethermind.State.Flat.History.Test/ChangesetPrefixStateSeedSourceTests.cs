@@ -60,6 +60,43 @@ public class ChangesetPrefixStateSeedSourceTests
     }
 
     [Test]
+    public void CoveredBlocks_KeepReadCachesExclusiveAndClearThemBeforeReuse()
+    {
+        ChangesetPrefixStateSeedSource source = new(_index);
+        Assert.That(source.TryOpenBlock(_block, out ICoveredBlock? first), Is.True);
+        Assert.That(source.TryOpenBlock(_block, out ICoveredBlock? second), Is.True);
+        using ICoveredBlock secondLease = second!;
+        StateReadOverlaySlot firstSlot = new();
+        StateReadOverlaySlot secondSlot = new();
+        Assert.That(first!.CreateWorkerSeeds().TrySeed(_block, 1, firstSlot), Is.True);
+        Assert.That(second!.CreateWorkerSeeds().TrySeed(_block, 1, secondSlot), Is.True);
+        BlockReadCache firstCache = firstSlot.Cache!;
+        firstCache.SetAccount(TestItem.AddressC, new Account(1, 42));
+        firstCache.SetSlot(TestItem.AddressC, UInt256.One, (UInt256)42);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondSlot.Cache, Is.Not.SameAs(firstCache));
+            Assert.That(secondSlot.Cache!.TryGetAccount(TestItem.AddressC, out _), Is.False);
+        }
+        firstSlot.Disarm();
+        first.Dispose();
+        first.Dispose();
+
+        Assert.That(source.TryOpenBlock(_block, out ICoveredBlock? reopened), Is.True);
+        using ICoveredBlock reopenedLease = reopened!;
+        StateReadOverlaySlot reopenedSlot = new();
+        Assert.That(reopened!.CreateWorkerSeeds().TrySeed(_block, 1, reopenedSlot), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reopenedSlot.Cache!.TryGetAccount(TestItem.AddressC, out _), Is.False);
+            Assert.That(reopenedSlot.Cache.TryGetSlot(TestItem.AddressC, UInt256.One, out _), Is.False);
+            Assert.That(reopenedSlot.Cache, Is.Not.SameAs(secondSlot.Cache));
+        }
+        secondSlot.Disarm();
+        reopenedSlot.Disarm();
+    }
+
+    [Test]
     public void ACoveredPrefix_ArmsTheSlotWithItsOverlay()
     {
         StateReadOverlaySlot slot = new();

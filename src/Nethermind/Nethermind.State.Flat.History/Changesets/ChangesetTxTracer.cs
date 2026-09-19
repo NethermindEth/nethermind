@@ -7,8 +7,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.State.Flat.History.Changesets;
 
-/// <summary>Records what one transaction wrote. Nothing else is traced, so the pass costs a dictionary write per
-/// change and no instruction-level work.</summary>
+/// <summary>Records transaction state and storage changes without instruction-level callbacks.</summary>
+/// <remarks>Capture enables state/storage tracing commit paths, including their dictionaries, original-value
+/// comparisons and slot-value allocations. Inline capture adds that work to block processing.</remarks>
 internal sealed class ChangesetTxTracer(ChangesetCollector collector) : TxTracer
 {
     public override bool IsTracingState => true;

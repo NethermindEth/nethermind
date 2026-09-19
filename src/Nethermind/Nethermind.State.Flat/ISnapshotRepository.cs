@@ -41,8 +41,7 @@ public interface ISnapshotRepository
     /// when it cannot connect to <paramref name="currentPersistedState"/>. A final bounded scan prefers wide chunks
     /// matching known finalized roots and skips ambiguous sibling roots when finality is unavailable.</summary>
     (PersistedSnapshot? Persisted, Snapshot? InMemory) FindSnapshotToPersistWithFallback(
-        in StateId currentPersistedState, in StateId latestSnapshot, ulong compactSize) =>
-        FindSnapshotToPersist(GetLastCommittedStateId() ?? GetLastSnapshotId() ?? latestSnapshot, currentPersistedState, compactSize);
+        in StateId currentPersistedState, in StateId latestSnapshot, ulong compactSize);
 
     /// <summary>Index a caller-built <paramref name="snapshot"/> into the bucket selected by
     /// <paramref name="tier"/> (must be a <c>Persisted*</c> value), acquiring the bucket's own lease. The

@@ -8,6 +8,8 @@ namespace Nethermind.Evm.Tracing;
 /// <summary>A block whose every transaction boundary the index can seed. Workers tracing its transactions each take
 /// their own seed source, and the block is published for the next block's trace to chain onto once all of them are
 /// done.</summary>
+/// <remarks>Dispose only after every worker has completed and released its armed state scope. Worker seed sources
+/// and their read caches are borrowed from this lifetime and must not be used afterwards.</remarks>
 public interface ICoveredBlock : IDisposable
 {
     /// <summary>A seed source for one worker: it folds the block's writes up to the transaction last asked for and

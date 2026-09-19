@@ -47,7 +47,7 @@ public class PersistedSnapshotRepositoryTests
     }
 
     [Test]
-    public void TryAcquire_WhenObservedSnapshotIsRetired_UsesCurrentEntry([Values] bool replace, [Values] bool throughConsumer)
+    public void TryAcquire_WhenObservedSnapshotIsRetired_UsesCurrentEntry([Values] bool replace)
     {
         using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
         StateId parent = new(0, Keccak.EmptyTreeHash);
@@ -77,13 +77,10 @@ public class PersistedSnapshotRepositoryTests
                 }
                 Assert.That(retired!.TryAcquire(), Is.False, "the observed instance must have drained before acquisition");
             }
-            bool acquired;
-            if (throughConsumer) acquired = bucket.TryLease(state, out observed, Retire);
-            else
-            {
-                Retire(observed!);
-                acquired = bucket.TryAcquire(ref observed);
-            }
+            Retire(observed!);
+            bool acquired = bucket.TryAcquire(state, ref observed);
+            Assert.That(bucket.TryLease(state, out PersistedSnapshot? fresh), Is.EqualTo(replace));
+            fresh?.Dispose();
             using (observed)
             {
                 Assert.That(acquired, Is.EqualTo(replace), "replacement must not look like a missing snapshot");

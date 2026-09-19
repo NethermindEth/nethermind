@@ -103,16 +103,6 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         {
             if (!_seeds.TryOpenBlock(block, out ICoveredBlock? covered)) return false;
             using ICoveredBlock coverage = covered;
-            _slots.Wait(token);
-            try
-            {
-                using Scope<Components> scope = _environments.BuildAndOverride(parent);
-                if (scope.Component.Executor?.CanSeed != true || scope.Component.SpecProvider.GetSpec(block.Header).BlockLevelAccessListsEnabled) return false;
-            }
-            finally
-            {
-                _slots.Release();
-            }
 
             {
                 Transaction[] transactions = block.Transactions;
@@ -220,8 +210,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         }
     }
 
-    /// <summary>False when the tracer cannot be bounded to one transaction, which only a reward-tracing tracer
-    /// cannot; the caller then replays the block as before.</summary>
+    /// <summary>False when the environment cannot seed or the tracer cannot be bounded; the caller replays the block.</summary>
     private bool TraceOne<TTrace>(Block block, BlockHeader parent, Transaction[] transactions, int index, IPrefixStateSeedSource seeds,
         Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction, IReadOnlyCollection<TTrace>?[] results, Emitter<TTrace> emitter, CancellationToken token)
     {
@@ -231,19 +220,22 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
         try
         {
             using Scope<Components> scope = _environments.BuildAndOverride(parent);
+            if (scope.Component.Executor?.CanSeed != true || scope.Component.SpecProvider.GetSpec(block.Header).BlockLevelAccessListsEnabled) return false;
             IBlockTracer<TTrace> tracer = forTransaction(scope.Component.WorldState, hash);
             try
             {
                 IBlockTracer bounded = TransactionTraceBoundary.Wrap(tracer.WithCancellation(token), hash, seeds);
-                if (bounded is not TransactionTraceBoundary)
+                if (bounded is not TransactionTraceBoundary boundary)
                 {
                     tracer.TryDispose();
                     return false;
                 }
 
-                ((TransactionTraceBoundary)bounded).IsSeedRequired = true;
+                boundary.IsSeedRequired = true;
 
                 scope.Component.Processor.Process(OwnCopy(block), TraceProcessingOptions.ReadOnlyReplay, bounded, token);
+                if (!boundary.IsPrefixInstalled)
+                    throw new InvalidOperationException("The indexed trace bypassed transaction prefix execution.");
                 results[index] = tracer.BuildResult();
             }
             catch
@@ -275,7 +267,10 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             IBlockTracer<TTrace> tracer = afterTransactions(scope.Component.WorldState);
             try
             {
-                scope.Component.Processor.Process(OwnCopy(block), TraceProcessingOptions.ReadOnlyReplay, TransactionTraceBoundary.AfterTransactions(tracer.WithCancellation(token), seeds), token);
+                TransactionTraceBoundary boundary = TransactionTraceBoundary.AfterTransactions(tracer.WithCancellation(token), seeds);
+                scope.Component.Processor.Process(OwnCopy(block), TraceProcessingOptions.ReadOnlyReplay, boundary, token);
+                if (!boundary.IsPrefixInstalled)
+                    throw new InvalidOperationException("The indexed reward trace bypassed transaction prefix execution.");
                 return tracer.BuildResult();
             }
             catch

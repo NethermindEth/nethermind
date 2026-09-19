@@ -18,6 +18,13 @@ public sealed class BlockReadCache(int accountSetsBits = 12, int storageSetsBits
     private readonly SeqlockCache<AddressAsKey, Account> _accounts = new(accountSetsBits);
     private readonly SeqlockCache<StorageCell, UInt256> _slots = new(storageSetsBits);
 
+    /// <summary>Invalidates the previous parent state. Call only after all workers have released this cache.</summary>
+    public void Clear()
+    {
+        _accounts.Clear();
+        _slots.Clear();
+    }
+
     /// <summary>Returns a cached parent account; true with null means known absent, false means a cache miss.</summary>
     public bool TryGetAccount(Address address, out Account? account)
     {

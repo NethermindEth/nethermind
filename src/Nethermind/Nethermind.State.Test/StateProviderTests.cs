@@ -94,6 +94,27 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void ApplyAccountOverlay_WhenBlockStartStorageOverlaps_RefusesWithoutChangingAccounts([Values] bool write)
+    {
+        using Context ctx = new(useFlat);
+        IWorldState state = ctx.WorldState;
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        state.CreateAccount(_address1, 7, 3);
+        StorageCell cell = new(_address1, UInt256.One);
+        state.Get(cell, out _);
+        if (write) state.Set(cell, (UInt256)42);
+        state.Commit(Frontier.Instance);
+
+        Assert.That(state.TryApplyAccountOverlay(new BalanceOverlay(_address1, hasStorage: true)), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state.GetBalance(_address1), Is.EqualTo((UInt256)7));
+            state.Get(cell, out UInt256 value);
+            Assert.That(value, Is.EqualTo(write ? (UInt256)42 : UInt256.Zero));
+        }
+    }
+
+    [Test]
     public void Eip_158_zero_value_transfer_deletes()
     {
         using Context ctx = new(useFlat);
@@ -690,7 +711,7 @@ public class StateProviderTests(bool useFlat)
         Assert.That(filter.Delete(codeHash), Is.True, "the code hash was not in the insert filter");
     }
 
-    private sealed class BalanceOverlay(Address address) : IStateReadOverlay
+    private sealed class BalanceOverlay(Address address, bool hasStorage = false) : IStateReadOverlay
     {
         public bool TryGetAccount(Address candidate, Account? underlying, out Account? overlaid)
         {
@@ -704,7 +725,7 @@ public class StateProviderTests(bool useFlat)
             return false;
         }
 
-        public bool HasStorage(Address candidate) => false;
+        public bool HasStorage(Address candidate) => hasStorage && candidate == address;
     }
 }
 

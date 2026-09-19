@@ -8,6 +8,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
@@ -88,12 +89,29 @@ public sealed class ProcessingHistoryBlockExecutorFactory(
     ILifetimeScope rootLifetimeScope,
     IBlockValidationModule[] validationModules) : IHistoryBlockExecutorFactory
 {
+    private ForkBoundary? _boundary;
+
+    private sealed record ForkBoundary(ulong LastSupported, Hash256 SupportedHash, Hash256 UnsupportedHash);
+
     public ulong? GetLastSupportedBlock(ulong lowerBound, ulong upperBound)
     {
         if (lowerBound > upperBound) return null;
         BlockHeader? last = blockTree.FindHeader(upperBound, BlockTreeLookupOptions.RequireCanonical);
         if (last is null) return null;
         if (!specProvider.GetSpec(last).BlockLevelAccessListsEnabled) return upperBound;
+
+        ForkBoundary? boundary = Volatile.Read(ref _boundary);
+        if (boundary is not null && boundary.LastSupported < upperBound)
+        {
+            BlockHeader? before = blockTree.FindHeader(boundary.LastSupported, BlockTreeLookupOptions.RequireCanonical);
+            BlockHeader? after = blockTree.FindHeader(boundary.LastSupported + 1, BlockTreeLookupOptions.RequireCanonical);
+            if (before?.Hash == boundary.SupportedHash && after?.Hash == boundary.UnsupportedHash
+                && !specProvider.GetSpec(before).BlockLevelAccessListsEnabled && specProvider.GetSpec(after).BlockLevelAccessListsEnabled)
+                return lowerBound <= boundary.LastSupported ? boundary.LastSupported : null;
+        }
+
+        BlockHeader? first = blockTree.FindHeader(lowerBound, BlockTreeLookupOptions.RequireCanonical);
+        if (first is null || specProvider.GetSpec(first).BlockLevelAccessListsEnabled) return null;
 
         ulong lower = lowerBound;
         ulong upper = upperBound;
@@ -114,6 +132,14 @@ public sealed class ProcessingHistoryBlockExecutorFactory(
                 if (middle == upperBound) break;
                 lower = middle + 1;
             }
+        }
+        if (supported is { } number)
+        {
+            BlockHeader? before = blockTree.FindHeader(number, BlockTreeLookupOptions.RequireCanonical);
+            BlockHeader? after = blockTree.FindHeader(number + 1, BlockTreeLookupOptions.RequireCanonical);
+            if (before?.Hash is { } supportedHash && after?.Hash is { } unsupportedHash
+                && !specProvider.GetSpec(before).BlockLevelAccessListsEnabled && specProvider.GetSpec(after).BlockLevelAccessListsEnabled)
+                Volatile.Write(ref _boundary, new ForkBoundary(number, supportedHash, unsupportedHash));
         }
         return supported;
     }

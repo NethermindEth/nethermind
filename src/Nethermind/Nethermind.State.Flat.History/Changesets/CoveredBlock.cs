@@ -13,19 +13,28 @@ namespace Nethermind.State.Flat.History.Changesets;
 /// it when they are consecutive, and one seed source per worker.</summary>
 internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBlocks, ConsecutiveBlockOverlays? chain, IReadOnlySet<AddressAsKey> excluded) : ICoveredBlock
 {
-    // One per block, handed to every worker: they all stand on the same parent state, so the first to read a key
-    // reads it for all of them.
-    private readonly BlockReadCache _reads = new(
-        accountSetsBits: Math.Clamp(BitOperations.Log2((uint)Math.Max(1, rows.Rows.Length)) + 2, 2, 12),
-        storageSetsBits: Math.Clamp(BitOperations.Log2((uint)Math.Max(1, rows.Rows.Length)) + 4, 4, 14));
+    // Retain at most one cache per size. Concurrent blocks always own different caches.
+    private static readonly BlockReadCache?[] SpareReads = new BlockReadCache?[13];
+    private readonly int _cacheBits = CacheBits(rows);
+    private BlockReadCache? _reads = RentReads(CacheBits(rows));
 
-    public IPrefixStateSeedSource CreateWorkerSeeds() => new WorkerSeeds(rows, earlierBlocks, _reads);
+    private static int CacheBits(BlockChangesets rows) => Math.Clamp(BitOperations.Log2((uint)Math.Max(1, rows.Rows.Length)) + 2, 2, 12);
+
+    private static BlockReadCache RentReads(int bits) =>
+        Interlocked.Exchange(ref SpareReads[bits], null) ?? new BlockReadCache(bits, bits + 2);
+
+    public IPrefixStateSeedSource CreateWorkerSeeds() => new WorkerSeeds(rows, earlierBlocks,
+        _reads ?? throw new ObjectDisposedException(nameof(CoveredBlock)));
 
     /// <summary>Nothing is published for a block the chain cannot describe exactly.</summary>
     public void Complete() => chain?.Publish(rows, earlierBlocks, excluded);
 
     public void Dispose()
     {
+        BlockReadCache? reads = Interlocked.Exchange(ref _reads, null);
+        if (reads is null) return;
+        reads.Clear();
+        Interlocked.CompareExchange(ref SpareReads[_cacheBits], reads, null);
     }
 
     /// <summary>One worker's view of the block: its own overlay, folded as far as the last target and extended in

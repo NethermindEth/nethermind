@@ -45,16 +45,18 @@ public sealed class TransactionTraceExecutor(
         try
         {
             int first = 0;
+            int target = -1;
             if (boundary.Seeds is { } seeds && readOverlay is not null && !balManager.Enabled)
             {
-                int target = boundary.IndexOf(block);
+                target = boundary.IndexOf(block);
                 if (target > 0 && seeds.TrySeed(block, target, readOverlay) && readOverlay.Current is { } overlay)
                 {
                     if (state.TryApplyAccountOverlay(overlay)) first = target;
                     else readOverlay.Disarm();
                 }
             }
-            if (boundary.IsSeedRequired && first != boundary.IndexOf(block))
+            boundary.IsPrefixInstalled = target >= 0 && first == target;
+            if (boundary.IsSeedRequired && !boundary.IsPrefixInstalled)
                 throw new InvalidOperationException("The indexed trace could not install its transaction prefix.");
             return Execute(block, options, tracer, token, boundary, first);
         }

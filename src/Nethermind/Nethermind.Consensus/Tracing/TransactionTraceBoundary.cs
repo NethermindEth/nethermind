@@ -29,6 +29,7 @@ public sealed class TransactionTraceBoundary : IBlockTracer
 
     internal IPrefixStateSeedSource? Seeds => _seeds;
     internal bool IsSeedRequired { get; set; }
+    internal bool IsPrefixInstalled { get; set; }
 
     /// <summary>No transaction is the target: the seed stands for the whole block and only what follows the
     /// transactions, the rewards, is executed and traced.</summary>
@@ -45,7 +46,7 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     /// <summary>Wraps a tracer that wants only what comes after the transactions: the seed for the end of the block
     /// stays armed through the rewards and withdrawals, so they are applied and traced on the state the last
     /// transaction left, as in the replay. A refused seed fails rather than appending duplicate transaction traces.</summary>
-    public static IBlockTracer AfterTransactions(IBlockTracer tracer, IPrefixStateSeedSource seeds) => new TransactionTraceBoundary(tracer, null, seeds) { IsSeedRequired = true };
+    public static TransactionTraceBoundary AfterTransactions(IBlockTracer tracer, IPrefixStateSeedSource seeds) => new(tracer, null, seeds) { IsSeedRequired = true };
 
     internal int IndexOf(Block block)
     {
@@ -72,6 +73,7 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     public void StartNewBlockTrace(Block block)
     {
         IsComplete = false;
+        IsPrefixInstalled = false;
         _isTarget = false;
         _inner.StartNewBlockTrace(block);
     }

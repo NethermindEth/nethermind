@@ -161,6 +161,7 @@ namespace Nethermind.State
         }
         public bool TryApplyAccountOverlay(IStateReadOverlay overlay)
         {
+            if (_persistentStorageProvider.HasCachedStorage(overlay)) return false;
             _stateProvider.ApplyAccountOverlay(overlay);
             return true;
         }

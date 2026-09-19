@@ -833,18 +833,70 @@ public class BlockProcessorTests
         public void Dispose() => (inner as IDisposable)?.Dispose();
     }
 
-    private static IOverridableEnv<ParallelBlockTracer.Components> BuildParallelEnvironment(BasicTestBlockchain chain)
+    private static IOverridableEnv<ParallelBlockTracer.Components> BuildParallelEnvironment(BasicTestBlockchain chain, bool? hideRewardBoundary = null)
     {
         IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
         IOverridableEnv env = chain.Container.Resolve<IOverridableEnvFactory>().Create();
-        ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder => builder
-            .AddModule(validation)
-            .AddModule(new TransactionTraceModule(validation))
-            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
-            .AddModule(env)
-            .Add<ParallelBlockTracer.Components>());
+        ILifetimeScope scope = chain.Container.BeginLifetimeScope(builder =>
+        {
+            builder
+                .AddModule(validation)
+                .AddModule(new TransactionTraceModule(validation))
+                .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
+                .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+                .AddModule(env)
+                .Add<ParallelBlockTracer.Components>();
+            if (hideRewardBoundary.HasValue)
+                builder.AddDecorator<IBlockProcessor>((_, inner) => new BoundaryHidingBlockProcessor(inner, hideRewardBoundary.Value));
+        });
         return new ParallelBlockTracer.OwnedEnvironment(scope.Resolve<IOverridableEnv<ParallelBlockTracer.Components>>(), scope);
+    }
+
+    [Test]
+    public async Task ParallelBlockTracer_WhenProcessorHidesBoundary_RejectsUnseededResult([Values] bool rewards, [Values] bool stream)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+        IndexThroughTheCapture(chain, index, block, parent, spec);
+        using ParallelTraceBudget budget = new(2);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, rewards), seeds, budget, LimboLogs.Instance);
+        List<ParityLikeTxTrace> emitted = [];
+        Func<IWorldState, IBlockTracer<ParityLikeTxTrace>>? afterTransactions = rewards
+            ? _ => new ParityLikeBlockTracer(ParityTraceTypes.Trace | ParityTraceTypes.Rewards)
+            : null;
+
+        Assert.That(() =>
+        {
+            if (stream)
+                parallel.TryStream(block, parent, (_, hash) => new ParityLikeBlockTracer(hash, ParityTraceTypes.Trace),
+                    afterTransactions, batch => emitted.AddRange(batch), CancellationToken.None);
+            else
+                parallel.TryTrace(block, parent, (_, hash) => new ParityLikeBlockTracer(hash, ParityTraceTypes.Trace),
+                    afterTransactions, CancellationToken.None, out _);
+        }, Throws.InvalidOperationException.With.Message.EqualTo(rewards
+            ? "The indexed reward trace bypassed transaction prefix execution."
+            : "The indexed trace bypassed transaction prefix execution."));
+        Assert.That(emitted, Has.Count.EqualTo(stream && rewards ? block.Transactions.Length : 0),
+            "a bypassed boundary must not emit an unseeded transaction or duplicate reward-pass traces");
+    }
+
+    private sealed class BoundaryHidingBlockProcessor(IBlockProcessor inner, bool rewards) : IBlockProcessor
+    {
+        public event Action? TransactionsExecuted
+        {
+            add => inner.TransactionsExecuted += value;
+            remove => inner.TransactionsExecuted -= value;
+        }
+
+        public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
+            IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default) =>
+            inner.ProcessOne(suggestedBlock, options,
+                blockTracer.IsTracingRewards == rewards ? new RecordingPrefixTracer(blockTracer) : blockTracer, spec, token);
     }
 
     private static IReadOnlyCollection<TTrace> TraceWholeBlockThroughTraceEnvironment<TTrace>(BasicTestBlockchain chain, BlockHeader parent, Block block, Func<IWorldState, IBlockTracer<TTrace>> tracerFor)
