@@ -16,6 +16,24 @@ public readonly record struct ForkScheduleEntry(byte[] Version, ulong Epoch);
 public readonly record struct BlobScheduleEntry(ulong Epoch, ulong MaxBlobsPerBlock);
 
 /// <summary>
+/// The beacon state shape a fork uses. Deliberately lists only the forks this driver can construct a
+/// concrete state for (<see cref="Nethermind.BeaconChain.Types.BeaconStateElectra"/>,
+/// <see cref="Nethermind.BeaconChain.Types.BeaconStateFulu"/>,
+/// <see cref="Nethermind.BeaconChain.Types.BeaconStateGloas"/>), matching how this codebase never
+/// modeled a Phase0/Altair/Bellatrix/Capella/Deneb state type either. Adding a member here without also
+/// extending every <c>switch</c> over this enum in <c>StateTransition/ForkedStateTransition.cs</c> and
+/// <c>StateTransition/GloasForkTransition.cs</c> is refused at compile time by those switches' exhaustive
+/// (no discard arm) pattern matches, per <c>TreatWarningsAsErrors</c> (CS8509) — the same "unhandled fork
+/// is a build failure, not a silent Fulu fallback" contract those files document.
+/// </summary>
+public enum BeaconFork
+{
+    Electra,
+    Fulu,
+    Gloas,
+}
+
+/// <summary>
 /// Beacon chain configuration: fork schedule, genesis information, and timing parameters.
 /// </summary>
 /// <remarks>
@@ -49,11 +67,40 @@ public class BeaconChainSpec
     public required ulong FuluForkEpoch { get; init; }
     public required ulong MaxBlobsPerBlockElectra { get; init; }
 
+    /// <summary>
+    /// The Gloas activation epoch, or <see cref="Presets.FarFutureEpoch"/> when this network has none
+    /// scheduled yet. <see cref="Presets.FarFutureEpoch"/> is the spec's own placeholder for "TBD"
+    /// (<c>specs/gloas/fork.md</c> config table: <c>GLOAS_FORK_EPOCH = Epoch(2**64 - 1) TBD</c>), so a
+    /// network with no confirmed date carries it honestly instead of a guessed epoch. As of 2026-09-19
+    /// only Sepolia has a confirmed Gloas epoch (353024); this driver does not model a Sepolia network
+    /// yet (see the task's 'unresolved' note), so <see cref="Mainnet"/> and <see cref="Hoodi"/> both
+    /// leave this at the far-future sentinel and add no matching entry to <see cref="Forks"/>.
+    /// </summary>
+    public required ulong GloasForkEpoch { get; init; }
+
+    /// <summary>The Gloas <c>fork_version</c>, meaningless while <see cref="GloasForkEpoch"/> is unscheduled.</summary>
+    public required byte[] GloasForkVersion { get; init; }
+
     public ulong GetEpoch(ulong slot) => slot / SlotsPerEpoch;
 
     public ulong GetSlotAtTime(ulong unixTime) => unixTime < GenesisTime ? 0 : (unixTime - GenesisTime) / SecondsPerSlot;
 
     public byte[] VersionForEpoch(ulong epoch) => Forks.Last(f => f.Epoch <= epoch).Version;
+
+    /// <summary>
+    /// The beacon state shape live at <paramref name="epoch"/>. Never falls back to an earlier fork for
+    /// an epoch this driver cannot represent: an epoch before <see cref="ElectraForkEpoch"/> throws,
+    /// matching how the rest of this driver (e.g. <c>CheckpointSync</c>) already refuses anything it has
+    /// no concrete state type for, rather than silently treating it as Electra.
+    /// </summary>
+    /// <exception cref="StateTransition.BeaconStateException"><paramref name="epoch"/> predates Electra.</exception>
+    public BeaconFork ForkAtEpoch(ulong epoch)
+    {
+        if (epoch >= GloasForkEpoch) return BeaconFork.Gloas;
+        if (epoch >= FuluForkEpoch) return BeaconFork.Fulu;
+        if (epoch >= ElectraForkEpoch) return BeaconFork.Electra;
+        throw new StateTransition.BeaconStateException($"Epoch {epoch} predates Electra (fork epoch {ElectraForkEpoch}); this driver has no state type for it");
+    }
 
     /// <summary>
     /// Returns the blob parameters in effect at <paramref name="epoch"/>, or <c>null</c> before Fulu.
@@ -104,6 +151,8 @@ public class BeaconChainSpec
         ElectraForkEpoch = 364032,
         FuluForkEpoch = 411392,
         MaxBlobsPerBlockElectra = 9,
+        GloasForkEpoch = Presets.FarFutureEpoch, // not yet scheduled on mainnet as of 2026-09-19
+        GloasForkVersion = Bytes.FromHexString("0x07000000"), // specs/gloas/fork.md GLOAS_FORK_VERSION; meaningless while unscheduled
     };
 
     public static BeaconChainSpec Hoodi { get; } = new()
@@ -132,6 +181,8 @@ public class BeaconChainSpec
         ElectraForkEpoch = 2048,
         FuluForkEpoch = 50688,
         MaxBlobsPerBlockElectra = 9,
+        GloasForkEpoch = Presets.FarFutureEpoch, // not yet scheduled on Hoodi as of 2026-09-19 (only Sepolia has a confirmed date)
+        GloasForkVersion = Bytes.FromHexString("0x07000000"),
     };
 
     /// <summary>Selects the beacon chain spec for the execution layer's chain id.</summary>
