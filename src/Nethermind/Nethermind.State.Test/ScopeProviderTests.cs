@@ -3,9 +3,11 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Threading;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -59,6 +61,65 @@ public class ScopeProviderTests(bool useFlat)
         }
 
         public void Dispose() => _container?.Dispose();
+    }
+
+    private sealed class ControlledStorageTrees
+    {
+        private readonly ConcurrentDictionary<Address, ControlledStorageTree> _trees = new();
+        private readonly TaskCompletionSource<bool> _releaseReaders = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _ownerThreadId;
+        private bool _holdReaders;
+
+        public int OwnerThreadId
+        {
+            set => Volatile.Write(ref _ownerThreadId, value);
+        }
+
+        public IWorldStateScopeProvider.IStorageTree Get(Address address) =>
+            _trees.GetOrAdd(address, _ => new ControlledStorageTree(this));
+
+        public void HoldReaders() => Volatile.Write(ref _holdReaders, true);
+
+        public void ReleaseReaders()
+        {
+            Volatile.Write(ref _holdReaders, false);
+            _releaseReaders.TrySetResult(true);
+        }
+
+        public bool WaitForReaderTrees(int count) => SpinWait.SpinUntil(() =>
+        {
+            int entered = 0;
+            foreach (KeyValuePair<Address, ControlledStorageTree> entry in _trees)
+            {
+                if (entry.Value.HasReaderEntered) entered++;
+            }
+
+            return entered >= count;
+        }, 5000);
+
+        private sealed class ControlledStorageTree(ControlledStorageTrees owner) : IWorldStateScopeProvider.IStorageTree
+        {
+            private readonly ControlledStorageTrees _owner = owner;
+            private int _readerEntered;
+
+            public bool HasReaderEntered => Volatile.Read(ref _readerEntered) != 0;
+
+            public Hash256 RootHash => Keccak.EmptyTreeHash;
+
+            public void Get(in UInt256 index, out UInt256 value)
+            {
+                if (Environment.CurrentManagedThreadId != Volatile.Read(ref _owner._ownerThreadId)
+                    && Volatile.Read(ref _owner._holdReaders))
+                {
+                    Volatile.Write(ref _readerEntered, 1);
+                    _owner._releaseReaders.Task.GetAwaiter().GetResult();
+                }
+
+                value = 1;
+            }
+
+            public void HintSet(in UInt256 index) { }
+        }
     }
 
     [Test]
@@ -1208,6 +1269,452 @@ public class ScopeProviderTests(bool useFlat)
         using (IWorldStateScopeProvider.IScope scope = prewarmer.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
         {
             Assert.DoesNotThrow(() => scope.HintBal(bal));
+        }
+    }
+
+    /// <summary>Waits for the stride prefetcher to publish <paramref name="expected"/> at <paramref name="cell"/>.</summary>
+    /// <remarks>
+    /// Polls a plain condition rather than retrying an assertion: engagement is asynchronous (the readers'
+    /// scope is opened off the block-processing thread), and NUnit records a failed <c>Assert.That</c>
+    /// against the test even when a later retry succeeds.
+    /// </remarks>
+    private static async Task<bool> WaitForWarmedSlot(PreBlockCaches caches, StorageCell cell, UInt256 expected)
+    {
+        for (int attempt = 0; attempt < 400; attempt++)
+        {
+            if (caches.StorageCache.TryGetValue(in cell, out UInt256 value) && value == expected)
+            {
+                return true;
+            }
+
+            await Task.Delay(10);
+        }
+
+        return false;
+    }
+
+    [Test]
+    public async Task Test_StridePrefetcher_WarmsAheadOfStridingReads()
+    {
+        const int slotCount = 256;
+        UInt256 start = (UInt256)1 << 40; // A high, distinctive base slot for the scan.
+        UInt256 stride = 7;
+
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, slotCount);
+                UInt256 index = start;
+                for (int i = 0; i < slotCount; i++, index += stride)
+                {
+                    storageA.Set(index, new UInt256([(byte)(i + 1), (byte)((i >> 8) + 1)], isBigEndian: true));
+                }
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        PreBlockCaches caches = NewCaches();
+        // Over the production decorator chain (see MainProcessingContext): the prefetcher engages only
+        // if every decorator between it and the backend forwards SupportsConcurrentScopes.
+        PrewarmerScopeProvider prewarmer = new(
+            new WorldStateMetricsScopeProvider(
+                new WorldStateScopeOperationLogger(ctx.ScopeProvider, LimboLogs.Instance), static _ => { }),
+            new PrewarmerState(caches, isPrewarmer: false),
+            LimboLogs.Instance);
+
+        using (IWorldStateScopeProvider.IScope scope = prewarmer.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
+
+            // Enough on-pattern reads to engage the prefetcher.
+            UInt256 index = start;
+            for (int i = 0; i < 12; i++, index += stride)
+            {
+                storage.Get(in index, out _);
+            }
+
+            // A far-ahead slot the consumer never read must show up in the pre-block cache —
+            // but only on the flat layout; the trie store cannot host the prefetcher's
+            // concurrent read scope, so there the detector must stay inert.
+            StorageCell farCell = new(TestItem.AddressA, start + (stride * 200));
+            if (useFlat)
+            {
+                Assert.That(await WaitForWarmedSlot(caches, farCell, new UInt256([201, 1], isBigEndian: true)), Is.True,
+                    "Stride prefetcher did not warm the far slot.");
+            }
+            else
+            {
+                for (int i = 0; i < 60; i++)
+                {
+                    Assert.That(caches.StorageCache.TryGetValue(in farCell, out _), Is.False,
+                        "Stride prefetcher engaged on a provider without concurrent-scope support.");
+                    await Task.Delay(5);
+                }
+            }
+        }
+        // Scope disposal joined the reader threads without hanging.
+    }
+
+    [Test]
+    public async Task Test_StridePrefetcher_LimitsActiveReadersWithoutSpendingEngagementsOnInertDetectors()
+    {
+        if (!useFlat)
+        {
+            Assert.Ignore("The stride prefetcher requires concurrent scopes.");
+        }
+
+        const int detectorCount = 9;
+        const int activeDetectorCount = 4;
+        const int slotCount = 201;
+        UInt256 start = (UInt256)1 << 40;
+        UInt256 stride = 7;
+        Address[] addresses = new Address[detectorCount];
+        for (int i = 0; i < addresses.Length; i++)
+            addresses[i] = new Address(Keccak.Compute($"stride-cap-{i}"));
+
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(detectorCount))
+            {
+                for (int i = 0; i < addresses.Length; i++)
+                {
+                    writeBatch.Set(addresses[i], new Account(100, 100));
+                    using IWorldStateScopeProvider.IStorageWriteBatch storage = writeBatch.CreateStorageWriteBatch(addresses[i], slotCount);
+                    UInt256 index = start;
+                    for (int j = 0; j < slotCount; j++, index += stride)
+                        storage.Set(index, new UInt256([(byte)(i + 1)], isBigEndian: true));
+                }
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        PreBlockCaches caches = NewCaches();
+        PrewarmerScopeProvider prewarmer = new(
+            new WorldStateMetricsScopeProvider(
+                new WorldStateScopeOperationLogger(ctx.ScopeProvider, LimboLogs.Instance), static _ => { }),
+            new PrewarmerState(caches, isPrewarmer: false),
+            LimboLogs.Instance);
+
+        using (IWorldStateScopeProvider.IScope scope = prewarmer.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            IWorldStateScopeProvider.IStorageTree[] storages = new IWorldStateScopeProvider.IStorageTree[detectorCount];
+            for (int i = 0; i < storages.Length; i++)
+                storages[i] = scope.CreateStorageTree(addresses[i]);
+
+            for (int i = 0; i < activeDetectorCount; i++)
+                ReadStride(storages[i]);
+
+            for (int i = 0; i < activeDetectorCount; i++)
+            {
+                StorageCell farCell = new(addresses[i], start + (stride * 200));
+                Assert.That(await WaitForWarmedSlot(caches, farCell, new UInt256([(byte)(i + 1)], isBigEndian: true)), Is.True,
+                    $"Initial detector {i} did not engage.");
+            }
+
+            // These detectors were created before the four reader slots filled. They must defer while
+            // the reader cap is full and must not consume the scope's total engagement budget.
+            for (int i = activeDetectorCount; i < detectorCount - 1; i++)
+            {
+                ReadStride(storages[i]);
+                StorageCell farCell = new(addresses[i], start + (stride * 200));
+                for (int attempt = 0; attempt < 60; attempt++)
+                {
+                    Assert.That(caches.StorageCache.TryGetValue(in farCell, out _), Is.False,
+                        $"Detector {i} engaged despite the active reader cap.");
+                    await Task.Delay(5);
+                }
+            }
+
+            // Free one reader slot. If the refused detectors had consumed total engagements, the final
+            // detector would be rejected at eight even though a reader slot is now available.
+            UInt256 offPatternIndex = start;
+            for (int i = 0; i < 16; i++)
+            {
+                offPatternIndex += (UInt256)(1000 + (i * i * 2));
+                storages[0].Get(in offPatternIndex, out _);
+            }
+
+            ReadStride(storages[^1]);
+            StorageCell finalFarCell = new(addresses[^1], start + (stride * 200));
+            Assert.That(await WaitForWarmedSlot(caches, finalFarCell, new UInt256([(byte)detectorCount], isBigEndian: true)), Is.True,
+                "A detector refused by the active-reader cap consumed the total engagement budget.");
+        }
+
+        void ReadStride(IWorldStateScopeProvider.IStorageTree storage)
+        {
+            UInt256 index = start;
+            for (int i = 0; i < 12; i++, index += stride)
+                storage.Get(in index, out _);
+        }
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Test_StridePrefetcher_CanCreateDetectorWhileReadersHoldSlots(bool attemptBeforeSlotFree)
+    {
+        ControlledStorageTrees controlledTrees = new();
+        IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
+        IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        baseProvider.SupportsConcurrentScopes.Returns(true);
+        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>()).Returns(baseScope);
+        baseScope.CreateStorageTree(Arg.Any<Address>())
+            .Returns(callInfo => controlledTrees.Get(callInfo.Arg<Address>()));
+
+        PreBlockCaches caches = NewCaches();
+        PrewarmerScopeProvider prewarmer = new(
+            baseProvider,
+            new PrewarmerState(caches, isPrewarmer: false),
+            LimboLogs.Instance);
+
+        using IWorldStateScopeProvider.IScope scope = prewarmer.BeginScope(null, new LocalMetrics());
+        try
+        {
+            controlledTrees.OwnerThreadId = Environment.CurrentManagedThreadId;
+            controlledTrees.HoldReaders();
+
+            IWorldStateScopeProvider.IStorageTree[] initialTrees = new IWorldStateScopeProvider.IStorageTree[4];
+            for (int i = 0; i < initialTrees.Length; i++)
+            {
+                Address address = new(Keccak.Compute($"stride-held-{i}"));
+                initialTrees[i] = scope.CreateStorageTree(address);
+                ReadStride(initialTrees[i], startIndex: 1, count: 12);
+            }
+
+            Assert.That(controlledTrees.WaitForReaderTrees(initialTrees.Length), Is.True,
+                "The initial detectors did not retain their reader slots.");
+
+            Address lateAddress = new(Keccak.Compute("stride-late"));
+            IWorldStateScopeProvider.IStorageTree lateTree = scope.CreateStorageTree(lateAddress);
+
+            if (attemptBeforeSlotFree)
+                ReadStride(lateTree, startIndex: 1, count: 8);
+
+            BreakStride(initialTrees[0]);
+            ReadStride(lateTree, startIndex: attemptBeforeSlotFree ? 9 : 1, count: 12);
+
+            Assert.That(controlledTrees.WaitForReaderTrees(initialTrees.Length + 1), Is.True,
+                "The detector created while all slots were occupied did not engage after a slot was freed.");
+
+            controlledTrees.ReleaseReaders();
+            StorageCell lateFarCell = new(lateAddress, 64);
+            Assert.That(SpinWait.SpinUntil(() => caches.StorageCache.TryGetValue(in lateFarCell, out _), 5000), Is.True,
+                "The late detector did not warm a slot after the earlier detector released its slot.");
+
+            static void ReadStride(IWorldStateScopeProvider.IStorageTree storage, int startIndex, int count)
+            {
+                UInt256 index = (UInt256)(uint)startIndex;
+                for (int i = 0; i < count; i++, index++)
+                    storage.Get(in index, out _);
+            }
+
+            static void BreakStride(IWorldStateScopeProvider.IStorageTree storage)
+            {
+                UInt256 index = 10_000;
+                for (int i = 0; i < 16; i++, index += (UInt256)(101 + i * i))
+                    storage.Get(in index, out _);
+            }
+        }
+        finally
+        {
+            controlledTrees.ReleaseReaders();
+        }
+    }
+
+    [Test]
+    public async Task Test_StridePrefetcher_DoesNotCacheInBlockWrittenValues()
+    {
+        UInt256 start = (UInt256)1 << 40; // A high, distinctive base slot for the scan.
+        UInt256 stride = 7;
+        // Inside the readers' lookahead window at engagement, so a live reader reaches it and caches
+        // the parent value before the executing block rewrites the slot.
+        UInt256 farIndex = start + (stride * 200);
+        UInt256 parentValue = new([111], isBigEndian: true);
+        UInt256 inBlockValue = new([222], isBigEndian: true);
+
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                // Populate the path to farIndex so the assertion is deterministic even when trie
+                // verification would otherwise perform cold missing-slot reads.
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 201);
+                UInt256 index = start;
+                for (int i = 0; i <= 200; i++, index += stride)
+                {
+                    storageA.Set(index, parentValue);
+                }
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        PreBlockCaches caches = NewCaches();
+        PrewarmerScopeProvider prewarmer = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
+
+        StorageCell farCell = new(TestItem.AddressA, farIndex);
+
+        using (IWorldStateScopeProvider.IScope scope = prewarmer.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
+
+            // Enough on-pattern reads to engage the prefetcher.
+            UInt256 index = start;
+            for (int i = 0; i < 12; i++, index += stride)
+            {
+                storage.Get(in index, out _);
+            }
+
+            // A live reader must reach farIndex and cache the parent value; on the trie layout the
+            // prefetcher never engages, so this positive check is flat-only.
+            if (useFlat)
+            {
+                Assert.That(await WaitForWarmedSlot(caches, farCell, parentValue), Is.True,
+                    "Stride prefetcher did not warm the far slot with parent state.");
+            }
+
+            // The executing block rewrites the slot the reader already cached; StartWriteBatch stops
+            // the readers, and their private parent-anchored scope never observes the write.
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                using IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 1);
+                storageA.Set(farIndex, inBlockValue);
+            }
+
+            // The prefetcher must publish only parent state: the far slot's cache entry must never
+            // flip to the value the executing block wrote. Bounded poll because the correct outcome
+            // is that the entry stays put.
+            for (int i = 0; i < 120; i++)
+            {
+                if (caches.StorageCache.TryGetValue(in farCell, out UInt256 cached) && cached == inBlockValue)
+                {
+                    Assert.Fail("Stride prefetcher cached a value written by the executing block.");
+                }
+
+                await Task.Delay(5);
+            }
+
+            if (useFlat)
+            {
+                Assert.That(caches.StorageCache.TryGetValue(in farCell, out UInt256 finalValue), Is.True);
+                Assert.That(finalValue, Is.EqualTo(parentValue));
+            }
+        }
+    }
+
+    [Test]
+    public async Task Test_StridePrefetcher_DoesNotEngageAfterFirstCommit()
+    {
+        UInt256 start = (UInt256)1 << 40; // A high, distinctive base slot for the scan.
+        UInt256 stride = 7;
+
+        using Context ctx = new(useFlat);
+
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        PreBlockCaches caches = NewCaches();
+        PrewarmerScopeProvider prewarmer = new(ctx.ScopeProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
+
+        using (IWorldStateScopeProvider.IScope scope = prewarmer.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            // Sync batches process many blocks through one scope; the scope's parent anchor is
+            // only valid for the first of them. Simulate a first block that never touches
+            // storage, then a later block issuing a striding scan.
+            scope.Commit(1);
+
+            IWorldStateScopeProvider.IStorageTree storage = scope.CreateStorageTree(TestItem.AddressA);
+            UInt256 index = start;
+            for (int i = 0; i < 12; i++, index += stride)
+            {
+                storage.Get(in index, out _);
+            }
+
+            // Prefetching here would publish values read at the stale anchor; the prefetcher
+            // must stay disengaged. Bounded poll because the correct outcome is that nothing
+            // ever appears.
+            StorageCell farCell = new(TestItem.AddressA, start + (stride * 100));
+            for (int i = 0; i < 60; i++)
+            {
+                Assert.That(caches.StorageCache.TryGetValue(in farCell, out _), Is.False,
+                    "Stride prefetcher engaged in a non-first block of a scope.");
+                await Task.Delay(5);
+            }
+        }
+    }
+
+    [Test]
+    public void Test_ScopeDecorators_ForwardConcurrentScopeSupport()
+    {
+        using Context ctx = new(useFlat);
+
+        // SupportsConcurrentScopes is a default interface member, so a decorator that does not forward
+        // it silently reports the conservative false and disables every feature gated on it.
+        IWorldStateScopeProvider decorated = new PrewarmerScopeProvider(
+            new WorldStateMetricsScopeProvider(
+                new WorldStateScopeOperationLogger(ctx.ScopeProvider, LimboLogs.Instance), static _ => { }),
+            new PrewarmerState(NewCaches(), isPrewarmer: false),
+            LimboLogs.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.ScopeProvider.SupportsConcurrentScopes, Is.EqualTo(useFlat));
+            Assert.That(decorated.SupportsConcurrentScopes, Is.EqualTo(useFlat));
+        }
+    }
+
+    [Test]
+    public void Test_MetricsScope_DisposeDoesNotResetAnotherScopeAccumulator()
+    {
+        IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
+        IWorldStateScopeProvider.IScope processingBaseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        IWorldStateScopeProvider.IScope backgroundBaseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
+        baseProvider.BeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>())
+            .Returns(processingBaseScope, backgroundBaseScope);
+        processingBaseScope.When(scope => scope.Commit(1)).Do(_ => Thread.Sleep(40));
+        processingBaseScope.When(scope => scope.Commit(2)).Do(_ => Thread.Sleep(5));
+
+        List<double> measurements = [];
+        WorldStateMetricsScopeProvider metricsProvider = new(baseProvider, measurements.Add);
+        IWorldStateScopeProvider.IScope processingScope = metricsProvider.BeginScope(null, new LocalMetrics());
+        IWorldStateScopeProvider.IScope backgroundScope = metricsProvider.BeginScope(null, new LocalMetrics());
+
+        processingScope.Commit(1);
+        backgroundScope.Dispose();
+        processingScope.Commit(2);
+        processingScope.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(measurements, Has.Count.EqualTo(2));
+            Assert.That(measurements[0], Is.GreaterThan(20d));
+            Assert.That(measurements[1], Is.GreaterThan(measurements[0]));
         }
     }
 
