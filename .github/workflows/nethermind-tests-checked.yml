@@ -44,11 +44,13 @@ jobs:
             dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
             hw-intrinsic: ''
             artifact: checked
+            avx512: 1
           - &no_intrinsics
             label: no-intrinsics
             dotnet-args: ''
             hw-intrinsic: 0
             artifact: release
+            avx512: 1
         project:
           - Ethereum.Abi.Test
           - Ethereum.Basic.Test
@@ -108,6 +110,23 @@ jobs:
           - Nethermind.TxPool.Test
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
+        include:
+          - project: Nethermind.Core.Test
+            variant:
+              label: avx2
+              dotnet-args: ''
+              hw-intrinsic: ''
+              artifact: release
+              avx512: 0
+              require-avx2: 1
+          - project: Nethermind.Core.Test
+            variant:
+              label: avx512
+              dotnet-args: ''
+              hw-intrinsic: ''
+              artifact: release
+              avx512: 1
+              require-avx512: 1
         exclude:
           - { variant: *no_intrinsics, project: Nethermind.Api.Test }
           - { variant: *no_intrinsics, project: Nethermind.Config.Test }
@@ -135,7 +154,38 @@ jobs:
         working-directory: src/Nethermind/${{ matrix.project }}
         env:
           DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
+          DOTNET_EnableAVX512: ${{ matrix.variant.avx512 }}
+          NETHERMIND_TEST_REQUIRE_AVX2: ${{ matrix.variant.require-avx2 }}
+          NETHERMIND_TEST_REQUIRE_AVX512: ${{ matrix.variant.require-avx512 }}
         run: |
+          if [[ "${{ matrix.variant.label }}" == "avx512" ]]; then
+            for flag in avx512f avx512cd avx512bw avx512dq avx512vl; do
+              if ! grep -qw "$flag" /proc/cpuinfo; then
+                echo "::warning::AVX-512 tests skipped: this hosted runner lacks $flag."
+                echo "AVX-512 tests skipped: hosted runner lacks $flag; no AVX-512 coverage on this run." >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
+            done
+          fi
+          if [[ "${{ matrix.variant.label }}" == "avx2" || "${{ matrix.variant.label }}" == "avx512" ]]; then
+            for target in \
+              'Nethermind.Core.Test:KeccakTests|KeccakCacheTests' \
+              'Nethermind.Evm.Test:KeyedNonceManagerTests' \
+              'Ethereum.Trie.Test:StorageTrieTests' \
+              'Nethermind.State.Flat.History.Test:NodeViewsTests' \
+              'Nethermind.Trie.Test:TrieNodeTests' \
+              'Nethermind.State.Test:StateTreeTests|ScopeProviderTests|AccountProofCollectorTests' \
+              'Nethermind.Blockchain.Test:TxTrieTests|ReceiptTrieTests|WithdrawalTrieTests'; do
+              project="${target%%:*}"
+              names="${target#*:}"
+              filter="FullyQualifiedName~${names//|/|FullyQualifiedName~}"
+              dotnet restore "../$project/$project.csproj"
+              dotnet test --project "../$project/$project.csproj" -c release --no-build --no-restore \
+                --hangdump --hangdump-timeout 8m --hangdump-type Mini -- --filter "$filter"
+            done
+            echo "${{ matrix.variant.label }}: all selected test projects passed with runtime ISA assertions enabled." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           dotnet restore ${{ matrix.project }}.csproj
           # A hung test host is killed with a dump of every thread instead of running into the job
           # timeout, which kills the job without one. The timeout counts inactivity, not runtime, and

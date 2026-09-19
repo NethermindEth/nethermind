@@ -409,13 +409,10 @@ public class TrieNodeTests
     }
 
     [Test]
-    public void Resolves_full_branch_children_to_their_individual_hashes([Values(0x0001, 0x0003, 0x0007, 0x5555, 0xffff)] int branchMask)
+    public void Resolves_full_branch_children_to_their_individual_hashes(
+        [Values(0x0001, 0x0003, 0x0007, 0x000f, 0x001f, 0x003f, 0x007f, 0x5555, 0x01ff, 0x03ff, 0x07ff, 0x7fff, 0xffff)] int branchMask,
+        [Values] bool inlineNonCandidate)
     {
-        if (!System.Runtime.Intrinsics.X86.Avx512F.VL.IsSupported)
-        {
-            Assert.Ignore("AVX-512VL intrinsics are not supported on this machine.");
-        }
-
         TrieNode root = new(NodeType.Branch);
         TrieNode?[] branches = new TrieNode?[TrieNode.BranchesCount];
 
@@ -439,8 +436,9 @@ public class TrieNodeTests
         if (branchMask != 0xffff)
         {
             const int nonCandidateIndex = TrieNode.BranchesCount - 1;
-            nonCandidate = new TrieNode(NodeType.Branch);
-            nonCandidate.SetChild(0, new TrieNode(NodeType.Unknown, Keccak.Compute([0xff])));
+            nonCandidate = inlineNonCandidate ? new Context().TiniestLeaf : new TrieNode(NodeType.Branch);
+            if (!inlineNonCandidate)
+                nonCandidate.SetChild(0, new TrieNode(NodeType.Unknown, Keccak.Compute([0xff])));
             root.SetChild(nonCandidateIndex, nonCandidate);
         }
 
@@ -462,10 +460,21 @@ public class TrieNodeTests
             if (nonCandidate is not null)
             {
                 Assert.That(nonCandidate.FullRlp.Length, Is.Not.EqualTo(532), "non-candidate RLP length");
-                Assert.That(nonCandidate.Keccak, Is.EqualTo(Keccak.Compute(nonCandidate.FullRlp.AsSpan())),
+                Assert.That(nonCandidate.Keccak, Is.EqualTo(inlineNonCandidate ? null : Keccak.Compute(nonCandidate.FullRlp.AsSpan())),
                     "non-candidate hash");
             }
             Assert.That(root.Keccak, Is.EqualTo(Keccak.Compute(root.FullRlp.AsSpan())), "root hash");
+            Assert.That(path, Is.EqualTo(TreePath.Empty), "path restored");
+
+            TrieNode expected = new(NodeType.Branch);
+            for (int i = 0; i < branches.Length; i++)
+            {
+                if (branches[i] is { } branch)
+                    expected.SetChild(i, new TrieNode(NodeType.Unknown, Keccak.Compute(branch.FullRlp.AsSpan())));
+            }
+            if (nonCandidate is not null) expected.SetChild(TrieNode.BranchesCount - 1, nonCandidate);
+            Assert.That(root.FullRlp.ToArray(), Is.EqualTo(expected.RlpEncode(NullTrieNodeResolver.Instance, ref path).ToArray()),
+                "parent references match individually hashed children");
         }
     }
 

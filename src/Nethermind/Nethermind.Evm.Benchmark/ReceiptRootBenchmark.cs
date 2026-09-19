@@ -23,14 +23,23 @@ public class ReceiptRootBenchmark
     [Params(0, 1024)]
     public int LogDataLength { get; set; }
 
+    [Params(false, true)]
+    public bool MixedLengths { get; set; }
+
     [GlobalSetup]
     public void Setup()
     {
         _receipts = new TxReceipt[Count];
         byte[] data = new byte[LogDataLength];
-        new System.Random(42).NextBytes(data);
+        System.Random random = new(42);
+        random.NextBytes(data);
         for (int i = 0; i < Count; i++)
         {
+            if (MixedLengths)
+            {
+                data = new byte[random.Next(LogDataLength, LogDataLength + 2049)];
+                random.NextBytes(data);
+            }
             _receipts[i] = Build.A.Receipt.WithAllFieldsFilled.WithGasUsedTotal((ulong)(i + 1) * 21000)
                 .WithTxType((TxType)(i % 5))
                 .WithLogs(new LogEntry(TestItem.AddressA, data, [TestItem.KeccakA, TestItem.KeccakB])).TestObject;
