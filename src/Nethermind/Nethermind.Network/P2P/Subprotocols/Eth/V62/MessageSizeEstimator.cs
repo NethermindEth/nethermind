@@ -46,8 +46,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return estimate;
         }
 
-        public static ulong EstimateSize(TxReceipt receipt) => EstimateSize(receipt, Rlp.GetDecoderOrThrow<TxReceipt>());
-
         public static ulong EstimateSize(TxReceipt[] receipts)
         {
             IRlpDecoder<TxReceipt> decoder = Rlp.GetDecoderOrThrow<TxReceipt>();

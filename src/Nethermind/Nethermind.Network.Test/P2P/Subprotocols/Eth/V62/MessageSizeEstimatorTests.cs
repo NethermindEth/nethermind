@@ -119,8 +119,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 logs[i] = new LogEntry(TestItem.AddressA, [], []);
             }
 
-            ulong estimate = MessageSizeEstimator.EstimateSize(Build.A.Receipt.WithLogs(logs).TestObject);
-            ulong baseline = MessageSizeEstimator.EstimateSize(Build.A.Receipt.WithLogs().TestObject);
+            ulong estimate = MessageSizeEstimator.EstimateSize([Build.A.Receipt.WithLogs(logs).TestObject]);
+            ulong baseline = MessageSizeEstimator.EstimateSize([Build.A.Receipt.WithLogs().TestObject]);
 
             // Independent of the estimator internals: such a log still encodes its 20-byte address plus
             // RLP framing, so the estimate must grow with the log count — the previous "data length plus

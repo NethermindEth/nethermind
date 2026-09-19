@@ -421,7 +421,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 if (sizeEstimate + blockSize > HardOutgoingReceiptsMessageSizeLimit)
                 {
                     // An empty prefix means the block alone does not fit, so this peer can never get it from us.
-                    if (txReceipts.Count == 0 && Logger.IsDebug) Logger.Debug($"Cannot serve receipts of {blockHash} to {Node:c}: {blockSize} bytes over the {HardOutgoingReceiptsMessageSizeLimit} bytes limit.");
+                    if (txReceipts.Count == 0 && Logger.IsDebug) Logger.Debug($"Cannot serve receipts of {blockHash} to {Node:c}: estimated {blockSize} bytes exceeds the {HardOutgoingReceiptsMessageSizeLimit} bytes limit.");
                     break;
                 }
 
