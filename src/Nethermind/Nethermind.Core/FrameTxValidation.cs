@@ -436,6 +436,8 @@ public static class FrameTxValidation
         {
             // A non-VERIFY frame ends the prefix, so nothing past it can install a payer.
             if (frames[i].Mode != FrameMode.Verify) break;
+            // A mask, not the whole-byte equality the recognized shapes use: this walk deliberately also keys
+            // sponsors installed through layouts those shapes reject.
             if ((frames[i].Flags & FrameFlags.ApprovePayment) == 0) continue;
 
             Address? resolved = frames[i].Target ?? transaction.SenderAddress;
@@ -461,7 +463,9 @@ public static class FrameTxValidation
     /// The number of leading frames forming a validation prefix EIP-8141 recognizes for the public
     /// mempool, or <c>null</c> when the layout matches none of them.
     /// </summary>
-    private static int? RecognizedPrefixLength(TxFrame[] frames, Address? sender)
+    /// <remarks>The four layouts are also the shapes EIP-8369 Profile 2 admits, and the count spans the
+    /// optional expiry-verifier and deploy frames that <see cref="ApprovalSearchStart"/> steps over.</remarks>
+    public static int? RecognizedPrefixLength(TxFrame[] frames, Address? sender)
     {
         int next = ApprovalSearchStart(frames);
 

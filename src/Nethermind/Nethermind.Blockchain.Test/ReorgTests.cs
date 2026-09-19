@@ -112,7 +112,7 @@ public class ReorgTests
             MainnetSpecProvider.Instance,
             stateProvider,
             blockhashProvider,
-            new InclusionListSatisfactionChecker(MainnetSpecProvider.Instance, Substitute.For<ITxValidator>()),
+            new InclusionListSatisfactionChecker(MainnetSpecProvider.Instance, Substitute.For<ITxValidator>(), new BlocksConfig()),
             LimboLogs.Instance);
 
         _blockchainProcessor = new BlockchainProcessor(

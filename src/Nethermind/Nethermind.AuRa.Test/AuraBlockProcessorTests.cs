@@ -225,7 +225,7 @@ namespace Nethermind.AuRa.Test
                 GnosisSpecProvider.Instance,
                 stateProvider,
                 blockhashProvider,
-                new InclusionListSatisfactionChecker(GnosisSpecProvider.Instance, Substitute.For<ITxValidator>()),
+                new InclusionListSatisfactionChecker(GnosisSpecProvider.Instance, Substitute.For<ITxValidator>(), new BlocksConfig()),
                 LimboLogs.Instance);
 
             return (branchProcessor, stateProvider, blockTree);
