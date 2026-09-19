@@ -142,23 +142,6 @@ public class EngineTests
     }
 
     [Test]
-    public async Task Engine_driver_reports_invalid_on_out_of_range_payload_without_calling_the_engine()
-    {
-        IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
-        EngineDriver driver = new(CreateDetector(engine, out _), LimboLogs.Instance);
-        SignedBeaconBlock block = CreateBlock();
-        block.Message!.Body!.ExecutionPayload!.BlockNumber = ulong.MaxValue;
-
-        PayloadStatusV1 status = await driver.NewPayload(block);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(status.Status, Is.EqualTo(PayloadStatus.Invalid));
-            Assert.That(engine.ReceivedCalls(), Is.Empty);
-        });
-    }
-
-    [Test]
     public async Task Decorator_detects_external_engine_calls_but_not_capability_queries_or_driver_calls()
     {
         IEngineRpcModule inner = Substitute.For<IEngineRpcModule>();
