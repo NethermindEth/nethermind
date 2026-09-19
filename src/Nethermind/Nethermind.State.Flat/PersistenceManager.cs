@@ -103,7 +103,9 @@ public class PersistenceManager(
     ///   <item>Backstop fallback (if the finalized trigger persisted nothing): if
     ///   <c>snapshotsDepth &gt; </c> the backstop depth (<c>LongFinalityMaxReorgDepth</c> when long
     ///   finality is enabled, otherwise <c>MaxReorgDepth</c>, raised to at least
-    ///   <c>MinReorgDepth + CompactSize</c>) → seed = the committed head.</item>
+    ///   <c>MinReorgDepth + CompactSize</c>) → seed = the committed head, and where that head cannot
+    ///   serve at all (it reaches no persisted ancestor) the longest chain then the latest state, so an
+    ///   off-chain committed head cannot hold persistence still.</item>
     ///   <item>Otherwise → no candidate; Phase 1 doesn't run, fall through to Phase 2.</item>
     /// </list>
     /// Phase 2 runs only with <see cref="_enableLongFinality"/> enabled AND
@@ -155,12 +157,10 @@ public class PersistenceManager(
         // once MinReorgDepth is configured near the backstop depth, so deep state would never persist.
         // Seed from the committed head so the forced persist follows the canonical chain rather than an
         // arbitrary/longest fork (which RemoveSiblingAndDescendents would then orphan); fall back to the
-        // longest chain, then the latest state, only when nothing was committed this session.
+        // longest chain, then the latest state, only when the committed seed is absent or disconnected.
         if (snapshotsDepth > _backstopReorgDepth)
         {
-            StateId backstopSeed = snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.GetLastSnapshotId() ?? latestSnapshot;
-            (PersistedSnapshot? persisted, Snapshot? inMemory) =
-                snapshotRepository.FindSnapshotToPersist(backstopSeed, currentPersistedState, _compactSize);
+            (PersistedSnapshot? persisted, Snapshot? inMemory) = snapshotRepository.FindSnapshotToPersistWithFallback(currentPersistedState, latestSnapshot, _compactSize);
             if (persisted is not null || inMemory is not null)
             {
                 if (_logger.IsWarn) _logger.Warn(
@@ -171,10 +171,14 @@ public class PersistenceManager(
         }
 
         // ---- Phase 2: conversion to the persisted-snapshot tier ----
-        if (!_enableLongFinality) return (null, null, null);
-        if (snapshotRepository.SnapshotCount <= _maxInMemoryBaseSnapshotCount) return (null, null, null);
+        ConversionCandidate? conversion = _enableLongFinality && snapshotRepository.SnapshotCount > _maxInMemoryBaseSnapshotCount
+            ? TryFindSnapshotToConvert(currentPersistedState) : null;
+        if (conversion is null && snapshotsDepth > _backstopReorgDepth && _logger.IsWarn)
+            _logger.Warn($"In-memory state depth {snapshotsDepth} exceeded the force-persist backstop {_backstopReorgDepth}, " +
+                $"but neither persistence nor conversion found a candidate (persisted {currentPersistedState}, " +
+                $"latest {latestSnapshot}, finalized block {finalizedBlockNumber}).");
 
-        return (null, null, TryFindSnapshotToConvert(currentPersistedState));
+        return (null, null, conversion);
     }
 
     /// <summary>
@@ -250,6 +254,9 @@ public class PersistenceManager(
                 if (toPersist is not null)
                 {
                     using Snapshot _ = toPersist;
+                    // The span tells a per-block chunk from a multi-block one, which is what the history capture
+                    // walking on top of this can and cannot follow.
+                    if (_logger.IsDebug) _logger.Debug($"Persisting in-memory chunk {toPersist.From.BlockNumber}->{toPersist.To.BlockNumber}.");
                     snapshotRepository.RemoveSiblingAndDescendents(toPersist.To);
                     CaptureHistory(toPersist.To, _cts.Token);
                     PersistSnapshot(toPersist);
@@ -259,6 +266,7 @@ public class PersistenceManager(
                 else if (persistedToPersist is not null)
                 {
                     using PersistedSnapshot _ = persistedToPersist;
+                    if (_logger.IsDebug) _logger.Debug($"Persisting persisted-tier chunk {persistedToPersist.From.BlockNumber}->{persistedToPersist.To.BlockNumber}.");
                     snapshotRepository.RemoveSiblingAndDescendents(persistedToPersist.To);
                     CaptureHistory(persistedToPersist.To, _cts.Token);
                     PersistPersistedSnapshot(persistedToPersist);
@@ -434,6 +442,8 @@ public class PersistenceManager(
 
             (PersistedSnapshot? persisted, Snapshot? snapshotToPersist) =
                 snapshotRepository.FindSnapshotToPersist(seed.Value, currentPersistedState, _compactSize);
+            if (persisted is null && snapshotToPersist is null)
+                (persisted, snapshotToPersist) = snapshotRepository.FindSnapshotToPersistWithFallback(currentPersistedState, latestStateId.Value, _compactSize);
 
             if (persisted is not null)
             {
