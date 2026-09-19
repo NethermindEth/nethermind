@@ -33,9 +33,9 @@ namespace Nethermind.Consensus.Processing
         // the block copies the transaction array, so the array itself cannot be the key. Entries are removed on completion.
         private static readonly ConcurrentDictionary<Hash256, Task> s_inFlight = new();
 
-        // Background recovery competes with the prewarmer and the processing thread for the same cores; a quarter
-        // of them still recover senders several times faster than execution consumes them.
-        private static readonly ParallelOptions s_backgroundOptions = new() { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 4) };
+        // Background recovery competes with the prewarmer and the processing thread for the same cores; half of
+        // them still recover senders far faster than execution consumes them, and the rest keep the prewarmer ahead.
+        private static readonly ParallelOptions s_backgroundOptions = new() { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 2) };
 
         /// <summary>One background recovery batch: the transactions its workers pick up first.</summary>
         private static int LeadingSenderCount => s_backgroundOptions.MaxDegreeOfParallelism;
