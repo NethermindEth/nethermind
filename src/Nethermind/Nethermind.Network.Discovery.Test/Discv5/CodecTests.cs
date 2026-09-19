@@ -12,7 +12,12 @@ using Nethermind.Network.Discovery.Discv5.Packets;
 using Nethermind.Network.Enr;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
+using Org.BouncyCastle.Crypto;
+using Org.BouncyCastle.Crypto.Modes;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Security;
 using System;
+using System.Buffers.Binary;
 using System.Net;
 using System.Threading.Tasks;
 
@@ -72,7 +77,7 @@ public class CodecTests
         bool decoded = PacketCodec.TryDecode(packetBytes, NodeBId, out Packet packet);
         using (packet)
         {
-            bool decrypted = PacketCodec.TryDecryptMessageForTest(in packet, new byte[16], out Discv5Message message);
+            bool decrypted = PacketCodec.TryDecryptMessage(in packet, new byte[16], out Discv5Message message);
 
             Assert.That(decoded, Is.True);
             Assert.That(packet.Flag, Is.EqualTo(PacketFlag.Ordinary));
@@ -83,6 +88,35 @@ public class CodecTests
             AssertRequestId(ping.RequestId, Devp2pPingRequestId);
             Assert.That(ping.EnrSequence, Is.EqualTo(2));
             message.Dispose();
+        }
+    }
+
+    [Test]
+    public void PacketCodec_unmasks_headers_using_independent_ctr_cipher(
+        [Values(23, 24, 55, 511, 512, 513, 1264)] int headerLength, [Values] bool counterOverflow)
+    {
+        byte[] header = new byte[headerLength];
+        "discv5"u8.CopyTo(header);
+        BinaryPrimitives.WriteUInt16BigEndian(header.AsSpan(6), 1);
+        BinaryPrimitives.WriteUInt16BigEndian(header.AsSpan(21), (ushort)(headerLength - 23));
+        for (int i = 23; i < header.Length; i++) header[i] = (byte)i;
+        byte[] iv = new byte[16];
+        if (counterOverflow) Array.Fill(iv, byte.MaxValue);
+        BufferedBlockCipher cipher = new(new SicBlockCipher(AesUtilities.CreateEngine()));
+        cipher.Init(true, new ParametersWithIV(new KeyParameter(NodeBId[..16]), iv));
+        byte[] packetBytes = new byte[16 + headerLength];
+        iv.CopyTo(packetBytes, 0);
+        cipher.DoFinal(header).CopyTo(packetBytes, 16);
+
+        bool decoded = PacketCodec.TryDecode(packetBytes, NodeBId, out Packet packet);
+        using (packet)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded, Is.True);
+                Assert.That(packet.MessageAd.Span[16..].ToArray(), Is.EqualTo(header));
+                Assert.That(packet.AuthData.Length, Is.EqualTo(headerLength - 23));
+            }
         }
     }
 

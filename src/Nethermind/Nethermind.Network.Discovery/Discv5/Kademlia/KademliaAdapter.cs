@@ -451,7 +451,7 @@ public sealed class KademliaAdapter(
         Span<byte> readKey = stackalloc byte[Session.KeySize];
         if (TryGetSession(sessionKey, out session) &&
             session.TryCopyReadKey(readKey) &&
-            packetCodec.TryDecryptMessage(in packet, readKey, out Discv5Message decodedMessage))
+            PacketCodec.TryDecryptMessage(in packet, readKey, out Discv5Message decodedMessage))
         {
             message = decodedMessage;
             return true;
@@ -972,10 +972,17 @@ public sealed class KademliaAdapter(
             return false;
         }
 
-        return Node.TryFromDiscoveryEnr(record, discoveryEndpoint.Address.AddressFamily, out node);
+        PublicKey? key = record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress();
+        if (key is null)
+        {
+            return false;
+        }
+
+        node = Node.FromDiscoveryEnr(record, key, discoveryEndpoint);
+        return true;
     }
 
-    private static bool TryGetAcceptableDiscoveryEndpoint(
+    internal static bool TryGetAcceptableDiscoveryEndpoint(
         NodeRecord record,
         bool allowNonRoutable,
         IPAddress? listenerAddress,

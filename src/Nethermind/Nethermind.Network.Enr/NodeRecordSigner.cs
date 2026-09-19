@@ -207,17 +207,21 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
             throw new Exception("Cannot verify an ENR with an empty signature.");
         }
 
+        CompressedPublicKey? reportedKey = nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1);
+        if (reportedKey is null)
+        {
+            return false;
+        }
+
         ValueHash256 contentHash = nodeRecord.ContentHash;
-
         CompressedPublicKey? publicKeyA =
-            _ecdsa.RecoverCompressedPublicKey(nodeRecord.Signature!, in contentHash);
-        Signature sigB = new(nodeRecord.Signature!.Bytes, 1);
-        CompressedPublicKey? publicKeyB =
-            _ecdsa.RecoverCompressedPublicKey(sigB, in contentHash);
+            _ecdsa.RecoverCompressedPublicKey(nodeRecord.Signature, in contentHash);
+        if (publicKeyA?.Equals(reportedKey) == true)
+        {
+            return true;
+        }
 
-        CompressedPublicKey? reportedKey =
-            nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1);
-
-        return publicKeyA?.Equals(reportedKey) == true || publicKeyB?.Equals(reportedKey) == true;
+        Signature sigB = new(nodeRecord.Signature.Bytes, 1);
+        return _ecdsa.RecoverCompressedPublicKey(sigB, in contentHash)?.Equals(reportedKey) == true;
     }
 }
