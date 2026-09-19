@@ -141,7 +141,7 @@ public class GloasForkTransitionTests
                 Assert.That((post.PtcWindow![i].Indices ?? []).All(static idx => idx == 0), Is.True,
                     $"empty-previous-epoch committee {i} must be all-zero, matching the spec's placeholder history");
             }
-            // At least one real (post-lookahead) committee must contain a nonzero, in-range index —
+            // At least one real (post-lookahead) committee must contain a nonzero, in-range index -
             // otherwise ComputePtc silently produced nothing and this test would not be able to fail.
             Assert.That(post.PtcWindow!.Skip((int)Presets.SlotsPerEpoch).SelectMany(static c => c.Indices!).Any(static idx => idx != 0), Is.True);
         });
