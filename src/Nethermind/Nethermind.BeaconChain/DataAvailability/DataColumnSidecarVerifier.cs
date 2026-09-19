@@ -47,15 +47,31 @@ public static class DataColumnSidecarVerifier
     }
 
     /// <summary>
+    /// Full verification of a sidecar received from a peer. This is the entry point callers want:
+    /// the individual checks are exposed for testing and are not safe to use piecemeal.
+    /// </summary>
+    /// <remarks>
+    /// Ordered cheapest-first so a hostile peer cannot make the node pay for a KZG batch by sending
+    /// a sidecar that fails a structural or merkle check.
+    /// </remarks>
+    public static bool Verify(DataColumnSidecar sidecar) =>
+        VerifyStructure(sidecar) && VerifyInclusionProof(sidecar) && VerifyKzgProofs(sidecar);
+
+    /// <summary>
     /// Batch-verifies every cell in <paramref name="sidecar"/> against its commitments and proofs.
     /// </summary>
     /// <remarks>
     /// Per spec, every cell in a single sidecar shares the same cell index: its own column index.
-    /// Only <see cref="VerifyStructure"/>-clean sidecars are safe to pass in (array lengths are
-    /// trusted here, not re-checked).
+    /// Re-checks structure first: the arrays are peer-supplied and indexed in lockstep below, and a
+    /// zero-length batch verifies vacuously true in the native call.
     /// </remarks>
     public static bool VerifyKzgProofs(DataColumnSidecar sidecar)
     {
+        if (!VerifyStructure(sidecar))
+        {
+            return false;
+        }
+
         SszKzgCommitment[] commitments = sidecar.KzgCommitments!;
         SszBlobCell[] cells = sidecar.Column!;
         SszKzgCommitment[] proofs = sidecar.KzgProofs!;

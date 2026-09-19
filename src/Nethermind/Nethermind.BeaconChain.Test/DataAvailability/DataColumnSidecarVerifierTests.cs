@@ -186,4 +186,20 @@ public class DataColumnSidecarVerifierTests
 
         Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar), Is.False);
     }
+
+    [Test]
+    public void VerifyKzgProofs_rejects_a_structurally_invalid_sidecar_without_indexing_past_its_arrays()
+    {
+        DataColumnSidecar sidecar = BuildValidSidecar();
+        // A hostile peer can send mismatched lengths; the batch loop indexes all three arrays in
+        // lockstep off the commitment count, so this must be refused rather than indexed.
+        sidecar.KzgProofs = [sidecar.KzgProofs![0]];
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar), Is.False);
+            Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.False);
+            Assert.That(DataColumnSidecarVerifier.Verify(sidecar), Is.False);
+        });
+    }
 }

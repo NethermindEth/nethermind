@@ -11,16 +11,13 @@ namespace Nethermind.BeaconChain.P2P.Discovery;
 /// integer with no leading zero bytes (0 encoded as empty byte string)".
 /// </summary>
 /// <remarks>
-/// Shaped like <see cref="Eth2Entry"/>, but <c>public</c> rather than <c>internal</c> so its
-/// encoding can be unit-tested directly: this project has no <c>InternalsVisibleTo</c> for its test
-/// assembly, and adding one would mean editing a file outside this change's allowed boundary.
+/// Shaped like <see cref="Eth2Entry"/>.
 /// RLP's own unsigned-integer encoding already is "big-endian, no leading zero bytes, 0 as an empty
 /// string", so <c>writer.Encode(ulong)</c> alone satisfies the spec's byte-encoding rule without any
-/// extra trimming here. Not wired into <see cref="BeaconNodeRecordProvider"/> by this change: that
-/// record builder is shared with concurrent Gloas ENR work (the <c>nfd</c> entry), so wiring is left
-/// to whichever change lands second, to avoid a same-file collision - see 'deviations'.
+/// extra trimming here. Not yet published in the local record: a node that advertises a custody
+/// count must actually serve those columns, so wiring this in belongs with the serving path.
 /// </remarks>
-public sealed class CustodyGroupCountEntry(ulong custodyGroupCount) : EnrContentEntry<ulong>(custodyGroupCount)
+internal sealed class CustodyGroupCountEntry(ulong custodyGroupCount) : EnrContentEntry<ulong>(custodyGroupCount)
 {
     public override string Key => "cgc";
 
