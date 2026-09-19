@@ -76,7 +76,8 @@ public class SnapFlatStateServerTests
         using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(groups);
         using IByteArrayList result = _server.GetTrieNodes(pathSet, _rootHash, CancellationToken.None)!;
 
-        Assert.That(result.Count, Is.LessThan(RequestCount));
+        // Below the lookup cap too, so this asserts the byte limit rather than that cap.
+        Assert.That(result.Count, Is.LessThan(ISnapStateServer.MaxTrieNodeLookups));
     }
 
     [Test]
@@ -85,9 +86,10 @@ public class SnapFlatStateServerTests
         // Single PathGroup with one account path followed by RequestCount empty storage paths.
         // Each iteration returns the (non-empty) storage root, so the inner reqStorage loop
         // must hit the byte limit before completing.
-        using IByteArrayList result = RequestStoragePaths(slotCount: 32, storagePath: []);
+        using IByteArrayList result = RequestStoragePaths(slotCount: 256, storagePath: []);
 
-        Assert.That(result.Count, Is.LessThan(RequestCount));
+        // Below the lookup cap too, so this asserts the byte limit rather than that cap.
+        Assert.That(result.Count, Is.LessThan(ISnapStateServer.MaxTrieNodeLookups - 1));
     }
 
     [Test]
@@ -179,8 +181,9 @@ public class SnapFlatStateServerTests
         RawScopedTrieStore storageStore = new(storageDb, addressHash);
         StorageTree storageTree = new(storageStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
 
-        // A branch-heavy root needs enough populated slots; a single one produces a leaf root
-        // that any non-empty path misses without touching a child node.
+        // Enough slots gives a root branch whose 16 children are all hash references, the widest
+        // node the loop can repeat; a single slot gives a leaf root that any non-empty path
+        // misses without touching a child node.
         for (int i = 0; i < slotCount; i++)
         {
             storageTree.Set(Keccak.Compute(i.ToBigEndianByteArray()).Bytes, Rlp.Encode((UInt256)i + 1));

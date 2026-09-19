@@ -370,7 +370,8 @@ public class SnapStateServerTests
         using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(groups);
         using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
 
-        Assert.That(result.Count, Is.LessThan(requestCount));
+        // Below the lookup cap too, so this asserts the byte limit rather than that cap.
+        Assert.That(result.Count, Is.LessThan(ISnapStateServer.MaxTrieNodeLookups));
     }
 
     [Test]

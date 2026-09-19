@@ -20,8 +20,9 @@ public interface ISnapStateServer
     /// <remarks>
     /// The response size measured against <see cref="HardResponseByteLimit"/> only advances for paths that
     /// resolve to a node, so on its own it does not bound a request whose paths resolve to nothing. This cap
-    /// keeps such a request no more expensive than a productive one, and matches the cap on how many nodes a
-    /// <c>TrieNodes</c> response may carry; snap/1 lets a server answer with fewer nodes than were asked for.
+    /// keeps such a request no more expensive than a productive one. It must stay equal to
+    /// <c>SnapMessageLimits.MaxResponseTrieNodes</c>, the number of nodes a <c>TrieNodes</c> message may carry,
+    /// since one entry is written per lookup; snap/1 lets a server answer with fewer nodes than were asked for.
     /// </remarks>
     const int MaxTrieNodeLookups = 4096;
 

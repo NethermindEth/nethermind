@@ -30,10 +30,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 {
     public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
     {
-        // A block with no transactions contributes nothing to the size estimate, so the byte budget alone
-        // does not bound how many blocks a receipts request may look up. Peers ask for at most
-        // MaxReceiptFetch blocks per request, so the same 2x headroom go-ethereum allows is ample.
-        private const int MaxReceiptsLookups = 2 * NethermindSyncLimits.MaxReceiptFetch;
+        // A block with no transactions costs one byte of response, so the size estimate barely advances
+        // for it and does not bound how many blocks a receipts request may look up. No client asks for
+        // more than MaxReceiptFetch blocks per request, and our own sizer stops at 128, so twice that
+        // limit leaves ample headroom.
+        protected const int MaxReceiptsLookups = 2 * NethermindSyncLimits.MaxReceiptFetch;
 
         internal static ulong SoftOutgoingMessageSizeLimit = 2UL.MiB;
         internal static ulong HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
@@ -363,6 +364,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 if (block is null)
                 {
                     // GetBlockBodies responses are sparse: unavailable hashes are omitted from the response.
+                    // No separate lookup bound is needed here: an unknown hash costs less than a known block
+                    // and the request itself is capped at MaxBodyHashesPerRequest when it is decoded.
                     continue;
                 }
 
@@ -404,7 +407,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected Task<ReceiptsMessage> FulfillReceiptsRequest(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
         {
             ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
-            ArrayPoolList<TxReceipt[]> txReceipts = new(hashes.Length);
+            ArrayPoolList<TxReceipt[]> txReceipts = new(Math.Min(hashes.Length, MaxReceiptsLookups));
 
             ulong sizeEstimate = 0;
             for (int i = 0; i < hashes.Length && i < MaxReceiptsLookups; i++)
