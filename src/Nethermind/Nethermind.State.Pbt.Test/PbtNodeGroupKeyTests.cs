@@ -15,7 +15,9 @@ public class PbtNodeGroupKeyTests
     private static readonly string StorageZeroPadding = new('0', 132);
     private static readonly string AccountZeroPadding = new('0', 68);
 
-    [TestCase(PbtColumns.AccountNodeGroups, "00", 4, "01", "0001")]
+    [TestCase(PbtColumns.TopNodeGroups, "00", 4, "01", "0001")]
+    [TestCase(PbtColumns.TopNodeGroups, "f0", 4, "01", "f001")]
+    [TestCase(PbtColumns.TopNodeGroups, "ff0000000000000000000000000000000000000000000000000000000000000000", 260, "41", "ff000000000000000000000000000000000000000000000000000000000000000001")]
     [TestCase(PbtColumns.AccountNodeGroups, "80", 8, "02", "8000")]
     [TestCase(PbtColumns.CodeNodeGroups, "01ab", 16, "04", "01ab00")]
     [TestCase(PbtColumns.StorageNodeGroups, "f0", 4, "01", "f001")]

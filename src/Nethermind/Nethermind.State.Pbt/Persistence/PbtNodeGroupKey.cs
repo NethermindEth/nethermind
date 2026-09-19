@@ -25,6 +25,7 @@ internal static class PbtNodeGroupKey
     private const byte NibbleAlignedTrailer = 1;
     internal const int MaxLength = PbtStorageTreeKey.MaxLength + TrailerLength;
 
+    // Top groups are keyed shorter than the zone and address hash, so the account/code width covers every zone.
     private static int PathLength(PbtColumns column) =>
         column == PbtColumns.StorageNodeGroups ? PbtStorageTreeKey.MaxLength : PbtTreeKey.MaxLength;
 

@@ -46,12 +46,12 @@ public class PbtRocksDbConfigAdjusterTests
     [Test]
     public void EveryActiveColumnGetsTheGlobalThenSharedThenItsOwnOptions(
         [Values(PbtColumns.Metadata, PbtColumns.Accounts, PbtColumns.Codes, PbtColumns.Storages,
-            PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups)] PbtColumns column)
+            PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups, PbtColumns.TopNodeGroups)] PbtColumns column)
     {
         IRocksDbConfig config = CreateAdjuster(Substitute.For<IRocksDbConfigFactory>())
             .GetForDatabase(nameof(DbNames.Pbt), column.ToString());
 
-        string optionsColumn = column is PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups
+        string optionsColumn = column is PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups or PbtColumns.TopNodeGroups
             ? "NodeGroups" : column.ToString();
         Assert.That(config.RocksDbOptions, Is.EqualTo($"global=1;shared=1;column={optionsColumn};"));
     }
@@ -72,7 +72,7 @@ public class PbtRocksDbConfigAdjusterTests
     [Test]
     public void OnlyTheAccountAndStorageColumnsGetADedicatedBlockCache(
         [Values(null, nameof(PbtColumns.Metadata), nameof(PbtColumns.Accounts), nameof(PbtColumns.Codes), nameof(PbtColumns.Storages),
-            nameof(PbtColumns.AccountNodeGroups), nameof(PbtColumns.CodeNodeGroups), nameof(PbtColumns.StorageNodeGroups))] string? columnName)
+            nameof(PbtColumns.AccountNodeGroups), nameof(PbtColumns.CodeNodeGroups), nameof(PbtColumns.StorageNodeGroups), nameof(PbtColumns.TopNodeGroups))] string? columnName)
     {
         IDisposableStack disposeStack = Substitute.For<IDisposableStack>();
 
@@ -138,13 +138,15 @@ public class PbtRocksDbConfigAdjusterTests
         (PbtStorageNodePath Path, PbtColumns Column)[] groups =
         [
             (new PbtStorageNodePath([], 0), PbtColumns.Metadata),
-            (new PbtStorageNodePath(Bytes.FromHexString("00"), 4), PbtColumns.AccountNodeGroups),
-            (new PbtStorageNodePath(Bytes.FromHexString("80"), 4), PbtColumns.AccountNodeGroups),
-            (new PbtStorageNodePath(Bytes.FromHexString("f0"), 4), PbtColumns.StorageNodeGroups),
-            (new PbtStorageNodePath(Bytes.FromHexString("00"), 8), PbtColumns.AccountNodeGroups),
-            (new PbtStorageNodePath(Bytes.FromHexString("01"), 8), PbtColumns.CodeNodeGroups),
-            (new PbtStorageNodePath(Bytes.FromHexString("80"), 8), PbtColumns.AccountNodeGroups),
-            (new PbtStorageNodePath(Bytes.FromHexString("ff"), 8), PbtColumns.StorageNodeGroups),
+            (new PbtStorageNodePath(Bytes.FromHexString("00"), 4), PbtColumns.TopNodeGroups),
+            (new PbtStorageNodePath(Bytes.FromHexString("80"), 4), PbtColumns.TopNodeGroups),
+            (new PbtStorageNodePath(Bytes.FromHexString("f0"), 4), PbtColumns.TopNodeGroups),
+            (new PbtStorageNodePath(Bytes.FromHexString("00"), 8), PbtColumns.TopNodeGroups),
+            (new PbtStorageNodePath(Bytes.FromHexString("01"), 8), PbtColumns.TopNodeGroups),
+            (new PbtStorageNodePath(Bytes.FromHexString("ff"), 8), PbtColumns.TopNodeGroups),
+            (new PbtStorageNodePath(Bytes.FromHexString("00000000"), 32), PbtColumns.AccountNodeGroups),
+            (new PbtStorageNodePath(Bytes.FromHexString("80000000"), 32), PbtColumns.AccountNodeGroups),
+            (new PbtStorageNodePath(Bytes.FromHexString("01" + new string('0', 64)), 264), PbtColumns.CodeNodeGroups),
             (new PbtStorageNodePath(widePath, 280), PbtColumns.StorageNodeGroups),
         ];
         PbtStorageNodePath[] expectedPaths = new PbtStorageNodePath[groups.Length];

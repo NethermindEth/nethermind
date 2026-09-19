@@ -30,7 +30,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         int workerCount = config.ScanTreeConcurrency > 0 ? config.ScanTreeConcurrency : Environment.ProcessorCount;
         int rangeCount = (int)Math.Min((long)workerCount * RangesPerWorker, PrefixSpace);
         PbtScanReport report = new();
-        foreach (PbtColumns column in new[] { PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes,
+        foreach (PbtColumns column in new[] { PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes, PbtColumns.TopNodeGroups,
             PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups, PbtColumns.Metadata })
             await ScanColumn(column, CreateBounds(column, rangeCount), report, workerCount, cancellationToken);
         return report;
@@ -102,7 +102,14 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
                         if (columnName == PbtColumns.Metadata)
                             ScanGroup(new PbtNodePath([], 0), view.CurrentValue, (PbtScanReport.NodeGroupStats)stats);
                         else if (IsNodeGroupColumn(columnName))
-                            ScanGroup(PbtNodeGroupKey.Decode(config.NodeGroupKeyLayout, view.CurrentKey), view.CurrentValue, (PbtScanReport.NodeGroupStats)stats);
+                        {
+                            PbtStorageNodePath groupPath = PbtNodeGroupKey.Decode(config.NodeGroupKeyLayout, view.CurrentKey);
+                            // A top group's bytes belong to its physical column; its shape belongs to its partition.
+                            PbtScanReport.NodeGroupStats shape = columnName == PbtColumns.TopNodeGroups
+                                ? (PbtScanReport.NodeGroupStats)shard[PbtRocksDbPersistence.PartitionColumn(groupPath)]
+                                : (PbtScanReport.NodeGroupStats)stats;
+                            ScanGroup(groupPath, view.CurrentValue, shape);
+                        }
                         if (++pending == ProgressPublishInterval)
                         {
                             Interlocked.Add(ref scanned, pending);
@@ -144,7 +151,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
     }
 
     private static bool IsNodeGroupColumn(PbtColumns column) =>
-        column is PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups;
+        column is PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups or PbtColumns.TopNodeGroups;
 
     private static void ScanGroup<TPath>(TPath groupPath, ReadOnlySpan<byte> value, PbtScanReport.NodeGroupStats stats) where TPath : struct, IPbtNodePath<TPath>
     {
@@ -184,7 +191,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         }
 
         List<byte[]> bounds = [[]];
-        if (IsNodeGroupColumn(column))
+        if (IsNodeGroupColumn(column) && column != PbtColumns.TopNodeGroups)
         {
             ReadOnlySpan<byte> zones = column switch
             {
@@ -232,6 +239,8 @@ public sealed class PbtScanReport
     public NodeGroupStats CodeNodeGroups { get; } = new();
     /// <summary>Stored storage node groups, with their locally decoded shape.</summary>
     public NodeGroupStats StorageNodeGroups { get; } = new();
+    /// <summary>Stored top node groups; their shape is counted under the partition each group belongs to.</summary>
+    public NodeGroupStats TopNodeGroups { get; } = new();
     /// <summary>The root node group stored in metadata, excluding other metadata records.</summary>
     public NodeGroupStats MetadataRoot { get; } = new();
     /// <summary>Aggregate stored node groups across partition columns and the metadata root, with their locally decoded shape.</summary>
@@ -246,6 +255,7 @@ public sealed class PbtScanReport
         PbtColumns.AccountNodeGroups => AccountNodeGroups,
         PbtColumns.CodeNodeGroups => CodeNodeGroups,
         PbtColumns.StorageNodeGroups => StorageNodeGroups,
+        PbtColumns.TopNodeGroups => TopNodeGroups,
         PbtColumns.Metadata => MetadataRoot,
         _ => throw new ArgumentOutOfRangeException(nameof(column)),
     };
@@ -258,7 +268,9 @@ public sealed class PbtScanReport
         AccountNodeGroups.MergeFrom(other.AccountNodeGroups);
         CodeNodeGroups.MergeFrom(other.CodeNodeGroups);
         StorageNodeGroups.MergeFrom(other.StorageNodeGroups);
+        TopNodeGroups.MergeFrom(other.TopNodeGroups);
         MetadataRoot.MergeFrom(other.MetadataRoot);
+        NodeGroups.MergeFrom(other.TopNodeGroups);
         NodeGroups.MergeFrom(other.AccountNodeGroups);
         NodeGroups.MergeFrom(other.CodeNodeGroups);
         NodeGroups.MergeFrom(other.StorageNodeGroups);
@@ -272,7 +284,7 @@ public sealed class PbtScanReport
         report.AppendLine();
         report.AppendLine("=== PBT scan: persisted inventory (not hash or reachability verification) ===");
         report.AppendLine($"  {"column",-20} {"records",15} {"key bytes",18} {"value bytes",18} {"total bytes",18} {"avg bytes",12}");
-        foreach (PbtColumns column in new[] { PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes,
+        foreach (PbtColumns column in new[] { PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes, PbtColumns.TopNodeGroups,
             PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups, PbtColumns.Metadata })
         {
             ColumnStats stats = this[column];

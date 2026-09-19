@@ -26,7 +26,11 @@ public class PbtRocksDbPersistence(
     private static ReadOnlySpan<byte> NodeGroupKeyLayoutKey => "nodeGroupKeyLayout"u8;
     private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
     internal static ReadOnlySpan<byte> RootNodeGroupKey => "rootNodeGroup"u8;
-    private const int SchemaEpoch = 17;
+    private const int SchemaEpoch = 18;
+    /// <summary>Account groups keyed at or above this depth are top groups: the last level before the 16^8 dense band.</summary>
+    internal const int AccountTopDepth = 28;
+    /// <summary>Code and storage groups keyed at or above this depth are top groups: every group keyed shorter than zone and address hash.</summary>
+    internal const int StemTopDepth = 260;
     private const byte ValidState = 1;
 
     private readonly IColumnsDb<PbtColumns> _db = Initialize(db, config.NodeGroupKeyLayout, config.ImportFromPreimageFlat);
@@ -96,7 +100,7 @@ public class PbtRocksDbPersistence(
         if (db.GetColumnDb(PbtColumns.Metadata).Get(RootNodeGroupKey) is not null) return true;
 
         PbtColumns[] columns = [PbtColumns.FullLeaves,
-            PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups,
+            PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups,
             PbtColumns.AccountLeaves, PbtColumns.CodeLeaves, PbtColumns.StorageLeaves,
             PbtColumns.AccountTrieNodes, PbtColumns.CodeTrieNodes, PbtColumns.StorageTrieNodes,
             PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes];
@@ -159,6 +163,15 @@ public class PbtRocksDbPersistence(
     private static PbtColumns NodeGroupColumn<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
     {
         if (groupKey.BitDepth == 0) return PbtColumns.Metadata;
+        if (groupKey.BitDepth == 4) return PbtColumns.TopNodeGroups;
+        PbtColumns partition = PartitionColumn(groupKey);
+        int topDepth = partition == PbtColumns.AccountNodeGroups ? AccountTopDepth : StemTopDepth;
+        return groupKey.BitDepth <= topDepth ? PbtColumns.TopNodeGroups : partition;
+    }
+
+    /// <summary>The partition column of a group keyed below the shared depth-four groups, ignoring the top split.</summary>
+    internal static PbtColumns PartitionColumn<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
+    {
         if (groupKey.BitDepth == 4 && groupKey.GetByte(0) == 0xF0
             || groupKey.BitDepth >= 8 && groupKey.GetByte(0) == Eip8297KeyDerivation.StorageZone)
             return PbtColumns.StorageNodeGroups;
@@ -193,6 +206,7 @@ public class PbtRocksDbPersistence(
         private readonly IReadOnlyKeyValueStore _accountNodeGroups = snapshot.GetColumn(PbtColumns.AccountNodeGroups);
         private readonly IReadOnlyKeyValueStore _codeNodeGroups = snapshot.GetColumn(PbtColumns.CodeNodeGroups);
         private readonly IReadOnlyKeyValueStore _storageNodeGroups = snapshot.GetColumn(PbtColumns.StorageNodeGroups);
+        private readonly IReadOnlyKeyValueStore _topNodeGroups = snapshot.GetColumn(PbtColumns.TopNodeGroups);
 
         public StateId CurrentState => _current.State;
         public ValueHash256 CurrentRoot => _current.Root;
@@ -295,6 +309,10 @@ public class PbtRocksDbPersistence(
             if (_metadata.Get(RootNodeGroupKey) is not null)
                 yield return PbtStorageNodePath.Create([], 0);
 
+            using (ISortedView top = OpenGroups(PbtColumns.TopNodeGroups))
+                while (top.MoveNext())
+                    yield return PbtNodeGroupKey.Decode(layout, top.CurrentKey);
+
             using ISortedView accounts = OpenGroups(PbtColumns.AccountNodeGroups);
             using ISortedView codes = OpenGroups(PbtColumns.CodeNodeGroups);
             using ISortedView storage = OpenGroups(PbtColumns.StorageNodeGroups);
@@ -319,6 +337,7 @@ public class PbtRocksDbPersistence(
             PbtColumns.AccountNodeGroups => _accountNodeGroups,
             PbtColumns.CodeNodeGroups => _codeNodeGroups,
             PbtColumns.StorageNodeGroups => _storageNodeGroups,
+            PbtColumns.TopNodeGroups => _topNodeGroups,
             _ => throw new ArgumentOutOfRangeException(nameof(column))
         };
 

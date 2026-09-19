@@ -36,12 +36,15 @@ public enum PbtColumns
     /// <summary>Whole bytecode keyed by its code hash.</summary>
     Codes,
 
-    /// <summary>Account and shared account/code node groups keyed by boundary path.</summary>
+    /// <summary>Account node groups below the top, keyed by boundary path.</summary>
     AccountNodeGroups,
 
-    /// <summary>Code node groups keyed by boundary path.</summary>
+    /// <summary>Code node groups below the top, keyed by boundary path.</summary>
     CodeNodeGroups,
 
-    /// <summary>Storage node groups keyed by boundary path.</summary>
+    /// <summary>Storage node groups below the top, keyed by boundary path.</summary>
     StorageNodeGroups,
+
+    /// <summary>The top of every partition: the shared depth-four groups and the groups above each partition's top depth, keyed by boundary path.</summary>
+    TopNodeGroups,
 }

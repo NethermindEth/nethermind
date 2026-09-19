@@ -409,7 +409,7 @@ public class ImportPbtFromPreimageFlatTests
 
         byte[] maximumGroupKey = new PbtStorageNodePath(Bytes.FromHexString(new string('f', 130) + "f0"), PbtFourLevelGroupGeometry.MaxGroupDepth)
             .ToStorageKey(PbtColumns.StorageNodeGroups, PbtNodeGroupKeyLayout.Padded);
-        PbtColumns[] groupColumns = [PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups];
+        PbtColumns[] groupColumns = [PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups];
         foreach (PbtColumns column in groupColumns)
             pbtDb.GetColumnDb(column)[maximumGroupKey] = Bytes.FromHexString("0x7f");
         pbtDb.AfterCopy = () =>
@@ -425,7 +425,7 @@ public class ImportPbtFromPreimageFlatTests
         IDb metadata = pbtDb.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x00000011")));
+            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x00000012")));
             Assert.That(metadata.Get("rootNodeGroup"u8), Is.Not.Null);
             Assert.That(metadata.Get("currentState"u8), Is.Null);
             Assert.That(metadata.Get("validState"u8), Is.Null);
@@ -483,20 +483,25 @@ public class ImportPbtFromPreimageFlatTests
         long[] expectedGroups = new long[PbtFourLevelGroupGeometry.MaxPathDepth + 1];
         long[] expectedNodes = new long[expectedGroups.Length];
         long[] expectedPayloads = new long[expectedGroups.Length];
-        Dictionary<PbtColumns, (long[] Groups, long[] Payloads, long[] Nodes)> expectedByColumn = [];
+        Dictionary<PbtColumns, (long[] Groups, long[] Payloads, long[] Nodes)> expectedByPartition = [];
         long encodingBytes = 0;
-        (int Depth, byte Prefix, PbtColumns Column)[] groups =
+        // A top group's bytes are counted under its physical column and its shape under its partition.
+        (int Depth, byte Prefix, PbtColumns Column, PbtColumns Partition)[] groups =
         [
-            (0, 0, PbtColumns.Metadata),
-            (4, 0, PbtColumns.AccountNodeGroups),
-            (4, 0xF0, PbtColumns.StorageNodeGroups),
-            (8, 0, PbtColumns.AccountNodeGroups),
-            (8, 1, PbtColumns.CodeNodeGroups),
-            (8, 0xFF, PbtColumns.StorageNodeGroups),
-            (32, 0x80, PbtColumns.AccountNodeGroups),
-            (PbtFourLevelGroupGeometry.MaxGroupDepth, 0xFF, PbtColumns.StorageNodeGroups),
+            (0, 0, PbtColumns.Metadata, PbtColumns.Metadata),
+            (4, 0, PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups),
+            (4, 0xF0, PbtColumns.TopNodeGroups, PbtColumns.StorageNodeGroups),
+            (8, 0, PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups),
+            (8, 1, PbtColumns.TopNodeGroups, PbtColumns.CodeNodeGroups),
+            (8, 0xFF, PbtColumns.TopNodeGroups, PbtColumns.StorageNodeGroups),
+            (PbtRocksDbPersistence.AccountTopDepth, 0x80, PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups),
+            (PbtRocksDbPersistence.AccountTopDepth + 4, 0x80, PbtColumns.AccountNodeGroups, PbtColumns.AccountNodeGroups),
+            (PbtRocksDbPersistence.StemTopDepth, 1, PbtColumns.TopNodeGroups, PbtColumns.CodeNodeGroups),
+            (PbtRocksDbPersistence.StemTopDepth + 4, 1, PbtColumns.CodeNodeGroups, PbtColumns.CodeNodeGroups),
+            (PbtRocksDbPersistence.StemTopDepth, 0xFF, PbtColumns.TopNodeGroups, PbtColumns.StorageNodeGroups),
+            (PbtFourLevelGroupGeometry.MaxGroupDepth, 0xFF, PbtColumns.StorageNodeGroups, PbtColumns.StorageNodeGroups),
         ];
-        foreach ((int depth, byte prefix, PbtColumns column) in groups)
+        foreach ((int depth, byte prefix, PbtColumns column, PbtColumns partition) in groups)
         {
             byte[] pathBytes = new byte[(depth + 7) / 8];
             Array.Fill(pathBytes, byte.MaxValue);
@@ -516,8 +521,8 @@ public class ImportPbtFromPreimageFlatTests
             expectedPayloads[depth] += writer.WrittenSpan.Length;
             expectedNodes[node.BitDepth]++;
             encodingBytes += encoding.Length;
-            if (!expectedByColumn.TryGetValue(column, out (long[] Groups, long[] Payloads, long[] Nodes) byColumn))
-                expectedByColumn[column] = byColumn = (new long[expectedGroups.Length], new long[expectedGroups.Length], new long[expectedGroups.Length]);
+            if (!expectedByPartition.TryGetValue(partition, out (long[] Groups, long[] Payloads, long[] Nodes) byColumn))
+                expectedByPartition[partition] = byColumn = (new long[expectedGroups.Length], new long[expectedGroups.Length], new long[expectedGroups.Length]);
             byColumn.Groups[depth]++;
             byColumn.Payloads[depth] += writer.WrittenSpan.Length;
             byColumn.Nodes[node.BitDepth]++;
@@ -557,7 +562,7 @@ public class ImportPbtFromPreimageFlatTests
             Assert.That(report.NodeGroups.NodeEncodingBytes, Is.EqualTo(encodingBytes));
             Assert.That(report.NodeGroups.RecordCount, Is.EqualTo(groups.Length));
             long groupKeyBytes = 0, groupValueBytes = 0;
-            foreach (PbtColumns column in new[] { PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups, PbtColumns.Metadata })
+            foreach (PbtColumns column in new[] { PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups, PbtColumns.Metadata })
             {
                 groupKeyBytes += expected[column].Keys;
                 groupValueBytes += expected[column].Values;
@@ -572,12 +577,13 @@ public class ImportPbtFromPreimageFlatTests
                 (PbtColumns.Metadata, report.MetadataRoot),
             })
             {
-                (long[] groupsByDepth, long[] payloadsByDepth, long[] nodesByDepth) = expectedByColumn[column];
+                (long[] groupsByDepth, long[] payloadsByDepth, long[] nodesByDepth) = expectedByPartition[column];
                 Assert.That(stats.GroupsByDepth, Is.EqualTo(groupsByDepth), column.ToString());
                 Assert.That(stats.PayloadBytesByDepth, Is.EqualTo(payloadsByDepth), column.ToString());
                 Assert.That(stats.NodesByDepth, Is.EqualTo(nodesByDepth), column.ToString());
                 Assert.That(stats.NodeCount, Is.EqualTo(groupsByDepth.Sum()), column.ToString());
             }
+            Assert.That(report.TopNodeGroups.NodeCount, Is.Zero, "top group shapes are counted under their partitions");
             Assert.That(formatted, Does.Contain("not hash or reachability verification"));
             foreach (string label in new[] { "all partitions", nameof(PbtColumns.AccountNodeGroups), nameof(PbtColumns.CodeNodeGroups), nameof(PbtColumns.StorageNodeGroups) })
             {
@@ -639,7 +645,7 @@ public class ImportPbtFromPreimageFlatTests
                     throw new TimeoutException("No periodic scan progress was logged.");
             };
         PbtScanReport report = await new PbtScanner(db, new PbtConfig { ScanTreeConcurrency = 2 }, logs).Scan(CancellationToken.None);
-        foreach (PbtColumns column in new[] { PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups })
+        foreach (PbtColumns column in new[] { PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes, PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups })
             logger.Received().Info(Arg.Is<string>(message => message.Contains($"PBT scan {column}:") && message.Contains("(completed)")));
         Assert.That(report.Accounts.RecordCount, Is.EqualTo(1), "flat rows are counted without RLP decoding");
         if (periodic) Assert.That(progressLogged.IsSet, Is.True);
@@ -647,7 +653,7 @@ public class ImportPbtFromPreimageFlatTests
     }
 
     [Test]
-    public async Task Scanner_startup_outcomes([Values("empty", "complete", "cancel", "malformed-root", "malformed-account", "malformed-code", "malformed-storage")] string outcome)
+    public async Task Scanner_startup_outcomes([Values("empty", "complete", "cancel", "malformed-root", "malformed-top", "malformed-account", "malformed-code", "malformed-storage")] string outcome)
     {
         using RecordingColumnsDb db = new();
         PbtConfig config = new() { ScanTreeConcurrency = 2 };
@@ -660,6 +666,7 @@ public class ImportPbtFromPreimageFlatTests
             PbtColumns column = outcome switch
             {
                 "malformed-root" => PbtColumns.Metadata,
+                "malformed-top" => PbtColumns.TopNodeGroups,
                 "malformed-account" => PbtColumns.AccountNodeGroups,
                 "malformed-code" => PbtColumns.CodeNodeGroups,
                 _ => PbtColumns.StorageNodeGroups,
@@ -1082,7 +1089,7 @@ public class ImportPbtFromPreimageFlatTests
                 if (!owner.Recording && key is PbtColumns.Accounts or PbtColumns.Storages or PbtColumns.Codes)
                     return new RecordingCopyBatch(this, columnBatch);
                 if (key == PbtColumns.Metadata) return new RecordingMetadataBatch(owner, this, columnBatch);
-                if (key is PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups && owner.Recording) _groups = true;
+                if (key is PbtColumns.TopNodeGroups or PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups && owner.Recording) _groups = true;
                 return columnBatch;
             }
             private sealed class RecordingCopyBatch(RecordingBatch ownerBatch, IWriteBatch batch) : IWriteBatch
