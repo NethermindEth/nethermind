@@ -28,11 +28,10 @@ public sealed class SnapshotBundle : IDisposable
     private SnapshotContent _currentPooledContent = null!;
     // These maps are direct reference from members in _currentPooledContent.
     private ConcurrentDictionary<HashedKey<Address>, Account?> _changedAccounts = null!;
-    private ConcurrentDictionary<HashedKey<(Address, UInt256)>, UInt256?> _changedSlots = null!;
+    private AddressSlotDictionary _changedSlots = null!;
     private Dictionary<HashedKey<TreePath>, TrieNode> _changedStateNodes = null!;
     private AddressStorageNodeDictionary _changedStorageNodes = null!;
     private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
-    private readonly ConcurrentDictionary<HashedKey<Address>, byte> _addressesWithChangedSlots = new();
 
     private bool _trieChanged = false;
 
@@ -125,13 +124,13 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        HashedKey<(Address, UInt256)> key = new((address, index));
-
-        if (_changedSlots.TryGetValue(key, out UInt256? slotValue))
+        if (_changedSlots.TryGetValue(address, in index, out UInt256? slotValue))
         {
             value = slotValue;
             return;
         }
+
+        HashedKey<(Address, UInt256)> key = new((address, index));
 
         // Self-destructed at the point of the latest change
         if (selfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount)
@@ -484,26 +483,11 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
-    public void SetChangedSlot(Address address, in UInt256 index, in UInt256 value)
-    {
-        // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
-        // can set a value to be zero. Because of this distinction, the zerobytes logic is handled here instead of
-        // lower down.
-        HashedKey<(Address, UInt256)> key = new((address, index));
-        if (value.IsZero)
-        {
-            _changedSlots[key] = null;
-        }
-        else
-        {
-            _changedSlots[key] = value;
-        }
-
-        if (!_addressesWithChangedSlots.ContainsKey(address))
-        {
-            _addressesWithChangedSlots.TryAdd(address, 0);
-        }
-    }
+    // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
+    // can set a value to be zero. Because of this distinction, the zerobytes logic is handled here instead of
+    // lower down.
+    public void SetChangedSlot(Address address, in UInt256 index, in UInt256 value) =>
+        _changedSlots.Set(address, in index, value.IsZero ? null : value);
 
     internal void ClearStorage(Address address, Hash256 addressHash)
     {
@@ -516,24 +500,7 @@ public sealed class SnapshotBundle : IDisposable
 
         _changedStorageNodes.RemoveAddress(addressHash);
 
-        if (!_addressesWithChangedSlots.TryRemove(address, out _))
-        {
-            return;
-        }
-
-        using ArrayPoolListRef<HashedKey<(Address, UInt256)>> slotKeysToRemove = new(16);
-        foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kvp in _changedSlots)
-        {
-            if (kvp.Key.Key.Item1 == address)
-            {
-                slotKeysToRemove.Add(kvp.Key);
-            }
-        }
-
-        foreach (HashedKey<(Address, UInt256)> key in slotKeysToRemove)
-        {
-            _changedSlots.TryRemove(key, out _);
-        }
+        _changedSlots.RemoveAddress(address);
     }
 
     // The trie warmer's PushSlotJob is slightly slow due to the wake up logic.
@@ -620,7 +587,6 @@ public sealed class SnapshotBundle : IDisposable
             // Make and apply new snapshot content.
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
             ExpandCurrentPooledContent();
-            _addressesWithChangedSlots.NoLockClear();
 
             return (snapshot, transientResource);
         }
@@ -634,7 +600,6 @@ public sealed class SnapshotBundle : IDisposable
 
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
             ExpandCurrentPooledContent();
-            _addressesWithChangedSlots.NoLockClear();
             _trieChanged = false;
 
             return (null, null);
