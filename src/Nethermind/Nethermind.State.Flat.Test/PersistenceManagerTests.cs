@@ -1412,8 +1412,9 @@ public class PersistenceManagerTests
         };
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsWarn.Returns(true);
+        ILogger wrappedLogger = new(logger);
         ILogManager logManager = Substitute.For<ILogManager>();
-        logManager.GetClassLogger<PersistenceManager>().Returns(new ILogger(logger));
+        logManager.GetClassLogger<PersistenceManager>().Returns(wrappedLogger);
         using PersistenceManager manager = new(config, _tier.Resolve<ICompactionSchedule>(), _finalizedStateProvider,
             _persistence, _snapshotRepository, NullStatePersistenceBarrier.Instance, logManager,
             _persistedSnapshotCompactor, _tier.Loader, Substitute.For<IProcessExitSource>());
