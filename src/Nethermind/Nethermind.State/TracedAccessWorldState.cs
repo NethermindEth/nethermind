@@ -66,19 +66,20 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
 
     public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
-        bool? currentlyExists = AccountExistsCurrent(address);
+        bool? currentlyExists = GeneratingBlockAccessList.GetAccountChanges(address)?.AccountExists ?? AccountExistsCurrent(address);
         UInt256? currentBalance = GetBalanceCurrent(address);
-        bool res = base.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
+        bool wasCreated = base.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
         oldBalance = currentBalance ?? oldBalance;
-        res = currentlyExists ?? res;
+        wasCreated = currentlyExists.HasValue ? !currentlyExists.Value : wasCreated;
 
         UInt256 newBalance = oldBalance + balanceChange;
         if (!ShouldSuppressSystemUserZeroBalanceChange(address, in balanceChange))
         {
+            GeneratingBlockAccessList.RecordAccountExistence(address, true);
             GeneratingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
         }
 
-        return res;
+        return wasCreated;
     }
 
     public override IDisposable? BeginSystemAccountReadSuppression() => new SystemAccountReadSuppressionScope(this);
@@ -212,6 +213,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     {
         GeneratingBlockAccessList.DeleteAccount(address, GetBalanceInternal(address));
         base.DeleteAccount(address);
+        GeneratingBlockAccessList.RecordAccountExistence(address, false);
     }
 
     public override void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
@@ -414,6 +416,7 @@ public class TracedAccessWorldState(IWorldState state, bool parallel) : WorldSta
     private void RecordCreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
     {
         AddAccountRead(address);
+        GeneratingBlockAccessList.RecordAccountExistence(address, true);
         if (!balance.IsZero)
         {
             GeneratingBlockAccessList.AddBalanceChange(address, 0, balance);

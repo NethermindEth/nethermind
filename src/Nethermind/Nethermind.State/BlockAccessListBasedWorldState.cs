@@ -100,7 +100,21 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         oldBalance = GetBalance(address);
-        return !AccountExists(address);
+        if (AccountExists(address)) return false;
+
+        ReadOnlyAccountChanges changes = ResolveContext(address);
+        if (changes.TryGetLastBalanceChangeBefore(_blockAccessIndex, out _)
+            || changes.TryGetLastNonceChangeBefore(_blockAccessIndex, out _)
+            || changes.TryGetLastCodeChangeBefore(_blockAccessIndex, out _))
+        {
+            // EIP-161 removes an account left empty by a prior transaction.
+            return true;
+        }
+
+        // An unchanged empty parent account still physically exists, despite being logically dead.
+        return _parentReader is WorldState parent
+            ? ReadParentAccount(parent, address) is null
+            : !_parentReader!.AccountExists(address);
     }
 
     public override void Get(in StorageCell storageCell, out UInt256 value)
