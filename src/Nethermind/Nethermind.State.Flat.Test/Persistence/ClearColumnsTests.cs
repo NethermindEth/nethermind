@@ -4,6 +4,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using NUnit.Framework;
 
@@ -38,5 +39,22 @@ public class ClearColumnsTests
                 Is.EqualTo(new StateId(ulong.MaxValue, ValueKeccak.EmptyTreeHash)));
             Assert.That(db.GetColumnDb(FlatDbColumns.Storage).Get(slotKey), Is.Null);
         }
+    }
+
+    [Test]
+    public void Clear_acknowledges_repair_after_wiping_columns()
+    {
+        using AcknowledgeSpyColumnsDb db = new();
+        RocksDbPersistence persistence = new(db, LimboLogs.Instance);
+
+        persistence.Clear();
+
+        Assert.That(db.AcknowledgeRepairCalls, Is.EqualTo(1));
+    }
+
+    private sealed class AcknowledgeSpyColumnsDb : SnapshotableMemColumnsDb<FlatDbColumns>, IDbMeta
+    {
+        public int AcknowledgeRepairCalls { get; private set; }
+        void IDbMeta.AcknowledgeRepair() => AcknowledgeRepairCalls++;
     }
 }

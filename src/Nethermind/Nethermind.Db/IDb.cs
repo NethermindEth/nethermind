@@ -46,8 +46,11 @@ namespace Nethermind.Db
         void InterruptCompactions() { }
         void SetWriteBuffer(long sizeBytes) { }
 
-        /// <summary>True when this store ran RocksDB repair during the current process open.</summary>
+        /// <summary>True when this store ran RocksDB repair during the current process open, or a leftover <c>repaired.marker</c> was found.</summary>
         bool WasRepairedOnOpen => false;
+
+        /// <summary>Clears <see cref="WasRepairedOnOpen"/> and deletes <c>repaired.marker</c> after a successful resync wipe. No-op when the store was not repaired.</summary>
+        void AcknowledgeRepair() { }
 
         readonly struct DbMetric
         {
