@@ -1078,7 +1078,105 @@ public class RetryCacheTests
     }
 
     [Test]
-    public async Task ExpiryQueue_ReleasesStorageAfterCumulativeChurn()
+    public void RequestStorage_ReleasesOversizedEmptyStripe([Values] bool receive)
+    {
+        const int count = 2048;
+        TestHandler source = new();
+        for (int i = 0; i < count; i++) _cache.Announced(i * 64, source);
+        Assert.That(_cache.RetryRequestRetainedCapacity, Is.GreaterThanOrEqualTo(count));
+
+        if (receive)
+        {
+            for (int i = 0; i < count; i++) _cache.Received(i * 64);
+        }
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _cache.ProcessRetryTick();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.TrackedRequestsInUse, Is.Zero);
+            Assert.That(_cache.ResourcesInRetryQueue, Is.Zero);
+            Assert.That(_cache.RetryRequestRetainedCapacity, Is.LessThanOrEqualTo(1024));
+        }
+    }
+
+    [Test]
+    public void StorageReuse_PreservesReannouncedRequestDeadlines([Values(1, 64)] int keyStride)
+    {
+        const int count = 129;
+        int[] expected = new int[count];
+        for (int i = 0; i < count; i++) expected[i] = i * keyStride;
+        List<int> retried = [];
+        TestHandler source = new();
+        TestHandler alternate = new() { OnHandleMessage = message => retried.Add(message.Resource.Value) };
+
+        for (int cycle = 0; cycle < 8; cycle++)
+        {
+            foreach (int resource in expected) _cache.Announced(resource, source);
+            _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2));
+            foreach (int resource in expected)
+            {
+                _cache.Received(resource);
+                Assert.That(_cache.Announced(resource, source), Is.EqualTo(AnnounceResult.RequestRequired));
+                Assert.That(_cache.Announced(resource, alternate), Is.EqualTo(AnnounceResult.Delayed));
+            }
+
+            _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2));
+            _cache.ProcessRetryTick();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(retried, Is.Empty);
+                Assert.That(_cache.TrackedRequestsInUse, Is.EqualTo(count));
+                Assert.That(_cache.ResourcesInRetryQueue, Is.EqualTo(count));
+            }
+
+            _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2));
+            _cache.ProcessRetryTick();
+            Assert.That(retried, Is.EqualTo(expected));
+            retried.Clear();
+
+            foreach (int resource in expected) _cache.Received(resource);
+            _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            _cache.ProcessRetryTick();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_cache.TrackedRequestsInUse, Is.Zero);
+                Assert.That(_cache.ResourcesInRetryQueue, Is.Zero);
+            }
+        }
+    }
+
+    [Test]
+    public void StorageReuse_ConcurrentReceiveAndReannouncePreservesAccounting([Values(1, 64)] int keyStride)
+    {
+        Parallel.For(0, 4, worker =>
+        {
+            TestHandler source = new();
+            for (int cycle = 0; cycle < 16; cycle++)
+            {
+                for (int i = 0; i < 128; i++)
+                {
+                    ResourceId resource = (worker * 128 + i) * keyStride;
+                    Assert.That(_cache.Announced(resource, source), Is.EqualTo(AnnounceResult.RequestRequired));
+                    Assert.That(_cache.Announced(resource, source), Is.EqualTo(AnnounceResult.Delayed));
+                    _cache.Received(resource);
+                }
+            }
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.TrackedRequestsInUse, Is.Zero);
+            Assert.That(_cache.ResourcesInRetryQueue, Is.EqualTo(4 * 16 * 128));
+        }
+
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        _cache.ProcessRetryTick();
+        Assert.That(_cache.ResourcesInRetryQueue, Is.Zero);
+    }
+
+    [Test]
+    public async Task ExpiryQueue_ReusesBoundedStorageAcrossCumulativeChurn()
     {
         const int batchCount = 64;
         const int resourcesPerBatch = 256;
@@ -1095,7 +1193,6 @@ public class RetryCacheTests
         try
         {
             await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
-            object initialQueueStorage = cache.ExpiringQueueStorage;
             TestHandler source = new();
             for (int batch = 0; batch < batchCount; batch++)
             {
@@ -1112,14 +1209,40 @@ public class RetryCacheTests
                 Assert.That(cache.ResourcesInRetryQueue, Is.Zero);
             }
 
-            Assert.That(cache.ExpiringQueueReservationsSinceReset, Is.Zero);
-            Assert.That(cache.ExpiringQueueStorage, Is.Not.SameAs(initialQueueStorage));
+            Assert.That(cache.ExpiringQueueCapacity, Is.EqualTo(resourcesPerBatch));
         }
         finally
         {
             await cancellationTokenSource.CancelAsync();
             await cache.DisposeAsync();
         }
+    }
+
+    [Test]
+    public void ExpiryQueue_ReleasesOversizedStorageOnlyWhenEmpty([Values] bool keepPending)
+    {
+        const int count = 16_385;
+        TestHandler source = new();
+        for (int i = 0; i < count; i++)
+        {
+            _cache.Announced(i, source);
+            _cache.Received(i);
+        }
+        Assert.That(_cache.ExpiringQueueCapacity, Is.GreaterThanOrEqualTo(count));
+
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2));
+        if (keepPending) _cache.Announced(count, source);
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2));
+        _cache.ProcessRetryTick();
+        Assert.That(_cache.ResourcesInRetryQueue, Is.EqualTo(keepPending ? 1 : 0));
+        if (keepPending)
+        {
+            Assert.That(_cache.ExpiringQueueCapacity, Is.GreaterThanOrEqualTo(count));
+            _cache.Received(count);
+            _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            _cache.ProcessRetryTick();
+        }
+        Assert.That(_cache.ExpiringQueueCapacity, Is.Zero);
     }
 
     [Test]

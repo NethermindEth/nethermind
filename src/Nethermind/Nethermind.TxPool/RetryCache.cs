@@ -29,8 +29,6 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private const int MaxRetryResourcesPerTick = 256;
     private const int MaxStaleQueueEntriesPerTick = 32_768;
     private const int AdmissionLockCount = 64;
-    private const int ExpiringQueueResetChurnThreshold = 16_384;
-    private const int ExpiringQueueResetting = -1;
 
     private readonly int _timeoutMs;
     private readonly TimeSpan _timeout;
@@ -47,15 +45,14 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private readonly TimeProvider _timeProvider;
     private readonly Task _mainLoopTask;
     private static readonly ObjectPool<HandlerBag<TMessage>> _handlerBagsPool = new DefaultObjectPool<HandlerBag<TMessage>>(new HandlerBagPolicy<TMessage>(), maximumRetained: 512);
-    private readonly ConcurrentDictionary<TResourceId, RetryRequestEntry> _retryRequests = new();
+    private readonly RetryRequestStore _retryRequests = new();
     private readonly ConcurrentDictionary<IMessageHandler<TMessage>, int> _pendingResourcesByHandler = new(ReferenceEqualityComparer.Instance);
-    private ConcurrentQueue<(TResourceId ResourceId, long RequestGeneration, long EnqueuedAt)> _expiringQueue = new();
+    private readonly ExpiringQueue _expiringQueue = new();
     private readonly OverflowRequestStripe[]? _overflowRequestStripes;
     private readonly int[]? _overflowRequestGenerationCounts;
     private readonly Lock[]? _admissionLocks;
     private readonly ReaderWriterLockSlim _overflowGenerationLock = new(LockRecursionPolicy.NoRecursion);
     private int _expiringQueueCounter = 0;
-    private int _expiringQueueReservationsSinceReset = 0;
     private int _trackedRequestsCounter = 0;
     private long _requestGeneration = 0;
     private long _overflowEpoch = 0;
@@ -69,9 +66,9 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private readonly ILogger _logger;
 
     internal int ResourcesInRetryQueue => Math.Max(0, Volatile.Read(ref _expiringQueueCounter));
-    internal int ExpiringQueueReservationsSinceReset => Volatile.Read(ref _expiringQueueReservationsSinceReset);
-    internal object ExpiringQueueStorage => Volatile.Read(ref _expiringQueue);
+    internal int ExpiringQueueCapacity => _expiringQueue.Capacity;
     internal int TrackedRequestsInUse => Volatile.Read(ref _trackedRequestsCounter);
+    internal int RetryRequestRetainedCapacity => _retryRequests.RetainedCapacity;
     internal int OverflowRequestsInUse => Volatile.Read(ref _overflowRequestsInUse);
     internal Task DisposalReachedOperationBarrier => _disposeReachedOperationBarrier.Task;
     internal int OverflowRetainedCapacity
@@ -102,6 +99,138 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         long Generation,
         IMessageHandler<TMessage> SourceHandler,
         long RequestGeneration);
+
+    private sealed class RetryRequestStore
+    {
+        private const int MaxRetainedStripeCapacity = 1024;
+        private readonly Stripe[] _stripes = CreateStripes();
+
+        public int RetainedCapacity
+        {
+            get
+            {
+                int capacity = 0;
+                foreach (Stripe stripe in _stripes)
+                {
+                    lock (stripe.Sync) capacity += stripe.Entries.EnsureCapacity(0);
+                }
+                return capacity;
+            }
+        }
+
+        private static Stripe[] CreateStripes()
+        {
+            Stripe[] stripes = new Stripe[AdmissionLockCount];
+            for (int i = 0; i < stripes.Length; i++) stripes[i] = new Stripe();
+            return stripes;
+        }
+
+        private Stripe GetStripe(in TResourceId resourceId) => _stripes[(int)resourceId.GetHashCode64() & (_stripes.Length - 1)];
+
+        public bool TryGetValue(in TResourceId resourceId, out RetryRequestEntry entry)
+        {
+            Stripe stripe = GetStripe(resourceId);
+            lock (stripe.Sync) return stripe.Entries.TryGetValue(resourceId, out entry);
+        }
+
+        public bool ContainsKey(in TResourceId resourceId) => TryGetValue(resourceId, out _);
+
+        public bool TryAdd(in TResourceId resourceId, RetryRequestEntry entry)
+        {
+            Stripe stripe = GetStripe(resourceId);
+            lock (stripe.Sync) return stripe.Entries.TryAdd(resourceId, entry);
+        }
+
+        public bool TryRemove(in TResourceId resourceId, out RetryRequestEntry entry)
+        {
+            Stripe stripe = GetStripe(resourceId);
+            lock (stripe.Sync)
+            {
+                bool removed = stripe.Entries.Remove(resourceId, out entry);
+                if (removed) TrimEmptyStripe(stripe);
+                return removed;
+            }
+        }
+
+        public bool TryRemove(KeyValuePair<TResourceId, RetryRequestEntry> item)
+        {
+            Stripe stripe = GetStripe(item.Key);
+            lock (stripe.Sync)
+            {
+                bool removed = stripe.Entries.TryGetValue(item.Key, out RetryRequestEntry entry)
+                    && entry == item.Value
+                    && stripe.Entries.Remove(item.Key);
+                if (removed) TrimEmptyStripe(stripe);
+                return removed;
+            }
+        }
+
+        private static void TrimEmptyStripe(Stripe stripe)
+        {
+            if (stripe.Entries.Count == 0 && stripe.Entries.EnsureCapacity(0) > MaxRetainedStripeCapacity)
+            {
+                stripe.Entries.TrimExcess();
+            }
+        }
+
+        public List<KeyValuePair<TResourceId, RetryRequestEntry>> GetSnapshot()
+        {
+            List<KeyValuePair<TResourceId, RetryRequestEntry>> entries = [];
+            foreach (Stripe stripe in _stripes)
+            {
+                lock (stripe.Sync)
+                {
+                    foreach (KeyValuePair<TResourceId, RetryRequestEntry> entry in stripe.Entries) entries.Add(entry);
+                }
+            }
+
+            return entries;
+        }
+
+        private sealed class Stripe
+        {
+            public readonly Lock Sync = new();
+            public readonly Dictionary<TResourceId, RetryRequestEntry> Entries = [];
+        }
+    }
+
+    private sealed class ExpiringQueue
+    {
+        private const int MaxRetainedCapacity = 16_384;
+        private readonly Lock _lock = new();
+        private readonly Queue<(TResourceId ResourceId, long RequestGeneration, long EnqueuedAt)> _queue = new();
+
+        public int Capacity
+        {
+            get
+            {
+                lock (_lock) return _queue.EnsureCapacity(0);
+            }
+        }
+
+        public void TrimIfEmpty()
+        {
+            lock (_lock)
+            {
+                if (_queue.Count == 0 && _queue.EnsureCapacity(0) > MaxRetainedCapacity) _queue.TrimExcess();
+            }
+        }
+
+        public void Enqueue((TResourceId ResourceId, long RequestGeneration, long EnqueuedAt) item)
+        {
+            lock (_lock) _queue.Enqueue(item);
+        }
+
+        public bool TryPeek(out (TResourceId ResourceId, long RequestGeneration, long EnqueuedAt) item)
+        {
+            lock (_lock) return _queue.TryPeek(out item);
+        }
+
+        public bool TryDequeue(out (TResourceId ResourceId, long RequestGeneration, long EnqueuedAt) item)
+        {
+            lock (_lock) return _queue.TryDequeue(out item);
+        }
+    }
 
     private sealed class OverflowRequestStripe(int initialGenerationCapacity)
     {
@@ -250,7 +379,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         {
             DisposeBatchedRetryRequests(batchedRetryRequests);
             MaintainOverflowStorage();
-            ResetExpiringQueueStorageIfEmpty();
+            _expiringQueue.TrimIfEmpty();
         }
     }
 
@@ -453,7 +582,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     }
 
     private void Enqueue(TResourceId resourceId, RetryRequestEntry entry) =>
-        Volatile.Read(ref _expiringQueue).Enqueue((resourceId, entry.RequestGeneration, _timeProvider.GetTimestamp()));
+        _expiringQueue.Enqueue((resourceId, entry.RequestGeneration, _timeProvider.GetTimestamp()));
 
     public void Received(in TResourceId resourceId)
     {
@@ -497,7 +626,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         _requestingResources.Clear();
         ClearOverflowRequests();
 
-        foreach (KeyValuePair<TResourceId, RetryRequestEntry> kvp in _retryRequests)
+        foreach (KeyValuePair<TResourceId, RetryRequestEntry> kvp in _retryRequests.GetSnapshot())
         {
             if (_retryRequests.TryRemove(kvp))
             {
@@ -639,34 +768,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
     private bool TryReserveTrackedSlot() => TryReserveSlot(ref _trackedRequestsCounter, _expiringQueueLimit);
 
-    private bool TryReserveExpiringQueueSlot()
-    {
-        int count = Volatile.Read(ref _expiringQueueCounter);
-        while (true)
-        {
-            if (count == ExpiringQueueResetting)
-            {
-                Thread.Yield();
-                count = Volatile.Read(ref _expiringQueueCounter);
-                continue;
-            }
-
-            if (count >= _expiringQueuePhysicalLimit)
-            {
-                return false;
-            }
-
-            int nextCount = count + 1;
-            int observed = Interlocked.CompareExchange(ref _expiringQueueCounter, nextCount, count);
-            if (observed == count)
-            {
-                IncrementUpTo(ref _expiringQueueReservationsSinceReset, ExpiringQueueResetChurnThreshold);
-                return true;
-            }
-
-            count = observed;
-        }
-    }
+    private bool TryReserveExpiringQueueSlot() => TryReserveSlot(ref _expiringQueueCounter, _expiringQueuePhysicalLimit);
 
     private static bool TryReserveSlot(ref int counter, int limit)
     {
@@ -683,40 +785,6 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         }
 
         return false;
-    }
-
-    private static void IncrementUpTo(ref int target, int limit)
-    {
-        int current = Volatile.Read(ref target);
-        while (current < limit)
-        {
-            int observed = Interlocked.CompareExchange(ref target, current + 1, current);
-            if (observed == current)
-            {
-                return;
-            }
-
-            current = observed;
-        }
-    }
-
-    private void ResetExpiringQueueStorageIfEmpty()
-    {
-        if (Volatile.Read(ref _expiringQueueReservationsSinceReset) < ExpiringQueueResetChurnThreshold
-            || Interlocked.CompareExchange(ref _expiringQueueCounter, ExpiringQueueResetting, 0) != 0)
-        {
-            return;
-        }
-
-        try
-        {
-            Volatile.Write(ref _expiringQueue, new());
-            Volatile.Write(ref _expiringQueueReservationsSinceReset, 0);
-        }
-        finally
-        {
-            Volatile.Write(ref _expiringQueueCounter, 0);
-        }
     }
 
     private bool TryReserveHandlerSlot(IMessageHandler<TMessage> handler)
