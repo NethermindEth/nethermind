@@ -41,7 +41,6 @@ public interface IDebugBridge
     /// <remarks>
     /// Does not requeue removed transactions or clear receipt indexes, safe/finalized hashes or sync metadata.
     /// Receipt lookups may still return removed transactions. Requires quiescent block processing and persistence.
-    /// The trie backend checks root availability only; it cannot guarantee that every descendant survived pruning.
     /// Same-payload replay remains unsupported because processed markers and cached VALID results are retained;
     /// use fresh replacement payloads.
     /// </remarks>

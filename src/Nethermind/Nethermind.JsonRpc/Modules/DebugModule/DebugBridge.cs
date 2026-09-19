@@ -112,7 +112,8 @@ public class DebugBridge : IDebugBridge
         BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
         if (header is null) return false;
 
-        if (!_worldStateManager.GlobalWorldState.HasRoot(header))
+        if (!_worldStateManager.GlobalWorldState.HasRoot(header)
+            || !_worldStateManager.GlobalStateReader.HasStateForBlock(header))
         {
             if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockHash}: state is unavailable for block processing.");
             return false;

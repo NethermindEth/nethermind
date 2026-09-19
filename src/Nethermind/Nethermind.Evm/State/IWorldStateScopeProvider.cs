@@ -16,7 +16,7 @@ namespace Nethermind.Evm.State;
 /// </summary>
 public interface IWorldStateScopeProvider
 {
-    /// <summary>Checks root availability for this scope provider's processing usage.</summary>
+    /// <summary>Checks root availability, respecting processing usage where the backend distinguishes it.</summary>
     /// <remarks>Does not verify the integrity or availability of every descendant trie node.</remarks>
     bool HasRoot(BlockHeader? baseBlock);
 

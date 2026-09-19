@@ -71,7 +71,7 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter);
 
     /// <inheritdoc cref="IDebugBridge.UpdateHeadBlock" path="/member/remarks"/>
-    [JsonRpcMethod(Description = "Rewinds the head to a canonical block with state available for block processing, given by number, tag or hash, and prunes abandoned flat-state snapshots. An unresolvable parameter returns ResourceNotFound; a refused rewind returns false.", IsImplemented = true, IsSharable = true)]
+    [JsonRpcMethod(Description = "Rewinds the head to a canonical block with state available for block processing, given by number, tag or hash, and prunes abandoned flat-state snapshots. Returns false for an unknown target or a refused rewind.", IsImplemented = true, IsSharable = true)]
     ResultWrapper<bool> debug_setHead(BlockParameter blockParameter);
 
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]

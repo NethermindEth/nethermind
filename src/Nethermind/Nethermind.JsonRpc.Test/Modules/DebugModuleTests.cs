@@ -492,8 +492,12 @@ public class DebugModuleTests
 
         ResultWrapper<bool> result = CreateModule().debug_setHead(new BlockParameter(2UL));
 
-        Assert.That(result.Result.Error, Does.Contain("not found"));
-        _debugBridge.DidNotReceive().UpdateHeadBlock(Arg.Any<Hash256>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(result.Data, Is.False);
+            _debugBridge.DidNotReceive().UpdateHeadBlock(Arg.Any<Hash256>());
+        }
     }
 
     [Test]

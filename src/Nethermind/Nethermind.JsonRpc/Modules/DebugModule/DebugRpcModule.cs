@@ -496,7 +496,7 @@ public class DebugRpcModule(
         Block? block = debugBridge.GetBlock(blockParameter);
         return block?.Hash is { } hash
             ? debug_resetHead(hash)
-            : ResultWrapper<bool>.Fail($"Block {blockParameter} not found", ErrorCodes.ResourceNotFound);
+            : ResultWrapper<bool>.Success(false);
     }
 
     public ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key)
