@@ -41,7 +41,7 @@ public class TrieNodeTests
         }
         TreePath path = TreePath.Empty;
         CappedArray<byte> oldRlp = original.RlpEncode(NullTrieNodeResolver.Instance, ref path);
-        Assert.That(oldRlp.Length, Is.EqualTo(TrieNode.FullBranchRlpLength));
+        Assert.That(oldRlp.Length, Is.EqualTo(532));
         TrieNode restored = new(NodeType.Branch, oldRlp);
         restored.ResolveNode(NullTrieNodeResolver.Instance, path);
         restored = restored.Clone();
