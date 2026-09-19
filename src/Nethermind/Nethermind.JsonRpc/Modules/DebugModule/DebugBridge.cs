@@ -33,8 +33,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugBridge : IDebugBridge
 {
-    // Debug bridges are scoped per RPC module, but rewinds and cleanup mutate the same tree.
-    private static readonly ConditionalWeakTable<IBlockTree, StrongBox<int>> HeadResetStates = [];
+    // Debug bridges are scoped per RPC module, but head resets and slice deletions mutate the same tree.
+    private static readonly ConditionalWeakTable<IBlockTree, StrongBox<int>> ChainMutationStates = [];
     private readonly ILogger _logger;
     private readonly IConfigProvider _configProvider;
     private readonly IGethStyleTracer _tracer;
@@ -107,14 +107,31 @@ public class DebugBridge : IDebugBridge
 
     public ChainLevelInfo GetLevelInfo(ulong number) => _blockTree.FindLevel(number);
 
-    public int DeleteChainSlice(ulong startNumber, bool force = false) => _blockTree.DeleteChainSlice(startNumber, force: force);
+    public int DeleteChainSlice(ulong startNumber, bool force = false)
+    {
+        StrongBox<int> mutationState = ChainMutationStates.GetOrCreateValue(_blockTree);
+        if (Interlocked.CompareExchange(ref mutationState.Value, 1, 0) != 0)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot delete the chain slice from {startNumber}: another debug chain mutation is in progress.");
+            return 0;
+        }
+
+        try
+        {
+            return _blockTree.DeleteChainSlice(startNumber, force: force);
+        }
+        finally
+        {
+            Volatile.Write(ref mutationState.Value, 0);
+        }
+    }
 
     public bool UpdateHeadBlock(Hash256 blockHash)
     {
-        StrongBox<int> resetState = HeadResetStates.GetOrCreateValue(_blockTree);
-        if (Interlocked.CompareExchange(ref resetState.Value, 1, 0) != 0)
+        StrongBox<int> mutationState = ChainMutationStates.GetOrCreateValue(_blockTree);
+        if (Interlocked.CompareExchange(ref mutationState.Value, 1, 0) != 0)
         {
-            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockHash}: another head reset is in progress.");
+            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockHash}: another debug chain mutation is in progress.");
             return false;
         }
 
@@ -142,7 +159,7 @@ public class DebugBridge : IDebugBridge
         }
         finally
         {
-            Volatile.Write(ref resetState.Value, 0);
+            Volatile.Write(ref mutationState.Value, 0);
         }
     }
 

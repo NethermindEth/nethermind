@@ -193,71 +193,127 @@ public class DebugBridgeTests
         }
     }
 
+    public enum ChainMutation { ResetByHash, ResetByNumber, DeleteSlice }
+
     [Test]
-    public async Task Head_reset_refuses_overlapping_cleanup_across_modules([Values] bool firstByHash, [Values] bool cleanupThrows)
+    public async Task Chain_mutation_refuses_overlap_across_modules(
+        [Values] ChainMutation firstMutation, [Values] ChainMutation secondMutation, [Values] bool mutationThrows)
     {
-        IPersistenceManager persistence = Substitute.For<IPersistenceManager>();
+        ObservedPersistenceManager? persistence = null;
         await using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true }))
-            .AddSingleton(persistence)
+            .AddDecorator<IPersistenceManager>((_, inner) => persistence = new ObservedPersistenceManager(inner))
             .Build();
         IBlockTree blockTree = container.Resolve<IBlockTree>();
-        Block head = Build.A.Block.WithNumber(0).TestObject;
-        AddToMainChain(blockTree, head);
-        persistence.GetCurrentPersistedStateId().Returns(new StateId(head.Header));
+        IWorldState state = container.Resolve<IMainProcessingContext>().WorldState;
+        Block[] blocks = new Block[3];
+        for (int i = 0; i < blocks.Length; i++)
+        {
+            BlockHeader? parent = i == 0 ? IWorldState.PreGenesis : blocks[i - 1].Header;
+            using (state.BeginScope(parent))
+            {
+                if (i == 0) state.CreateAccount(TestItem.AddressA, 1);
+                else state.AddToBalance(TestItem.AddressA, 1, Frontier.Instance);
+                state.Commit(Frontier.Instance);
+                state.CommitTree((ulong)i);
+                blocks[i] = (i == 0 ? Build.A.Block.WithNumber(0) : Build.A.Block.WithParent(blocks[i - 1]))
+                    .WithStateRoot(state.StateRoot).TestObject;
+            }
+            AddToMainChain(blockTree, blocks[i]);
+        }
         IRpcModuleFactory<IDebugRpcModule> factory = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>();
         IDebugRpcModule first = factory.Create();
         IDebugRpcModule second = factory.Create();
-        TaskCompletionSource cleanupEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        using ManualResetEventSlim releaseCleanup = new();
+        TaskCompletionSource mutationEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim releaseMutation = new();
+        InvalidOperationException injectedFailure = new("mutation failure");
         int cleanupCalls = 0;
-        persistence.When(manager => manager.DropStateNotReachableFrom(Arg.Any<StateId>()))
-            .Do(_ =>
+        void BlockFirstMutation()
+        {
+            mutationEntered.SetResult();
+            if (!releaseMutation.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("mutation was not released");
+            if (mutationThrows) throw injectedFailure;
+        }
+        persistence!.BeforeDrop = () =>
+        {
+            if (Interlocked.Increment(ref cleanupCalls) == 1 && firstMutation != ChainMutation.DeleteSlice)
+                BlockFirstMutation();
+        };
+        if (firstMutation == ChainMutation.DeleteSlice)
+            blockTree.NewHeadBlock += (_, args) =>
             {
-                if (Interlocked.Increment(ref cleanupCalls) != 1) return;
-                cleanupEntered.SetResult();
-                if (!releaseCleanup.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("cleanup was not released");
-                if (cleanupThrows) throw new InvalidOperationException("cleanup failure");
-            });
-        Task<Exception?> firstReset = Task.Run<Exception?>(() =>
+                if (args.Block.Hash == blocks[1].Hash) BlockFirstMutation();
+            };
+        Task<(int? Result, Exception? Failure)> firstTask = Task.Run<(int?, Exception?)>(() =>
         {
             try
             {
-                Assert.That(ResetHead(first, head, firstByHash).Data, Is.True);
-                return null;
+                return (MutateChain(first, blocks[1], firstMutation), null);
             }
-            catch (InvalidOperationException exception)
+            catch (Exception exception)
             {
-                return exception;
+                return (null, exception);
             }
         });
-        bool? overlappingResult = null;
+        int? overlappingResult = null;
         int callsWhileBlocked = 0;
-        Exception? cleanupFailure;
+        Hash256? headWhileBlocked = null;
+        byte[]? persistedHeadWhileBlocked = null;
+        bool targetRetained = false;
+        (int? Result, Exception? Failure) firstOutcome;
         try
         {
-            await cleanupEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            overlappingResult = ResetHead(second, head, !firstByHash).Data;
+            await mutationEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            overlappingResult = MutateChain(second, blocks[0], secondMutation);
             callsWhileBlocked = Volatile.Read(ref cleanupCalls);
+            headWhileBlocked = blockTree.Head?.Hash;
+            persistedHeadWhileBlocked = container.Resolve<IDbProvider>().BlockInfosDb.Get(Keccak.Zero.Bytes);
+            targetRetained = blockTree.FindBlock(blocks[1].Hash!, BlockTreeLookupOptions.None) is not null;
         }
         finally
         {
-            releaseCleanup.Set();
-            cleanupFailure = await firstReset;
+            releaseMutation.Set();
+            firstOutcome = await firstTask;
         }
-        bool retryResult = ResetHead(second, head, !firstByHash).Data;
+        int retryResult = MutateChain(second, blocks[0], secondMutation);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(overlappingResult, Is.False);
-            Assert.That(callsWhileBlocked, Is.EqualTo(1));
-            Assert.That(cleanupFailure?.Message, Is.EqualTo(cleanupThrows ? "cleanup failure" : null));
-            Assert.That(retryResult, Is.True, "the gate must be released after success or failure");
-            Assert.That(cleanupCalls, Is.EqualTo(2));
-            Assert.That(blockTree.Head!.Hash, Is.EqualTo(head.Hash));
-            Assert.That(container.Resolve<IDbProvider>().BlockInfosDb.Get(Keccak.Zero.Bytes), Is.EqualTo(head.Hash!.Bytes.ToArray()));
+            Assert.That(overlappingResult, Is.Zero);
+            Assert.That(callsWhileBlocked, Is.EqualTo(firstMutation == ChainMutation.DeleteSlice ? 0 : 1));
+            Assert.That(headWhileBlocked, Is.EqualTo(blocks[1].Hash));
+            Assert.That(persistedHeadWhileBlocked, Is.EqualTo(blocks[1].Hash!.Bytes.ToArray()));
+            Assert.That(targetRetained, Is.True, "an overlapping deletion must not remove the reset target");
+            Assert.That(firstOutcome.Failure, mutationThrows ? Is.SameAs(injectedFailure) : Is.Null);
+            Assert.That(firstOutcome.Result, Is.EqualTo(mutationThrows ? (int?)null : 1));
+            int expectedRetry = secondMutation == ChainMutation.DeleteSlice && firstMutation != ChainMutation.DeleteSlice ? 2 : 1;
+            Assert.That(retryResult, Is.EqualTo(expectedRetry), "the gate must be released after success or failure");
+            Assert.That(blockTree.Head!.Hash, Is.EqualTo(blocks[0].Hash));
+            Assert.That(container.Resolve<IDbProvider>().BlockInfosDb.Get(Keccak.Zero.Bytes), Is.EqualTo(blocks[0].Hash!.Bytes.ToArray()));
         }
     }
+
+    private sealed class ObservedPersistenceManager(IPersistenceManager inner) : IPersistenceManager
+    {
+        public Action? BeforeDrop { get; set; }
+        public State.Flat.Persistence.IPersistence.IPersistenceReader LeaseReader() => inner.LeaseReader();
+        public StateId GetCurrentPersistedStateId() => inner.GetCurrentPersistedStateId();
+        public Task AddToPersistence(StateId latestSnapshot) => inner.AddToPersistence(latestSnapshot);
+        public StateId FlushToPersistence(CancellationToken cancellationToken) => inner.FlushToPersistence(cancellationToken);
+        public void ResetPersistedStateId() => inner.ResetPersistedStateId();
+        public void DropStateNotReachableFrom(in StateId head)
+        {
+            BeforeDrop?.Invoke();
+            inner.DropStateNotReachableFrom(head);
+        }
+    }
+
+    private static int MutateChain(IDebugRpcModule debug, Block target, ChainMutation mutation) => mutation switch
+    {
+        ChainMutation.ResetByHash => debug.debug_resetHead(target.Hash!).Data ? 1 : 0,
+        ChainMutation.ResetByNumber => debug.debug_setHead(new BlockParameter(target.Number)).Data ? 1 : 0,
+        _ => debug.debug_deleteChainSlice((long)target.Number + 1, force: true).Data,
+    };
 
     private static void AssertCalls(Action assertion) => Assert.That(assertion, Throws.Nothing);
 

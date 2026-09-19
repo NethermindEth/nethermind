@@ -22,7 +22,7 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Retrieves a representation of tree branches on a given chain level (Nethermind specific).", IsImplemented = true, IsSharable = true)]
     ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number);
 
-    [JsonRpcMethod(Description = "Deletes a slice of a chain from the tree on all branches (Nethermind specific).", IsImplemented = true, IsSharable = true)]
+    [JsonRpcMethod(Description = "Deletes a slice of a chain from the tree on all branches (Nethermind specific). Returns zero without deleting when another debug chain mutation is in progress.", IsImplemented = true, IsSharable = true)]
     ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false);
 
     /// <inheritdoc cref="IDebugBridge.UpdateHeadBlock" path="/member/remarks"/>
