@@ -19,12 +19,9 @@ namespace Nethermind.BeaconChain.DataAvailability;
 /// This therefore loads a second, independent copy of the same trusted setup file (which
 /// <c>Nethermind.Crypto</c>'s own <c>Content</c> item already copies next to every dependent
 /// assembly's output). Consolidating onto one shared native handle is future cleanup, not a
-/// correctness concern: both handles are loaded from the same file. Public (rather than
-/// <c>internal</c>, which this project has no <c>InternalsVisibleTo</c> for) so tests can build KZG
-/// fixtures with the same handle <see cref="DataColumnSidecarVerifier"/> and
-/// <see cref="DataColumnReconstruction"/> use, instead of loading a third copy.
+/// correctness concern: both handles are loaded from the same file.
 /// </remarks>
-public static class DasKzgSetup
+internal static class DasKzgSetup
 {
     private const string TrustedSetupFileName = "kzg_trusted_setup.txt";
 
