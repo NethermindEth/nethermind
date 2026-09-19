@@ -29,8 +29,15 @@ public static class TestFixtureDownloader
     /// <param name="urlTemplate">URL format string with {0} = version, {1} = archive name.</param>
     /// <param name="version">Archive version tag (e.g. "v1.6.1").</param>
     /// <param name="archiveName">Archive file name (e.g. "general.tar.gz"). The directory stem is derived by stripping extensions.</param>
+    /// <param name="shouldExtract">
+    /// Optional entry filter. When given, only tar entries whose normalized (forward-slash) path
+    /// satisfies the predicate are written to disk; everything else is skipped without touching the
+    /// filesystem. The gzip stream is still read and decompressed end to end regardless, since a
+    /// .tar.gz cannot be seeked - this saves disk footprint and extraction time, not download bandwidth.
+    /// Omit it (or pass null) to extract every entry, as before.
+    /// </param>
     /// <returns>The path to the extracted fixtures directory.</returns>
-    public static string EnsureDownloaded(string suiteName, string urlTemplate, string version, string archiveName)
+    public static string EnsureDownloaded(string suiteName, string urlTemplate, string version, string archiveName, Func<string, bool>? shouldExtract = null)
     {
         string archiveStem = StripExtensions(archiveName);
         string targetDir = Path.Combine(CacheRoot, suiteName, version, archiveStem);
@@ -53,7 +60,7 @@ public static class TestFixtureDownloader
             }
 
             Console.WriteLine($"Downloading {suiteName} fixtures ({archiveName} {version})...");
-            DownloadAndExtract(urlTemplate, version, archiveName, targetDir);
+            DownloadAndExtract(urlTemplate, version, archiveName, targetDir, shouldExtract);
             File.WriteAllText(markerPath, version);
             Console.WriteLine($"{suiteName} fixtures extracted to {targetDir}");
         }
@@ -76,7 +83,7 @@ public static class TestFixtureDownloader
         return Path.GetFileNameWithoutExtension(archiveName);
     }
 
-    private static void DownloadAndExtract(string urlTemplate, string version, string archiveName, string targetDir)
+    private static void DownloadAndExtract(string urlTemplate, string version, string archiveName, string targetDir, Func<string, bool>? shouldExtract)
     {
         // Clean up any partial extraction from a previous interrupted attempt.
         if (Directory.Exists(targetDir))
@@ -87,12 +94,81 @@ public static class TestFixtureDownloader
         using HttpClient httpClient = new();
         string url = string.Format(urlTemplate, version, archiveName);
         using HttpRequestMessage request = new(HttpMethod.Get, url);
+        // ResponseHeadersRead + a plain stream read below mean the response body is never buffered
+        // into a byte[]; both the "extract everything" and selective paths decompress in a bounded
+        // window as bytes arrive off the wire, regardless of the archive's total size.
         using HttpResponseMessage response = httpClient.Send(request, HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
 
         using Stream contentStream = response.Content.ReadAsStream();
         using GZipStream gzStream = new(contentStream, CompressionMode.Decompress);
 
-        TarFile.ExtractToDirectory(gzStream, targetDir, overwriteFiles: true);
+        if (shouldExtract is null)
+        {
+            TarFile.ExtractToDirectory(gzStream, targetDir, overwriteFiles: true);
+            return;
+        }
+
+        ExtractSelective(gzStream, targetDir, shouldExtract);
+    }
+
+    /// <summary>
+    /// Streams tar entries one at a time and writes to disk only those <paramref name="shouldExtract"/>
+    /// accepts. The whole gzip stream is still decompressed sequentially - a .tar.gz has no index to
+    /// seek by - so this trades disk footprint and unpack time for the entries that are skipped, not
+    /// network transfer.
+    /// </summary>
+    private static void ExtractSelective(Stream gzStream, string targetDir, Func<string, bool> shouldExtract)
+    {
+        string targetRoot = Path.GetFullPath(targetDir) + Path.DirectorySeparatorChar;
+
+        using TarReader reader = new(gzStream);
+        while (reader.GetNextEntry() is { } entry)
+        {
+            if (entry.EntryType is TarEntryType.Directory or TarEntryType.GlobalExtendedAttributes)
+                continue;
+
+            string normalized = NormalizeEntryPath(entry.Name);
+            if (!shouldExtract(normalized))
+                continue;
+
+            string destinationPath = Path.GetFullPath(Path.Combine(targetDir, normalized));
+            if (!destinationPath.StartsWith(targetRoot, StringComparison.Ordinal))
+                throw new IOException($"Tar entry '{entry.Name}' would extract outside the target directory.");
+
+            Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+            entry.ExtractToFile(destinationPath, overwrite: true);
+        }
+    }
+
+    /// <summary>
+    /// Normalizes a tar entry's recorded path to a rooted-relative, forward-slash form: strips a
+    /// leading "./" (common on GNU tar output) and converts backslashes, without touching disk.
+    /// </summary>
+    private static string NormalizeEntryPath(string entryName)
+    {
+        string path = entryName.Replace('\\', '/');
+        while (path.StartsWith("./", StringComparison.Ordinal))
+            path = path[2..];
+        return path.TrimStart('/');
+    }
+
+    /// <summary>
+    /// Pure predicate for use as <see cref="EnsureDownloaded"/>'s <c>shouldExtract</c> filter: true when
+    /// <paramref name="entryPath"/> is <paramref name="prefix"/> itself or lies under it as a directory
+    /// (matches on a '/' boundary, not merely a common string prefix, and tolerates either slash
+    /// direction and a leading "./" in <paramref name="entryPath"/>). Needs no archive or filesystem
+    /// access, so it is testable on its own.
+    /// </summary>
+    public static bool PathUnderPrefix(string entryPath, string prefix)
+    {
+        string normalizedEntry = NormalizeEntryPath(entryPath);
+        string normalizedPrefix = NormalizeEntryPath(prefix).TrimEnd('/');
+
+        return normalizedEntry.Length == normalizedPrefix.Length
+            ? string.Equals(normalizedEntry, normalizedPrefix, StringComparison.Ordinal)
+            : normalizedEntry.Length > normalizedPrefix.Length
+              && normalizedEntry.StartsWith(normalizedPrefix, StringComparison.Ordinal)
+              && normalizedEntry[normalizedPrefix.Length] == '/';
     }
 }
