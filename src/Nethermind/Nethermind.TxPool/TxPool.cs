@@ -16,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
+using Nethermind.Trie;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -1879,9 +1880,20 @@ namespace Nethermind.TxPool
                 ClockCache<AddressAsKey, AccountStruct> cache = _caches[GetCacheIndex(address)];
                 if (!cache.TryGet(new AddressAsKey(address), out account))
                 {
-                    if (!_provider.TryGetAccount(address, out account))
+                    try
                     {
-                        cache.Set(address, AccountStruct.TotallyEmpty);
+                        if (!_provider.TryGetAccount(address, out account))
+                        {
+                            cache.Set(address, AccountStruct.TotallyEmpty);
+                            return false;
+                        }
+                    }
+                    catch (MissingTrieNodeException)
+                    {
+                        // Head can exist (headers kept) while state was wiped — e.g. FlatDb.OnRepair=Resync.
+                        // TxPool must not fail startup; treat as empty so persisted blobs are dropped.
+                        account = AccountStruct.TotallyEmpty;
+                        cache.Set(address, account);
                         return false;
                     }
                     cache.Set(address, account);
