@@ -376,6 +376,39 @@ public class HistoryWalkVerificationCoordinatorTests
     }
 
     [Test]
+    public async Task InterruptedVerification_WithTipSeries_SkipsOnlyACompleteTail([Values(6UL, 7UL)] ulong tipStart)
+    {
+        FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true };
+        (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
+        FakeHeaders headers = CreateEmptyHeaders(rowFormat);
+        CommitmentMetadata metadata = CreateMetadata();
+        metadata.MarkWalkVerified(0, 5);
+        metadata.BeginWalk(0, 8, HistoryWalkRun.WorkItems, buildCommitments: true);
+        metadata.AdvanceTipSeries(tipStart, 8, out _);
+        availability.PublishWatermark(8, rowFormat.FormatVersion);
+        Assert.That(metadata.WalkModeMatches(false), Is.False, "precondition: the checkpoint must be discarded");
+
+        using HistoryWalkVerificationCoordinator coordinator = new(
+            _db, _historyColumns, headers, availability, rowFormat, config,
+            CreateRetrofit(metadata, config, rowFormat), metadata, LimboLogs.Instance);
+
+        coordinator.Start();
+        await coordinator.VerificationLoop;
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (tipStart == 6)
+                Assert.That(coordinator.LastVerdict, Is.Null, "the verified prefix and committed tip cover the requested range");
+            else
+            {
+                Assert.That(coordinator.LastVerdict?.Verified, Is.True);
+                Assert.That(coordinator.LastVerdict?.BlocksCompared, Is.EqualTo(3UL), "a gap before the tip must still be verified");
+            }
+            Assert.That(metadata.TryGetWalkInProgress(out _, out _), Is.False, "discarded checkpoint must not survive restart");
+        }
+    }
+
+    [Test]
     public async Task AFinishedWalkBelowAnUncommittedTail_ContinuesFromWhereItStopped()
     {
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true };
@@ -447,7 +480,7 @@ public class HistoryWalkVerificationCoordinatorTests
     }
 
     [Test]
-    public async Task AnUnfinishedWalkOverBlocksNoWalkHasVerified_IsResumedRatherThanDropped()
+    public async Task AnUnfinishedWalkOverBlocksNoWalkHasVerified_IsResumedRatherThanDropped([Values] bool checkpointBuildMode)
     {
         FlatDbConfig config = new() { HistoryEnabled = true, HistoryVerifyEveryBlock = true, ArchiveProofBuildEnabled = true };
         (HistoryAvailability availability, HistoryRowFormat rowFormat) = CreateShared(config);
@@ -463,8 +496,10 @@ public class HistoryWalkVerificationCoordinatorTests
         }
 
         CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
-        metadata.BeginWalk(0, 8, HistoryWalkRun.WorkItems, buildCommitments: false);
+        metadata.BeginWalk(0, 8, HistoryWalkRun.WorkItems, buildCommitments: checkpointBuildMode);
         metadata.AdvanceTipSeries(0, 8, out _);
+        Assert.That(metadata.TryGetCoverage(out _, out _), Is.True, "precondition: tip capture alone has published coverage");
+        Assert.That(metadata.TryGetWalkVerified(out _, out _), Is.False, "precondition: no first walk has completed");
         availability.PublishWatermark(8, rowFormat.FormatVersion);
 
         using HistoryWalkVerificationCoordinator coordinator = new(

@@ -174,7 +174,7 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
                             DiscardWalk();
                             if (TryGetCompletedPrefix(from, out ulong completedTo))
                             {
-                                if (completedTo >= to)
+                                if (completedTo >= to || TipCovers(completedTo + 1, to))
                                 {
                                     _retrofit?.ResumeReclaim();
                                     if (_logger.IsWarn) _logger.Warn($"History walk discarded checkpoint [{pendingFrom}, {pendingTo}]: {restartReason}; the requested range [{from}, {to}] is already complete.");
@@ -261,12 +261,20 @@ public sealed class HistoryWalkVerificationCoordinator : IDisposable, IAsyncDisp
         return pendingFrom > from && !CoverageIncludes(from, pendingFrom - 1) ? "checkpoint leaves an unbuilt proof prefix" : null;
     }
 
+    /// <summary>Finds a completed contiguous prefix of the requested range.</summary>
+    /// <remarks>A verified prefix is required even when tip capture has published coverage from genesis:
+    /// tip capture alone does not replace the first walk and its epoch snapshots. In build mode, published coverage
+    /// must also include that prefix and may extend it with contiguous tip commitments.</remarks>
     private bool TryGetCompletedPrefix(ulong from, out ulong completedTo)
     {
-        bool found = _retrofit is not null
-            ? _metadata.TryGetCoverage(out ulong completedFrom, out completedTo)
-            : _metadata.TryGetWalkVerified(out completedFrom, out completedTo);
-        return found && completedFrom <= from && completedTo >= from;
+        if (!_metadata.TryGetWalkVerified(out ulong verifiedFrom, out completedTo)
+            || verifiedFrom > from || completedTo < from) return false;
+        if (_retrofit is null) return true;
+        if (!_metadata.TryGetCoverage(out ulong coveredFrom, out ulong coveredTo)
+            || coveredFrom > from || coveredTo < completedTo) return false;
+
+        completedTo = coveredTo;
+        return true;
     }
 
     private bool TipCovers(ulong fromInclusive, ulong toInclusive) =>

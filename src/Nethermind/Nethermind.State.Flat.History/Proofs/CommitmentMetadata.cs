@@ -375,7 +375,7 @@ public sealed class CommitmentMetadata(IColumnsDb<FlatHistoryColumns> history, C
 
     /// <summary>Whether the checkpoint records the requested walk mode.</summary>
     /// <remarks>Missing or invalid mode records match neither mode; legacy checkpoints must be restarted.</remarks>
-    public bool WalkModeMatches(bool buildCommitments) =>
+    internal bool WalkModeMatches(bool buildCommitments) =>
         TryGetWalkMode(out bool recordedBuild) && recordedBuild == buildCommitments;
 
     /// <summary>Reads the checkpoint mode, returning false when it is missing or invalid.</summary>
