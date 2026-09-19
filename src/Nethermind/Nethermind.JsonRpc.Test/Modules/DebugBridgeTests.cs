@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -319,16 +320,9 @@ public class DebugBridgeTests
             worldStateManager,
             logManager);
 
+        List<(Hash256 Target, Hash256? LiveHead, byte[]? PersistedHead)> cleanupHeads = [];
         worldStateManager.When(manager => manager.DropStateNotReachableFrom(Arg.Any<BlockHeader>()))
-            .Do(call =>
-            {
-                Hash256 cleanupHead = call.Arg<BlockHeader>().Hash!;
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(blockTree.Head!.Hash, Is.EqualTo(cleanupHead), "live head must move before cleanup");
-                    Assert.That(builder.BlockInfoDb.Get(Keccak.Zero.Bytes), Is.EqualTo(cleanupHead.Bytes.ToArray()), "persisted head must move before cleanup");
-                }
-            });
+            .Do(call => cleanupHeads.Add((call.Arg<BlockHeader>().Hash!, blockTree.Head?.Hash, builder.BlockInfoDb.Get(Keccak.Zero.Bytes))));
 
         bool updated = bridge.UpdateHeadBlock(hash);
 
@@ -336,6 +330,11 @@ public class DebugBridgeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(updated, Is.EqualTo(expected));
+            foreach ((Hash256 cleanupTarget, Hash256? liveHead, byte[]? persistedHead) in cleanupHeads)
+            {
+                Assert.That(liveHead, Is.EqualTo(cleanupTarget), "live head must move before cleanup");
+                Assert.That(persistedHead, Is.EqualTo(cleanupTarget.Bytes.ToArray()), "persisted head must move before cleanup");
+            }
             if (target == Target.MissingState)
                 Assert.That(logger.LogList, Does.Contain($"Cannot rewind the head to {hash}: state is unavailable for block processing."));
             Assert.That(blockTree.Head!.Hash, Is.EqualTo(expectedHead.Hash));
