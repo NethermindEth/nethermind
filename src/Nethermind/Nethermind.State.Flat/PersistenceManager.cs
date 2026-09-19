@@ -58,6 +58,7 @@ public class PersistenceManager(
     // SemaphoreSlim rather than a Lock: the AddToPersistence drain awaits the compactor's async
     // Enqueue while holding the mutex, which a Lock.Scope (a ref struct) cannot span.
     private readonly SemaphoreSlim _persistenceLock = new(1, 1);
+    private StateId? _lastWarnedStall;
 
     // StateId is a 40-byte struct (ulong + ValueHash256), so a direct field read/write is not atomic and
     // query threads calling GetCurrentPersistedStateId could observe a torn (BlockNumber, StateRoot) pair
@@ -173,10 +174,14 @@ public class PersistenceManager(
         // ---- Phase 2: conversion to the persisted-snapshot tier ----
         ConversionCandidate? conversion = _enableLongFinality && snapshotRepository.SnapshotCount > _maxInMemoryBaseSnapshotCount
             ? TryFindSnapshotToConvert(currentPersistedState) : null;
-        if (conversion is null && snapshotsDepth > _backstopReorgDepth && _logger.IsWarn)
+        if (conversion is null && snapshotsDepth > _backstopReorgDepth && _logger.IsWarn
+            && _lastWarnedStall != currentPersistedState)
+        {
+            _lastWarnedStall = currentPersistedState;
             _logger.Warn($"In-memory state depth {snapshotsDepth} exceeded the force-persist backstop {_backstopReorgDepth}, " +
                 $"but neither persistence nor conversion found a candidate (persisted {currentPersistedState}, " +
                 $"latest {latestSnapshot}, finalized block {finalizedBlockNumber}).");
+        }
 
         return (null, null, conversion);
     }
