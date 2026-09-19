@@ -496,7 +496,7 @@ public class DebugModuleTests
         {
             Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(result.Data, Is.False);
-            _debugBridge.DidNotReceive().UpdateHeadBlock(Arg.Any<Hash256>());
+            Assert.That(() => _debugBridge.DidNotReceive().UpdateHeadBlock(Arg.Any<Hash256>()), Throws.Nothing);
         }
     }
 
