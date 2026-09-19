@@ -157,9 +157,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
             ReceiptsMessage response = ServeReceipts([Build.A.Receipt.WithLogs(logs).TestObject]);
 
-            Assert.That(response.TxReceipts, Is.Not.Empty);
-            Assert.That(_ctx._receiptMessageSerializer.GetLength(response, out _),
-                Is.LessThanOrEqualTo((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response.TxReceipts, Is.Not.Empty);
+                Assert.That(_ctx._receiptMessageSerializer.GetLength(response, out _),
+                    Is.LessThanOrEqualTo((int)SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
+            }
         }
 
         [Test]

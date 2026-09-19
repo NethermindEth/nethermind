@@ -53,23 +53,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             for (int i = 0; i < receipts.Length; i++)
             {
-                estimate += EstimateSize(receipts[i], decoder);
+                // Exact encoded length so log addresses and RLP framing aren't under-counted. Receipts
+                // without a post-transaction state encode the same length under either EIP-658 behavior.
+                estimate += (ulong)decoder.GetLength(receipts[i], RlpBehaviors.None);
             }
 
             // A block's receipts go on the wire inside their own sequence.
             return estimate > int.MaxValue ? estimate : (ulong)Rlp.LengthOfSequence((int)estimate);
-        }
-
-        private static ulong EstimateSize(TxReceipt? receipt, IRlpDecoder<TxReceipt> decoder)
-        {
-            if (receipt is null)
-            {
-                return 0;
-            }
-
-            // Exact encoded length so log addresses and RLP framing aren't under-counted. Receipts without
-            // a post-transaction state encode the same length under either EIP-658 behavior.
-            return (ulong)decoder.GetLength(receipt, RlpBehaviors.None);
         }
     }
 }

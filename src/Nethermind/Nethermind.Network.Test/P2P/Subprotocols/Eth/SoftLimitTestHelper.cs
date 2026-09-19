@@ -32,6 +32,12 @@ internal static class SoftLimitTestHelper
         ulong sizeEstimate = 0;
         for (int i = 0; i < requestedCount; i++)
         {
+            // A block that does not fit under the hard cap is not served at all.
+            if (sizeEstimate + receiptBlockSize > SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit)
+            {
+                return i;
+            }
+
             sizeEstimate += receiptBlockSize;
             if (sizeEstimate > SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit)
             {
