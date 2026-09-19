@@ -592,6 +592,26 @@ public class HistoryWriterTests
     }
 
     [Test]
+    public void CaptureUpTo_WhenSnapshotIsMissing_ReportsObservedGap()
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsError.Returns(true);
+        ILogger wrappedLogger = new(logger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<HistoryWriter>().Returns(wrappedLogger);
+        FlatDbConfig config = new() { HistoryEnabled = true };
+        HistoryWriter writer = new(_db, _historyColumns, config, _availability, _rowFormat, logManager, commitments: null);
+        SeedGenesisFloor();
+
+        writer.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        logger.Received(1).Error(Arg.Is<string>(message =>
+            message.Contains("a required per-block snapshot was unavailable")
+            && !message.Contains("pruned before history was enabled")), Arg.Any<Exception?>());
+        Assert.That(writer.CaptureHealthy, Is.False);
+    }
+
+    [Test]
     public void CaptureUpTo_WhenTierDiagnosticsThrow_DisablesCaptureOnce()
     {
         SeedGenesisFloor();

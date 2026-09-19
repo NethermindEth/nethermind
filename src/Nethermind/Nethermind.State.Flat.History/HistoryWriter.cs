@@ -377,9 +377,6 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         return current == StateId.PreGenesis;
     }
 
-    /// <summary>Only reachable when history was enabled mid-life, so it is permanent. The message names where the walk
-    /// stopped and what the tiers held there: the walk reads per-block snapshots only, so a state carried solely by a
-    /// multi-block chunk reads the same as a pruned one from here, and the two need telling apart from a node's log.</summary>
     private void ReportUnconnectedWalk(in StateId current, bool hasWatermark, ulong watermark, in StateId persistedHead, ISnapshotRepository snapshotRepository)
     {
         // The walk reports a refusal it did not cause when capture is already off: a reorged capture disables it from
@@ -387,7 +384,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         if (_permanentGapDetected) return;
 
         DisableCapture($"History capture stopped at {current} without connecting to the captured range - " +
-            $"the blocks below were pruned before history was enabled. The walk started at the persisted head " +
+            $"a required per-block snapshot was unavailable. The walk started at the persisted head " +
             $"{persistedHead}; at the stop {DescribeTiers(current, snapshotRepository)}. The watermark stays at " +
             $"{(hasWatermark ? watermark.ToString() : "none")}; as-of reads above it report no history, and capture " +
             "is disabled until restart.");
@@ -411,16 +408,16 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     private static string DescribeTiersCore(in StateId stateId, ISnapshotRepository snapshotRepository)
     {
         bool inMemoryBase = snapshotRepository.TryLeaseInMemoryState(stateId, SnapshotTier.InMemoryBase, out Snapshot? baseSnapshot);
+        using Snapshot? baseLease = baseSnapshot;
         string baseSpan = inMemoryBase ? $"{baseSnapshot!.From.BlockNumber}->{baseSnapshot.To.BlockNumber}" : "none";
-        baseSnapshot?.Dispose();
 
         bool inMemoryCompacted = snapshotRepository.TryLeaseInMemoryState(stateId, SnapshotTier.InMemoryCompacted, out Snapshot? compacted);
+        using Snapshot? compactedLease = compacted;
         string compactedSpan = inMemoryCompacted ? $"{compacted!.From.BlockNumber}->{compacted.To.BlockNumber}" : "none";
-        compacted?.Dispose();
 
         bool persistedBase = snapshotRepository.TryLeaseBasePersistedSnapshot(stateId, out PersistedSnapshot? persisted);
+        using PersistedSnapshot? persistedLease = persisted;
         string persistedSpan = persistedBase ? $"{persisted!.From.BlockNumber}->{persisted.To.BlockNumber}" : "none";
-        persisted?.Dispose();
 
         int statesAtBlock;
         using (ArrayPoolList<StateId> states = snapshotRepository.GetStatesAtBlockNumber(stateId.BlockNumber)) statesAtBlock = states.Count;

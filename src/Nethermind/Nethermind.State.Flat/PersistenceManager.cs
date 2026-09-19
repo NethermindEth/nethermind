@@ -440,9 +440,6 @@ public class PersistenceManager(
             seed ??= latestStateId;
             if (seed is null) break;
 
-            // A finalized seed the walk cannot assemble from, or a committed head left on another chain by an
-            // engine-driven tip, must not end the flush: this is the shutdown path, and what it fails to persist
-            // is discarded with the in-memory tier and never captured into history.
             (PersistedSnapshot? persisted, Snapshot? snapshotToPersist) =
                 snapshotRepository.FindSnapshotToPersist(seed.Value, currentPersistedState, _compactSize);
             if (persisted is null && snapshotToPersist is null)
