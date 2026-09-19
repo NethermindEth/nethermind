@@ -36,7 +36,7 @@ public sealed class HistoricalFlatDbManager(
 
         // A historical bundle reads values at baseBlock but exposes the current trie; executing main-chain
         // blocks on that mix produces a corrupt state root and cascades into invalid-block deletions.
-        if (usage is ResourcePool.Usage.MainBlockProcessing or ResourcePool.Usage.PostMainBlockProcessing)
+        if (IsBlockProcessing(usage))
         {
             throw new InvalidOperationException(
                 $"Main block processing requested a writable scope at historical state {baseBlock}; history serves read-only execution.");
@@ -65,6 +65,11 @@ public sealed class HistoricalFlatDbManager(
     public bool HasStateForBlock(in StateId stateId) =>
         Classify(stateId) is HistoricalReadMode.Normal or HistoricalReadMode.Restricted || inner.HasStateForBlock(stateId);
 
+    public bool HasStateForBlock(in StateId stateId, ResourcePool.Usage usage) =>
+        IsBlockProcessing(usage)
+            ? Classify(stateId) == HistoricalReadMode.NotHistorical && inner.HasStateForBlock(stateId, usage)
+            : HasStateForBlock(stateId);
+
     public void FlushCache(CancellationToken cancellationToken) => inner.FlushCache(cancellationToken);
 
     public void DropStateNotReachableFrom(in StateId head) => inner.DropStateNotReachableFrom(head);
@@ -91,6 +96,9 @@ public sealed class HistoricalFlatDbManager(
 
         return historyReader.GetSliceScopesArray().Length > 0 ? HistoricalReadMode.Restricted : HistoricalReadMode.Unavailable;
     }
+
+    private static bool IsBlockProcessing(ResourcePool.Usage usage) =>
+        usage is ResourcePool.Usage.MainBlockProcessing or ResourcePool.Usage.PostMainBlockProcessing;
 
     private static void ThrowUnavailable(in StateId baseBlock) =>
         throw new StateUnavailableException(

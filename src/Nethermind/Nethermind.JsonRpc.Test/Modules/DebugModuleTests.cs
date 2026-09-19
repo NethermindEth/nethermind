@@ -473,6 +473,34 @@ public class DebugModuleTests
     }
 
     [Test]
+    public async Task DebugSetHead_ResolvesTargetAndReportsRewindResult([Values] bool updated)
+    {
+        Block block = Build.A.Block.WithNumber(2).TestObject;
+        _debugBridge.GetBlock(new BlockParameter(2UL)).Returns(block);
+        _debugBridge.UpdateHeadBlock(block.Hash!).Returns(updated);
+
+        string response = await SerializedRequest("debug_setHead", "0x2");
+
+        Assert.That(response, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":{(updated ? "true" : "false")},\"id\":67}}"));
+        _debugBridge.Received().UpdateHeadBlock(block.Hash!);
+    }
+
+    [Test]
+    public void DebugSetHead_RejectsUnknownTarget()
+    {
+        _debugBridge.GetBlock(Arg.Any<BlockParameter>()).ReturnsNull();
+
+        ResultWrapper<bool> result = CreateModule().debug_setHead(new BlockParameter(2UL));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(result.Data, Is.False);
+            Assert.That(() => _debugBridge.DidNotReceive().UpdateHeadBlock(Arg.Any<Hash256>()), Throws.Nothing);
+        }
+    }
+
+    [Test]
     public void DebugTraceTransactionInBlockByIndex_WithCustomTracer_DisposesDiscardedTracesAndPipelineDisposesSelectedTrace()
     {
         (IDisposable[] engines, GethLikeTxTrace[] traces) = CreateSentinelTraces(3);

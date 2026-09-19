@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipelines;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,6 +21,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
@@ -31,6 +33,9 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugBridge : IDebugBridge
 {
+    // Debug bridges are scoped per RPC module, but head resets and slice deletions mutate the same tree.
+    private static readonly ConditionalWeakTable<IBlockTree, StrongBox<int>> ChainMutationStates = [];
+    private readonly ILogger _logger;
     private readonly IConfigProvider _configProvider;
     private readonly IGethStyleTracer _tracer;
     private readonly IBlockTree _blockTree;
@@ -56,8 +61,10 @@ public class DebugBridge : IDebugBridge
         ISyncModeSelector syncModeSelector,
         IBadBlockStore badBlockStore,
         IBlockStore blockStore,
-        IWorldStateManager worldStateManager)
+        IWorldStateManager worldStateManager,
+        ILogManager logManager)
     {
+        _logger = logManager.GetClassLogger<DebugBridge>();
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -100,30 +107,60 @@ public class DebugBridge : IDebugBridge
 
     public ChainLevelInfo GetLevelInfo(ulong number) => _blockTree.FindLevel(number);
 
-    public int DeleteChainSlice(ulong startNumber, bool force = false) => _blockTree.DeleteChainSlice(startNumber, force: force);
+    public int DeleteChainSlice(ulong startNumber, bool force = false)
+    {
+        StrongBox<int> mutationState = ChainMutationStates.GetOrCreateValue(_blockTree);
+        if (Interlocked.CompareExchange(ref mutationState.Value, 1, 0) != 0)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot delete the chain slice from {startNumber}: another debug chain mutation is in progress.");
+            return 0;
+        }
+
+        try
+        {
+            return _blockTree.DeleteChainSlice(startNumber, force: force);
+        }
+        finally
+        {
+            Volatile.Write(ref mutationState.Value, 0);
+        }
+    }
 
     public bool UpdateHeadBlock(Hash256 blockHash)
     {
-        BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
-        if (header is null) return false;
-
-        // Move the live head first, by the route forkchoiceUpdated takes, so `latest` and the state kept
-        // below agree; pruning against a head the node does not advertise would drop the state it serves.
-        // A successful move also writes the persisted head pointer; a rejected one must not, or a restart
-        // would start from a head the node never reached.
-        if (_blockTree.Head?.Hash != header.Hash
-            && !_blockTree.TryUpdateMainChain(header, wereProcessed: true, forceUpdateHeadBlock: true))
+        StrongBox<int> mutationState = ChainMutationStates.GetOrCreateValue(_blockTree);
+        if (Interlocked.CompareExchange(ref mutationState.Value, 1, 0) != 0)
         {
+            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockHash}: another debug chain mutation is in progress.");
             return false;
         }
 
-        // benchmarkoor compatibility: it rewinds to the same head after every test, so state kept for the
-        // branches those tests built must go, or it accumulates for the whole run.
-        // Known limitation: the block tree keeps WasProcessed on the dropped blocks and NewPayloadHandler
-        // keeps its result cache, so resubmitting one of them returns VALID without re-execution and its
-        // child then answers SYNCING for want of parent state. Callers must replay fresh payloads only.
-        _worldStateManager.DropStateNotReachableFrom(header);
-        return true;
+        try
+        {
+            BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
+            if (header is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockHash}: block is unknown.");
+                return false;
+            }
+
+            // The scope provider rejects read-only flat history; the reader enforces trie pruning retention.
+            if (!_worldStateManager.GlobalWorldState.HasRoot(header)
+                || !_worldStateManager.GlobalStateReader.HasStateForBlock(header))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockHash}: state is unavailable for block processing.");
+                return false;
+            }
+
+            if (!_blockTree.TryRewindHead(blockHash)) return false;
+
+            _worldStateManager.DropStateNotReachableFrom(header);
+            return true;
+        }
+        finally
+        {
+            Volatile.Write(ref mutationState.Value, 0);
+        }
     }
 
     public Task<bool> MigrateReceipts(ulong from, ulong to) => _receiptsMigration.Run(from, to);

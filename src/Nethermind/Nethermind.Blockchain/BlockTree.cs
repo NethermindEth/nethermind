@@ -1471,6 +1471,65 @@ namespace Nethermind.Blockchain
             }
         }
 
+        /// <inheritdoc/>
+        public bool TryRewindHead(Hash256 blockHash)
+        {
+            Block? block = FindBlock(blockHash, BlockTreeLookupOptions.None);
+            if (block?.Hash is null)
+            {
+                if (Logger.IsWarn) Logger.Warn($"Cannot rewind the head to {blockHash} - the block is unknown or its body is unavailable.");
+                return false;
+            }
+
+            Block? head = Head;
+            if (head is null)
+            {
+                if (Logger.IsWarn) Logger.Warn($"Cannot rewind the head to {block.ToString(Block.Format.Short)} - there is no current head.");
+                return false;
+            }
+
+            if (block.Number > head.Number)
+            {
+                if (Logger.IsWarn) Logger.Warn($"Cannot rewind the head to {block.ToString(Block.Format.Short)} - it is above the current head {head.ToString(Block.Format.Short)}.");
+                return false;
+            }
+
+            if (!IsMainChain(block.Header))
+            {
+                if (Logger.IsWarn) Logger.Warn($"Cannot rewind the head to {block.ToString(Block.Format.Short)} - the block is not on the main chain.");
+                return false;
+            }
+
+            bool isCurrentHead = block.Hash == head.Hash;
+            if (!isCurrentHead && Logger.IsWarn) Logger.Warn($"Rewinding the head from {head.ToString(Block.Format.Short)} to {block.ToString(Block.Format.Short)}.");
+
+            BlockAcceptingNewBlocks();
+            try
+            {
+                if (isCurrentHead)
+                {
+                    using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
+                    ClearStaleMarkersAbove(block.Number, batch);
+                }
+                // Updating an existing canonical block clears the canonical markers above it.
+                else if (!TryUpdateMainChain(block.Header, wereProcessed: true, forceUpdateHeadBlock: true, block))
+                {
+                    if (Logger.IsWarn) Logger.Warn($"Failed to rewind the head to {block.ToString(Block.Format.Short)}.");
+                    return false;
+                }
+
+                // Allow a shorter replacement branch to become best suggested.
+                BestSuggestedHeader = block.Header;
+                BestSuggestedBody = block;
+            }
+            finally
+            {
+                ReleaseAcceptingNewBlocks();
+            }
+
+            return true;
+        }
+
         private void UpdateHeadBlock(Block block)
         {
             BlockEventArgs args = SetHeadBlock(block);

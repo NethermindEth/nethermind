@@ -23,6 +23,17 @@ public class ReadOnlyBlockTreeTests
     }
 
     [TestCase]
+    public void TryRewindHead_forwards_to_the_wrapped_tree()
+    {
+        // Deliberate, unlike the mutating members around it that throw: the JSON-RPC scope resolves this tree,
+        // so refusing here would leave debug_setHead and debug_resetHead unable to move anything.
+        _innerBlockTree.TryRewindHead(TestItem.KeccakA).Returns(true);
+
+        Assert.That(_blockTree.TryRewindHead(TestItem.KeccakA), Is.True);
+        _innerBlockTree.Received().TryRewindHead(TestItem.KeccakA);
+    }
+
+    [TestCase]
     public void DeleteChainSlice_throws_when_endNumber_other_than_bestKnownNumber()
     {
         Action action = () => _blockTree.DeleteChainSlice(0, 10);

@@ -169,6 +169,8 @@ public class BlockTreeTestDouble : IBlockTree
         Inner?.Insert(block, insertBlockOptions, insertHeaderOptions, bodiesWriteFlags) ?? AddBlockResult.Added;
 
     public virtual void UpdateHeadBlock(Hash256 blockHash) => Inner?.UpdateHeadBlock(blockHash);
+    /// <inheritdoc/>
+    public virtual bool TryRewindHead(Hash256 blockHash) => Inner?.TryRewindHead(blockHash) ?? false;
     public virtual void NewOldestBlock(ulong oldestBlock) => Inner?.NewOldestBlock(oldestBlock);
 
     public virtual AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) =>

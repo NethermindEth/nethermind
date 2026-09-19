@@ -30,6 +30,7 @@ using Nethermind.HealthChecks;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Test;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
@@ -1951,6 +1952,36 @@ public partial class EngineModuleTests
         {
             // No skip: the unprocessed branch falls through and returns Syncing.
             Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
+        }
+    }
+
+    [Test]
+    public async Task rewinding_the_head_lets_the_node_execute_a_new_branch_from_there([Values] bool byHash)
+    {
+        using MergeTestBlockchain chain =
+            await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(rpc, chain, 4, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
+        Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(blocks[^1].BlockHash));
+
+        IDebugRpcModule debug = chain.Container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
+        ResultWrapper<bool> rewind = byHash
+            ? debug.debug_resetHead(blocks[0].BlockHash!)
+            : debug.debug_setHead(new BlockParameter(blocks[0].BlockNumber));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rewind.Data, Is.True);
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(blocks[0].BlockHash));
+        }
+
+        // A different prevRandao makes this a genuinely new block rather than a replay of blocks[1].
+        IReadOnlyList<ExecutionPayload> replacement = await ProduceBranchV1(rpc, chain, 1, blocks[0], setHead: true, TestItem.KeccakE);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(replacement[0].BlockHash, Is.Not.EqualTo(blocks[1].BlockHash));
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(replacement[0].BlockHash));
         }
     }
 
