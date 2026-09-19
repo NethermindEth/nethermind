@@ -131,6 +131,10 @@ Before creating a pull request:
   ```
 - Follow the [pull_request_template.md](.github/pull_request_template.md) format: fill in the changes section, tick the appropriate type-of-change checkboxes, and complete the testing/documentation sections. The checkboxes drive automatic PR labeling.
 
+## Agent declaration
+
+- When creating a PR or commenting on GitHub, state that you are an AI agent acting on behalf of the user and name the harness and model, e.g. `🤖 AI agent (Claude Code / Opus 5) on behalf of @user` — this makes it easy to trace which configuration produced which behavior.
+
 ## Prerequisites
 
 See [global.json](./global.json) for the required .NET SDK version.
