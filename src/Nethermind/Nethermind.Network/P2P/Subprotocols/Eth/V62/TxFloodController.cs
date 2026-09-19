@@ -475,6 +475,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             public void AddCreditsTo(Dictionary<ulong, int> creditedFingerprints)
             {
+                int returnedCount = 0;
+                for (int i = 0; i < _count; i++)
+                {
+                    if (_returned[i]) returnedCount++;
+                }
+                int capacity = creditedFingerprints.EnsureCapacity(0);
+                int requiredCapacity = creditedFingerprints.Count + returnedCount;
+                if (requiredCapacity > capacity)
+                {
+                    creditedFingerprints.EnsureCapacity(Math.Max(requiredCapacity, capacity * 2));
+                }
                 for (int i = 0; i < _count; i++)
                 {
                     if (_returned[i])

@@ -19,6 +19,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using System;
+using Microsoft.Extensions.ObjectPool;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -49,6 +50,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         public override byte ProtocolVersion => EthVersions.Eth65;
 
         private const int MaxNumberOfTxsInOneMsg = 256;
+        private static readonly ObjectPool<HashSet<ValueHash256>> ResponseHashesPool =
+            new DefaultObjectPool<HashSet<ValueHash256>>(new ResponseHashesPolicy(), maximumRetained: 16);
+
+        private sealed class ResponseHashesPolicy : PooledObjectPolicy<HashSet<ValueHash256>>
+        {
+            public override HashSet<ValueHash256> Create() => new(MaxNumberOfTxsInOneMsg);
+
+            public override bool Return(HashSet<ValueHash256> hashes)
+            {
+                hashes.Clear();
+                return true;
+            }
+        }
         private static readonly int PooledTransactionsResponseSoftLimit = (int)2.MiB;
 
         protected override bool HandleMessageCore(ZeroPacket message)
@@ -125,49 +139,61 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                              $"in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
         }
 
-        internal Task<PooledTransactionsMessage> FulfillPooledTransactionsRequest(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
+        internal ValueTask<PooledTransactionsMessage> FulfillPooledTransactionsRequest(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
             ArrayPoolList<Transaction> txsToSend = new(Math.Min(msg.Hashes.Count, MaxNumberOfTxsInOneMsg));
 
             // Once a response is non-empty, enforce the eth spec's 256-hash soft limit. If the
             // first 256 hashes miss, keep scanning without growing the deduplication set.
-            HashSet<ValueHash256> seenHashes = new(Math.Min(msg.Hashes.Count, MaxNumberOfTxsInOneMsg));
-
-            // Eth/68 and later use the 2 MiB pooled-transactions soft response limit from the devp2p eth capability.
-            int packetSizeLeft = ProtocolVersion >= EthVersions.Eth68
-                ? PooledTransactionsResponseSoftLimit
-                : TransactionsMessage.MaxPacketSize;
-            foreach (Hash256 hash in msg.Hashes.AsSpan())
+            HashSet<ValueHash256> seenHashes = ResponseHashesPool.Get();
+            try
             {
-                if (cancellationToken.IsCancellationRequested) break;
 
-                if (seenHashes.Count >= MaxNumberOfTxsInOneMsg && txsToSend.Count > 0)
+                // Eth/68 and later use the 2 MiB pooled-transactions soft response limit from the devp2p eth capability.
+                int packetSizeLeft = ProtocolVersion >= EthVersions.Eth68
+                    ? PooledTransactionsResponseSoftLimit
+                    : TransactionsMessage.MaxPacketSize;
+                foreach (Hash256 hash in msg.Hashes.AsSpan())
                 {
-                    break;
-                }
+                    if (cancellationToken.IsCancellationRequested) break;
 
-                if (seenHashes.Count < MaxNumberOfTxsInOneMsg && !seenHashes.Add(hash.ValueHash256))
-                {
-                    continue;
-                }
-
-                if (TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx))
-                {
-                    Transaction responseTx = PreparePooledTransactionForResponse(tx);
-                    int txSize = responseTx.GetLength();
-
-                    if (txSize > packetSizeLeft && txsToSend.Count > 0)
+                    if (seenHashes.Count >= MaxNumberOfTxsInOneMsg && txsToSend.Count > 0)
                     {
                         break;
                     }
 
-                    txsToSend.Add(responseTx);
-                    packetSizeLeft -= txSize;
-                    TxPool.Metrics.PendingTransactionsSent++;
-                }
-            }
+                    if (seenHashes.Count < MaxNumberOfTxsInOneMsg && !seenHashes.Add(hash.ValueHash256))
+                    {
+                        continue;
+                    }
 
-            return Task.FromResult(CreatePooledTransactionsMessage(txsToSend));
+                    if (TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx))
+                    {
+                        Transaction responseTx = PreparePooledTransactionForResponse(tx);
+                        int txSize = responseTx.GetLength();
+
+                        if (txSize > packetSizeLeft && txsToSend.Count > 0)
+                        {
+                            break;
+                        }
+
+                        txsToSend.Add(responseTx);
+                        packetSizeLeft -= txSize;
+                        TxPool.Metrics.PendingTransactionsSent++;
+                    }
+                }
+
+                return new ValueTask<PooledTransactionsMessage>(CreatePooledTransactionsMessage(txsToSend));
+            }
+            catch
+            {
+                txsToSend.Dispose();
+                throw;
+            }
+            finally
+            {
+                ResponseHashesPool.Return(seenHashes);
+            }
         }
 
         protected virtual bool CanServePooledTransaction(Transaction tx) => true;

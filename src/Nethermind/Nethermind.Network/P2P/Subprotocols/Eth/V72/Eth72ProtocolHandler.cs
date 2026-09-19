@@ -490,7 +490,7 @@ public class Eth72ProtocolHandler(
         }
     }
 
-    private async Task<PooledTransactionsMessage66> Handle(GetPooledTransactionsMessage66 getPooledTransactions, CancellationToken cancellationToken)
+    private async ValueTask<PooledTransactionsMessage66> Handle(GetPooledTransactionsMessage66 getPooledTransactions, CancellationToken cancellationToken)
     {
         using GetPooledTransactionsMessage66 message = getPooledTransactions;
         PooledTransactionsMessage65 pooledTransactions = await FulfillPooledTransactionsRequest(message.EthMessage, cancellationToken);

@@ -202,6 +202,24 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         }
 
         [Test]
+        public async Task should_not_retain_response_hashes_between_requests([Values] bool cancelFirst)
+        {
+            Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
+            _transactionPool.TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
+                .Returns(x => { x[1] = tx; return true; });
+            using GetPooledTransactionsMessage request = new(new[] { TestItem.KeccakA, TestItem.KeccakA }.ToPooledList());
+            using (PooledTransactionsMessage first = await _handler.FulfillPooledTransactionsRequest(
+                request, new CancellationToken(cancelFirst)))
+            {
+                Assert.That(first.Transactions.Count, Is.EqualTo(cancelFirst ? 0 : 1));
+            }
+
+            using PooledTransactionsMessage second = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
+            Assert.That(second.Transactions.Count, Is.EqualTo(1));
+            Assert.That(second.Transactions[0], Is.SameAs(tx));
+        }
+
+        [Test]
         public async Task should_find_first_available_transaction_after_soft_request_limit()
         {
             Hash256[] hashes = GenerateHashes(257);
