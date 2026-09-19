@@ -18,7 +18,6 @@ namespace Nethermind.State.Pbt.Test;
 internal sealed class PbtTreeHarness : IDisposable
 {
     private PbtNodeGroupStore _store = new();
-    private readonly PbtLeafModel _leaves = new();
 
     /// <summary>A fresh processor-count fold quota, so concurrently running fixtures never starve each other.</summary>
     public static ConcurrencyController FoldQuota() => new(Environment.ProcessorCount);
@@ -31,23 +30,17 @@ internal sealed class PbtTreeHarness : IDisposable
     public IReadOnlyList<PbtNodeRecord> Nodes => _store.EnumerateRecords();
     public IReadOnlyList<PbtPhysicalPayload> PhysicalPayloads => _store.ExportPhysicalPayloads();
 
-    /// <summary>Applies leaf writes, completing every touched run from the leaves the tree already holds.</summary>
     public ValueHash256 ApplyBatch(IEnumerable<(byte[] Key, byte[]? Value)> writes, TrieUpdaterMetrics? metrics = null)
     {
-        RootHash = TrieUpdater.UpdateRoot(_store, RootHash, PrepareBatch(_leaves, writes), metrics);
-        return RootHash;
-    }
-
-    /// <summary>Prepares leaf writes against <paramref name="leaves"/>, the tree's leaf model, completing every touched run.</summary>
-    internal static PbtWriteBatch<PbtStorageTreeKey> PrepareBatch(PbtLeafModel leaves, IEnumerable<(byte[] Key, byte[]? Value)> writes)
-    {
         using PbtWriteBatchBuilder<PbtStorageTreeKey> batch = new(0);
-        foreach ((byte[] runKey, ISlotRun run) in leaves.Complete(writes))
+        foreach ((byte[] key, byte[]? value) in writes)
         {
-            batch.SetRun(new PbtStorageTreeKey(runKey), run);
-            SlotRun.Return(run);
+            PbtStorageTreeKey fullKey = new(key);
+            if (value is null) batch.Delete(fullKey);
+            else batch.Set(fullKey, new ValueHash256(value));
         }
-        return batch.Build();
+        RootHash = TrieUpdater.UpdateRoot(_store, RootHash, batch.Build(), metrics);
+        return RootHash;
     }
 
     public bool TryGetNode<TPath>(TPath path, out byte[]? encoding) where TPath : struct, IPbtNodePath<TPath>
@@ -197,22 +190,20 @@ internal static class PbtStoreTestExtensions
         return key;
     }
 
-    /// <summary>Prepares leaf writes against <paramref name="leaves"/>, the tree's leaf model, completing every touched run.</summary>
-    internal static PbtPartitionBatches PreparePartitions(PbtLeafModel leaves, IEnumerable<(byte[] Key, byte[]? Value)> changes)
+    internal static PbtPartitionBatches PreparePartitions(IEnumerable<(byte[] Key, byte[]? Value)> changes)
     {
         using PbtWriteBatchBuilder<PbtPath> account = new(2);
         using PbtWriteBatchBuilder<PbtPath> code = new(2);
         using PbtWriteBatchBuilder<PbtStoragePath> storage = new(2);
-        foreach ((byte[] runKey, ISlotRun run) in leaves.Complete(changes))
+        foreach ((byte[] key, byte[]? value) in changes)
         {
-            switch (runKey[0])
+            switch (key[0])
             {
-                case 0x00: account.SetRun(new PbtPath(runKey), run); break;
-                case 0x01: code.SetRun(new PbtPath(runKey), run); break;
-                case 0xFF: storage.SetRun(new PbtStoragePath(runKey), run); break;
+                case 0x00: Apply(account, new PbtPath(key), value); break;
+                case 0x01: Apply(code, new PbtPath(key), value); break;
+                case 0xFF: Apply(storage, new PbtStoragePath(key), value); break;
                 default: throw new ArgumentException("Unsupported partition zone.", nameof(changes));
             }
-            SlotRun.Return(run);
         }
         return new PbtPartitionBatches
         {
@@ -220,6 +211,12 @@ internal static class PbtStoreTestExtensions
             Code = code.Count == 0 ? null : code.Build(),
             Storage = storage.Count == 0 ? null : storage.Build(),
         };
+    }
+
+    private static void Apply<TKey>(PbtWriteBatchBuilder<TKey> builder, TKey key, byte[]? value) where TKey : struct, IPbtKey<TKey>
+    {
+        if (value is null) builder.Delete(key);
+        else builder.Set(key, new ValueHash256(value));
     }
 
     internal static byte[]? GetNode<TPath>(this PbtNodeGroupStore store, TPath path) where TPath : struct, IPbtNodePath<TPath>

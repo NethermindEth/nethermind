@@ -653,9 +653,8 @@ public class ImportPbtFromPreimageFlat(
 
         public async ValueTask Add(RebuildEntry entry)
         {
-            // A chunk is folded whole, so it may only end between slot runs.
-            if (_chunk.Count >= chunkSize && SlotRun.RunKey(entry.Key) != SlotRun.RunKey(_chunk[^1].Key)) await Flush();
             _chunk.Add(entry);
+            if (_chunk.Count >= chunkSize) await Flush();
         }
 
         public async ValueTask Complete()

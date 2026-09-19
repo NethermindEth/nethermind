@@ -268,17 +268,13 @@ public sealed class PbtSnapshotBundle(
 
     public void SetSlot(Address address, in UInt256 slot, in EvmWord value)
     {
-        ObjectDisposedException.ThrowIf(_isDisposed, this);
         PbtStorageTreeKey key = PbtStateKey.Storage(address, slot);
+        SetPbtLeaf(key, EvmWordSlot.IsZero(value) ? null : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value)));
         HashedKey<PbtStorageTreeKey> runKey = SlotRun.RunKey(key);
         ValueHash256 addressHash = PbtFlatState.StorageAddress(key);
         lock (_runLocks[(uint)runKey.GetHashCode() % RunLockStripes])
         {
-            ISlotRun updated = BufferRun(runKey, addressHash).With(SlotRun.IndexOf(key), value);
-            WriteBuffer.SetRun(runKey, updated);
-            // The tree takes the same whole run; header slots live in the account zone.
-            if (PbtWriteBatchSet<PbtStorageTreeKey>.PartitionOf(runKey.Key) == (int)PbtPartition.Storage) _storageBatch.SetRun((PbtStoragePath)runKey.Key, updated);
-            else _accountBatch.SetRun((PbtPath)runKey.Key, updated);
+            WriteBuffer.SetRun(runKey, BufferRun(runKey, addressHash).With(SlotRun.IndexOf(key), value));
         }
     }
 

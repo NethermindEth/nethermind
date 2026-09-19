@@ -31,11 +31,11 @@ internal static partial class TrieUpdater<TKey, TPath>
             KnownHash = knownHash;
         }
 
-        internal Subtree(TKey leafKey, in ValueHash256 value)
+        internal Subtree(PbtWriteOperation<TKey> operation)
         {
             Kind = NodeKind.Leaf;
-            LeafKey = leafKey;
-            ValueOrLeft = value;
+            LeafKey = operation.Key;
+            ValueOrLeft = operation.Value;
         }
 
         internal Subtree(NodeGroupPath path, in ValueHash256 left, in ValueHash256 right)
@@ -171,7 +171,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (IsEmpty) return default;
             if (IsLeaf)
             {
-                Subtree leaf = Node.Kind == NodeKind.Leaf ? Node : new(Node.Key, new ValueHash256(Node.Reader.Value));
+                Subtree leaf = Node.Kind == NodeKind.Leaf ? Node : new(new PbtWriteOperation<TKey>(Node.Key, new ValueHash256(Node.Reader.Value)));
                 return new(default, leaf);
             }
 
@@ -209,7 +209,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             if (!source.IsEmpty)
             {
                 if (source.Node.IsLeaf)
-                    result.Node = new(TKey.Create(source.Node.Key.Bytes), source.Node.ValueOrLeft);
+                    result.Node = new(new PbtWriteOperation<TKey>(TKey.Create(source.Node.Key.Bytes), source.Node.ValueOrLeft));
                 else
                 {
                     Debug.Assert(source.Node.Kind == NodeKind.Branch);

@@ -43,6 +43,10 @@ internal sealed class PbtWriteBatchSet<TKey> : PbtWriteBatchSet, IDisposable whe
 
     private ArrayPoolList<PbtWriteOperation<TKey>> Operations => _operations ?? throw new InvalidOperationException("The prepared batch has already been consumed.");
 
+    /// <remarks>The source must already contain unique keys; preparation does not deduplicate or drain it.</remarks>
+    internal static PbtWriteBatchSet<TKey> Create(IEnumerable<KeyValuePair<TKey, ValueHash256?>> uniqueOperations) =>
+        PrepareOperations(uniqueOperations);
+
     internal static PbtWriteBatchSet<TKey> Create(PbtWriteBatch<TKey> changes)
     {
         changes.Consume(out ArrayPoolList<PbtWriteOperation<TKey>> operations, out ArrayPoolList<int> table);
@@ -73,11 +77,26 @@ internal sealed class PbtWriteBatchSet<TKey> : PbtWriteBatchSet, IDisposable whe
     /// <inheritdoc/>
     public void Dispose()
     {
-        if (_operations is not null) PbtWriteBatch<TKey>.ReturnRuns(_operations.AsSpan());
         _operations?.Dispose();
         _table?.Dispose();
         _operations = null;
         _table = null;
+    }
+
+    private static PbtWriteBatchSet<TKey> PrepareOperations(IEnumerable<KeyValuePair<TKey, ValueHash256?>> uniqueOperations)
+    {
+        ArrayPoolList<PbtWriteOperation<TKey>> operations = new(0);
+        try
+        {
+            foreach ((TKey key, ValueHash256? value) in uniqueOperations)
+                operations.Add(new(key, value.GetValueOrDefault()));
+            return Prepare(operations);
+        }
+        catch
+        {
+            operations.Dispose();
+            throw;
+        }
     }
 
     private static PbtWriteBatchSet<TKey> Prepare(ArrayPoolList<PbtWriteOperation<TKey>> operations)

@@ -162,8 +162,8 @@ public class PbtMetricsTests
             Assert.That(actualAccount, Is.EqualTo(empty ? null : account));
             Assert.That(actualHeaderSlot, Is.EqualTo(empty ? default : slot));
             Assert.That(actualSlot, Is.EqualTo(empty ? default : slot));
-            Assert.That(SlotRun.LeafValue(headerRun, SlotRun.IndexOf(headerStorageKey)), Is.EqualTo(new ValueHash256(EvmWordSlot.AsReadOnlySpan(in actualHeaderSlot))));
-            Assert.That(SlotRun.LeafValue(storageRun, SlotRun.IndexOf(storageKey)), Is.EqualTo(new ValueHash256(EvmWordSlot.AsReadOnlySpan(in actualSlot))));
+            Assert.That(headerRun.Get(SlotRun.IndexOf(headerStorageKey)), Is.EqualTo(actualHeaderSlot));
+            Assert.That(storageRun.Get(SlotRun.IndexOf(storageKey)), Is.EqualTo(actualSlot));
             Assert.That(actualGroup, Is.SameAs(empty ? null : payload));
             Assert.That(actualCode, Is.SameAs(scenario == "missing" ? null : code));
             Assert.That(_readOnlyBundleTime.Labels, Is.EqualTo(detailedMetrics

@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -91,8 +90,7 @@ public class PbtResourcePoolTests
                 {
                     Assert.That(operation.Key.Bytes[1] >> 4, Is.EqualTo(shard));
                     Assert.That(shardKeys.Add(operation.Key), Is.True);
-                    for (int slot = 0; slot < SlotRun.Width; slot++)
-                        Assert.That((operation.Run.Mask & (1 << slot)) == 0 ? (ValueHash256?)null : SlotRun.LeafValue(operation.Run, slot), Is.EqualTo(leaves[SlotRun.SlotKey(operation.Key, slot)]));
+                    Assert.That(operation.Value, Is.EqualTo(leaves[operation.Key] ?? default));
                 }
             }
             offset += entriesPerShard;
@@ -100,14 +98,7 @@ public class PbtResourcePoolTests
         Assert.That(table, Is.EqualTo(expectedTable));
         Assert.Throws<InvalidOperationException>(() => prepared.Consume(out _, out _));
         operations.AsSpan().Clear();
-        // Leaves lists sixteen slots per run; a per-key check keeps this linear.
-        int leafCount = 0;
-        foreach ((TKey leafKey, ValueHash256? leafValue) in batch.Leaves)
-        {
-            leafCount++;
-            Assert.That(leafValue, Is.EqualTo(leaves[leafKey]), "fold scratch must not own the publication values");
-        }
-        Assert.That(leafCount, Is.EqualTo(leaves.Count));
+        Assert.That(batch.Leaves, Is.EquivalentTo(leaves), "fold scratch must not own the publication values");
         using PbtWriteBatch<TKey> retry = batch.Build();
         Assert.That(retry.Count, Is.EqualTo(keys.Count), "a failed fold can retry");
         for (int index = 0; index < keys.Count; index++)
@@ -155,14 +146,13 @@ public class PbtResourcePoolTests
         original.Dispose();
         original.Set(key, TestItem.KeccakC.ValueHash256);
 
-        // Leaves lists every slot of a run; only the set ones matter here.
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(original.Leaves.Where(leaf => leaf.Value is not null), Is.EquivalentTo(new[]
+            Assert.That(original.Leaves, Is.EquivalentTo(new[]
             {
                 new KeyValuePair<PbtStorageTreeKey, ValueHash256?>(key, TestItem.KeccakC.ValueHash256)
             }));
-            Assert.That(replacement.Leaves.Where(leaf => leaf.Value is not null), Is.EquivalentTo(new[]
+            Assert.That(replacement.Leaves, Is.EquivalentTo(new[]
             {
                 new KeyValuePair<PbtStorageTreeKey, ValueHash256?>(replacementKey, TestItem.KeccakB.ValueHash256)
             }));

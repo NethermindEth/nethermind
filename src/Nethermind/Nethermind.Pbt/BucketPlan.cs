@@ -28,7 +28,7 @@ internal readonly ref struct BucketPlan(ReadOnlySpan<int> precalculated, int kno
 
     internal PartitionOutcome BucketSort<TKey>(Span<PbtWriteOperation<TKey>> operations, int bitDepth, TrieUpdaterMetrics? metrics) where TKey : struct, IPbtKey<TKey>
     {
-        int branchDepth = Math.Max(KnownCommonPrefixLength, operations.Length == 1 ? operations[0].KeyBitLength : bitDepth);
+        int branchDepth = Math.Max(KnownCommonPrefixLength, operations.Length == 1 ? operations[0].Key.BitLength : bitDepth);
         BucketPlan plan = WithRangeKnowledge(branchDepth);
         if (!Precalculated.IsEmpty)
         {
@@ -124,7 +124,7 @@ internal readonly ref struct BucketPlan(ReadOnlySpan<int> precalculated, int kno
         counts.Clear();
         int usedMask = 0;
         TKey firstKey = operations[0].Key;
-        branchDepth = operations[0].KeyBitLength;
+        branchDepth = firstKey.BitLength;
         for (int index = 0; index < operations.Length; index++)
         {
             TKey key = operations[index].Key;

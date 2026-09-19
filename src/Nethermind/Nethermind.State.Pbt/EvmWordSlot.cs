@@ -7,7 +7,7 @@ using System.Runtime.Intrinsics;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
-namespace Nethermind.Pbt;
+namespace Nethermind.State.Pbt;
 
 /// <summary>
 /// Conversions between the EVM's stripped (leading-zeros-removed) storage-value byte arrays and the

@@ -70,11 +70,9 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
                     else if (partition == (int)PbtPartition.Account) accountChanges.Set((PbtPath)entry.Key, entry.Leaf);
                     else throw new InvalidDataException($"A canonical account, code or storage key is required: {entry.Key}.");
                     receivedCount++;
-                    windowCount++;
+                    if (++windowCount == windowSize) CommitWindow();
                 }
             }
-            // A batch entry is a whole run and a chunk never splits one, so windows close between chunks.
-            if (windowCount >= windowSize) CommitWindow();
         }
 
         if (windowCount != 0) CommitWindow();

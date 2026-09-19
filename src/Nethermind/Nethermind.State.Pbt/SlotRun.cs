@@ -6,9 +6,11 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Pbt;
+using Nethermind.State.Pbt.Persistence;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
-namespace Nethermind.Pbt;
+namespace Nethermind.State.Pbt;
 
 /// <summary>
 /// The values of the <see cref="SlotRun.Width"/> consecutive storage slots that share a run key: an EIP-8297
@@ -16,7 +18,8 @@ namespace Nethermind.Pbt;
 /// </summary>
 /// <remarks>
 /// Instances are pooled by capacity (see <see cref="SlotRun"/>); a write produces a new run via
-/// <see cref="With"/> and the caller returns the old one. The container holding a run owns it.
+/// <see cref="With"/> and the caller returns the old one. The <see cref="PbtSnapshotContent"/> holding a
+/// run owns it.
 /// </remarks>
 public interface ISlotRun
 {
@@ -38,7 +41,7 @@ public interface ISlotRun
     /// <summary>The length of the persisted row <see cref="Encode"/> writes.</summary>
     int EncodedLength { get; }
 
-    /// <summary>Writes the persisted row, <c>[log2(capacity)][mask u16 LE][32-byte value × Count, ascending slot]</c>, into the first <see cref="EncodedLength"/> bytes of <paramref name="destination"/>.</summary>
+    /// <summary>Writes the persisted row (see <see cref="Persistence.SlotRunCodec"/>) into the first <see cref="EncodedLength"/> bytes of <paramref name="destination"/>.</summary>
     /// <exception cref="InvalidOperationException">The run is empty; an empty run is a row deletion.</exception>
     void Encode(Span<byte> destination);
 }
@@ -48,8 +51,6 @@ public static class SlotRun
 {
     /// <summary>The slots one run key spans.</summary>
     public const int Width = 16;
-    /// <summary>The type byte and mask that precede the values in a persisted row.</summary>
-    public const int EncodedHeaderLength = 1 + sizeof(ushort);
     private const byte IndexMask = Width - 1;
 
     /// <summary>The shared all-zero run; never pooled.</summary>
@@ -75,31 +76,24 @@ public static class SlotRun
     /// <summary>Returns <paramref name="run"/> to its pool; the caller must drop every reference to it.</summary>
     public static void Return(ISlotRun run) => ((PackedSlotRun)run).ReturnSelf();
 
-    /// <summary>The key with its low four bits cleared: the key of the run holding <paramref name="slotKey"/>.</summary>
-    public static TKey RunKey<TKey>(in TKey slotKey) where TKey : struct, IPbtKey<TKey> => WithLastByte(slotKey, (byte)(slotKey.Bytes[^1] & ~IndexMask));
+    /// <summary>The storage key with its low four bits cleared: the key of the run holding <paramref name="slotKey"/>.</summary>
+    public static PbtStorageTreeKey RunKey(in PbtStorageTreeKey slotKey) => WithLastByte(slotKey, (byte)(slotKey.Bytes[^1] & ~IndexMask));
 
-    /// <summary>The slot's position within its run: the low four bits of the key.</summary>
-    public static int IndexOf<TKey>(in TKey slotKey) where TKey : struct, IPbtKey<TKey> => slotKey.Bytes[^1] & IndexMask;
+    /// <summary>The slot's position within its run: the low four bits of the storage key.</summary>
+    public static int IndexOf(in PbtStorageTreeKey slotKey) => slotKey.Bytes[^1] & IndexMask;
 
-    /// <summary>The key of slot <paramref name="index"/> of the run keyed by <paramref name="runKey"/>.</summary>
-    public static TKey SlotKey<TKey>(in TKey runKey, int index) where TKey : struct, IPbtKey<TKey> => WithLastByte(runKey, (byte)(runKey.Bytes[^1] | index));
+    /// <summary>The storage key of slot <paramref name="index"/> of the run keyed by <paramref name="runKey"/>.</summary>
+    public static PbtStorageTreeKey SlotKey(in PbtStorageTreeKey runKey, int index) => WithLastByte(runKey, (byte)(runKey.Bytes[^1] | index));
 
     /// <summary>Whether <paramref name="key"/> has its low four bits cleared.</summary>
-    public static bool IsRunKey<TKey>(in TKey key) where TKey : struct, IPbtKey<TKey> => (key.Bytes[^1] & IndexMask) == 0;
+    public static bool IsRunKey(in PbtStorageTreeKey key) => (key.Bytes[^1] & IndexMask) == 0;
 
-    /// <summary>The value of slot <paramref name="index"/> as a tree leaf value.</summary>
-    public static ValueHash256 LeafValue(ISlotRun run, int index)
+    private static PbtStorageTreeKey WithLastByte(in PbtStorageTreeKey key, byte last)
     {
-        EvmWord value = run.Get(index);
-        return new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value));
-    }
-
-    private static TKey WithLastByte<TKey>(in TKey key, byte last) where TKey : struct, IPbtKey<TKey>
-    {
-        Span<byte> bytes = stackalloc byte[TKey.Capacity];
+        Span<byte> bytes = stackalloc byte[PbtStorageTreeKey.MaxLength];
         key.Bytes.CopyTo(bytes);
         bytes[key.Length - 1] = last;
-        return TKey.Create(bytes[..key.Length]);
+        return new PbtStorageTreeKey(bytes[..key.Length]);
     }
 }
 
@@ -131,14 +125,14 @@ internal abstract class PackedSlotRun(int capacity) : ISlotRun, IResettable
         return SlotRun.Create(_mask, valuesByIndex);
     }
 
-    public int EncodedLength => SlotRun.EncodedHeaderLength + Count * ValueHash256.MemorySize;
+    public int EncodedLength => SlotRunCodec.HeaderLength + Count * ValueHash256.MemorySize;
 
     public void Encode(Span<byte> destination)
     {
         if (Count == 0) throw new InvalidOperationException("An empty run is persisted as a row deletion.");
         destination[0] = (byte)BitOperations.Log2((uint)_values.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(destination[1..], _mask);
-        MemoryMarshal.AsBytes(PackedValues).CopyTo(destination[SlotRun.EncodedHeaderLength..]);
+        MemoryMarshal.AsBytes(PackedValues).CopyTo(destination[SlotRunCodec.HeaderLength..]);
     }
 
     internal void Seed(ushort mask, ReadOnlySpan<EvmWord> valuesByIndex)
