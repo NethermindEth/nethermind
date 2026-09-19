@@ -719,6 +719,31 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{Eip8037NewAccountTransferGas.ToHexString(true)}\",\"id\":67}}"));
     }
 
+    [Test]
+    public async Task Eth_estimateGas_gas_hint_above_eip8037_total_cap_returns_estimate()
+    {
+        // An over-cap gas hint must behave like a below-intrinsic hint: the probe failure
+        // must not mask the valid estimate the search finds under the cap. GasCap is raised
+        // above the cap so the hint reaches the estimator (default 100M would clamp it first).
+        // Zero error margin so the search converges to the executable minimum.
+        using Context ctx = await Context.Create(new TestSpecProvider(Amsterdam.Instance),
+            estimateErrorMargin: 0);
+        ctx.Test.RpcConfig.GasCap = Eip8037Constants.TxMaxTotalGasLimit + 1_000_000ul;
+
+        Transaction tx = Build.A.Transaction
+            .WithTo(TestAccount)
+            .WithValue(1)
+            .WithGasLimit(Eip8037Constants.TxMaxTotalGasLimit + 1_000ul)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
+        transaction.GasPrice = null;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
+
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{Eip8037NewAccountTransferGas.ToHexString(true)}\",\"id\":67}}"));
+    }
+
     private static async Task TestEstimateGasOutOfGas(Context ctx, ulong? specifiedGasLimit, ulong expectedGasLimit, string message)
     {
         string gasParam = specifiedGasLimit.HasValue ? $", \"gas\": \"0x{specifiedGasLimit.Value:X}\"" : "";

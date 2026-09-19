@@ -2078,4 +2078,61 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             AssertStorage(new StorageCell(Recipient, (UInt256)3), UInt256.Zero);
         }
     }
+
+    [Test]
+    public void Eip8037_rejects_tx_gas_limit_above_max_total_gas_limit()
+    {
+        // EIP-8037 transaction-validation rule 1: tx.gas <= TX_MAX_TOTAL_GAS_LIMIT (2^32-1).
+        // The block gas limit sits above the cap so rule 1 is the only possible rejector.
+        ulong blockGasLimit = Eip8037Constants.TxMaxTotalGasLimit + 1_000_000ul;
+        Transaction transaction = Build.A.Transaction
+            .WithGasLimit(Eip8037Constants.TxMaxTotalGasLimit + 1)
+            .WithGasPrice(1)
+            .To(Recipient)
+            .SignedAndResolved(new EthereumEcdsa(SpecProvider.ChainId), SenderKey)
+            .TestObject;
+        (Block block, _) = PrepareTx(
+            Activation,
+            transaction.GasLimit,
+            transaction: transaction,
+            blockGasLimit: blockGasLimit);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        TransactionResult result = _processor.Execute(
+            transaction,
+            new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+            tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.GasLimitExceedsMaxTotalCap));
+            Assert.That(TestState.GetNonce(Sender), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Eip8037_accepts_tx_gas_limit_at_max_total_gas_limit()
+    {
+        ulong blockGasLimit = Eip8037Constants.TxMaxTotalGasLimit + 1_000_000ul;
+        Transaction transaction = Build.A.Transaction
+            .WithGasLimit(Eip8037Constants.TxMaxTotalGasLimit)
+            .WithGasPrice(1)
+            .To(Recipient)
+            .SignedAndResolved(new EthereumEcdsa(SpecProvider.ChainId), SenderKey)
+            .TestObject;
+        (Block block, _) = PrepareTx(
+            Activation,
+            transaction.GasLimit,
+            transaction: transaction,
+            blockGasLimit: blockGasLimit);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        TransactionResult result = _processor.Execute(
+            transaction,
+            new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+            tracer);
+
+        Assert.That(result.TransactionExecuted, Is.True);
+    }
 }

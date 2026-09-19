@@ -699,6 +699,43 @@ public class TxValidatorTests
         }
     }
 
+    [TestCase(-1, true, TestName = "IsWellFormed_TransactionWithGasLimitBelowEip8037MaxTotalCap_Accepts")]
+    [TestCase(0, true, TestName = "IsWellFormed_TransactionWithGasLimitAtEip8037MaxTotalCap_Accepts")]
+    [TestCase(1, false, TestName = "IsWellFormed_TransactionWithGasLimitAboveEip8037MaxTotalCap_Rejects")]
+    public void IsWellFormed_TransactionWithGasLimitAroundEip8037MaxTotalCap_ValidatesAgainstTotalCap(int gasOffset, bool expectedValid)
+    {
+        Transaction tx = Build.A.Transaction
+            .WithGasLimit((ulong)((long)Eip8037Constants.TxMaxTotalGasLimit + gasOffset))
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved().TestObject;
+
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        ValidationResult result = txValidator.IsWellFormed(tx, Amsterdam.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool, Is.EqualTo(expectedValid));
+            if (!expectedValid)
+            {
+                Assert.That(result.Error, Is.EqualTo(TxErrorMessages.TxGasLimitCapExceeded(tx.GasLimit, Eip8037Constants.TxMaxTotalGasLimit)));
+            }
+        }
+    }
+
+    [Test]
+    public void IsWellFormed_TransactionWithGasLimitAboveEip8037MaxTotalCap_AcceptsBeforeCaps()
+    {
+        // Pre-EIP-7825 there is no gas-limit cap at all: the same gas limit passes the cap rule.
+        Transaction tx = Build.A.Transaction
+            .WithGasLimit(Eip8037Constants.TxMaxTotalGasLimit + 1)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved().TestObject;
+
+        ValidationResult result = GasLimitCapTxValidator.Instance.IsWellFormed(tx, Frontier.Instance);
+
+        Assert.That(result.AsBool, Is.True);
+    }
+
     [Test]
     public void IsWellFormed_Eip8037FloorGasExceedingExecutionCap_ReturnsFalse()
     {

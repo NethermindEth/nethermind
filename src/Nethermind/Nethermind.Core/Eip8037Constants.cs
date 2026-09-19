@@ -13,6 +13,13 @@ public static class Eip8037Constants
     /// <summary> State bytes charged per authorization tuple for the state-gas dimension. </summary>
     public const long StateBytesPerAuthBase = 23;
 
+    /// <summary> Absolute cap on <c>tx.gas</c> under the two-dimensional gas model. </summary>
+    /// <remarks>
+    /// EIP-8037 transaction-validation rule 1: <c>tx.gas &lt;= TX_MAX_TOTAL_GAS_LIMIT</c> (2^32-1).
+    /// Distinct from rule 2, which caps intrinsic (execution) gas at <c>TX_MAX_GAS_LIMIT</c> (2^24).
+    /// </remarks>
+    public const ulong TxMaxTotalGasLimit = uint.MaxValue;
+
     public const ulong SystemCallBaseGasLimit = 30_000_000;
     public const long SystemMaxSstoresPerCall = 16;
     public const long SystemCallStateReservoir = GasCostOf.StateBytesPerStorageSet * GasCostOf.CostPerStateByte * SystemMaxSstoresPerCall;
