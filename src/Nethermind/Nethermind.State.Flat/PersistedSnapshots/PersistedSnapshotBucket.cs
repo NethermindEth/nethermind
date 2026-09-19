@@ -56,6 +56,22 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
     public bool TryGet(in StateId to, [NotNullWhen(true)] out PersistedSnapshot? snapshot) =>
         _byTo.TryGetValue(to, out snapshot);
 
+    public bool TryLease(in StateId to, [NotNullWhen(true)] out PersistedSnapshot? snapshot) =>
+        _byTo.TryGetValue(to, out snapshot) && TryAcquire(ref snapshot);
+
+    internal bool TryAcquire([NotNullWhen(true)] ref PersistedSnapshot? snapshot)
+    {
+        SpinWait spinWait = new();
+        while (snapshot is not null)
+        {
+            if (snapshot.TryAcquire()) return true;
+            StateId to = snapshot.To;
+            spinWait.SpinOnce();
+            _byTo.TryGetValue(to, out snapshot);
+        }
+        return false;
+    }
+
     public bool ContainsKey(in StateId to) => _byTo.ContainsKey(to);
 
     /// <summary>

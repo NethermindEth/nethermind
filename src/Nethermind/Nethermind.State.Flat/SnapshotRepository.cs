@@ -737,22 +737,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// Lease the persisted snapshot ending at <paramref name="toState"/> from the bucket for
     /// <paramref name="tier"/> (must be a <c>Persisted*</c> value). Caller disposes the lease.
     /// </summary>
-    public bool TryLeasePersistedState(in StateId toState, SnapshotTier tier, [NotNullWhen(true)] out PersistedSnapshot? snapshot) => tier switch
-    {
-        SnapshotTier.PersistedBase => TryLeaseFrom(_base, toState, out snapshot),
-        SnapshotTier.PersistedSmallCompacted => TryLeaseFrom(_smallCompacted, toState, out snapshot),
-        SnapshotTier.PersistedLargeCompacted => TryLeaseFrom(_largeCompacted, toState, out snapshot),
-        SnapshotTier.PersistedCompactSized => TryLeaseFrom(_compactSized, toState, out snapshot),
-        _ => throw new ArgumentOutOfRangeException(nameof(tier), tier, "Only persisted tiers are valid here."),
-    };
-
-    private static bool TryLeaseFrom(PersistedSnapshotBucket bucket, in StateId toState, [NotNullWhen(true)] out PersistedSnapshot? snapshot)
-    {
-        if (bucket.TryGet(toState, out snapshot) && snapshot.TryAcquire())
-            return true;
-        snapshot = null;
-        return false;
-    }
+    public bool TryLeasePersistedState(in StateId toState, SnapshotTier tier, [NotNullWhen(true)] out PersistedSnapshot? snapshot) =>
+        BucketFor(tier).TryLease(toState, out snapshot);
 
     /// <summary>The bucket for a persisted tier — a 1:1 map.</summary>
     private PersistedSnapshotBucket BucketFor(SnapshotTier tier) => tier switch
@@ -776,7 +762,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         // `from` can be PreGenesis (genesis-spanning range); Height() keeps the walk running down to it.
         while (current != from && Height(current) > Height(from))
         {
-            if (!_base.TryGet(current, out PersistedSnapshot? snapshot) || !snapshot.TryAcquire())
+            if (!_base.TryLease(current, out PersistedSnapshot? snapshot))
                 break;
             result.Add(snapshot);
             if (snapshot.From == current)
@@ -993,13 +979,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
 
     public bool HasBasePersistedSnapshot(in StateId stateId) => _base.ContainsKey(stateId);
 
-    public bool TryLeaseBasePersistedSnapshot(in StateId to, [NotNullWhen(true)] out PersistedSnapshot? snapshot)
-    {
-        if (_base.TryGet(to, out snapshot) && snapshot.TryAcquire()) return true;
-
-        snapshot = null;
-        return false;
-    }
+    public bool TryLeaseBasePersistedSnapshot(in StateId to, [NotNullWhen(true)] out PersistedSnapshot? snapshot) =>
+        _base.TryLease(to, out snapshot);
 
     public IEnumerable<PersistedSnapshot> PersistedSnapshots
     {

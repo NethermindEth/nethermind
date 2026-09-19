@@ -8,8 +8,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -42,6 +44,58 @@ public class PersistedSnapshotRepositoryTests
         if (account is not null)
             content.Accounts[account] = Build.An.Account.WithBalance(balance == 0 ? 1000 : balance).TestObject;
         return new Snapshot(from, to, content, _pool, ResourcePool.Usage.MainBlockProcessing);
+    }
+
+    [Test]
+    public void TryAcquire_WhenObservedSnapshotIsRetired_UsesCurrentEntry([Values] bool replace)
+    {
+        using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
+        StateId parent = new(0, Keccak.EmptyTreeHash);
+        StateId state = new(1, Keccak.Compute("lease-replacement"));
+        using Snapshot source = CreateTestSnapshot(parent, state, TestItem.AddressA);
+        PersistedSnapshotBucket bucket = new(tier.Resolve<ISnapshotCatalog>(), SnapshotTier.PersistedBase, LimboLogs.Instance.GetClassLogger<PersistedSnapshotBucket>());
+        try
+        {
+            using (PersistedSnapshot original = tier.ConvertToPersistedBase(source))
+            {
+                bucket.Add(state, original);
+                Assert.That(tier.Repository.RemovePersistedStateExact(state), Is.True);
+            }
+            Assert.That(bucket.TryGet(state, out PersistedSnapshot? observed), Is.True);
+            PersistedSnapshot? retired = observed;
+            if (replace)
+            {
+                using PersistedSnapshot replacement = new(parent, state, observed!.Reservation, tier.Blobs,
+                    SnapshotTier.PersistedBase, RefCountedBloomFilter.AlwaysTrue());
+                Assert.That(bucket.Replace(state, replacement), Is.True);
+            }
+            else
+            {
+                Assert.That(bucket.RemoveExact(state), Is.True);
+            }
+            Assert.That(retired!.TryAcquire(), Is.False, "the observed instance must have drained before acquisition");
+
+            bool acquired = bucket.TryAcquire(ref observed);
+            using (observed)
+            {
+                Assert.That(acquired, Is.EqualTo(replace), "replacement must not look like a missing snapshot");
+                if (replace)
+                {
+                    Assert.That(observed, Is.Not.SameAs(retired));
+                    Assert.That(bucket.RemoveExact(state), Is.True);
+                    Assert.That(observed!.TryGetAccount(TestItem.AddressA, out Account? account), Is.True);
+                    Assert.That(account!.Balance, Is.EqualTo((UInt256)1000), "the acquired lease must keep the replacement readable after removal");
+                }
+                else
+                {
+                    Assert.That(observed, Is.Null);
+                }
+            }
+        }
+        finally
+        {
+            bucket.DisposeAndClear();
+        }
     }
 
     [Test]
