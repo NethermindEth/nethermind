@@ -23,7 +23,7 @@ namespace Nethermind.BeaconChain.Test.Types;
 /// Expected roots for the seven plain (non-progressive) container types below, and for the all-default
 /// <see cref="ExecutionPayloadBid"/> and <see cref="BeaconStateGloas"/> values, were computed
 /// independently with ethereum/ssz-specs (`pip install git+https://github.com/ethereum/ssz-specs.git`,
-/// installed 2026-09-19; package version 0.1.0 declared in its own pyproject.toml) — the same reference
+/// installed 2026-09-19; package version 0.1.0 declared in its own pyproject.toml) - the same reference
 /// SSZ implementation the consensus-specs test-vector generator itself now uses (see that repo's
 /// tooling-swap note in this task's Gloas survey). Field types and order there were copied from the
 /// spec class definitions cited on each type in GloasContainers.cs / BeaconState.cs, not from this
@@ -34,7 +34,7 @@ namespace Nethermind.BeaconChain.Test.Types;
 /// <see cref="ExecutionPayloadEnvelope"/>, <see cref="SignedExecutionPayloadEnvelope"/>,
 /// <see cref="PayloadAttestation"/>, <see cref="IndexedPayloadAttestation"/>,
 /// <see cref="SignedExecutionPayloadBid"/> and <see cref="BeaconBlockBodyGloas"/> get round-trip
-/// coverage only (decode(encode(x)) reproduces x's own root) — see 'unresolved' in the task report for
+/// coverage only (decode(encode(x)) reproduces x's own root) - see 'unresolved' in the task report for
 /// why an independent root was not attempted for every progressive container.
 /// </remarks>
 public class GloasContainerTests
