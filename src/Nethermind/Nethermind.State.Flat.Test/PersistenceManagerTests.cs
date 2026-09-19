@@ -1402,18 +1402,40 @@ public class PersistenceManagerTests
             Assert.That(persisted?.To ?? inMemory?.To, Is.EqualTo(canonicalRootKnown ? canonical : (StateId?)null),
                 "known canonical roots must win regardless of hash order; unknown sibling roots must not be guessed");
         }
+        Assert.That(_finalizedStateProvider.GetLookupCount(candidateBlock), Is.EqualTo(1),
+            "both sibling candidates share a single root lookup, including an unavailable root");
+        if (!canonicalRootKnown)
+        {
+            _finalizedStateProvider.SetFinalizedStateRootAt(candidateBlock, new Hash256(canonical.StateRoot.Bytes));
+            (PersistedSnapshot? retryPersisted, Snapshot? retryInMemory) =
+                _snapshotRepository.FindSnapshotToPersistWithFallback(persistedState, offChain, (ulong)_config.CompactSize);
+            using (retryPersisted)
+            using (retryInMemory)
+            {
+                Assert.That(retryPersisted?.To ?? retryInMemory?.To, Is.EqualTo(canonical),
+                    "a missing root must be retried on the next selection after finality becomes available");
+            }
+            Assert.That(_finalizedStateProvider.GetLookupCount(candidateBlock), Is.EqualTo(2));
+        }
     }
 
     [Test]
-    public void Reaches_WhenTargetIsPreGenesis_RequiresConnectedAncestry([Values] bool connected)
+    public void FindSnapshotToPersistWithFallback_WhenTargetIsPreGenesis_RequiresConnectedAncestry([Values] bool connected, [Values(0UL, 16UL)] ulong compactSize)
     {
         StateId genesis = CreateStateId(0);
         StateId head = CreateStateId(1);
         if (connected) CreateSnapshot(StateId.PreGenesis, genesis);
         CreateSnapshot(genesis, head);
 
-        Assert.That(_snapshotRepository.Reaches(head, StateId.PreGenesis), Is.EqualTo(connected),
-            "the sentinel sorts below genesis but still requires a traversable edge to it");
+        _snapshotRepository.SetLastCommittedStateId(head);
+        (PersistedSnapshot? persisted, Snapshot? inMemory) =
+            _snapshotRepository.FindSnapshotToPersistWithFallback(StateId.PreGenesis, head, compactSize);
+        using (persisted)
+        using (inMemory)
+        {
+            Assert.That(persisted?.To ?? inMemory?.To, Is.EqualTo(connected && compactSize != 0 ? genesis : (StateId?)null),
+                "the sentinel sorts below genesis but still requires a traversable edge to it");
+        }
     }
 
     [Test]

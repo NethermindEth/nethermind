@@ -377,6 +377,8 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         return current == StateId.PreGenesis;
     }
 
+    /// <summary>Disables capture until restart when a required per-block source is missing. Continuing would publish
+    /// coverage across a gap whose missing history cannot be reconstructed from compacted state alone.</summary>
     private void ReportUnconnectedWalk(in StateId current, bool hasWatermark, ulong watermark, in StateId persistedHead, ISnapshotRepository snapshotRepository)
     {
         // The walk reports a refusal it did not cause when capture is already off: a reorged capture disables it from
