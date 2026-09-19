@@ -91,6 +91,24 @@ public class DataColumnReconstructionTests
     }
 
     [Test]
+    public void Reconstruction_rejects_columns_belonging_to_different_blocks()
+    {
+        (DataColumnSidecar[] blockA, _) = BuildFullMatrix();
+        (DataColumnSidecar[] blockB, _) = BuildFullMatrix();
+        // Same blob count, different block: the shared-field copy would otherwise produce a matrix
+        // belonging to neither block.
+        blockB[0].SignedBlockHeader!.Message!.BodyRoot = new Hash256(Enumerable.Repeat((byte)0x77, 32).ToArray());
+
+        DataColumnSidecar[] held =
+        [
+            .. blockA.Take(Eip7594DasConstants.RequiredColumnsForReconstruction - 1),
+            blockB[Eip7594DasConstants.RequiredColumnsForReconstruction],
+        ];
+
+        Assert.That(DataColumnReconstruction.TryReconstruct(held, out _), Is.False);
+    }
+
+    [Test]
     public void Reconstruction_counts_duplicate_indices_only_once_towards_the_threshold()
     {
         (DataColumnSidecar[] fullMatrix, _) = BuildFullMatrix();

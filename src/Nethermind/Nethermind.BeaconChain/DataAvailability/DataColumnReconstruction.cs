@@ -58,6 +58,13 @@ public static class DataColumnReconstruction
                 return false;
             }
 
+            // Columns of two different blocks that happen to share a blob count would otherwise
+            // recover into a matrix belonging to neither.
+            if (sidecar.SignedBlockHeader?.Message?.BodyRoot != header.Message?.BodyRoot)
+            {
+                return false;
+            }
+
             int index = (int)sidecar.Index;
             if (byIndex[index] is null)
             {
