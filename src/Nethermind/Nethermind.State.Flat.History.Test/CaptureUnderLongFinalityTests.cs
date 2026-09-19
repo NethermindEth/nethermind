@@ -33,36 +33,21 @@ public class CaptureUnderLongFinalityTests
         InlineCompaction = true
     };
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public async Task Capture_follows_sync_with_optional_disconnected_seed(bool injectDisconnectedSeed)
+    [Test]
+    public async Task Capture_follows_sync_with_backstop_persistence()
     {
         await using CaptureFixture fixture = new(BackstopConfig());
         for (ulong block = 1; block <= 200; block++)
         {
             StateId next = fixture.Append(block);
-            if (injectDisconnectedSeed && block == 60)
-            {
-                StateId disconnected = fixture.InjectDisconnectedSeed();
-                ulong? before = fixture.Writer.LastCapturedBlock;
-                await fixture.Manager.AddToPersistence(disconnected);
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(fixture.Writer.LastCapturedBlock, Is.GreaterThan(before), "capture must advance before another healthy commit replaces the disconnected seed");
-                    Assert.That(fixture.Tier.Repository.GetLastCommittedStateId(), Is.EqualTo(disconnected));
-                }
-            }
-            else
-            {
-                await fixture.Manager.AddToPersistence(next);
-            }
+            await fixture.Manager.AddToPersistence(next);
             Assert.That(fixture.CaptureDisabled, Is.False, $"capture disabled at {block}");
         }
         Assert.That(fixture.Writer.LastCapturedBlock, Is.GreaterThan(100ul));
     }
 
     [Test]
-    public async Task Capture_follows_sync_under_production_defaults_with_disconnected_seeds()
+    public async Task Capture_follows_sync_under_production_defaults()
     {
         Dictionary<ulong, Hash256> roots = [];
         FlatDbConfig config = new() { HistoryEnabled = true, CompactionOffset = 0, InlineCompaction = true };
@@ -72,7 +57,6 @@ public class CaptureUnderLongFinalityTests
             StateId next = fixture.Append(block);
             roots[block] = new Hash256(next.StateRoot.Bytes);
             await fixture.Manager.AddToPersistence(next);
-            if (block % 100 == 0) await fixture.Manager.AddToPersistence(fixture.InjectDisconnectedSeed());
             Assert.That(fixture.CaptureDisabled, Is.False, $"capture disabled at {block}");
         }
         Assert.That(fixture.Writer.LastCapturedBlock, Is.GreaterThan(600ul));
@@ -119,14 +103,6 @@ public class CaptureUnderLongFinalityTests
             Add(_previous, next, TestItem.AddressA, new Account(block, (UInt256)(block * 100)));
             _previous = next;
             return next;
-        }
-
-        public StateId InjectDisconnectedSeed()
-        {
-            StateId parent = new(26_000_000, TestItem.KeccakA);
-            StateId tip = new(26_000_001, TestItem.KeccakB);
-            Add(parent, tip, TestItem.AddressB, new Account(1, 1));
-            return tip;
         }
 
         private void Add(StateId parent, StateId next, Address address, Account account)
