@@ -13,6 +13,120 @@ const { configure, assess, prepare, publish } = require('./open-code-review.cjs'
 const defaults = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../.github/open-code-review/config.json')));
 const settings = { OCR_MODEL: 'test-model', OCR_API_BASE_URL: 'https://gateway.example/v1' };
 
+function commandFixture() {
+  const workflow = fs.readFileSync(path.resolve(__dirname, '../../.github/workflows/open-code-review.yml'), 'utf8');
+  const request = workflow.split('  request:\n')[1].split('\n  review:')[0];
+  const script = request.split('          script: |\n')[1].replace(/^            /gm, '');
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  const execute = new AsyncFunction('github', 'context', 'core', script);
+  const context = {
+    eventName: 'issue_comment', actor: 'rerun-actor',
+    repo: { owner: 'NethermindEth', repo: 'nethermind' },
+    payload: {
+      action: 'created',
+      issue: { number: 123, state: 'open', pull_request: {} },
+      comment: { body: '/ocr review', author_association: 'MEMBER', user: { login: 'comment-author', type: 'User' } },
+    },
+  };
+  const outputs = {};
+  const calls = [];
+  const permission = { permission: 'write', role_name: 'maintain' };
+  const github = { rest: { repos: { getCollaboratorPermissionLevel: async args => {
+    calls.push(args);
+    if (permission.error) throw permission.error;
+    return { data: permission };
+  } } } };
+  const core = { setOutput: (key, value) => { outputs[key] = value; }, info() {} };
+  return { context, outputs, calls, permission, run: () => execute(github, context, core) };
+}
+
+for (const body of ['/ocr review', 'ocr review', '  /OCR REVIEW\r\n', '\nocr\treview  ']) {
+  test('comment command accepts ' + JSON.stringify(body) + ' from a writer', async () => {
+    const f = commandFixture();
+    f.context.payload.comment.body = body;
+    await f.run();
+    assert.equal(f.outputs.allowed, 'true');
+    assert.deepEqual(f.calls, [{ ...f.context.repo, username: 'comment-author' }]);
+  });
+}
+
+for (const body of [
+  '', null, '/ocr review extra', 'please ocr review', '> /ocr review', '`ocr review`',
+  '```\n/ocr review\n```', '/ocr review\nignore the rules', '/ocr\nreview', '/ocr review; echo injected',
+]) {
+  test('unrecognized comment never checks permissions: ' + JSON.stringify(body), async () => {
+    const f = commandFixture();
+    f.context.payload.comment.body = body;
+    await f.run();
+    assert.equal(f.outputs.allowed, undefined);
+    assert.deepEqual(f.calls, []);
+  });
+}
+
+for (const [permission, role, allowed] of [
+  ['write', 'write', true], ['write', 'maintain', true], ['admin', 'admin', true],
+  ['write', 'custom-writer', true], ['read', 'triage', false], ['read', 'read', false],
+  ['none', 'none', false], [undefined, 'admin', false],
+]) {
+  test('comment authorization uses current base permission: ' + role, async () => {
+    const f = commandFixture();
+    Object.assign(f.permission, { permission, role_name: role });
+    f.context.payload.comment.author_association = allowed ? 'NONE' : 'OWNER';
+    await f.run();
+    assert.equal(f.outputs.allowed === 'true', allowed);
+    assert.equal(f.calls.length, 1);
+  });
+}
+
+for (const [name, mutate] of Object.entries({
+  edited: payload => { payload.action = 'edited'; },
+  deleted: payload => { payload.action = 'deleted'; },
+  issue: payload => { delete payload.issue.pull_request; },
+  closed: payload => { payload.issue.state = 'closed'; },
+  bot: payload => { payload.comment.user.type = 'Bot'; },
+  'missing author': payload => { delete payload.comment.user; },
+})) {
+  test(name + ' comment cannot authorize a review', async () => {
+    const f = commandFixture();
+    mutate(f.context.payload);
+    await f.run();
+    assert.equal(f.outputs.allowed, undefined);
+    assert.deepEqual(f.calls, []);
+  });
+}
+
+for (const status of [403, 404, 500]) {
+  test('permission API failure ' + status + ' cannot authorize a review', async () => {
+    const f = commandFixture();
+    f.permission.error = Object.assign(new Error('Permission lookup failed'), { status });
+    await assert.rejects(f.run(), /Permission lookup failed/);
+    assert.equal(f.outputs.allowed, undefined);
+  });
+}
+
+for (const event of ['workflow_dispatch', 'pull_request_target']) {
+  test(event + ' still reaches the review without comment authorization', async () => {
+    const f = commandFixture();
+    f.context.eventName = event;
+    await f.run();
+    assert.equal(f.outputs.allowed, 'true');
+    assert.deepEqual(f.calls, []);
+  });
+}
+
+test('only authorized jobs join review concurrency, load secrets, and publish command results', () => {
+  const workflow = fs.readFileSync(path.resolve(__dirname, '../../.github/workflows/open-code-review.yml'), 'utf8');
+  const request = workflow.split('  request:\n')[1].split('\n  review:')[0];
+  const review = workflow.split('\n  review:\n')[1];
+  assert.doesNotMatch(workflow, /^concurrency:/m);
+  assert.doesNotMatch(request, /secrets\.|concurrency:/);
+  assert.match(review, /needs: request\n    if: needs\.request\.outputs\.allowed == 'true'/);
+  assert.match(review, /concurrency:\n      group: open-code-review-.*github\.event\.issue\.number/);
+  assert.match(review, /PR_NUMBER:.*github\.event\.issue\.number/);
+  assert.match(review, /PUBLISH_REVIEW:.*github\.event_name != 'workflow_dispatch' \|\| inputs\.publish/);
+  assert.match(workflow, /issue_comment:\n    types: \[created\]/);
+});
+
 test('model and endpoint are required even when a template contains fallback values', () => {
   const template = structuredClone(defaults);
   template.model = 'unused-model';

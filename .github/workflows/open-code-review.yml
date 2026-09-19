@@ -3,6 +3,8 @@ name: AI Code Review
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
   workflow_dispatch:
     inputs:
       pr_number:
@@ -25,24 +27,58 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: open-code-review-${{ github.repository_id }}-${{ github.event.pull_request.number || inputs.pr_number }}
-  cancel-in-progress: true
-
 jobs:
-  review:
-    name: Advisory AI review
+  request:
+    name: Authorize review request
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (vars.OCR_AUTO_REVIEW != 'false' && !github.event.pull_request.draft &&
-       github.actor != 'dependabot[bot]')
+      (github.event_name == 'pull_request_target' && vars.OCR_AUTO_REVIEW != 'false' &&
+       !github.event.pull_request.draft && github.actor != 'dependabot[bot]') ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+       github.event.issue.state == 'open' && contains(github.event.comment.body, 'ocr'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      allowed: ${{ steps.authorize.outputs.allowed }}
+    steps:
+      - name: Authorize comment command
+        id: authorize
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            if (context.eventName !== 'issue_comment') {
+              core.setOutput('allowed', 'true');
+              return;
+            }
+            const { action, issue, comment } = context.payload;
+            if (action !== 'created' || !issue?.pull_request || issue.state !== 'open' ||
+                comment?.user?.type !== 'User' ||
+                !/^\/?ocr[ \t]+review$/i.test((comment.body || '').trim())) return;
+            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+              ...context.repo, username: comment.user.login,
+            });
+            if (!['write', 'admin'].includes(data.permission)) {
+              core.info('Review command ignored: repository write access is required.');
+              return;
+            }
+            core.setOutput('allowed', 'true');
+
+  review:
+    name: Advisory AI review
+    needs: request
+    if: needs.request.outputs.allowed == 'true'
+    # Check permission before joining this group so untrusted comments cannot cancel a review.
+    concurrency:
+      group: open-code-review-${{ github.repository_id }}-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+      PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr_number }}
     permissions:
       contents: read
       pull-requests: write
+      issues: write
     steps:
       - name: Set review directory
         run: echo "OCR_DIRECTORY=$RUNNER_TEMP/open-code-review" >> "$GITHUB_ENV"
@@ -50,7 +86,7 @@ jobs:
       - name: Check out trusted workflow revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # For pull_request_target, github.sha is trusted repository code, never the PR head.
+          # For PR and comment events, github.sha is trusted repository code, never the PR head.
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
@@ -76,6 +112,16 @@ jobs:
                 automatic: context.eventName === 'pull_request_target' }));
             core.setOutput('base', pr.base.sha);
             core.setOutput('head', pr.head.sha);
+
+      - name: Acknowledge review command
+        if: github.event_name == 'issue_comment'
+        continue-on-error: true
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              ...context.repo, comment_id: context.payload.comment.id, content: 'eyes',
+            });
 
       - name: Fetch review objects
         env:
@@ -152,7 +198,7 @@ jobs:
         id: report
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          PUBLISH_REVIEW: ${{ github.event_name == 'pull_request_target' || inputs.publish }}
+          PUBLISH_REVIEW: ${{ github.event_name != 'workflow_dispatch' || inputs.publish }}
         with:
           script: |
             const path = require('node:path');
