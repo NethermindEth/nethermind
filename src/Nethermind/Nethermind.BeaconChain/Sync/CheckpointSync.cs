@@ -55,6 +55,15 @@ public class CheckpointSync(
         Timeout = TimeSpan.FromMinutes(10),
     };
 
+    /// <summary>
+    /// The operator-configured URL if set, otherwise the selected network's default provider.
+    /// An operator override always wins, matching the bootnodes override convention.
+    /// </summary>
+    public string EffectiveCheckpointSyncUrl => !string.IsNullOrWhiteSpace(config.CheckpointSyncUrl)
+        ? config.CheckpointSyncUrl
+        : spec.CheckpointSyncUrl
+            ?? throw new InvalidOperationException($"No checkpoint sync URL is configured and chain id {spec.ChainId} has no default; set Beacon.CheckpointSyncUrl explicitly.");
+
     public async Task<CheckpointAnchor> RunAsync(CancellationToken cancellationToken)
     {
         (byte[] buffer, int length) = config.CheckpointStateFile is { } stateFile
@@ -85,7 +94,7 @@ public class CheckpointSync(
 
     private async Task<(byte[] Buffer, int Length)> DownloadStateAsync(CancellationToken cancellationToken)
     {
-        if (_logger.IsInfo) _logger.Info($"Downloading finalized beacon state from {config.CheckpointSyncUrl}");
+        if (_logger.IsInfo) _logger.Info($"Downloading finalized beacon state from {EffectiveCheckpointSyncUrl}");
         Stopwatch stopwatch = Stopwatch.StartNew();
 
         using HttpResponseMessage response = await GetOctetStreamAsync("/eth/v2/debug/beacon/states/finalized", cancellationToken);
@@ -229,7 +238,7 @@ public class CheckpointSync(
 
     private async Task<HttpResponseMessage> GetOctetStreamAsync(string path, CancellationToken cancellationToken)
     {
-        using HttpRequestMessage request = new(HttpMethod.Get, $"{config.CheckpointSyncUrl.TrimEnd('/')}{path}");
+        using HttpRequestMessage request = new(HttpMethod.Get, $"{EffectiveCheckpointSyncUrl.TrimEnd('/')}{path}");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(OctetStreamMediaType));
         HttpResponseMessage response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();

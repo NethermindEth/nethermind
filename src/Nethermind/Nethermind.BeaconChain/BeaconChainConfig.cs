@@ -6,7 +6,7 @@ namespace Nethermind.BeaconChain;
 public class BeaconChainConfig : IBeaconChainConfig
 {
     public bool Enabled { get; set; }
-    public string CheckpointSyncUrl { get; set; } = "https://mainnet.checkpoint.sigp.io";
+    public string? CheckpointSyncUrl { get; set; }
     public string? CheckpointStateFile { get; set; }
     public int P2PPort { get; set; } = 9050;
     public int Discv5Port { get; set; } = 9050;
