@@ -127,7 +127,7 @@ public sealed class SnapshotContent : IDisposable, IResettable
 {
     // ConcurrentDictionary: lock-free reads, best read latency for accounts/slots
     public readonly ConcurrentDictionary<HashedKey<Address>, Account?> Accounts = new();
-    public readonly ConcurrentDictionary<HashedKey<(Address, UInt256)>, UInt256?> Storages = new();
+    public readonly AddressSlotDictionary Storages = new();
     public readonly ConcurrentDictionary<HashedKey<Address>, bool> SelfDestructedStorageAddresses = new();
 
     public readonly Dictionary<HashedKey<TreePath>, TrieNode> StateNodes = [];
