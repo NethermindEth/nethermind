@@ -13,7 +13,11 @@ namespace Ethereum.Ssz.Test;
 public static class SszConsensusTestLoader
 {
     private const string ArchiveUrlTemplate = "https://github.com/ethereum/consensus-specs/releases/download/{0}/{1}";
-    // v1.6.1 predates the EIP-7916 change that made the base subtree the left child.
+    // The newest tag whose general archive still carries the ssz_generic vectors: from
+    // v1.7.0-alpha.14 onward general.tar.gz is empty and they ship inside the multi-hundred-megabyte
+    // preset archives, so moving forward means changing the archive and the fixture lookup too.
+    // Do not pin back to the v1.6.x line: it predates the EIP-7916 base-subtree change and its
+    // progressive-container roots disagree with this implementation.
     private const string DefaultVersion = "v1.7.0-alpha.13";
     private const string DefaultArchive = "general.tar.gz";
 
