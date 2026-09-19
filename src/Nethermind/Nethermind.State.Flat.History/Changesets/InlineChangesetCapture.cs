@@ -30,7 +30,7 @@ public sealed class InlineChangesetCapture(TransactionChangesetIndex index, Func
     public void StartNewBlockTrace(Block block)
     {
         _block = block;
-        _active = index.Enabled && block.Hash is not null && block.Transactions.Length > 0 && shouldCapture(block);
+        _active = index.Enabled && block.Hash is not null && shouldCapture(block);
         if (!_active) return;
 
         if (_collectors.Length < block.Transactions.Length) _collectors = new ChangesetCollector?[block.Transactions.Length];

@@ -9,6 +9,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.State.Flat.History.Changesets;
 using Nethermind.State.OverridableEnv;
@@ -19,6 +20,7 @@ namespace Nethermind.Init.Steps;
 /// nothing it touches is shared with the processing of the chain or with another executor.</summary>
 public sealed class ProcessingHistoryBlockExecutor(
     IBlockTree blockTree,
+    ISpecProvider specProvider,
     IOverridableEnv processingEnv,
     BlockchainProcessorFacade processor,
     ILifetimeScope scope) : IHistoryBlockExecutor
@@ -40,7 +42,11 @@ public sealed class ProcessingHistoryBlockExecutor(
         return parent is null ? null : new Run(this, processingEnv.BuildAndOverride(parent), first);
     }
 
-    private Block? FindCanonical(ulong block) => blockTree.FindBlock(block, BlockTreeLookupOptions.RequireCanonical);
+    private Block? FindCanonical(ulong block)
+    {
+        Block? candidate = blockTree.FindBlock(block, BlockTreeLookupOptions.RequireCanonical);
+        return candidate is not null && !specProvider.GetSpec(candidate.Header).BlockLevelAccessListsEnabled ? candidate : null;
+    }
 
     private sealed class Run(ProcessingHistoryBlockExecutor executor, IDisposable state, Block first) : IHistoryBlockRun
     {
@@ -51,7 +57,15 @@ public sealed class ProcessingHistoryBlockExecutor(
             Block? block = _next;
             if (block is null) return false;
 
-            executor._processor.Process(block, TraceProcessingOptions.ReadOnlyReplay | ProcessingOptions.ForceSequentialBlockAccessList, tracer, cancellationToken);
+            Block isolated = block.WithReplacedHeader(block.Header.Clone());
+            try
+            {
+                executor._processor.Process(isolated, TraceProcessingOptions.ReadOnlyReplay | ProcessingOptions.ForceSequentialBlockAccessList, tracer, cancellationToken);
+            }
+            finally
+            {
+                isolated.DisposeAccountChanges();
+            }
             _next = executor.FindCanonical((ulong)block.Number + 1);
             return true;
         }
@@ -69,6 +83,7 @@ public sealed class ProcessingHistoryBlockExecutor(
 /// <summary>Builds each executor its own processing scope, shaped like the one the debug RPC module traces in.</summary>
 public sealed class ProcessingHistoryBlockExecutorFactory(
     IBlockTree blockTree,
+    ISpecProvider specProvider,
     IOverridableEnvFactory envFactory,
     ILifetimeScope rootLifetimeScope,
     IBlockValidationModule[] validationModules) : IHistoryBlockExecutorFactory
@@ -76,11 +91,21 @@ public sealed class ProcessingHistoryBlockExecutorFactory(
     public IHistoryBlockExecutor Create()
     {
         IOverridableEnv env = envFactory.Create();
-        ILifetimeScope scope = rootLifetimeScope.BeginLifetimeScope(builder => builder
-            .AddModule(validationModules)
-            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
-            .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
-            .AddModule(env));
-        return new ProcessingHistoryBlockExecutor(blockTree, env, scope.Resolve<BlockchainProcessorFacade>(), scope);
+        ILifetimeScope? scope = null;
+        try
+        {
+            scope = rootLifetimeScope.BeginLifetimeScope(builder => builder
+                .AddModule(validationModules)
+                .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
+                .AddScoped<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
+                .AddModule(env));
+            return new ProcessingHistoryBlockExecutor(blockTree, specProvider, env, scope.Resolve<BlockchainProcessorFacade>(), scope);
+        }
+        catch
+        {
+            scope?.Dispose();
+            (env as IDisposable)?.Dispose();
+            throw;
+        }
     }
 }

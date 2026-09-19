@@ -16,6 +16,9 @@ public sealed class TransactionChangesetIndex
     private readonly IColumnsDb<FlatHistoryColumns> _columns;
     private readonly TransactionChangesetStore _store;
     private readonly MidBlockOverlayCache _overlays;
+    private readonly Lock[] _blockLocks = [.. Enumerable.Range(0, 64).Select(static _ => new Lock())];
+
+    private Lock BlockLock(ulong block) => _blockLocks[block % (ulong)_blockLocks.Length];
 
     public TransactionChangesetIndex(IColumnsDb<FlatHistoryColumns> columns, IFlatDbConfig config)
     {
@@ -42,7 +45,8 @@ public sealed class TransactionChangesetIndex
         ulong number = (ulong)block.Number;
         if (collectors.Length > ChangesetKeyLayout.MaxTransactionIndex + 1) return false;
 
-        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _columns.StartWriteBatch())
+        IColumnsWriteBatch<FlatHistoryColumns> batch = _columns.StartWriteBatch();
+        try
         {
             IWriteBatch rows = batch.GetColumnBatch(FlatHistoryColumns.TransactionChangesets);
             _store.WriteBlockHash(number, block.Hash!, rows);
@@ -50,6 +54,10 @@ public sealed class TransactionChangesetIndex
             {
                 _store.Write(number, (ushort)i, collectors[i]!.Pack(), rows);
             }
+        }
+        finally
+        {
+            lock (BlockLock(number)) batch.Dispose();
         }
 
         return _store.TryExtendCoverage(number, number);
@@ -70,11 +78,15 @@ public sealed class TransactionChangesetIndex
     /// before the one asked for; anything else is answered by the replay the node did before the index existed.</summary>
     internal bool TryRentOverlay(ulong block, Hash256 blockHash, ushort beforeTransaction, out MidBlockOverlayCache.Lease lease)
     {
-        lease = default;
-        return Covers(block)
-            && _store.TryGetBlockHash(block, out ValueHash256 indexed)
-            && indexed == blockHash
-            && _overlays.TryRent(block, in indexed, beforeTransaction, out lease);
+        // Keep the identity check and fold on the same committed version of this height.
+        lock (BlockLock(block))
+        {
+            lease = default;
+            return Covers(block)
+                && _store.TryGetBlockHash(block, out ValueHash256 indexed)
+                && indexed == blockHash
+                && _overlays.TryRent(block, in indexed, beforeTransaction, out lease);
+        }
     }
 
     /// <summary>One block's rows, written into a batch of their own. The caller claims coverage only once
@@ -105,14 +117,17 @@ public sealed class TransactionChangesetIndex
             if (_written) throw new InvalidOperationException($"The changeset capture of block {_block} was already committed.");
 
             _written = true;
-            _batch.Dispose();
+            lock (_index.BlockLock(_block)) _batch.Dispose();
             return _tracer.Complete;
         }
 
         public void Dispose()
         {
             _tracer.Dispose();
-            if (!_written) _batch.Dispose();
+            if (!_written)
+            {
+                lock (_index.BlockLock(_block)) _batch.Dispose();
+            }
         }
     }
 }
