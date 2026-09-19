@@ -17,12 +17,17 @@ public sealed class BlockReadCache(int accountSetsBits = 12, int storageSetsBits
 {
     private readonly SeqlockCache<AddressAsKey, Account> _accounts = new(accountSetsBits);
     private readonly SeqlockCache<StorageCell, UInt256> _slots = new(storageSetsBits);
+    private uint _clears;
 
     /// <summary>Invalidates the previous parent state. Call only after all workers have released this cache.</summary>
-    public void Clear()
+    /// <returns>False when the epoch budget is exhausted and the cache must be discarded instead of reused.</returns>
+    public bool Clear()
     {
+        if (_clears >= (1U << 26) - 1) return false;
+        _clears++;
         _accounts.Clear();
         _slots.Clear();
+        return true;
     }
 
     /// <summary>Returns a cached parent account; true with null means known absent, false means a cache miss.</summary>

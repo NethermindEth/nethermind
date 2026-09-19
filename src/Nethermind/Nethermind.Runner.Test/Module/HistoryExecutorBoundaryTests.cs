@@ -45,7 +45,11 @@ public class HistoryExecutorBoundaryTests
         Assert.That(factory.GetLastSupportedBlock(0, 63), Is.EqualTo(31));
         reads = 0;
         Assert.That(factory.GetLastSupportedBlock(0, 63), Is.EqualTo(31));
-        Assert.That(reads, Is.LessThanOrEqualTo(3), "a stable fork boundary must not trigger another binary search");
+        Assert.That(reads, Is.LessThanOrEqualTo(4), "a stable fork boundary must not trigger another binary search");
+        BlockHeader first = headers[0];
+        headers.Remove(0);
+        Assert.That(factory.GetLastSupportedBlock(0, 63), Is.Null, "cached boundaries cannot bypass a missing canonical lower bound");
+        headers[0] = first;
         Assert.That(factory.GetLastSupportedBlock(32, 63), Is.Null);
         Assert.That(factory.GetLastSupportedBlock(0, 20), Is.EqualTo(20));
 

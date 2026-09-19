@@ -448,7 +448,8 @@ public class BlockProcessorTests
     }
 
     [Test]
-    public async Task ParallelBlockTracer_TracesTheRewardsOnTheStateAfterTheLastTransaction([Values] bool amsterdam, [Values] bool stream)
+    public async Task ParallelBlockTracer_TracesTheRewardsOnTheStateAfterTheLastTransaction(
+        [Values] bool amsterdam, [Values] bool stream, [Values] bool refuseNonEmpty)
     {
         IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Prague.Instance;
         using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
@@ -462,7 +463,7 @@ public class BlockProcessorTests
         IndexThroughTheCapture(chain, index, block, parent, spec);
         ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.StateDiff | ParityTraceTypes.Rewards;
         using ParallelTraceBudget budget = new(3);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, refuseNonEmpty: refuseNonEmpty), seeds, budget, LimboLogs.Instance);
 
         IReadOnlyCollection<ParityLikeTxTrace> sequential = TraceWholeBlockThroughTraceEnvironment(chain, parent, block, _ => new ParityLikeBlockTracer(types));
         List<ParityLikeTxTrace> emitted = [];
@@ -833,7 +834,8 @@ public class BlockProcessorTests
         public void Dispose() => (inner as IDisposable)?.Dispose();
     }
 
-    private static IOverridableEnv<ParallelBlockTracer.Components> BuildParallelEnvironment(BasicTestBlockchain chain, bool? hideRewardBoundary = null)
+    private static IOverridableEnv<ParallelBlockTracer.Components> BuildParallelEnvironment(
+        BasicTestBlockchain chain, bool? hideRewardBoundary = null, bool refuseOverlay = false, bool refuseNonEmpty = false)
     {
         IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
         IOverridableEnv env = chain.Container.Resolve<IOverridableEnvFactory>().Create();
@@ -848,8 +850,39 @@ public class BlockProcessorTests
                 .Add<ParallelBlockTracer.Components>();
             if (hideRewardBoundary.HasValue)
                 builder.AddDecorator<IBlockProcessor>((_, inner) => new BoundaryHidingBlockProcessor(inner, hideRewardBoundary.Value));
+            if (refuseOverlay) builder.AddDecorator<IWorldState, OverlayRefusingState>();
+            if (refuseNonEmpty) builder.AddDecorator<IWorldState, NonEmptyOverlayRefusingState>();
         });
         return new ParallelBlockTracer.OwnedEnvironment(scope.Resolve<IOverridableEnv<ParallelBlockTracer.Components>>(), scope);
+    }
+
+    [Test]
+    public async Task ParallelBlockTracer_WhenOverlayUnsupported_DeclinesBeforeEmitting([Values] bool stream)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(Prague.Instance, seeds);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+        IndexThroughTheCapture(chain, index, block, parent, Prague.Instance);
+        using ParallelTraceBudget budget = new(2);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, refuseOverlay: true), seeds, budget, LimboLogs.Instance);
+        List<ParityLikeTxTrace> emitted = [];
+        IReadOnlyList<ParityLikeTxTrace>? traces = null;
+
+        bool accepted = stream
+            ? parallel.TryStream(block, parent, (_, hash) => new ParityLikeBlockTracer(hash, ParityTraceTypes.Trace),
+                null, batch => emitted.AddRange(batch), CancellationToken.None)
+            : parallel.TryTrace(block, parent, (_, hash) => new ParityLikeBlockTracer(hash, ParityTraceTypes.Trace),
+                null, CancellationToken.None, out traces);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accepted, Is.False, "unsupported overlay environments must leave the whole block to sequential replay");
+            Assert.That(emitted, Is.Empty);
+            Assert.That(traces, Is.Null);
+        }
     }
 
     [Test]
@@ -953,6 +986,12 @@ public class BlockProcessorTests
     private sealed class OverlayRefusingState(IWorldState state) : WorldStateDecorator(state)
     {
         public override bool TryApplyAccountOverlay(IStateReadOverlay overlay) => false;
+    }
+
+    private sealed class NonEmptyOverlayRefusingState(IWorldState state) : WorldStateDecorator(state)
+    {
+        public override bool TryApplyAccountOverlay(IStateReadOverlay overlay) =>
+            !overlay.TryGetAccount(TestItem.PrivateKeyB.Address, null, out _) && base.TryApplyAccountOverlay(overlay);
     }
 
     private sealed class RefusingSeedSource : IPrefixStateSeedSource

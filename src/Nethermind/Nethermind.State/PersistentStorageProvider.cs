@@ -51,6 +51,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     // The low bit belongs to StorageChangeTrace.IsInitialValue; zero means never captured.
     private ulong _originalsRound = 2;
 
+    /// <summary>Detects cached storage that would shadow an overlay, since contract reads consult local changes before the backend.</summary>
     internal bool HasCachedStorage(IStateReadOverlay overlay)
     {
         foreach (KeyValuePair<AddressAsKey, PerContractState> storage in _storages)
@@ -281,16 +282,16 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
         toUpdateRoots.Clear();
 
-        if (trace is not null)
-        {
-            TraceOriginalValues(tracer, trace);
-        }
-
-        base.CommitCore(tracer);
-        EndOriginalsRound();
-        _destroyedThisRound.ClearAndTrim();
         try
         {
+            if (trace is not null)
+            {
+                TraceOriginalValues(tracer, trace);
+            }
+
+            base.CommitCore(tracer);
+            EndOriginalsRound();
+            _destroyedThisRound.ClearAndTrim();
             if (tracer.IsTracingStorage)
             {
                 foreach (StorageClearChange clear in _storageClearJournal) tracer.ReportStorageClear(clear.Address);

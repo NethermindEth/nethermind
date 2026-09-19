@@ -13,28 +13,65 @@ namespace Nethermind.State.Flat.History.Changesets;
 /// it when they are consecutive, and one seed source per worker.</summary>
 internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBlocks, ConsecutiveBlockOverlays? chain, IReadOnlySet<AddressAsKey> excluded) : ICoveredBlock
 {
-    // Retain at most one cache per size. Concurrent blocks always own different caches.
+    // Retain at most one cache per size, including stale key/value references until overwritten.
+    // Active overlay leases prevent reuse even if the covered block is disposed early.
     private static readonly BlockReadCache?[] SpareReads = new BlockReadCache?[13];
     private readonly int _cacheBits = CacheBits(rows);
     private BlockReadCache? _reads = RentReads(CacheBits(rows));
+    private readonly Lock _readsLock = new();
+    private int _activeReads;
+    private bool _disposed;
 
     private static int CacheBits(BlockChangesets rows) => Math.Clamp(BitOperations.Log2((uint)Math.Max(1, rows.Rows.Length)) + 2, 2, 12);
 
     private static BlockReadCache RentReads(int bits) =>
         Interlocked.Exchange(ref SpareReads[bits], null) ?? new BlockReadCache(bits, bits + 2);
 
-    public IPrefixStateSeedSource CreateWorkerSeeds() => new WorkerSeeds(rows, earlierBlocks,
-        _reads ?? throw new ObjectDisposedException(nameof(CoveredBlock)));
+    public IPrefixStateSeedSource CreateWorkerSeeds()
+    {
+        using Lock.Scope scope = _readsLock.EnterScope();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return new WorkerSeeds(rows, earlierBlocks, this);
+    }
 
     /// <summary>Nothing is published for a block the chain cannot describe exactly.</summary>
     public void Complete() => chain?.Publish(rows, earlierBlocks, excluded);
 
     public void Dispose()
     {
-        BlockReadCache? reads = Interlocked.Exchange(ref _reads, null);
-        if (reads is null) return;
-        reads.Clear();
-        Interlocked.CompareExchange(ref SpareReads[_cacheBits], reads, null);
+        using Lock.Scope scope = _readsLock.EnterScope();
+        if (_disposed) return;
+        _disposed = true;
+        if (_activeReads == 0) ReturnReads();
+    }
+
+    private void ReturnReads()
+    {
+        BlockReadCache? reads = _reads;
+        _reads = null;
+        if (reads is not null && reads.Clear())
+            Interlocked.CompareExchange(ref SpareReads[_cacheBits], reads, null);
+    }
+
+    private ReadLease? TryLeaseReads()
+    {
+        using Lock.Scope scope = _readsLock.EnterScope();
+        if (_disposed) return null;
+        _activeReads++;
+        return new ReadLease(this, _reads!);
+    }
+
+    private void ReleaseReads()
+    {
+        using Lock.Scope scope = _readsLock.EnterScope();
+        if (--_activeReads == 0 && _disposed) ReturnReads();
+    }
+
+    private sealed class ReadLease(CoveredBlock owner, BlockReadCache cache) : IDisposable
+    {
+        private CoveredBlock? _owner = owner;
+        public BlockReadCache Cache => cache;
+        public void Dispose() => Interlocked.Exchange(ref _owner, null)?.ReleaseReads();
     }
 
     /// <summary>One worker's view of the block: its own overlay, folded as far as the last target and extended in
@@ -43,14 +80,14 @@ internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBl
     {
         private readonly BlockChangesets _rows;
         private readonly RangeOverlay? _earlierBlocks;
-        private readonly BlockReadCache _reads;
+        private readonly CoveredBlock _owner;
         private readonly MidBlockOverlay _overlay = new();
 
-        public WorkerSeeds(BlockChangesets rows, RangeOverlay? earlierBlocks, BlockReadCache reads)
+        public WorkerSeeds(BlockChangesets rows, RangeOverlay? earlierBlocks, CoveredBlock owner)
         {
             _rows = rows;
             _earlierBlocks = earlierBlocks;
-            _reads = reads;
+            _owner = owner;
             _overlay.Reset(rows.Number);
         }
 
@@ -66,7 +103,17 @@ internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBl
             while (_overlay.Folded < transactionIndex) _overlay.Fold(_overlay.Folded, _rows.Rows[_overlay.Folded]);
 
             IStateReadOverlay view = new MidBlockReadOverlay(_overlay);
-            slot.Arm(_earlierBlocks is null ? view : new ChainedReadOverlay(view, _earlierBlocks), NoLease.Instance, _reads);
+            ReadLease? lease = _owner.TryLeaseReads();
+            if (lease is null) return false;
+            try
+            {
+                slot.Arm(_earlierBlocks is null ? view : new ChainedReadOverlay(view, _earlierBlocks), lease, lease.Cache);
+            }
+            catch
+            {
+                lease.Dispose();
+                throw;
+            }
             return true;
         }
 
@@ -77,12 +124,4 @@ internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBl
         }
     }
 
-    private sealed class NoLease : IDisposable
-    {
-        public static readonly NoLease Instance = new();
-
-        public void Dispose()
-        {
-        }
-    }
 }

@@ -231,10 +231,10 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                     return false;
                 }
 
-                boundary.IsSeedRequired = true;
+                boundary.IsExecutionRequired = true;
 
                 scope.Component.Processor.Process(OwnCopy(block), TraceProcessingOptions.ReadOnlyReplay, bounded, token);
-                if (!boundary.IsPrefixInstalled)
+                if (!boundary.HasExecuted)
                     throw new InvalidOperationException("The indexed trace bypassed transaction prefix execution.");
                 results[index] = tracer.BuildResult();
             }
@@ -269,7 +269,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             {
                 TransactionTraceBoundary boundary = TransactionTraceBoundary.AfterTransactions(tracer.WithCancellation(token), seeds);
                 scope.Component.Processor.Process(OwnCopy(block), TraceProcessingOptions.ReadOnlyReplay, boundary, token);
-                if (!boundary.IsPrefixInstalled)
+                if (!boundary.HasExecuted)
                     throw new InvalidOperationException("The indexed reward trace bypassed transaction prefix execution.");
                 return tracer.BuildResult();
             }

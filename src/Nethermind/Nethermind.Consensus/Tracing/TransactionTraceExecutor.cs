@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Metrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Tracing;
@@ -23,8 +24,9 @@ public sealed class TransactionTraceExecutor(
     StateReadOverlaySlot? readOverlay = null)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
-    /// <summary>Whether this execution scope has an overlay slot and does not require full BAL construction.</summary>
-    public bool CanSeed => readOverlay is not null && !balManager.ForceConstructGeneratedBlockAccessList;
+    /// <summary>Whether this scope accepts account overlays without requiring full BAL construction.</summary>
+    public bool CanSeed => readOverlay is not null && !balManager.ForceConstructGeneratedBlockAccessList
+        && state.TryApplyAccountOverlay(EmptyOverlay.Instance);
 
     /// <inheritdoc />
     public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(in context);
@@ -55,10 +57,11 @@ public sealed class TransactionTraceExecutor(
                     else readOverlay.Disarm();
                 }
             }
-            boundary.IsPrefixInstalled = target >= 0 && first == target;
-            if (boundary.IsSeedRequired && !boundary.IsPrefixInstalled)
-                throw new InvalidOperationException("The indexed trace could not install its transaction prefix.");
-            return Execute(block, options, tracer, token, boundary, first);
+            if (boundary.IsExecutionRequired && target < 0)
+                throw new InvalidOperationException("The indexed trace could not locate its transaction boundary.");
+            TxReceipt[] receipts = Execute(block, options, tracer, token, boundary, first);
+            boundary.HasExecuted = true;
+            return receipts;
         }
         finally
         {
@@ -66,6 +69,22 @@ public sealed class TransactionTraceExecutor(
             // seed stood for the whole block; the environment disarms the slot when its scope closes.
             if (!boundary.SkipsTransactions) readOverlay?.Disarm();
         }
+    }
+
+    private sealed class EmptyOverlay : IStateReadOverlay
+    {
+        public static readonly EmptyOverlay Instance = new();
+        public bool TryGetAccount(Address address, Account? underlying, out Account? overlaid)
+        {
+            overlaid = null;
+            return false;
+        }
+        public bool TryGetStorage(Address address, in UInt256 index, out UInt256 value)
+        {
+            value = default;
+            return false;
+        }
+        public bool HasStorage(Address address) => false;
     }
 
     private TxReceipt[] Execute(Block block, ProcessingOptions options, BlockReceiptsTracer tracer, CancellationToken token, TransactionTraceBoundary boundary, int first)

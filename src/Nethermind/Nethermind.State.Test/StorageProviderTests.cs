@@ -121,7 +121,7 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Cancelled_clear_reporting_does_not_leak_into_the_next_commit()
+    public void Cancelled_storage_reporting_does_not_leak_clears_into_the_next_commit([Values] bool cancelOnRead)
     {
         using Context ctx = new(useFlat);
         WorldState provider = BuildStorageProvider(ctx);
@@ -129,7 +129,8 @@ public class StorageProviderTests(bool useFlat)
         provider.Set(cell, 17);
         provider.Commit(Frontier.Instance);
         provider.ClearStorage(ctx.Address1);
-        ReadCollectingStorageTracer cancelled = new() { CancelOnClear = true };
+        provider.GetOriginal(new StorageCell(ctx.Address2, 1), out _);
+        ReadCollectingStorageTracer cancelled = new() { CancelOnClear = !cancelOnRead, CancelOnRead = cancelOnRead };
 
         Assert.Throws<OperationCanceledException>(() => provider.Commit(Frontier.Instance, cancelled));
         provider.Set(cell, 19);
@@ -2373,6 +2374,7 @@ public class StorageProviderTests(bool useFlat)
         public System.Collections.Generic.List<(StorageCell Cell, byte[] Before, byte[] After)> Changes { get; } = [];
         public List<Address> Clears { get; } = [];
         public bool CancelOnClear { get; init; }
+        public bool CancelOnRead { get; init; }
         public List<(StorageCell Cell, byte[] Value)> Restores { get; } = [];
 
         public bool IsTracingState => false;
@@ -2384,7 +2386,11 @@ public class StorageProviderTests(bool useFlat)
         public void ReportAccountRead(Address address) { }
         public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
         public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after) => Changes.Add((storageCell, before, after));
-        public void ReportStorageRead(in StorageCell storageCell) => Reads.Add(storageCell);
+        public void ReportStorageRead(in StorageCell storageCell)
+        {
+            if (CancelOnRead) throw new OperationCanceledException();
+            Reads.Add(storageCell);
+        }
         public void ReportStorageClear(Address address)
         {
             if (CancelOnClear) throw new OperationCanceledException();

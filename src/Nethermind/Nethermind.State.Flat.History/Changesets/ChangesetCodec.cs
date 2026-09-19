@@ -137,6 +137,7 @@ internal static class ChangesetCodec
                     if ((Fields & NonceField) != 0)
                     {
                         Nonce = TakeLengthPrefixed();
+                        // EIP-2681 caps an account nonce at 2^64-1; larger significant values cannot describe a valid account.
                         if (Nonce.TrimStart((byte)0).Length > sizeof(ulong)) ThrowMalformed();
                     }
                     if ((Fields & CodeField) != 0) CodeHash = Take(Hash256.Size);

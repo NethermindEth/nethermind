@@ -67,6 +67,7 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
     internal bool TryAcquire(in StateId to, [NotNullWhen(true)] ref PersistedSnapshot? snapshot)
     {
         if (snapshot is not null && snapshot.TryAcquire()) return true;
+        if (_byTo.TryGetValue(to, out snapshot) && snapshot.TryAcquire()) return true;
         using Lock.Scope scope = _lock.EnterScope();
         if (_byTo.TryGetValue(to, out snapshot) && snapshot.TryAcquire()) return true;
         snapshot = null;

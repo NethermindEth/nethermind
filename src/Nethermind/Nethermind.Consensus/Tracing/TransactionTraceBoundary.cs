@@ -28,11 +28,11 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     internal IBlockTracer Inner => _inner;
 
     internal IPrefixStateSeedSource? Seeds => _seeds;
-    internal bool IsSeedRequired { get; set; }
-    internal bool IsPrefixInstalled { get; set; }
+    internal bool IsExecutionRequired { get; set; }
+    internal bool HasExecuted { get; set; }
 
-    /// <summary>No transaction is the target: the seed stands for the whole block and only what follows the
-    /// transactions, the rewards, is executed and traced.</summary>
+    /// <summary>No transaction is traced: a seed can replace the whole block, or a refused seed can replay it
+    /// silently before tracing rewards.</summary>
     internal bool SkipsTransactions => _transactionHash is null;
 
     /// <summary>Wraps a transaction tracer for early completion in a supported read-only replay environment.</summary>
@@ -45,8 +45,8 @@ public sealed class TransactionTraceBoundary : IBlockTracer
 
     /// <summary>Wraps a tracer that wants only what comes after the transactions: the seed for the end of the block
     /// stays armed through the rewards and withdrawals, so they are applied and traced on the state the last
-    /// transaction left, as in the replay. A refused seed fails rather than appending duplicate transaction traces.</summary>
-    public static TransactionTraceBoundary AfterTransactions(IBlockTracer tracer, IPrefixStateSeedSource seeds) => new(tracer, null, seeds) { IsSeedRequired = true };
+    /// transaction left, as in the replay. A refused seed replays transactions without forwarding their traces.</summary>
+    public static TransactionTraceBoundary AfterTransactions(IBlockTracer tracer, IPrefixStateSeedSource seeds) => new(tracer, null, seeds) { IsExecutionRequired = true };
 
     internal int IndexOf(Block block)
     {
@@ -73,19 +73,21 @@ public sealed class TransactionTraceBoundary : IBlockTracer
     public void StartNewBlockTrace(Block block)
     {
         IsComplete = false;
-        IsPrefixInstalled = false;
+        HasExecuted = false;
         _isTarget = false;
         _inner.StartNewBlockTrace(block);
     }
 
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
+        if (SkipsTransactions) return NullTxTracer.Instance;
         _isTarget = _transactionHash is not null && tx?.Hash == _transactionHash;
         return _inner.StartNewTxTrace(tx);
     }
 
     public void EndTxTrace()
     {
+        if (SkipsTransactions) return;
         _inner.EndTxTrace();
         IsComplete |= _isTarget && !_inner.IsTracingRewards;
         _isTarget = false;

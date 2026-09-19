@@ -1358,7 +1358,28 @@ public class PersistenceManagerTests
     }
 
     [Test]
-    public void FindSnapshotToPersistWithFallback_WhenWideChunkIsNonCanonical_UsesNarrowChunkOnSameChain()
+    public void FlushToPersistence_WhenCommittedChunkConflictsWithFinality_PersistsOnlyCanonicalPrefix()
+    {
+        StateId narrow = CreateStateId(1);
+        StateId head = CreateStateId(16);
+        CreateSnapshot(Block0, narrow);
+        CreateSnapshot(narrow, head);
+        CreateSnapshot(Block0, head, compacted: true);
+        _snapshotRepository.SetLastCommittedStateId(head);
+        _finalizedStateProvider.SetFinalizedBlockNumber(32);
+        _finalizedStateProvider.SetFinalizedStateRootAt(1, new Hash256(narrow.StateRoot.Bytes));
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, TestItem.KeccakA);
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        StateId flushed = _persistenceManager.FlushToPersistence(CancellationToken.None);
+
+        Assert.That(flushed, Is.EqualTo(narrow), "a missing finalized-tip root must not permit a conflicting committed chunk");
+        _persistence.Received(1).CreateWriteBatch(Block0, narrow);
+        _persistence.Received(1).CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+    }
+
+    [Test]
+    public void FindSnapshotToPersist_WhenWideChunkIsNonCanonical_UsesNarrowChunkOnSameChain([Values] bool fallback)
     {
         StateId narrow = CreateStateId(1);
         StateId head = CreateStateId(16);
@@ -1370,7 +1391,9 @@ public class PersistenceManagerTests
         _finalizedStateProvider.SetFinalizedStateRootAt(16, TestItem.KeccakA);
 
         (PersistedSnapshot? persisted, Snapshot? inMemory) =
-            _snapshotRepository.FindSnapshotToPersistWithFallback(Block0, head, (ulong)_config.CompactSize);
+            fallback
+                ? _snapshotRepository.FindSnapshotToPersistWithFallback(Block0, head, (ulong)_config.CompactSize)
+                : _snapshotRepository.FindSnapshotToPersist(head, Block0, (ulong)_config.CompactSize);
         using (persisted)
         using (inMemory)
         {
@@ -1491,6 +1514,13 @@ public class PersistenceManagerTests
             Assert.That(conversion is not null, Is.EqualTo(enableConversion), "conversion must be considered before warning");
             logger.Received(enableConversion ? 0 : 1).Warn(Arg.Is<string>(message => message.Contains("neither persistence nor conversion")));
         }
+        (PersistedSnapshot? repeatedPersisted, Snapshot? repeatedInMemory, PersistenceManager.ConversionCandidate? repeatedConversion) =
+            manager.DetermineSnapshotAction(head);
+        using (repeatedPersisted)
+        using (repeatedInMemory)
+        using (repeatedConversion?.Base)
+        using (repeatedConversion?.Compacted)
+            logger.Received(enableConversion ? 0 : 1).Warn(Arg.Is<string>(message => message.Contains("neither persistence nor conversion")));
     }
 
     // FlushToPersistence prunes both tiers as it drains, so a flush without capture would leave the flushed

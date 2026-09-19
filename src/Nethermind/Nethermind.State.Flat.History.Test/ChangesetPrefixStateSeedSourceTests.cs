@@ -60,7 +60,7 @@ public class ChangesetPrefixStateSeedSourceTests
     }
 
     [Test]
-    public void CoveredBlocks_KeepReadCachesExclusiveAndClearThemBeforeReuse()
+    public void CoveredBlocks_KeepReadCachesExclusiveAndClearThemBeforeReuse([Values] bool disposeWhileArmed)
     {
         ChangesetPrefixStateSeedSource source = new(_index);
         Assert.That(source.TryOpenBlock(_block, out ICoveredBlock? first), Is.True);
@@ -78,7 +78,7 @@ public class ChangesetPrefixStateSeedSourceTests
             Assert.That(secondSlot.Cache, Is.Not.SameAs(firstCache));
             Assert.That(secondSlot.Cache!.TryGetAccount(TestItem.AddressC, out _), Is.False);
         }
-        firstSlot.Disarm();
+        if (!disposeWhileArmed) firstSlot.Disarm();
         first.Dispose();
         first.Dispose();
 
@@ -88,10 +88,16 @@ public class ChangesetPrefixStateSeedSourceTests
         Assert.That(reopened!.CreateWorkerSeeds().TrySeed(_block, 1, reopenedSlot), Is.True);
         using (Assert.EnterMultipleScope())
         {
+            if (disposeWhileArmed)
+            {
+                Assert.That(reopenedSlot.Cache, Is.Not.SameAs(firstCache), "an active overlay keeps its cache exclusive after early disposal");
+                Assert.That(firstCache.TryGetAccount(TestItem.AddressC, out _), Is.True, "early disposal must not clear a borrowed cache");
+            }
             Assert.That(reopenedSlot.Cache!.TryGetAccount(TestItem.AddressC, out _), Is.False);
             Assert.That(reopenedSlot.Cache.TryGetSlot(TestItem.AddressC, UInt256.One, out _), Is.False);
             Assert.That(reopenedSlot.Cache, Is.Not.SameAs(secondSlot.Cache));
         }
+        firstSlot.Disarm();
         secondSlot.Disarm();
         reopenedSlot.Disarm();
     }
