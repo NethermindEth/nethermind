@@ -7,11 +7,11 @@ namespace Nethermind.BeaconChain;
 
 public interface IBeaconChainConfig : IConfig
 {
-    [ConfigItem(Description = "Whether to enable the embedded beacon chain consensus driver. When enabled, Nethermind follows Ethereum mainnet without an external consensus client.", DefaultValue = "false")]
+    [ConfigItem(Description = "Whether to enable the embedded beacon chain consensus driver. When enabled, Nethermind follows the beacon chain for the execution layer's configured network without an external consensus client.", DefaultValue = "false")]
     bool Enabled { get; set; }
 
-    [ConfigItem(Description = "The beacon API URL to checkpoint-sync the finalized beacon state and block from.", DefaultValue = "https://mainnet.checkpoint.sigp.io")]
-    string CheckpointSyncUrl { get; set; }
+    [ConfigItem(Description = "The beacon API URL to checkpoint-sync the finalized beacon state and block from. When unset, defaults to a provider for the network selected via the execution layer's chain id.", DefaultValue = "null")]
+    string? CheckpointSyncUrl { get; set; }
 
     [ConfigItem(Description = "A local SSZ-encoded beacon state file to bootstrap from instead of downloading from the checkpoint sync URL.", DefaultValue = "null")]
     string? CheckpointStateFile { get; set; }
