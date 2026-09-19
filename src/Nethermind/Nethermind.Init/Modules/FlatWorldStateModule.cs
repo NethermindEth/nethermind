@@ -15,6 +15,7 @@ using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.State.Flat.History.Changesets;
 using Nethermind.Core.Container;
+using Nethermind.Core.Specs;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -192,9 +193,10 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                     .AddSingleton<InlineChangesetCapture>(ctx =>
                     {
                         IBlockTree blockTree = ctx.Resolve<IBlockTree>();
+                        ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
                         return new InlineChangesetCapture(
                             ctx.Resolve<TransactionChangesetIndex>(),
-                            block => IsFarFromTheTip(blockTree, block),
+                            block => !specProvider.GetSpec(block.Header).BlockLevelAccessListsEnabled && IsFarFromTheTip(blockTree, block),
                             ctx.Resolve<ILogManager>());
                     })
                     .AddSingleton<IMainProcessingModule, InlineChangesetCaptureModule>();

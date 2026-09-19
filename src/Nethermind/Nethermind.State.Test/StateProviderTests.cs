@@ -61,6 +61,24 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void ApplyAccountOverlay_AfterBlockStartCommit_PreservesUnchangedFields()
+    {
+        using Context ctx = new(useFlat);
+        IWorldState state = ctx.WorldState;
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        state.CreateAccount(_address1, 7, 3);
+        state.Commit(Frontier.Instance);
+
+        state.ApplyAccountOverlay(new BalanceOverlay(_address1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state.GetBalance(_address1), Is.EqualTo((UInt256)99), "the prefix replaces the cached balance");
+            Assert.That(state.GetNonce(_address1), Is.EqualTo(3), "the block-start nonce is not flushed to the scope and must survive");
+        }
+    }
+
+    [Test]
     public void Eip_158_zero_value_transfer_deletes()
     {
         using Context ctx = new(useFlat);
@@ -655,6 +673,23 @@ public class StateProviderTests(bool useFlat)
             .GetField("_blockCodeInsertFilter", BindingFlags.Instance | BindingFlags.NonPublic)!
             .GetValue(worldState._stateProvider)!;
         Assert.That(filter.Delete(codeHash), Is.True, "the code hash was not in the insert filter");
+    }
+
+    private sealed class BalanceOverlay(Address address) : IStateReadOverlay
+    {
+        public bool TryGetAccount(Address candidate, Account? underlying, out Account? overlaid)
+        {
+            overlaid = underlying?.WithChangedBalance(99);
+            return candidate == address;
+        }
+
+        public bool TryGetStorage(Address candidate, in UInt256 index, out UInt256 value)
+        {
+            value = default;
+            return false;
+        }
+
+        public bool HasStorage(Address candidate) => false;
     }
 }
 

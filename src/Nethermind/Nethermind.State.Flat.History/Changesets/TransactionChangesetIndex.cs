@@ -19,6 +19,9 @@ public sealed class TransactionChangesetIndex
     private readonly TransactionChangesetStore _store;
     private readonly MidBlockOverlayCache _overlays;
     private readonly ConsecutiveBlockOverlays _consecutive = new();
+    private readonly Lock[] _blockLocks = [.. Enumerable.Range(0, 64).Select(static _ => new Lock())];
+
+    private Lock BlockLock(ulong block) => _blockLocks[block % (ulong)_blockLocks.Length];
 
     private readonly ISpecProvider? _specProvider;
 
@@ -58,7 +61,8 @@ public sealed class TransactionChangesetIndex
         ulong number = (ulong)block.Number;
         if (collectors.Length > ChangesetKeyLayout.MaxTransactionIndex + 1) return false;
 
-        using (IColumnsWriteBatch<FlatHistoryColumns> batch = _columns.StartWriteBatch())
+        IColumnsWriteBatch<FlatHistoryColumns> batch = _columns.StartWriteBatch();
+        try
         {
             IWriteBatch rows = batch.GetColumnBatch(FlatHistoryColumns.TransactionChangesets);
             _store.WriteBlockHash(number, block.Hash!, rows);
@@ -66,6 +70,15 @@ public sealed class TransactionChangesetIndex
             {
                 _store.Write(number, (ushort)i, collectors[i]!.Pack(), rows);
             }
+        }
+        catch
+        {
+            batch.Clear();
+            throw;
+        }
+        finally
+        {
+            lock (BlockLock(number)) batch.Dispose();
         }
 
         return _store.TryExtendCoverage(number, number);
@@ -101,7 +114,11 @@ public sealed class TransactionChangesetIndex
         covered = null;
         ulong number = (ulong)block.Number;
         if (!Covers(number) || block.Hash is null || block.ParentHash is null) return false;
-        if (!BlockChangesets.TryRead(_store, number, block.Hash, block.Transactions.Length, out BlockChangesets? rows)) return false;
+        BlockChangesets? rows;
+        lock (BlockLock(number))
+        {
+            if (!BlockChangesets.TryRead(_store, number, block.Hash, block.Transactions.Length, out rows)) return false;
+        }
 
         HashSet<AddressAsKey> excluded = [];
         // IsPostMerge is set while a block is processed and is not decoded from a stored header, so a block read back
@@ -112,6 +129,15 @@ public sealed class TransactionChangesetIndex
             && PostTransactionWriters.TryCollect(block, _specProvider.GetSpec(block.Header), excluded);
         covered = new CoveredBlock(rows, number == 0 ? null : _consecutive.EndingAt(number - 1, block.ParentHash), chainable ? _consecutive : null, excluded);
         return true;
+        // Keep the identity check and fold on the same committed version of this height.
+        lock (BlockLock(block))
+        {
+            lease = default;
+            return Covers(block)
+                && _store.TryGetBlockHash(block, out ValueHash256 indexed)
+                && indexed == blockHash
+                && _overlays.TryRent(block, in indexed, beforeTransaction, out lease);
+        }
     }
 
     /// <summary>One block's rows, written into a batch of their own. The caller claims coverage only once
@@ -135,21 +161,25 @@ public sealed class TransactionChangesetIndex
 
         public IBlockTracer Tracer => _tracer;
 
-        /// <summary>False when the tracer did not see the whole block: the rows are written but must not be claimed,
-        /// and the next pass builds the block again.</summary>
+        /// <summary>Publishes a complete capture; otherwise discards the batch so an existing block stays intact.</summary>
         public bool Commit()
         {
             if (_written) throw new InvalidOperationException($"The changeset capture of block {_block} was already committed.");
 
             _written = true;
-            _batch.Dispose();
+            if (!_tracer.Complete) _batch.Clear();
+            lock (_index.BlockLock(_block)) _batch.Dispose();
             return _tracer.Complete;
         }
 
         public void Dispose()
         {
             _tracer.Dispose();
-            if (!_written) _batch.Dispose();
+            if (!_written)
+            {
+                _batch.Clear();
+                lock (_index.BlockLock(_block)) _batch.Dispose();
+            }
         }
     }
 }

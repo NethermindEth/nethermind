@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.State.Flat.History.Changesets;
 using NUnit.Framework;
 
@@ -52,6 +53,44 @@ public class TransactionChangesetIndexTests
     }
 
     [Test]
+    public void TryRentOverlay_AfterSiblingReplacement_DoesNotReuseTheOldPrefix()
+    {
+        Capture(transactions: 3);
+        Assert.That(_index.TryRentOverlay(7, _block.Hash!, 2, out MidBlockOverlayCache.Lease first), Is.True);
+        using (first)
+        {
+            first.Overlay.TryGetAccount(TestItem.AddressA, out MidBlockOverlay.AccountOverlay? account);
+            Assert.That(account!.Balance, Is.EqualTo((UInt256)2), "precondition: the original prefix is cached");
+        }
+
+        _block = Build.A.Block.WithNumber(7).WithDifficulty(99).WithTransactions(_block.Transactions).TestObject;
+        Capture(transactions: 3, balanceOffset: 97);
+        Assert.That(_index.TryRentOverlay(7, _block.Hash!, 2, out MidBlockOverlayCache.Lease replacement), Is.True);
+        using (replacement)
+        {
+            replacement.Overlay.TryGetAccount(TestItem.AddressA, out MidBlockOverlay.AccountOverlay? account);
+            Assert.That(account!.Balance, Is.EqualTo((UInt256)99), "the sibling must not inherit the cached prefix");
+        }
+    }
+
+    [Test]
+    public void IncompleteSiblingCapture_PreservesThePreviouslyIndexedBlock()
+    {
+        Capture(transactions: 3);
+        Block original = _block;
+        _block = Build.A.Block.WithNumber(7).WithDifficulty(99).WithTransactions(_block.Transactions).TestObject;
+
+        Assert.That(Capture(transactions: 2), Is.False);
+        Assert.That(_index.TryRentOverlay(7, original.Hash!, 2, out MidBlockOverlayCache.Lease lease), Is.True,
+            "an incomplete replacement must not overwrite the hash or rows of a covered block");
+        using (lease)
+        {
+            lease.Overlay.TryGetAccount(TestItem.AddressA, out MidBlockOverlay.AccountOverlay? account);
+            Assert.That(account!.Balance, Is.EqualTo((UInt256)2));
+        }
+    }
+
+    [Test]
     public void ACaptureThatDidNotSeeTheWholeBlock_ClaimsNothing()
     {
         bool committed = Capture(transactions: 2);
@@ -75,14 +114,14 @@ public class TransactionChangesetIndexTests
         }
     }
 
-    private bool Capture(int transactions, int silent = -1)
+    private bool Capture(int transactions, int silent = -1, ulong balanceOffset = 0)
     {
         using TransactionChangesetIndex.BlockCapture capture = _index.StartBlock(7);
         capture.Tracer.StartNewBlockTrace(_block);
         for (int i = 0; i < transactions; i++)
         {
             ITxTracer tracer = capture.Tracer.StartNewTxTrace(_block.Transactions[i]);
-            if (i != silent) tracer.ReportBalanceChange(TestItem.AddressA, (ulong)i, (ulong)(i + 1));
+            if (i != silent) tracer.ReportBalanceChange(TestItem.AddressA, balanceOffset + (ulong)i, balanceOffset + (ulong)(i + 1));
             capture.Tracer.EndTxTrace();
         }
 

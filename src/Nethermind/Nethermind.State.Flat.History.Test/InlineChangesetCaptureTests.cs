@@ -50,6 +50,19 @@ public class InlineChangesetCaptureTests
     }
 
     [Test]
+    public void EmptyBlock_BetweenCoveredBlocks_ExtendsCoverage()
+    {
+        _index.TryClaim(8, 8);
+        _block = Build.A.Block.WithNumber(9).WithTransactions([]).TestObject;
+        Process(observe: []);
+        _block = Build.A.Block.WithNumber(10).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        Process(observe: [true]);
+
+        Assert.That(_index.TryGetCoverage(out ulong from, out ulong to) && from == 8 && to == 10, Is.True,
+            "an empty block must not leave a gap that prevents subsequent inline coverage");
+    }
+
+    [Test]
     public void ABlockNearTheTip_IsLeftToTheBuilder()
     {
         _syncing = false;

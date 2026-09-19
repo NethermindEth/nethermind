@@ -55,6 +55,7 @@ using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Init.Modules;
+using Nethermind.Init.Steps;
 using Nethermind.Db;
 using FlatHistoryColumns = Nethermind.State.Flat.FlatHistoryColumns;
 using Nethermind.State.Flat.History.Changesets;
@@ -154,6 +155,25 @@ public class BlockProcessorTests
         using IDisposable scope = chain.MainWorldState.BeginScope(parent);
         chain.BlockProcessor.ProcessOne(block, options, NullBlockTracer.Instance, Prague.Instance, CancellationToken.None);
 
+        artifacts.AssertUntouched(block);
+    }
+
+    [Test]
+    public async Task HistoryBlockExecutor_WhenReplaying_LeavesCachedArtifactsUntouched([Values] bool amsterdam)
+    {
+        IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Prague.Instance;
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false }));
+        Block block = await AddThreeTransferBlock(chain);
+        Assert.That(chain.BlockTree.FindBlock(block.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.SameAs(block),
+            "precondition: the replay must receive the canonical cached instance");
+        using StampedExecutionArtifacts artifacts = new(block);
+        ProcessingHistoryBlockExecutorFactory factory = new(chain.BlockTree, chain.SpecProvider,
+            chain.Container.Resolve<IOverridableEnvFactory>(), chain.Container, chain.Container.Resolve<IBlockValidationModule[]>());
+        using IHistoryBlockExecutor executor = factory.Create();
+
+        Assert.That(executor.TryExecute((ulong)block.Number, NullBlockTracer.Instance, CancellationToken.None), Is.EqualTo(!amsterdam),
+            "BAL-enabled blocks cannot use prefix seeds and must not be indexed");
         artifacts.AssertUntouched(block);
     }
 

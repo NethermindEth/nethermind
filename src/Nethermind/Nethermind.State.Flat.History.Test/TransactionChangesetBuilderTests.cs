@@ -40,6 +40,14 @@ public class TransactionChangesetBuilderTests
     }
 
     [Test]
+    public void RunThread_WhenInitializationFails_ContainsTheFailure()
+    {
+        using TransactionChangesetBuilder builder = Builder();
+        Assert.That(() => builder.RunThread(() => throw new InvalidOperationException("scope initialization failed")), Throws.Nothing,
+            "background initialization failures must not escape a thread delegate and terminate the node");
+    }
+
+    [Test]
     public void TheFirstBlockBuilt_IsTheWatermark()
     {
         Capture(upTo: 20);

@@ -175,14 +175,40 @@ public sealed class TransactionChangesetBuilder(
         _cancellation.Cancel();
         bool everyThreadStopped = true;
         foreach (Thread thread in _threads) everyThreadStopped &= thread.Join(TimeSpan.FromSeconds(5));
-        if (everyThreadStopped) _tipExecutor?.Dispose();
+        if (everyThreadStopped)
+        {
+            try
+            {
+                _tipExecutor?.Dispose();
+            }
+            finally
+            {
+                _cancellation.Dispose();
+            }
+        }
     }
 
     private Thread StartThread(Action body, string name)
     {
-        Thread thread = new(() => body()) { IsBackground = true, Name = name, Priority = ThreadPriority.BelowNormal };
+        Thread thread = new(() => RunThread(body)) { IsBackground = true, Name = name, Priority = ThreadPriority.BelowNormal };
         thread.Start();
         return thread;
+    }
+
+    internal void RunThread(Action body)
+    {
+        try
+        {
+            body();
+        }
+        catch (OperationCanceledException) when (_cancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            if (_logger.IsError) _logger.Error("Transaction changeset background indexing stopped.", exception);
+            _cancellation.Cancel();
+        }
     }
 
     private void FollowTip()
@@ -224,7 +250,13 @@ public sealed class TransactionChangesetBuilder(
 
     private static void Rest(TimeSpan duration, CancellationToken token)
     {
-        if (duration > TimeSpan.Zero) token.WaitHandle.WaitOne(duration);
+        TimeSpan maximum = TimeSpan.FromMilliseconds(int.MaxValue);
+        while (duration > TimeSpan.Zero && !token.IsCancellationRequested)
+        {
+            TimeSpan interval = duration > maximum ? maximum : duration;
+            if (token.WaitHandle.WaitOne(interval)) return;
+            duration -= interval;
+        }
     }
 
     private bool Guarded(Func<bool> step, CancellationToken token)

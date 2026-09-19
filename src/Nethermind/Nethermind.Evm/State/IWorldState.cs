@@ -95,11 +95,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void WarmUp(Address address);
 
-    /// <summary>Forgets what this block recorded for the accounts <paramref name="covered"/> claims, so the next read
-    /// of one resolves through the scope again. For a trace that installs a block prefix underneath the state: the
-    /// block's opening system calls are committed before its transactions, and their record would otherwise answer
-    /// ahead of the prefix laid over the same accounts.</summary>
-    void DiscardCachedAccounts(Func<Address, bool> covered);
+    /// <summary>Layers a transaction prefix over cached block-start account changes.</summary>
+    void ApplyAccountOverlay(IStateReadOverlay overlay);
 
     /// <summary>
     /// Clear all storage at specified address
