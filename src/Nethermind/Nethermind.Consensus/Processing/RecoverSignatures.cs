@@ -33,8 +33,12 @@ namespace Nethermind.Consensus.Processing
         // the block copies the transaction array, so the array itself cannot be the key. Entries are removed on completion.
         private static readonly ConcurrentDictionary<Hash256, Task> s_inFlight = new();
 
-        /// <summary>One recovery batch: the transactions all cores pick up first.</summary>
-        private static readonly int LeadingSenderCount = Environment.ProcessorCount;
+        // Background recovery competes with the prewarmer and the processing thread for the same cores; half of
+        // them still recover senders far faster than execution consumes them, and the rest keep the prewarmer ahead.
+        private static readonly ParallelOptions s_backgroundOptions = new() { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 2) };
+
+        /// <summary>One background recovery batch: the transactions its workers pick up first.</summary>
+        private static int LeadingSenderCount => s_backgroundOptions.MaxDegreeOfParallelism;
 
         public void RecoverData(Block block)
         {
@@ -93,7 +97,7 @@ namespace Nethermind.Consensus.Processing
             {
                 try
                 {
-                    RecoverData(txs, releaseSpec);
+                    RecoverData(txs, releaseSpec, skipErrors: false, s_backgroundOptions);
                 }
                 catch (Exception e)
                 {
@@ -142,7 +146,10 @@ namespace Nethermind.Consensus.Processing
 
         /// <summary>Recovers senders and EIP-7702 authorities for transactions not yet attached to a <see cref="Block"/>.</summary>
         /// <param name="skipErrors">When set, recovery failures leave <see cref="Transaction.SenderAddress"/> null instead of throwing.</param>
-        public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors = false)
+        public void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors = false) =>
+            RecoverData(txs, releaseSpec, skipErrors, ParallelUnbalancedWork.DefaultOptions);
+
+        private void RecoverData(Transaction[] txs, IReleaseSpec releaseSpec, bool skipErrors, ParallelOptions parallelOptions)
         {
             if (txs.Length == 0)
                 return;
@@ -155,7 +162,7 @@ namespace Nethermind.Consensus.Processing
                 ParallelUnbalancedWork.For(
                     0,
                     txs.Length,
-                    ParallelUnbalancedWork.DefaultOptions,
+                    parallelOptions,
                     (recover: this, txs, releaseSpec, skipErrors),
                     RecoverSingle);
             }
