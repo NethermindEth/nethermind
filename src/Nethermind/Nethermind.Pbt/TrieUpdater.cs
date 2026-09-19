@@ -174,17 +174,19 @@ internal static partial class TrieUpdater<TKey, TPath>
         if (current.IsEmpty)
         {
             if (operations.Length == 1)
-                return operations[0].Value == default ? default : new OwnedSubtree(default, new Subtree(operations[0]));
+                return operations[0].Value == default ? default : new OwnedSubtree(default, CreateLeaf(operations[0], metrics));
         }
         else if (current.IsLeaf)
         {
             if (operations.Length == 1)
             {
                 PbtWriteOperation<TKey> operation = operations[0];
-                if (operation.Key.Equals(current.Node.Key))
+                if (operation.Key.Equals(current.Node.LeafKey))
                 {
                     if (operation.Value == default) return default;
-                    return operation.Value == current.Node.Value ? current.Materialize() : new OwnedSubtree(default, new Subtree(operation));
+                    // The stored leaf has no value; an unchanged value shows as an unchanged hash.
+                    Subtree leaf = CreateLeaf(operation, metrics);
+                    return leaf.LeafHash == current.Node.LeafHash ? current.Materialize() : new OwnedSubtree(default, leaf);
                 }
                 if (operation.Value == default) return current.Materialize();
             }
@@ -205,7 +207,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 terminalIndex = index;
                 break;
             }
-            bool hasTerminalLeaf = current.IsLeaf && current.Node.Key.BitLength == bitDepth;
+            bool hasTerminalLeaf = current.IsLeaf && current.Node.LeafKey.BitLength == bitDepth;
             if (terminalIndex >= 0)
             {
                 // EIP-8297 prefix freedom applies to surviving keys, after both buckets have been folded.
@@ -242,7 +244,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         int branchDepth = partition.Plan.KnownCommonPrefixLength;
         if (!current.IsEmpty && current.IsLeaf)
         {
-            TKey leafKey = current.Node.Key;
+            TKey leafKey = current.Node.LeafKey;
             int difference = leafKey.FirstDifferingBit(firstKey, bitDepth);
             branchDepth = Math.Min(branchDepth, difference);
         }
@@ -335,9 +337,11 @@ internal static partial class TrieUpdater<TKey, TPath>
     }
 
     /// <summary>Reads the stored subtree size of the one group holding the children of <paramref name="current"/>.</summary>
+    /// <remarks>A branch over two inline leaves has no such group: its whole subtree is the node itself.</remarks>
     [SkipLocalsInit]
     internal static long ReadDescendantBytes(IPbtStore store, scoped in TraversalSubtree current, TrieUpdaterMetrics? metrics)
     {
+        if (current.Node.LeafChildrenMask == (Subtree.LeftLeaf | Subtree.RightLeaf)) return 0;
         TPath childGroup = current.Materialize().GroupPath;
         PbtTraversalPath childPath = PbtTraversalPath.FromPath(stackalloc byte[PbtBitPrefix.ByteCount(TPath.MaxBitDepth)], childGroup);
         metrics?.IncrementPhysicalGroupFetches();
@@ -527,6 +531,15 @@ internal static partial class TrieUpdater<TKey, TPath>
 
     internal static int BoundaryPosition(int slot) => 2 * slot - BitOperations.PopCount((uint)slot);
 
+    /// <summary>Creates the leaf an insert produces, hashing it once for its parent.</summary>
+    private static Subtree CreateLeaf(in PbtWriteOperation<TKey> operation, TrieUpdaterMetrics? metrics)
+    {
+        metrics?.IncrementNodeHashes();
+        TKey key = operation.Key;
+        ValueHash256 value = operation.Value;
+        return new(key, PbtNodeCodec.HashLeaf(key.Bytes, value.Bytes));
+    }
+
     internal static TraversalSubtree TakeBoundary(scoped ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path,
         scoped ref Frontier frontier, int slot, Span<byte> sourceBuffer)
     {
@@ -569,6 +582,9 @@ internal static partial class TrieUpdater<TKey, TPath>
                 bool promoteRight = result.IsEmpty;
                 if (!promoteRight)
                 {
+                    // A leaf child is not written; the branch composed below inlines its key.
+                    frame.LeftIsLeaf = result.IsLeaf;
+                    if (result.IsLeaf) frame.LeftKey = result.Node.LeafKey;
                     frame.LeftHash = writer.Write(path, position - width, reader.BitDepth + frame.Path.Length + 1, ref result, metrics);
                     frame.Stage = ComposeStage.RightCompleted;
                 }
@@ -585,8 +601,11 @@ internal static partial class TrieUpdater<TKey, TPath>
             }
             if (frame.Stage == ComposeStage.RightCompleted)
             {
+                bool rightIsLeaf = result.IsLeaf;
+                TKey rightKey = rightIsLeaf ? result.Node.LeafKey : default;
                 ValueHash256 rightHash = writer.Write(path, position - 1, reader.BitDepth + frame.Path.Length + 1, ref result, metrics);
-                result = new TraversalSubtree(path, new Subtree(frame.Path, frame.LeftHash, rightHash));
+                byte leafChildren = (byte)((frame.LeftIsLeaf ? Subtree.LeftLeaf : 0) | (rightIsLeaf ? Subtree.RightLeaf : 0));
+                result = new TraversalSubtree(path, new Subtree(frame.Path, frame.LeftHash, rightHash, frame.LeftKey, rightKey, leafChildren));
                 frameCount--;
                 continue;
             }
@@ -621,6 +640,8 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal NodeGroupPath Path = path;
         internal ComposeStage Stage;
         internal ValueHash256 LeftHash;
+        internal TKey LeftKey;
+        internal bool LeftIsLeaf;
     }
 
     [InlineArray(PbtFourLevelGroupGeometry.LevelsPerGroup)]
@@ -642,7 +663,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         int boundaryDepth = bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
         if (current.IsLeaf)
         {
-            SetBoundary(path, ref frontier, BoundarySlot(current.Node.Key.Bytes, bitDepth), ref current, 0);
+            SetBoundary(path, ref frontier, BoundarySlot(current.Node.LeafKey.Bytes, bitDepth), ref current, 0);
             return;
         }
 
@@ -663,15 +684,25 @@ internal static partial class TrieUpdater<TKey, TPath>
 
         ValueHash256 left = current.Node.LeftHash;
         ValueHash256 right = current.Node.RightHash;
+        // Inline leaves are copied out before the branch is released: a composed branch holds their keys itself.
+        Subtree leftLeaf = current.Node.HasLeftLeaf ? new(current.Node.LeftLeafKey, left) : default;
+        Subtree rightLeaf = current.Node.HasRightLeaf ? new(current.Node.RightLeafKey, right) : default;
         current = default;
-        DecomposeChild(ref reader, writer, path, left, branchSlot, effectiveLevel + 1, bitDepth, ref frontier, touchedMask);
-        DecomposeChild(ref reader, writer, path, right, branchSlot + branchWidth / 2, effectiveLevel + 1, bitDepth, ref frontier, touchedMask);
+        DecomposeChild(ref reader, writer, path, left, leftLeaf, branchSlot, effectiveLevel + 1, bitDepth, ref frontier, touchedMask);
+        DecomposeChild(ref reader, writer, path, right, rightLeaf, branchSlot + branchWidth / 2, effectiveLevel + 1, bitDepth, ref frontier, touchedMask);
     }
 
     private static void DecomposeChild(ref GroupFrameReader<TKey, TPath> reader, PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path,
-        ValueHash256 hash, int slot, int level, int bitDepth, ref Frontier frontier, int touchedMask)
+        ValueHash256 hash, in Subtree leaf, int slot, int level, int bitDepth, ref Frontier frontier, int touchedMask)
     {
         if (hash == default) return;
+        if (!leaf.IsEmpty)
+        {
+            // A leaf has no stored node: it settles at its own boundary slot and is promoted back when composed.
+            TraversalSubtree leafSubtree = new(path, leaf);
+            Decompose(ref reader, writer, path, ref leafSubtree, bitDepth, ref frontier, touchedMask);
+            return;
+        }
         int width = 16 >> level;
         int position = 2 * (slot + width) - 2 - BitOperations.PopCount((uint)slot);
         reader.SeedHash(position, hash);

@@ -37,6 +37,8 @@ internal static class PbtTrieWarmer
                 if (branchDepth >= key.BitLength) return;
                 if (TrieUpdater<TKey, PbtStorageNodePath>.MatchingPrefixBits(node.Prefix, key, path.BitDepth) != node.Prefix.BitCount) return;
                 int direction = key.GetBit(branchDepth);
+                // An inline leaf child has no group below it.
+                if (!(direction == 0 ? node.LeftKey : node.RightKey).IsEmpty) return;
                 PbtStorageNodePath childPath = path.Append(node.Prefix, direction);
                 location = PbtFourLevelGroupGeometry.Locate(childPath);
                 if (!location.GroupKey.Equals(groupKey))

@@ -65,7 +65,7 @@ public class StemTrieTests
         {
             Assert.That(incremental.RootHash, Is.EqualTo(rebuilt.RootHash));
             Assert.That(incremental.CanonicalRecords(), Is.EqualTo(rebuilt.CanonicalRecords()));
-            Assert.That(incremental.Nodes, Has.Count.GreaterThan(4));
+            Assert.That(incremental.Nodes, Has.Count.EqualTo(3), "three branches with the four leaves inlined");
         }
     }
 

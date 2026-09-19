@@ -25,20 +25,27 @@ internal readonly ref struct PbtNodeReader
 
     internal ReadOnlySpan<byte> Encoding { get { EnsureInitialized(); return _encoding; } }
     internal bool IsLeaf => Encoding[0] == 0;
-    internal ReadOnlySpan<byte> Key { get { EnsureKind(true); return _encoding.Slice(3, Length); } }
-    internal ReadOnlySpan<byte> Value { get { EnsureKind(true); return _encoding[^32..]; } }
+    /// <summary>The root leaf's complete key.</summary>
+    internal ReadOnlySpan<byte> Key { get { EnsureKind(true); return _encoding[2..]; } }
     internal CompressedPrefix Prefix
     {
         get
         {
             EnsureKind(false);
-            return CompressedPrefix.FromValidated(_encoding.Slice(1, 2 + PbtBitPrefix.ByteCount(Length)));
+            return CompressedPrefix.FromValidated(_encoding.Slice(1, 2 + PbtBitPrefix.ByteCount(BitCount)));
         }
     }
-    internal ValueHash256 LeftHash { get { EnsureKind(false); return new(_encoding.Slice(_encoding.Length - 64, 32)); } }
-    internal ValueHash256 RightHash { get { EnsureKind(false); return new(_encoding[^32..]); } }
+    /// <summary>The branch's EIP-8297 hash preimage, which starts its encoding.</summary>
+    internal ReadOnlySpan<byte> Preimage { get { EnsureKind(false); return _encoding[..PreimageLength]; } }
+    internal ValueHash256 LeftHash { get { EnsureKind(false); return new(_encoding.Slice(PreimageLength - 64, 32)); } }
+    internal ValueHash256 RightHash { get { EnsureKind(false); return new(_encoding.Slice(PreimageLength - 32, 32)); } }
+    /// <summary>The left child's complete key when it is a leaf, otherwise empty.</summary>
+    internal ReadOnlySpan<byte> LeftKey { get { EnsureKind(false); return _encoding.Slice(PreimageLength + PbtNodeCodec.BranchTrailerHeaderLength, _encoding[PreimageLength]); } }
+    /// <summary>The right child's complete key when it is a leaf, otherwise empty.</summary>
+    internal ReadOnlySpan<byte> RightKey { get { EnsureKind(false); return _encoding[(PreimageLength + PbtNodeCodec.BranchTrailerHeaderLength + _encoding[PreimageLength])..]; } }
 
-    private int Length => BinaryPrimitives.ReadUInt16BigEndian(_encoding[1..]);
+    private int BitCount => BinaryPrimitives.ReadUInt16BigEndian(_encoding[1..]);
+    private int PreimageLength => PbtNodeCodec.BranchPreimageLength(BitCount);
 
     [Conditional("DEBUG")]
     private void EnsureInitialized()

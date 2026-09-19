@@ -127,15 +127,9 @@ internal static class PbtStoreTestExtensions
             foreach (PbtPhysicalPayload physical in groups)
                 if (physical.Key.Equals(location.GroupKey))
                     encoding = ResolveNode(PbtStoreTestExtensions.ReadGroup(location.GroupKey, physical.Payload.Span), location.GroupKey, location.Position);
-            if (encoding is null) return default;
+            // A root leaf's hash is not derivable from its encoding, and the test store ignores group hashes anyway.
+            if (encoding is null || encoding[0] == 0) return default;
             PbtNodeReader node = new(encoding);
-            if (node.IsLeaf)
-            {
-                if (node.Key.Length * 8 < groupKey.BitDepth) return default;
-                for (int bit = 0; bit < groupKey.BitDepth; bit++)
-                    if (TrieUpdater.GetBit(node.Key, bit) != groupKey.GetBit(bit)) return default;
-                return PbtNodeCodec.Hash(node);
-            }
             int branchDepth = path.BitDepth + node.Prefix.BitCount;
             for (int bit = path.BitDepth; bit < Math.Min(branchDepth, groupKey.BitDepth); bit++)
                 if (TrieUpdater.GetBit(node.Prefix.Bytes, bit - path.BitDepth) != groupKey.GetBit(bit)) return default;
@@ -147,7 +141,10 @@ internal static class PbtStoreTestExtensions
                     prefix[bit / 8] |= (byte)(TrieUpdater.GetBit(node.Prefix.Bytes, groupKey.BitDepth - path.BitDepth + bit) << (7 - bit % 8));
                 return PbtNodeCodec.Hash(new PbtNodeReader(PbtNodeCodec.EncodeBranch(prefix, prefixBits, node.LeftHash, node.RightHash)));
             }
-            path = path.Append(node.Prefix, groupKey.GetBit(branchDepth));
+            int direction = groupKey.GetBit(branchDepth);
+            // An inline leaf has no group below it.
+            if (!(direction == 0 ? node.LeftKey : node.RightKey).IsEmpty) return default;
+            path = path.Append(node.Prefix, direction);
         }
     }
 
@@ -230,6 +227,7 @@ internal static class PbtStoreTestExtensions
             if (node.IsLeaf || currentPath.BitDepth + node.Prefix.BitCount >= path.BitDepth) return null;
             int directionBit = currentPath.BitDepth + node.Prefix.BitCount;
             int direction = path.GetBit(directionBit);
+            if (!(direction == 0 ? node.LeftKey : node.RightKey).IsEmpty) return null;
             currentPath = currentPath.Append(node.Prefix, direction);
             for (int bit = 0; bit < currentPath.BitDepth; bit++)
                 if (currentPath.GetBit(bit) != path.GetBit(bit)) return null;
@@ -287,7 +285,7 @@ internal static class PbtStoreTestExtensions
         {
             PbtNodeGroupCodec.Encode(ref writer, location.GroupKey, records, 0);
             using RefCountingMemory payload = writer.Detach()!;
-            store.SetNodeGroup(location.GroupKey, encoding is null ? default : PbtNodeCodec.Hash(new PbtNodeReader(encoding)), payload);
+            store.SetNodeGroup(location.GroupKey, encoding is null || encoding[0] == 0 ? default : PbtNodeCodec.Hash(new PbtNodeReader(encoding)), payload);
         }
         finally
         {
@@ -307,8 +305,8 @@ internal static class PbtStoreTestExtensions
             records.Add(new PbtNodeRecord(path, encoding));
             PbtNodeReader node = new(encoding);
             if (node.IsLeaf) continue;
-            pending.Push(path.Append(node.Prefix, 0));
-            pending.Push(path.Append(node.Prefix, 1));
+            if (node.LeftKey.IsEmpty) pending.Push(path.Append(node.Prefix, 0));
+            if (node.RightKey.IsEmpty) pending.Push(path.Append(node.Prefix, 1));
         }
         records.Sort(static (left, right) => left.Path.CompareTo(right.Path));
         return records;

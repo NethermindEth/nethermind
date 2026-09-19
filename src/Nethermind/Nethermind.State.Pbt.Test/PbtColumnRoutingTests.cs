@@ -28,7 +28,7 @@ public class PbtColumnRoutingTests
         CodeInfo code = new(TestItem.KeccakB.Bytes.ToArray());
         PbtNodePath node = new([], 0);
         ValueHash256 value = TestItem.KeccakA.ValueHash256;
-        byte[] nodeEncoding = PbtNodeCodec.EncodeLeaf(leaf, value.Bytes);
+        byte[] nodeEncoding = PbtNodeCodec.EncodeLeaf(leaf);
 
         using PbtNodeGroupStore store = new();
         store.SetNode(node, nodeEncoding);

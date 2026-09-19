@@ -9,22 +9,24 @@ namespace Nethermind.Pbt;
 
 /// <summary>Encodes and reads a four-level node group's canonical node payload.</summary>
 /// <remarks>
-/// The physical payload starts with version byte 3, followed by entries and a variable-size footer.
-/// Entries are complete node encodings in ascending post-order position order, with no padding or
-/// separators. The footer contains one little-endian unsigned 16-bit offset per physically stored
-/// node, in the same order, followed by a little-endian unsigned 32-bit availability bitmap and a
-/// little-endian unsigned 48-bit subtree size: the length of this payload plus the subtree sizes of
-/// every group physically stored below it, which fan-out decisions read without opening descendants.
-/// Offsets are relative to the beginning of the entries section. The first offset is zero, and
-/// subsequent offsets strictly increase; a node ends at the next offset or the footer's beginning.
-/// Position 30 is reserved for the root and may only be present in the depth-zero root group. The
-/// group key is deliberately kept outside this payload. Prefixless branches at relative depths 1–3
-/// may be omitted: only their descendants need be stored. Availability describes physical entries.
+/// The physical payload starts with version byte 4, followed by entries and a variable-size footer.
+/// Entries are complete branch encodings in ascending post-order position order, with no padding or
+/// separators; leaves are inlined in their parent branch's trailer (see <see cref="PbtNodeCodec"/>),
+/// so the only leaf entry is the root of a single-leaf tree. The footer contains one little-endian
+/// unsigned 16-bit offset per physically stored node, in the same order, followed by a little-endian
+/// unsigned 32-bit availability bitmap and a little-endian unsigned 48-bit subtree size: the length of
+/// this payload plus the subtree sizes of every group physically stored below it, which fan-out
+/// decisions read without opening descendants. Offsets are relative to the beginning of the entries
+/// section. The first offset is zero, and subsequent offsets strictly increase; a node ends at the next
+/// offset or the footer's beginning. Position 30 is reserved for the root and may only be present in
+/// the depth-zero root group. The group key is deliberately kept outside this payload. Prefixless
+/// branches at relative depths 1–3 may be omitted when neither child is an inline leaf: only their
+/// descendants need be stored. Availability describes physical entries.
 /// </remarks>
 public static class PbtNodeGroupCodec
 {
     internal const int HeaderLength = 1;
-    internal static ReadOnlySpan<byte> Header => "\x03"u8;
+    internal static ReadOnlySpan<byte> Header => "\x04"u8;
 
     /// <summary>The number of positions represented by the offset table.</summary>
     public const int PositionCount = PbtFourLevelGroupGeometry.PositionCount;
@@ -213,9 +215,13 @@ public static class PbtNodeGroupCodec
         BinaryPrimitives.WriteUInt16LittleEndian(field[sizeof(uint)..], (ushort)(subtreeBytes >> 32));
     }
 
+    private static readonly int PrefixlessBranchLength = PbtNodeCodec.BranchLength(0, 0, 0);
+
+    /// <summary>A prefixless interior branch without inline leaves is reconstructed from its children, so it need not be stored.</summary>
     internal static bool ShouldOmit(int position, ReadOnlySpan<byte> encoding) =>
         PbtFourLevelGroupGeometry.WidthOf(position) is > 1 and < PbtFourLevelGroupGeometry.BoundarySlots
-        && encoding[0] == 1 && encoding[1] == 0 && encoding[2] == 0;
+        && encoding.Length == PrefixlessBranchLength && encoding[0] == 1 && encoding[1] == 0 && encoding[2] == 0
+        && encoding[PrefixlessBranchLength - 2] == 0 && encoding[PrefixlessBranchLength - 1] == 0;
 
     internal static void ValidateNodeEncoding<TPath>(TPath path, ReadOnlySpan<byte> encoding) where TPath : struct, IPbtNodePath<TPath>
     {
@@ -225,9 +231,20 @@ public static class PbtNodeGroupCodec
 
     private static void ValidateNodePath<TPath>(PbtNodeReader node, TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
-        if (!node.IsLeaf) return;
-        if (!path.MatchesPrefix(node.Key, path.BitDepth))
-            throw new InvalidDataException("PBT leaf does not match its group position.");
+        if (node.IsLeaf)
+        {
+            if (path.BitDepth != 0) throw new InvalidDataException("A PBT leaf entry is only valid as the tree root.");
+            return;
+        }
+        if (!MatchesInlineLeaves(node, path)) throw new InvalidDataException("PBT leaf does not match its group position.");
+    }
+
+    private static bool MatchesInlineLeaves<TPath>(PbtNodeReader node, TPath path) where TPath : struct, IPbtNodePath<TPath>
+    {
+        ReadOnlySpan<byte> leftKey = node.LeftKey;
+        ReadOnlySpan<byte> rightKey = node.RightKey;
+        return (leftKey.IsEmpty || path.MatchesPrefix(leftKey, path.BitDepth))
+            && (rightKey.IsEmpty || path.MatchesPrefix(rightKey, path.BitDepth));
     }
 
     private static void ValidateGroupKey<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
@@ -292,6 +309,8 @@ public readonly ref struct PbtNodeGroupReader
             try
             {
                 PbtNodeCodec.ValidateExact(encoding);
+                if (encoding[0] == 0 && position != PbtFourLevelGroupGeometry.RootPosition)
+                    throw new InvalidDataException("A PBT leaf entry is only valid as the tree root.");
                 ValidateLeafPath(path, position, encoding);
             }
             catch (InvalidDataException exception) { throw new InvalidDataException("Invalid PBT node in group.", exception); }
@@ -367,16 +386,30 @@ public readonly ref struct PbtNodeGroupReader
         ValidateLeafPath(path, position, encoding);
     }
 
+    /// <summary>Checks that a branch's inline leaf keys lie below the branch's position.</summary>
     [System.Diagnostics.Conditional("DEBUG")]
     internal static void ValidateLeafPath(scoped in PbtTraversalPath groupKey, int position, ReadOnlySpan<byte> encoding)
     {
-        if (encoding[0] != 0 || position == PbtFourLevelGroupGeometry.RootPosition) return;
+        if (encoding[0] == 0)
+        {
+            if (position != PbtFourLevelGroupGeometry.RootPosition) throw new InvalidDataException("A PBT leaf entry is only valid as the tree root.");
+            return;
+        }
+        if (position == PbtFourLevelGroupGeometry.RootPosition) return;
+        PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
         Span<byte> directions = stackalloc byte[PbtFourLevelGroupGeometry.LevelsPerGroup];
         int relativeDepth = RelativeDirections(position, directions);
-        int requiredDepth = checked(groupKey.BitDepth + relativeDepth);
-        int keyLength = BinaryPrimitives.ReadUInt16BigEndian(encoding[1..]);
-        if (keyLength * 8 < requiredDepth) throw new InvalidDataException("PBT leaf does not match its group position.");
-        ReadOnlySpan<byte> key = encoding.Slice(3, keyLength);
+        ValidateInlineLeafPath(groupKey, node.LeftKey, directions[..relativeDepth]);
+        ValidateInlineLeafPath(groupKey, node.RightKey, directions[..relativeDepth]);
+    }
+
+    private static void ValidateInlineLeafPath(scoped in PbtTraversalPath groupKey, ReadOnlySpan<byte> key, ReadOnlySpan<byte> directions)
+    {
+        if (key.IsEmpty) return;
+        int relativeDepth = directions.Length;
+        // The leaf hangs at least one level below the branch.
+        int requiredDepth = checked(groupKey.BitDepth + relativeDepth + 1);
+        if (key.Length * 8 < requiredDepth) throw new InvalidDataException("PBT leaf does not match its group position.");
         int completeBytes = groupKey.BitDepth >> 3;
         if (!groupKey.Bytes[..completeBytes].SequenceEqual(key[..completeBytes]))
             throw new InvalidDataException("PBT leaf does not match its group position.");

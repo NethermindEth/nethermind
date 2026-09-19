@@ -165,8 +165,14 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         {
             stats.NodeCount++;
             stats.NodeEncodingBytes += nodes.Current.Length;
-            if (nodes.Current[0] == 0) stats.LeafCount++;
-            else stats.BranchCount++;
+            PbtNodeReader node = PbtNodeReader.FromValidated(nodes.Current);
+            if (node.IsLeaf) stats.LeafCount++;
+            else
+            {
+                stats.BranchCount++;
+                if (!node.LeftKey.IsEmpty) stats.LeafCount++;
+                if (!node.RightKey.IsEmpty) stats.LeafCount++;
+            }
             stats.NodesByDepth[groupPath.BitDepth + PositionDepths[nodes.CurrentPosition]]++;
         }
     }

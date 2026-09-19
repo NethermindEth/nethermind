@@ -398,7 +398,7 @@ public class ImportPbtFromPreimageFlatTests
             PbtTreeKey staleNodeKey = new([0x80]);
             PbtNodePath groupKey = new([], 0);
             using PbtNodeGroupStore staleNodes = new();
-            staleNodes.SetNode(groupKey, PbtNodeCodec.EncodeLeaf(staleNodeKey, TestItem.KeccakA.Bytes));
+            staleNodes.SetNode(groupKey, PbtNodeCodec.EncodeLeaf(staleNodeKey));
             using RefCountingMemory? payload = staleNodes.GetPhysicalNodeGroup(groupKey);
             staging.SetNodeGroup(groupKey, payload);
             staging.Commit();
@@ -425,7 +425,7 @@ public class ImportPbtFromPreimageFlatTests
         IDb metadata = pbtDb.GetColumnDb(PbtColumns.Metadata);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x00000012")));
+            Assert.That(metadata.Get("schemaEpoch"u8), Is.EqualTo(Bytes.FromHexString("0x00000013")));
             Assert.That(metadata.Get("rootNodeGroup"u8), Is.Not.Null);
             Assert.That(metadata.Get("currentState"u8), Is.Null);
             Assert.That(metadata.Get("validState"u8), Is.Null);
@@ -485,6 +485,7 @@ public class ImportPbtFromPreimageFlatTests
         long[] expectedPayloads = new long[expectedGroups.Length];
         Dictionary<PbtColumns, (long[] Groups, long[] Payloads, long[] Nodes)> expectedByPartition = [];
         long encodingBytes = 0;
+        long expectedLeaves = 0;
         // A top group's bytes are counted under its physical column and its shape under its partition.
         (int Depth, byte Prefix, PbtColumns Column, PbtColumns Partition)[] groups =
         [
@@ -509,11 +510,18 @@ public class ImportPbtFromPreimageFlatTests
             if (depth % 8 != 0) pathBytes[^1] &= 0xF0;
             PbtStorageNodePath group = PbtStorageNodePath.Create(pathBytes, depth);
             PbtStorageNodePath node = depth == 0 ? group : PbtFourLevelGroupGeometry.PathOf(group, 0);
-            byte[] keyBytes = new byte[PbtStorageTreeKey.MaxLength];
-            node.CopyBitsTo(0, keyBytes, 0, node.BitDepth);
-            byte[] encoding = depth == 0
-                ? PbtNodeCodec.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256)
-                : PbtNodeCodec.EncodeLeaf(new PbtStorageTreeKey(keyBytes), TestItem.KeccakA.Bytes);
+            // Below the root every group stores one branch over two inline leaves, except where no longer key fits.
+            bool inlineLeaves = depth != 0 && node.BitDepth < PbtFourLevelGroupGeometry.MaxPathDepth;
+            byte[] leftKey = new byte[inlineLeaves ? PbtStorageTreeKey.MaxLength : 0];
+            byte[] rightKey = (byte[])leftKey.Clone();
+            if (inlineLeaves)
+            {
+                node.CopyBitsTo(0, leftKey, 0, node.BitDepth);
+                node.CopyBitsTo(0, rightKey, 0, node.BitDepth);
+                rightKey[node.BitDepth / 8] |= (byte)(0x80 >> (node.BitDepth % 8));
+                expectedLeaves += 2;
+            }
+            byte[] encoding = PbtNodeCodec.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256, leftKey, rightKey);
             BufferWriter writer = new(new byte[1024]);
             PbtNodeGroupCodec.Encode(ref writer, group, new[] { new PbtNodeRecord(node, encoding) }, 0);
             Add(column, group.ToStorageKey(column, PbtNodeGroupKeyLayout.Padded), writer.WrittenSpan.ToArray());
@@ -556,8 +564,8 @@ public class ImportPbtFromPreimageFlatTests
             Assert.That(report.NodeGroups.PayloadBytesByDepth, Is.EqualTo(expectedPayloads));
             Assert.That(report.NodeGroups.NodesByDepth, Is.EqualTo(expectedNodes));
             Assert.That(report.NodeGroups.NodeCount, Is.EqualTo(groups.Length));
-            Assert.That(report.NodeGroups.LeafCount, Is.EqualTo(groups.Length - 1));
-            Assert.That(report.NodeGroups.BranchCount, Is.EqualTo(1));
+            Assert.That(report.NodeGroups.LeafCount, Is.EqualTo(expectedLeaves));
+            Assert.That(report.NodeGroups.BranchCount, Is.EqualTo(groups.Length));
             Assert.That(report.NodeGroups.GroupsByOccupancy[1], Is.EqualTo(groups.Length));
             Assert.That(report.NodeGroups.NodeEncodingBytes, Is.EqualTo(encodingBytes));
             Assert.That(report.NodeGroups.RecordCount, Is.EqualTo(groups.Length));

@@ -38,8 +38,8 @@ public class PbtSnapshotCompactorTests
         older.SetSlot(key, EvmWordSlot.FromStripped(TestItem.KeccakA.Bytes));
         newer.SetSlot(key, EvmWordSlot.FromStripped(TestItem.KeccakB.Bytes));
         byte[] expected;
-        using (RefCountingMemory olderPayload = CreateStorageLeafGroup(TestItem.KeccakA.ValueHash256))
-        using (RefCountingMemory newerPayload = CreateStorageLeafGroup(TestItem.KeccakB.ValueHash256))
+        using (RefCountingMemory olderPayload = CreateStorageLeafGroup())
+        using (RefCountingMemory newerPayload = CreateStorageLeafGroup())
         {
             older.SetNodeGroup(groupKey, olderPayload);
             Assert.That(older.TryGetNodeGroup(alternateGroupKey, out RefCountingMemory? original), Is.True);
@@ -84,11 +84,11 @@ public class PbtSnapshotCompactorTests
         }
         Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
 
-        RefCountingMemory CreateStorageLeafGroup(ValueHash256 value)
+        RefCountingMemory CreateStorageLeafGroup()
         {
             PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageTreeKey.MaxLength], groupKey);
             using PbtNodeGroupWriter<TPath> writer = new(groupKey.BitDepth, memoryProvider, true);
-            writer.Write(path, PbtFourLevelGroupGeometry.RootPosition, PbtNodeCodec.EncodeLeaf(key, value.Bytes));
+            writer.Write(path, PbtFourLevelGroupGeometry.RootPosition, PbtNodeCodec.EncodeLeaf(key));
             return writer.Detach(0)!;
         }
     }

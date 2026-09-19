@@ -118,8 +118,10 @@ internal struct GroupFrameReader<TKey, TPath> : IDisposable
             ValueHash256 right = GetHash(path, position - 1);
             return left == default || right == default ? default : new(PbtFourLevelGroupGeometry.LocalPathOf(position), left, right, knownHash);
         }
-        NodeGroupPath nodePath = PbtNodeReader.FromValidated(encoding.Span).IsLeaf ? default : PbtFourLevelGroupGeometry.LocalPathOf(position);
-        return new(encoding, nodePath, knownHash);
+        PbtNodeReader node = PbtNodeReader.FromValidated(encoding.Span);
+        // The only stored leaf is the root of a single-leaf tree, whose hash is this group's identity.
+        if (node.IsLeaf) return new(TKey.Create(node.Key), _groupHash);
+        return new(encoding, PbtFourLevelGroupGeometry.LocalPathOf(position), knownHash);
     }
 
     /// <summary>Records the hash a parent node holds for <paramref name="position"/>, so acquiring it needs no rehash.</summary>

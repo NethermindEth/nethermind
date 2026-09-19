@@ -391,12 +391,11 @@ public class PbtSnapshotBundleTests
         else changes.Set(key, new ValueHash256(Value(2)));
         ValueHash256 updatedRoot = TrieUpdater.UpdateRoot(store, root, changes.Build());
 
-        byte[] expectedLeaf = PbtNodeCodec.EncodeLeaf(key, Value(2));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.GetSlot(TestItem.AddressA, 1), Is.EqualTo(EvmWordSlot.FromStripped(flatValue.Bytes)));
-            Assert.That(updatedRoot, Is.EqualTo(delete ? default : PbtNodeCodec.Hash(new PbtNodeReader(expectedLeaf))));
-            Assert.That(store.GetNode(new PbtNodePath([], 0), updatedRoot), Is.EqualTo(delete ? null : expectedLeaf));
+            Assert.That(updatedRoot, Is.EqualTo(delete ? default : PbtNodeCodec.HashLeaf(key.Bytes, Value(2))));
+            Assert.That(store.GetNode(new PbtNodePath([], 0), updatedRoot), Is.EqualTo(delete ? null : PbtNodeCodec.EncodeLeaf(key)));
         }
     }
 
