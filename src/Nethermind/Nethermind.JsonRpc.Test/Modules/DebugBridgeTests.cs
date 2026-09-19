@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -185,7 +184,7 @@ public class DebugBridgeTests
         using (Assert.EnterMultipleScope())
         {
             string expectedTarget = parameter == "0x42" ? "66" : parameter;
-            logger.Received(1).Warn($"Cannot rewind the head to {expectedTarget}: block is unknown.");
+            Assert.That(() => logger.Received(1).Warn($"Cannot rewind the head to {expectedTarget}: block is unknown."), Throws.Nothing);
             Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":false,\"id\":67}"));
             Assert.That(blockTree.Head!.Hash, Is.EqualTo(head.Hash));
             Assert.That(container.Resolve<IDbProvider>().BlockInfosDb.Get(Keccak.Zero.Bytes), Is.EqualTo(head.Hash!.Bytes.ToArray()));

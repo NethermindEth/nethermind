@@ -46,7 +46,6 @@ public class DebugBridge : IDebugBridge
     private readonly IWorldStateManager _worldStateManager;
     private readonly Dictionary<string, IDb> _dbMappings;
 
-    /// <summary>Creates a debug bridge with diagnostics for refused head resets.</summary>
     public DebugBridge(
         IConfigProvider configProvider,
         IReadOnlyDbProvider dbProvider,
