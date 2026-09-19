@@ -407,26 +407,28 @@ namespace Nethermind.Evm.TransactionProcessing
                         buffer.AsSpan(0, count).Sort(default(AddressByBytesComparer));
                         for (int i = 0; i < count; i++)
                         {
-                            FinalizeDestroyedAccount(WorldState, in substate, buffer[i], commit, removeSelfdestructBurn);
+                            FinalizeDestroyedAccount(WorldState, in substate, buffer[i], commit, removeSelfdestructBurn, tracer);
                             if (tracingRefunds) tracer.ReportRefund(destroyRefund);
                         }
                         SafeArrayPool<Address>.Shared.Return(buffer);
                     }
                     else if (count == 1)
                     {
-                        FinalizeDestroyedAccount(WorldState, in substate, destroyList.First, commit, removeSelfdestructBurn);
+                        FinalizeDestroyedAccount(WorldState, in substate, destroyList.First, commit, removeSelfdestructBurn, tracer);
                         if (tracingRefunds) tracer.ReportRefund(destroyRefund);
                     }
                 }
 
-                static void FinalizeDestroyedAccount(IWorldState worldState, in TransactionSubstate substate, Address toBeDestroyed, bool commit, bool removeSelfdestructBurn)
+                static void FinalizeDestroyedAccount(IWorldState worldState, in TransactionSubstate substate, Address toBeDestroyed, bool commit, bool removeSelfdestructBurn, ITxTracer tracer)
                 {
                     UInt256 balance = worldState.GetBalance(toBeDestroyed);
                     // Post-fee path: the burn covers the whole balance incl. priority fees, hence a
                     // Burn (not SelfDestruct) log; EIP-8246 removes the burn and its log entirely.
                     if (!balance.IsZero && !removeSelfdestructBurn)
                     {
-                        substate.Logs.Add(TransferLog.CreateBurn(toBeDestroyed, balance));
+                        LogEntry burnLog = TransferLog.CreateBurn(toBeDestroyed, balance);
+                        substate.Logs.Add(burnLog);
+                        if (tracer.IsTracingLogs) tracer.ReportLog(burnLog);
                     }
 
                     DestroyAccount(worldState, toBeDestroyed, in balance, commit, removeSelfdestructBurn);
@@ -1453,7 +1455,9 @@ namespace Nethermind.Evm.TransactionProcessing
                             // EIP-7708 logs the burn; suppressed once EIP-8246 stops burning.
                             if (eip7708Enabled && !removeSelfdestructBurn && !balance.IsZero)
                             {
-                                substate.Logs.Add(TransferLog.CreateSelfDestruct(toBeDestroyed, balance));
+                                LogEntry selfDestructLog = TransferLog.CreateSelfDestruct(toBeDestroyed, balance);
+                                substate.Logs.Add(selfDestructLog);
+                                if (tracer.IsTracingLogs) tracer.ReportLog(selfDestructLog);
                             }
 
                             DestroyAccount(WorldState, toBeDestroyed, in balance, commit, removeSelfdestructBurn);
