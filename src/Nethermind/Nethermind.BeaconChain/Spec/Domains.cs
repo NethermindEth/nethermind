@@ -22,6 +22,13 @@ public static class DomainType
     public static ReadOnlySpan<byte> SyncCommitteeSelectionProof => [0x08, 0x00, 0x00, 0x00];
     public static ReadOnlySpan<byte> ContributionAndProof => [0x09, 0x00, 0x00, 0x00];
     public static ReadOnlySpan<byte> BlsToExecutionChange => [0x0A, 0x00, 0x00, 0x00];
+
+    // Gloas (specs/gloas/beacon-chain.md "Constants/Domains", fetched from consensus-specs master 2026-09-19)
+    public static ReadOnlySpan<byte> BeaconBuilder => [0x0B, 0x00, 0x00, 0x00];
+    /// <summary>Used to seed the payload timeliness committee shuffling (<c>compute_ptc</c>).</summary>
+    public static ReadOnlySpan<byte> PtcAttester => [0x0C, 0x00, 0x00, 0x00];
+    public static ReadOnlySpan<byte> ProposerPreferences => [0x0D, 0x00, 0x00, 0x00];
+    public static ReadOnlySpan<byte> BuilderDeposit => [0x0E, 0x00, 0x00, 0x00];
 }
 
 /// <summary>Signing domain and signing root computation per consensus-specs.</summary>

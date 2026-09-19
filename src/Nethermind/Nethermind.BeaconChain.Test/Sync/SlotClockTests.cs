@@ -29,6 +29,8 @@ public class SlotClockTests
         ElectraForkEpoch = 0,
         FuluForkEpoch = ulong.MaxValue,
         MaxBlobsPerBlockElectra = 9,
+        GloasForkEpoch = ulong.MaxValue,
+        GloasForkVersion = Bytes.FromHexString("0x07000000"),
     };
 
     private static SlotClock CreateClock(long millisecondsSinceGenesis) =>
