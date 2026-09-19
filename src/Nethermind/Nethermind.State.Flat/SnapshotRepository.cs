@@ -159,6 +159,86 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         return (null, null);
     }
 
+    /// <inheritdoc />
+    public (PersistedSnapshot? Persisted, Snapshot? InMemory) FindSnapshotToPersistWithFallback(
+        in StateId currentPersistedState, in StateId latestSnapshot)
+    {
+        StateId? committed = GetLastCommittedStateId();
+        if (committed is not null)
+        {
+            (PersistedSnapshot? persisted, Snapshot? inMemory) = FindFromSeed(committed, currentPersistedState);
+            if (persisted is not null || inMemory is not null) return (persisted, inMemory);
+            // A connected committed chain must not be replaced by a longer orphan merely because no chunk is ready.
+            if (CanReachState(committed.Value, currentPersistedState)) return (null, null);
+        }
+
+        StateId? longest = GetLastSnapshotId();
+        if (longest != committed)
+        {
+            (PersistedSnapshot? persisted, Snapshot? inMemory) = FindFromSeed(longest, currentPersistedState);
+            if (persisted is not null || inMemory is not null) return (persisted, inMemory);
+        }
+
+        if (latestSnapshot != committed && latestSnapshot != longest)
+        {
+            (PersistedSnapshot? persisted, Snapshot? inMemory) = FindFromSeed(latestSnapshot, currentPersistedState);
+            if (persisted is not null || inMemory is not null) return (persisted, inMemory);
+        }
+
+        return FindCandidateAbovePersistedState(currentPersistedState);
+    }
+
+    private (PersistedSnapshot? Persisted, Snapshot? InMemory) FindFromSeed(StateId? seed, in StateId currentPersistedState)
+    {
+        if (seed is null) return (null, null);
+        (PersistedSnapshot? persisted, Snapshot? inMemory) = FindSnapshotToPersist(seed.Value, currentPersistedState, _compactSize);
+        StateId? candidate = persisted?.To ?? inMemory?.To;
+        try
+        {
+            if (candidate is null || _finalizedStateProvider.GetFinalizedStateRootAt(candidate.Value.BlockNumber) is not { } root
+                || candidate.Value.StateRoot == root)
+                return (persisted, inMemory);
+        }
+        catch
+        {
+            persisted?.Dispose();
+            inMemory?.Dispose();
+            throw;
+        }
+        persisted?.Dispose();
+        inMemory?.Dispose();
+        return (null, null);
+    }
+
+    private (PersistedSnapshot? Persisted, Snapshot? InMemory) FindCandidateAbovePersistedState(in StateId currentPersistedState)
+    {
+        bool nothingPersisted = currentPersistedState == StateId.PreGenesis;
+        ulong floor = nothingPersisted ? 0 : currentPersistedState.BlockNumber + 1;
+        ulong ceiling = nothingPersisted ? _compactSize - 1 : currentPersistedState.BlockNumber + _compactSize;
+        using ArrayPoolList<StateId> ordered = GetStatesUpToBlock(ceiling);
+        // Widest chunks first, including when a per-block base exists at every intermediate height.
+        for (int i = ordered.Count - 1; i >= 0; i--)
+        {
+            StateId candidate = ordered[i];
+            if (candidate.BlockNumber < floor) break;
+            Hash256? canonicalRoot = _finalizedStateProvider.GetFinalizedStateRootAt(candidate.BlockNumber);
+            if (canonicalRoot is not null)
+            {
+                if (candidate.StateRoot != canonicalRoot) continue;
+            }
+            else if ((i > 0 && ordered[i - 1].BlockNumber == candidate.BlockNumber)
+                || (i + 1 < ordered.Count && ordered[i + 1].BlockNumber == candidate.BlockNumber))
+            {
+                // Without chain information, root ordering is not a safe tie breaker between siblings.
+                continue;
+            }
+
+            (PersistedSnapshot? persisted, Snapshot? inMemory) = FindFromSeed(candidate, currentPersistedState);
+            if (persisted is not null || inMemory is not null) return (persisted, inMemory);
+        }
+        return (null, null);
+    }
+
     /// <summary>
     /// Best-effort backward BFS over the persisted tier from <paramref name="toStateId"/>, returning the
     /// contiguous chain reaching the deepest block <c>&gt;= </c><paramref name="minBlockNumber"/>
@@ -567,18 +647,18 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         return false;
     }
 
+    /// <inheritdoc />
+    public bool Reaches(in StateId from, in StateId target) => CanReachState(from, target);
+
     /// <remarks>
     /// Walks parent (<c>From</c>) edges from <paramref name="from"/> toward <paramref name="target"/>
     /// across both tiers. Crossing into the persisted tier is required so a canonical in-memory state
     /// whose ancestry descends through a converted snapshot is not mistaken for an orphan.
     /// </remarks>
-    /// <inheritdoc />
-    public bool Reaches(in StateId from, in StateId target) => CanReachState(from, target);
-
     private bool CanReachState(in StateId from, in StateId target)
     {
         if (from == target) return true;
-        if (from.BlockNumber <= target.BlockNumber) return false;
+        if (Height(from) <= Height(target)) return false;
 
         // Order-independent reachability, so a stack DFS suffices; each lease is read for its From then
         // disposed immediately. Same hardcoded in-mem-cannot-follow-persisted invariant as WalkAndAssemble.

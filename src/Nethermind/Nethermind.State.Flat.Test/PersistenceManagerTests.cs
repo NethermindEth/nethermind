@@ -1318,6 +1318,121 @@ public class PersistenceManagerTests
         Assert.That(flushed, Is.EqualTo(second), "the flush must drain the chain that reaches the persisted state");
     }
 
+    [Test]
+    public void FlushToPersistence_WhenEveryBlockHasABase_PersistsFullChunks()
+    {
+        StateId previous = Block0;
+        for (ulong block = 1; block <= 32; block++)
+        {
+            StateId next = CreateStateId(block);
+            CreateSnapshot(previous, next);
+            previous = next;
+        }
+        CreateSnapshot(Block0, CreateStateId(16), compacted: true);
+        CreateSnapshot(CreateStateId(16), CreateStateId(32), compacted: true);
+        StateId offChain = CreateStateId(100_001);
+        CreateSnapshot(CreateStateId(100_000), offChain);
+        _snapshotRepository.SetLastCommittedStateId(offChain);
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+
+        StateId flushed = _persistenceManager.FlushToPersistence(CancellationToken.None);
+
+        Assert.That(flushed, Is.EqualTo(CreateStateId(32)), "the connected chain must be drained");
+        _persistence.Received(2).CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>());
+    }
+
+    [Test]
+    public void FindSnapshotToPersistWithFallback_WhenSiblingsExist_UsesCanonicalRoot(
+        [Values] bool preGenesis, [Values] bool canonicalRootKnown, [Values(1, 255)] byte canonicalRootByte)
+    {
+        StateId persistedState = preGenesis ? StateId.PreGenesis : Block0;
+        ulong candidateBlock = preGenesis ? 0UL : 1UL;
+        StateId canonical = CreateStateId(candidateBlock, canonicalRootByte);
+        StateId orphan = CreateStateId(candidateBlock, 128);
+        CreateSnapshot(persistedState, canonical);
+        CreateSnapshot(persistedState, orphan);
+        StateId offChain = CreateStateId(100_001);
+        CreateSnapshot(CreateStateId(100_000), offChain);
+        _snapshotRepository.SetLastCommittedStateId(offChain);
+        if (canonicalRootKnown)
+            _finalizedStateProvider.SetFinalizedStateRootAt(candidateBlock, new Hash256(canonical.StateRoot.Bytes));
+
+        (PersistedSnapshot? persisted, Snapshot? inMemory) =
+            _snapshotRepository.FindSnapshotToPersistWithFallback(persistedState, offChain);
+        using (persisted)
+        using (inMemory)
+        {
+            Assert.That(persisted?.To ?? inMemory?.To, Is.EqualTo(canonicalRootKnown ? canonical : (StateId?)null),
+                "known canonical roots must win regardless of hash order; unknown sibling roots must not be guessed");
+        }
+    }
+
+    [Test]
+    public void Reaches_WhenTargetIsPreGenesis_RequiresConnectedAncestry([Values] bool connected)
+    {
+        StateId genesis = CreateStateId(0);
+        StateId head = CreateStateId(1);
+        if (connected) CreateSnapshot(StateId.PreGenesis, genesis);
+        CreateSnapshot(genesis, head);
+
+        Assert.That(_snapshotRepository.Reaches(head, StateId.PreGenesis), Is.EqualTo(connected),
+            "the sentinel sorts below genesis but still requires a traversable edge to it");
+    }
+
+    [Test]
+    public void FindSnapshotToPersistWithFallback_WhenCommittedChainHasNoCandidate_DoesNotChooseAnOrphan([Values] bool preGenesis)
+    {
+        StateId persistedState = preGenesis ? StateId.PreGenesis : Block0;
+        StateId committed = CreateStateId(32);
+        CreateSnapshot(persistedState, committed, compacted: true);
+        CreateSnapshot(persistedState, CreateStateId(8, 128));
+        _snapshotRepository.SetLastCommittedStateId(committed);
+
+        (PersistedSnapshot? persisted, Snapshot? inMemory) =
+            _snapshotRepository.FindSnapshotToPersistWithFallback(persistedState, committed);
+        using (persisted)
+        using (inMemory)
+        {
+            Assert.That(persisted?.To ?? inMemory?.To, Is.Null,
+                "a connected committed chain without a compact-sized chunk must not fall through to another fork");
+        }
+    }
+
+    [Test]
+    public void DetermineSnapshotAction_WhenBackstopHasNoCandidate_WarnsOnlyIfConversionAlsoFails([Values] bool enableConversion)
+    {
+        FlatDbConfig config = new()
+        {
+            CompactSize = 16,
+            MinReorgDepth = 0,
+            MaxReorgDepth = 32,
+            LongFinalityMaxReorgDepth = 32,
+            MaxInMemoryBaseSnapshotCount = 0,
+            EnableLongFinality = enableConversion
+        };
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<PersistenceManager>().Returns(new ILogger(logger));
+        using PersistenceManager manager = new(config, _tier.Resolve<ICompactionSchedule>(), _finalizedStateProvider,
+            _persistence, _snapshotRepository, NullStatePersistenceBarrier.Instance, logManager,
+            _persistedSnapshotCompactor, _tier.Loader, Substitute.For<IProcessExitSource>());
+        StateId head = CreateStateId(64);
+        CreateSnapshot(Block0, head);
+        _snapshotRepository.SetLastCommittedStateId(head);
+
+        (PersistedSnapshot? persisted, Snapshot? inMemory, PersistenceManager.ConversionCandidate? conversion) =
+            manager.DetermineSnapshotAction(head);
+        using (persisted)
+        using (inMemory)
+        using (conversion?.Base)
+        using (conversion?.Compacted)
+        {
+            Assert.That(conversion is not null, Is.EqualTo(enableConversion), "conversion must be considered before warning");
+            logger.Received(enableConversion ? 0 : 1).Warn(Arg.Is<string>(message => message.Contains("neither persistence nor conversion")));
+        }
+    }
+
     // FlushToPersistence prunes both tiers as it drains, so a flush without capture would leave the flushed
     // range permanently absent from history on every shutdown.
     [Test]
