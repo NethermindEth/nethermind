@@ -98,6 +98,26 @@ public static class Presets
     // Fulu — EIP-7917 proposer lookahead
     public const ulong ProposerLookaheadSlots = (MinSeedLookahead + 1) * SlotsPerEpoch;
 
+    // Gloas — misc (specs/gloas/beacon-chain.md "Presets/Misc", fetched from consensus-specs master 2026-09-19)
+    public const ulong PtcSize = 512;
+    /// <summary>The <c>BeaconState.builder_pending_payments</c> vector length: <c>2 * SLOTS_PER_EPOCH</c>.</summary>
+    public const ulong BuilderPendingPaymentsLength = 2 * SlotsPerEpoch;
+    /// <summary>The <c>BeaconState.ptc_window</c> vector length: <c>(MIN_SEED_LOOKAHEAD + 2) * SLOTS_PER_EPOCH</c>.</summary>
+    public const ulong PtcWindowLength = (MinSeedLookahead + 2) * SlotsPerEpoch;
+    /// <summary><c>BUILDER_PAYMENT_THRESHOLD_NUMERATOR</c> / <c>_DENOMINATOR</c>.</summary>
+    public const ulong BuilderPaymentThresholdNumerator = 6;
+    public const ulong BuilderPaymentThresholdDenominator = 10;
+
+    // Gloas — withdrawal prefixes and builder versions (specs/gloas/beacon-chain.md "Constants")
+    public const byte BuilderWithdrawalPrefix = 0xB0;
+    public const byte PayloadBuilderVersion = 0;
+    /// <summary><c>BUILDER_INDEX_SELF_BUILD</c>: the sentinel builder index used by self-built (non-ePBS-market) payloads.</summary>
+    public const ulong BuilderIndexSelfBuild = ulong.MaxValue;
+
+    // Gloas — time parameters
+    /// <summary><c>MIN_BUILDER_WITHDRAWABILITY_DELAY</c>, in epochs.</summary>
+    public const ulong MinBuilderWithdrawabilityDelay = 64;
+
     // Config — validator cycle
     public const ulong EjectionBalance = 16_000_000_000;
     public const ulong MinPerEpochChurnLimit = 4;
