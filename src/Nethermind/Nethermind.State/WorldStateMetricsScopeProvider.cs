@@ -43,6 +43,9 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
+        public IWorldStateScopeProvider.ITrieWarmupSession CreateTrieWarmupSession() =>
+            baseScope.CreateTrieWarmupSession();
+
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => baseScope.CreateStorageTree(address);
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => baseScope.StartWriteBatch(estimatedAccountNum);
