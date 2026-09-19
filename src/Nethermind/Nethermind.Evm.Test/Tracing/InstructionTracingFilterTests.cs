@@ -84,11 +84,28 @@ public class InstructionTracingFilterTests : VirtualMachineTestsBase
         Assert.That(next.CancellationPolls > 0, Is.EqualTo(!cancelableFirst), "only cancelable execution may poll cancellation");
     }
 
+    [Test]
+    public void Execute_WhenCreateIsFiltered_CompletesOnlyTheSelectedOpcode(
+        [Values(Instruction.CREATE, Instruction.STOP)] Instruction selected)
+    {
+        byte[] code = Prepare.EvmCode.Create([], UInt256.Zero).Op(Instruction.STOP).Done;
+        using FilteredTracer tracer = new(selected);
+
+        Execute(tracer, code, MainnetSpecProvider.CancunActivation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.Operations, Is.EqualTo(new[] { selected }));
+            Assert.That(tracer.CompletedOperations, Is.EqualTo(1));
+        }
+    }
+
     private sealed class FilteredTracer(Instruction selected, bool cancelable = false, bool cancelOnOperation = false)
         : TestAllTracerWithOutput, IInstructionTracingFilter, ITxTracer
     {
         public UInt256 InstructionMask => UInt256.One << (int)selected;
         public List<Instruction> Operations { get; } = [];
+        public int CompletedOperations { get; private set; }
         public EvmExceptionType? OperationError { get; private set; }
         public bool CancellationRequested { get; private set; }
         public int CancellationPolls { get; private set; }
@@ -103,6 +120,8 @@ public class InstructionTracingFilterTests : VirtualMachineTestsBase
         }
 
         public override void ReportOperationError(EvmExceptionType error) => OperationError = error;
+
+        public override void ReportOperationRemainingGas(ulong gas) => CompletedOperations++;
 
         public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
         {

@@ -122,6 +122,7 @@ public partial class VirtualMachine<TGasPolicy>(
     /// <summary>Scratch for the big-endian words <see cref="TraceStack"/> hands a tracer.</summary>
     /// <remarks>Reused across instructions, like the stack it mirrors; only a stack-tracing run allocates it.</remarks>
     private byte[] _tracedStackWords = [];
+    private bool _isInstructionTraceActive;
 
     /// <summary>Scratch holding the output of the ID precompile on the inline call path.</summary>
     /// <remarks>Only guaranteed until the next ID call served this way. That is safe because
@@ -220,6 +221,7 @@ public partial class VirtualMachine<TGasPolicy>(
         IsTracingImplicitStop = txTracer.Any<ITraceImplicitStop>(static tracer => tracer.IsTracingInstructions);
         DispatchFlags.Validate(txTracer);
         _worldState = worldState;
+        _isInstructionTraceActive = false;
 
         _shouldRestoreRipemdTouch = false;
 
@@ -686,11 +688,10 @@ public partial class VirtualMachine<TGasPolicy>(
         EvmException? evmException = failure as EvmException;
         EvmExceptionType errorType = evmException?.ExceptionType ?? EvmExceptionType.Other;
 
-        // If the tracing instructions flag is active, report zero remaining gas and log the error.
+        // If an instruction trace is active, report zero remaining gas and its error.
         if (TTracingInst.IsActive)
         {
-            txTracer.ReportOperationRemainingGas(0);
-            txTracer.ReportOperationError(errorType);
+            EndInstructionTraceError(0, errorType);
         }
 
         // If action-level tracing is enabled, report the error associated with the action.
@@ -1378,11 +1379,6 @@ public partial class VirtualMachine<TGasPolicy>(
             }
             if (pushResult != EvmExceptionType.None) return new(pushResult);
 
-            // Report the remaining gas if tracing instructions are enabled.
-            if (TTracingInst.IsActive)
-            {
-                _txTracer.ReportOperationRemainingGas(TGasPolicy.GetRemainingGas(vmState.Gas));
-            }
             if (IsTracingActions)
             {
                 _txTracer.ReportActionRemainingGas(TGasPolicy.GetRemainingGas(vmState.Gas));
@@ -1427,7 +1423,6 @@ public partial class VirtualMachine<TGasPolicy>(
         EvmExceptionType exceptionType =
             RunDispatchLoop<TTracingInst, TCancelable>(ref stack, ref gas, ref programCounter);
 
-        bool tracedImplicitStop = false;
         if (TTracingInst.IsActive
             && exceptionType == EvmExceptionType.None
             && ReturnData is null
@@ -1440,12 +1435,11 @@ public partial class VirtualMachine<TGasPolicy>(
 
             // Reading past non-empty code yields the zero byte, so trace its implicit STOP.
             TraceImplicitStop(_txTracer, TGasPolicy.GetRemainingGas(in gas), (int)programCounter, (int)stack.Head);
-            tracedImplicitStop = true;
         }
 
         if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert or EvmExceptionType.Suspend)
         {
-            if (TTracingInst.IsActive && !tracedImplicitStop)
+            if (TTracingInst.IsActive && exceptionType is EvmExceptionType.Stop or EvmExceptionType.Revert or EvmExceptionType.Suspend)
                 EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
             if (IsTracingActions)
                 _txTracer.ReportActionRemainingGas(TGasPolicy.GetRemainingGas(in gas));
@@ -1511,6 +1505,7 @@ public partial class VirtualMachine<TGasPolicy>(
     private void StartInstructionTrace(ITxTracer tracer, Instruction instruction, ulong gasAvailable, int programCounter, int stackHead)
     {
         VmState<TGasPolicy> vmState = VmState;
+        _isInstructionTraceActive = true;
         tracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env);
         if (tracer.IsTracingMemory)
         {
@@ -1544,18 +1539,28 @@ public partial class VirtualMachine<TGasPolicy>(
             static (implicitStopTracer, state) =>
             {
                 state.Machine.StartInstructionTrace(implicitStopTracer, Instruction.STOP, state.Gas, state.ProgramCounter, state.StackHead);
-                implicitStopTracer.ReportOperationRemainingGas(state.Gas);
+                state.Machine.EndInstructionTrace(implicitStopTracer, state.Gas);
             });
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal void EndInstructionTrace(ulong gasAvailable) => _txTracer.ReportOperationRemainingGas(gasAvailable);
+    internal void EndInstructionTrace(ulong gasAvailable, EvmExceptionType? evmExceptionType = null)
+        => EndInstructionTrace(_txTracer, gasAvailable, evmExceptionType);
+
+    private void EndInstructionTrace(ITxTracer tracer, ulong gasAvailable, EvmExceptionType? evmExceptionType = null)
+    {
+        if (!_isInstructionTraceActive) return;
+
+        _isInstructionTraceActive = false;
+        tracer.ReportOperationRemainingGas(gasAvailable);
+        if (evmExceptionType is not null)
+            tracer.ReportOperationError(evmExceptionType.Value);
+        if (_isCancelableCached && _txTracer.IsCancelled)
+            ThrowOperationCanceledException();
+    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void EndInstructionTraceError(ulong gasAvailable, EvmExceptionType evmExceptionType)
-    {
-        _txTracer.ReportOperationRemainingGas(gasAvailable);
-        _txTracer.ReportOperationError(evmExceptionType);
-    }
+    private void EndInstructionTraceError(ulong gasAvailable, EvmExceptionType evmExceptionType) =>
+        EndInstructionTrace(_txTracer, gasAvailable, evmExceptionType);
 
     internal void AddLog(LogEntry logEntry)
     {
