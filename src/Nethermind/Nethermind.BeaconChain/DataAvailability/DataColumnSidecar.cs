@@ -13,9 +13,10 @@ namespace Nethermind.BeaconChain.DataAvailability;
 /// mismatch here changes the hash tree root and silently forks the node.
 /// </summary>
 /// <remarks>
-/// Gloas (ePBS) drops <see cref="SignedBlockHeader"/> and <see cref="KzgCommitmentsInclusionProof"/>
-/// from this container, since commitment authentication moves to the builder's bid instead of the
-/// beacon block header. This type is the Fulu shape only; do not extend it to also cover Gloas.
+/// Gloas (ePBS) reshapes this container: it drops <see cref="SignedBlockHeader"/>,
+/// <see cref="KzgCommitmentsInclusionProof"/> and <see cref="KzgCommitments"/> alike, and gains slot
+/// and beacon block root, because commitment authentication moves to the builder's bid rather than
+/// the beacon block header. This type is the Fulu shape only; do not extend it to also cover Gloas.
 /// </remarks>
 [SszContainer]
 public partial class DataColumnSidecar
