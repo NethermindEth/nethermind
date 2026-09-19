@@ -165,10 +165,12 @@ public class BlockProcessorTests
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false }));
         Block block = await AddThreeTransferBlock(chain);
-        Assert.That(chain.BlockTree.FindBlock(block.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.SameAs(block),
-            "precondition: the replay must receive the canonical cached instance");
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindBlock((ulong)block.Number, BlockTreeLookupOptions.RequireCanonical).Returns(block);
+        BlockHeader parent = chain.BlockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.None)!;
+        blockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.None).Returns(parent);
         using StampedExecutionArtifacts artifacts = new(block);
-        ProcessingHistoryBlockExecutorFactory factory = new(chain.BlockTree, chain.SpecProvider,
+        ProcessingHistoryBlockExecutorFactory factory = new(blockTree, chain.SpecProvider,
             chain.Container.Resolve<IOverridableEnvFactory>(), chain.Container, chain.Container.Resolve<IBlockValidationModule[]>());
         using IHistoryBlockExecutor executor = factory.Create();
 
