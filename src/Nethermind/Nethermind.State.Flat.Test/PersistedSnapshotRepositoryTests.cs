@@ -47,7 +47,7 @@ public class PersistedSnapshotRepositoryTests
     }
 
     [Test]
-    public void TryAcquire_WhenObservedSnapshotIsRetired_UsesCurrentEntry([Values] bool replace)
+    public void TryAcquire_WhenObservedSnapshotIsRetired_UsesCurrentEntry([Values] bool replace, [Values] bool throughConsumer)
     {
         using FlatTestContainer tier = new(arenaFileSizeBytes: 4096);
         StateId parent = new(0, Keccak.EmptyTreeHash);
@@ -63,19 +63,27 @@ public class PersistedSnapshotRepositoryTests
             }
             Assert.That(bucket.TryGet(state, out PersistedSnapshot? observed), Is.True);
             PersistedSnapshot? retired = observed;
-            if (replace)
+            void Retire(PersistedSnapshot current)
             {
-                using PersistedSnapshot replacement = new(parent, state, observed!.Reservation, tier.Blobs,
-                    SnapshotTier.PersistedBase, RefCountedBloomFilter.AlwaysTrue());
-                Assert.That(bucket.Replace(state, replacement), Is.True);
+                if (replace)
+                {
+                    using PersistedSnapshot replacement = new(parent, state, current.Reservation, tier.Blobs,
+                        SnapshotTier.PersistedBase, RefCountedBloomFilter.AlwaysTrue());
+                    Assert.That(bucket.Replace(state, replacement), Is.True);
+                }
+                else
+                {
+                    Assert.That(bucket.RemoveExact(state), Is.True);
+                }
+                Assert.That(retired!.TryAcquire(), Is.False, "the observed instance must have drained before acquisition");
             }
+            bool acquired;
+            if (throughConsumer) acquired = bucket.TryLease(state, out observed, Retire);
             else
             {
-                Assert.That(bucket.RemoveExact(state), Is.True);
+                Retire(observed!);
+                acquired = bucket.TryAcquire(ref observed);
             }
-            Assert.That(retired!.TryAcquire(), Is.False, "the observed instance must have drained before acquisition");
-
-            bool acquired = bucket.TryAcquire(ref observed);
             using (observed)
             {
                 Assert.That(acquired, Is.EqualTo(replace), "replacement must not look like a missing snapshot");

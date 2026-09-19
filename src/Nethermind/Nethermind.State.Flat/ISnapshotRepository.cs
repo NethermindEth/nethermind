@@ -37,15 +37,12 @@ public interface ISnapshotRepository
     /// or the persisted base bucket.</summary>
     bool HasState(in StateId stateId);
 
-    /// <summary>Whether <paramref name="from"/> equals or chains down to <paramref name="target"/> over available
-    /// parent edges. PreGenesis sorts before genesis; reaching it requires a genesis-spanning edge.</summary>
-    bool Reaches(in StateId from, in StateId target);
-
     /// <summary>Find a leased persistence candidate, preferring the committed chain and retrying other seeds only
     /// when it cannot connect to <paramref name="currentPersistedState"/>. A final bounded scan prefers wide chunks
     /// matching known finalized roots and skips ambiguous sibling roots when finality is unavailable.</summary>
     (PersistedSnapshot? Persisted, Snapshot? InMemory) FindSnapshotToPersistWithFallback(
-        in StateId currentPersistedState, in StateId latestSnapshot);
+        in StateId currentPersistedState, in StateId latestSnapshot, ulong compactSize) =>
+        FindSnapshotToPersist(GetLastCommittedStateId() ?? GetLastSnapshotId() ?? latestSnapshot, currentPersistedState, compactSize);
 
     /// <summary>Index a caller-built <paramref name="snapshot"/> into the bucket selected by
     /// <paramref name="tier"/> (must be a <c>Persisted*</c> value), acquiring the bucket's own lease. The

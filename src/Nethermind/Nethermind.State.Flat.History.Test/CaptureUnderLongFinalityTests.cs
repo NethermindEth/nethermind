@@ -2,17 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Config;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Trie.Pruning;
-using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Test;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -21,266 +21,128 @@ namespace Nethermind.State.Flat.History.Test;
 [TestFixture]
 public class CaptureUnderLongFinalityTests
 {
-    [Test]
-    public async Task Capture_follows_a_sync_that_persists_through_the_backstop()
+    private static FlatDbConfig BackstopConfig() => new()
     {
-        FlatDbConfig config = new()
-        {
-            HistoryEnabled = true,
-            EnableLongFinality = true,
-            CompactSize = 16,
-            CompactionOffset = 0,
-            MinReorgDepth = 8,
-            MaxInMemoryBaseSnapshotCount = 16,
-            MaxReorgDepth = 32,
-            LongFinalityMaxReorgDepth = 32,
-            InlineCompaction = true
-        };
+        HistoryEnabled = true,
+        EnableLongFinality = true,
+        CompactSize = 16,
+        CompactionOffset = 0,
+        MinReorgDepth = 8,
+        MaxInMemoryBaseSnapshotCount = 16,
+        MaxReorgDepth = 32,
+        LongFinalityMaxReorgDepth = 32,
+        InlineCompaction = true
+    };
 
-        using SnapshotableMemColumnsDb<FlatDbColumns> flatColumns = new();
-        using SnapshotableMemColumnsDb<FlatHistoryColumns> historyColumns = new();
-        using FlatTestContainer tier = new(config);
-        // Disposed before the container, and on the throwing path too: these tests assert inside the loop, and a
-        // compactor still working over a deleted temp dir buries the assertion under teardown noise.
-        await using IAsyncDisposable compactorLifetime = tier.Compactor;
-        SnapshotRepository repository = tier.Repository;
-        ResourcePool pool = tier.ResourcePool;
-
-        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(historyColumns, config);
-        HistoryWriter writer = new(flatColumns, historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
-
-        IPersistence persistence = Substitute.For<IPersistence>();
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        StateId genesis = new(0, Keccak.EmptyTreeHash);
-        reader.CurrentState.Returns(genesis);
-        persistence.CreateReader().Returns(reader);
-        persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
-
-        using PersistenceManager manager = new(
-            config,
-            tier.Resolve<ICompactionSchedule>(),
-            Substitute.For<IFinalizedStateProvider>(),
-            persistence,
-            repository,
-            NullStatePersistenceBarrier.Instance,
-            LimboLogs.Instance,
-            tier.Compactor,
-            tier.Loader,
-            Substitute.For<IProcessExitSource>(),
-            writer);
-
-        bool captureDisabled = false;
-        writer.CaptureDisabled += () => captureDisabled = true;
-        writer.SeedGenesis([new System.Collections.Generic.KeyValuePair<Address, Account>(TestItem.AddressA, new Account(0, 1))], genesis.StateRoot);
-
-        StateId previous = genesis;
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Capture_follows_sync_with_optional_disconnected_seed(bool injectDisconnectedSeed)
+    {
+        await using CaptureFixture fixture = new(BackstopConfig());
         for (ulong block = 1; block <= 200; block++)
         {
-            byte[] rootBytes = new byte[32];
-            rootBytes[0] = (byte)(block & 0xff);
-            rootBytes[1] = (byte)((block >> 8) & 0xff);
-            StateId next = new(block, new ValueHash256(rootBytes));
-
-            Snapshot snapshot = pool.CreateSnapshot(previous, next, ResourcePool.Usage.MainBlockProcessing);
-            snapshot.Content.Accounts[TestItem.AddressA] = new Account(block, (UInt256)(block * 100));
-            repository.AddStateId(next);
-            repository.TryAdd(snapshot, SnapshotTier.InMemoryBase);
-
-            await manager.AddToPersistence(next);
-
-            Assert.That(captureDisabled, Is.False, $"capture was disabled while persisting block {block}; watermark {writer.LastCapturedBlock}");
-            previous = next;
-        }
-
-        Assert.That(writer.LastCapturedBlock, Is.GreaterThan(100ul), "the watermark must follow the sync");
-    }
-
-    // The consensus client keeps driving the tip while the node is still syncing from genesis: the engine
-    // commits a state thousands of blocks above the sync position, with a parent this node has never seen.
-    [Test]
-    public async Task Capture_survives_a_tip_state_committed_while_the_sync_is_far_below()
-    {
-        FlatDbConfig config = new()
-        {
-            HistoryEnabled = true,
-            EnableLongFinality = true,
-            CompactSize = 16,
-            CompactionOffset = 0,
-            MinReorgDepth = 8,
-            MaxInMemoryBaseSnapshotCount = 16,
-            MaxReorgDepth = 32,
-            LongFinalityMaxReorgDepth = 32,
-            InlineCompaction = true
-        };
-
-        using SnapshotableMemColumnsDb<FlatDbColumns> flatColumns = new();
-        using SnapshotableMemColumnsDb<FlatHistoryColumns> historyColumns = new();
-        using FlatTestContainer tier = new(config);
-        // Disposed before the container, and on the throwing path too: these tests assert inside the loop, and a
-        // compactor still working over a deleted temp dir buries the assertion under teardown noise.
-        await using IAsyncDisposable compactorLifetime = tier.Compactor;
-        SnapshotRepository repository = tier.Repository;
-        ResourcePool pool = tier.ResourcePool;
-
-        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(historyColumns, config);
-        HistoryWriter writer = new(flatColumns, historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
-
-        IPersistence persistence = Substitute.For<IPersistence>();
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        StateId genesis = new(0, Keccak.EmptyTreeHash);
-        reader.CurrentState.Returns(genesis);
-        persistence.CreateReader().Returns(reader);
-        persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
-
-        using PersistenceManager manager = new(
-            config,
-            tier.Resolve<ICompactionSchedule>(),
-            Substitute.For<IFinalizedStateProvider>(),
-            persistence,
-            repository,
-            NullStatePersistenceBarrier.Instance,
-            LimboLogs.Instance,
-            tier.Compactor,
-            tier.Loader,
-            Substitute.For<IProcessExitSource>(),
-            writer);
-
-        bool captureDisabled = false;
-        writer.CaptureDisabled += () => captureDisabled = true;
-        writer.SeedGenesis([new System.Collections.Generic.KeyValuePair<Address, Account>(TestItem.AddressA, new Account(0, 1))], genesis.StateRoot);
-
-        StateId previous = genesis;
-        for (ulong block = 1; block <= 120; block++)
-        {
-            byte[] rootBytes = new byte[32];
-            rootBytes[0] = (byte)(block & 0xff);
-            rootBytes[1] = (byte)((block >> 8) & 0xff);
-            StateId next = new(block, new ValueHash256(rootBytes));
-
-            Snapshot snapshot = pool.CreateSnapshot(previous, next, ResourcePool.Usage.MainBlockProcessing);
-            snapshot.Content.Accounts[TestItem.AddressA] = new Account(block, (UInt256)(block * 100));
-            repository.AddStateId(next);
-            repository.TryAdd(snapshot, SnapshotTier.InMemoryBase);
-            repository.SetLastCommittedStateId(next);
-            await manager.AddToPersistence(next);
-            previous = next;
-
-            if (block == 60)
+            StateId next = fixture.Append(block);
+            if (injectDisconnectedSeed && block == 60)
             {
-                byte[] tipParentBytes = new byte[32];
-                tipParentBytes[0] = 0xAA;
-                byte[] tipBytes = new byte[32];
-                tipBytes[0] = 0xBB;
-                StateId tipParent = new(100_000, new ValueHash256(tipParentBytes));
-                StateId tip = new(100_001, new ValueHash256(tipBytes));
-
-                Snapshot tipSnapshot = pool.CreateSnapshot(tipParent, tip, ResourcePool.Usage.MainBlockProcessing);
-                tipSnapshot.Content.Accounts[TestItem.AddressB] = new Account(1, 1);
-                repository.AddStateId(tip);
-                repository.TryAdd(tipSnapshot, SnapshotTier.InMemoryBase);
-                // AddSnapshot commits every snapshot it takes, the engine-driven one included, so the tip is what the
-                // seed selection reads first - which is the branch the fix is about.
-                repository.SetLastCommittedStateId(tip);
-                await manager.AddToPersistence(tip);
+                StateId disconnected = fixture.InjectDisconnectedSeed();
+                ulong? before = fixture.Writer.LastCapturedBlock;
+                await fixture.Manager.AddToPersistence(disconnected);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(fixture.Writer.LastCapturedBlock, Is.GreaterThan(before), "capture must advance before another healthy commit replaces the disconnected seed");
+                    Assert.That(fixture.Tier.Repository.GetLastCommittedStateId(), Is.EqualTo(disconnected));
+                }
             }
-
-            Assert.That(captureDisabled, Is.False, $"capture was disabled at block {block}; watermark {writer.LastCapturedBlock}");
+            else
+            {
+                await fixture.Manager.AddToPersistence(next);
+            }
+            Assert.That(fixture.CaptureDisabled, Is.False, $"capture disabled at {block}");
         }
-
-        Assert.That(writer.LastCapturedBlock, Is.GreaterThan(60ul), "the watermark must keep following the sync after the tip state");
-    }
-
-    /// <summary>The node's own defaults, and the finalized view a syncing node actually gets: the consensus client
-    /// reports a finalized block at the tip while this node's canonical roots exist only up to its sync position.</summary>
-    private sealed class SyncingChainFinalizedStateProvider(System.Collections.Generic.IReadOnlyDictionary<ulong, Hash256> canonicalRoots) : IFinalizedStateProvider
-    {
-        public ulong FinalizedBlockNumber => 26_000_000;
-
-        public Hash256? GetFinalizedStateRootAt(ulong blockNumber) =>
-            canonicalRoots.TryGetValue(blockNumber, out Hash256? root) ? root : null;
+        Assert.That(fixture.Writer.LastCapturedBlock, Is.GreaterThan(100ul));
     }
 
     [Test]
-    public async Task Capture_follows_a_genesis_sync_under_production_defaults_with_a_tip_state()
+    public async Task Capture_follows_sync_under_production_defaults_with_disconnected_seeds()
     {
+        Dictionary<ulong, Hash256> roots = [];
         FlatDbConfig config = new() { HistoryEnabled = true, CompactionOffset = 0, InlineCompaction = true };
-
-        using SnapshotableMemColumnsDb<FlatDbColumns> flatColumns = new();
-        using SnapshotableMemColumnsDb<FlatHistoryColumns> historyColumns = new();
-        System.Collections.Generic.Dictionary<ulong, Hash256> canonicalRoots = [];
-        SyncingChainFinalizedStateProvider finalized = new(canonicalRoots);
-        using FlatTestContainer tier = new(config, finalizedStateProvider: finalized);
-        await using IAsyncDisposable compactorLifetime = tier.Compactor;
-        SnapshotRepository repository = tier.Repository;
-        ResourcePool pool = tier.ResourcePool;
-
-        (HistoryAvailability availability, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(historyColumns, config);
-        HistoryWriter writer = new(flatColumns, historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
-
-        IPersistence persistence = Substitute.For<IPersistence>();
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        StateId genesis = new(0, Keccak.EmptyTreeHash);
-        reader.CurrentState.Returns(genesis);
-        persistence.CreateReader().Returns(reader);
-        persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
-
-        using PersistenceManager manager = new(
-            config,
-            tier.Resolve<ICompactionSchedule>(),
-            finalized,
-            persistence,
-            repository,
-            NullStatePersistenceBarrier.Instance,
-            LimboLogs.Instance,
-            tier.Compactor,
-            tier.Loader,
-            Substitute.For<IProcessExitSource>(),
-            writer);
-
-        bool captureDisabled = false;
-        writer.CaptureDisabled += () => captureDisabled = true;
-        writer.SeedGenesis([new System.Collections.Generic.KeyValuePair<Address, Account>(TestItem.AddressA, new Account(0, 1))], genesis.StateRoot);
-
-        StateId previous = genesis;
+        await using CaptureFixture fixture = new(config, new SyncingFinality(roots));
         for (ulong block = 1; block <= 800; block++)
         {
-            byte[] rootBytes = new byte[32];
-            rootBytes[0] = (byte)(block & 0xff);
-            rootBytes[1] = (byte)((block >> 8) & 0xff);
-            StateId next = new(block, new ValueHash256(rootBytes));
-            canonicalRoots[block] = new Hash256(rootBytes);
+            StateId next = fixture.Append(block);
+            roots[block] = new Hash256(next.StateRoot.Bytes);
+            await fixture.Manager.AddToPersistence(next);
+            if (block % 100 == 0) await fixture.Manager.AddToPersistence(fixture.InjectDisconnectedSeed());
+            Assert.That(fixture.CaptureDisabled, Is.False, $"capture disabled at {block}");
+        }
+        Assert.That(fixture.Writer.LastCapturedBlock, Is.GreaterThan(600ul));
+    }
 
-            Snapshot snapshot = pool.CreateSnapshot(previous, next, ResourcePool.Usage.MainBlockProcessing);
-            snapshot.Content.Accounts[TestItem.AddressA] = new Account(block, (UInt256)(block * 100));
-            repository.AddStateId(next);
-            repository.TryAdd(snapshot, SnapshotTier.InMemoryBase);
-            repository.SetLastCommittedStateId(next);
-            await manager.AddToPersistence(next);
-            previous = next;
+    private sealed class SyncingFinality(IReadOnlyDictionary<ulong, Hash256> roots) : IFinalizedStateProvider
+    {
+        public ulong FinalizedBlockNumber => 26_000_000;
+        public Hash256? GetFinalizedStateRootAt(ulong blockNumber) => roots.GetValueOrDefault(blockNumber);
+    }
 
-            // The engine keeps driving the tip: it commits a state whose parent this node has never seen.
-            if (block % 100 == 0)
-            {
-                byte[] tipParentBytes = new byte[32];
-                tipParentBytes[0] = 0xAA;
-                tipParentBytes[2] = (byte)block;
-                byte[] tipBytes = new byte[32];
-                tipBytes[0] = 0xBB;
-                tipBytes[2] = (byte)block;
-                StateId tipParent = new(26_000_000, new ValueHash256(tipParentBytes));
-                StateId tip = new(26_000_001, new ValueHash256(tipBytes));
+    private sealed class CaptureFixture : IAsyncDisposable
+    {
+        public FlatTestContainer Tier { get; }
+        public IPersistenceManager Manager { get; }
+        public HistoryWriter Writer { get; }
+        public bool CaptureDisabled { get; private set; }
+        private StateId _previous = new(0, Keccak.EmptyTreeHash);
 
-                Snapshot tipSnapshot = pool.CreateSnapshot(tipParent, tip, ResourcePool.Usage.MainBlockProcessing);
-                tipSnapshot.Content.Accounts[TestItem.AddressB] = new Account(1, 1);
-                repository.AddStateId(tip);
-                repository.TryAdd(tipSnapshot, SnapshotTier.InMemoryBase);
-                repository.SetLastCommittedStateId(tip);
-                await manager.AddToPersistence(tip);
-            }
-
-            Assert.That(captureDisabled, Is.False, $"capture was disabled at block {block}; watermark {writer.LastCapturedBlock}");
+        public CaptureFixture(FlatDbConfig config, IFinalizedStateProvider? finalized = null)
+        {
+            IPersistence persistence = Substitute.For<IPersistence>();
+            IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+            reader.CurrentState.Returns(_previous);
+            persistence.CreateReader().Returns(reader);
+            persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+            Tier = new FlatTestContainer(config, finalizedStateProvider: finalized, configure: builder => builder
+                .AddSingleton<IColumnsDb<FlatDbColumns>>(new SnapshotableMemColumnsDb<FlatDbColumns>())
+                .AddSingleton<IColumnsDb<FlatHistoryColumns>>(new SnapshotableMemColumnsDb<FlatHistoryColumns>())
+                .AddSingleton<IPersistence>(persistence)
+                .AddSingleton<IStatePersistenceBarrier>(NullStatePersistenceBarrier.Instance));
+            Manager = Tier.Resolve<IPersistenceManager>();
+            Writer = Tier.Resolve<HistoryWriter>();
+            Writer.CaptureDisabled += () => CaptureDisabled = true;
+            Writer.SeedGenesis([new KeyValuePair<Address, Account>(TestItem.AddressA, new Account(0, 1))], _previous.StateRoot);
         }
 
-        Assert.That(writer.LastCapturedBlock, Is.GreaterThan(600ul), "the watermark must follow the sync");
+        public StateId Append(ulong block)
+        {
+            byte[] root = new byte[32];
+            root[0] = (byte)block;
+            root[1] = (byte)(block >> 8);
+            StateId next = new(block, new ValueHash256(root));
+            Add(_previous, next, TestItem.AddressA, new Account(block, (UInt256)(block * 100)));
+            _previous = next;
+            return next;
+        }
+
+        public StateId InjectDisconnectedSeed()
+        {
+            StateId parent = new(26_000_000, TestItem.KeccakA);
+            StateId tip = new(26_000_001, TestItem.KeccakB);
+            Add(parent, tip, TestItem.AddressB, new Account(1, 1));
+            return tip;
+        }
+
+        private void Add(StateId parent, StateId next, Address address, Account account)
+        {
+            Snapshot snapshot = Tier.ResourcePool.CreateSnapshot(parent, next, ResourcePool.Usage.MainBlockProcessing);
+            snapshot.Content.Accounts[address] = account;
+            Tier.Repository.AddStateId(next);
+            if (!Tier.Repository.TryAdd(snapshot, SnapshotTier.InMemoryBase)) snapshot.Dispose();
+            Tier.Repository.SetLastCommittedStateId(next);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            try { await Tier.Compactor.DisposeAsync(); }
+            finally { Tier.Dispose(); }
+        }
     }
 }

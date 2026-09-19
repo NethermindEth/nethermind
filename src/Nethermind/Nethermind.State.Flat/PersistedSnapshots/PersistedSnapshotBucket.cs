@@ -56,8 +56,12 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
     public bool TryGet(in StateId to, [NotNullWhen(true)] out PersistedSnapshot? snapshot) =>
         _byTo.TryGetValue(to, out snapshot);
 
-    public bool TryLease(in StateId to, [NotNullWhen(true)] out PersistedSnapshot? snapshot) =>
-        _byTo.TryGetValue(to, out snapshot) && TryAcquire(ref snapshot);
+    public bool TryLease(in StateId to, [NotNullWhen(true)] out PersistedSnapshot? snapshot, Action<PersistedSnapshot>? observed = null)
+    {
+        if (!_byTo.TryGetValue(to, out snapshot)) return false;
+        observed?.Invoke(snapshot);
+        return TryAcquire(ref snapshot);
+    }
 
     internal bool TryAcquire([NotNullWhen(true)] ref PersistedSnapshot? snapshot)
     {
@@ -113,9 +117,9 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
             PersistedSnapshotLabel oldLabel = LabelFor(old);
             Metrics.PersistedSnapshotMemory.AddBy(oldLabel, -old.Size);
             Metrics.PersistedSnapshotCount.AddBy(oldLabel, -1);
-            old.Dispose();
         }
         _byTo[to] = snapshot;
+        old?.Dispose();
         _ordered.Add(to);
         Interlocked.Add(ref _memoryBytes, snapshot.Size);
         Interlocked.Increment(ref _count);
@@ -183,14 +187,15 @@ internal sealed class PersistedSnapshotBucket(ISnapshotCatalog catalog, Snapshot
     {
         using Lock.Scope scope = _lock.EnterScope();
         if (logger.IsDebug && _byTo.Count > 0) logger.Debug($"Releasing {_byTo.Count} persisted snapshot(s) ({_tierName}) on teardown");
-        foreach (KeyValuePair<StateId, PersistedSnapshot> kv in _byTo)
+        KeyValuePair<StateId, PersistedSnapshot>[] snapshots = _byTo.ToArray();
+        _byTo.Clear();
+        foreach (KeyValuePair<StateId, PersistedSnapshot> kv in snapshots)
         {
             PersistedSnapshotLabel label = LabelFor(kv.Value);
             Metrics.PersistedSnapshotMemory.AddBy(label, -kv.Value.Size);
             Metrics.PersistedSnapshotCount.AddBy(label, -1);
             kv.Value.Dispose();
         }
-        _byTo.Clear();
         _ordered.Clear();
         Interlocked.Exchange(ref _memoryBytes, 0);
         Interlocked.Exchange(ref _count, 0);
