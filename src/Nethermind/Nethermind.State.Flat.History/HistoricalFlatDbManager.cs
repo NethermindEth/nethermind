@@ -65,6 +65,11 @@ public sealed class HistoricalFlatDbManager(
     public bool HasStateForBlock(in StateId stateId) =>
         Classify(stateId) is HistoricalReadMode.Normal or HistoricalReadMode.Restricted || inner.HasStateForBlock(stateId);
 
+    public bool HasStateForBlock(in StateId stateId, ResourcePool.Usage usage) =>
+        usage is ResourcePool.Usage.MainBlockProcessing or ResourcePool.Usage.PostMainBlockProcessing
+            ? Classify(stateId) == HistoricalReadMode.NotHistorical && inner.HasStateForBlock(stateId, usage)
+            : HasStateForBlock(stateId);
+
     public void FlushCache(CancellationToken cancellationToken) => inner.FlushCache(cancellationToken);
 
     public void DropStateNotReachableFrom(in StateId head) => inner.DropStateNotReachableFrom(head);

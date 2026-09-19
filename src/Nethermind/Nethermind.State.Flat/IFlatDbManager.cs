@@ -10,6 +10,10 @@ public interface IFlatDbManager : IFlatCommitTarget
     void FlushCache(CancellationToken cancellationToken);
     bool HasStateForBlock(in StateId stateId);
 
+    /// <summary>Checks whether state is available for the requested processing usage.</summary>
+    /// <remarks>Read-only historical state cannot serve main block processing.</remarks>
+    bool HasStateForBlock(in StateId stateId, ResourcePool.Usage usage) => HasStateForBlock(stateId);
+
     /// <summary>Drops every snapshot not on the ancestry of <paramref name="head"/> and releases the
     /// bundles cached over them.</summary>
     void DropStateNotReachableFrom(in StateId head);

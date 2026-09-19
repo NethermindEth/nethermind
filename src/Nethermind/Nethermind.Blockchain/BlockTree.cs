@@ -1481,9 +1481,16 @@ namespace Nethermind.Blockchain
                 return false;
             }
 
-            if (Head is null || block.Number > Head.Number)
+            Block? head = Head;
+            if (head is null)
             {
-                if (Logger.IsWarn) Logger.Warn($"Cannot rewind the head to {block.ToString(Block.Format.Short)} - it is above the current head {Head?.ToString(Block.Format.Short) ?? "(none)"}.");
+                if (Logger.IsWarn) Logger.Warn($"Cannot rewind the head to {block.ToString(Block.Format.Short)} - there is no current head.");
+                return false;
+            }
+
+            if (block.Number > head.Number)
+            {
+                if (Logger.IsWarn) Logger.Warn($"Cannot rewind the head to {block.ToString(Block.Format.Short)} - it is above the current head {head.ToString(Block.Format.Short)}.");
                 return false;
             }
 
@@ -1493,8 +1500,8 @@ namespace Nethermind.Blockchain
                 return false;
             }
 
-            bool isCurrentHead = block.Hash == Head.Hash;
-            if (!isCurrentHead && Logger.IsWarn) Logger.Warn($"Rewinding the head from {Head.ToString(Block.Format.Short)} to {block.ToString(Block.Format.Short)}.");
+            bool isCurrentHead = block.Hash == head.Hash;
+            if (!isCurrentHead && Logger.IsWarn) Logger.Warn($"Rewinding the head from {head.ToString(Block.Format.Short)} to {block.ToString(Block.Format.Short)}.");
 
             BlockAcceptingNewBlocks();
             try

@@ -2891,11 +2891,12 @@ public class BlockTreeTests
         Assert.That(blockTree.FindBlock(head.Hash!, BlockTreeLookupOptions.RequireCanonical), Is.Not.Null, "head must remain canonical");
     }
 
-    private BlockTree BuildRewindTree()
+    private BlockTree BuildRewindTree(ILogManager? logManager = null)
     {
-        _rewindContainer = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(Frontier.Instance))
-            .Build();
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(Frontier.Instance));
+        if (logManager is not null) builder.AddSingleton(logManager);
+        _rewindContainer = builder.Build();
         return (BlockTree)_rewindContainer.Resolve<IBlockTree>();
     }
 
@@ -3012,7 +3013,8 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void TryRewindHead_RefusesACanonicalBlockWhenThereIsNoHead()
     {
-        BlockTree blockTree = BuildRewindTree();
+        TestLogger logger = new();
+        BlockTree blockTree = BuildRewindTree(new OneLoggerLogManager(new(logger)));
         Block genesis = Build.A.Block.WithNumber(0).TestObject;
         blockTree.SuggestBlock(genesis);
         Block block = Build.A.Block.WithNumber(1).WithParent(genesis).TestObject;
@@ -3023,6 +3025,7 @@ public class BlockTreeTests
         Assert.That(blockTree.IsMainChain(block.Header), Is.True, "precondition: the target is canonical");
 
         Assert.That(blockTree.TryRewindHead(block.Hash!), Is.False);
+        Assert.That(logger.LogList, Does.Contain($"Cannot rewind the head to {block.ToString(Block.Format.Short)} - there is no current head."));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

@@ -37,10 +37,13 @@ public interface IDebugBridge
     object GetConfigValue(string category, string name);
     ChainLevelInfo GetLevelInfo(ulong number);
     int DeleteChainSlice(ulong startNumber, bool force = false);
-    /// <summary>Rewinds to a canonical block with retained state and prunes abandoned flat-state snapshots.</summary>
+    /// <summary>Rewinds to a canonical block with state available for block processing and prunes abandoned flat-state snapshots.</summary>
     /// <remarks>
     /// Does not requeue removed transactions or clear receipt indexes, safe/finalized hashes or sync metadata.
     /// Receipt lookups may still return removed transactions. Requires quiescent block processing and persistence.
+    /// The trie backend checks root availability only; it cannot guarantee that every descendant survived pruning.
+    /// Same-payload replay remains unsupported because processed markers and cached VALID results are retained;
+    /// use fresh replacement payloads.
     /// </remarks>
     /// <returns>Whether the rewind succeeded.</returns>
     bool UpdateHeadBlock(Hash256 blockHash);

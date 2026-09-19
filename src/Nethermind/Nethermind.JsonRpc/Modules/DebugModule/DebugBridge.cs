@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule;
 
 public class DebugBridge : IDebugBridge
 {
-    private readonly ILogger _logger = NullLogger.Instance;
+    private readonly ILogger _logger;
     private readonly IConfigProvider _configProvider;
     private readonly IGethStyleTracer _tracer;
     private readonly IBlockTree _blockTree;
@@ -61,24 +61,8 @@ public class DebugBridge : IDebugBridge
         IBlockStore blockStore,
         IWorldStateManager worldStateManager,
         ILogManager logManager)
-        : this(configProvider, dbProvider, tracer, blockTree, receiptStorage, receiptFinder,
-            receiptsMigration, specProvider, syncModeSelector, badBlockStore, blockStore, worldStateManager)
-        => _logger = logManager.GetClassLogger<DebugBridge>();
-
-    public DebugBridge(
-        IConfigProvider configProvider,
-        IReadOnlyDbProvider dbProvider,
-        IGethStyleTracer tracer,
-        IBlockTree blockTree,
-        IReceiptStorage receiptStorage,
-        [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
-        IReceiptsMigration receiptsMigration,
-        ISpecProvider specProvider,
-        ISyncModeSelector syncModeSelector,
-        IBadBlockStore badBlockStore,
-        IBlockStore blockStore,
-        IWorldStateManager worldStateManager)
     {
+        _logger = logManager.GetClassLogger<DebugBridge>();
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -128,15 +112,14 @@ public class DebugBridge : IDebugBridge
         BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
         if (header is null) return false;
 
-        if (!_worldStateManager.GlobalStateReader.HasStateForBlock(header))
+        if (!_worldStateManager.GlobalWorldState.HasRoot(header))
         {
-            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockHash}: state is unavailable.");
+            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockHash}: state is unavailable for block processing.");
             return false;
         }
 
         if (!_blockTree.TryRewindHead(blockHash)) return false;
 
-        // Replayed payloads retain WasProcessed/cached VALID results despite losing state; use fresh payloads.
         _worldStateManager.DropStateNotReachableFrom(header);
         return true;
     }
