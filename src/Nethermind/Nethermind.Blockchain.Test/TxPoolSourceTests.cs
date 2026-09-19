@@ -160,9 +160,15 @@ public class TxPoolSourceTests
             [TestItem.AddressA] = [first, second]
         }, isRevalidated: true);
         txPool.SupportsBlobs.Returns(true);
+        (Transaction, ulong)[] expected = null!;
         ITxFilterPipeline filter = Substitute.For<ITxFilterPipeline>();
         filter.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
-            .Returns(call => ReferenceEquals(call.Arg<Transaction>(), first) ? true : throw new InvalidOperationException());
+            .Returns(call =>
+            {
+                if (ReferenceEquals(call.Arg<Transaction>(), first)) return true;
+                Assert.That(expected[0].Item1, Is.SameAs(first));
+                throw new InvalidOperationException();
+            });
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(Osaka.Instance))
             .AddSingleton(txPool)
@@ -173,7 +179,7 @@ public class TxPoolSourceTests
         BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
         BlockHeader target = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
         System.Buffers.ArrayPool<(Transaction, ulong)> pool = System.Buffers.ArrayPool<(Transaction, ulong)>.Shared;
-        (Transaction, ulong)[] expected = pool.Rent(16);
+        expected = pool.Rent(16);
         pool.Return(expected, clearArray: true);
 
         Assert.Throws<InvalidOperationException>(() => source.GetTransactions(parent, target, long.MaxValue).ToArray());

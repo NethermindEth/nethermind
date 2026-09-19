@@ -141,9 +141,16 @@ public class BlobTxStorageTests
         Assert.That(actual.Length, Is.EqualTo(expected.Count));
         for (int i = 0; i < actual.Length; i++)
         {
-            using ArrayPoolSpan<byte> expectedRlp = TxDecoder.Instance.EncodeToArrayPoolSpan(expected[i], RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
-            using ArrayPoolSpan<byte> actualRlp = TxDecoder.Instance.EncodeToArrayPoolSpan(actual[i], RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
-            Assert.That(((ReadOnlySpan<byte>)actualRlp).SequenceEqual(expectedRlp), Is.True, $"Payload {i}");
+            ShardBlobNetworkWrapper expectedWrapper = (ShardBlobNetworkWrapper)expected[i].NetworkWrapper;
+            ShardBlobNetworkWrapper actualWrapper = (ShardBlobNetworkWrapper)actual[i].NetworkWrapper;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual[i], Is.EqualTo(expected[i]).UsingTransactionComparer(
+                    nameof(Transaction.SenderAddress), nameof(Transaction.Timestamp),
+                    nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)), $"Transaction {i}");
+                Assert.That(actualWrapper.CellMask, Is.EqualTo(expectedWrapper.CellMask), $"Cell mask {i}");
+                Assert.That(actualWrapper.Cells, Is.EqualTo(expectedWrapper.Cells), $"Cells {i}");
+            }
         }
     }
 
