@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#nullable enable
-
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core;
 using NUnit.Framework;
@@ -119,6 +117,8 @@ public class RecoverSignaturesTest
         Assert.That(notRecovered.SenderAddress, Is.EqualTo(signerB.Address));
     }
 
+#nullable enable
+
     [Test]
     public async Task RecoverDataAsync_WhileInFlight_RecoverDataReturnsWithoutWaiting()
     {
@@ -169,8 +169,9 @@ public class RecoverSignaturesTest
 
     private static ISpecProvider CreateSpecProvider()
     {
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(ReleaseSpecSubstitute.Create());
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
         return specProvider;
     }
 
