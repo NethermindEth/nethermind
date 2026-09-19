@@ -988,7 +988,8 @@ namespace Nethermind.TxPool
             UpdateTransactionDelegate updateTx,
             ForkRevalidation? revalidation)
         {
-            UInt256? previousTxBottleneck = null;
+            UInt256 previousTxBottleneck = default;
+            bool hasPreviousTxBottleneck = false;
             int i = 0;
             UInt256 cumulativeCost = 0;
             IReleaseSpec headSpec = _specProvider.GetCurrentHeadSpec();
@@ -1020,9 +1021,13 @@ namespace Nethermind.TxPool
                         }
                     }
 
-                    previousTxBottleneck ??= tx.CalculateAffordableGasPrice(
-                        isEip1559,
-                        _headInfo.CurrentBaseFee, balance);
+                    if (!hasPreviousTxBottleneck)
+                    {
+                        previousTxBottleneck = tx.CalculateAffordableGasPrice(
+                            isEip1559,
+                            _headInfo.CurrentBaseFee, balance);
+                        hasPreviousTxBottleneck = true;
+                    }
 
                     // it is not affecting non-blob txs - for them MaxFeePerBlobGas is null, so check is skipped
                     if (tx.MaxFeePerBlobGas < _headInfo.CurrentFeePerBlobGas)
@@ -1041,7 +1046,7 @@ namespace Nethermind.TxPool
                             MarkForEviction(tx, false);
                         }
 
-                        gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck ?? 0);
+                        gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck);
                     }
 
                     if (tx.GasBottleneck != gasBottleneck)
@@ -1664,10 +1669,11 @@ namespace Nethermind.TxPool
         public PendingTransactionsView GetPendingForProduction(BlockHeader targetBlock, bool filterToReadyTx, UInt256 baseFee)
         {
             long forkStateVersion = Volatile.Read(ref _forkStateVersion);
-            IDictionary<AddressAsKey, Transaction[]> transactions = filterToReadyTx
-                ? GetPendingTransactionsBySender(true, baseFee)
-                : GetPendingTransactionsBySender();
-            IDictionary<AddressAsKey, Transaction[]> blobTransactions = GetPendingLightBlobTransactionsBySender(filterToReadyTx, baseFee);
+            Predicate<(AddressAsKey key, Transaction first)>? filter = filterToReadyTx
+                ? data => data.first.CanPayBaseFee(baseFee) && data.first.Nonce == _accounts.GetNonce(data.key)
+                : null;
+            IDictionary<AddressAsKey, Transaction[]> transactions = _transactions.GetProductionSnapshot(filter);
+            IDictionary<AddressAsKey, Transaction[]> blobTransactions = _blobTransactions.GetProductionSnapshot(filter);
 
             return new(transactions, blobTransactions, IsRevalidatedFor(targetBlock, forkStateVersion));
         }

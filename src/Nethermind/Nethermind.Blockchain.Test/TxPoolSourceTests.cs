@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -31,6 +33,107 @@ namespace Nethermind.Consensus.Producers.Test;
 [Parallelizable(ParallelScope.All)]
 public class TxPoolSourceTests
 {
+    [Test]
+    public void Ordering_preserves_sender_chains_and_stops_at_rejected_transaction([Values] bool rejectByFilter)
+    {
+        Transaction a0 = Build.A.Transaction.WithNonce(0).WithGasPrice(10).WithGasLimit(21_000).TestObject;
+        Transaction a1 = Build.A.Transaction.WithNonce(1).WithGasPrice(30).WithGasLimit(21_000).TestObject;
+        Transaction a2 = Build.A.Transaction.WithNonce(2).WithGasPrice(40).WithGasLimit(21_000).TestObject;
+        Transaction b0 = Build.A.Transaction.WithNonce(0).WithGasPrice(20).WithGasLimit(21_000).TestObject;
+        Dictionary<AddressAsKey, Transaction[]> buckets = new()
+        {
+            [TestItem.AddressA] = [a0, a1, a2],
+            [TestItem.AddressB] = [b0],
+            [TestItem.AddressC] = []
+        };
+        IComparer<Transaction> comparer = Comparer<Transaction>.Create((x, y) => y.GasPrice.CompareTo(x.GasPrice));
+
+        Transaction[] selected = TxPoolTxSource.Order(buckets, comparer,
+            tx => !rejectByFilter || tx != a1, rejectByFilter ? 100_000UL : 21_000UL).ToArray();
+
+        Assert.That(selected, Is.EqualTo(new[] { b0, a0 }));
+    }
+
+    [Test]
+    public void Ordering_reconsiders_each_senders_next_transaction()
+    {
+        Transaction a0 = Build.A.Transaction.WithNonce(0).WithGasPrice(10).TestObject;
+        Transaction a1 = Build.A.Transaction.WithNonce(1).WithGasPrice(30).TestObject;
+        Transaction b0 = Build.A.Transaction.WithNonce(0).WithGasPrice(20).TestObject;
+        Dictionary<AddressAsKey, Transaction[]> buckets = new()
+        {
+            [TestItem.AddressA] = [a0, a1],
+            [TestItem.AddressB] = [b0]
+        };
+        IComparer<Transaction> comparer = Comparer<Transaction>.Create((x, y) => y.GasPrice.CompareTo(x.GasPrice));
+        Assert.That(TxPoolTxSource.Order(buckets, comparer, _ => true, ulong.MaxValue), Is.EqualTo(new[] { b0, a0, a1 }));
+    }
+
+    [Test]
+    public void Ordering_matches_frontier_merge([Values(0, 1, 2, 3, 4, 7, 16, 31, 32, 33, 257)] int senders)
+    {
+        Dictionary<AddressAsKey, Transaction[]> buckets = [];
+        Dictionary<AddressAsKey, Queue<Transaction>> remaining = [];
+        for (int sender = 0; sender < senders; sender++)
+        {
+            Address address = Address.FromNumber((UInt256)(sender + 1));
+            Transaction[] transactions = Enumerable.Range(0, sender % 5)
+                .Select(nonce => new Transaction
+                {
+                    SenderAddress = address,
+                    Nonce = (ulong)nonce,
+                    GasPrice = (UInt256)(nonce * senders + sender + 1),
+                    GasLimit = 21_000
+                }).ToArray();
+            buckets.Add(address, transactions);
+            remaining.Add(address, new Queue<Transaction>(transactions));
+        }
+
+        List<Transaction> expected = [];
+        while (remaining.Values.Any(queue => queue.Count != 0))
+        {
+            Transaction next = remaining.Values.Where(queue => queue.Count != 0).Select(queue => queue.Peek()).MaxBy(tx => tx.GasPrice)!;
+            remaining[next.SenderAddress!].Dequeue();
+            expected.Add(next);
+        }
+        IComparer<Transaction> comparer = Comparer<Transaction>.Create((x, y) => y.GasPrice.CompareTo(x.GasPrice));
+        IEnumerable<Transaction> ordered = TxPoolTxSource.Order(buckets, comparer, _ => true, ulong.MaxValue);
+        Assert.That(ordered.Take(1), Is.EqualTo(expected.Take(1)));
+        Assert.That(ordered, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Ordering_preserves_equal_priority_root_on_removal([Values(2, 3, 4, 7, 16, 33)] int senders)
+    {
+        Transaction[] transactions = Enumerable.Range(0, senders)
+            .Select(i => new Transaction { SenderAddress = Address.FromNumber((UInt256)(i + 1)), GasLimit = 21_000 })
+            .ToArray();
+        Dictionary<AddressAsKey, Transaction[]> buckets = transactions.ToDictionary(tx => (AddressAsKey)tx.SenderAddress!, tx => new[] { tx });
+        IComparer<Transaction> comparer = Comparer<Transaction>.Create((_, _) => 0);
+        Transaction[] expected = transactions.Take(1).Concat(transactions.Skip(1).Reverse()).ToArray();
+
+        Assert.That(TxPoolTxSource.Order(buckets, comparer, _ => true, ulong.MaxValue), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Producer_comparer_uses_target_blocks_fee_rules([Values(9UL, 10UL)] ulong blockNumber)
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Berlin.Instance)
+            {
+                ForkOnBlockNumber = 10,
+                NextForkSpec = London.Instance
+            })
+            .Build();
+        IComparer<Transaction> comparer = container.Resolve<ITransactionComparerProvider>()
+            .GetDefaultProducerComparer(new BlockPreparationContext(100, blockNumber));
+        Transaction x = new() { Type = TxType.EIP1559, GasPrice = 3, DecodedMaxFeePerGas = 103 };
+        Transaction y = new() { Type = TxType.EIP1559, GasPrice = 5, DecodedMaxFeePerGas = 102 };
+
+        Assert.That(Math.Sign(comparer.Compare(x, y)), Is.EqualTo(blockNumber < 10 ? 1 : -1));
+    }
+
     // Deliberately below Amsterdam's intrinsic gas requirement for the access list built below.
     private const ulong UnderGassedTransactionGasLimit = 42_400;
 
@@ -44,6 +147,51 @@ public class TxPoolSourceTests
         }
 
         return accessListBuilder.Build();
+    }
+
+    [Test]
+    public void Returns_blob_candidates_when_filter_throws()
+    {
+        Transaction first = Build.A.Transaction.WithShardBlobTxTypeAndFields(2, spec: Osaka.Instance).WithNonce(0).TestObject;
+        Transaction second = Build.A.Transaction.WithShardBlobTxTypeAndFields(2, spec: Osaka.Instance).WithNonce(1).TestObject;
+        ITxPool txPool = Substitute.For<ITxPool>();
+        SetPendingForProduction(txPool, blobTransactions: new Dictionary<AddressAsKey, Transaction[]>
+        {
+            [TestItem.AddressA] = [first, second]
+        }, isRevalidated: true);
+        txPool.SupportsBlobs.Returns(true);
+        (Transaction, ulong)[] expected = null!;
+        ITxFilterPipeline filter = Substitute.For<ITxFilterPipeline>();
+        filter.Execute(Arg.Any<Transaction>(), Arg.Any<BlockHeader>(), Arg.Any<IReleaseSpec>())
+            .Returns(call =>
+            {
+                if (ReferenceEquals(call.Arg<Transaction>(), first)) return true;
+                Assert.That(expected[0].Item1, Is.SameAs(first));
+                throw new InvalidOperationException();
+            });
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(Osaka.Instance))
+            .AddSingleton(txPool)
+            .AddSingleton(filter)
+            .AddSingleton<TxPoolTxSource>()
+            .Build();
+        ITxSource source = container.Resolve<TxPoolTxSource>();
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithExcessBlobGas(0).TestObject;
+        BlockHeader target = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
+        System.Buffers.ArrayPool<(Transaction, ulong)> pool = System.Buffers.ArrayPool<(Transaction, ulong)>.Shared;
+        expected = pool.Rent(16);
+        pool.Return(expected, clearArray: true);
+
+        Assert.Throws<InvalidOperationException>(() => source.GetTransactions(parent, target, long.MaxValue).ToArray());
+        (Transaction, ulong)[] actual = pool.Rent(16);
+        try
+        {
+            Assert.That(actual, Is.SameAs(expected));
+        }
+        finally
+        {
+            pool.Return(actual, clearArray: true);
+        }
     }
 
     private static ITxValidator CreateSpecChangeTxValidator(ISpecProvider specProvider) =>
@@ -180,7 +328,9 @@ public class TxPoolSourceTests
         BlockHeader targetBlock = Build.A.BlockHeader.WithNumber(1).WithExcessBlobGas(0).TestObject;
 
         // Act
-        Transaction[] result = txSource.GetTransactions(parent, targetBlock, long.MaxValue).ToArray();
+        IEnumerable<Transaction> selection = txSource.GetTransactions(parent, targetBlock, long.MaxValue);
+        Assert.That(selection.Take(1), Is.EqualTo(new[] { highPriorityBlobTx }).UsingTransactionComparer());
+        Transaction[] result = selection.ToArray();
 
         // Assert: High priority blob tx should come BEFORE lower priority regular tx
         Assert.That(result, Is.EqualTo(new[] { highPriorityBlobTx, lowerPriorityRegularTx }).UsingTransactionComparer());

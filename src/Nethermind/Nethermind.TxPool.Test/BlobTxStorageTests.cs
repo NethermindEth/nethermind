@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -22,6 +23,137 @@ namespace Nethermind.TxPool.Test;
 [Parallelizable(ParallelScope.All)]
 public class BlobTxStorageTests
 {
+    [Test]
+    public void Processed_transactions_survive_pool_deletion_and_storage_restart(
+        [Values(1, 4, 16)] int count, [Values] bool stored)
+    {
+        using MemColumnsDb<BlobTxsColumns> db = new();
+        BlobTxStorage storage = new(db);
+        using ArrayPoolListRef<Transaction> transactions = new(count);
+        for (int i = 0; i < count; i++)
+        {
+            Transaction tx = CreateBlobTransaction(TestItem.PrivateKeyA, i, blobCount: i % 4 == 1 ? 3 : 1);
+            transactions.Add(tx);
+            if (stored) storage.Add(tx);
+        }
+
+        storage.AddBlobTransactionsFromBlock(358, transactions);
+        foreach (Transaction tx in transactions) storage.Delete(tx.Hash, tx.Timestamp);
+        storage = new BlobTxStorage(db);
+
+        Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out Transaction[] restored), Is.True);
+        AssertProcessedTransactions(transactions, restored);
+        storage.DeleteBlobTransactionsFromBlock(358);
+        Assert.That(db.GetColumnDb(BlobTxsColumns.ProcessedTxs).GetAllKeys(), Is.Empty);
+    }
+
+    [Test]
+    public void Processed_transactions_preserve_pending_sidecar_changes()
+    {
+        using MemColumnsDb<BlobTxsColumns> db = new();
+        BlobTxStorage storage = new(db);
+        Transaction tx = CreateBlobTransaction();
+        storage.Add(tx);
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper;
+        wrapper.Proofs[0][0] ^= 1;
+        using ArrayPoolListRef<Transaction> transactions = new(1, tx);
+
+        storage.AddBlobTransactionsFromBlock(358, transactions);
+
+        Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out Transaction[] restored), Is.True);
+        AssertProcessedTransactions(transactions, restored);
+    }
+
+    [Test]
+    public void Processed_transactions_read_replace_and_delete_legacy_records([Values] bool replace)
+    {
+        using MemColumnsDb<BlobTxsColumns> db = new();
+        BlobTxStorage storage = new(db);
+        using ArrayPoolListRef<Transaction> transactions = new(1, CreateBlobTransaction());
+        using ArrayPoolSpan<byte> legacy = TxDecoder.Instance.EncodeToArrayPoolSpan(transactions.AsSpan(), RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
+        db.GetColumnDb(BlobTxsColumns.ProcessedTxs).PutSpan(358UL.ToBigEndianSpanWithoutLeadingZeros(out _), legacy);
+
+        if (replace) storage.AddBlobTransactionsFromBlock(358, transactions);
+
+        Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out Transaction[] restored), Is.True);
+        AssertProcessedTransactions(transactions, restored);
+        storage.DeleteBlobTransactionsFromBlock(358);
+        Assert.That(db.GetColumnDb(BlobTxsColumns.ProcessedTxs).GetAllKeys(), Is.Empty);
+    }
+
+    [Test]
+    public void Replacing_processed_block_removes_obsolete_payloads_and_preserves_other_blocks()
+    {
+        using MemColumnsDb<BlobTxsColumns> db = new();
+        BlobTxStorage storage = new(db);
+        using ArrayPoolListRef<Transaction> original = new(2, CreateBlobTransaction(), CreateBlobTransaction(TestItem.PrivateKeyB));
+        using ArrayPoolListRef<Transaction> replacement = new(1, CreateBlobTransaction(TestItem.PrivateKeyC));
+        storage.AddBlobTransactionsFromBlock(358, original);
+        storage.AddBlobTransactionsFromBlock(359, original);
+
+        storage.AddBlobTransactionsFromBlock(358, replacement);
+
+        Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out Transaction[] restored), Is.True);
+        AssertProcessedTransactions(replacement, restored);
+        Assert.That(db.GetColumnDb(BlobTxsColumns.ProcessedTxs).GetAllKeys().Count(), Is.EqualTo(5));
+        storage.DeleteBlobTransactionsFromBlock(358);
+        Assert.That(storage.TryGetBlobTransactionsFromBlock(359, out restored), Is.True);
+        AssertProcessedTransactions(original, restored);
+        storage.DeleteBlobTransactionsFromBlock(359);
+        Assert.That(db.GetColumnDb(BlobTxsColumns.ProcessedTxs).GetAllKeys(), Is.Empty);
+    }
+
+    [Test]
+    public void Processed_block_write_failure_preserves_previous_block([Values] bool stored)
+    {
+        using TrackingColumnsDb db = new();
+        BlobTxStorage storage = new(db);
+        using ArrayPoolListRef<Transaction> original = new(1, CreateBlobTransaction());
+        using ArrayPoolListRef<Transaction> replacement = new(2, CreateBlobTransaction(TestItem.PrivateKeyB), CreateBlobTransaction(TestItem.PrivateKeyC));
+        if (stored)
+        {
+            foreach (Transaction tx in replacement) storage.Add(tx);
+        }
+        storage.AddBlobTransactionsFromBlock(358, original);
+        db.FailProcessedWriteAfter = 1;
+        Transaction[] replacementTransactions = replacement.AsSpan().ToArray();
+
+        Assert.Throws<InvalidOperationException>(() => SaveProcessed(storage, replacementTransactions));
+
+        Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out Transaction[] restored), Is.True);
+        AssertProcessedTransactions(original, restored);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db.GetColumnDb(BlobTxsColumns.ProcessedTxs).GetAllKeys().Count(), Is.EqualTo(2));
+            Assert.That(db.ActiveSpans, Is.Zero);
+        }
+
+        static void SaveProcessed(BlobTxStorage storage, Transaction[] transactions)
+        {
+            using ArrayPoolListRef<Transaction> batch = new(transactions.Length);
+            batch.AddRange(transactions);
+            storage.AddBlobTransactionsFromBlock(358, batch);
+        }
+    }
+
+    private static void AssertProcessedTransactions(in ArrayPoolListRef<Transaction> expected, Transaction[] actual)
+    {
+        Assert.That(actual.Length, Is.EqualTo(expected.Count));
+        for (int i = 0; i < actual.Length; i++)
+        {
+            ShardBlobNetworkWrapper expectedWrapper = (ShardBlobNetworkWrapper)expected[i].NetworkWrapper;
+            ShardBlobNetworkWrapper actualWrapper = (ShardBlobNetworkWrapper)actual[i].NetworkWrapper;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual[i], Is.EqualTo(expected[i]).UsingTransactionComparer(
+                    nameof(Transaction.SenderAddress), nameof(Transaction.Timestamp),
+                    nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)), $"Transaction {i}");
+                Assert.That(actualWrapper.CellMask, Is.EqualTo(expectedWrapper.CellMask), $"Cell mask {i}");
+                Assert.That(actualWrapper.Cells, Is.EqualTo(expectedWrapper.Cells), $"Cells {i}");
+            }
+        }
+    }
+
     [Test]
     public void should_throw_when_trying_to_add_null_tx()
     {
@@ -461,8 +593,9 @@ public class BlobTxStorageTests
 
     private static Transaction CreateBlobTransaction() => CreateBlobTransaction(TestItem.PrivateKeyA);
 
-    private static Transaction CreateBlobTransaction(PrivateKey signer) => Build.A.Transaction
-        .WithShardBlobTxTypeAndFields()
+    private static Transaction CreateBlobTransaction(PrivateKey signer, int nonce = 0, int blobCount = 1) => Build.A.Transaction
+        .WithShardBlobTxTypeAndFields(blobCount)
+        .WithNonce(nonce)
         .WithMaxFeePerGas(1.GWei)
         .WithMaxPriorityFeePerGas(1.GWei)
         .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Mainnet), signer).TestObject;
@@ -474,6 +607,8 @@ public class BlobTxStorageTests
 
         public int StartedWriteBatchCount { get; private set; }
         public bool FailNextLightColumnWrite { get; set; }
+        public int? FailProcessedWriteAfter { get; set; }
+        public int ActiveSpans => _columnDbs.Values.Cast<DirectWriteRejectingDb>().Sum(static db => db.ActiveSpans);
         public IEnumerable<BlobTxsColumns> ColumnKeys => _inner.ColumnKeys;
 
         public IDb GetColumnDb(BlobTxsColumns key)
@@ -514,6 +649,11 @@ public class BlobTxStorageTests
                 owner.FailNextLightColumnWrite = false;
                 return new FailingWriteBatch(batch);
             }
+            if (key == BlobTxsColumns.ProcessedTxs && owner.FailProcessedWriteAfter is { } successfulWrites)
+            {
+                owner.FailProcessedWriteAfter = null;
+                return new FailingWriteBatch(batch, successfulWrites);
+            }
 
             return batch;
         }
@@ -523,10 +663,15 @@ public class BlobTxStorageTests
         public void Dispose() => inner.Dispose();
     }
 
-    private sealed class FailingWriteBatch(IWriteBatch inner) : IWriteBatch
+    private sealed class FailingWriteBatch(IWriteBatch inner, int successfulWrites = 0) : IWriteBatch
     {
-        public void Set(ReadOnlySpan<byte> key, byte[] value, WriteFlags flags = WriteFlags.None) =>
-            throw new InvalidOperationException("Simulated column write failure.");
+        private int _writes;
+
+        public void Set(ReadOnlySpan<byte> key, byte[] value, WriteFlags flags = WriteFlags.None)
+        {
+            if (_writes++ == successfulWrites) throw new InvalidOperationException("Simulated column write failure.");
+            inner.Set(key, value, flags);
+        }
 
         public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) =>
             inner.Merge(key, value, flags);
@@ -539,10 +684,24 @@ public class BlobTxStorageTests
     private sealed class DirectWriteRejectingDb(IDb inner, BlobTxsColumns column) : IDb
     {
         public string Name => inner.Name;
+        public int ActiveSpans { get; private set; }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => inner[keys];
 
         public byte[] Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => inner.Get(key, flags);
+
+        public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            Span<byte> value = inner.GetSpan(key, flags);
+            if (!value.IsEmpty) ActiveSpans++;
+            return value;
+        }
+
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> value)
+        {
+            if (!value.IsEmpty) ActiveSpans--;
+            inner.DangerousReleaseMemory(value);
+        }
 
         public void Set(ReadOnlySpan<byte> key, byte[] value, WriteFlags flags = WriteFlags.None)
         {
