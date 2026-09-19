@@ -17,13 +17,6 @@ public interface ISnapStateServer
     /// <summary>
     /// Caps the number of trie traversals a single <see cref="GetTrieNodes(IReadOnlyList{PathGroup}, Hash256, long, CancellationToken)"/> may perform.
     /// </summary>
-    /// <remarks>
-    /// The response size measured against <see cref="HardResponseByteLimit"/> only advances for paths that
-    /// resolve to a node, so on its own it does not bound a request whose paths resolve to nothing. This cap
-    /// keeps such a request no more expensive than a productive one. It must stay equal to
-    /// <c>SnapMessageLimits.MaxResponseTrieNodes</c>, the number of nodes a <c>TrieNodes</c> message may carry,
-    /// since a lookup writes at most one entry; snap/1 lets a server answer with fewer nodes than were asked for.
-    /// </remarks>
     const int MaxTrieNodeLookups = 4096;
 
     bool CanServe { get; }

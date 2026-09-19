@@ -30,10 +30,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 {
     public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
     {
-        // A block with no transactions costs one byte of response, so the size estimate barely advances
-        // for it and does not bound how many blocks a receipts request may look up. No client asks for
-        // more than MaxReceiptFetch blocks per request, and our own sizer stops at 128, so twice that
-        // limit leaves ample headroom.
         protected const int MaxReceiptsLookups = 2 * NethermindSyncLimits.MaxReceiptFetch;
 
         internal static ulong SoftOutgoingMessageSizeLimit = 2UL.MiB;
@@ -363,9 +359,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 Block? block = SyncServer.Find(hashes[i]);
                 if (block is null)
                 {
-                    // GetBlockBodies responses are sparse: unavailable hashes are omitted from the response.
-                    // No separate lookup bound is needed here: an unknown hash costs less than a known block
-                    // and the request itself is capped at MaxBodyHashesPerRequest when it is decoded.
                     continue;
                 }
 
