@@ -3,11 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.IO.Abstractions;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
@@ -18,6 +20,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
@@ -31,6 +34,18 @@ public class RpcModuleProviderTests
     private IRpcModuleProvider _moduleProvider = null!;
     private IFileSystem _fileSystem = null!;
     private JsonRpcContext _context = null!;
+    private IContainer _productionContainer = null!;
+    private RpcModuleProvider _productionProvider = null!;
+
+    [OneTimeSetUp]
+    public void InitializeProductionProvider()
+    {
+        _productionContainer = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddModule(new TestMergeModule())
+            .Build();
+        _productionProvider = _productionContainer.Resolve<RpcModuleProvider>();
+    }
 
     [SetUp]
     public void Initialize()
@@ -42,6 +57,9 @@ public class RpcModuleProviderTests
 
     [TearDown]
     public void TearDown() => _context?.Dispose();
+
+    [OneTimeTearDown]
+    public void DisposeProductionProvider() => _productionContainer?.Dispose();
 
     private static RpcModuleProvider CreateProvider(IJsonRpcConfig? config = null, IFileSystem? fileSystem = null, IReadOnlyList<RpcModuleInfo>? rpcModules = null) =>
         new(fileSystem ?? Substitute.For<IFileSystem>(), config ?? new JsonRpcConfig(), new EthereumJsonSerializer(), rpcModules ?? [], LimboLogs.Instance);
@@ -122,6 +140,80 @@ public class RpcModuleProviderTests
         _moduleProvider.Register(new SingletonModulePool<INetRpcModule>(second));
 
         Assert.That(await _moduleProvider.Rent(nameof(INetRpcModule.net_listening), true), Is.SameAs(second));
+    }
+
+    [Test]
+    public void Evm_execution_classification_contains_exactly_the_production_methods()
+    {
+        HashSet<string> expected =
+        [
+            "eth_call",
+            "eth_estimateGas",
+            "eth_createAccessList",
+            "eth_simulateV1",
+            "eth_fillTransaction",
+        ];
+
+        Dictionary<string, bool> reflectedMethods = new(StringComparer.Ordinal);
+        foreach (Type module in ProductionRpcModuleInterfaces())
+        {
+            foreach (MethodInfo method in module.GetMethods(BindingFlags.Public | BindingFlags.Instance))
+            {
+                JsonRpcMethodAttribute? attribute = method.GetCustomAttribute<JsonRpcMethodAttribute>();
+                if (attribute is null)
+                {
+                    continue;
+                }
+
+                if (reflectedMethods.TryGetValue(method.Name, out bool existing))
+                {
+                    Assert.That(existing, Is.EqualTo(attribute.IsEvmExecution), $"conflicting metadata for {method.Name}");
+                }
+                else
+                {
+                    reflectedMethods.Add(method.Name, attribute.IsEvmExecution);
+                }
+            }
+        }
+
+        HashSet<string> actual = new(StringComparer.Ordinal);
+        foreach ((string methodName, bool isEvmExecution) in reflectedMethods)
+        {
+            if (isEvmExecution)
+            {
+                actual.Add(methodName);
+            }
+        }
+
+        Assert.That(actual, Is.EquivalentTo(expected));
+
+        foreach ((string methodName, bool expectedIsEvmExecution) in reflectedMethods)
+        {
+            RpcModuleProvider.ResolvedMethodInfo? method = _productionProvider.Resolve(methodName);
+            Assert.That(method, Is.Not.Null, $"production modules must expose {methodName}");
+            Assert.That(method!.IsEvmExecution, Is.EqualTo(expectedIsEvmExecution), $"production provider metadata for {methodName}");
+        }
+
+        foreach (MethodInfo method in typeof(IEngineRpcModule).GetMethods(BindingFlags.Public | BindingFlags.Instance))
+        {
+            Assert.That(method.GetCustomAttribute<JsonRpcMethodAttribute>()?.IsEvmExecution, Is.Not.True,
+                $"Engine API method {method.Name} must not be admission-gated.");
+        }
+    }
+
+    private static IEnumerable<Type> ProductionRpcModuleInterfaces()
+    {
+        Assembly[] assemblies = [typeof(IRpcModule).Assembly, typeof(IEngineRpcModule).Assembly];
+        foreach (Assembly assembly in assemblies)
+        {
+            foreach (Type type in assembly.GetTypes())
+            {
+                if (type.IsInterface && type != typeof(IRpcModule) && typeof(IRpcModule).IsAssignableFrom(type))
+                {
+                    yield return type;
+                }
+            }
+        }
     }
 
     [TestCase("engine_newPayloadV4", ModuleType.Engine)]
@@ -230,6 +322,27 @@ public class RpcModuleProviderTests
             Assert.That(module.AsyncCalls, Is.EqualTo(1));
             Assert.That(module.ParameterCalls, Is.EqualTo(1));
             Assert.That(module.FourParameterCalls, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Admission_gated_streaming_return_is_rejected_during_registration()
+    {
+        InvalidOperationException? exception = Assert.Throws<InvalidOperationException>(() =>
+            _moduleProvider.Register(new TestModulePool<GatedStreamRpcModule>(new GatedStreamRpcModule())));
+
+        Assert.That(exception!.Message, Does.Contain(nameof(IStreamableResult)));
+    }
+
+    [Test]
+    public void Streaming_and_gated_non_streaming_methods_resolve()
+    {
+        _moduleProvider.Register(new TestModulePool<ValidAdmissionRpcModule>(new ValidAdmissionRpcModule()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_moduleProvider.Resolve(nameof(ValidAdmissionRpcModule.streamed)), Is.Not.Null);
+            Assert.That(_moduleProvider.Resolve(nameof(ValidAdmissionRpcModule.gated)), Is.Not.Null);
         }
     }
 
@@ -518,6 +631,28 @@ public class RpcModuleProviderTests
 
     [RpcModule(ModuleType.Eth)]
     private interface ITestRpcModule : IRpcModule { }
+
+    [RpcModule(ModuleType.Net)]
+    private sealed class GatedStreamRpcModule : IRpcModule
+    {
+        [JsonRpcMethod(IsEvmExecution = true)]
+        public ResultWrapper<TestStreamable> gated() => ResultWrapper<TestStreamable>.Success(new());
+    }
+
+    [RpcModule(ModuleType.Net)]
+    private sealed class ValidAdmissionRpcModule : IRpcModule
+    {
+        [JsonRpcMethod]
+        public ResultWrapper<TestStreamable> streamed() => ResultWrapper<TestStreamable>.Success(new());
+
+        [JsonRpcMethod(IsEvmExecution = true)]
+        public ResultWrapper<string> gated() => ResultWrapper<string>.Success(string.Empty);
+    }
+
+    private sealed class TestStreamable : IStreamableResult
+    {
+        public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) => default;
+    }
 
     [RpcModule(ModuleType.Admin)]
     public interface ITestAdminRpcModule : IRpcModule
