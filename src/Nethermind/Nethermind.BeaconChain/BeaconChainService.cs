@@ -11,6 +11,7 @@ using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ServiceStopper;
 using Nethermind.Logging;
 
 using Nethermind.BeaconChain.Spec;
@@ -32,13 +33,21 @@ public sealed class BeaconChainService(
     CheckpointSync checkpointSync,
     BeaconSyncOrchestrator orchestrator,
     ExternalClDetector externalClDetector,
-    ILogManager logManager) : IDisposable
+    ILogManager logManager) : IDisposable, IStoppableService
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconChainService>();
     private readonly CancellationTokenSource _cancellationTokenSource = new();
-    private volatile bool _disposed;
+    private readonly Lock _lifecycleLock = new();
+    private bool _disposed;
+    private Task? _runTask;
 
-    public async Task Start()
+    public Task Start()
+    {
+        _runTask = RunAsync();
+        return _runTask;
+    }
+
+    private async Task RunAsync()
     {
         try
         {
@@ -116,25 +125,43 @@ public sealed class BeaconChainService(
     /// <summary>Permanently stops the driver, e.g. when an external consensus client takes over.</summary>
     public void Stop()
     {
-        if (!_disposed)
+        lock (_lifecycleLock)
         {
+            if (_disposed)
+            {
+                return;
+            }
+
             _cancellationTokenSource.Cancel();
+        }
+    }
+
+    /// <summary>Stops the driver and awaits its run loop, so <see cref="Dispose"/> only tears the token source down after the driver has actually unwound.</summary>
+    public async Task StopAsync()
+    {
+        Stop();
+        if (_runTask is not null)
+        {
+            await _runTask;
         }
     }
 
     /// <remarks>Idempotent: the service is disposed both via the plugin dispose stack and as a container-owned singleton.</remarks>
     public void Dispose()
     {
-        if (_disposed)
+        lock (_lifecycleLock)
         {
-            return;
-        }
+            if (_disposed)
+            {
+                return;
+            }
 
-        // Cancel before the rest of the node tears down, so the driver unwinds from its own token
-        // instead of surfacing secondary cancellations (e.g. engine internals going away) as errors.
-        Stop();
-        _disposed = true;
-        externalClDetector.ExternalClDetected -= Stop;
-        _cancellationTokenSource.Dispose();
+            // Cancel before the rest of the node tears down, so the driver unwinds from its own token
+            // instead of surfacing secondary cancellations (e.g. engine internals going away) as errors.
+            _cancellationTokenSource.Cancel();
+            _disposed = true;
+            externalClDetector.ExternalClDetected -= Stop;
+            _cancellationTokenSource.Dispose();
+        }
     }
 }
