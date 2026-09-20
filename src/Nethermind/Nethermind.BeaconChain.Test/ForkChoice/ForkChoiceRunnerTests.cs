@@ -1,23 +1,26 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
-using Nethermind.BeaconChain.Test.P2P;
+using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
-using Nethermind.Merge.Plugin.SszRest;
 using NUnit.Framework;
+using FuluStateTransition = Nethermind.BeaconChain.StateTransition.StateTransition;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
 
 /// <summary>
-/// The pure predicates behind <see cref="ForkChoiceRunner.ShouldOverrideForkchoiceUpdate"/> and
-/// <see cref="ForkChoiceRunner.IsDataAvailable"/>, tested directly rather than only through a full
-/// runner: both gates are silent-wrong risks (get_proposer_head returning the ordinary head instead
-/// of ever re-org'ing, or on_block accepting a block whose blob data was never actually verified)
-/// that a wrong boundary or a skipped cross-check would not otherwise surface as a build error.
+/// The pure predicates behind <see cref="ForkChoiceRunner.ShouldOverrideForkchoiceUpdate"/> (silent-wrong
+/// risks: get_proposer_head returning the ordinary head instead of ever re-org'ing), and the way
+/// <see cref="ForkChoiceRunner.OnBlock"/> hands <c>is_data_available</c> to whichever
+/// <see cref="IDataAvailabilityRule"/> its caller chose: a column list means the supernode rule the
+/// spec vectors need, a rule means exactly that rule, and neither is ever inferred from the other.
 /// </summary>
 public class ForkChoiceRunnerTests
 {
@@ -48,155 +51,80 @@ public class ForkChoiceRunnerTests
         Assert.That(ForkChoiceRunner.IsSingleSlotReorg(parentSlot, headSlot, proposalSlot), Is.EqualTo(expected));
 
     [Test]
-    public void IsDataAvailable_is_trivially_true_for_a_block_with_no_blob_commitments()
+    public void OnBlock_with_a_column_list_applies_the_supernode_rule_regardless_of_this_nodes_custody()
     {
-        BeaconBlock block = TestChain.CreateBlock(slot: 1, parentRoot: Hash256.Zero).Message!;
-        Hash256 root = SszRoots.HashTreeRoot(block);
+        ImportableBlobBlock chain = ImportableBlobBlock.Create();
+        (ForkChoiceRunner runner, BeaconStateFulu postState) = RunnerAt(chain);
+        // The eight columns a base-custody node would hold: enough for the production rule, never for this one.
+        DataColumnSidecar[] eightColumns = [.. chain.Columns.Take(8)];
 
-        Assert.That(ForkChoiceRunner.IsDataAvailable(block, root, dataColumns: null, BeaconChainSpec.Mainnet), Is.True);
-    }
-
-    [Test]
-    public void IsDataAvailable_rejects_a_block_with_commitments_and_no_columns()
-    {
-        BeaconBlock block = BlockWithOneCommitment(out Hash256 root, out _);
-
-        Assert.That(ForkChoiceRunner.IsDataAvailable(block, root, dataColumns: null, BeaconChainSpec.Mainnet), Is.False);
-    }
-
-    [Test]
-    public void IsDataAvailable_rejects_fewer_than_the_full_column_set()
-    {
-        BeaconBlock block = BlockWithOneCommitment(out Hash256 root, out SszKzgCommitment commitment);
-        DataColumnSidecar[] columns = [MatchingSidecar(block, root, commitment, index: 0)];
-
-        Assert.That(ForkChoiceRunner.IsDataAvailable(block, root, columns, BeaconChainSpec.Mainnet), Is.False,
-            "one column out of NumberOfColumns must not count as available");
-    }
-
-    // HasExactlyOneSidecarPerColumn is tested directly, on bare Index values, rather than through
-    // IsDataAvailable: DataColumnSidecarVerifier.Verify always fails on a hand-built sidecar (no test
-    // fixture here has a real KZG proof), so routing through IsDataAvailable would make these pass
-    // whether or not the count/duplicate/range check under test actually ran.
-
-    [Test]
-    public void HasExactlyOneSidecarPerColumn_rejects_a_duplicate_index()
-    {
-        DataColumnSidecar[] columns = new DataColumnSidecar[Eip7594DasConstants.NumberOfColumns];
-        for (int i = 0; i < columns.Length; i++)
-            columns[i] = new DataColumnSidecar { Index = 0 }; // every sidecar claims index 0
-
-        Assert.That(ForkChoiceRunner.HasExactlyOneSidecarPerColumn(columns), Is.False,
-            "128 sidecars all claiming column 0 must not be treated as the full 128-column set");
-    }
-
-    [Test]
-    public void HasExactlyOneSidecarPerColumn_rejects_an_index_out_of_range()
-    {
-        DataColumnSidecar[] columns = FullIndexSet();
-        columns[0].Index = (ulong)Eip7594DasConstants.NumberOfColumns; // one past the valid range
-
-        Assert.That(ForkChoiceRunner.HasExactlyOneSidecarPerColumn(columns), Is.False);
-    }
-
-    [Test]
-    public void HasExactlyOneSidecarPerColumn_rejects_too_few_sidecars() =>
-        Assert.That(ForkChoiceRunner.HasExactlyOneSidecarPerColumn([new DataColumnSidecar { Index = 0 }]), Is.False);
-
-    [Test]
-    public void HasExactlyOneSidecarPerColumn_accepts_the_full_set_exactly_once_each() =>
-        Assert.That(ForkChoiceRunner.HasExactlyOneSidecarPerColumn(FullIndexSet()), Is.True);
-
-    private static DataColumnSidecar[] FullIndexSet()
-    {
-        DataColumnSidecar[] columns = new DataColumnSidecar[Eip7594DasConstants.NumberOfColumns];
-        for (int i = 0; i < columns.Length; i++)
-            columns[i] = new DataColumnSidecar { Index = (ulong)i };
-        return columns;
-    }
-
-    // These three exercise ForkChoiceRunner.MatchesBlock directly rather than through the full
-    // IsDataAvailable: a hand-built sidecar can never pass DataColumnSidecarVerifier.Verify's real KZG
-    // and inclusion-proof checks (no test fixture here has a valid trusted-setup proof), so routing
-    // these through IsDataAvailable would make them pass whether or not the cross-check under test
-    // actually ran - Verify's own, unrelated failure would mask a missing or broken cross-check.
-
-    [Test]
-    public void MatchesBlock_rejects_a_sidecar_addressed_to_a_different_block()
-    {
-        BeaconBlock block = BlockWithOneCommitment(out Hash256 root, out SszKzgCommitment commitment);
-        DataColumnSidecar sidecar = MatchingSidecar(block, root, commitment, index: 0);
-        sidecar.SignedBlockHeader!.Message!.Slot = 999; // changes the header's own hash tree root
-
-        Assert.That(ForkChoiceRunner.MatchesBlock(sidecar, root, block.Body!.BlobKzgCommitments!), Is.False,
-            "a sidecar's inclusion proof against its OWN header proves nothing if that header is not this block");
-    }
-
-    [Test]
-    public void MatchesBlock_rejects_a_commitment_count_mismatch()
-    {
-        BeaconBlock block = BlockWithOneCommitment(out Hash256 root, out SszKzgCommitment commitment);
-        DataColumnSidecar sidecar = MatchingSidecar(block, root, commitment, index: 0);
-        sidecar.KzgCommitments = [commitment, commitment]; // block has one commitment, this sidecar claims two
-
-        Assert.That(ForkChoiceRunner.MatchesBlock(sidecar, root, block.Body!.BlobKzgCommitments!), Is.False);
-    }
-
-    [Test]
-    public void MatchesBlock_rejects_a_commitment_value_mismatch()
-    {
-        BeaconBlock block = BlockWithOneCommitment(out Hash256 root, out SszKzgCommitment commitment);
-        DataColumnSidecar sidecar = MatchingSidecar(block, root, commitment, index: 0);
-        byte[] wrongCommitment = new byte[SszKzgCommitment.KzgCommitmentLength];
-        wrongCommitment[0] = 0xFF;
-        sidecar.KzgCommitments = [SszKzgCommitment.FromSpan(wrongCommitment)];
-
-        Assert.That(ForkChoiceRunner.MatchesBlock(sidecar, root, block.Body!.BlobKzgCommitments!), Is.False,
-            "a sidecar claiming a commitment the block never made must not count towards availability");
-    }
-
-    [Test]
-    public void MatchesBlock_accepts_a_sidecar_that_genuinely_matches()
-    {
-        BeaconBlock block = BlockWithOneCommitment(out Hash256 root, out SszKzgCommitment commitment);
-        DataColumnSidecar sidecar = MatchingSidecar(block, root, commitment, index: 0);
-
-        Assert.That(ForkChoiceRunner.MatchesBlock(sidecar, root, block.Body!.BlobKzgCommitments!), Is.True,
-            "a same-block, same-commitments sidecar must not be rejected by the addressing check itself");
-    }
-
-    private static BeaconBlock BlockWithOneCommitment(out Hash256 root, out SszKzgCommitment commitment)
-    {
-        commitment = SszKzgCommitment.FromSpan(new byte[SszKzgCommitment.KzgCommitmentLength]);
-        // TestChain.CreateBlock fills in every other required-for-merkleization field (execution
-        // payload, sync aggregate, eth1 data, ...); only the commitments list is under test here.
-        BeaconBlock block = TestChain.CreateBlock(slot: 5, parentRoot: Hash256.Zero).Message!;
-        block.Body!.BlobKzgCommitments = [commitment];
-        root = SszRoots.HashTreeRoot(block);
-        return block;
-    }
-
-    /// <summary>
-    /// A sidecar whose header round-trips to <paramref name="blockRoot"/> and whose commitments match the
-    /// block's - everything <see cref="ForkChoiceRunner.IsDataAvailable"/> cross-checks before it would ever
-    /// reach KZG verification. <c>hash_tree_root(header)</c> equals <paramref name="blockRoot"/> only because
-    /// <c>BodyRoot</c> is the real <c>hash_tree_root(block.Body)</c>: header and block share the same first
-    /// four fields, so the body is the only place a wrong root could hide.
-    /// </summary>
-    private static DataColumnSidecar MatchingSidecar(BeaconBlock block, Hash256 blockRoot, SszKzgCommitment commitment, ulong index) => new()
-    {
-        Index = index,
-        KzgCommitments = [commitment],
-        SignedBlockHeader = new SignedBeaconBlockHeader
+        Assert.Multiple(() =>
         {
-            Message = new BeaconBlockHeader
-            {
-                Slot = block.Slot,
-                ProposerIndex = block.ProposerIndex,
-                ParentRoot = block.ParentRoot,
-                StateRoot = block.StateRoot,
-                BodyRoot = SszRoots.HashTreeRoot(block.Body!),
-            },
-        },
-    };
+            Assert.That(() => runner.OnBlock(chain.Block, postState, ExecutionStatus.Valid, eightColumns),
+                Throws.TypeOf<ForkChoiceException>().With.Message.Contains("blob data"));
+            Assert.That(runner.ContainsBlock(chain.BlockRoot), Is.False, "a rejected block must not have been added to the tree");
+            Assert.That(() => runner.OnBlock(chain.Block, postState, ExecutionStatus.Valid, chain.Columns), Throws.Nothing,
+                "the spec vectors hand over the whole matrix and expect acceptance");
+            Assert.That(runner.ContainsBlock(chain.BlockRoot), Is.True);
+        });
+    }
+
+    [Test]
+    public void OnBlock_with_a_rule_asks_that_rule_about_this_block_and_honors_its_verdict()
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.Create();
+        (ForkChoiceRunner runner, BeaconStateFulu postState) = RunnerAt(chain);
+        RecordingRule refusing = new(verdict: false);
+        RecordingRule accepting = new(verdict: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(() => runner.OnBlock(chain.Block, postState, ExecutionStatus.Valid, refusing), Throws.TypeOf<ForkChoiceException>());
+            Assert.That(refusing.Asked, Is.EqualTo(new List<(BeaconBlock, Hash256)> { (chain.Block.Message!, chain.BlockRoot) }),
+                "the rule is consulted for this block, keyed by its real root");
+            Assert.That(runner.ContainsBlock(chain.BlockRoot), Is.False);
+
+            Assert.That(() => runner.OnBlock(chain.Block, postState, ExecutionStatus.Valid, accepting), Throws.Nothing);
+            Assert.That(accepting.Asked, Has.Count.EqualTo(1));
+            Assert.That(runner.ContainsBlock(chain.BlockRoot), Is.True);
+        });
+    }
+
+    /// <summary>A runner rooted at the fixture's anchor, ticked to the block's slot, with the block's real post-state computed.</summary>
+    private static (ForkChoiceRunner Runner, BeaconStateFulu PostState) RunnerAt(ImportableBlobBlock chain)
+    {
+        InMemoryStates states = new();
+        states.States[chain.AnchorRoot] = chain.AnchorState;
+        ForkChoiceRunner runner = new(chain.Spec, chain.AnchorState, chain.AnchorBlock.Message!, states, chain.Pubkeys);
+        runner.OnTick(runner.GenesisTime + chain.Block.Message!.Slot * chain.Spec.SecondsPerSlot);
+
+        BeaconStateFulu postState = chain.AnchorState.Clone();
+        FuluStateTransition.Apply(postState, chain.Block, new EpochCache(), chain.Pubkeys, new AcceptingNotifier(), chain.Spec);
+        return (runner, postState);
+    }
+
+    private sealed class RecordingRule(bool verdict) : IDataAvailabilityRule
+    {
+        public List<(BeaconBlock Block, Hash256 Root)> Asked { get; } = [];
+
+        public bool IsDataAvailable(BeaconBlock block, Hash256 blockRoot, BeaconChainSpec spec)
+        {
+            Asked.Add((block, blockRoot));
+            return verdict;
+        }
+    }
+
+    private sealed class InMemoryStates : IForkChoiceStateProvider
+    {
+        public Dictionary<Hash256, BeaconStateFulu> States { get; } = [];
+
+        public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => States.GetValueOrDefault(blockRoot);
+
+        public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => GetBlockState(blockRoot)?.Clone();
+    }
+
+    private sealed class AcceptingNotifier : INewPayloadNotifier
+    {
+        public bool NotifyNewPayload(BeaconBlockBody body) => true;
+    }
 }

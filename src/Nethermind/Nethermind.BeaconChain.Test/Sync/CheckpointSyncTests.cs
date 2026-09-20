@@ -95,7 +95,7 @@ public class CheckpointSyncTests
             config,
             BeaconChainSpec.Mainnet,
             store,
-            new BlockImporterFactory(BeaconChainSpec.Mainnet, store, new PubkeyCache(), engine, config, logManager),
+            new BlockImporterFactory(BeaconChainSpec.Mainnet, store, new PubkeyCache(), engine, config, logManager, new DataColumnSidecarPool()),
             engine,
             pool,
             new RangeSync(pool, logManager),
