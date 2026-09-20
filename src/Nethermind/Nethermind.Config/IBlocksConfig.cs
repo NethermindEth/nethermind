@@ -60,6 +60,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Experimental: distance between the starts of consecutive pre-warm windows. `0` means the window size (non-overlapping windows); `1` slides one transaction at a time.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmWindowStride { get; set; }
 
+    [ConfigItem(Description = "Experimental: merge pre-warm windows that share a sender into one job so nonce chains stay in order. Requires PreWarmWindowSize; ignores PreWarmWindowStride.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PreWarmWindowKeepSenders { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

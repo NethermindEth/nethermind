@@ -72,6 +72,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly IHasAccessList[] _systemAccessLists;
     private readonly int _warmWindowSize;
     private readonly int _warmWindowStride;
+    private readonly bool _warmWindowKeepSenders;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -91,7 +92,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         blocksConfig.MempoolPreWarmConcurrency,
         systemAccessLists,
         blocksConfig.PreWarmWindowSize,
-        blocksConfig.PreWarmWindowStride) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        blocksConfig.PreWarmWindowStride,
+        blocksConfig.PreWarmWindowKeepSenders) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
 
     internal BlockCachePreWarmer(
         IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
@@ -104,11 +106,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         int speculativeConcurrency = 0,
         IHasAccessList[]? systemAccessLists = null,
         int warmWindowSize = 0,
-        int warmWindowStride = 0)
+        int warmWindowStride = 0,
+        bool warmWindowKeepSenders = false)
     {
         _systemAccessLists = systemAccessLists ?? [];
         _warmWindowSize = warmWindowSize;
         _warmWindowStride = warmWindowStride > 0 ? warmWindowStride : warmWindowSize;
+        _warmWindowKeepSenders = warmWindowKeepSenders;
         _concurrencyLevel = concurrency == 0 ? Environment.ProcessorCount - 1 : concurrency;
         _speculativeConcurrencyLevel = speculativeConcurrency == 0 ? Math.Max(1, _concurrencyLevel / 2) : speculativeConcurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
@@ -744,7 +748,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             // parallelism, never correctness.
             using ArrayPoolList<WarmupJob> senderGroups =
                 blockState.PreWarmer._warmWindowSize > 0
-                    ? GroupTransactionsByWindow(block, blockState.PreWarmer._warmWindowSize, blockState.PreWarmer._warmWindowStride)
+                    ? blockState.PreWarmer._warmWindowKeepSenders
+                        ? GroupTransactionsByWindowAndSender(block, blockState.PreWarmer._warmWindowSize, parallelOptions.MaxDegreeOfParallelism)
+                        : GroupTransactionsByWindow(block, blockState.PreWarmer._warmWindowSize, blockState.PreWarmer._warmWindowStride)
                     : GroupTransactionsBySender(block, parallelOptions.MaxDegreeOfParallelism, blockState.SpeculativelyWarmed);
 
             try
@@ -875,6 +881,80 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     /// <summary>Total gas limit above which a multi-tx sender group is warmed per-tx in parallel instead of sequentially.</summary>
     private const ulong SplitSenderGroupGasThreshold = 4_000_000;
+
+    /// <summary>
+    /// Tiles the block into windows as <see cref="GroupTransactionsByWindow"/> does, then merges every window that
+    /// shares a sender with another into one job, so a sender's nonce chain warms in order and still sees its
+    /// neighbours' writes. A merged job above the sender-split gas threshold is broken back into plain windows,
+    /// the same trade the per-sender grouping makes for heavy chains.
+    /// </summary>
+    internal static ArrayPoolList<WarmupJob> GroupTransactionsByWindowAndSender(Block block, int size, int maxWorkers)
+    {
+        Transaction[] transactions = block.Transactions;
+        int[] parent = new int[transactions.Length];
+        for (int i = 0; i < parent.Length; i++) parent[i] = i;
+
+        Dictionary<AddressAsKey, int> lastOfSender = [];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            if (transactions[i].SenderAddress is not Address sender) continue;
+            if (i % size != 0 && transactions[i - 1].SenderAddress is not null) Union(parent, i - 1, i);
+            ref int last = ref CollectionsMarshal.GetValueRefOrAddDefault(lastOfSender, sender, out bool seen);
+            if (seen) Union(parent, last, i);
+            last = i;
+        }
+
+        Dictionary<int, ArrayPoolList<(int, Transaction)>> components = [];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            if (transactions[i].SenderAddress is null) continue;
+            ref ArrayPoolList<(int, Transaction)>? list = ref CollectionsMarshal.GetValueRefOrAddDefault(components, Find(parent, i), out _);
+            (list ??= new(size)).Add((i, transactions[i]));
+        }
+
+        ArrayPoolList<WarmupJob> result = new(components.Count);
+        foreach (ArrayPoolList<(int Index, Transaction Tx)> component in components.Values)
+        {
+            ulong gas = TotalGasLimit(component);
+            if (maxWorkers is < 0 or >= 2 && component.Count > size && gas > SplitSenderGroupGasThreshold)
+            {
+                ArrayPoolList<(int, Transaction)>? window = null;
+                int windowStart = -1;
+                foreach ((int Index, Transaction Tx) item in component.AsSpan())
+                {
+                    if (window is null || item.Index / size != windowStart)
+                    {
+                        if (window is not null) result.Add(new WarmupJob(window, TotalGasLimit(window)));
+                        window = new(size);
+                        windowStart = item.Index / size;
+                    }
+                    window.Add(item);
+                }
+                if (window is not null) result.Add(new WarmupJob(window, TotalGasLimit(window)));
+                component.Dispose();
+            }
+            else
+            {
+                result.Add(new WarmupJob(component, gas));
+            }
+        }
+
+        result.AsSpan().Sort(static (a, b) => a.FirstIndex.CompareTo(b.FirstIndex));
+        return result;
+
+        static int Find(int[] parent, int i)
+        {
+            while (parent[i] != i) i = parent[i] = parent[parent[i]];
+            return i;
+        }
+
+        static void Union(int[] parent, int a, int b)
+        {
+            a = Find(parent, a);
+            b = Find(parent, b);
+            if (a != b) parent[Math.Max(a, b)] = Math.Min(a, b);
+        }
+    }
 
     /// <summary>
     /// Groups the block's transactions into fixed-size windows of consecutive transactions, each warmed in one
