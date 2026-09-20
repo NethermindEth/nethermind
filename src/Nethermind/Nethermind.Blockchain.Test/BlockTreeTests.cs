@@ -34,6 +34,8 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Core.Caching;
+using ThreadingTimeout = System.Threading.Timeout;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -41,7 +43,7 @@ namespace Nethermind.Blockchain.Test;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockTreeTests
 {
-    [Test]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Maintenance_waits_for_transient_ordinary_mutation([Values] bool releaseBeforeTimeout)
     {
         BlockTreeMutationLock mutationLock = new();
@@ -51,7 +53,7 @@ public class BlockTreeTests
             try
             {
                 bool entered = releaseBeforeTimeout
-                    ? mutationLock.TryEnter(out BlockTreeMutationLock.Scope scope, maintenance: true, System.Threading.Timeout.InfiniteTimeSpan)
+                    ? mutationLock.TryEnter(out BlockTreeMutationLock.Scope scope, maintenance: true, ThreadingTimeout.InfiniteTimeSpan)
                     : mutationLock.TryEnter(out scope, maintenance: true);
                 using (scope) completed.SetResult(entered);
             }
@@ -2128,11 +2130,24 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_delete_one_block()
+    public void Can_delete_one_block([Values] bool precedingLevelCanonical, [Values] bool clearBlockCache)
     {
-        BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
-        blockTree.DeleteChainSlice(2, 2);
-        Assert.That(blockTree.Head!.Number, Is.EqualTo(1));
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(3);
+        BlockTree blockTree = builder.TestObject;
+        Hash256 expectedHead = precedingLevelCanonical ? blockTree.FindHeader(1, BlockTreeLookupOptions.RequireCanonical)!.Hash! : blockTree.Genesis!.Hash!;
+        blockTree.FindLevel(1)!.HasBlockOnMainChain = precedingLevelCanonical;
+        if (clearBlockCache) ((IClearableCache)builder.BlockStore).ClearCache();
+
+        int deleted = blockTree.DeleteChainSlice(2, 2);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deleted, Is.EqualTo(1));
+            Assert.That(blockTree.Head!.Hash, Is.EqualTo(expectedHead));
+            Assert.That(blockTree.FindBlock(2, BlockTreeLookupOptions.None), Is.Null);
+            Assert.That(blockTree.FindLevel(2), Is.Null);
+            Assert.That(builder.BlockInfoDb.Get(Keccak.Zero.Bytes), Is.EqualTo(expectedHead.Bytes.ToArray()));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

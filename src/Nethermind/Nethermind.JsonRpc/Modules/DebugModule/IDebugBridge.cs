@@ -46,6 +46,7 @@ public interface IDebugBridge
     /// Does not requeue removed transactions or clear receipt indexes, safe/finalized hashes or sync metadata.
     /// Availability checks enforce retention, not a full scan for missing trie descendants.
     /// Receipt lookups may still return removed transactions. Requires paused, drained block processing and quiescent persistence.
+    /// Concurrent synchronization may receive retryable canonical-update refusals during maintenance.
     /// Returns false on mutation contention or overlap with another debug head reset or chain-slice deletion.
     /// Same-payload replay remains unsupported because processed markers and cached VALID results are retained;
     /// use fresh replacement payloads.

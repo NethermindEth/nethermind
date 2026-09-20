@@ -57,12 +57,21 @@ public class DebugBridgeTests
         container.Resolve<IBlockStore>().Delete(target.Number, target.Hash!);
         Assert.That(tree.FindBlock(target.Hash!, BlockTreeLookupOptions.None), Is.Null);
         Assert.That(container.Resolve<IWorldStateManager>().GlobalWorldState.HasRoot(target.Header), Is.True);
+        Assert.That(container.Resolve<IWorldStateManager>().GlobalStateReader.HasStateForBlock(target.Header), Is.True);
 
         if (throughRpc)
-            Assert.That(container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create()
-                .debug_deleteChainSlice(2, force: true).ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+        {
+            ResultWrapper<int> result = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create()
+                .debug_deleteChainSlice(2, force: true);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+                Assert.That(result.Result.Error, Is.EqualTo("The new head body or state is unavailable for block processing."));
+            }
+        }
         else
-            Assert.That(() => tree.DeleteChainSlice(2, force: true), Throws.InvalidOperationException);
+            Assert.That(() => tree.DeleteChainSlice(2, force: true), Throws.InvalidOperationException
+                .With.Message.EqualTo("The replacement head block is unavailable."));
 
         using (Assert.EnterMultipleScope())
         {

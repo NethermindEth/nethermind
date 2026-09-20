@@ -1921,7 +1921,8 @@ namespace Nethermind.Blockchain
                 Hash256? newHeadHash = chainLevelInfo.HasBlockOnMainChain
                     ? chainLevelInfo.BlockInfos[0].BlockHash
                     : Genesis?.Hash;
-                newHeadBlock = (newHeadHash is null ? null : FindBlock(newHeadHash, BlockTreeLookupOptions.None, blockNumber: startNumber - 1))
+                newHeadBlock = (newHeadHash is null ? null : FindBlock(newHeadHash, BlockTreeLookupOptions.None,
+                    blockNumber: chainLevelInfo.HasBlockOnMainChain ? startNumber - 1 : Genesis?.Number))
                     ?? throw new InvalidOperationException("The replacement head block is unavailable.");
             }
 
