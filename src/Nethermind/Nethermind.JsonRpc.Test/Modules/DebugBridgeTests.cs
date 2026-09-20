@@ -11,7 +11,6 @@ using Nethermind.Evm.State;
 using Nethermind.Init;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Autofac;
 using Nethermind.Blockchain;
