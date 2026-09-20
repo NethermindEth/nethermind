@@ -65,6 +65,49 @@ public class BeaconDiscoveryTests
         }
     }
 
+    [Test]
+    public void Local_enr_carries_the_nfd_entry_and_rotates_it_across_a_real_mainnet_bpo_boundary()
+    {
+        // Real, shipped mainnet epochs either side of BPO1 (412672), not a synthetic schedule.
+        EnrForkId preBpo1 = EnrForkId.Compute(BeaconChainSpec.Mainnet, 412671ul);
+        byte[]? nextBeforeBpo1 = EnrForkId.NextForkDigest(BeaconChainSpec.Mainnet, 412671ul);
+        BeaconNodeRecordProvider provider = new(TestItem.PrivateKeyA, PublicIp, tcpPort: 9000, udpPort: 9001, preBpo1, custodyGroupCount: 4, nextBeforeBpo1);
+
+        // Parsed back from the ENR string, taking the same wire path a remote peer would.
+        NodeRecord initial = NodeRecord.FromEnrString(provider.Current.ToString());
+        Assert.That(BeaconDiscovery.TryGetNextForkDigest(initial, out byte[]? decodedNext), Is.True);
+        Assert.That(decodedNext, Is.EqualTo(nextBeforeBpo1));
+
+        EnrForkId atBpo1 = EnrForkId.Compute(BeaconChainSpec.Mainnet, 412672ul);
+        byte[]? nextAtBpo1 = EnrForkId.NextForkDigest(BeaconChainSpec.Mainnet, 412672ul);
+        Assert.That(provider.Update(atBpo1, nextAtBpo1), Is.True, "crossing the BPO1 boundary must republish");
+        Assert.That(nextAtBpo1, Is.Not.EqualTo(nextBeforeBpo1), "the boundary should actually rotate nfd in this fixture");
+
+        NodeRecord updated = NodeRecord.FromEnrString(provider.Current.ToString());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updated.EnrSequence, Is.EqualTo(2ul));
+            Assert.That(BeaconDiscovery.TryGetNextForkDigest(updated, out byte[]? decodedRotated), Is.True);
+            Assert.That(decodedRotated, Is.EqualTo(nextAtBpo1));
+        }
+
+        Assert.That(provider.Update(atBpo1, nextAtBpo1), Is.False, "republishing an unchanged nfd should be a no-op");
+    }
+
+    [Test]
+    public void Local_enr_advertises_the_zero_nfd_default_once_nothing_is_scheduled()
+    {
+        EnrForkId forkId = EnrForkId.Compute(BeaconChainSpec.Mainnet, 419072ul);
+        BeaconNodeRecordProvider provider = new(TestItem.PrivateKeyA, PublicIp, tcpPort: 9000, udpPort: 9001, forkId, custodyGroupCount: 4,
+            EnrForkId.NextForkDigest(BeaconChainSpec.Mainnet, 419072ul));
+
+        Assert.That(provider.Current.GetObj<byte[]>("nfd"), Is.EqualTo(NfdEntry.NoneScheduled));
+
+        NodeRecord parsed = NodeRecord.FromEnrString(provider.Current.ToString());
+        Assert.That(BeaconDiscovery.TryGetNextForkDigest(parsed, out byte[]? decoded), Is.True);
+        Assert.That(decoded, Is.Null, "the zero default means no next fork is scheduled");
+    }
+
     [TestCase(4ul)]
     [TestCase(128ul)]
     public void Local_enr_carries_the_cgc_entry_at_the_configured_custody_group_count(ulong custodyGroupCount)
