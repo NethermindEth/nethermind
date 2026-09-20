@@ -74,6 +74,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly int _warmWindowStride;
     private readonly bool _warmWindowKeepSenders;
     private bool _waitForWarm;
+    private static bool s_hoistHeavy = true;
+    private int _headStartMicros;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -98,6 +100,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         _parallelExecutionEnabled = blocksConfig.ParallelExecution;
         _waitForWarm = blocksConfig.PreWarmWaitForCompletion;
+        s_hoistHeavy = blocksConfig.PreWarmHoistHeavy;
+        _headStartMicros = blocksConfig.PreWarmHeadStartMicros;
     }
 
     internal BlockCachePreWarmer(
@@ -197,6 +201,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             cancellationToken));
 
         if (_waitForWarm) normalWarmTask.Wait();
+        if (_headStartMicros > 0)
+        {
+            long until = System.Diagnostics.Stopwatch.GetTimestamp() + _headStartMicros * System.Diagnostics.Stopwatch.Frequency / 1_000_000;
+            while (System.Diagnostics.Stopwatch.GetTimestamp() < until) Thread.SpinWait(64);
+        }
 
         if (discoveryCandidates is null) return normalWarmTask;
 
@@ -499,6 +508,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         BlockState blockState = new(this, block, parent, spec, speculativelyWarmed);
         // Safe for the speculative caller: it never overlaps main execution (joined before ProcessOne).
         Volatile.Write(ref _mainThreadTxIndex, -1);
+        ProcessingThread.TxIndex = -1;
         ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = token };
         // BAL makes speculative tx execution redundant — when BAL-based read warming is in use, drive warmup
         // directly off the block's access list.
@@ -635,7 +645,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     /// <summary>Reports main-thread progress (called via <see cref="PrewarmerTxAdapter"/>) so warming can skip already-started txs.</summary>
     /// <remarks>Only the single main execution thread writes, in ascending tx order, so a plain release store publishes progress to the polling warmup workers — no interlocked read-modify-write is needed.</remarks>
-    public void OnBeforeTxExecution() => Volatile.Write(ref _mainThreadTxIndex, _mainThreadTxIndex + 1);
+    public void OnBeforeTxExecution()
+    {
+        int next = _mainThreadTxIndex + 1;
+        Volatile.Write(ref _mainThreadTxIndex, next);
+        ProcessingThread.TxIndex = next;
+    }
 
     public CacheType ClearCaches()
     {
@@ -890,8 +905,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // deterministic under the unstable span sort.
         result.AsSpan().Sort(static (a, b) =>
         {
-            if (a.IsHoisted != b.IsHoisted) return a.IsHoisted ? -1 : 1;
-            if (a.IsHoisted)
+            if (s_hoistHeavy && a.IsHoisted != b.IsHoisted) return a.IsHoisted ? -1 : 1;
+            if (s_hoistHeavy && a.IsHoisted)
             {
                 int byGas = b.GasEstimate.CompareTo(a.GasEstimate);
                 if (byGas != 0) return byGas;

@@ -72,6 +72,12 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Experimental: block the processing thread until transaction pre-warming completes (measurement only).", DefaultValue = "false", HiddenFromDocs = true)]
     bool PreWarmWaitForCompletion { get; set; }
 
+    [ConfigItem(Description = "Experimental: hoist heavy pre-warm jobs to the front (measurement only).", DefaultValue = "true", HiddenFromDocs = true)]
+    bool PreWarmHoistHeavy { get; set; }
+
+    [ConfigItem(Description = "Experimental: processing thread head start given to the pre-warmer, in microseconds (measurement only).", DefaultValue = "0", HiddenFromDocs = true)]
+    int PreWarmHeadStartMicros { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

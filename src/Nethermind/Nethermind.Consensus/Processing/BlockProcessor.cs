@@ -165,7 +165,9 @@ public partial class BlockProcessor(
         CommitState(spec);
 
         ProcessingThread.Phase = 1;
+        long txStart = System.Diagnostics.Stopwatch.GetTimestamp();
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        double txMs = System.Diagnostics.Stopwatch.GetElapsedTime(txStart).TotalMilliseconds;
         ProcessingThread.Phase = 2;
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
@@ -175,7 +177,7 @@ public partial class BlockProcessor(
         {
             int failed = 0;
             foreach (TxReceipt receipt in receipts) if (receipt.StatusCode == 0) failed++;
-            _logger.Info($"MainOutcome block={block.Number} txs={receipts.Length} reverted={failed}");
+            _logger.Info($"MainOutcome block={block.Number} txs={receipts.Length} reverted={failed} txMs={txMs:F2}");
         }
 
         return FinalizeBlock(block, blockTracer, options, spec, receipts);

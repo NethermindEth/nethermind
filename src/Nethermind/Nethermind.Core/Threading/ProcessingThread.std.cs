@@ -18,6 +18,10 @@ public static partial class ProcessingThread
     [ThreadStatic]
     public static int Phase;
 
+    /// <summary>Probe: index of the transaction the processing thread is executing, -1 outside transactions.</summary>
+    [ThreadStatic]
+    public static int TxIndex;
+
     public static bool IsBlockProcessingThread
     {
         get => _isBlockProcessingThread;
