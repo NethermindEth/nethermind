@@ -336,6 +336,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     }
                     catch (OperationCanceledException)
                     {
+                        RequeueAsNewBatch(dependentBatch);
                         throw;
                     }
                     catch (BlockTreeNotReadyException)
@@ -382,9 +383,10 @@ namespace Nethermind.Synchronization.FastBlocks
                 } while (_pending.IsEmpty && !ShouldBuildANewBatch() && HasDependencyToProcess);
 
                 HeadersSyncBatch? batch;
+                bool retryPending = false;
                 int retainedBatchesProcessed = 0;
                 int maxRetainedBatchesToProcess = MemoryInQueue < _fastHeadersMemoryBudget / 2 ? 2 : 4;
-                while (TryDequeuePending(out batch))
+                while (TryDequeuePending(out batch, out retryPending))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Dequeue batch {batch}");
                     if (batch.Response is null)
@@ -435,7 +437,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         _syncPeerPool.EstimateRequestLimit(RequestType.Headers, _approximateAllocationStrategy, AllocationContexts.Headers, cancellationToken).Result
                         ?? GethSyncLimits.MaxHeaderFetch;
 
-                    batch = ProcessPersistedHeadersOrBuildNewBatch(requestSize, cancellationToken);
+                    batch = ProcessPersistedHeadersOrBuildNewBatch(requestSize, cancellationToken, out retryPending);
                     if (_logger.IsTrace) _logger.Trace($"New batch {batch}");
                 }
 
@@ -445,6 +447,10 @@ namespace Nethermind.Synchronization.FastBlocks
                     {
                         EnqueuePending(batch);
                         return Task.FromResult<HeadersSyncBatch?>(null);
+                    }
+                    if (retryPending)
+                    {
+                        batch.MarkRetry();
                     }
                     _sent.Add(batch);
                     ulong lowestNumber = LowestInsertedBlockHeader?.Number ?? 0UL;
@@ -469,8 +475,9 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        private HeadersSyncBatch? ProcessPersistedHeadersOrBuildNewBatch(int requestSize, CancellationToken cancellationToken)
+        private HeadersSyncBatch? ProcessPersistedHeadersOrBuildNewBatch(int requestSize, CancellationToken cancellationToken, out bool retryPending)
         {
+            retryPending = false;
             HeadersSyncBatch? batch = null;
             do
             {
@@ -480,7 +487,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (batch is null)
                 {
                     // Return new pending batch first
-                    if (TryDequeuePending(out batch)) return batch;
+                    if (TryDequeuePending(out batch, out retryPending)) return batch;
 
                     // If it can process new batch, do it otherwise, this loop will keep filling up the memory
                     // and a lot of the CPU cycle is spent on calculating memory.
@@ -680,24 +687,22 @@ namespace Nethermind.Synchronization.FastBlocks
             if (hasResponse) MarkDirty();
         }
 
-        private bool TryDequeuePending(out HeadersSyncBatch? batch)
+        private bool TryDequeuePending(out HeadersSyncBatch? batch, out bool retryPending)
         {
+            retryPending = false;
             if (!_pending.TryDequeue(out batch)) return false;
-            if (batch.Response is not null)
+            retryPending = batch.Response is null;
+            if (!retryPending)
             {
                 Interlocked.Decrement(ref _retainedResponseCount);
                 MarkDirty();
-            }
-            else
-            {
-                batch.MarkRetry();
             }
             return true;
         }
 
         private void ClearPending()
         {
-            while (TryDequeuePending(out HeadersSyncBatch? batch)) batch!.Dispose();
+            while (TryDequeuePending(out HeadersSyncBatch? batch, out _)) batch!.Dispose();
         }
 
         private void EnqueueBatch(HeadersSyncBatch batch, bool skipPersisted = false)

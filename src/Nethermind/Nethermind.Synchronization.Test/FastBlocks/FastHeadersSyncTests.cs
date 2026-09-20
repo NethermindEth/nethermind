@@ -763,10 +763,10 @@ public class FastHeadersSyncTests
         Assert.That(retry.RequestSize, Is.EqualTo(dependentBatch.RequestSize));
     }
 
-    // Cancellation is not a failed insert: it ends the dispatch loop and finishes the feed, which
-    // disposes the queue. It must propagate untouched rather than be treated as recoverable.
+    // Cancellation is not a failed insert: it ends the dispatch loop and must propagate untouched,
+    // while the removed dependency still needs a fresh range queued for a later direct caller.
     [Test]
-    public void Propagates_cancellation_from_a_dependency_drain()
+    public async Task Propagates_cancellation_from_a_dependency_drain()
     {
         using DependentBatchScenario scenario = new();
         TestableHeadersSyncFeed feed = scenario.Feed;
@@ -784,7 +784,22 @@ public class FastHeadersSyncTests
 
         feed.ThrowOnInsert = new OperationCanceledException();
         Assert.ThrowsAsync<OperationCanceledException>(() => feed.PrepareRequest());
-        Assert.That(feed.Pending, Is.Empty);
+        Assert.That(feed.Pending, Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(feed.Pending.Single().StartNumber, Is.EqualTo(dependentBatch.StartNumber));
+            Assert.That(feed.Pending.Single().RequestSize, Is.EqualTo(dependentBatch.RequestSize));
+            Assert.That(feed.Pending.Single().EndNumber, Is.EqualTo(dependentBatch.EndNumber));
+        }
+        feed.ThrowOnInsert = null;
+        using HeadersSyncBatch? retry = await feed.PrepareRequest();
+        Assert.That(retry, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retry!.StartNumber, Is.EqualTo(dependentBatch.StartNumber));
+            Assert.That(retry.RequestSize, Is.EqualTo(dependentBatch.RequestSize));
+            Assert.That(retry.EndNumber, Is.EqualTo(dependentBatch.EndNumber));
+        }
     }
 
     // A dependency is keyed by its highest header's number, so its EndNumber must equal that
