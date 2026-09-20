@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,6 +12,7 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -188,6 +191,247 @@ public class PeerBandTests
             Assert.That(peerManager.PeerCount, Is.EqualTo(0), "the static-peer reconnect loop must not dial a banned id");
         }
     }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Concurrent_dials_cannot_overshoot_the_configured_peer_band_ceiling(CancellationToken token)
+    {
+        // Three servers dialed concurrently against a ceiling of one: every dial's admission check
+        // races the others before any of them has inserted into the pool, which is exactly the
+        // check-then-act window that let MaxConcurrentOutboundDials-many concurrent dials overshoot.
+        Node server1 = CreateNode();
+        Node server2 = CreateNode();
+        Node server3 = CreateNode();
+        Node client = CreateNode();
+        SetMatchingStatus(server1, server2, server3, client);
+        client.Config.MaxPeerCount = 1;
+
+        await using (client.P2P)
+        await using (server1.P2P)
+        await using (server2.P2P)
+        await using (server3.P2P)
+        {
+            await server1.P2P.StartAsync(token);
+            await server2.P2P.StartAsync(token);
+            await server3.P2P.StartAsync(token);
+            await client.P2P.StartAsync(token);
+
+            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+
+            Task<bool>[] dials =
+            [
+                peerManager.TryAddPeerAsync(LoopbackAddress(server1.P2P), token),
+                peerManager.TryAddPeerAsync(LoopbackAddress(server2.P2P), token),
+                peerManager.TryAddPeerAsync(LoopbackAddress(server3.P2P), token),
+            ];
+            bool[] results = await Task.WhenAll(dials);
+
+            Assert.That(results.Count(r => r), Is.EqualTo(1), "only one of the three concurrent dials may be admitted once MaxPeerCount=1 is reached");
+            Assert.That(peerManager.PeerCount, Is.EqualTo(1), "the configured maximum must not be overshot by concurrent dials racing the check");
+        }
+    }
+
+    [Test]
+    public async Task Admission_capacity_wait_returns_immediately_below_target()
+    {
+        Node node = CreateNode();
+        node.Config.TargetPeerCount = 5;
+        PeerManager peerManager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
+
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
+        await peerManager.WaitForAdmissionCapacityAsync(cts.Token);
+
+        Assert.That(cts.IsCancellationRequested, Is.False, "an empty pool below the target must not wait at all");
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Admission_capacity_wait_blocks_once_the_pool_is_at_target(CancellationToken token)
+    {
+        // BeaconSyncOrchestrator's discovery dial loop used to decide this for itself by comparing
+        // PeerCount to config directly; it now asks PeerManager, which must give the same backpressure.
+        Node server = CreateNode();
+        Node client = CreateNode();
+        SetMatchingStatus(server, client);
+
+        await using (client.P2P)
+        await using (server.P2P)
+        {
+            await server.P2P.StartAsync(token);
+            await client.P2P.StartAsync(token);
+
+            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
+            client.Config.TargetPeerCount = 1;
+
+            using CancellationTokenSource shortLived = new(TimeSpan.FromMilliseconds(300));
+            using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(token, shortLived.Token);
+
+            // CatchAsync, not ThrowsAsync: Task.Delay throws the derived TaskCanceledException, and
+            // ThrowsAsync requires an exact type match.
+            Assert.CatchAsync<OperationCanceledException>(async () => await peerManager.WaitForAdmissionCapacityAsync(linked.Token),
+                "at the target watermark the wait must not return on its own");
+        }
+    }
+
+    [Test]
+    public void Maintenance_runs_more_often_while_under_the_low_watermark()
+    {
+        Node node = CreateNode();
+        node.Config.MinPeerCount = 20;
+        PeerManager peerManager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
+
+        TimeSpan underPeered = peerManager.NextMaintenanceIntervalForTest;
+
+        node.Config.MinPeerCount = 0; // an empty pool (PeerCount 0) is no longer "under" this watermark
+        TimeSpan atWatermark = peerManager.NextMaintenanceIntervalForTest;
+
+        Assert.That(underPeered, Is.LessThan(atWatermark), "MinPeerCount must actually change behaviour, not just be read into nothing");
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task ReportFailure_reason_is_a_bounded_metric_label_not_the_free_text_detail(CancellationToken token)
+    {
+        Node server = CreateNode();
+        Node client = CreateNode();
+        SetMatchingStatus(server, client);
+
+        await using (client.P2P)
+        await using (server.P2P)
+        {
+            await server.P2P.StartAsync(token);
+            await client.P2P.StartAsync(token);
+
+            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
+            IBeaconSyncPeer peer = peerManager.GetBestPeers(0).Single();
+
+            long before = FailureCount("ProtocolViolation");
+            peer.ReportFailure(PeerFailureReason.ProtocolViolation, "some unbounded detail nobody should turn into a label: " + Guid.NewGuid());
+            long after = FailureCount("ProtocolViolation");
+
+            Assert.That(after - before, Is.EqualTo(1), "the closed-cardinality reason, not the free-text detail, is the metric label");
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Legacy_ReportFailure_overload_still_classifies_a_dead_session_as_fatal(CancellationToken token)
+    {
+        // Preserves the exact substring rule the single-overload method used to apply inline, for
+        // callers this change could not reach (RangeSync.cs) - see crossStreamRisks in the report.
+        Node server = CreateNode();
+        Node client = CreateNode();
+        SetMatchingStatus(server, client);
+
+        await using (client.P2P)
+        await using (server.P2P)
+        {
+            await server.P2P.StartAsync(token);
+            await client.P2P.StartAsync(token);
+
+            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(server.P2P), token), Is.True);
+            IBeaconSyncPeer peer = peerManager.GetBestPeers(0).Single();
+
+            long before = FailureCount("SessionClosed");
+            peer.ReportFailure("Blocks-by-range [1, 17) failed: Channel closed unexpectedly");
+            long after = FailureCount("SessionClosed");
+
+            Assert.That(after - before, Is.EqualTo(1), "a 'Channel closed' free-text reason must still classify as SessionClosed");
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Peers_surface_reports_peer_id_direction_state_and_multiaddr_for_a_connected_peer(CancellationToken token)
+    {
+        Node server = CreateNode();
+        Node client = CreateNode();
+        SetMatchingStatus(server, client);
+
+        await using (client.P2P)
+        await using (server.P2P)
+        {
+            await server.P2P.StartAsync(token);
+            await client.P2P.StartAsync(token);
+
+            string address = LoopbackAddress(server.P2P);
+            string expectedPeerId = PeerManager.ExtractPeerIdForTest(address);
+            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+            Assert.That(await peerManager.TryAddPeerAsync(address, token), Is.True);
+
+            IPeerDirectory directory = peerManager;
+            PeerRecord record = directory.Peers.Single();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(record.PeerId, Is.EqualTo(expectedPeerId));
+                Assert.That(record.Direction, Is.EqualTo(PeerDirection.Outbound));
+                Assert.That(record.State, Is.EqualTo(PeerConnectionState.Connected));
+                Assert.That(record.LastKnownMultiaddr, Is.Not.Null.And.Not.Empty);
+            }
+
+            Assert.That(directory.TryGetPeer(expectedPeerId, out PeerRecord lookedUp), Is.True);
+            Assert.That(lookedUp.PeerId, Is.EqualTo(expectedPeerId));
+        }
+    }
+
+    [Test]
+    public void TryGetPeer_refuses_an_unknown_peer_id_rather_than_matching_anything()
+    {
+        Node node = CreateNode();
+        PeerManager peerManager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
+        IPeerDirectory directory = peerManager;
+
+        Assert.That(directory.TryGetPeer("no-such-peer", out _), Is.False);
+    }
+
+    [Test]
+    public void TryGetPeer_refuses_an_empty_id_even_when_an_unresolved_dialing_address_would_otherwise_match_it()
+    {
+        // An address with no /p2p/ component extracts to itself, not "" - the only way a tracked
+        // entry's derived peer id is ever "" is a raw "" address, reached here directly since a real
+        // dial to "" fails and clears its reservation before a test could observe it.
+        Node node = CreateNode();
+        PeerManager peerManager = new(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance);
+        peerManager.ReserveDialingForTest("");
+        IPeerDirectory directory = peerManager;
+
+        Assert.That(directory.TryGetPeer("", out _), Is.False, "an empty id must never be treated as a wildcard, even when a raw '' address is technically tracked");
+    }
+
+    [Test]
+    public void The_ban_diagnostics_table_evicts_the_oldest_non_banned_entry_once_over_capacity()
+    {
+        // A real (deterministic) bound, not "some arbitrary entry from undefined dictionary order":
+        // fill the table to its cap, then confirm specifically the FIRST-created id is the one gone,
+        // and every later one survived.
+        PeerManager manager = NewManagerWithoutSessions(faultDisconnectsBeforeBan: 1000);
+
+        const int capacity = 8192;
+        for (int i = 0; i < capacity; i++)
+        {
+            manager.RecordDisconnect($"peer-{i}", 0, 0, GoodbyeReason.Fault, "repeated failures");
+        }
+
+        Assert.That(manager.GetPeerDiagnostics().Count, Is.EqualTo(capacity));
+
+        // One more entry pushes the table over its cap and must evict the oldest (peer-0).
+        manager.RecordDisconnect("peer-new", 0, 0, GoodbyeReason.Fault, "repeated failures");
+
+        HashSet<string> remaining = [.. manager.GetPeerDiagnostics().Select(d => d.PeerId)];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(remaining.Contains("peer-0"), Is.False, "the oldest tracked non-banned id must be the one evicted");
+            Assert.That(remaining.Contains("peer-1"), Is.True, "only the oldest entry is evicted, not an arbitrary one");
+            Assert.That(remaining.Contains("peer-new"), Is.True);
+            Assert.That(remaining.Count, Is.EqualTo(capacity));
+        }
+    }
+
+    private static long FailureCount(string reason) =>
+        Metrics.BeaconChainPeerFailuresByReason.TryGetValue(new StringLabel(reason), out long count) ? count : 0;
 
     private static PeerManager NewManagerWithoutSessions(int faultDisconnectsBeforeBan)
     {
