@@ -11,6 +11,31 @@ namespace Nethermind.Core.Test.Encoding;
 [TestFixture]
 public class BlockBodyDecoderTests
 {
+    [Test, NonParallelizable]
+    public void Block_body_transactions_do_not_consume_gossip_pool([Values] bool wrapped)
+    {
+        BlockBody body = new([Build.A.Transaction.Signed().TestObject], []);
+        byte[] bytes = new byte[BlockBodyDecoder.Instance.GetLength(body, RlpBehaviors.None)];
+        RlpWriter writer = new(bytes);
+        BlockBodyDecoder.Instance.Encode(ref writer, body);
+
+        HashSet<Transaction> pooled = new(System.Collections.Generic.ReferenceEqualityComparer.Instance);
+        for (int i = 0; i < 2_048; i++) pooled.Add(TxDecoder.TxObjectPool.Get());
+        foreach (Transaction transaction in pooled) TxDecoder.TxObjectPool.Return(transaction);
+
+        RlpReader reader = new(bytes);
+        if (!wrapped) reader.ReadSequenceLength();
+        BlockBody decoded = wrapped
+            ? BlockBodyDecoder.Instance.DecodeGuardNotNull(ref reader)
+            : BlockBodyDecoder.Instance.DecodeUnwrapped(ref reader, bytes.Length);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Is.EqualTo(body).UsingBlockBodyComparer());
+            Assert.That(pooled.Contains(decoded.Transactions[0]), Is.False);
+        }
+    }
+
     [TestCaseSource(nameof(ValidBodies))]
     public void Roundtrip(BlockBody body)
     {

@@ -98,7 +98,9 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
 
     public BlockBody DecodeUnwrapped(ref RlpReader ctx, int lastPosition)
     {
-        Transaction[] transactions = ctx.DecodeNonNullArray(_txDecoder, limit: TransactionsCountLimit);
+        Transaction[] transactions = ctx.DecodeNonNullArray(
+            static (ref RlpReader reader) => TxDecoder.Instance.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipPooledTransactions),
+            limit: TransactionsCountLimit);
         BlockHeader[] uncles = ctx.DecodeNonNullArray(_headerDecoder, limit: UnclesCountLimit);
         Withdrawal[]? withdrawals = null;
 

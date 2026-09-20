@@ -440,6 +440,20 @@ namespace Nethermind.Core
         /// </remarks>
         internal PooledBlobBuffers? PooledBuffers { get; init; }
 
+        /// <inheritdoc/>
+        public virtual bool Equals(ShardBlobNetworkWrapper? other) =>
+            other is not null
+            && EqualityContract == other.EqualityContract
+            && Blobs == other.Blobs
+            && Commitments == other.Commitments
+            && Proofs == other.Proofs
+            && Version == other.Version
+            && CellMask.Equals(other.CellMask)
+            && Cells == other.Cells;
+
+        /// <inheritdoc/>
+        public override int GetHashCode() => HashCode.Combine(EqualityContract, Blobs, Commitments, Proofs, Version, CellMask, Cells);
+
         /// <summary>
         /// Creates a blob network wrapper without sparse-cell data.
         /// </summary>

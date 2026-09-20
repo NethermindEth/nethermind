@@ -12,6 +12,27 @@ namespace Nethermind.Core.Test;
 
 public class TransactionTests
 {
+    [Test]
+    public void Wrapper_equality_ignores_pool_ownership()
+    {
+        ShardBlobNetworkWrapper wrapper = new([[1]], [[2]], [[3]], ProofVersion.V0);
+        ShardBlobNetworkWrapper pooled = wrapper with { PooledBuffers = new(wrapper.Blobs) };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pooled.Equals(wrapper), Is.True);
+            Assert.That(wrapper.Equals(pooled), Is.True);
+            Assert.That(pooled.GetHashCode(), Is.EqualTo(wrapper.GetHashCode()));
+            Assert.That(pooled == wrapper, Is.True);
+            Assert.That(pooled.Equals(wrapper with { Blobs = [[1]] }), Is.False);
+            Assert.That(pooled.Equals(wrapper with { Commitments = [[2]] }), Is.False);
+            Assert.That(pooled.Equals(wrapper with { Proofs = [[3]] }), Is.False);
+            Assert.That(pooled.Equals(wrapper with { Version = ProofVersion.V1 }), Is.False);
+            Assert.That(pooled.Equals(wrapper with { CellMask = BlobCellMask.Full }), Is.False);
+            Assert.That(pooled.Equals(wrapper with { Cells = [[4]] }), Is.False);
+            Assert.That(pooled.Equals(null), Is.False);
+        }
+    }
+
     [Test, NonParallelizable]
     public void Concurrent_returns_of_wrapper_copies_do_not_reissue_the_same_buffer_twice()
     {
