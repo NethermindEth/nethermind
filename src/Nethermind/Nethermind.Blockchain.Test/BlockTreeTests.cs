@@ -2140,7 +2140,7 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Direct_delete_clears_only_removed_historical_header_pointer([Values(2UL, 3UL, 4UL)] ulong pointerLevel)
+    public void Direct_delete_clears_only_removed_execution_header_pointer([Values(2UL, 3UL, 4UL)] ulong pointerLevel)
     {
         BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(5);
         BlockTree tree = builder.TestObject;

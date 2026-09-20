@@ -23,7 +23,7 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number);
 
     /// <inheritdoc cref="IDebugBridge.DeleteChainSlice" path="/member/remarks"/>
-    [JsonRpcMethod(Description = "Deletes chain levels on all branches (Nethermind specific). Requires paused, drained processing and preserves historical sync progress, including when forced. Deletion at or below the sync pivot requires completed historical sync; a deleted pivot is moved to the surviving head. When replacing the head, the preceding block must be canonical with its body and processing state available. Returns a resource-unavailable error when deletion is refused.", IsImplemented = true, IsSharable = true)]
+    [JsonRpcMethod(Description = "Deletes chain levels on all branches (Nethermind specific). Requires paused, drained processing, no active initial synchronization, and preserves historical sync progress, including when forced. Deletion at or below the sync pivot requires completed historical sync; a deleted pivot is moved to the surviving head. When replacing the head, the preceding block must be canonical with its body and processing state available. Returns invalid-params for an invalid range or resource-unavailable when maintenance is unsafe.", IsImplemented = true, IsSharable = true)]
     ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false);
 
     /// <inheritdoc cref="IDebugBridge.UpdateHeadBlock(BlockParameter)" path="/member/remarks"/>

@@ -123,9 +123,9 @@ public class DebugBridge : IDebugBridge
 
     public ResultWrapper<int> DeleteChainSlice(ulong startNumber, bool force = false)
     {
+        ResultWrapper<int>? deletionError = GetDeletionError(startNumber);
+        if (deletionError is not null) return deletionError;
         if (!CanMutateChain()) return NotDrained();
-        string? syncError = GetSyncDeletionError(startNumber);
-        if (syncError is not null) return ResultWrapper<int>.Fail(syncError, ErrorCodes.ResourceUnavailable);
 
         if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation, maintenance: true))
         {
@@ -134,8 +134,8 @@ public class DebugBridge : IDebugBridge
         }
         using BlockTreeMutationLock.Scope mutationScope = mutation;
         if (!CanMutateChain()) return NotDrained();
-        syncError = GetSyncDeletionError(startNumber);
-        if (syncError is not null) return ResultWrapper<int>.Fail(syncError, ErrorCodes.ResourceUnavailable);
+        deletionError = GetDeletionError(startNumber);
+        if (deletionError is not null) return deletionError;
 
         bool replacesHead = startNumber > 0 && _blockTree.Head?.Number >= startNumber;
         // The implicit deletion end is BestKnownNumber, which can be below a configured pivot.
@@ -164,24 +164,29 @@ public class DebugBridge : IDebugBridge
             ResultWrapper<int>.Fail("Pause block processing and wait for it to drain before deleting chain levels.", ErrorCodes.ResourceUnavailable);
     }
 
-    private string? GetSyncDeletionError(ulong startNumber)
+    private ResultWrapper<int>? GetDeletionError(ulong startNumber)
     {
+        ulong endNumber = _blockTree.BestKnownNumber;
+        if (startNumber == 0 || startNumber > endNumber)
+            return ResultWrapper<int>.Fail($"startNumber must be between 1 and {endNumber}.", ErrorCodes.InvalidParams);
+        if (endNumber - startNumber > 50_000)
+            return ResultWrapper<int>.Fail("The deletion range cannot span more than 50,001 chain levels.", ErrorCodes.InvalidParams);
+
         const SyncMode initialSyncModes = SyncMode.FastBlocks | SyncMode.BeaconHeaders | SyncMode.StateNodes |
                                           SyncMode.FastSync | SyncMode.UpdatingPivot | SyncMode.DbLoad;
-        if (startNumber <= _blockTree.SyncPivot.BlockNumber &&
-            (!_syncProgressResolver.IsFastBlocksHeadersFinished() ||
-             !_syncProgressResolver.IsFastBlocksBodiesFinished() ||
-             !_syncProgressResolver.IsFastBlocksReceiptsFinished() ||
-             !_syncProgressResolver.IsFastBlockAccessListsFinished() ||
-             (_syncModeSelector.Current & initialSyncModes) != 0))
-            return "Historical sync is unfinished or initial synchronization is active; wait for synchronization to complete before deleting chain levels.";
+        if ((_syncModeSelector.Current & initialSyncModes) != 0 ||
+            (startNumber <= _blockTree.SyncPivot.BlockNumber &&
+             (!_syncProgressResolver.IsFastBlocksHeadersFinished() ||
+              !_syncProgressResolver.IsFastBlocksBodiesFinished() ||
+              !_syncProgressResolver.IsFastBlocksReceiptsFinished() ||
+              !_syncProgressResolver.IsFastBlockAccessListsFinished())))
+            return ResultWrapper<int>.Fail("Historical sync is unfinished or initial synchronization is active; wait for synchronization to complete before deleting chain levels.", ErrorCodes.ResourceUnavailable);
 
-        ulong endNumber = _blockTree.BestKnownNumber;
         return IsDeleted(_blockTree.LowestInsertedHeader?.Number) ||
                IsDeleted(_syncPointers.LowestInsertedBodyNumber) ||
                IsDeleted(_syncPointers.LowestInsertedReceiptBlockNumber) ||
                IsDeleted(_syncPointers.LowestInsertedBlockAccessListBlockNumber)
-            ? "Historical sync progress lies in the deletion range; choose a higher startNumber."
+            ? ResultWrapper<int>.Fail("Historical sync progress lies in the deletion range; choose a higher startNumber.", ErrorCodes.ResourceUnavailable)
             : null;
 
         bool IsDeleted(ulong? number) => number >= startNumber && number <= endNumber;

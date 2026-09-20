@@ -39,11 +39,11 @@ public interface IDebugBridge
     /// <summary>Deletes chain levels from the given block number onward.</summary>
     /// <remarks>
     /// Requires paused, drained block processing and preserves historical sync progress, including when forced.
-    /// Deletion at or below the sync pivot requires completed historical sync and no active initial synchronization.
+    /// Requires no active initial synchronization. Deletion at or below the sync pivot also requires completed historical sync.
     /// Replacement heads require a canonical body and state available for processing. A deleted pivot moves to the
     /// surviving head after successful deletion, provided all retained historical progress is at or below that head.
     /// </remarks>
-    /// <returns>The number of deleted levels, or a resource-unavailable error when maintenance is unsafe.</returns>
+    /// <returns>The number of deleted levels, an invalid-params error for an invalid range, or a resource-unavailable error when maintenance is unsafe.</returns>
     ResultWrapper<int> DeleteChainSlice(ulong startNumber, bool force = false);
     /// <inheritdoc cref="UpdateHeadBlock(BlockParameter)"/>
     bool UpdateHeadBlock(Hash256 blockHash);

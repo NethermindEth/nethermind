@@ -168,7 +168,8 @@ public class DebugBridgeTests
 
     [Test]
     public async Task Delete_slice_refuses_initial_sync_modes(
-        [Values(SyncMode.FastHeaders, SyncMode.BeaconHeaders, SyncMode.StateNodes, SyncMode.FastSync, SyncMode.UpdatingPivot, SyncMode.DbLoad)] SyncMode mode)
+        [Values(SyncMode.FastHeaders, SyncMode.BeaconHeaders, SyncMode.StateNodes, SyncMode.FastSync, SyncMode.UpdatingPivot, SyncMode.DbLoad)] SyncMode mode,
+        [Values(1L, 2L)] long start)
     {
         ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
         selector.Current.Returns(mode);
@@ -183,14 +184,74 @@ public class DebugBridgeTests
         Block pending = Build.A.Block.WithParent(genesis).TestObject;
         tree.SuggestBlock(pending, BlockTreeSuggestOptions.ForceDontSetAsMain);
         tree.SyncPivot = (1, pending.Hash!);
+        Block abovePivot = Build.A.Block.WithParent(pending).TestObject;
+        tree.SuggestBlock(abovePivot, BlockTreeSuggestOptions.ForceDontSetAsMain);
         ResultWrapper<int> result = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create()
-            .debug_deleteChainSlice(1, force: true);
+            .debug_deleteChainSlice(start, force: true);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
             Assert.That(tree.FindBlock(pending.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(tree.FindBlock(abovePivot.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
             Assert.That(tree.SyncPivot, Is.EqualTo((1UL, pending.Hash!)));
+            Assert.That(tree.Head!.Hash, Is.EqualTo(genesis.Hash));
+        }
+    }
+
+    [Test]
+    public async Task Delete_slice_validates_start_against_known_chain([Values(1L, 2L, long.MaxValue)] long start)
+    {
+        await using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        container.Resolve<IBlockProcessingPauseControl>().Pause();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        AddToMainChain(tree, genesis);
+        Block pending = Build.A.Block.WithParent(genesis).TestObject;
+        tree.SuggestBlock(pending, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
+
+        ResultWrapper<int> result = debug.debug_deleteChainSlice(start);
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (start == 1)
+            {
+                Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+                Assert.That(result.Data, Is.EqualTo(1));
+            }
+            else
+                Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(tree.FindBlock(pending.Hash!, BlockTreeLookupOptions.None), start == 1 ? Is.Null : Is.Not.Null);
+            Assert.That(tree.Head!.Hash, Is.EqualTo(genesis.Hash));
+        }
+    }
+
+    [Test]
+    public async Task Delete_slice_validates_range_length([Values(1L, 2L)] long start)
+    {
+        await using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        container.Resolve<IBlockProcessingPauseControl>().Pause();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        AddToMainChain(tree, genesis);
+        BlockHeader last = Build.A.BlockHeader.WithNumber(50_002).TestObject;
+        tree.Insert(last, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        Assert.That(tree.BestKnownNumber, Is.EqualTo(50_002));
+
+        ResultWrapper<int> result = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create()
+            .debug_deleteChainSlice(start);
+
+        using (Assert.EnterMultipleScope())
+        {
+            if (start == 2)
+            {
+                Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+                Assert.That(result.Data, Is.EqualTo(1));
+            }
+            else
+                Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(tree.FindHeader(last.Hash!, BlockTreeLookupOptions.None), start == 2 ? Is.Null : Is.Not.Null);
             Assert.That(tree.Head!.Hash, Is.EqualTo(genesis.Hash));
         }
     }
