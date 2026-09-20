@@ -60,6 +60,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         private static class SharedTransactionHashes
         {
             // Allow for different inbound histories across peers as well as the current pool.
+            // TxPool sets MemPoolSize before peers start; this process-wide capacity is fixed on first use.
             internal static readonly TransactionHashCache Cache = new(4 * MemoryAllowance.MemPoolSize);
         }
 

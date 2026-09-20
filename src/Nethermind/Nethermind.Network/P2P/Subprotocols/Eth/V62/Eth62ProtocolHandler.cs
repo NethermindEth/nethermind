@@ -328,6 +328,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
         }
 
+        /// <summary>Submits an inbound transaction, transferring ownership to the pool or recycling it.</summary>
+        /// <remarks>The caller must not access the transaction after submission.</remarks>
         protected void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
         {
             tx.Timestamp = _timestamper.UnixTime.Seconds;

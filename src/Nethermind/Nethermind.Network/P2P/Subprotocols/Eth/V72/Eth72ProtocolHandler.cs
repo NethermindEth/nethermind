@@ -865,16 +865,17 @@ public class Eth72ProtocolHandler(
                 }
                 else if (tx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V0 } wrapper)
                 {
+                    Hash256? hash = tx.Hash;
                     bool hasFullBlobs = wrapper.HasFullBlobs();
                     if (hasFullBlobs)
                     {
                         PrepareAndSubmitTransaction(tx, isTrace);
                     }
 
-                    if (tx.Hash is not null)
+                    if (hash is not null)
                     {
-                        RemoveCellState(tx.Hash.ValueHash256);
-                        _sparseBlobPoolPeerRegistry.Clear(tx.Hash);
+                        RemoveCellState(hash.ValueHash256);
+                        _sparseBlobPoolPeerRegistry.Clear(hash);
                     }
 
                     if (!hasFullBlobs)

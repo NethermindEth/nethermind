@@ -144,19 +144,19 @@ public class SessionTests
     }
 
     [Test]
-    public void Can_enable_snappy([Values] bool combined)
+    public void Can_enable_snappy()
     {
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         _pipeline.Get<ZeroNettyP2PHandler>().Returns(handler);
-        _pipeline.Get<ZeroPacketSplitter>().Returns(combined ? new ZeroPacketSplitter() : null);
+        _pipeline.Get<ZeroPacketSplitter>().Returns(new ZeroPacketSplitter());
         Assert.That(handler.SnappyEnabled, Is.False);
         session.Handshake(TestItem.PublicKeyA);
         session.Init(5, _channelHandlerContext, _packetSender);
         session.EnableSnappy();
         Assert.That(handler.SnappyEnabled, Is.True);
         _pipeline.Received().Get<ZeroPacketSplitter>();
-        _pipeline.Received(combined ? 0 : 1).AddBefore(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<ZeroSnappyEncoder>());
+        _pipeline.DidNotReceive().AddBefore(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<ZeroSnappyEncoder>());
     }
 
     [Test]

@@ -24,6 +24,21 @@ namespace Nethermind.Network.Discovery.Test.Discv5;
 
 public class CodecTests
 {
+    private delegate void MaskingTransform(ReadOnlySpan<byte> key, ReadOnlySpan<byte> iv, ReadOnlySpan<byte> input, Span<byte> output);
+
+    [Test]
+    public void Masking_rejects_invalid_iv_length([Values(0, 15, 17)] int length)
+    {
+        MaskingTransform transform = typeof(PacketCodec).GetMethod(
+            "AesCtrTransform",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic,
+            [typeof(ReadOnlySpan<byte>), typeof(ReadOnlySpan<byte>), typeof(ReadOnlySpan<byte>), typeof(Span<byte>)])!
+            .CreateDelegate<MaskingTransform>();
+
+        Assert.That(() => transform(new byte[16], new byte[length], new byte[16], new byte[16]),
+            Throws.ArgumentException.With.Property("ParamName").EqualTo("iv"));
+    }
+
     private static readonly byte[] NodeAId = Bytes.FromHexString("0xaaaa8419e9f49d0083561b48287df592939a8d19947d8c0ef88f2a4856a69fbb");
     private static readonly byte[] NodeBId = Bytes.FromHexString("0xbbbb9d047f0488c0b5a93c1c3f2d8bafc7c8ff337024a55434a0d0555de64db9");
     private static readonly byte[] Devp2pPingRequestId = [0, 0, 0, 1];

@@ -978,6 +978,37 @@ public class Eth72ProtocolHandlerTests
         _transactionPool.DidNotReceive().MergeBlobCells(Arg.Any<Hash256>(), Arg.Any<BlobCellMask>(), Arg.Any<byte[][]>());
     }
 
+    [Test, NonParallelizable]
+    public void should_clear_v0_blob_state_after_submission_recycles_transaction()
+    {
+        _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None)
+            .Returns(call =>
+            {
+                TxDecoder.TxObjectPool.Return(call.Arg<Transaction>());
+                return AcceptTxResult.AlreadyKnown;
+            });
+        RecreateHandler(providerProbabilityPercent: 100);
+        Transaction tx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Cancun.Instance)
+            .SignedAndResolved()
+            .TestObject;
+        Hash256 hash = tx.Hash!;
+        TestSparseBlobPeer peer = new(TestItem.PublicKeyC);
+        AnnounceBlobTransaction(hash, tx.GetLength(), TxType.Blob);
+        long pooledRequestId = GetLastGetPooledTransactionsRequestId(hash);
+        long cellsRequestId = GetLastGetCellsRequestId(hash, BlobCellMask.Full);
+        _sparseBlobPoolPeerRegistry.AddPeer(peer);
+        _sparseBlobPoolPeerRegistry.RecordAnnouncement(peer, hash, BlobCellMask.Full);
+
+        using PooledTransactionsMessage66 response = new(pooledRequestId, new PooledTransactionsMessage65(new[] { tx }.ToPooledList()));
+        HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+
+        Assert.That(_sparseBlobPoolPeerRegistry.GetFullProviderAnnouncementCount(hash), Is.Zero);
+        using CellsMessage72 cells = new(cellsRequestId, [hash], [[[]]], BlobCellMask.FromIndices([0]).ToBytes());
+        Assert.That(() => HandleZeroMessage(cells, Eth72MessageCode.Cells), Throws.TypeOf<SubprotocolException>());
+        _transactionPool.Received(1).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
+    }
+
     [Test]
     public void should_announce_sparse_blob_tx_with_elided_network_encoding_size()
     {

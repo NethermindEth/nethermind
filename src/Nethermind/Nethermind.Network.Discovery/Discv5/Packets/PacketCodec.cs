@@ -446,6 +446,11 @@ public sealed class PacketCodec(
     [SkipLocalsInit]
     private static void AesCtrTransform(Aes aes, ReadOnlySpan<byte> iv, ReadOnlySpan<byte> input, Span<byte> output)
     {
+        if (iv.Length != MaskingIvSize)
+        {
+            throw new ArgumentException("Masking IV must be 16 bytes.", nameof(iv));
+        }
+
         if (output.Length < input.Length)
         {
             throw new ArgumentException("Output span must be at least as long as input.", nameof(output));
@@ -457,7 +462,7 @@ public sealed class PacketCodec(
         Span<byte> counter = counterStorage;
         Span<byte> counters = countersStorage;
         Span<byte> keyStream = keyStreamStorage;
-        iv[..MaskingIvSize].CopyTo(counter);
+        iv.CopyTo(counter);
 
         int offset = 0;
         while (offset < input.Length)

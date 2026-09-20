@@ -12,6 +12,10 @@ using Snappier;
 
 namespace Nethermind.Network.Rlpx;
 
+/// <summary>
+/// Compresses messages for the split-pipeline test oracle.
+/// </summary>
+/// <remarks>Production channels use the combined <see cref="ZeroPacketSplitter"/> encoder.</remarks>
 public class ZeroSnappyEncoder(ILogManager logManager) : MessageToByteEncoder<IByteBuffer>
 {
     private readonly ILogger _logger = logManager?.GetClassLogger<ZeroSnappyEncoder>() ?? throw new ArgumentNullException(nameof(logManager));

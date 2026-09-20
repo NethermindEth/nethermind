@@ -117,8 +117,7 @@ public abstract class HobbitTestsBase
 
         IChannelHandler decoder = new ZeroFrameDecoder(_frameCipherB, _macProcessorB);
         IChannelHandler merger = new ZeroFrameMerger(LimboLogs.Instance);
-        IChannelHandler encoder = new ZeroFrameEncoder(_frameCipherA, _macProcessorA);
-        IFramingAware splitter = new ZeroPacketSplitter();
+        IFramingAware splitter = new ZeroPacketSplitter(_frameCipherA, _macProcessorA);
 
         Assert.That(splitter.MaxFrameSize, Is.EqualTo(Frame.DefaultMaxFrameSize), "default max frame size");
 
@@ -131,7 +130,6 @@ public abstract class HobbitTestsBase
         EmbeddedChannel embeddedChannel = new();
         embeddedChannel.Pipeline.AddLast(decoder);
         embeddedChannel.Pipeline.AddLast(merger);
-        embeddedChannel.Pipeline.AddLast(encoder);
         embeddedChannel.Pipeline.AddLast(splitter);
 
         return embeddedChannel;
