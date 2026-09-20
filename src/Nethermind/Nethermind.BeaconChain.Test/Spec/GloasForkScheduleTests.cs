@@ -146,10 +146,16 @@ public class GloasForkScheduleTests
                     $"{name}: no Forks entry at GloasForkEpoch {spec.GloasForkEpoch}");
             }
 
-            // The version the digest uses at a fork epoch must be the version that fork introduced.
-            Assert.That(spec.VersionForEpoch(spec.FuluForkEpoch),
-                Is.EqualTo(spec.Forks.Last(f => f.Epoch <= spec.FuluForkEpoch).Version),
-                $"{name}: digest version at the Fulu epoch does not come from the Fulu entry");
+            if (spec.GloasForkEpoch != Presets.FarFutureEpoch)
+            {
+                // The scalar and the schedule entry are separate literals reached by different code:
+                // the digest the node advertises comes from the schedule, the state's fork version
+                // (and so every signature domain) from the scalar. A drift peers fine, then rejects
+                // every signature it verifies.
+                Assert.That(spec.GloasForkVersion,
+                    Is.EqualTo(spec.Forks.Single(f => f.Epoch == spec.GloasForkEpoch).Version),
+                    $"{name}: GloasForkVersion disagrees with the Forks entry at GloasForkEpoch");
+            }
         });
 
     private static IEnumerable<object[]> ShippedSpecs() =>
