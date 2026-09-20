@@ -938,8 +938,8 @@ public class Eth72ProtocolHandlerTests
             Throws.Nothing);
     }
 
-    [Test]
-    public void should_accept_announced_v0_full_blob_pooled_response_and_reject_late_cells()
+    [Test, NonParallelizable]
+    public void should_handle_announced_v0_blob_pooled_response_and_reject_late_cells([Values] bool fullBlobs)
     {
         RecreateHandler(providerProbabilityPercent: 100);
         Transaction tx = Build.A.Transaction
@@ -948,14 +948,23 @@ public class Eth72ProtocolHandlerTests
             .SignedAndResolved()
             .TestObject;
 
-        AnnounceBlobTransaction(tx.Hash!, tx.GetLength(), TxType.Blob);
+        Transaction responseTx = fullBlobs ? tx : BuildElidedBlobTransaction(tx);
+        AnnounceBlobTransaction(tx.Hash!, responseTx.GetLength(), TxType.Blob);
         long pooledRequestId = GetLastGetPooledTransactionsRequestId(tx.Hash!);
         long requestId = GetLastGetCellsRequestId(tx.Hash!, BlobCellMask.Full);
 
-        using PooledTransactionsMessage66 response = new(pooledRequestId, new PooledTransactionsMessage65(new[] { tx }.ToPooledList()));
+        using PooledTransactionsMessage66 response = new(pooledRequestId, new PooledTransactionsMessage65(new[] { responseTx }.ToPooledList()));
+        Transaction decoded = TxDecoder.TxObjectPool.Get();
+        TxDecoder.TxObjectPool.Return(decoded);
         HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
 
-        _transactionPool.Received(1).SubmitTx(
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Hash, Is.EqualTo(fullBlobs ? tx.Hash : null));
+            Assert.That(decoded.Signature is not null, Is.EqualTo(fullBlobs));
+            Assert.That(decoded.NetworkWrapper is not null, Is.EqualTo(fullBlobs));
+        }
+        _transactionPool.Received(fullBlobs ? 1 : 0).SubmitTx(
             Arg.Is<Transaction>(submitted => IsV0BlobTransaction(submitted, tx.Hash!)),
             TxHandlingOptions.None);
 
@@ -1037,8 +1046,8 @@ public class Eth72ProtocolHandlerTests
         _transactionPool.DidNotReceive().ValidateTxForBlobSampling(Arg.Any<Transaction>());
     }
 
-    [Test]
-    public void mismatched_pooled_response_should_release_unprocessed_prehashes()
+    [Test, NonParallelizable]
+    public void mismatched_pooled_response_should_return_unsubmitted_transactions()
     {
         PooledTransactionsOverrideSerializationService serializer = new(_svc);
         RecreateHandler(serializer: serializer);
@@ -1063,13 +1072,15 @@ public class Eth72ProtocolHandlerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(first.Hash, Is.Not.Null);
+            Assert.That(first.Hash, Is.Null);
+            Assert.That(first.Signature, Is.Null);
             Assert.That(unprocessed.Hash, Is.Null);
+            Assert.That(unprocessed.Signature, Is.Null);
         }
     }
 
-    [Test]
-    public void cancelled_pooled_processing_should_release_unprocessed_prehashes([Values] bool rescheduleSucceeds)
+    [Test, NonParallelizable]
+    public void cancelled_pooled_processing_should_return_only_unsubmitted_transactions([Values] bool rescheduleSucceeds)
     {
         Transaction[] txs =
         [
@@ -1093,29 +1104,61 @@ public class Eth72ProtocolHandlerTests
         CallbackBackgroundTaskScheduler scheduler = new(() =>
         {
             triedToReschedule = true;
-            if (rescheduleSucceeds)
-            {
-                transactions[1].ClearPreHash();
-                transactions.Dispose();
-            }
-
             return rescheduleSucceeds;
         });
         TestEth72ProtocolHandler handler = RecreateTestHandler(scheduler);
 
         handler.HandleSlowPublic(transactions, cancellation.Token);
 
+        if (rescheduleSucceeds)
+        {
+            Assert.That(transactions[1].Signature, Is.Not.Null);
+            handler.HandleSlowPublic(transactions, CancellationToken.None, startIndex: 1);
+        }
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That(triedToReschedule, Is.True);
             Assert.That(txs[0].Hash, Is.Not.Null);
-            Assert.That(txs[1].Hash, Is.Null);
+            Assert.That(txs[0].Signature, Is.Not.Null);
+            Assert.That(txs[1].Signature is not null, Is.EqualTo(rescheduleSucceeds));
+            Assert.That(() => _ = transactions[0], Throws.TypeOf<ObjectDisposedException>());
+        }
+        _transactionPool.Received(rescheduleSucceeds ? 2 : 1)
+            .SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
+    }
+
+    [Test, NonParallelizable]
+    public void throwing_submission_should_preserve_retained_transaction_and_return_remaining_transactions()
+    {
+        Transaction submitted = Build.A.Transaction.SignedAndResolved().TestObject;
+        Transaction unsubmitted = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
+        Hash256 submittedHash = submitted.Hash!;
+        ArrayPoolList<Transaction> transactions = new(2, [submitted, unsubmitted]);
+        Transaction? retained = null;
+        _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(call =>
+        {
+            retained = call.Arg<Transaction>();
+            throw new InvalidOperationException("Subscriber failed after retaining the transaction.");
+        });
+        TestEth72ProtocolHandler handler = RecreateTestHandler(new CallbackBackgroundTaskScheduler(() => false));
+
+        Assert.That(() => handler.HandleSlowPublic(transactions, CancellationToken.None),
+            Throws.TypeOf<InvalidOperationException>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retained, Is.SameAs(submitted));
+            Assert.That(submitted.Hash, Is.EqualTo(submittedHash));
+            Assert.That(submitted.Signature, Is.Not.Null);
+            Assert.That(unsubmitted.Signature, Is.Null);
+            Assert.That(unsubmitted.Hash, Is.Null);
             Assert.That(() => _ = transactions[0], Throws.TypeOf<ObjectDisposedException>());
         }
     }
 
-    [Test]
-    public void cancelled_pooled_processing_before_first_transaction_should_release_all_prehashes()
+    [Test, NonParallelizable]
+    public void cancelled_pooled_processing_before_first_transaction_should_return_all_transactions()
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
         tx.SetPreHashNoLock([1]);
@@ -1130,6 +1173,8 @@ public class Eth72ProtocolHandlerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tx.Hash, Is.Null);
+            Assert.That(tx.Signature, Is.Null);
+            Assert.That(tx.GasLimit, Is.Zero);
             Assert.That(() => _ = transactions[0], Throws.TypeOf<ObjectDisposedException>());
         }
     }
@@ -1157,7 +1202,7 @@ public class Eth72ProtocolHandlerTests
         _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
     }
 
-    [Test]
+    [Test, NonParallelizable]
     public void should_disconnect_if_pooled_blob_tx_shape_differs_from_eth72_announcement([Values] bool wrongSize)
     {
         Transaction tx = Build.A.Transaction
@@ -1181,7 +1226,16 @@ public class Eth72ProtocolHandlerTests
         long requestId = GetLastGetPooledTransactionsRequestId(tx.Hash!);
 
         using PooledTransactionsMessage66 response = new(requestId, new PooledTransactionsMessage65(new[] { elidedTx }.ToPooledList()));
+        Transaction reusable = TxDecoder.TxObjectPool.Get();
+        TxDecoder.TxObjectPool.Return(reusable);
         HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reusable.Signature, Is.Null);
+            Assert.That(reusable.NetworkWrapper, Is.Null);
+            Assert.That(reusable.BlobVersionedHashes, Is.Null);
+        }
 
         _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
     }
@@ -5273,8 +5327,8 @@ public class Eth72ProtocolHandlerTests
             sparseBlobPoolPeerRegistry,
             transactionsGossipPolicy)
     {
-        public void HandleSlowPublic(IOwnedReadOnlyList<Transaction> transactions, CancellationToken cancellationToken) =>
-            HandleSlow(new TransactionsRequest(transactions, 0), cancellationToken).GetAwaiter().GetResult();
+        public void HandleSlowPublic(IOwnedReadOnlyList<Transaction> transactions, CancellationToken cancellationToken, int startIndex = 0) =>
+            HandleSlow(new TransactionsRequest(transactions, startIndex), cancellationToken).GetAwaiter().GetResult();
     }
 
     private sealed class CallbackBackgroundTaskScheduler(Func<bool> trySchedule) : IBackgroundTaskScheduler

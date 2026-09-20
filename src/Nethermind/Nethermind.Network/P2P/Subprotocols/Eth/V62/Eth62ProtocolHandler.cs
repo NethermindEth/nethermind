@@ -17,6 +17,7 @@ using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -259,10 +260,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             IOwnedReadOnlyList<Transaction> iList = msg.Transactions;
             if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(iList, 0), handler))
             {
-                foreach (Transaction tx in iList)
-                {
-                    tx.ClearPreHash();
-                }
+                ReturnUnsubmittedTransactions(iList.AsSpan());
                 iList.Dispose();
                 return false;
             }
@@ -305,24 +303,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         return ValueTask.CompletedTask;
                     }
 
-                    PrepareAndSubmitTransaction(transactionsSpan[currentIdx], isTrace);
-                    currentIdx++;
+                    // Submission can publish the transaction before throwing; ownership has escaped.
+                    PrepareAndSubmitTransaction(transactionsSpan[currentIdx++], isTrace);
                 }
             }
             finally
             {
                 if (!isTransferred)
                 {
-                    while (currentIdx < transactionsSpan.Length)
-                    {
-                        transactionsSpan[currentIdx].ClearPreHash();
-                        currentIdx++;
-                    }
+                    ReturnUnsubmittedTransactions(transactionsSpan[currentIdx..]);
                     transactions.Dispose();
                 }
             }
 
             return ValueTask.CompletedTask;
+        }
+
+        protected static void ReturnUnsubmittedTransactions(ReadOnlySpan<Transaction> transactions)
+        {
+            foreach (Transaction tx in transactions)
+            {
+                tx.ClearPreHash();
+                TxDecoder.TxObjectPool.Return(tx);
+            }
         }
 
         protected void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)

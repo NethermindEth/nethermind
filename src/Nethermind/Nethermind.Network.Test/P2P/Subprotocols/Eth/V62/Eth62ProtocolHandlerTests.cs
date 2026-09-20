@@ -500,16 +500,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Arg.Is<string>(details => details.Contains("RlpException") && details.Contains("Transaction decoding returned null")));
         }
 
-        private class AlwaysTimeoutBackgroundTaskScheduler : IBackgroundTaskScheduler
+        private class AlwaysTimeoutBackgroundTaskScheduler(bool reject = false) : IBackgroundTaskScheduler
         {
             internal int ScheduledTasks = 0;
             public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
                 where TReq : notnull, IBackgroundTaskRequest<TReq>
             {
-                CancellationTokenSource cts = new();
+                ScheduledTasks++;
+                if (reject) return false;
+                using CancellationTokenSource cts = new();
                 cts.Cancel();
                 fulfillFunc(request, cts.Token);
-                ScheduledTasks++;
                 return true;
             }
         }
@@ -546,13 +547,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             return false;
         }
 
-        [Test]
-        public void Will_Not_Reschedule_SubmitTx_When_Queue_Is_Full()
+        [Test, NonParallelizable]
+        public void Dropped_transaction_batch_is_returned_without_rescheduling([Values] bool reject)
         {
             _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
             using TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).ToPooledList());
 
-            AlwaysTimeoutBackgroundTaskScheduler taskScheduler = new();
+            AlwaysTimeoutBackgroundTaskScheduler taskScheduler = new(reject);
             _handler = new Eth62ProtocolHandler(
                 _session,
                 _svc,
@@ -566,12 +567,20 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _handler.Init();
 
             HandleIncomingStatusMessage();
+            Transaction reusable = TxDecoder.TxObjectPool.Get();
+            TxDecoder.TxObjectPool.Return(reusable);
             HandleZeroMessage(msg, Eth62MessageCode.Transactions);
 
-            Assert.That(taskScheduler.ScheduledTasks, Is.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(taskScheduler.ScheduledTasks, Is.EqualTo(1));
+                Assert.That(reusable.Signature, Is.Null);
+                Assert.That(reusable.GasLimit, Is.Zero);
+            }
+            _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
         }
 
-        [Test]
+        [Test, NonParallelizable]
         public void Cancelled_mid_processing_releases_transactions_unless_rescheduled([Values] bool rescheduleSucceeds)
         {
             Transaction[] txs = new Transaction[2];
@@ -625,9 +634,44 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             {
                 Assert.That(triedToReschedule, Is.True);
                 Assert.That(txs[0].Hash, Is.Not.Null);
+                Assert.That(txs[0].Signature, Is.Not.Null);
                 Assert.That(txs[1].Hash, Is.Null);
+                Assert.That(txs[1].Signature is not null, Is.EqualTo(rescheduleSucceeds));
                 Assert.Throws<ObjectDisposedException>(() => _ = list[0]);
             }
+        }
+
+        [Test, NonParallelizable]
+        public void Submission_failure_preserves_escaped_transaction_and_returns_unsubmitted_tail()
+        {
+            Transaction first = Build.A.Transaction.WithNonce(17).SignedAndResolved().TestObject;
+            Transaction second = Build.A.Transaction.WithNonce(18).SignedAndResolved().TestObject;
+            Hash256 firstHash = first.Hash!;
+            ArrayPoolList<Transaction> list = new(2) { first, second };
+            Transaction? published = null;
+            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(call =>
+            {
+                published = call.Arg<Transaction>();
+                throw new InvalidOperationException("Subscriber failed after retaining the transaction");
+            });
+            using TestEth62ProtocolHandler handler = new(
+                _session, _svc, new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
+                _syncManager, RunImmediatelyScheduler.Instance, _transactionPool, _gossipPolicy,
+                LimboLogs.Instance, _txGossipPolicy);
+
+            Assert.Throws<InvalidOperationException>(() => handler.HandleSlowPublic(list, CancellationToken.None));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(published, Is.SameAs(first));
+                Assert.That(first.Hash, Is.EqualTo(firstHash));
+                Assert.That(first.Nonce, Is.EqualTo(17));
+                Assert.That(first.Signature, Is.Not.Null);
+                Assert.That(second.Signature, Is.Null);
+                Assert.That(second.Nonce, Is.Zero);
+                Assert.Throws<ObjectDisposedException>(() => _ = list[0]);
+            }
+            _transactionPool.Received(1).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
         }
 
         private sealed class TestEth62ProtocolHandler(

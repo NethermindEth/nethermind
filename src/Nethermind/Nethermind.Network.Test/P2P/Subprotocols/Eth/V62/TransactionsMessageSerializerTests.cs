@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
@@ -107,6 +108,35 @@ public class TransactionsMessageSerializerTests
         foreach (Transaction? tx in deserializedMessage.Transactions.Where(static tx => !tx.SupportsBlobs))
         {
             Assert.That(tx.NetworkWrapper, Is.Null);
+        }
+    }
+
+    [Test, NonParallelizable]
+    public void Malformed_list_returns_previously_decoded_transaction()
+    {
+        TransactionsMessageSerializer serializer = new();
+        // A valid signed legacy transaction followed by a null transaction.
+        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(Bytes.FromHexString(
+            "d2d08203e8640a80822710830405061b0102c0")).AsDisposable();
+        Transaction reusable = TxDecoder.TxObjectPool.Get();
+        TxDecoder.TxObjectPool.Return(reusable);
+
+        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+
+        Transaction returned = TxDecoder.TxObjectPool.Get();
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(returned, Is.SameAs(reusable));
+                Assert.That(returned.Signature, Is.Null);
+                Assert.That(returned.Data.IsEmpty, Is.True);
+                Assert.That(returned.Hash, Is.Null);
+            }
+        }
+        finally
+        {
+            TxDecoder.TxObjectPool.Return(returned);
         }
     }
 

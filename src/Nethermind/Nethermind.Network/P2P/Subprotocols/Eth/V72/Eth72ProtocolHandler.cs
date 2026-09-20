@@ -191,7 +191,7 @@ public class Eth72ProtocolHandler(
                     ReportIn(pooledTransactions, size);
                     if (!MatchesPooledTransactionRequest(pooledTransactions.EthMessage.Transactions.AsSpan(), requestedHashes))
                     {
-                        ClearPreHashes(pooledTransactions.EthMessage.Transactions.AsSpan());
+                        ReturnUnsubmittedTransactions(pooledTransactions.EthMessage.Transactions.AsSpan());
                         pooledTransactions.Dispose();
                         IgnorePooledTransactionResponse();
                         throw new SubprotocolException($"Mismatched {nameof(PooledTransactionsMessage66)} response ID {pooledTransactions.RequestId}.");
@@ -847,13 +847,16 @@ public class Eth72ProtocolHandler(
                     throw new SubprotocolException("invalid pooled tx type or size");
                 }
 
+                // Both submission and sparse-blob assembly may retain the transaction, even on failure.
+                currentIdx++;
                 if (!tx.SupportsBlobs)
                 {
                     PrepareAndSubmitTransaction(tx, isTrace);
                 }
-                else if (tx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V0 })
+                else if (tx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V0 } wrapper)
                 {
-                    if (tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper && wrapper.HasFullBlobs())
+                    bool hasFullBlobs = wrapper.HasFullBlobs();
+                    if (hasFullBlobs)
                     {
                         PrepareAndSubmitTransaction(tx, isTrace);
                     }
@@ -863,20 +866,23 @@ public class Eth72ProtocolHandler(
                         RemoveCellState(tx.Hash.ValueHash256);
                         _sparseBlobPoolPeerRegistry.Clear(tx.Hash);
                     }
+
+                    if (!hasFullBlobs)
+                    {
+                        TxDecoder.TxObjectPool.Return(tx);
+                    }
                 }
                 else
                 {
                     PrepareAndMaybeSubmitSparseBlobTransaction(tx, isTrace);
                 }
-
-                currentIdx++;
             }
         }
         finally
         {
             if (!isTransferred)
             {
-                ClearPreHashes(transactionsSpan[currentIdx..]);
+                ReturnUnsubmittedTransactions(transactionsSpan[currentIdx..]);
                 transactions.Dispose();
             }
         }
@@ -1851,14 +1857,6 @@ public class Eth72ProtocolHandler(
     protected override bool MatchesAnnouncedTransactionSize(Transaction tx, int announcedSize)
         => MatchesAnnouncedSize(tx, announcedSize)
         || tx.SupportsBlobs && tx.GetLength(shouldCountBlobs: false) == announcedSize;
-
-    private static void ClearPreHashes(ReadOnlySpan<Transaction> transactions)
-    {
-        for (int i = 0; i < transactions.Length; i++)
-        {
-            transactions[i].ClearPreHash();
-        }
-    }
 
     private readonly record struct SentCellRequest(
         ValueHash256 Hash,

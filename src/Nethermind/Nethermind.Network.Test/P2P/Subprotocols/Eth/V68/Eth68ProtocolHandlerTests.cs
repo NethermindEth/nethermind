@@ -143,7 +143,7 @@ public class Eth68ProtocolHandlerTests
     }
 
 
-    [Test]
+    [Test, NonParallelizable]
     public void Should_disconnect_if_tx_size_is_wrong()
     {
         GenerateTxLists(4, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes, out ArrayPoolList<Transaction> txs);
@@ -153,8 +153,16 @@ public class Eth68ProtocolHandlerTests
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
+        Transaction reusable = TxDecoder.TxObjectPool.Get();
+        TxDecoder.TxObjectPool.Return(reusable);
         HandleZeroMessage(txsMsg, Eth66MessageCode.PooledTransactions);
 
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reusable.Signature, Is.Null);
+            Assert.That(reusable.GasLimit, Is.Zero);
+        }
+        _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
         _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, "invalid pooled tx type or size");
     }
 

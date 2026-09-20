@@ -307,12 +307,14 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private sealed class OverflowRequestStripe(int initialGenerationCapacity)
     {
         private const int MaxRetainedGenerationCapacity = 1_024;
+        public const int MaxWarmSpareCapacity = 431;
 
         public readonly HashSet<TResourceId>[] Generations = [[], []];
         public readonly int RetainedGenerationCapacityLimit = Math.Min(
             initialGenerationCapacity * 2,
             MaxRetainedGenerationCapacity);
         public readonly long[] Epochs = [0, -1];
+        public readonly bool[] WarmSpare = new bool[2];
     }
 
     public RetryCache(
@@ -877,6 +879,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
                 int generation = (int)(epoch & 1);
                 stripe.Generations[generation].Add(resourceId);
+                stripe.WarmSpare[generation] = false;
                 Interlocked.Increment(ref _overflowRequestGenerationCounts![generation]);
                 return true;
             }
@@ -1018,7 +1021,17 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         {
             if (stripe.Generations[generation].EnsureCapacity(0) > stripe.RetainedGenerationCapacityLimit)
             {
+                // Resume at an existing growth step, without retaining a flood-sized set.
+                int capacity = stripe.RetainedGenerationCapacityLimit >= 3
+                    ? Math.Min(OverflowRequestStripe.MaxWarmSpareCapacity, stripe.RetainedGenerationCapacityLimit / 2)
+                    : 0;
+                stripe.Generations[generation] = new(capacity);
+                stripe.WarmSpare[generation] = capacity > 0;
+            }
+            else if (stripe.WarmSpare[generation])
+            {
                 stripe.Generations[generation] = [];
+                stripe.WarmSpare[generation] = false;
             }
             else
             {

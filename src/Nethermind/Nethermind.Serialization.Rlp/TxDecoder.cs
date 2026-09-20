@@ -20,7 +20,8 @@ public sealed class TxDecoder : TxDecoder<Transaction>
 
     static TxDecoder()
     {
-        TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), Environment.ProcessorCount * 4);
+        // Retain a batch across receive/processing threads; CPU count alone is too small for transaction messages.
+        TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), 2_048);
         Instance = new TxDecoder(static () => TxObjectPool.Get());
     }
 

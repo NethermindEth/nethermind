@@ -1616,12 +1616,60 @@ public class RetryCacheTests
             timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs * 2));
 
             Assert.That(() => cache.OverflowRequestsInUse, Is.Zero.After(AssertTimeoutMs, 10));
+            Assert.That(() => cache.OverflowRetainedCapacity, Is.InRange(1, 1024).After(AssertTimeoutMs, 10));
+
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs * 2));
             Assert.That(() => cache.OverflowRetainedCapacity, Is.Zero.After(AssertTimeoutMs, 10));
         }
         finally
         {
             await cancellationTokenSource.CancelAsync();
             await cache.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task OverflowStorage_ReusesBoundedCapacityAcrossRepeatedBursts()
+    {
+        const int resourceCount = 1024;
+        ManualTimeProvider timeProvider = new();
+        await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(
+            LimboLogs.Instance,
+            timeProvider,
+            timeoutMs: CacheTimeoutMs,
+            requestingCacheSize: 0,
+            maxPendingResourcesPerHandler: 0,
+            overflowRequestLimit: RetryCache<ResourceRequestMessage, ResourceId>.DefaultOverflowRequestLimit);
+        TestHandler handler = new();
+
+        Assert.That(AnnounceBurst(), Is.EqualTo(resourceCount));
+        Assert.That(AnnounceBurst(), Is.Zero);
+
+        for (int burst = 0; burst < 3; burst++)
+        {
+            timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs * 2));
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            cache.ProcessRetryTick();
+            int requested = AnnounceBurst();
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(requested, Is.EqualTo(resourceCount));
+                Assert.That(cache.OverflowRequestsInUse, Is.EqualTo(resourceCount));
+                Assert.That(allocated, Is.LessThan(56_000), "repeated bursts should not rebuild the smallest hash-set growth steps");
+            }
+            Assert.That(AnnounceBurst(), Is.Zero);
+        }
+
+        int AnnounceBurst()
+        {
+            int requested = 0;
+            for (int i = 0; i < resourceCount; i++)
+            {
+                if (cache.Announced(i * 64, handler) == AnnounceResult.RequestRequired) requested++;
+            }
+            return requested;
         }
     }
 
