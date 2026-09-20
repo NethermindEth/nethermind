@@ -56,22 +56,33 @@ public static class DataColumnSidecarVerifier
     /// Ordered cheapest-first so a hostile peer cannot make the node pay for a KZG batch by sending
     /// a sidecar that fails a structural, blob-count or merkle check.
     /// </remarks>
-    public static bool Verify(DataColumnSidecar sidecar, BeaconChainSpec spec, ulong epoch) =>
-        VerifyStructure(sidecar) && VerifyBlobCount(sidecar, spec, epoch) && VerifyInclusionProof(sidecar) && VerifyKzgProofs(sidecar);
+    public static bool Verify(DataColumnSidecar sidecar, BeaconChainSpec spec) =>
+        VerifyStructure(sidecar) && VerifyBlobCount(sidecar, spec) && VerifyInclusionProof(sidecar) && VerifyKzgProofs(sidecar);
 
     /// <summary>
-    /// Rejects a sidecar whose commitment count exceeds <paramref name="epoch"/>'s scheduled
-    /// <c>max_blobs_per_block</c>. Blob-parameter-only forks change this bound at a scheduled epoch
+    /// Rejects a sidecar whose commitment count exceeds the <c>max_blobs_per_block</c> scheduled for
+    /// the sidecar's own epoch. Blob-parameter-only forks change this bound at a scheduled epoch
     /// without a fork version bump, so a fixed constant would keep accepting sidecars that are only
-    /// valid under a stale schedule; treating it as a function of the claimed epoch closes that gap.
+    /// valid under a stale schedule.
     /// </summary>
-    /// <remarks>Fails closed: a sidecar with no commitments is rejected, not treated as vacuously within bound.</remarks>
-    public static bool VerifyBlobCount(DataColumnSidecar sidecar, BeaconChainSpec spec, ulong epoch)
+    /// <remarks>
+    /// The epoch comes from the sidecar's own block header, never from the caller: a bound evaluated
+    /// at an epoch the caller picks is not a bound. Fails closed on a sidecar with no commitments or
+    /// no header, rather than treating either as vacuously within bound.
+    /// </remarks>
+    public static bool VerifyBlobCount(DataColumnSidecar sidecar, BeaconChainSpec spec)
     {
         if (sidecar.KzgCommitments is not { Length: > 0 } commitments)
         {
             return false;
         }
+
+        if (sidecar.SignedBlockHeader?.Message is not { } header)
+        {
+            return false;
+        }
+
+        ulong epoch = spec.GetEpoch(header.Slot);
 
         ulong maxBlobsPerBlock = spec.GetBlobParameters(epoch)?.MaxBlobsPerBlock ?? spec.MaxBlobsPerBlockElectra;
         return (ulong)commitments.Length <= maxBlobsPerBlock;

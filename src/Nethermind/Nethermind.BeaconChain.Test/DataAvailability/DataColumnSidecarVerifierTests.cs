@@ -201,7 +201,7 @@ public class DataColumnSidecarVerifierTests
         {
             Assert.That(DataColumnSidecarVerifier.VerifyStructure(sidecar), Is.False);
             Assert.That(DataColumnSidecarVerifier.VerifyKzgProofs(sidecar), Is.False);
-            Assert.That(DataColumnSidecarVerifier.Verify(sidecar, BeaconChainSpec.Mainnet, BeaconChainSpec.Mainnet.FuluForkEpoch), Is.False);
+            Assert.That(DataColumnSidecarVerifier.Verify(sidecar, BeaconChainSpec.Mainnet), Is.False);
         });
     }
 
@@ -211,7 +211,7 @@ public class DataColumnSidecarVerifierTests
         DataColumnSidecar sidecar = BuildValidSidecar();
         sidecar.KzgCommitments = [];
 
-        Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(sidecar, BeaconChainSpec.Mainnet, BeaconChainSpec.Mainnet.FuluForkEpoch), Is.False);
+        Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(sidecar, BeaconChainSpec.Mainnet), Is.False);
     }
 
     [Test]
@@ -220,7 +220,7 @@ public class DataColumnSidecarVerifierTests
         DataColumnSidecar sidecar = BuildValidSidecar();
         sidecar.KzgCommitments = null;
 
-        Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(sidecar, BeaconChainSpec.Mainnet, BeaconChainSpec.Mainnet.FuluForkEpoch), Is.False);
+        Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(sidecar, BeaconChainSpec.Mainnet), Is.False);
     }
 
     /// <summary>
@@ -239,11 +239,11 @@ public class DataColumnSidecarVerifierTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(sidecar, mainnet, mainnet.FuluForkEpoch), Is.False,
+            Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(AtEpoch(sidecar, mainnet, mainnet.FuluForkEpoch), mainnet), Is.False,
                 "before any BPO fork, Fulu still inherits Electra's max_blobs_per_block of 9");
-            Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(sidecar, mainnet, 412672 - 1), Is.False,
+            Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(AtEpoch(sidecar, mainnet, 412672 - 1), mainnet), Is.False,
                 "the epoch immediately before BPO1 activates must still use the pre-BPO bound of 9");
-            Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(sidecar, mainnet, 412672), Is.True,
+            Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(AtEpoch(sidecar, mainnet, 412672), mainnet), Is.True,
                 "BPO1's own activation epoch raises the bound to 15, admitting 10 commitments");
         });
     }
@@ -259,8 +259,8 @@ public class DataColumnSidecarVerifierTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(atMax, mainnet, mainnet.FuluForkEpoch), Is.True);
-            Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(overMax, mainnet, mainnet.FuluForkEpoch), Is.False);
+            Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(AtEpoch(atMax, mainnet, mainnet.FuluForkEpoch), mainnet), Is.True);
+            Assert.That(DataColumnSidecarVerifier.VerifyBlobCount(AtEpoch(overMax, mainnet, mainnet.FuluForkEpoch), mainnet), Is.False);
         });
     }
 
@@ -278,6 +278,7 @@ public class DataColumnSidecarVerifierTests
         MaxBlobsPerBlockElectra = 1,
         GloasForkEpoch = Presets.FarFutureEpoch,
         GloasForkVersion = Bytes.FromHexString("0x00000000"),
+        Bootnodes = [],
     };
 
     /// <summary>
@@ -293,10 +294,18 @@ public class DataColumnSidecarVerifierTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(DataColumnSidecarVerifier.Verify(sidecar, spec, 19), Is.False,
+            Assert.That(DataColumnSidecarVerifier.Verify(AtEpoch(sidecar, spec, 19), spec), Is.False,
                 "one epoch before the BPO, the schedule still caps max_blobs_per_block at 1");
-            Assert.That(DataColumnSidecarVerifier.Verify(sidecar, spec, 20), Is.True,
+            Assert.That(DataColumnSidecarVerifier.Verify(AtEpoch(sidecar, spec, 20), spec), Is.True,
                 "at the BPO's own activation epoch the cap rises to 2, admitting this sidecar");
         });
+    }
+
+    /// <summary>Moves a sidecar's block header to <paramref name="epoch"/>, which is the only
+    /// thing the bound reads: it is no longer a parameter a caller can choose freely.</summary>
+    private static DataColumnSidecar AtEpoch(DataColumnSidecar sidecar, BeaconChainSpec spec, ulong epoch)
+    {
+        sidecar.SignedBlockHeader!.Message!.Slot = epoch * spec.SlotsPerEpoch;
+        return sidecar;
     }
 }

@@ -394,7 +394,7 @@ public sealed class BeaconDiscovery(
     private List<Node> CreateBootNodes()
     {
         string[] enrs = string.IsNullOrWhiteSpace(config.Bootnodes)
-            ? BeaconBootnodes.ForChainId(spec.ChainId)
+            ? spec.Bootnodes
             : config.Bootnodes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         List<Node> bootNodes = new(enrs.Length);
