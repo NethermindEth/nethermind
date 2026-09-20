@@ -18,7 +18,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V68;
 [TestFixture, Parallelizable(ParallelScope.All)]
 public class NewPooledTransactionHashesMessageSerializerTests
 {
-    private static void Test(TxType[] types, int[] sizes, Hash256[] hashes, string expected = null)
+    private static void Test(TxType[] types, int[] sizes, ValueHash256[] hashes, string expected = null)
     {
         using NewPooledTransactionHashesMessage68 message = new(types.Select(static t => (byte)t).ToPooledList(types.Length), sizes.ToPooledList(), hashes.ToPooledList());
         NewPooledTransactionHashesMessageSerializer serializer = new();
@@ -31,7 +31,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
     {
         TxType[] types = { TxType.Legacy, TxType.AccessList, TxType.EIP1559 };
         int[] sizes = { 5, 10, 1500 };
-        Hash256[] hashes = { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
+        ValueHash256[] hashes = { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
         Test(types, sizes, hashes);
     }
 
@@ -40,7 +40,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
     {
         TxType[] types = [];
         int[] sizes = [];
-        Hash256[] hashes = [];
+        ValueHash256[] hashes = [];
         Test(types, sizes, hashes, "c380c0c0");
     }
 
@@ -49,7 +49,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
     {
         TxType[] types = { TxType.EIP1559 };
         int[] sizes = { 10 };
-        Hash256[] hashes = [];
+        ValueHash256[] hashes = [];
         Test(types, sizes, hashes, "c402c10ac0");
     }
 
@@ -58,7 +58,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
     {
         TxType[] types = { TxType.AccessList };
         int[] sizes = { 2 };
-        Hash256[] hashes = { TestItem.KeccakA };
+        ValueHash256[] hashes = { TestItem.KeccakA };
         Test(types, sizes, hashes,
             "e5" + "01" + "c102" + "e1a0" + TestItem.KeccakA.ToString(false));
     }
@@ -66,16 +66,8 @@ public class NewPooledTransactionHashesMessageSerializerTests
     [Test]
     public void Deserialize_throws_on_null_hash()
     {
-        TxType[] types = { TxType.EIP1559 };
-        int[] sizes = { 10 };
-        Hash256[] hashes = { null! };
-        using NewPooledTransactionHashesMessage68 message = new(
-            types.Select(static t => (byte)t).ToPooledList(types.Length),
-            sizes.ToPooledList(),
-            hashes.ToPooledList());
         NewPooledTransactionHashesMessageSerializer serializer = new();
-
-        byte[] bytes = serializer.Serialize(message);
+        byte[] bytes = Convert.FromHexString("c502c10ac180");
 
         Assert.That(() => serializer.Deserialize(bytes), Throws.InstanceOf<RlpException>());
     }
@@ -88,7 +80,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
         using NewPooledTransactionHashesMessage68 source = new(
             Enumerable.Repeat((byte)2, count).ToPooledList(count),
             Enumerable.Repeat(100, count).ToPooledList(count),
-            Enumerable.Repeat(TestItem.KeccakA, count).ToPooledList(count));
+            Enumerable.Repeat(TestItem.KeccakA.ValueHash256, count).ToPooledList(count));
         byte[] bytes = serializer.Serialize(source);
         NewPooledTransactionHashesMessage68 first = serializer.Deserialize(bytes);
         Assert.That(first.Hashes, Is.EqualTo(source.Hashes));
@@ -114,14 +106,14 @@ public class NewPooledTransactionHashesMessageSerializerTests
     }
 
     [Test, NonParallelizable]
-    public void Materialized_hashes_survive_message_reuse()
+    public void Copied_hashes_survive_message_reuse()
     {
         NewPooledTransactionHashesMessageSerializer serializer = new();
         byte[] firstBytes = Convert.FromHexString("e501c102e1a0" + TestItem.KeccakA.ToString(false));
         byte[] nextBytes = Convert.FromHexString("e501c102e1a0" + TestItem.KeccakB.ToString(false));
         NewPooledTransactionHashesMessage68 first = serializer.Deserialize(firstBytes);
-        Hash256 hash = first.Hashes[0];
-        Assert.That(first.Hashes.AsSpan()[0], Is.SameAs(hash));
+        ValueHash256 hash = first.Hashes[0];
+        Assert.That(first.Hashes.AsSpan()[0], Is.EqualTo(hash));
         first.Dispose();
 
         using NewPooledTransactionHashesMessage68 next = serializer.Deserialize(nextBytes);
@@ -129,34 +121,38 @@ public class NewPooledTransactionHashesMessageSerializerTests
         first.Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(hash, Is.EqualTo(TestItem.KeccakA));
-            Assert.That(next.Hashes[0], Is.EqualTo(TestItem.KeccakB));
+            Assert.That(hash, Is.EqualTo(TestItem.KeccakA.ValueHash256));
+            Assert.That(next.Hashes[0], Is.EqualTo(TestItem.KeccakB.ValueHash256));
             Assert.That(serializer.Serialize(next), Is.EqualTo(nextBytes));
         }
     }
 
     [Test]
     [NonParallelizable]
-    public void Decoding_without_materializing_hashes_has_bounded_allocations()
+    public void Decoding_and_reading_hashes_has_bounded_allocations()
     {
         const int count = 128;
         NewPooledTransactionHashesMessageSerializer serializer = new();
         using NewPooledTransactionHashesMessage68 source = new(
             Enumerable.Repeat((byte)2, count).ToPooledList(count),
             Enumerable.Repeat(100, count).ToPooledList(count),
-            Enumerable.Repeat(TestItem.KeccakA, count).ToPooledList(count));
+            Enumerable.Repeat(TestItem.KeccakA.ValueHash256, count).ToPooledList(count));
         using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(serializer.Serialize(source)).AsDisposable();
         for (int i = 0; i < 100; i++)
         {
             buffer.SetReaderIndex(0);
-            serializer.Deserialize(buffer).Dispose();
+            using NewPooledTransactionHashesMessage68 message = serializer.Deserialize(buffer);
+            foreach (ref readonly ValueHash256 hash in message.Hashes.AsSpan())
+                if (hash != TestItem.KeccakA.ValueHash256) throw new InvalidOperationException();
         }
 
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 100; i++)
         {
             buffer.SetReaderIndex(0);
-            serializer.Deserialize(buffer).Dispose();
+            using NewPooledTransactionHashesMessage68 message = serializer.Deserialize(buffer);
+            foreach (ref readonly ValueHash256 hash in message.Hashes.AsSpan())
+                if (hash != TestItem.KeccakA.ValueHash256) throw new InvalidOperationException();
         }
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 

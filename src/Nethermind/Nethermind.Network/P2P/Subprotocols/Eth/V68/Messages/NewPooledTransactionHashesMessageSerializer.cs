@@ -31,7 +31,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             {
                 message.TypeList.AddRange(ctx.DecodeByteArraySpan(TypesRlpLimit));
                 DecodeList(ref ctx, message.SizeList, static (ref RlpReader c) => c.DecodeInt(), SizesRlpLimit);
-                DecodeList(ref ctx, message.HashList.Values, static (ref RlpReader c) => c.DecodeValueKeccakNonNull(), HashesRlpLimit);
+                DecodeList(ref ctx, message.HashList, static (ref RlpReader c) => c.DecodeValueKeccakNonNull(), HashesRlpLimit);
                 return message;
             }
             catch
@@ -74,7 +74,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             private MessageLists? _lists;
             internal ArrayPoolList<byte> TypeList => _lists!.TypeList;
             internal ArrayPoolList<int> SizeList => _lists!.SizeList;
-            internal AnnouncementHashes HashList => _lists!.HashList;
+            internal ArrayPoolList<ValueHash256> HashList => _lists!.HashList;
 
             private PooledMessage(MessageLists lists) : base(lists.TypeList, lists.SizeList, lists.HashList)
                 => _lists = lists;
@@ -95,13 +95,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             private static ref MessageLists? CurrentSlot => ref Pool[(Environment.CurrentManagedThreadId % MaxRetainedMessages + 1) * SlotStride];
             internal readonly ArrayPoolList<byte> TypeList = new(0);
             internal readonly ArrayPoolList<int> SizeList = new(0);
-            internal readonly AnnouncementHashes HashList = new();
+            internal readonly ArrayPoolList<ValueHash256> HashList = new(0);
 
             internal static MessageLists Rent() => Interlocked.Exchange(ref CurrentSlot, null) ?? new();
 
             internal void Return()
             {
-                // Keep small announcements warm without retaining burst-sized arrays or hash references.
+                // Keep small announcements warm without retaining burst-sized arrays.
                 if (TypeList.Capacity <= MaxRetainedCapacity && SizeList.Capacity <= MaxRetainedCapacity && HashList.Capacity <= MaxRetainedCapacity)
                 {
                     TypeList.Clear();
@@ -125,11 +125,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
                 sizesLength += Rlp.LengthOf(size);
             }
 
-            int hashesLength = 0;
-            foreach (Hash256 hash in message.Hashes.AsSpan())
-            {
-                hashesLength += Rlp.LengthOf(hash);
-            }
+            int hashesLength = checked(message.Hashes.Count * 33);
 
             int totalSize = Rlp.LengthOf(message.Types) + Rlp.LengthOfSequence(sizesLength) + Rlp.LengthOfSequence(hashesLength);
 
@@ -147,9 +143,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             }
 
             writer.StartSequence(hashesLength);
-            foreach (Hash256 hash in message.Hashes.AsSpan())
+            foreach (ref readonly ValueHash256 hash in message.Hashes.AsSpan())
             {
-                writer.Encode(hash);
+                writer.Encode(in hash);
             }
         }
     }

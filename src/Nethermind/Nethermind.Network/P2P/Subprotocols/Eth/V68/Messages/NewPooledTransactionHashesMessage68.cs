@@ -9,14 +9,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
 {
     /// <summary>Announces transaction types, sizes, and hashes available from a peer.</summary>
     /// <remarks>
-    /// Received instances may be pooled. Neither the message nor its lists may be accessed after disposal
+    /// Received backing lists may be pooled. Neither the message nor its lists may be accessed after disposal
     /// or retained beyond the consumer's ownership scope.
-    /// Disposal ends that ownership scope, including the right to dispose the instance again after it may have been rented elsewhere.
     /// </remarks>
     public class NewPooledTransactionHashesMessage68(
         IOwnedReadOnlyList<byte> types,
         IOwnedReadOnlyList<int> sizes,
-        IOwnedReadOnlyList<Hash256> hashes) : P2PMessage
+        IOwnedReadOnlyList<ValueHash256> hashes) : P2PMessage
     {
         // we are able to safely send message with up to 2925 hashes+types+lengths to not exceed message size
         // of 102400 bytes which is used by Geth and us as max message size. (2925 items message has 102385 bytes)
@@ -27,7 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
 
         public readonly IOwnedReadOnlyList<byte> Types = types;
         public readonly IOwnedReadOnlyList<int> Sizes = sizes;
-        public readonly IOwnedReadOnlyList<Hash256> Hashes = hashes;
+        public readonly IOwnedReadOnlyList<ValueHash256> Hashes = hashes;
 
         public override string ToString() => $"{nameof(NewPooledTransactionHashesMessage68)}({Hashes.Count})";
 

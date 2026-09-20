@@ -111,15 +111,8 @@ public class Eth68ProtocolHandler(ISession session,
 
         TxPool.Metrics.PendingTransactionsHashesReceived += message.Hashes.Count;
 
-        if (message.Hashes is AnnouncementHashes announcementHashes)
-        {
-            foreach (ref readonly ValueHash256 hash in announcementHashes.Values.AsSpan())
-                NotifiedTransactions.Set(in hash);
-        }
-        else
-        {
-            AddNotifiedTransactions(message.Hashes.AsSpan());
-        }
+        foreach (ref readonly ValueHash256 hash in message.Hashes.AsSpan())
+            NotifiedTransactions.Set(in hash);
 
         long startTime = Logger.IsTrace ? Stopwatch.GetTimestamp() : 0;
 
@@ -129,7 +122,7 @@ public class Eth68ProtocolHandler(ISession session,
     }
 
     protected void RequestPooledTransactions(
-        IOwnedReadOnlyList<Hash256> hashes,
+        IOwnedReadOnlyList<ValueHash256> hashes,
         IOwnedReadOnlyList<int> sizes,
         IOwnedReadOnlyList<byte> types,
         bool registerForRetry = true)
@@ -149,7 +142,7 @@ public class Eth68ProtocolHandler(ISession session,
     }
 
     private void RequestPooledTransactionsPage(
-        IOwnedReadOnlyList<Hash256> hashes,
+        IOwnedReadOnlyList<ValueHash256> hashes,
         int start,
         ReadOnlySpan<int> sizes,
         ReadOnlySpan<byte> types,
@@ -167,16 +160,13 @@ public class Eth68ProtocolHandler(ISession session,
         int responseSizeLeft = responseSizeLimit;
         int requestCapacity = Math.Min(newTxHashesIndexes.Count, MaxPooledTransactionHashesPerRequest);
         ArrayPoolList<ValueHash256>? hashesToRequest = null;
-        AnnouncementHashes? announcementHashes = hashes as AnnouncementHashes;
-        ReadOnlySpan<ValueHash256> valueHashes = announcementHashes is null ? default : announcementHashes.Values.AsSpan();
+        ReadOnlySpan<ValueHash256> valueHashes = hashes.AsSpan();
         int toRequestCount = 0;
         bool hasOversizedTransaction = false;
 
         foreach (int index in newTxHashesIndexes.AsSpan())
         {
-            ref readonly ValueHash256 hash = ref announcementHashes is not null
-                ? ref valueHashes[start + index]
-                : ref hashes[start + index].ValueHash256;
+            ref readonly ValueHash256 hash = ref valueHashes[start + index];
             (int Size, TxType Type) txShape = TxShapeAnnouncements.TryGet(hash, out (int Size, TxType Type) announcedShape)
                 ? announcedShape
                 : (sizes[index], (TxType)types[index]);
@@ -231,7 +221,7 @@ public class Eth68ProtocolHandler(ISession session,
 
     private void HandleMessagesPage(ReadOnlySpan<ValueHash256> txHashes)
     {
-        AnnouncementHashes? hashesWithShape = null;
+        ArrayPoolList<ValueHash256>? hashesWithShape = null;
         ArrayPoolList<int>? sizes = null;
         ArrayPoolList<byte>? types = null;
         ArrayPoolList<ValueHash256>? hashesWithoutShape = null;
@@ -243,11 +233,11 @@ public class Eth68ProtocolHandler(ISession session,
                 ValueHash256 txHash = txHashes[i];
                 if (TxShapeAnnouncements.TryGet(txHash, out (int Size, TxType Type) txShape))
                 {
-                    hashesWithShape ??= new AnnouncementHashes(txHashes.Length);
+                    hashesWithShape ??= new ArrayPoolList<ValueHash256>(txHashes.Length);
                     sizes ??= new ArrayPoolList<int>(txHashes.Length);
                     types ??= new ArrayPoolList<byte>(txHashes.Length);
 
-                    hashesWithShape.Values.Add(txHash);
+                    hashesWithShape.Add(txHash);
                     sizes.Add(txShape.Size);
                     types.Add((byte)txShape.Type);
                 }
@@ -304,20 +294,17 @@ public class Eth68ProtocolHandler(ISession session,
     }
 
     private ArrayPoolListRef<int> AddMarkUnknownHashes(
-        IOwnedReadOnlyList<Hash256> hashes,
+        IOwnedReadOnlyList<ValueHash256> hashes,
         int start,
         ReadOnlySpan<int> sizes,
         ReadOnlySpan<byte> types,
         bool registerForRetry)
     {
         ArrayPoolListRef<int> discoveredTxHashesAndSizes = new(sizes.Length);
-        AnnouncementHashes? announcementHashes = hashes as AnnouncementHashes;
-        ReadOnlySpan<ValueHash256> valueHashes = announcementHashes is null ? default : announcementHashes.Values.AsSpan();
+        ReadOnlySpan<ValueHash256> valueHashes = hashes.AsSpan();
         for (int i = 0; i < sizes.Length; i++)
         {
-            ref readonly ValueHash256 hash = ref announcementHashes is not null
-                ? ref valueHashes[start + i]
-                : ref hashes[start + i].ValueHash256;
+            ref readonly ValueHash256 hash = ref valueHashes[start + i];
             bool isKnown = _txPool.IsKnown(in hash);
             if (!isKnown)
             {
@@ -365,7 +352,7 @@ public class Eth68ProtocolHandler(ISession session,
             SendMessage(
                 new ArrayPoolList<byte>(1) { (byte)tx.Type },
                 new ArrayPoolList<int>(1) { tx.GetLength() },
-                new ArrayPoolList<Hash256>(1) { tx.Hash }
+                new ArrayPoolList<ValueHash256>(1) { tx.Hash!.ValueHash256 }
             );
         }
     }
@@ -380,7 +367,7 @@ public class Eth68ProtocolHandler(ISession session,
 
         ArrayPoolList<byte> types = new(NewPooledTransactionHashesMessage68.MaxCount);
         ArrayPoolList<int> sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
-        ArrayPoolList<Hash256> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
+        ArrayPoolList<ValueHash256> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
 
         foreach (Transaction tx in txs)
         {
@@ -396,7 +383,7 @@ public class Eth68ProtocolHandler(ISession session,
             {
                 types.Add((byte)tx.Type);
                 sizes.Add(tx.GetLength());
-                hashes.Add(tx.Hash);
+                hashes.Add(tx.Hash.ValueHash256);
                 TxPool.Metrics.PendingTransactionsHashesSent++;
             }
         }
@@ -413,7 +400,7 @@ public class Eth68ProtocolHandler(ISession session,
         }
     }
 
-    private void SendMessage(IOwnedReadOnlyList<byte> types, IOwnedReadOnlyList<int> sizes, IOwnedReadOnlyList<Hash256> hashes)
+    private void SendMessage(IOwnedReadOnlyList<byte> types, IOwnedReadOnlyList<int> sizes, IOwnedReadOnlyList<ValueHash256> hashes)
     {
         NewPooledTransactionHashesMessage68 message = new(types, sizes, hashes);
         Send(message);

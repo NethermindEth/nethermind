@@ -109,7 +109,7 @@ public class Eth68ProtocolHandlerTests
     {
         _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(canGossipTransactions);
 
-        GenerateLists(txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes);
+        GenerateLists(txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<ValueHash256> hashes);
 
         using NewPooledTransactionHashesMessage68 msg = new(types, sizes, hashes);
 
@@ -125,7 +125,7 @@ public class Eth68ProtocolHandlerTests
     [Test]
     public void Should_throw_when_sizes_do_not_match([Values] bool removeSize)
     {
-        GenerateLists(4, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes);
+        GenerateLists(4, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<ValueHash256> hashes);
 
         if (removeSize)
         {
@@ -147,7 +147,7 @@ public class Eth68ProtocolHandlerTests
     [Test, NonParallelizable]
     public void Should_disconnect_if_tx_size_is_wrong()
     {
-        GenerateTxLists(4, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes, out ArrayPoolList<Transaction> txs);
+        GenerateTxLists(4, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<ValueHash256> hashes, out ArrayPoolList<Transaction> txs);
         sizes[0] += 10;
         using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
         using PooledTransactionsMessage txsMsg = new(1111, new(txs));
@@ -175,7 +175,7 @@ public class Eth68ProtocolHandlerTests
         using NewPooledTransactionHashesMessage68 hashesMsg = new(
             new ArrayPoolList<byte>(1) { (byte)tx.Type },
             new ArrayPoolList<int>(1) { tx.GetLength() },
-            new ArrayPoolList<Hash256>(1) { tx.Hash! });
+            new ArrayPoolList<ValueHash256>(1) { tx.Hash! });
         using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { tx }));
 
         HandleIncomingStatusMessage();
@@ -200,7 +200,7 @@ public class Eth68ProtocolHandlerTests
         using NewPooledTransactionHashesMessage68 hashesMsg = new(
             new ArrayPoolList<byte>(1) { (byte)tx.Type },
             new ArrayPoolList<int>(1) { gethSizeEstimate },
-            new ArrayPoolList<Hash256>(1) { tx.Hash! });
+            new ArrayPoolList<ValueHash256>(1) { tx.Hash! });
         using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { tx }));
 
         HandleIncomingStatusMessage();
@@ -219,7 +219,7 @@ public class Eth68ProtocolHandlerTests
         using NewPooledTransactionHashesMessage68 hashesMsg = new(
             new ArrayPoolList<byte>(1) { (byte)tx.Type },
             new ArrayPoolList<int>(1) { tx.GetLength() + sizeDifference },
-            new ArrayPoolList<Hash256>(1) { tx.Hash! });
+            new ArrayPoolList<ValueHash256>(1) { tx.Hash! });
         using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { tx }));
 
         HandleIncomingStatusMessage();
@@ -235,7 +235,7 @@ public class Eth68ProtocolHandlerTests
     [Test]
     public void Should_disconnect_if_tx_type_is_wrong()
     {
-        GenerateTxLists(4, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes, out ArrayPoolList<Transaction> txs);
+        GenerateTxLists(4, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<ValueHash256> hashes, out ArrayPoolList<Transaction> txs);
         types[0]++;
         using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
         using PooledTransactionsMessage txsMsg = new(1111, new(txs));
@@ -255,7 +255,7 @@ public class Eth68ProtocolHandlerTests
         using NewPooledTransactionHashesMessage68 hashesMsg = new(
             new ArrayPoolList<byte>(1) { (byte)sparseTx.Type },
             new ArrayPoolList<int>(1) { sparseTx.GetLength() },
-            new ArrayPoolList<Hash256>(1) { sparseTx.Hash! });
+            new ArrayPoolList<ValueHash256>(1) { sparseTx.Hash! });
         using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { sparseTx }));
 
         HandleIncomingStatusMessage();
@@ -279,7 +279,7 @@ public class Eth68ProtocolHandlerTests
         using NewPooledTransactionHashesMessage68 hashesMsg = new(
             new ArrayPoolList<byte>(1) { (byte)TxType.EIP1559 },
             new ArrayPoolList<int>(1) { tx.GetLength() },
-            new ArrayPoolList<Hash256>(1) { tx.Hash });
+            new ArrayPoolList<ValueHash256>(1) { tx.Hash });
         using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { tx }));
 
         HandleIncomingStatusMessage();
@@ -299,7 +299,7 @@ public class Eth68ProtocolHandlerTests
             .WithHash(TestItem.KeccakA).TestObject;
 
         using NewPooledTransactionHashesMessage68 msg = new(new ArrayPoolList<byte>(1) { (byte)tx.Type },
-            new ArrayPoolList<int>(1) { tx.GetLength() }, new ArrayPoolList<Hash256>(1) { tx.Hash });
+            new ArrayPoolList<int>(1) { tx.GetLength() }, new ArrayPoolList<ValueHash256>(1) { tx.Hash });
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
@@ -337,7 +337,7 @@ public class Eth68ProtocolHandlerTests
             using NewPooledTransactionHashesMessage68 message = new(
                 new ArrayPoolList<byte>(1) { (byte)tx.Type },
                 new ArrayPoolList<int>(1) { tx.GetLength() },
-                new ArrayPoolList<Hash256>(1) { tx.Hash! });
+                new ArrayPoolList<ValueHash256>(1) { tx.Hash! });
             HandleZeroMessage(message, Eth68MessageCode.NewPooledTransactionHashes);
         }
         else
@@ -577,7 +577,7 @@ public class Eth68ProtocolHandlerTests
 
         using ArrayPoolList<byte> types = new(numberOfTransactions);
         using ArrayPoolList<int> sizes = new(numberOfTransactions);
-        using ArrayPoolList<Hash256> hashes = new(numberOfTransactions);
+        using ArrayPoolList<ValueHash256> hashes = new(numberOfTransactions);
 
         for (int i = 0; i < numberOfTransactions; i++)
         {
@@ -599,7 +599,7 @@ public class Eth68ProtocolHandlerTests
         const int numberOfTransactions = 3;
         using ArrayPoolList<byte> types = new(numberOfTransactions);
         using ArrayPoolList<int> sizes = new(numberOfTransactions);
-        using ArrayPoolList<Hash256> hashes = new(numberOfTransactions);
+        using ArrayPoolList<ValueHash256> hashes = new(numberOfTransactions);
         ValueHash256[] txHashes = new ValueHash256[numberOfTransactions];
 
         for (int i = 0; i < numberOfTransactions; i++)
@@ -631,7 +631,7 @@ public class Eth68ProtocolHandlerTests
         const int numberOfTransactions = 3;
         using ArrayPoolList<byte> types = new(numberOfTransactions);
         using ArrayPoolList<int> sizes = new(numberOfTransactions);
-        using ArrayPoolList<Hash256> hashes = new(numberOfTransactions);
+        using ArrayPoolList<ValueHash256> hashes = new(numberOfTransactions);
         ValueHash256[] txHashes = new ValueHash256[numberOfTransactions];
 
         for (int i = 0; i < numberOfTransactions; i++)
@@ -707,7 +707,7 @@ public class Eth68ProtocolHandlerTests
     {
         using ArrayPoolList<byte> types = new(3) { 0, 0, 0 };
         using ArrayPoolList<int> sizes = new(3) { 200_000, 200_000, 200_000 };
-        using ArrayPoolList<Hash256> hashes = new(3)
+        using ArrayPoolList<ValueHash256> hashes = new(3)
         {
             TestItem.KeccakA,
             TestItem.KeccakB,
@@ -735,7 +735,7 @@ public class Eth68ProtocolHandlerTests
 
         using ArrayPoolList<byte> types = new(transactionCount);
         using ArrayPoolList<int> sizes = new(transactionCount);
-        using ArrayPoolList<Hash256> hashes = new(transactionCount);
+        using ArrayPoolList<ValueHash256> hashes = new(transactionCount);
 
         for (int i = 0; i < transactionCount; i++)
         {
@@ -757,7 +757,7 @@ public class Eth68ProtocolHandlerTests
     {
         using ArrayPoolList<byte> types = new(3) { (byte)TxType.EIP1559, (byte)TxType.EIP1559, (byte)TxType.EIP1559 };
         using ArrayPoolList<int> sizes = new(3) { 50_000, 200_000, 50_000 };
-        using ArrayPoolList<Hash256> hashes = new(3) { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
+        using ArrayPoolList<ValueHash256> hashes = new(3) { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
         using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
 
         HandleIncomingStatusMessage();
@@ -817,7 +817,7 @@ public class Eth68ProtocolHandlerTests
         using NewPooledTransactionHashesMessage68 hashesMsg = new(
             new ArrayPoolList<byte>(1) { (byte)TxType.EIP1559 },
             new ArrayPoolList<int>(1) { 100 },
-            new ArrayPoolList<Hash256>(1) { TestItem.KeccakA });
+            new ArrayPoolList<ValueHash256>(1) { TestItem.KeccakA });
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
@@ -833,7 +833,7 @@ public class Eth68ProtocolHandlerTests
         using NewPooledTransactionHashesMessage68 message = new(
             new ArrayPoolList<byte>(2) { (byte)TxType.EIP1559, (byte)TxType.EIP1559 },
             new ArrayPoolList<int>(2) { 100, 100 },
-            new ArrayPoolList<Hash256>(2) { TestItem.KeccakA, TestItem.KeccakB });
+            new ArrayPoolList<ValueHash256>(2) { TestItem.KeccakA, TestItem.KeccakB });
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(message, Eth68MessageCode.NewPooledTransactionHashes);
@@ -851,7 +851,7 @@ public class Eth68ProtocolHandlerTests
         using NewPooledTransactionHashesMessage68 hashesMsg = new(
             new ArrayPoolList<byte>(1) { type },
             new ArrayPoolList<int>(1) { size },
-            new ArrayPoolList<Hash256>(1) { TestItem.KeccakA });
+            new ArrayPoolList<ValueHash256>(1) { TestItem.KeccakA });
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
@@ -874,7 +874,7 @@ public class Eth68ProtocolHandlerTests
         using NewPooledTransactionHashesMessage68 hashesMsg = new(
             new ArrayPoolList<byte>(1) { (byte)TxType.Blob },
             new ArrayPoolList<int>(1) { tx.GetLength() },
-            new ArrayPoolList<Hash256>(1) { tx.Hash });
+            new ArrayPoolList<ValueHash256>(1) { tx.Hash });
         using PooledTransactionsMessage txsMsg = new(1111, new(new ArrayPoolList<Transaction>(1) { tx }));
 
         HandleIncomingStatusMessage();
@@ -918,7 +918,7 @@ public class Eth68ProtocolHandlerTests
             using NewPooledTransactionHashesMessage68 message = new(
                 new ArrayPoolList<byte>(1) { (byte)TxType.EIP1559 },
                 new ArrayPoolList<int>(1) { size },
-                new ArrayPoolList<Hash256>(1) { hash });
+                new ArrayPoolList<ValueHash256>(1) { hash });
             HandleZeroMessage(message, Eth68MessageCode.NewPooledTransactionHashes);
         }
     }
@@ -1003,13 +1003,13 @@ public class Eth68ProtocolHandlerTests
             Substitute.For<ISpecProvider>(),
             _txGossipPolicy);
 
-    private void GenerateLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes)
+    private void GenerateLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<ValueHash256> hashes)
     {
         GenerateTxLists(txCount, out types, out sizes, out hashes, out ArrayPoolList<Transaction> txs);
         txs.Dispose();
     }
 
-    private void GenerateTxLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes, out ArrayPoolList<Transaction> txs)
+    private void GenerateTxLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<ValueHash256> hashes, out ArrayPoolList<Transaction> txs)
     {
         TxDecoder txDecoder = TxDecoder.Instance;
         types = new(txCount);
