@@ -21,13 +21,16 @@ public class BeaconBootnodesTests
     [Test]
     public void ForChainId_fails_loudly_for_an_unsupported_chain_id()
     {
+        // A synthetic id, not a real network: naming one here makes the test fail the day we model it.
+        const ulong unmodelledChainId = 0xDEADBEEF;
+
         UnsupportedBeaconNetworkException ex = Assert.Throws<UnsupportedBeaconNetworkException>(
-            () => BeaconBootnodes.ForChainId(BlockchainIds.Sepolia))!;
+            () => BeaconBootnodes.ForChainId(unmodelledChainId))!;
 
         Assert.Multiple(() =>
         {
-            Assert.That(ex.ChainId, Is.EqualTo(BlockchainIds.Sepolia));
-            Assert.That(ex.Message, Does.Contain(BlockchainIds.Sepolia.ToString()));
+            Assert.That(ex.ChainId, Is.EqualTo(unmodelledChainId));
+            Assert.That(ex.Message, Does.Contain(unmodelledChainId.ToString()));
         });
     }
 }
