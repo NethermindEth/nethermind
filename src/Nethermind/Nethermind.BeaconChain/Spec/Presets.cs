@@ -113,10 +113,31 @@ public static class Presets
     public const byte PayloadBuilderVersion = 0;
     /// <summary><c>BUILDER_INDEX_SELF_BUILD</c>: the sentinel builder index used by self-built (non-ePBS-market) payloads.</summary>
     public const ulong BuilderIndexSelfBuild = ulong.MaxValue;
+    /// <summary><c>BUILDER_INDEX_FLAG</c> (<c>Uint64(2**40)</c>): marks a withdrawal's <c>validator_index</c> as a builder index.</summary>
+    public const ulong BuilderIndexFlag = 1UL << 40;
+    /// <summary><c>MAX_BUILDERS_PER_WITHDRAWALS_SWEEP</c> (<c>2**14</c>).</summary>
+    public const int MaxBuildersPerWithdrawalsSweep = 16_384;
 
     // Gloas — time parameters
     /// <summary><c>MIN_BUILDER_WITHDRAWABILITY_DELAY</c>, in epochs.</summary>
     public const ulong MinBuilderWithdrawabilityDelay = 64;
+
+    // Operation list bounds enforced at runtime rather than by the SSZ type (progressive lists,
+    // unlike the pre-Gloas bounded lists they replace, carry no compile-time length limit).
+    public const int MaxProposerSlashings = 16;
+    public const int MaxAttesterSlashingsElectra = 1;
+    public const int MaxAttestationsElectra = 8;
+    public const int MaxVoluntaryExits = 16;
+    public const int MaxBlsToExecutionChanges = 16;
+    /// <summary><c>MAX_PAYLOAD_ATTESTATIONS</c> (specs/gloas/beacon-chain.md "Max operations per block").</summary>
+    public const int MaxPayloadAttestations = 4;
+    public const int MaxDepositRequestsPerPayload = 8_192;
+    public const int MaxWithdrawalRequestsPerPayload = 16;
+    public const int MaxConsolidationRequestsPerPayload = 2;
+    /// <summary><c>MAX_BUILDER_DEPOSIT_REQUESTS_PER_PAYLOAD</c> (specs/gloas/beacon-chain.md "Execution").</summary>
+    public const int MaxBuilderDepositRequestsPerPayload = 64;
+    /// <summary><c>MAX_BUILDER_EXIT_REQUESTS_PER_PAYLOAD</c> (specs/gloas/beacon-chain.md "Execution").</summary>
+    public const int MaxBuilderExitRequestsPerPayload = 16;
 
     // Config — validator cycle
     public const ulong EjectionBalance = 16_000_000_000;
