@@ -7,7 +7,7 @@ namespace Nethermind.BeaconChain.Api.Common;
 
 /// <summary>
 /// The client string the Beacon API's <c>node/version</c> and <c>node/identity</c> endpoints must
-/// report — the same one the libp2p Identify protocol advertises, so a caller sees one client
+/// report - the same one the libp2p Identify protocol advertises, so a caller sees one client
 /// identity rather than two that could drift apart.
 /// </summary>
 /// <remarks>
@@ -19,7 +19,7 @@ namespace Nethermind.BeaconChain.Api.Common;
 /// <c>ClientIdentityTests.AgentVersion_matches_the_literal_BeaconP2P_builds</c> pins the two
 /// call sites' output equal so a future edit to either format string fails the build instead of
 /// silently diverging. The orchestrator should prefer exposing a
-/// <c>BeaconP2P.ClientAgentVersion</c> property instead — see the report for the exact diff.
+/// <c>BeaconP2P.ClientAgentVersion</c> property instead - see the report for the exact diff.
 /// </remarks>
 internal static class ClientIdentity
 {
