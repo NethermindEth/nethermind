@@ -33,6 +33,8 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
     /// <summary>Bytes retained for payloads; the slot tables are fixed by the configured budgets and not counted.</summary>
     internal long MemorySize => _account.MemorySize + _code.MemorySize + _storage.MemorySize;
 
+    internal long EntryCount => _account.EntryCount + _code.EntryCount + _storage.EntryCount;
+
     private static bool IsStorage<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath> =>
         path.BitDepth == 4 && path.GetByte(0) == 0xF0
         || path.BitDepth >= 8 && path.GetByte(0) == Eip8297KeyDerivation.StorageZone;
@@ -66,8 +68,11 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
 
     private static void Add<TPath, TStored>(Partition<TStored> partition, in ValueHash256 groupHash, TPath path, RefCountingMemory payload)
         where TPath : struct, IPbtNodePath<TPath>
-        where TStored : struct, IPbtNodePath<TStored> =>
+        where TStored : struct, IPbtNodePath<TStored>
+    {
         Metrics.PbtTrieCacheMemory.AddBy(partition.Label, partition.Add(groupHash, path, payload));
+        Metrics.PbtTrieCacheEntries[partition.Label] = partition.EntryCount;
+    }
 
     /// <summary>Releases retained groups without invalidating caller-owned leases.</summary>
     public void Clear()
@@ -77,8 +82,11 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
         Clear(_storage);
     }
 
-    private static void Clear<TStored>(Partition<TStored> partition) where TStored : struct, IPbtNodePath<TStored> =>
+    private static void Clear<TStored>(Partition<TStored> partition) where TStored : struct, IPbtNodePath<TStored>
+    {
         Metrics.PbtTrieCacheMemory.AddBy(partition.Label, partition.Clear());
+        Metrics.PbtTrieCacheEntries[partition.Label] = partition.EntryCount;
+    }
 
     /// <summary>Stops admission and releases all cache-owned payload references.</summary>
     public void Dispose()
@@ -131,6 +139,16 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
             }
         }
 
+        internal long EntryCount
+        {
+            get
+            {
+                long total = 0;
+                foreach (Shard<TStored> shard in _shards) total += Volatile.Read(ref shard.EntryCount);
+                return total;
+            }
+        }
+
         private static int ShardIndex(int hash) => (int)((uint)hash >> 24);
 
         // The top hash byte selects the shard, so the set is drawn from the remaining bits.
@@ -170,6 +188,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
     {
         internal readonly Lock Sync = new();
         internal long MemorySize;
+        internal long EntryCount;
         private readonly Entry<TStored>[] _entries = new Entry<TStored>[setCount * WaysPerSet];
         private readonly byte[] _hands = new byte[setCount];
 
@@ -232,6 +251,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
             admitted.Referenced = false;
             Volatile.Write(ref admitted.Version, admitted.Version + 1);
             MemorySize += size;
+            EntryCount++;
             return delta + size;
         }
 
@@ -254,6 +274,7 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IDisposable
             Volatile.Write(ref entry.Version, entry.Version + 1);
             long size = EntrySize(payload);
             MemorySize -= size;
+            EntryCount--;
             ((IDisposable)payload).Dispose();
             return -size;
         }

@@ -17,6 +17,11 @@ public static class Metrics
     [KeyIsLabel("partition")]
     public static ConcurrentDictionary<string, long> PbtTrieCacheMemory { get; } = NewTrieCacheMetric();
 
+    [GaugeMetric]
+    [Description("Node groups retained in the PBT trie cache by partition")]
+    [KeyIsLabel("partition")]
+    public static ConcurrentDictionary<string, long> PbtTrieCacheEntries { get; } = NewTrieCacheMetric();
+
     [CounterMetric]
     [Description("PBT trie-node cache lookups that returned a cached node group, by partition")]
     [KeyIsLabel("partition")]

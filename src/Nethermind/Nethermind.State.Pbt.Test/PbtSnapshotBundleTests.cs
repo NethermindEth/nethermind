@@ -640,12 +640,14 @@ public class PbtSnapshotBundleTests
         Bytes.FromHexString(hex).CopyTo(bytes, 0);
         PbtStorageNodePath path = new(bytes, depth);
         long[] initialMemory = new long[3];
+        long[] initialEntries = new long[3];
         long[] initialHits = new long[3];
         long[] initialMisses = new long[3];
         for (int index = 0; index < CachePartitions.Length; index++)
         {
             string label = CachePartitions[index];
             initialMemory[index] = Metrics.PbtTrieCacheMemory[label];
+            initialEntries[index] = Metrics.PbtTrieCacheEntries[label];
             initialHits[index] = Metrics.PbtTrieCacheHits[label];
             initialMisses[index] = Metrics.PbtTrieCacheMisses[label];
         }
@@ -659,27 +661,30 @@ public class PbtSnapshotBundleTests
             Assert.That(cache.TryGet(new ValueHash256(Value(1)), path, out _), Is.False);
             long retainedSize = cache.MemorySize;
             Assert.That(retainedSize, Is.GreaterThan(0));
-            AssertMetrics(retainedSize, 1, 2);
+            AssertMetrics(retainedSize, 1, 1, 2);
             cache.Clear();
-            AssertMetrics(0, 1, 2);
+            AssertMetrics(0, 0, 1, 2);
             cache.Add(default, path, source);
-            AssertMetrics(retainedSize, 1, 2);
+            AssertMetrics(retainedSize, 1, 1, 2);
             cache.Dispose();
             cache.Add(default, path, source);
             Assert.That(cache.TryGet(default, path, out _), Is.False);
-            AssertMetrics(0, 1, 3);
+            AssertMetrics(0, 0, 1, 3);
             Assert.That(retained!.GetSpan().ToArray(), Is.EqualTo(source.GetSpan().ToArray()));
         }
 
-        void AssertMetrics(long memory, long hits, long misses)
+        void AssertMetrics(long memory, long entries, long hits, long misses)
         {
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(cache.MemorySize, Is.EqualTo(memory));
+                Assert.That(cache.EntryCount, Is.EqualTo(entries));
                 for (int index = 0; index < CachePartitions.Length; index++)
                 {
                     string label = CachePartitions[index];
                     Assert.That(Metrics.PbtTrieCacheMemory[label] - initialMemory[index], Is.EqualTo(label == partition ? memory : 0), label);
+                    // The entry gauge is set to the partition total, so an untouched partition keeps whatever an earlier cache left.
+                    Assert.That(Metrics.PbtTrieCacheEntries[label], Is.EqualTo(label == partition ? entries : initialEntries[index]), label);
                     Assert.That(Metrics.PbtTrieCacheHits[label] - initialHits[index], Is.EqualTo(label == partition ? hits : 0), label);
                     Assert.That(Metrics.PbtTrieCacheMisses[label] - initialMisses[index], Is.EqualTo(label == partition ? misses : 0), label);
                 }
@@ -775,10 +780,16 @@ public class PbtSnapshotBundleTests
                     totalMemory += memory;
                 }
                 Assert.That(cache.MemorySize, Is.EqualTo(totalMemory));
+                Assert.That(cache.EntryCount, Is.EqualTo(CachePartitions.Length));
+                foreach (string label in CachePartitions) Assert.That(Metrics.PbtTrieCacheEntries[label], Is.EqualTo(1), label);
             }
             cache.Dispose();
+            Assert.That(cache.EntryCount, Is.Zero);
             for (int index = 0; index < CachePartitions.Length; index++)
+            {
                 Assert.That(Metrics.PbtTrieCacheMemory[CachePartitions[index]], Is.EqualTo(initialMemory[index]));
+                Assert.That(Metrics.PbtTrieCacheEntries[CachePartitions[index]], Is.Zero);
+            }
         }
     }
 
