@@ -76,6 +76,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private ulong _memoryEstimate;
         private long _headersEstimate;
+        private int _retainedResponseCount;
 
         protected virtual BlockHeader? LowestInsertedBlockHeader
         {
@@ -119,7 +120,8 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 count += enumerator.Current.Value.Response?.Count ?? 0;
             }
-            foreach (HeadersSyncBatch batch in _pending) count += batch.Response?.Count ?? 0;
+            if (Volatile.Read(ref _retainedResponseCount) != 0)
+                foreach (HeadersSyncBatch batch in _pending) count += batch.Response?.Count ?? 0;
 
             return count;
         }
@@ -149,7 +151,8 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 amount += (ulong)enumerator.Current.Value?.ResponseSizeEstimate;
             }
-            foreach (HeadersSyncBatch batch in _pending) amount += (ulong)batch.ResponseSizeEstimate;
+            if (Volatile.Read(ref _retainedResponseCount) != 0)
+                foreach (HeadersSyncBatch batch in _pending) amount += (ulong)batch.ResponseSizeEstimate;
 
             return amount;
         }
@@ -306,8 +309,7 @@ namespace Nethermind.Synchronization.FastBlocks
             HeadersSyncProgressLoggerReport.CurrentQueued = 0;
             HeadersSyncProgressLoggerReport.MarkEnd();
             ClearDependencies(); // there may be some dependencies from wrong branches
-            _pending.DisposeItems();
-            _pending.Clear(); // there may be pending wrong branches
+            ClearPending();
             _sent.DisposeItems();
             _sent.Clear(); // we my still be waiting for some bad branches
         }
@@ -380,11 +382,12 @@ namespace Nethermind.Synchronization.FastBlocks
                 } while (_pending.IsEmpty && !ShouldBuildANewBatch() && HasDependencyToProcess);
 
                 HeadersSyncBatch? batch;
-                while (_pending.TryDequeue(out batch))
+                int retainedBatchesProcessed = 0;
+                int maxRetainedBatchesToProcess = MemoryInQueue < _fastHeadersMemoryBudget / 2 ? 2 : 4;
+                while (TryDequeuePending(out batch))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Dequeue batch {batch}");
                     batch!.MarkRetry();
-                    MarkDirty();
                     if (batch.Response is null) break;
                     using (batch)
                     {
@@ -409,6 +412,8 @@ namespace Nethermind.Synchronization.FastBlocks
                             return Task.FromResult<HeadersSyncBatch?>(null);
                         }
                     }
+                    if (++retainedBatchesProcessed >= maxRetainedBatchesToProcess)
+                        return Task.FromResult<HeadersSyncBatch?>(null);
                 }
                 if (batch is null && ShouldBuildANewBatch())
                 {
@@ -426,8 +431,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 {
                     if (!_blockTree.CanAcceptNewBlocks || batch.Response is not null)
                     {
-                        _pending.Enqueue(batch);
-                        MarkDirty();
+                        EnqueuePending(batch);
                         return Task.FromResult<HeadersSyncBatch?>(null);
                     }
                     _sent.Add(batch);
@@ -464,7 +468,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (batch is null)
                 {
                     // Return new pending batch first
-                    if (_pending.TryDequeue(out batch)) return batch;
+                    if (TryDequeuePending(out batch)) return batch;
 
                     // If it can process new batch, do it otherwise, this loop will keep filling up the memory
                     // and a lot of the CPU cycle is spent on calculating memory.
@@ -644,15 +648,40 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void RetainResponse(HeadersSyncBatch batch)
         {
-            _pending.Enqueue(new HeadersSyncBatch
+            HeadersSyncBatch retained = new()
             {
                 StartNumber = batch.StartNumber,
                 RequestSize = batch.RequestSize,
                 ResponseSourcePeer = batch.ResponseSourcePeer,
                 Response = batch.Response
-            });
+            };
             batch.Response = null;
-            MarkDirty();
+            EnqueuePending(retained);
+        }
+
+        private void EnqueuePending(HeadersSyncBatch batch)
+        {
+            bool hasResponse = batch.Response is not null;
+            // Publish the count before the response so queue accounting cannot skip a retained buffer.
+            if (hasResponse) Interlocked.Increment(ref _retainedResponseCount);
+            _pending.Enqueue(batch);
+            if (hasResponse) MarkDirty();
+        }
+
+        private bool TryDequeuePending(out HeadersSyncBatch? batch)
+        {
+            if (!_pending.TryDequeue(out batch)) return false;
+            if (batch.Response is not null)
+            {
+                Interlocked.Decrement(ref _retainedResponseCount);
+                MarkDirty();
+            }
+            return true;
+        }
+
+        private void ClearPending()
+        {
+            while (TryDequeuePending(out HeadersSyncBatch? batch)) batch!.Dispose();
         }
 
         private void EnqueueBatch(HeadersSyncBatch batch, bool skipPersisted = false)
@@ -660,7 +689,7 @@ namespace Nethermind.Synchronization.FastBlocks
             HeadersSyncBatch? left = skipPersisted ? batch : ProcessPersistedPortion(batch);
             if (left is not null)
             {
-                _pending.Enqueue(batch);
+                EnqueuePending(batch);
             }
         }
 
@@ -996,7 +1025,7 @@ namespace Nethermind.Synchronization.FastBlocks
             if (!_disposed)
             {
                 _sent.DisposeItems();
-                _pending.DisposeItems();
+                ClearPending();
                 foreach (KeyValuePair<ulong, HeadersSyncBatch> kvp in _dependencies)
                 {
                     kvp.Value.Dispose();

@@ -1339,6 +1339,76 @@ public class FastHeadersSyncTests
     }
 
     [Test]
+    public async Task Retained_response_replay_is_bounded([Values] bool highMemoryPressure)
+    {
+        BlockHeader[] headers = new BlockHeader[15];
+        headers[0] = Build.A.BlockHeader.WithNumber(0).WithDifficulty(1).TestObject;
+        for (int i = 1; i < headers.Length; i++)
+            headers[i] = Build.A.BlockHeader.WithParent(headers[i - 1]).WithDifficulty(1).TestObject;
+        ISyncPeerPool peers = Substitute.For<ISyncPeerPool>();
+        peers.EstimateRequestLimit(RequestType.Headers, Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.Headers, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<int?>(2));
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new SyncConfig
+            {
+                FastSync = true,
+                PivotNumber = 14,
+                PivotHash = headers[14].Hash!.ToString(),
+                PivotTotalDifficulty = "1000",
+                FastHeadersMemoryBudget = highMemoryPressure ? 1UL : 1_000_000UL
+            }))
+            .AddSingleton<ISyncPeerPool>(peers)
+            .AddSingleton<ISyncReport>(new NullSyncReport())
+            .AddSingleton<HeadersSyncFeed>()
+            .Build();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        tree.SyncPivot = (14, headers[14].Hash!);
+        HeadersSyncFeed feed = container.Resolve<HeadersSyncFeed>();
+        feed.InitializeFeed();
+        HeadersSyncBatch[] batches = new HeadersSyncBatch[6];
+        for (int i = 0; i < batches.Length; i++) batches[i] = (await feed.PrepareRequest())!;
+
+        // Admission tests cover the transfer; seed several retained ranges to isolate the replay budget.
+        Action<HeadersSyncBatch> retain = GetFeedMethod<Action<HeadersSyncBatch>>(feed, "RetainResponse");
+        Func<long> queuedHeaders = GetFeedMethod<Func<long>>(feed, "CalculateHeadersInQueue");
+        foreach (HeadersSyncBatch batch in batches)
+        {
+            ReadOnlySpan<BlockHeader?> response = headers.AsSpan((int)batch.StartNumber, batch.RequestSize);
+            batch.Response = response.ToPooledList();
+            retain(batch);
+        }
+        Assert.That(queuedHeaders(), Is.EqualTo(12));
+        Assert.That(await feed.PrepareRequest(), Is.Null);
+        int replayLimit = highMemoryPressure ? 4 : 2;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.LowestInsertedHeader!.Number, Is.EqualTo(15 - 2 * replayLimit));
+            Assert.That(queuedHeaders(), Is.EqualTo(12 - 2 * replayLimit));
+        }
+
+        HeadersSyncBatch? nextRequest = null;
+        for (int attempt = 0; attempt < 3 && tree.LowestInsertedHeader!.Number > 3; attempt++)
+        {
+            nextRequest = await feed.PrepareRequest();
+            if (nextRequest is not null)
+                Assert.That(nextRequest.EndNumber, Is.LessThan(3), "retained ranges must not be downloaded again");
+        }
+        nextRequest ??= await feed.PrepareRequest();
+        Assert.That(nextRequest, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.LowestInsertedHeader!.Number, Is.EqualTo(3));
+            Assert.That(queuedHeaders(), Is.Zero);
+            Assert.That(nextRequest!.EndNumber, Is.EqualTo(2));
+            for (ulong number = 3; number <= 14; number++)
+                Assert.That(tree.FindHeader(number)?.Hash, Is.EqualTo(headers[number].Hash));
+        }
+    }
+
+    private static T GetFeedMethod<T>(HeadersSyncFeed feed, string name) where T : Delegate =>
+        typeof(HeadersSyncFeed).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance)!.CreateDelegate<T>(feed);
+
+    [Test]
     public async Task Retries_header_insertion_when_the_tree_is_temporarily_unavailable([Values] HeaderInsertionPath path)
     {
         BlockHeader[] headers = new BlockHeader[401];
