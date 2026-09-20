@@ -368,12 +368,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             {
                 IsBlockProcessingThread = previousMainThread;
                 IsProcessingBlock = false;
+                GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Reader.Count);
             }
 
             if (_logger.IsTrace) Trace();
             FireProcessingQueueEmpty();
 
-            GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Reader.Count);
         }
 
         if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
