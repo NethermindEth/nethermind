@@ -103,6 +103,7 @@ public class ForkedStateTransitionTests
         MaxBlobsPerBlockElectra = 9,
         GloasForkEpoch = gloasForkEpoch,
         GloasForkVersion = GloasVersion,
+        Bootnodes = [],
     };
 
     private static BeaconStateFulu CreateState(int validatorCount)
