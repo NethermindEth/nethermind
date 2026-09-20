@@ -107,6 +107,12 @@ public class ColumnGossipRouterTests
             return sidecar;
         }), ColumnGossipDropReason.FailedStructure).SetName("empty commitments fails structural check");
 
+        // Cryptographically valid in every other respect, so it can only be rejected for its
+        // commitment count: mainnet allows 9 at this epoch and raises the bound only at a BPO fork.
+        yield return new TestCaseData(
+            new Func<DataColumnSidecar>(() => DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex, CurrentSlot, blobCount: 10)),
+            ColumnGossipDropReason.FailedBlobCount).SetName("more commitments than the epoch's max_blobs_per_block");
+
         yield return new TestCaseData(
             new Func<DataColumnSidecar>(() => DataColumnSidecarTestFixture.BuildValidSidecar(ColumnIndex + 1, CurrentSlot)),
             ColumnGossipDropReason.WrongSubnet).SetName("column whose subnet does not match the subscribed subnet");
