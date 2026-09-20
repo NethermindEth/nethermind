@@ -9,6 +9,7 @@ namespace Nethermind.Blockchain;
 /// <summary>Coordinates canonical-chain changes and debug maintenance within a node.</summary>
 public sealed class BlockTreeMutationLock
 {
+    private static readonly TimeSpan MutationWaitInterval = TimeSpan.FromSeconds(1);
     private readonly Lock _lock = new();
     private int _maintenanceVersion;
 
@@ -20,14 +21,16 @@ public sealed class BlockTreeMutationLock
     }
 
     /// <summary>Enters a chain mutation, refusing overlap with debug maintenance.</summary>
-    /// <remarks>Maintenance is non-reentrant and waits at most one second for an ordinary mutation. Overlapping maintenance is refused. Ordinary mutations serialize with each other.</remarks>
-    public bool TryEnter(out Scope scope, bool maintenance = false)
+    /// <remarks>Maintenance is non-reentrant and waits at most one second for an ordinary mutation. Overlapping maintenance is refused. Ordinary mutations serialize with each other and recheck maintenance once per second while waiting.</remarks>
+    public bool TryEnter(out Scope scope, bool maintenance = false) => TryEnter(out scope, maintenance, MutationWaitInterval);
+
+    internal bool TryEnter(out Scope scope, bool maintenance, TimeSpan waitInterval)
     {
         scope = default;
         if (maintenance)
         {
             int version = Volatile.Read(ref _maintenanceVersion);
-            if (_lock.IsHeldByCurrentThread || (version & 1) != 0 || !_lock.TryEnter(TimeSpan.FromSeconds(1))) return false;
+            if (_lock.IsHeldByCurrentThread || (version & 1) != 0 || !_lock.TryEnter(waitInterval)) return false;
             if (version != Volatile.Read(ref _maintenanceVersion))
             {
                 _lock.Exit();
@@ -39,7 +42,10 @@ public sealed class BlockTreeMutationLock
         {
             int version = Volatile.Read(ref _maintenanceVersion);
             if ((version & 1) != 0) return false;
-            _lock.Enter();
+            while (!_lock.TryEnter(waitInterval))
+            {
+                if (version != Volatile.Read(ref _maintenanceVersion)) return false;
+            }
             // A caller queued before maintenance must not apply its stale canonical-chain decision afterward.
             if (version != Volatile.Read(ref _maintenanceVersion))
             {

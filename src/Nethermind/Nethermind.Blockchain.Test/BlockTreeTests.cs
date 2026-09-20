@@ -41,6 +41,38 @@ namespace Nethermind.Blockchain.Test;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockTreeTests
 {
+    [Test]
+    public async Task Maintenance_waits_for_transient_ordinary_mutation([Values] bool releaseBeforeTimeout)
+    {
+        BlockTreeMutationLock mutationLock = new();
+        TaskCompletionSource<bool> completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Thread contender = new(() =>
+        {
+            try
+            {
+                bool entered = releaseBeforeTimeout
+                    ? mutationLock.TryEnter(out BlockTreeMutationLock.Scope scope, maintenance: true, System.Threading.Timeout.InfiniteTimeSpan)
+                    : mutationLock.TryEnter(out scope, maintenance: true);
+                using (scope) completed.SetResult(entered);
+            }
+            catch (Exception exception) { completed.SetException(exception); }
+        });
+        using (mutationLock.Enter())
+        {
+            contender.Start();
+            Assert.That(SpinWait.SpinUntil(() => completed.Task.IsCompleted ||
+                (contender.ThreadState & ThreadState.WaitSleepJoin) != 0, TimeSpan.FromSeconds(10)), Is.True);
+            if (releaseBeforeTimeout)
+                Assert.That(completed.Task.IsCompleted, Is.False, "transient contention must wait instead of refusing immediately");
+            else
+                Assert.That(contender.Join(TimeSpan.FromSeconds(10)), Is.True, "maintenance must have a bounded wait");
+        }
+        Assert.That(await completed.Task.WaitAsync(TimeSpan.FromSeconds(10)), Is.EqualTo(releaseBeforeTimeout));
+        Assert.That(contender.Join(TimeSpan.FromSeconds(10)), Is.True);
+        Assert.That(mutationLock.TryEnter(out BlockTreeMutationLock.Scope retry, maintenance: true), Is.True);
+        retry.Dispose();
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Lowest_served_block_follows_the_latest_push_but_never_drops_below_the_published_boundary()
     {

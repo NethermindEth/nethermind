@@ -1870,10 +1870,10 @@ namespace Nethermind.Blockchain
         /// <param name="endNumber">End level of the slice to delete</param>
         /// <param name="force">Should it force of deletion of valid blocks</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="startNumber"/> ot <paramref name="endNumber"/> do not satisfy the slice position rules</exception>
-        /// <exception cref="InvalidOperationException">Chain maintenance overlaps the deletion.</exception>
+        /// <exception cref="InvalidOperationException">Chain maintenance overlaps the deletion or the replacement head block is unavailable.</exception>
         public int DeleteChainSlice(in ulong startNumber, ulong? endNumber = null, bool force = false)
         {
-            if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation)) throw new InvalidOperationException("Another chain mutation is in progress.");
+            if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation)) throw new InvalidOperationException("Chain mutation contention or overlapping maintenance; retry the request.");
             using BlockTreeMutationLock.Scope mutationScope = mutation;
             BlockAcceptingNewBlocks();
             try
@@ -1921,7 +1921,8 @@ namespace Nethermind.Blockchain
                 Hash256? newHeadHash = chainLevelInfo.HasBlockOnMainChain
                     ? chainLevelInfo.BlockInfos[0].BlockHash
                     : Genesis?.Hash;
-                newHeadBlock = newHeadHash is null ? null : FindBlock(newHeadHash, BlockTreeLookupOptions.None, blockNumber: startNumber - 1);
+                newHeadBlock = (newHeadHash is null ? null : FindBlock(newHeadHash, BlockTreeLookupOptions.None, blockNumber: startNumber - 1))
+                    ?? throw new InvalidOperationException("The replacement head block is unavailable.");
             }
 
             using (_chainLevelInfoRepository.StartBatch())

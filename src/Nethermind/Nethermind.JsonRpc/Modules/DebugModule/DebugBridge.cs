@@ -118,17 +118,17 @@ public class DebugBridge : IDebugBridge
     {
         if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation, maintenance: true))
         {
-            if (_logger.IsWarn) _logger.Warn($"Cannot delete the chain slice from {startNumber}: another chain mutation is in progress.");
-            return ResultWrapper<int>.Fail("Another chain mutation is in progress.", ErrorCodes.ResourceUnavailable);
+            if (_logger.IsWarn) _logger.Warn($"Cannot delete the chain slice from {startNumber}: chain mutation contention or overlapping maintenance; retry the request.");
+            return ResultWrapper<int>.Fail("Chain mutation contention or overlapping maintenance; retry the request.", ErrorCodes.ResourceUnavailable);
         }
         using BlockTreeMutationLock.Scope mutationScope = mutation;
         if (!CanMutateChain()) return ResultWrapper<int>.Fail("Pause block processing and wait for it to drain before deleting chain levels.", ErrorCodes.ResourceUnavailable);
 
         if (startNumber > 0 && _blockTree.Head?.Number >= startNumber)
         {
-            BlockHeader? target = _blockTree.FindHeader(startNumber - 1, BlockTreeLookupOptions.RequireCanonical);
-            if (target is null || !HasProcessingState(target))
-                return ResultWrapper<int>.Fail("The new head has no state available for block processing.", ErrorCodes.ResourceUnavailable);
+            Block? target = _blockTree.FindBlock(startNumber - 1, BlockTreeLookupOptions.RequireCanonical);
+            if (target is null || !HasProcessingState(target.Header))
+                return ResultWrapper<int>.Fail("The new head body or state is unavailable for block processing.", ErrorCodes.ResourceUnavailable);
         }
         return ResultWrapper<int>.Success(_blockTree.DeleteChainSlice(startNumber, force: force));
     }
@@ -139,7 +139,7 @@ public class DebugBridge : IDebugBridge
     {
         if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation, maintenance: true))
         {
-            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockParameter}: another chain mutation is in progress.");
+            if (_logger.IsWarn) _logger.Warn($"Cannot rewind the head to {blockParameter}: chain mutation contention or overlapping maintenance; retry the request.");
             return false;
         }
         using BlockTreeMutationLock.Scope mutationScope = mutation;

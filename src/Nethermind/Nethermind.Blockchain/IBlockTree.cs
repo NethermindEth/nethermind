@@ -242,7 +242,7 @@ namespace Nethermind.Blockchain
 
         /// <summary>Deletes the requested chain levels and updates the head if necessary.</summary>
         /// <exception cref="ArgumentException">The range does not satisfy the slice position rules.</exception>
-        /// <exception cref="InvalidOperationException">Chain maintenance overlaps the deletion.</exception>
+        /// <exception cref="InvalidOperationException">Chain maintenance overlaps the deletion or the replacement head block is unavailable.</exception>
         int DeleteChainSlice(in ulong startNumber, ulong? endNumber = null, bool force = false);
 
         bool IsBetterThanHead(BlockHeader? header);

@@ -45,33 +45,32 @@ public class DebugBridgeTests
     public enum ProcessingState { Running, PausedExecuting, PausedQueued, PausedIdle }
 
     [Test]
-    public async Task Maintenance_waits_for_transient_ordinary_mutation([Values] bool releaseBeforeTimeout)
+    public async Task Delete_slice_refuses_missing_new_head_body([Values] bool throughRpc)
     {
-        BlockTreeMutationLock mutationLock = new();
-        TaskCompletionSource<bool> completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Thread contender = new(() =>
+        await using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        container.Resolve<IBlockProcessingPauseControl>().Pause();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        Block target = Build.A.Block.WithParent(genesis).TestObject;
+        Block head = Build.A.Block.WithParent(target).TestObject;
+        foreach (Block block in new[] { genesis, target, head }) AddToMainChain(tree, block);
+        container.Resolve<IBlockStore>().Delete(target.Number, target.Hash!);
+        Assert.That(tree.FindBlock(target.Hash!, BlockTreeLookupOptions.None), Is.Null);
+        Assert.That(container.Resolve<IWorldStateManager>().GlobalWorldState.HasRoot(target.Header), Is.True);
+
+        if (throughRpc)
+            Assert.That(container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create()
+                .debug_deleteChainSlice(2, force: true).ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+        else
+            Assert.That(() => tree.DeleteChainSlice(2, force: true), Throws.InvalidOperationException);
+
+        using (Assert.EnterMultipleScope())
         {
-            try
-            {
-                bool entered = mutationLock.TryEnter(out BlockTreeMutationLock.Scope scope, maintenance: true);
-                using (scope) completed.SetResult(entered);
-            }
-            catch (Exception exception) { completed.SetException(exception); }
-        });
-        using (mutationLock.Enter())
-        {
-            contender.Start();
-            Assert.That(SpinWait.SpinUntil(() => completed.Task.IsCompleted ||
-                (contender.ThreadState & ThreadState.WaitSleepJoin) != 0, TimeSpan.FromSeconds(10)), Is.True);
-            if (releaseBeforeTimeout)
-                Assert.That(completed.Task.IsCompleted, Is.False, "transient contention must wait instead of refusing immediately");
-            else
-                Assert.That(contender.Join(TimeSpan.FromSeconds(10)), Is.True, "maintenance must have a bounded wait");
+            Assert.That(tree.Head!.Hash, Is.EqualTo(head.Hash));
+            Assert.That(tree.FindBlock(head.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(tree.FindLevel(2), Is.Not.Null);
+            Assert.That(container.Resolve<IDbProvider>().BlockInfosDb.Get(Keccak.Zero.Bytes), Is.EqualTo(head.Hash!.Bytes.ToArray()));
         }
-        Assert.That(await completed.Task.WaitAsync(TimeSpan.FromSeconds(10)), Is.EqualTo(releaseBeforeTimeout));
-        Assert.That(contender.Join(TimeSpan.FromSeconds(10)), Is.True);
-        Assert.That(mutationLock.TryEnter(out BlockTreeMutationLock.Scope retry, maintenance: true), Is.True);
-        retry.Dispose();
     }
 
     [Test]
@@ -353,11 +352,11 @@ public class DebugBridgeTests
         byte[]? persistedHeadWhileBlocked = null;
         bool targetRetained = false;
         IAdminRpcModule admin = container.Resolve<IRpcModuleFactory<IAdminRpcModule>>().Create();
-        TaskCompletionSource<bool> resumed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<(bool Result, Exception? Failure)> resumed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Thread resumeThread = new(() =>
         {
-            try { resumed.SetResult(admin.admin_resumeBlockProcessing().Data); }
-            catch (Exception exception) { resumed.SetException(exception); }
+            try { resumed.SetResult((admin.admin_resumeBlockProcessing().Data, null)); }
+            catch (Exception exception) { resumed.SetResult((false, exception)); }
         });
         (int? Result, Exception? Failure) firstOutcome;
         try
@@ -369,8 +368,8 @@ public class DebugBridgeTests
             Assert.That(() => blockTree.DeleteChainSlice(1, force: true), Throws.InvalidOperationException,
                 "direct tree deletion must report maintenance refusal without deleting levels");
             string refusal = secondMutation == ChainMutation.DeleteSlice
-                ? "Cannot delete the chain slice from 1: another chain mutation is in progress."
-                : $"Cannot rewind the head to {(secondMutation == ChainMutation.ResetByHash ? blocks[0].Hash!.ToString() : "0")}: another chain mutation is in progress.";
+                ? "Cannot delete the chain slice from 1: chain mutation contention or overlapping maintenance; retry the request."
+                : $"Cannot rewind the head to {(secondMutation == ChainMutation.ResetByHash ? blocks[0].Hash!.ToString() : "0")}: chain mutation contention or overlapping maintenance; retry the request.";
             AssertCalls(() => logger.Received().Warn(refusal));
             await using (IContainer independent = new ContainerBuilder().AddModule(new TestNethermindModule()).Build())
             {
@@ -396,7 +395,13 @@ public class DebugBridgeTests
             releaseMutation.Set();
             firstOutcome = await firstTask;
             if ((resumeThread.ThreadState & ThreadState.Unstarted) == 0)
-                Assert.That(await resumed.Task.WaitAsync(TimeSpan.FromSeconds(10)), Is.True);
+                await resumed.Task;
+        }
+        (bool resumeResult, Exception? resumeFailure) = await resumed.Task;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resumeFailure, Is.Null);
+            Assert.That(resumeResult, Is.True);
         }
         container.Resolve<IBlockProcessingPauseControl>().Pause();
         int retryResult = MutateChain(second, blocks[0], secondMutation);

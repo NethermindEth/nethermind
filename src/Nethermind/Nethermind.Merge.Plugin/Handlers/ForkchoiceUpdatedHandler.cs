@@ -266,6 +266,8 @@ public class ForkchoiceUpdatedHandler(
             return result;
         }
 
+        if (pauseControl.IsPaused) return ForkchoiceUpdatedV1Result.Syncing;
+
         if (!mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation)) return ForkchoiceUpdatedV1Result.Syncing;
         using BlockTreeMutationLock.Scope mutationScope = mutation;
         if (pauseControl.IsPaused) return ForkchoiceUpdatedV1Result.Syncing;

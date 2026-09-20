@@ -39,18 +39,18 @@ public interface IDebugBridge
     /// <summary>Deletes chain levels from the given block number onward.</summary>
     /// <returns>The number of deleted levels, or a resource-unavailable error when maintenance is unsafe.</returns>
     ResultWrapper<int> DeleteChainSlice(ulong startNumber, bool force = false);
+    /// <inheritdoc cref="UpdateHeadBlock(BlockParameter)"/>
+    bool UpdateHeadBlock(Hash256 blockHash);
     /// <summary>Rewinds to a canonical block with state available for block processing and prunes abandoned flat-state snapshots.</summary>
     /// <remarks>
     /// Does not requeue removed transactions or clear receipt indexes, safe/finalized hashes or sync metadata.
     /// Availability checks enforce retention, not a full scan for missing trie descendants.
     /// Receipt lookups may still return removed transactions. Requires paused, drained block processing and quiescent persistence.
-    /// Returns false when another debug head reset or chain-slice deletion is in progress on the same tree.
+    /// Returns false on mutation contention or overlap with another debug head reset or chain-slice deletion.
     /// Same-payload replay remains unsupported because processed markers and cached VALID results are retained;
     /// use fresh replacement payloads.
     /// </remarks>
     /// <returns>Whether the rewind succeeded.</returns>
-    bool UpdateHeadBlock(Hash256 blockHash);
-    /// <summary>Resolves a block parameter and rewinds under the chain mutation lock.</summary>
     bool UpdateHeadBlock(BlockParameter blockParameter);
     Task<bool> MigrateReceipts(ulong from, ulong to);
     void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);

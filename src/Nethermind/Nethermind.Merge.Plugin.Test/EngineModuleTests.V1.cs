@@ -1976,8 +1976,29 @@ public partial class EngineModuleTests
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(blocks[0].BlockHash));
         }
 
-        ResultWrapper<ForkchoiceUpdatedV1Result> pausedForkchoice = await rpc.engine_forkchoiceUpdatedV1(
-            new ForkchoiceStateV1(blocks[^1].BlockHash!, Keccak.Zero, Keccak.Zero));
+        TaskCompletionSource lockHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim releaseLock = new();
+        Task holder = Task.Run(() =>
+        {
+            using BlockTreeMutationLock.Scope scope = chain.Container.Resolve<BlockTreeMutationLock>().Enter();
+            lockHeld.SetResult();
+            if (!releaseLock.Wait(TimeSpan.FromSeconds(30))) throw new TimeoutException("mutation lock was not released");
+        });
+        ResultWrapper<ForkchoiceUpdatedV1Result> pausedForkchoice;
+        Task<ResultWrapper<ForkchoiceUpdatedV1Result>>? forkchoiceTask = null;
+        try
+        {
+            await lockHeld.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            forkchoiceTask = Task.Run(() => rpc.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(blocks[^1].BlockHash!, Keccak.Zero, Keccak.Zero)));
+            pausedForkchoice = await forkchoiceTask.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            releaseLock.Set();
+            await holder;
+            if (forkchoiceTask is not null) await forkchoiceTask;
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(pausedForkchoice.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Syncing));
