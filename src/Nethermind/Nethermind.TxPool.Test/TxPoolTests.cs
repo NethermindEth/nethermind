@@ -11,6 +11,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
@@ -27,6 +28,11 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Stats;
+using Nethermind.Synchronization;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -88,6 +94,165 @@ namespace Nethermind.TxPool.Test
             Block block = Build.A.Block.WithNumber(10000000 - 1).WithBaseFeePerGas(0).TestObject;
             _blockTree.Head = block;
             _blockTree.BestSuggestedHeader = Build.A.BlockHeader.WithNumber(10000000).WithBaseFee(0).TestObject;
+        }
+
+        [Test, NonParallelizable]
+        public void Rejected_blob_buffers_are_reused_only_without_discovery_subscribers(
+            [Values(0, 1, 2)] int listenerMode, [Values] bool pooled)
+        {
+            _txPool = CreatePool(new TxPoolConfig { MaxBlobTxSize = 1 });
+            Transaction tx = DecodeReceivedBlob(0x11, pooled);
+            byte[] original = ((ShardBlobNetworkWrapper)tx.NetworkWrapper).Blobs[0];
+            Transaction retained = null;
+            EventHandler<TxEventArgs> listener = null;
+            listener = (_, args) =>
+            {
+                retained = args.Transaction;
+                if (listenerMode == 2) _txPool.NewDiscovered -= listener;
+            };
+            if (listenerMode != 0) _txPool.NewDiscovered += listener;
+
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.MaxTxSizeExceeded));
+
+            Transaction next = DecodeReceivedBlob(0x22, pooled);
+            byte[] nextBlob = ((ShardBlobNetworkWrapper)next.NetworkWrapper).Blobs[0];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ReferenceEquals(original, nextBlob), Is.EqualTo(pooled && listenerMode == 0));
+                Assert.That(nextBlob, Is.All.EqualTo(0x22));
+                if (listenerMode != 0)
+                {
+                    Assert.That(retained, Is.SameAs(tx));
+                    Assert.That(((ShardBlobNetworkWrapper)retained.NetworkWrapper).Blobs[0], Is.All.EqualTo(0x11));
+                }
+            }
+            TxDecoder.TxObjectPool.Return(next);
+        }
+
+        [Test, NonParallelizable]
+        public void Duplicate_blob_returns_buffers_but_validation_rejection_keeps_them()
+        {
+            _txPool = CreatePool();
+            Transaction first = DecodeReceivedBlob(0x11, pooled: true);
+            byte[] firstBlob = ((ShardBlobNetworkWrapper)first.NetworkWrapper).Blobs[0];
+            Assert.That((bool)_txPool.SubmitTx(first, TxHandlingOptions.None), Is.False);
+
+            Transaction duplicate = DecodeReceivedBlob(0x11, pooled: true);
+            byte[] duplicateBlob = ((ShardBlobNetworkWrapper)duplicate.NetworkWrapper).Blobs[0];
+            Assert.That(_txPool.SubmitTx(duplicate, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+
+            Transaction next = DecodeReceivedBlob(0x22, pooled: true);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(((ShardBlobNetworkWrapper)next.NetworkWrapper).Blobs[0], Is.SameAs(duplicateBlob));
+                Assert.That(firstBlob, Is.All.EqualTo(0x11));
+                Assert.That(first.NetworkWrapper, Is.Not.Null);
+            }
+            TxDecoder.TxObjectPool.Return(next);
+        }
+
+        [Test, NonParallelizable]
+        public void Early_rejection_keeps_transaction_intact_and_reports_ownership([Values(0, 1, 2)] int listenerMode)
+        {
+            _txPool = CreatePool(new TxPoolConfig { MaxTxSize = 1 });
+            Transaction tx = Build.A.Transaction.WithNonce(17).SignedAndResolved().TestObject;
+            Hash256 hash = tx.Hash;
+            Transaction retained = null;
+            EventHandler<TxEventArgs> listener = null;
+            listener = (_, args) =>
+            {
+                retained = args.Transaction;
+                if (listenerMode == 2) _txPool.NewDiscovered -= listener;
+            };
+            if (listenerMode != 0) _txPool.NewDiscovered += listener;
+
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.MaxTxSizeExceeded));
+                Assert.That(canRecycle, Is.EqualTo(listenerMode == 0));
+                Assert.That(tx.Nonce, Is.EqualTo(17));
+                Assert.That(tx.Hash, Is.EqualTo(hash));
+                Assert.That(tx.Signature, Is.Not.Null);
+                Assert.That(retained, listenerMode == 0 ? Is.Null : Is.SameAs(tx));
+            }
+
+            // Reattach the self-removing listener for the actual network submission.
+            if (listenerMode == 2) _txPool.NewDiscovered += listener;
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsTrace.Returns(true);
+            ILogManager logManager = new OneLoggerLogManager(new ILogger(logger));
+            bool logged = false;
+            logger.When(l => l.Trace(Arg.Any<string>())).Do(_ =>
+            {
+                Assert.That(tx.Signature, Is.Not.Null);
+                Assert.That(tx.Nonce, Is.EqualTo(17));
+                logged = true;
+            });
+            using RecyclingProtocolHandler handler = new(_txPool, logManager);
+            handler.Submit(tx);
+            Assert.That(logged, Is.True);
+            Assert.That(tx.Signature is null, Is.EqualTo(listenerMode == 0));
+            Assert.That(tx.Nonce, Is.EqualTo(listenerMode == 0 ? 0 : 17));
+        }
+
+        private sealed class RecyclingProtocolHandler(ITxPool pool, ILogManager logManager) : Eth62ProtocolHandler(
+            Substitute.For<ISession>(), Substitute.For<Nethermind.Network.IMessageSerializationService>(),
+            Substitute.For<INodeStatsManager>(), Substitute.For<ISyncServer>(),
+            Substitute.For<IBackgroundTaskScheduler>(), pool, Substitute.For<IGossipPolicy>(), logManager)
+        {
+            internal void Submit(Transaction tx) => PrepareAndSubmitTransaction(tx, isTrace: true);
+        }
+
+        [Test]
+        public void Accepted_transaction_is_not_recyclable()
+        {
+            _txPool = CreatePool();
+            Transaction tx = GetTransaction(TestItem.PrivateKeyA, Address.Zero);
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(canRecycle, Is.False);
+                Assert.That(_txPool.TryGetPendingTransaction(tx.Hash, out Transaction pending), Is.True);
+                Assert.That(pending, Is.SameAs(tx));
+            }
+        }
+
+        [Test]
+        public void Validation_rejection_is_not_recyclable_but_its_duplicate_is()
+        {
+            _txPool = CreatePool();
+            Transaction tx = Build.A.Transaction.WithGasLimit(1).SignedAndResolved().TestObject;
+            Rlp encoded = TxDecoder.Instance.Encode(tx);
+            RlpReader reader = new(encoded.Bytes);
+            Transaction duplicate = TxDecoder.Instance.Decode(ref reader);
+
+            AcceptTxResult invalid = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycleInvalid);
+            AcceptTxResult known = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(duplicate, out bool canRecycleDuplicate);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((bool)invalid, Is.False);
+                Assert.That(canRecycleInvalid, Is.False);
+                Assert.That(known, Is.EqualTo(AcceptTxResult.AlreadyKnown));
+                Assert.That(canRecycleDuplicate, Is.True);
+                Assert.That(tx.Signature, Is.Not.Null);
+            }
+        }
+
+        private static Transaction DecodeReceivedBlob(byte fill, bool pooled)
+        {
+            byte[] blob = new byte[CkzgLib.Ckzg.BytesPerBlob];
+            Array.Fill(blob, fill);
+            Transaction source = Build.A.Transaction.WithType(TxType.Blob)
+                .WithMaxFeePerBlobGas(1).WithBlobVersionedHashes(1).TestObject;
+            source.Signature = new Signature(1, 2, 27);
+            source.NetworkWrapper = new ShardBlobNetworkWrapper([blob], [], [], ProofVersion.V0);
+            RlpReader reader = new(TxDecoder.Instance.Encode(source, RlpBehaviors.InMempoolForm).Bytes);
+            return TxDecoder.Instance.Decode(ref reader, RlpBehaviors.InMempoolForm
+                | (pooled ? RlpBehaviors.PoolBlobBuffers : RlpBehaviors.None));
         }
 
         [TestCase(false, TestName = "should_add_peers")]

@@ -123,6 +123,8 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         decoderContext.Position = position;
 
         Transaction? decodedTransaction = transaction;
+        if (decodedTransaction is null && (rlpBehaviors & RlpBehaviors.SkipPooledTransactions) != 0)
+            decodedTransaction = new T();
         GetDecoder(txType).Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
         transaction = (T?)decodedTransaction;
 

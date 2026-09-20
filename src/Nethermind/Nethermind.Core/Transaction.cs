@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.ObjectPool;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -325,6 +326,7 @@ namespace Nethermind.Core
                 obj.AccessList = default;
                 obj.MaxFeePerBlobGas = default;
                 obj.BlobVersionedHashes = default;
+                PooledBlobBuffers.Return(obj);
                 obj.NetworkWrapper = default;
                 obj.IsServiceTransaction = default;
                 obj.PoolIndex = default;
@@ -348,6 +350,8 @@ namespace Nethermind.Core
         /// <param name="copyHash">Whether to copy the cached transaction hash.</param>
         public void CopyTo(Transaction tx, bool copyHash)
         {
+            // Copies share the network payload and can outlive the original transaction.
+            PooledBlobBuffers.Disown(this);
             if (copyHash)
             {
                 tx.Hash = Hash;
@@ -430,6 +434,9 @@ namespace Nethermind.Core
         BlobCellMask CellMask = default,
         byte[][]? Cells = null)
     {
+        // Record copies share the ownership token so they cannot return the same buffers twice.
+        internal PooledBlobBuffers? PooledBuffers { get; init; }
+
         /// <summary>
         /// Creates a blob network wrapper without sparse-cell data.
         /// </summary>

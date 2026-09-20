@@ -3,6 +3,8 @@
 
 using System;
 using System.Reflection;
+using System.Threading.Tasks;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
@@ -10,6 +12,60 @@ namespace Nethermind.Core.Test;
 
 public class TransactionTests
 {
+    [Test, NonParallelizable]
+    public void Concurrent_returns_of_wrapper_copies_do_not_reissue_the_same_buffer_twice()
+    {
+        byte[] data = new byte[PooledBlobBuffers.BlobSize];
+        // Drain the bounded pool so duplicate returns cannot be hidden by a full bucket.
+        byte[][] held = new byte[32][];
+        for (int i = 0; i < held.Length; i++) held[i] = PooledBlobBuffers.Copy(data);
+        byte[][] blobs = [PooledBlobBuffers.Copy(data)];
+        ShardBlobNetworkWrapper wrapper = new(blobs, [], [], ProofVersion.V0)
+        {
+            PooledBuffers = new(blobs)
+        };
+        Transaction first = new() { NetworkWrapper = wrapper };
+        Transaction second = new() { NetworkWrapper = wrapper with { Version = ProofVersion.V1 } };
+        Parallel.Invoke(() => PooledBlobBuffers.Return(first), () => PooledBlobBuffers.Return(second));
+
+        byte[] firstRental = PooledBlobBuffers.Copy(data);
+        byte[] secondRental = PooledBlobBuffers.Copy(data);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstRental, Is.SameAs(blobs[0]));
+            Assert.That(secondRental, Is.Not.SameAs(firstRental));
+        }
+        new PooledBlobBuffers([firstRental, secondRental]).Return();
+        new PooledBlobBuffers(held).Return();
+    }
+
+    [Test]
+    public void Returning_a_copied_transaction_keeps_shared_blob_data([Values] bool copyHash)
+    {
+        byte[] data = new byte[PooledBlobBuffers.BlobSize];
+        Array.Fill(data, (byte)0x11);
+        byte[][] blobs = [PooledBlobBuffers.Copy(data)];
+        Transaction source = new()
+        {
+            NetworkWrapper = new ShardBlobNetworkWrapper(blobs, [], [], ProofVersion.V0)
+            {
+                PooledBuffers = new(blobs)
+            }
+        };
+        Transaction copy = new();
+        source.CopyTo(copy, copyHash);
+        new Transaction.PoolPolicy().Return(source);
+
+        Array.Fill(data, (byte)0x22);
+        byte[] next = PooledBlobBuffers.Copy(data);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next, Is.Not.SameAs(blobs[0]));
+            Assert.That(((ShardBlobNetworkWrapper)copy.NetworkWrapper!).Blobs[0], Is.All.EqualTo(0x11));
+        }
+        new PooledBlobBuffers([next]).Return();
+    }
+
     [Test]
     public void CopyTo_should_preserve_legacy_hash_behavior_and_expose_explicit_hash_control()
     {

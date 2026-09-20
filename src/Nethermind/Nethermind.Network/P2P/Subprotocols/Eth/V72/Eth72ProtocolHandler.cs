@@ -13,6 +13,7 @@ using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -1660,6 +1661,7 @@ public class Eth72ProtocolHandler(
 
     private void PrepareAndMaybeSubmitSparseBlobTransaction(Transaction tx, bool isTrace)
     {
+        PooledBlobBuffers.Disown(tx);
         if (tx.Hash is not null)
         {
             NotifiedTransactions.Set(tx.Hash.ValueHash256);

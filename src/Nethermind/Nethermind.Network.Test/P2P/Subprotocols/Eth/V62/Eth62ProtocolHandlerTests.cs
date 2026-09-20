@@ -674,6 +674,31 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _transactionPool.Received(1).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
         }
 
+        [Test]
+        public void Rejection_by_custom_pool_does_not_reset_retained_transaction()
+        {
+            Transaction tx = Build.A.Transaction.WithNonce(17).SignedAndResolved().TestObject;
+            Hash256 hash = tx.Hash!;
+            Transaction? retained = null;
+            _transactionPool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(call =>
+            {
+                retained = call.Arg<Transaction>();
+                return AcceptTxResult.AlreadyKnown;
+            });
+            using TestEth62ProtocolHandler handler = new(
+                _session, _svc, new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
+                _syncManager, RunImmediatelyScheduler.Instance, _transactionPool, _gossipPolicy,
+                LimboLogs.Instance, _txGossipPolicy);
+            handler.HandleSlowPublic(new ArrayPoolList<Transaction>(1) { tx }, CancellationToken.None);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(retained, Is.SameAs(tx));
+                Assert.That(tx.Hash, Is.EqualTo(hash));
+                Assert.That(tx.Nonce, Is.EqualTo(17));
+                Assert.That(tx.Signature, Is.Not.Null);
+            }
+        }
+
         private sealed class TestEth62ProtocolHandler(
             ISession session,
             IMessageSerializationService serializer,

@@ -336,9 +336,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 NotifiedTransactions.Set(tx.Hash.ValueHash256);
             }
 
-            AcceptTxResult accepted = _txPool.SubmitTx(tx, TxHandlingOptions.None);
+            bool canRecycle = false;
+            AcceptTxResult accepted = _txPool is IRecyclableTxPool recyclablePool
+                ? recyclablePool.SubmitOwnedTx(tx, out canRecycle)
+                : _txPool.SubmitTx(tx, TxHandlingOptions.None);
             _floodController.Report(accepted);
             if (isTrace) Log(tx, accepted);
+            if (!accepted && canRecycle) TxDecoder.TxObjectPool.Return(tx);
 
             void Log(Transaction tx, in AcceptTxResult accepted) => Logger.Trace($"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
         }

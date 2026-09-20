@@ -3,6 +3,7 @@
 
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -27,6 +28,7 @@ using static Nethermind.TxPool.Collections.TxDistinctSortedPool;
 using ITimer = Nethermind.Core.Timers.ITimer;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Network")]
 
 namespace Nethermind.TxPool
 {
@@ -34,7 +36,7 @@ namespace Nethermind.TxPool
     /// Stores all pending transactions. These will be used by block producer if this node is a miner / validator
     /// or simply for broadcasting and tracing in other cases.
     /// </summary>
-    public class TxPool : ITxPool, IAsyncDisposable
+    public class TxPool : ITxPool, IAsyncDisposable, IRecyclableTxPool
     {
         private const int RevalidationAbandonmentWarningThreshold = 3;
         private const int MarkerPublicationDeferralWarningThreshold = 3;
@@ -735,7 +737,24 @@ namespace Nethermind.TxPool
         }
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
+            => SubmitTx(tx, handlingOptions, out _);
+
+        AcceptTxResult IRecyclableTxPool.SubmitOwnedTx(Transaction tx, out bool canRecycle)
         {
+            // A derived pool can reimplement ITxPool and retain transactions on rejection.
+            if (GetType() != typeof(TxPool))
+            {
+                canRecycle = false;
+                return ((ITxPool)this).SubmitTx(tx, TxHandlingOptions.None);
+            }
+            return SubmitTx(tx, TxHandlingOptions.None, out canRecycle);
+        }
+
+        private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions, out bool canRecycle)
+        {
+            canRecycle = handlingOptions == TxHandlingOptions.None;
+            if (handlingOptions != TxHandlingOptions.None)
+                PooledBlobBuffers.Disown(tx);
             bool startBroadcast = _txPoolConfig.PersistentBroadcastEnabled
                                   && (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
                                   TxHandlingOptions.PersistentBroadcast;
@@ -745,6 +764,7 @@ namespace Nethermind.TxPool
                 // If local tx allow it to be accepted even when syncing
                 !startBroadcast)
             {
+                PooledBlobBuffers.Return(tx);
                 return AcceptTxResult.Syncing;
             }
 
@@ -754,7 +774,13 @@ namespace Nethermind.TxPool
             // gas prices are exactly the same
             tx.PoolIndex = Interlocked.Increment(ref _txIndex);
 
-            NewDiscovered?.Invoke(this, new TxEventArgs(tx));
+            EventHandler<TxEventArgs>? discovered = NewDiscovered;
+            if (discovered is not null)
+            {
+                canRecycle = false;
+                PooledBlobBuffers.Disown(tx);
+                discovered(this, new TxEventArgs(tx));
+            }
 
             if (_logger.IsTrace)
             {
@@ -765,6 +791,7 @@ namespace Nethermind.TxPool
                 && !BlobProofsTranslator.TryTranslateToCurrentProofVersion(tx, _headInfo.CurrentProofVersion))
             {
                 Metrics.PendingTransactionsDiscarded++;
+                PooledBlobBuffers.Return(tx);
                 return AcceptTxResult.Invalid;
             }
 
@@ -777,9 +804,10 @@ namespace Nethermind.TxPool
                 // Observation and insertion share the head lock so an A -> B -> A transition cannot cross a validation publish unseen.
                 ObserveHeadSpec(headSpec);
                 TxFilteringState state = new(tx, _accounts, headSpec);
-                accepted = FilterTransactions(tx, handlingOptions, ref state);
+                accepted = FilterTransactions(tx, handlingOptions, ref state, ref canRecycle);
                 if (accepted)
                 {
+                    canRecycle = false;
                     accepted = AddCore(tx, ref state, startBroadcast);
                 }
                 else
@@ -790,6 +818,7 @@ namespace Nethermind.TxPool
                     }
 
                     Metrics.PendingTransactionsDiscarded++;
+                    PooledBlobBuffers.Return(tx);
                 }
             }
             finally
@@ -829,7 +858,8 @@ namespace Nethermind.TxPool
             try
             {
                 TxFilteringState state = new(tx, _accounts, _specProvider.GetCurrentHeadSpec());
-                return FilterTransactions(tx, TxHandlingOptions.None, ref state, skipSamplingDeferredFilters: true);
+                bool canRecycle = false;
+                return FilterTransactions(tx, TxHandlingOptions.None, ref state, ref canRecycle, skipSamplingDeferredFilters: true);
             }
             finally
             {
@@ -841,6 +871,7 @@ namespace Nethermind.TxPool
             Transaction tx,
             TxHandlingOptions handlingOptions,
             ref TxFilteringState state,
+            ref bool canRecycle,
             bool skipSamplingDeferredFilters = false)
         {
             IIncomingTxFilter[] filters = _preHashFilters;
@@ -862,6 +893,13 @@ namespace Nethermind.TxPool
                     && filters[i] is AlreadyKnownTxFilter or BlobProofsTxFilter)
                 {
                     continue;
+                }
+
+                // Validators and later filters can be supplied by plugins and retain the transaction.
+                if (filters[i] is MalformedTxFilter)
+                {
+                    canRecycle = false;
+                    PooledBlobBuffers.Disown(tx);
                 }
 
                 AcceptTxResult accepted = filters[i].Accept(tx, ref state, handlingOptions);
