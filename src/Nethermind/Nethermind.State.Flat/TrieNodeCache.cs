@@ -204,14 +204,28 @@ public sealed class TrieNodeCache : ITrieNodeCache
         long prevMemory = currentTotalMemory;
         bool wasPruned = false;
 
+        // A sweep that frees nothing has still cleared that shard's read flags, so the nodes are evictable on the next
+        // pass over it; only once a whole cycle has freed nothing does clearing a shard outright become the way out.
+        int unproductiveSweeps = 0;
+
         while (currentTotalMemory > _maxCacheMemoryThreshold)
         {
             wasPruned = true;
             int shardToClear = _nextShardToClear;
-
-            currentTotalMemory -= _shardAccessFlags is null ? ClearShard(shardToClear) : SweepShard(shardToClear);
-
             _nextShardToClear = (_nextShardToClear + 1) & 255; // Fast modulo 256
+
+            long freedMemory;
+            if (_shardAccessFlags is null || unproductiveSweeps >= ShardCount)
+            {
+                freedMemory = ClearShard(shardToClear);
+            }
+            else
+            {
+                freedMemory = SweepShard(shardToClear);
+                unproductiveSweeps = freedMemory > 0 ? 0 : unproductiveSweeps + 1;
+            }
+
+            currentTotalMemory -= freedMemory;
         }
 
         if (wasPruned && _logger.IsTrace) _logger.Trace($"Pruning trie cache from {prevMemory} to {currentTotalMemory}");
@@ -241,8 +255,8 @@ public sealed class TrieNodeCache : ITrieNodeCache
     /// </summary>
     /// <remarks>
     /// The shard's accounted memory is rebuilt from the survivors, so it cannot drift as nodes grow after being
-    /// cached. When the sweep frees nothing — every node was read, or the survivors account for all of it — the
-    /// shard is cleared instead, so an eviction pass always makes progress and the loop above terminates.
+    /// cached. Returns the memory freed, which is zero or less when every node of the shard was read since the
+    /// previous sweep; the read flags are cleared either way, so the next pass over the shard can evict them.
     /// </remarks>
     private long SweepShard(int shardIdx)
     {
@@ -271,12 +285,10 @@ public sealed class TrieNodeCache : ITrieNodeCache
             evicted++;
         }
 
-        long freedMemory = Interlocked.Exchange(ref _shardMemoryUsages[shardIdx], retainedMemory) - retainedMemory;
-        if (freedMemory <= 0) return freedMemory + ClearShard(shardIdx);
-
         Nethermind.Trie.Pruning.Metrics.TrieCacheEvictedNodesCount += evicted;
         Nethermind.Trie.Pruning.Metrics.TrieCacheRetainedNodesCount += retained;
-        return freedMemory;
+
+        return Interlocked.Exchange(ref _shardMemoryUsages[shardIdx], retainedMemory) - retainedMemory;
     }
 
     /// <summary>
