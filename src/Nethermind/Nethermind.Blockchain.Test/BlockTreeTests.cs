@@ -2172,21 +2172,32 @@ public class BlockTreeTests
     {
         BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(7);
         BlockTree tree = builder.TestObject;
-        Hash256 survivingHash = tree.Head!.Hash!;
+        Hash256[] survivingHashes = [tree.FindHeader(5, BlockTreeLookupOptions.RequireCanonical)!.Hash!, tree.Head!.Hash!];
+        BlockHeader isolatedHeader = Build.A.BlockHeader.WithNumber(8).WithTotalDifficulty(1).TestObject;
+        tree.Insert(isolatedHeader);
+        Assert.That(tree.IsMainChain(isolatedHeader.Hash!), Is.True);
         Hash256 expectedHead = canonicalPredecessor ? tree.FindHeader(2, BlockTreeLookupOptions.RequireCanonical)!.Hash! : tree.Genesis!.Hash!;
         builder.ChainLevelInfoRepository.PersistLevel(2, new ChainLevelInfo(canonicalPredecessor, tree.FindLevel(2)!.BlockInfos));
         builder.ChainLevelInfoRepository.Delete(missingLevel);
 
         int deleted = tree.DeleteChainSlice(3, 3);
+        Assert.That(builder.ChainLevelInfoRepository, Is.InstanceOf<IClearableCache>());
         ((IClearableCache)builder.ChainLevelInfoRepository).ClearCache();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(deleted, Is.EqualTo(1));
             Assert.That(tree.Head!.Hash, Is.EqualTo(expectedHead));
-            Assert.That(tree.FindHeader(survivingHash, BlockTreeLookupOptions.None), Is.Not.Null);
-            Assert.That(tree.IsMainChain(survivingHash), Is.False);
+            Assert.That(tree.IsMainChain(isolatedHeader.Hash!), Is.True, "stop at the gap above the old head");
             Assert.That(tree.FindLevel(3), Is.Null);
+        }
+        foreach (Hash256 survivingHash in survivingHashes)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tree.FindHeader(survivingHash, BlockTreeLookupOptions.None), Is.Not.Null);
+                Assert.That(tree.IsMainChain(survivingHash), Is.False);
+            }
         }
     }
 
@@ -2232,6 +2243,7 @@ public class BlockTreeTests
         if (missingLevel) builder.ChainLevelInfoRepository.Delete(3);
         Hash256 lastHash = blockTree.BestSuggestedHeader!.Hash!;
         int deleted = blockTree.DeleteChainSlice(2, endNumber);
+        Assert.That(builder.ChainLevelInfoRepository, Is.InstanceOf<IClearableCache>());
         ((IClearableCache)builder.ChainLevelInfoRepository).ClearCache();
 
         using (Assert.EnterMultipleScope())

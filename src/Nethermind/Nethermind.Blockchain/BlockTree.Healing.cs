@@ -26,7 +26,7 @@ namespace Nethermind.Blockchain
             if (Logger.IsInfo) Logger.Info($"Canonical chain heal complete: {repairedAbove + repairedBelow} level(s) repaired ({repairedAbove} stale above head cleared, {repairedBelow} incorrect markers fixed).");
         }
 
-        private long ClearStaleMarkersAbove(ulong fromExclusive, BatchWrite batch, (ulong Start, ulong End)? deletedRange = null, ulong scanThrough = 0)
+        private long ClearStaleMarkersAbove(ulong fromExclusive, BatchWrite batch, (ulong Start, ulong End)? deletedRange = null, ulong? scanThrough = null)
         {
             // Cap at the highest level we could have written — a corrupted DB must not drive an unbounded scan.
             ulong upperBound = Math.Max(BestKnownNumber, BestKnownBeaconNumber);
