@@ -96,7 +96,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
                 headHeader,
                 next.Spec,
                 generation,
-                token => (token.IsCancellationRequested || IsStale(generation)) ? null : BuildDeltaBlock(headHeader, next, warmedPerSender),
+                token => (token.IsCancellationRequested || IsStale(generation)) ? null : BuildDeltaBlock(headHeader, warmedPerSender),
                 IdlePassDelayMs,
                 _cts.Token);
         }
@@ -117,7 +117,6 @@ public sealed class MempoolStatePrewarmer : IDisposable
         return new NextBlockContext(BuildNextBlockHeader(parent, timestamp, spec), spec);
     }
 
-
     /// <summary>
     /// The next block's timestamp is the first slot boundary after the parent that has not passed yet, so the
     /// EIP-4788 ring-buffer slots the system call touches, indexed by timestamp, are the ones being warmed.
@@ -125,9 +124,10 @@ public sealed class MempoolStatePrewarmer : IDisposable
     internal static ulong PredictNextTimestamp(ulong parentTimestamp, ulong now, ulong secondsPerSlot)
     {
         ulong elapsed = now > parentTimestamp ? now - parentTimestamp : 0;
-        ulong slots = Math.Max(1, (elapsed + secondsPerSlot - 1) / secondsPerSlot);
+        ulong slots = Math.Max(1UL, (elapsed + secondsPerSlot - 1) / secondsPerSlot);
         return parentTimestamp + slots * secondsPerSlot;
     }
+
     /// <summary>
     /// Builds the synthetic "next block" header for warming.
     /// </summary>
@@ -143,8 +143,13 @@ public sealed class MempoolStatePrewarmer : IDisposable
         return header;
     }
 
-    private Block? BuildDeltaBlock(BlockHeader parent, NextBlockContext next, Dictionary<AddressAsKey, int> warmedPerSender)
+    /// <remarks>
+    /// The prediction is redone every pass so a missed slot moves the warm onto the slot that will actually land,
+    /// rather than leaving the whole gap warming the cells of a block that never arrived.
+    /// </remarks>
+    private Block BuildDeltaBlock(BlockHeader parent, Dictionary<AddressAsKey, int> warmedPerSender)
     {
+        NextBlockContext next = PrepareNextBlockContext(parent);
         Transaction[] delta = SelectDelta(_txSource.Value.GetTransactions(parent, next.Header, next.Header.GasLimit), warmedPerSender);
         return new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null));
     }

@@ -37,7 +37,6 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test;
@@ -645,30 +644,106 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
-    /// The block-start system calls race the reactive warm of their own slots; warming them in the idle gap, for
-    /// the predicted next header, is the only way they are warm when the block arrives.
+    /// The block-start system calls race the reactive warm of their own slots; warming them in the idle gap, for the
+    /// predicted next header, is the only way they are warm when the block arrives. The hints read state to decide
+    /// whether the system contract is deployed, and between blocks the main world state has no scope open, so this
+    /// also covers them being evaluated against the prewarmer env.
     /// </summary>
     [Test]
     public void StartSpeculativePreWarm_WarmsTheSystemAccessListsForThePredictedBlock()
     {
-        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
-        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
-        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
-        IHasAccessList systemAccessList = Substitute.For<IHasAccessList>();
+        using ILifetimeScope hintScope = _processingScope.BeginLifetimeScope(
+            b => b.AddScoped<IHasAccessList, StateReadingAccessListHint>());
+
+        PreBlockCaches preBlockCaches = hintScope.Resolve<PreBlockCaches>();
         BlocksConfig config = new() { PreWarming = PreWarmMode.BlockAndMempool, PreWarmStateConcurrency = 2 };
-        using BlockCachePreWarmer preWarmer = new(envFactory, config, nodeStorageCache, preBlockCaches, LimboLogs.Instance, [systemAccessList]);
+        using BlockCachePreWarmer preWarmer = new(
+            hintScope.Resolve<PrewarmerEnvFactory>(),
+            config,
+            hintScope.Resolve<NodeStorageCache>(),
+            preBlockCaches,
+            LimboLogs.Instance);
 
         BlockHeader head = BuildParentHeader();
-        Block delta = BuildChildBlock(head);
-        int deliveries = 0;
+        // No transactions: an idle node must still warm the system slots and the beneficiary for the predicted block.
+        Block delta = Build.A.Block.WithGasLimit(30_000_000).WithParentHash(head.Hash!).TestObject;
+        RunSpeculativePreWarm(preWarmer, head, Osaka.Instance, delta);
+
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(StateReadingAccessListHint.HintedCell, out _), Is.True,
+            "the idle pass must warm the slots the block-start system calls read");
+    }
+
+    /// <summary>
+    /// The hints are fixed for a predicted header, so re-evaluating them on every idle pass is pure waste; only a
+    /// missed slot moves the prediction, and with it the EIP-4788 cells the block-start call will read.
+    /// </summary>
+    [Test]
+    public void StartSpeculativePreWarm_ReEvaluatesTheSystemAccessListsOnlyWhenThePredictionMovesSlot()
+    {
+        CountingAccessListHint hint = new();
+        using ILifetimeScope hintScope = _processingScope.BeginLifetimeScope(b => b.AddSingleton<IHasAccessList>(hint));
+
+        BlocksConfig config = new() { PreWarming = PreWarmMode.BlockAndMempool, PreWarmStateConcurrency = 2 };
+        using BlockCachePreWarmer preWarmer = new(
+            hintScope.Resolve<PrewarmerEnvFactory>(),
+            config,
+            hintScope.Resolve<NodeStorageCache>(),
+            hintScope.Resolve<PreBlockCaches>(),
+            LimboLogs.Instance);
+
+        BlockHeader head = BuildParentHeader();
+        Block sameSlot = BuildEmptyChild(head, timestamp: 12);
+        Block missedSlot = BuildEmptyChild(head, timestamp: 24);
+
+        int passes = 0;
         using CancellationTokenSource cancellation = new();
         Task session = preWarmer.StartSpeculativePreWarm(
-            head, Osaka.Instance, generation: 1, _ => Interlocked.Increment(ref deliveries) == 1 ? delta : null, idlePassDelayMs: 5, cancellation.Token);
+            head, Osaka.Instance, generation: 1,
+            _ => Interlocked.Increment(ref passes) <= 5 ? sameSlot : missedSlot,
+            idlePassDelayMs: 1, cancellation.Token);
+        try
+        {
+            Assert.That(SpinWait.SpinUntil(() => hint.Calls >= 2, TimeSpan.FromSeconds(5)), Is.True,
+                "the prediction moving to the next slot must redo the system warm");
+        }
+        finally
+        {
+            cancellation.Cancel();
+            session.GetAwaiter().GetResult();
+        }
 
-        Assert.That(() => System.Linq.Enumerable.Count(systemAccessList.ReceivedCalls()), Is.GreaterThan(0).After(5000, 20), "the idle pass must request the system access lists");
-        systemAccessList.Received().GetAccessList(delta, Osaka.Instance);
-        cancellation.Cancel();
-        session.GetAwaiter().GetResult();
+        Assert.That(hint.Calls, Is.EqualTo(2), "the passes sharing a predicted timestamp must reuse the first warm");
+    }
+
+    private static Block BuildEmptyChild(BlockHeader head, ulong timestamp) =>
+        Build.A.Block.WithGasLimit(30_000_000).WithParentHash(head.Hash!).WithTimestamp(timestamp).TestObject;
+
+    /// <summary>Counts how often the idle loop asks for the hints; the slots it names are irrelevant.</summary>
+    private sealed class CountingAccessListHint : IHasAccessList
+    {
+        private int _calls;
+
+        public int Calls => Volatile.Read(ref _calls);
+
+        public AccessList GetAccessList(Block block, IReleaseSpec spec)
+        {
+            Interlocked.Increment(ref _calls);
+            return new AccessList.Builder().AddAddress(TestItem.AddressD).Build();
+        }
+    }
+
+    /// <summary>
+    /// Stands in for the production hints: like <c>BeaconBlockRootHandler</c> and <c>BlockhashStore</c>, it reads state
+    /// before it can name the slots, so it only works inside an open world-state scope.
+    /// </summary>
+    private sealed class StateReadingAccessListHint(IWorldState worldState) : IHasAccessList
+    {
+        public static readonly StorageCell HintedCell = new(TestItem.AddressE, 5);
+
+        public AccessList? GetAccessList(Block block, IReleaseSpec spec) =>
+            worldState.IsContract(HintedCell.Address)
+                ? new AccessList.Builder().AddAddress(HintedCell.Address).AddStorage(HintedCell.Index).Build()
+                : null;
     }
 
     /// <summary>
