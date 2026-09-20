@@ -61,7 +61,7 @@ internal static class BeaconEndpoints
 
         if (!BlockIdResolver.TryResolve(ctx, id, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
         {
-            // A slot with no canonical block is an empty list, not an error — but an outright bad
+            // A slot with no canonical block is an empty list, not an error - but an outright bad
             // id (or head/finalized genuinely unset) still is.
             if (errorStatus == StatusCodes.Status404NotFound && id != "head" && id != "finalized" && id != "genesis")
             {
