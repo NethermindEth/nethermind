@@ -157,8 +157,25 @@ internal static class ForkChoiceStepDriver
         if (!accepted && expectedValid)
             Assert.Fail($"step {stepIndex}: block {blockKey} (slot {block.Slot}) was expected to be accepted but the driver rejected it: {rejectionReason}");
 
-        if (accepted)
-            stateProvider.States[blockRoot] = postState!;
+        if (!accepted)
+            return;
+        stateProvider.States[blockRoot] = postState!;
+
+        // The fork_choice test format treats an on_block step as implying on_attestation(is_from_block)
+        // for every body attestation and on_attester_slashing for every body slashing.
+        Attestation[] bodyAttestations = block.Body!.Attestations!;
+        for (int i = 0; i < bodyAttestations.Length; i++)
+        {
+            try { runner.OnAttestation(bodyAttestations[i], isFromBlock: true, verifySignature: false); }
+            catch (Exception ex) { Assert.Fail($"step {stepIndex}: body attestation {i} of block {blockKey} rejected: {ex.Message}"); }
+        }
+
+        AttesterSlashing[] bodySlashings = block.Body!.AttesterSlashings!;
+        for (int i = 0; i < bodySlashings.Length; i++)
+        {
+            try { runner.OnAttesterSlashing(bodySlashings[i], verifySignatures: false); }
+            catch (Exception ex) { Assert.Fail($"step {stepIndex}: body attester slashing {i} of block {blockKey} rejected: {ex.Message}"); }
+        }
     }
 
     /// <summary>Decodes the PeerDAS 'columns' sequence of a block step into the sidecars <see cref="ForkChoiceRunner.OnBlock"/> checks the block's data availability against.</summary>
