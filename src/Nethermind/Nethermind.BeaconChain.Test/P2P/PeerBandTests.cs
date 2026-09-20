@@ -369,7 +369,9 @@ public class PeerBandTests
                 Assert.That(record.PeerId, Is.EqualTo(expectedPeerId));
                 Assert.That(record.Direction, Is.EqualTo(PeerDirection.Outbound));
                 Assert.That(record.State, Is.EqualTo(PeerConnectionState.Connected));
-                Assert.That(record.LastKnownMultiaddr, Is.Not.Null.And.Not.Empty);
+                // Not just "non-empty": must be the real loopback remote address, not a placeholder
+                // or the pre-connect dial address (which uses 0.0.0.0, not 127.0.0.1, before rewrite).
+                Assert.That(record.LastKnownMultiaddr, Does.Contain("127.0.0.1"));
             }
 
             Assert.That(directory.TryGetPeer(expectedPeerId, out PeerRecord lookedUp), Is.True);
