@@ -21,26 +21,153 @@ public static class BeaconChainMetadataKeys
     public const string GenesisValidatorsRoot = "genesisValidatorsRoot";
 }
 
-/// <summary>Persistence for beacon blocks, states, the canonical slot index, and driver metadata.</summary>
+/// <summary>Persistence for beacon blocks, states, the canonical slot index, the root-to-children index, and driver metadata.</summary>
 /// <remarks>
+/// <para>
 /// Blocks and states are stored as snappy-compressed SSZ. States are large (hundreds of MB), so
 /// they are split into <see cref="StateChunkSize"/> uncompressed slices compressed independently,
 /// keyed by <c>blockRoot ++ big-endian chunk index</c>, with a manifest (chunk count and
 /// uncompressed length) under the bare block root.
+/// </para>
+/// <para>
+/// The <see cref="BeaconChainDbColumns.BlockIndex"/> column carries two key shapes that cannot
+/// collide: 8-byte big-endian slot keys for the canonical index, and <see cref="ChildrenKeyPrefix"/>
+/// <c>++ blockRoot</c> (33 bytes) for the children index, whose value is
+/// <c>state (1) ++ parent root (32) ++ child roots (32 each)</c>. A child list is only reported
+/// complete for a block whose every store and delete went through this index; a block that existed
+/// outside it (stored before the index shipped) may have children the index never saw, so it is
+/// pinned incomplete for good, even across a delete and re-store.
+/// </para>
 /// </remarks>
 public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db)
 {
     private const int StateChunkSize = 4 * 1024 * 1024;
     private const int StateManifestLength = sizeof(uint) + sizeof(ulong);
     private const int AnchorValueLength = Hash256.Size + sizeof(ulong);
+    private const byte ChildrenKeyPrefix = 0x01;
+    private const int ChildrenKeyLength = 1 + Hash256.Size;
+    private const int ChildrenHeaderLength = 1 + Hash256.Size;
+
+    /// <summary>Children were linked before the block itself was stored through the index (backfill, or a delete that left children behind); a first store promotes it.</summary>
+    private const byte ChildrenPending = 0;
+    /// <summary>Every store and delete of the block went through the index: the list is the full set of stored children.</summary>
+    private const byte ChildrenComplete = 1;
+    /// <summary>The block existed outside the index at some point, so children may be missing for good.</summary>
+    private const byte ChildrenNeverComplete = 2;
 
     private readonly IDb _blocks = db.GetColumnDb(BeaconChainDbColumns.Blocks);
     private readonly IDb _blockIndex = db.GetColumnDb(BeaconChainDbColumns.BlockIndex);
     private readonly IDb _states = db.GetColumnDb(BeaconChainDbColumns.States);
     private readonly IDb _metadata = db.GetColumnDb(BeaconChainDbColumns.Metadata);
 
-    public void PutBlock(Hash256 root, SignedBeaconBlock block) =>
-        _blocks.Set(root.Bytes, Snappy.CompressToArray(SignedBeaconBlock.Encode(block)));
+    /// <summary>Stores a block and links it into the children index of its parent.</summary>
+    /// <remarks>
+    /// Callers are the single import worker and the checkpoint-sync anchor write, never concurrent,
+    /// so the read-modify-write of the children entries below needs no lock. The whole update is one
+    /// write batch so a crash cannot leave a stored block missing from its parent's child list.
+    /// </remarks>
+    public void PutBlock(Hash256 root, SignedBeaconBlock block)
+    {
+        Hash256 parentRoot = block.Message!.ParentRoot!;
+        bool firstStore = !_blocks.KeyExists(root.Bytes);
+
+        using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
+        batch.GetColumnBatch(BeaconChainDbColumns.Blocks).Set(root.Bytes, Snappy.CompressToArray(SignedBeaconBlock.Encode(block)));
+        IWriteBatch index = batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex);
+
+        Span<byte> parentKey = stackalloc byte[ChildrenKeyLength];
+        ChildrenKey(parentRoot, parentKey);
+        // A parent with no entry has not been stored through the index (yet): its list is tracked
+        // from here on, and its own store decides whether it can ever be called complete.
+        byte[] parentEntry = ReadChildrenEntry(parentKey) ?? NewChildrenEntry(ChildrenPending, Hash256.Zero);
+        if (!ContainsChild(parentEntry, root))
+        {
+            byte[] extended = new byte[parentEntry.Length + Hash256.Size];
+            parentEntry.CopyTo(extended, 0);
+            root.Bytes.CopyTo(extended.AsSpan(parentEntry.Length));
+            parentEntry = extended;
+        }
+
+        index.Set(parentKey, parentEntry);
+
+        Span<byte> ownKey = stackalloc byte[ChildrenKeyLength];
+        ChildrenKey(root, ownKey);
+        byte[] ownEntry = ReadChildrenEntry(ownKey) ?? NewChildrenEntry(ChildrenPending, parentRoot);
+        if (ownEntry[0] == ChildrenPending)
+        {
+            // A block already in the store yet still pending was stored before the index existed:
+            // only a first store can vouch that the list holds every child.
+            ownEntry[0] = firstStore ? ChildrenComplete : ChildrenNeverComplete;
+        }
+
+        parentRoot.Bytes.CopyTo(ownEntry.AsSpan(1));
+        index.Set(ownKey, ownEntry);
+    }
+
+    /// <summary>
+    /// The roots of every stored block whose parent is <paramref name="root"/>.
+    /// </summary>
+    /// <param name="complete">
+    /// Whether <paramref name="children"/> is the full set of children this node currently stores.
+    /// False when <paramref name="root"/> ever existed outside the index (it was stored before the
+    /// index shipped), in which case children may be missing and the list must not be presented as
+    /// an answer.
+    /// </param>
+    /// <returns><c>true</c> when the index has an entry for <paramref name="root"/> at all.</returns>
+    public bool TryGetChildren(Hash256 root, out Hash256[] children, out bool complete)
+    {
+        Span<byte> key = stackalloc byte[ChildrenKeyLength];
+        ChildrenKey(root, key);
+        byte[]? entry = ReadChildrenEntry(key);
+        if (entry is null)
+        {
+            children = [];
+            complete = false;
+            return false;
+        }
+
+        complete = entry[0] == ChildrenComplete;
+        children = new Hash256[(entry.Length - ChildrenHeaderLength) / Hash256.Size];
+        for (int i = 0; i < children.Length; i++)
+        {
+            children[i] = new Hash256(entry.AsSpan(ChildrenHeaderLength + i * Hash256.Size, Hash256.Size));
+        }
+
+        return true;
+    }
+
+    private static void ChildrenKey(Hash256 root, Span<byte> key)
+    {
+        key[0] = ChildrenKeyPrefix;
+        root.Bytes.CopyTo(key[1..]);
+    }
+
+    /// <summary>A well-formed children entry, or <c>null</c> when absent or unreadable; always a private copy, since the in-memory db hands out its stored array.</summary>
+    private byte[]? ReadChildrenEntry(ReadOnlySpan<byte> key)
+    {
+        byte[]? entry = _blockIndex.Get(key);
+        return entry is null || entry.Length < ChildrenHeaderLength || (entry.Length - ChildrenHeaderLength) % Hash256.Size != 0
+            ? null
+            : entry.AsSpan().ToArray();
+    }
+
+    private static byte[] NewChildrenEntry(byte state, Hash256 parentRoot)
+    {
+        byte[] entry = new byte[ChildrenHeaderLength];
+        entry[0] = state;
+        parentRoot.Bytes.CopyTo(entry.AsSpan(1));
+        return entry;
+    }
+
+    private static bool ContainsChild(byte[] entry, Hash256 child)
+    {
+        for (int offset = ChildrenHeaderLength; offset + Hash256.Size <= entry.Length; offset += Hash256.Size)
+        {
+            if (entry.AsSpan(offset, Hash256.Size).SequenceEqual(child.Bytes)) return true;
+        }
+
+        return false;
+    }
 
     public bool TryGetBlock(Hash256 root, [NotNullWhen(true)] out SignedBeaconBlock? block)
     {
@@ -55,7 +182,87 @@ public class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db)
         return true;
     }
 
-    public void DeleteBlock(Hash256 root) => _blocks.Remove(root.Bytes);
+    /// <summary>Deletes a block and unlinks it from its parent's child list, so that list never names a block this node no longer holds.</summary>
+    /// <remarks>
+    /// The block's own entry survives while children are still stored under it, so a re-store finds
+    /// them instead of starting a complete-looking empty list; it is dropped once the last one goes.
+    /// A stored block with no entry predates the index and leaves a tombstone, because its children
+    /// may predate it too. The block itself is never decoded here.
+    /// </remarks>
+    public void DeleteBlock(Hash256 root)
+    {
+        if (!_blocks.KeyExists(root.Bytes))
+        {
+            return;
+        }
+
+        Span<byte> ownKey = stackalloc byte[ChildrenKeyLength];
+        ChildrenKey(root, ownKey);
+        byte[]? ownEntry = ReadChildrenEntry(ownKey);
+
+        using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
+        batch.GetColumnBatch(BeaconChainDbColumns.Blocks).Remove(root.Bytes);
+        IWriteBatch index = batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex);
+
+        if (ownEntry is null)
+        {
+            index.Set(ownKey, NewChildrenEntry(ChildrenNeverComplete, Hash256.Zero));
+            return;
+        }
+
+        if (ownEntry.Length == ChildrenHeaderLength && ownEntry[0] != ChildrenNeverComplete)
+        {
+            index.Remove(ownKey);
+        }
+        else
+        {
+            // A complete list stays intact and merely waits for a re-store to vouch for it again; a
+            // stored block that was still pending never went through the index at all.
+            ownEntry[0] = ownEntry[0] == ChildrenComplete ? ChildrenPending : ChildrenNeverComplete;
+            index.Set(ownKey, ownEntry);
+        }
+
+        Hash256 parentRoot = new(ownEntry.AsSpan(1, Hash256.Size));
+        if (parentRoot == Hash256.Zero)
+        {
+            return;
+        }
+
+        Span<byte> parentKey = stackalloc byte[ChildrenKeyLength];
+        ChildrenKey(parentRoot, parentKey);
+        byte[]? parentEntry = ReadChildrenEntry(parentKey);
+        if (parentEntry is null || !ContainsChild(parentEntry, root))
+        {
+            return;
+        }
+
+        byte[] remaining = WithoutChild(parentEntry, root);
+        if (remaining.Length == ChildrenHeaderLength && remaining[0] == ChildrenPending)
+        {
+            // A pending entry exists only for the sake of its children; with the last one gone it says nothing.
+            index.Remove(parentKey);
+        }
+        else
+        {
+            index.Set(parentKey, remaining);
+        }
+    }
+
+    private static byte[] WithoutChild(byte[] entry, Hash256 child)
+    {
+        byte[] result = new byte[entry.Length - Hash256.Size];
+        entry.AsSpan(0, ChildrenHeaderLength).CopyTo(result);
+        int written = ChildrenHeaderLength;
+        for (int offset = ChildrenHeaderLength; offset + Hash256.Size <= entry.Length; offset += Hash256.Size)
+        {
+            ReadOnlySpan<byte> candidate = entry.AsSpan(offset, Hash256.Size);
+            if (candidate.SequenceEqual(child.Bytes)) continue;
+            candidate.CopyTo(result.AsSpan(written));
+            written += Hash256.Size;
+        }
+
+        return written == result.Length ? result : result[..written];
+    }
 
     public void SetCanonicalRoot(ulong slot, Hash256 root)
     {
