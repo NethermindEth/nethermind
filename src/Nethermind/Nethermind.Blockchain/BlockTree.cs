@@ -1896,7 +1896,7 @@ namespace Nethermind.Blockchain
                 throw new ArgumentException("Start number must be equal or greater end number.", nameof(startNumber));
             }
 
-            if (endNumber - startNumber > 50000)
+            if (endNumber - startNumber > IBlockTree.MaxDeletionSpan)
             {
                 throw new ArgumentException(
                     $"Cannot delete that many blocks at once (start: {startNumber}, end {endNumber}).",

@@ -123,7 +123,7 @@ public class DebugBridge : IDebugBridge
 
     public ResultWrapper<int> DeleteChainSlice(ulong startNumber, bool force = false)
     {
-        ResultWrapper<int>? deletionError = GetDeletionError(startNumber);
+        ResultWrapper<int>? deletionError = GetDeletionError(startNumber, out _);
         if (deletionError is not null) return deletionError;
         if (!CanMutateChain()) return NotDrained();
 
@@ -134,27 +134,22 @@ public class DebugBridge : IDebugBridge
         }
         using BlockTreeMutationLock.Scope mutationScope = mutation;
         if (!CanMutateChain()) return NotDrained();
-        deletionError = GetDeletionError(startNumber);
+        deletionError = GetDeletionError(startNumber, out ulong endNumber);
         if (deletionError is not null) return deletionError;
 
         bool replacesHead = startNumber > 0 && _blockTree.Head?.Number >= startNumber;
-        // The implicit deletion end is BestKnownNumber, which can be below a configured pivot.
         bool replacesPivot = startNumber <= _blockTree.SyncPivot.BlockNumber &&
-                             _blockTree.SyncPivot.BlockNumber <= _blockTree.BestKnownNumber;
+                             _blockTree.SyncPivot.BlockNumber <= endNumber;
         Block? target = replacesHead
             ? _blockTree.FindBlock(startNumber - 1, BlockTreeLookupOptions.RequireCanonical)
             : _blockTree.Head;
         if ((replacesHead || replacesPivot) && (target is null || !HasProcessingState(target.Header)))
             return ResultWrapper<int>.Fail("The new head body or state is unavailable for block processing.", ErrorCodes.ResourceUnavailable);
 
-        if (replacesPivot &&
-            (_blockTree.LowestInsertedHeader?.Number > target!.Number ||
-             _syncPointers.LowestInsertedBodyNumber > target.Number ||
-             _syncPointers.LowestInsertedReceiptBlockNumber > target.Number ||
-             _syncPointers.LowestInsertedBlockAccessListBlockNumber > target.Number))
+        if (replacesPivot && HasHistoricalProgressAbove(target!.Number))
             return ResultWrapper<int>.Fail("Historical sync progress is above the replacement head; rewind less deeply before deleting chain levels.", ErrorCodes.ResourceUnavailable);
 
-        int deleted = _blockTree.DeleteChainSlice(startNumber, force: force);
+        int deleted = _blockTree.DeleteChainSlice(startNumber, endNumber, force);
         // Completed history remains contiguous from its retained floors to target, below the deleted range.
         // Relocate only after deletion succeeds so a rejected deletion leaves the pivot unchanged.
         if (replacesPivot) _blockTree.SyncPivot = (target!.Number, target.Hash!);
@@ -164,24 +159,18 @@ public class DebugBridge : IDebugBridge
             ResultWrapper<int>.Fail("Pause block processing and wait for it to drain before deleting chain levels.", ErrorCodes.ResourceUnavailable);
     }
 
-    private ResultWrapper<int>? GetDeletionError(ulong startNumber)
+    private ResultWrapper<int>? GetDeletionError(ulong startNumber, out ulong endNumber)
     {
-        ulong endNumber = _blockTree.BestKnownNumber;
+        endNumber = _blockTree.BestKnownNumber;
         if (startNumber == 0 || startNumber > endNumber)
-            return ResultWrapper<int>.Fail($"startNumber must be between 1 and {endNumber}.", ErrorCodes.InvalidParams);
-        if (endNumber - startNumber > 50_000)
-            return ResultWrapper<int>.Fail("The deletion range cannot span more than 50,001 chain levels.", ErrorCodes.InvalidParams);
+            return ResultWrapper<int>.Fail($"startNumber must be positive and cannot exceed the highest known block ({endNumber}).", ErrorCodes.InvalidParams);
+        if (endNumber - startNumber > IBlockTree.MaxDeletionSpan)
+            return ResultWrapper<int>.Fail($"The deletion range cannot span more than {IBlockTree.MaxDeletionSpan + 1} chain levels.", ErrorCodes.InvalidParams);
 
-        const SyncMode initialSyncModes = SyncMode.FastBlocks | SyncMode.BeaconHeaders | SyncMode.StateNodes |
-                                          SyncMode.FastSync | SyncMode.UpdatingPivot | SyncMode.DbLoad;
-        if ((_syncModeSelector.Current & initialSyncModes) != 0 ||
-            (startNumber <= _blockTree.SyncPivot.BlockNumber &&
-             (!_syncProgressResolver.IsFastBlocksHeadersFinished() ||
-              !_syncProgressResolver.IsFastBlocksBodiesFinished() ||
-              !_syncProgressResolver.IsFastBlocksReceiptsFinished() ||
-              !_syncProgressResolver.IsFastBlockAccessListsFinished())))
+        if (IsInitialSyncActive || (startNumber <= _blockTree.SyncPivot.BlockNumber && !IsHistoricalSyncFinished()))
             return ResultWrapper<int>.Fail("Historical sync is unfinished or initial synchronization is active; wait for synchronization to complete before deleting chain levels.", ErrorCodes.ResourceUnavailable);
 
+        ulong validatedEnd = endNumber;
         return IsDeleted(_blockTree.LowestInsertedHeader?.Number) ||
                IsDeleted(_syncPointers.LowestInsertedBodyNumber) ||
                IsDeleted(_syncPointers.LowestInsertedReceiptBlockNumber) ||
@@ -189,14 +178,14 @@ public class DebugBridge : IDebugBridge
             ? ResultWrapper<int>.Fail("Historical sync progress lies in the deletion range; choose a higher startNumber.", ErrorCodes.ResourceUnavailable)
             : null;
 
-        bool IsDeleted(ulong? number) => number >= startNumber && number <= endNumber;
+        bool IsDeleted(ulong? number) => number >= startNumber && number <= validatedEnd;
     }
 
     public bool UpdateHeadBlock(Hash256 blockHash) => UpdateHeadBlock(new BlockParameter(blockHash));
 
     public bool UpdateHeadBlock(BlockParameter blockParameter)
     {
-        if (!CanMutateChain()) return false;
+        if (!CanRewindChain()) return false;
 
         if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation, maintenance: true))
         {
@@ -204,7 +193,7 @@ public class DebugBridge : IDebugBridge
             return false;
         }
         using BlockTreeMutationLock.Scope mutationScope = mutation;
-        if (!CanMutateChain()) return false;
+        if (!CanRewindChain()) return false;
 
         BlockHeader? header = _blockTree.FindHeader(blockParameter);
         if (header is null)
@@ -219,10 +208,37 @@ public class DebugBridge : IDebugBridge
             return false;
         }
 
+        bool rewindPivot = header.Number < _blockTree.SyncPivot.BlockNumber &&
+                           IsHistoricalSyncFinished() && !HasHistoricalProgressAbove(header.Number);
         if (!_blockTree.TryRewindHead(header.Hash!)) return false;
+        // Keep completed sync aligned with the rewound head before state cleanup can yield to the selector.
+        if (rewindPivot) _blockTree.SyncPivot = (header.Number, header.Hash!);
 
         _worldStateManager.DropStateNotReachableFrom(header);
         return true;
+    }
+
+    private bool IsInitialSyncActive => (_syncModeSelector.Current &
+        (SyncMode.FastBlocks | SyncMode.BeaconHeaders | SyncMode.StateNodes | SyncMode.FastSync | SyncMode.UpdatingPivot | SyncMode.DbLoad)) != 0;
+
+    private bool IsHistoricalSyncFinished() =>
+        _syncProgressResolver.IsFastBlocksHeadersFinished() &&
+        _syncProgressResolver.IsFastBlocksBodiesFinished() &&
+        _syncProgressResolver.IsFastBlocksReceiptsFinished() &&
+        _syncProgressResolver.IsFastBlockAccessListsFinished();
+
+    private bool HasHistoricalProgressAbove(ulong number) =>
+        _blockTree.LowestInsertedHeader?.Number > number ||
+        _syncPointers.LowestInsertedBodyNumber > number ||
+        _syncPointers.LowestInsertedReceiptBlockNumber > number ||
+        _syncPointers.LowestInsertedBlockAccessListBlockNumber > number;
+
+    private bool CanRewindChain()
+    {
+        if (!CanMutateChain()) return false;
+        if (!IsInitialSyncActive) return true;
+        if (_logger.IsWarn) _logger.Warn("Cannot rewind the head while initial synchronization is active; wait for synchronization to complete.");
+        return false;
     }
 
     private bool CanMutateChain()

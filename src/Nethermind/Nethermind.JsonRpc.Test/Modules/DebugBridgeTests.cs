@@ -49,7 +49,7 @@ public class DebugBridgeTests
 {
     public enum ProcessingState { Running, PausedExecuting, PausedQueued, PausedIdle }
 
-    public enum HistoricalSync { Complete, Headers, Bodies, Receipts, AccessLists, DeleteProgressFloor, BodyFloor, ReceiptFloor, AccessListFloor, BodyAboveHead }
+    public enum HistoricalSync { Complete, CompleteDeepRewind, CompleteWithoutRewind, Headers, Bodies, Receipts, AccessLists, DeleteProgressFloor, BodyFloor, ReceiptFloor, AccessListFloor, BodyAboveHead }
 
     private static IEnumerable<TestCaseData> HistoricalSyncCases()
     {
@@ -64,7 +64,7 @@ public class DebugBridgeTests
     {
         TestStateBoundary boundary = new();
         ISyncPeer peer = Substitute.For<ISyncPeer>();
-        peer.HeadNumber.Returns(4UL);
+        peer.HeadNumber.Returns(5UL);
         peer.HeadHash.Returns(TestItem.KeccakC);
         peer.TotalDifficulty.Returns(UInt256.MaxValue);
         ISyncPeerPool peerPool = Substitute.For<ISyncPeerPool>();
@@ -114,21 +114,36 @@ public class DebugBridgeTests
             Assert.That(progress.IsFastBlockAccessListsFinished(), Is.EqualTo(history != HistoricalSync.AccessLists));
         }
         IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
-        ulong retainedHead = history == HistoricalSync.BodyAboveHead ? 1UL : 2;
-        Assert.That(debug.debug_setHead(new BlockParameter(retainedHead)).Data, Is.True);
-        Assert.That(tree.SyncPivot.BlockNumber, Is.EqualTo(4));
+        ulong retainedHead = history is HistoricalSync.BodyAboveHead or HistoricalSync.CompleteDeepRewind ? 1UL : 2;
+        if (history != HistoricalSync.CompleteWithoutRewind)
+            Assert.That(debug.debug_setHead(new BlockParameter(retainedHead)).Data, Is.True);
+        ulong expectedPivot = history switch
+        {
+            HistoricalSync.Complete or HistoricalSync.DeleteProgressFloor => 2,
+            HistoricalSync.CompleteDeepRewind => 1,
+            _ => 4
+        };
+        if (history is not (HistoricalSync.Complete or HistoricalSync.CompleteDeepRewind))
+            Assert.That(tree.SyncPivot.BlockNumber, Is.EqualTo(expectedPivot));
 
         IDbProvider db = container.Resolve<IDbProvider>();
         byte[]? headerProgress = db.MetadataDb.Get(MetadataDbKeys.LowestInsertedFastHeaderHash);
         byte[]? bodyProgress = db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber);
         byte[]? accessListProgress = db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber);
-        ResultWrapper<int> result = debug.debug_deleteChainSlice(history == HistoricalSync.DeleteProgressFloor ? 1 : 3, force);
-        bool accepted = history == HistoricalSync.Complete;
+        bool accepted = history is HistoricalSync.Complete or HistoricalSync.CompleteDeepRewind or HistoricalSync.CompleteWithoutRewind;
+        ISyncModeSelector selector = container.Resolve<ISyncModeSelector>();
+        if (accepted)
+        {
+            selector.Update();
+            if (history != HistoricalSync.CompleteWithoutRewind)
+                Assert.That(selector.Current.HasFlag(SyncMode.Full), Is.True, $"rewind must remain in full sync before cleanup, got {selector.Current}");
+        }
+        ResultWrapper<int> result = debug.debug_deleteChainSlice(history == HistoricalSync.DeleteProgressFloor ? 1 : history == HistoricalSync.CompleteDeepRewind ? 2 : 3, force);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Result.ResultType, Is.EqualTo(accepted ? ResultType.Success : ResultType.Failure));
-            if (accepted) Assert.That(result.Data, Is.EqualTo(2));
+            if (accepted) Assert.That(result.Data, Is.EqualTo(4 - retainedHead));
             else
             {
                 Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
@@ -150,14 +165,13 @@ public class DebugBridgeTests
             Assert.That(pointers.LowestInsertedBodyNumber, Is.EqualTo(history is HistoricalSync.Bodies or HistoricalSync.BodyAboveHead ? 2 : history == HistoricalSync.BodyFloor ? 3 : 1));
             Assert.That(pointers.LowestInsertedReceiptBlockNumber, Is.EqualTo(history == HistoricalSync.Receipts ? 2 : history == HistoricalSync.ReceiptFloor ? 3 : 1));
             Assert.That(pointers.LowestInsertedBlockAccessListBlockNumber, Is.EqualTo(history == HistoricalSync.AccessLists ? 2 : history == HistoricalSync.AccessListFloor ? 3 : 1));
-            Assert.That(tree.SyncPivot, Is.EqualTo(accepted ? (2UL, blocks[2].Hash!) : (4UL, blocks[4].Hash!)));
+            Assert.That(tree.SyncPivot, Is.EqualTo(accepted ? (retainedHead, blocks[retainedHead].Hash!) : (expectedPivot, blocks[expectedPivot].Hash!)));
             Assert.That(db.MetadataDb.Get(MetadataDbKeys.LowestInsertedFastHeaderHash), Is.EqualTo(headerProgress));
             Assert.That(db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber), Is.EqualTo(bodyProgress));
             Assert.That(db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber), Is.EqualTo(accessListProgress));
         }
         if (accepted)
         {
-            ISyncModeSelector selector = container.Resolve<ISyncModeSelector>();
             selector.Update();
             Assert.That(selector.Current.HasFlag(SyncMode.Full), Is.True, $"recovery must allow synchronization to resume, got {selector.Current}");
         }
@@ -167,9 +181,81 @@ public class DebugBridgeTests
     }
 
     [Test]
-    public async Task Delete_slice_refuses_initial_sync_modes(
-        [Values(SyncMode.FastHeaders, SyncMode.BeaconHeaders, SyncMode.StateNodes, SyncMode.FastSync, SyncMode.UpdatingPivot, SyncMode.DbLoad)] SyncMode mode,
-        [Values(1L, 2L)] long start)
+    public async Task Delete_slice_uses_the_validated_end_when_a_header_arrives()
+    {
+        ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new SyncConfig { FastSync = false }))
+            .AddSingleton<ISyncModeSelector>(selector)
+            .Build();
+        container.Resolve<IBlockProcessingPauseControl>().Pause();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        AddToMainChain(tree, genesis);
+        Block pending = Build.A.Block.WithParent(genesis).TestObject;
+        tree.SuggestBlock(pending, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        BlockHeader arriving = Build.A.BlockHeader.WithParent(pending.Header).TestObject;
+        IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
+        int syncChecks = 0;
+        selector.Current.Returns(_ =>
+        {
+            if (++syncChecks == 2)
+                tree.Insert(arriving, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+            return SyncMode.Full;
+        });
+
+        ResultWrapper<int> result = debug.debug_deleteChainSlice(1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(syncChecks, Is.EqualTo(2));
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(2));
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(result.Data, Is.EqualTo(1));
+            Assert.That(tree.FindBlock(pending.Hash!, BlockTreeLookupOptions.None), Is.Null);
+            Assert.That(tree.FindHeader(arriving.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(tree.Head!.Hash, Is.EqualTo(genesis.Hash));
+        }
+    }
+
+    [Test]
+    public async Task Head_reset_refuses_active_initial_sync([Values] bool byHash, [Values(SyncMode.StateNodes, SyncMode.Full)] SyncMode mode)
+    {
+        ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
+        selector.Current.Returns(mode);
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<ISyncModeSelector>(selector)
+            .Build();
+        container.Resolve<IBlockProcessingPauseControl>().Pause();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        Block head = Build.A.Block.WithParent(genesis).TestObject;
+        AddToMainChain(tree, genesis);
+        AddToMainChain(tree, head);
+
+        ResultWrapper<bool> result = ResetHead(container, genesis, byHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            bool accepted = mode == SyncMode.Full;
+            Assert.That(result.Data, Is.EqualTo(accepted));
+            Assert.That(tree.Head!.Hash, Is.EqualTo(accepted ? genesis.Hash : head.Hash));
+            Assert.That(container.Resolve<IDbProvider>().BlockInfosDb.Get(Keccak.Zero.Bytes),
+                Is.EqualTo((accepted ? genesis.Hash : head.Hash)!.Bytes.ToArray()));
+            Assert.That(tree.FindBlock(head.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> InitialSyncCases()
+    {
+        foreach (SyncMode mode in new[] { SyncMode.FastHeaders, SyncMode.BeaconHeaders, SyncMode.StateNodes, SyncMode.FastSync, SyncMode.UpdatingPivot, SyncMode.DbLoad })
+            yield return new TestCaseData(mode, 1L);
+        yield return new TestCaseData(SyncMode.StateNodes, 2L);
+    }
+
+    [TestCaseSource(nameof(InitialSyncCases))]
+    public async Task Delete_slice_refuses_initial_sync_modes(SyncMode mode, long start)
     {
         ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
         selector.Current.Returns(mode);
@@ -257,12 +343,17 @@ public class DebugBridgeTests
     }
 
     [Test]
-    public async Task Delete_slice_rejects_non_positive_start([Values(-1L, 0L)] long start)
+    public async Task Delete_slice_rejects_start_without_chain([Values(-1L, 0L, 1L)] long start)
     {
         await using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
         IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
         ResultWrapper<int> result = debug.debug_deleteChainSlice(start);
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            if (start == 1)
+                Assert.That(result.Result.Error, Is.EqualTo("startNumber must be positive and cannot exceed the highest known block (0)."));
+        }
     }
 
     [Test]

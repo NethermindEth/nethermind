@@ -28,7 +28,7 @@ public interface IDebugRpcModule : IRpcModule
 
     /// <inheritdoc cref="IDebugBridge.UpdateHeadBlock(BlockParameter)" path="/member/remarks"/>
     [JsonRpcMethod(
-        Description = "Rewinds to a canonical block with state available for block processing and prunes abandoned flat-state snapshots; returns false for an unknown hash or a refused rewind (Nethermind specific). Requires paused, drained block processing.",
+        Description = "Rewinds to a canonical block with state available for block processing and prunes abandoned flat-state snapshots; returns false for an unknown hash or a refused rewind (Nethermind specific). Requires paused, drained block processing and no active initial synchronization. A higher sync pivot moves to the target only when historical downloads are complete and retained progress is at or below the target.",
         IsSharable = true)]
     ResultWrapper<bool> debug_resetHead(Hash256 blockHash);
 
@@ -72,7 +72,7 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter);
 
     /// <inheritdoc cref="IDebugBridge.UpdateHeadBlock(BlockParameter)" path="/member/remarks"/>
-    [JsonRpcMethod(Description = "Rewinds the head to a canonical block with state available for block processing, given by number, tag or hash, and prunes abandoned flat-state snapshots. Returns false for an unknown target or a refused rewind (Nethermind specific). Requires paused, drained block processing.", IsImplemented = true, IsSharable = true)]
+    [JsonRpcMethod(Description = "Rewinds the head to a canonical block with state available for block processing, given by number, tag or hash, and prunes abandoned flat-state snapshots. Returns false for an unknown target or a refused rewind (Nethermind specific). Requires paused, drained block processing and no active initial synchronization. A higher sync pivot moves to the target only when historical downloads are complete and retained progress is at or below the target.", IsImplemented = true, IsSharable = true)]
     ResultWrapper<bool> debug_setHead(BlockParameter blockParameter);
 
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]
