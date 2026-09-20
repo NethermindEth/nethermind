@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
+using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
@@ -38,11 +39,11 @@ public enum GossipDropReason
 /// within <see cref="Eth2MessageId.MaxGossipSize"/>, SSZ decoding, duplicate suppression, and slot
 /// sanity against the wall clock (not from the future beyond
 /// <see cref="MaximumGossipClockDisparityMs"/>; blocks additionally not older than one epoch).
-/// Full spec gossip validation — proposer signature and shuffling, first-block-per-slot,
-/// parent-block checks, aggregator selection — requires the head state and belongs to the
+/// Full spec gossip validation - proposer signature and shuffling, first-block-per-slot,
+/// parent-block checks, aggregator selection - requires the head state and belongs to the
 /// orchestrator import pipeline consuming these events.
 /// </remarks>
-public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILogManager logManager)
+public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILogManager logManager, ExecutionPayloadEnvelopePool? envelopePool = null)
 {
     /// <summary>The spec <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c>.</summary>
     public const long MaximumGossipClockDisparityMs = 500;
@@ -56,12 +57,16 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     private readonly List<(ITopic Topic, Action<byte[]> Handler)> _subscriptions = [];
 
     private Func<string, ITopic>? _getTopic;
+    private byte[] _currentForkDigest = [];
+    private bool _gloasActive;
 
     public event Action<SignedBeaconBlock>? BeaconBlockReceived;
     public event Action<SignedAggregateAndProof>? AggregateAndProofReceived;
     public event Action<SignedVoluntaryExit>? VoluntaryExitReceived;
     public event Action<ProposerSlashing>? ProposerSlashingReceived;
     public event Action<AttesterSlashing>? AttesterSlashingReceived;
+    public event Action<SignedExecutionPayloadEnvelope>? ExecutionPayloadEnvelopeReceived;
+    public event Action<PayloadAttestationMessage>? PayloadAttestationMessageReceived;
 
     public long GetDropCount(GossipDropReason reason) => Interlocked.Read(ref _dropCounts[(int)reason]);
 
@@ -98,7 +103,8 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
 
     private void SubscribeTopics(byte[] forkDigest)
     {
-        foreach (string name in GossipTopics.SubscribedTopicNames)
+        _currentForkDigest = forkDigest;
+        foreach (string name in CurrentTopicNames())
         {
             ITopic topic = _getTopic!(GossipTopics.Topic(forkDigest, name));
             Action<byte[]> handler = HandlerFor(name);
@@ -110,6 +116,45 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         if (_logger.IsInfo) _logger.Info($"Subscribed beacon gossip topics for fork digest 0x{Convert.ToHexStringLower(forkDigest)}");
     }
 
+    /// <summary>The pre-Gloas topic names, plus the Gloas-only ones once <see cref="ActivateGloasTopics"/> has run.</summary>
+    private IEnumerable<string> CurrentTopicNames() =>
+        _gloasActive ? [.. GossipTopics.SubscribedTopicNames, .. GossipTopics.GloasTopicNames] : GossipTopics.SubscribedTopicNames;
+
+    /// <summary>
+    /// Adds the Gloas-only gossip topics (<c>execution_payload</c>, <c>payload_attestation_message</c>)
+    /// under the currently subscribed fork digest. Call once, at the Gloas fork boundary: a later
+    /// <see cref="RotateDigest"/> (e.g. an EIP-7892 BPO rotation past Gloas) carries them forward
+    /// automatically since <see cref="CurrentTopicNames"/> includes them from then on, rather than the
+    /// subscription set being fixed at <see cref="Start"/> time.
+    /// </summary>
+    public void ActivateGloasTopics()
+    {
+        lock (_subscriptionLock)
+        {
+            if (_getTopic is null)
+            {
+                throw new InvalidOperationException($"{nameof(GossipRouter)} is not started");
+            }
+
+            if (_gloasActive)
+            {
+                return;
+            }
+
+            _gloasActive = true;
+            foreach (string name in GossipTopics.GloasTopicNames)
+            {
+                ITopic topic = _getTopic(GossipTopics.Topic(_currentForkDigest, name));
+                Action<byte[]> handler = HandlerFor(name);
+                topic.OnMessage += handler;
+                topic.Subscribe();
+                _subscriptions.Add((topic, handler));
+            }
+
+            if (_logger.IsInfo) _logger.Info("Activated Gloas beacon gossip topics (execution_payload, payload_attestation_message)");
+        }
+    }
+
     /// <summary>The raw-payload handler for an eth2 gossip topic name.</summary>
     public Action<byte[]> HandlerFor(string name) => name switch
     {
@@ -118,6 +163,8 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
         GossipTopics.VoluntaryExit => HandleVoluntaryExit,
         GossipTopics.ProposerSlashing => HandleProposerSlashing,
         GossipTopics.AttesterSlashing => HandleAttesterSlashing,
+        GossipTopics.ExecutionPayload => HandleExecutionPayloadEnvelope,
+        GossipTopics.PayloadAttestationMessage => HandlePayloadAttestationMessage,
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, "Unknown gossip topic name"),
     };
 
@@ -150,6 +197,36 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
             static payload => { AttesterSlashing.Decode(payload, out AttesterSlashing slashing); return slashing; },
             validate: null,
             slashing => AttesterSlashingReceived?.Invoke(slashing));
+
+    /// <summary>
+    /// Decode-only: the full <c>execution_payload</c> gossip conditions (envelope's block passes
+    /// validation, builder/block-hash/execution-requests-root match the committed bid, envelope
+    /// signature) all need the head state and the block's bid, so - like <see cref="HandleBeaconBlock"/> -
+    /// they are left to the orchestrator import pipeline.
+    /// </summary>
+    public void HandleExecutionPayloadEnvelope(byte[] message) =>
+        Handle(GossipTopics.ExecutionPayload, message,
+            static payload => { SignedExecutionPayloadEnvelope.Decode(payload, out SignedExecutionPayloadEnvelope envelope); return envelope; },
+            validate: null,
+            envelope =>
+            {
+                if (envelope.Message is { BeaconBlockRoot: { } root, Payload: { } payload })
+                {
+                    envelopePool?.Add(root, payload.SlotNumber, envelope);
+                }
+
+                ExecutionPayloadEnvelopeReceived?.Invoke(envelope);
+            });
+
+    /// <summary>
+    /// Decode-only plus the slot-disparity check: validator-index and PTC-membership checks need the
+    /// head state and are left to the orchestrator import pipeline, as with the other gossip types here.
+    /// </summary>
+    public void HandlePayloadAttestationMessage(byte[] message) =>
+        Handle(GossipTopics.PayloadAttestationMessage, message,
+            static payload => { PayloadAttestationMessage.Decode(payload, out PayloadAttestationMessage attestation); return attestation; },
+            attestation => ValidateNotFromFuture(attestation.Data!.Slot),
+            attestation => PayloadAttestationMessageReceived?.Invoke(attestation));
 
     private void Handle<T>(string name, byte[] message, Func<byte[], T> decode, Func<T, GossipDropReason?>? validate, Action<T> raise) where T : class
     {
