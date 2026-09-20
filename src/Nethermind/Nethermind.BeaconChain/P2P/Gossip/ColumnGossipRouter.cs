@@ -25,6 +25,7 @@ public enum ColumnGossipDropReason
     StaleSlot,
     Duplicate,
     FailedStructure,
+    FailedBlobCount,
     FailedInclusionProof,
     FailedKzgProofs,
 }
@@ -159,6 +160,14 @@ public sealed class ColumnGossipRouter(BeaconChainSpec spec, SlotClock slotClock
         if (!DataColumnSidecarVerifier.VerifyStructure(sidecar))
         {
             Drop(ColumnGossipDropReason.FailedStructure);
+            return;
+        }
+
+        // [REJECT] the commitment count is within the max_blobs_per_block scheduled for this
+        // sidecar's own epoch, which a blob-parameter-only fork raises without a version bump.
+        if (!DataColumnSidecarVerifier.VerifyBlobCount(sidecar, spec))
+        {
+            Drop(ColumnGossipDropReason.FailedBlobCount);
             return;
         }
 

@@ -31,6 +31,7 @@ public class SlotClockTests
         MaxBlobsPerBlockElectra = 9,
         GloasForkEpoch = ulong.MaxValue,
         GloasForkVersion = Bytes.FromHexString("0x07000000"),
+        Bootnodes = [],
     };
 
     private static SlotClock CreateClock(long millisecondsSinceGenesis) =>
