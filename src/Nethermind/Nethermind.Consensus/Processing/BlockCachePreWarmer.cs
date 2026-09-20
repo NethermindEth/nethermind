@@ -693,16 +693,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
 
             if (_logger.IsDebug) DebugPreWarming("Finished", suggestedBlock.Number, isPreparation, transactionCount);
-        }
-        catch (Exception ex)
-        {
-            _logger.DebugWarn($"Error pre-warming {suggestedBlock.Number}. {ex}");
-        }
             }
             finally
             {
                 ProcessingThread.IsBlockProcessingThread = wasProcessingThread;
             }
+        }
+        catch (Exception ex)
+        {
+            _logger.DebugWarn($"Error pre-warming {suggestedBlock.Number}. {ex}");
+        }
         finally
         {
             // Don't complete the task until address warmer is also done.
