@@ -768,8 +768,23 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             // Past the window the sender may never arrive at all, and a spinning core would starve the very
             // recovery this waits for. Waiting on the token rather than sleeping keeps the end-of-block join,
             // which runs on the processing thread, from paying out the rest of a sleep quantum.
-            if (Stopwatch.GetElapsedTime(start) < SenderArrivalWindow) spinner.SpinOnce(sleep1Threshold: -1);
-            else if (cancellationToken.WaitHandle.WaitOne(1)) return false;
+            if (Stopwatch.GetElapsedTime(start) < SenderArrivalWindow)
+            {
+                spinner.SpinOnce(sleep1Threshold: -1);
+            }
+            else
+            {
+                try
+                {
+                    if (cancellationToken.WaitHandle.WaitOne(1)) return false;
+                }
+                catch (ObjectDisposedException)
+                {
+                    // BranchProcessor disposes the source before it joins this task, so a disposed source
+                    // means the block is done.
+                    return false;
+                }
+            }
         }
 
         return false;
@@ -1096,31 +1111,27 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 // BAL warmup is driven from BlockProcessor.HintBal; skip speculative warming here.
                 if (Bal is null)
                 {
-                    WarmingState<Block> baseState = new(envPool, block, parent);
-                    int txCount = block.Transactions.Length;
-                    int ilCount = block.InclusionListTransactions?.Length ?? 0;
+                    int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
 
-                    ParallelUnbalancedWork.For(
-                        0,
-                        txCount + ilCount,
-                        parallelOptions,
-                        baseState.InitThreadState,
-                        WarmupSenderAt,
-                        WarmingState<Block>.FinallyAction);
-
-                    // Unlike the transaction warmup this pass never revisits an index, so a sender recovered
-                    // after its index went by would lose its account warm for the whole block; one more pass
-                    // picks up whatever arrived while the first was running.
-                    if (AnyMissingSender(block.Transactions) && !parallelOptions.CancellationToken.IsCancellationRequested)
+                    // Unlike the transaction warmup a pass never revisits an index, so a sender recovered after
+                    // its index went by would lose its account warm for the whole block. Indices keep their
+                    // claim once warmed, so later passes only revisit what is still waiting for a sender.
+                    bool[] warmed = ArrayPool<bool>.Shared.Rent(count);
+                    Array.Clear(warmed, 0, count);
+                    WarmingState<(Block Block, bool[] Warmed)> baseState = new(envPool, (block, warmed), parent);
+                    do
                     {
                         ParallelUnbalancedWork.For(
                             0,
-                            txCount + ilCount,
+                            count,
                             parallelOptions,
                             baseState.InitThreadState,
                             WarmupSenderAt,
-                            WarmingState<Block>.FinallyAction);
+                            WarmingState<(Block, bool[])>.FinallyAction);
                     }
+                    while (AnyUnwarmedSender(block, warmed, count) && !parallelOptions.CancellationToken.IsCancellationRequested);
+
+                    ArrayPool<bool>.Shared.Return(warmed);
                 }
             }
             catch (OperationCanceledException)
@@ -1129,21 +1140,29 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             }
         }
 
-        private static WarmingState<Block> WarmupSenderAt(int i, WarmingState<Block> state)
+        private static WarmingState<(Block Block, bool[] Warmed)> WarmupSenderAt(int i, WarmingState<(Block Block, bool[] Warmed)> state)
         {
-            Transaction[] txs = state.Payload.Transactions;
-            // Indexes past the block txs warm inclusion-list txs — they may be promoted into the block.
-            Transaction tx = i < txs.Length ? txs[i] : state.Payload.InclusionListTransactions![i - txs.Length];
+            if (state.Payload.Warmed[i]) return state;
+
+            Transaction tx = TransactionAt(state.Payload.Block, i);
             WarmupSender(tx.SenderAddress, tx.To, state.Scope!.WorldState);
+            if (tx.SenderAddress is not null) state.Payload.Warmed[i] = true;
 
             return state;
         }
 
-        private static bool AnyMissingSender(Transaction[] txs)
+        /// <summary>Indexes past the block transactions address inclusion-list ones, which may be promoted into the block.</summary>
+        private static Transaction TransactionAt(Block block, int i)
         {
-            foreach (Transaction tx in txs)
+            Transaction[] txs = block.Transactions;
+            return i < txs.Length ? txs[i] : block.InclusionListTransactions![i - txs.Length];
+        }
+
+        private static bool AnyUnwarmedSender(Block block, bool[] warmed, int count)
+        {
+            for (int i = 0; i < count; i++)
             {
-                if (tx.IsSigned && tx.SenderAddress is null) return true;
+                if (!warmed[i] && TransactionAt(block, i).SenderAddress is not null) return true;
             }
 
             return false;

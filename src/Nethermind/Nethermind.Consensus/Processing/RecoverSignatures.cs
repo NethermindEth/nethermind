@@ -76,9 +76,15 @@ namespace Nethermind.Consensus.Processing
         /// Recovery runs in ascending transaction order, so consumers that tolerate a not-yet-recovered sender
         /// (the transaction processor recovers inline, the prewarmer warms transactions as their senders arrive)
         /// rarely wait. A failure is logged and left to the processing path, whose own attempt rejects the block.
-        /// <paramref name="blockHash"/> only suppresses a duplicate start. A resent payload decodes its own
-        /// transaction objects, which the identity check will not match, so those are left to the pipeline's
-        /// own recovery rather than recovered twice.
+        /// <paramref name="blockHash"/> only suppresses a duplicate start for the same hash; a resent payload
+        /// decodes its own transaction objects, and those get no background recovery at all — the pipeline
+        /// recovers them on the processing thread.
+        /// <para>
+        /// The single slot holds the newest recovery, so the next block displaces one still running. The
+        /// displaced block's pipeline step then recovers that array itself, concurrently with the work item
+        /// still writing it. That is safe because both writers derive each sender from the same signature and
+        /// store equal values through <c>??=</c>, so whichever store lands last is the same address.
+        /// </para>
         /// </remarks>
         public void StartRecovery(Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec)
         {
