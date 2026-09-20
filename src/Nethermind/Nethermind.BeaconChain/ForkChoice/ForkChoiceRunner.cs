@@ -1,13 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Merge.Plugin.SszRest;
 
 namespace Nethermind.BeaconChain.ForkChoice;
 
@@ -28,6 +31,15 @@ namespace Nethermind.BeaconChain.ForkChoice;
 /// </remarks>
 public sealed class ForkChoiceRunner
 {
+    /// <summary>Percent of the justified balance below which a head is "weak" enough to be overpowered by a proposer re-org; the spec's <c>REORG_HEAD_WEIGHT_THRESHOLD</c>.</summary>
+    public const ulong ReorgHeadWeightThresholdPercent = 20;
+
+    /// <summary>Percent of the justified balance above which a parent is "strong" enough to justify a proposer re-org; the spec's <c>REORG_PARENT_WEIGHT_THRESHOLD</c>.</summary>
+    public const ulong ReorgParentWeightThresholdPercent = 160;
+
+    /// <summary>Epochs since finality beyond which a proposer re-org is refused; the spec's <c>REORG_MAX_EPOCHS_SINCE_FINALIZATION</c>.</summary>
+    public const ulong ReorgMaxEpochsSinceFinalization = 2;
+
     private readonly BeaconChainSpec _spec;
     private readonly IForkChoiceStateProvider _stateProvider;
     private readonly PubkeyCache _pubkeys;
@@ -37,6 +49,9 @@ public sealed class ForkChoiceRunner
     private readonly List<QueuedAttestation> _queuedAttestations = [];
     private readonly Dictionary<CheckpointRef, BeaconStateFulu> _checkpointStates = [];
     private readonly Dictionary<CheckpointRef, JustifiedBalances> _justifiedBalances = [];
+
+    /// <summary>The spec's <c>store.block_timeliness</c>: whether each block arrived before its slot's attesting interval, keyed by block root.</summary>
+    private readonly Dictionary<Hash256, bool> _blockTimeliness = [];
 
     /// <summary>Committee shufflings only; safe to share across forks (keyed by decision root). The balance memo is never used through this instance.</summary>
     private readonly EpochCache _committees = new();
@@ -114,6 +129,17 @@ public sealed class ForkChoiceRunner
         _protoArray.MaybePrune(finalized.Root);
         PruneCheckpointCache(_checkpointStates, finalized.Epoch);
         PruneCheckpointCache(_justifiedBalances, finalized.Epoch);
+
+        List<Hash256>? staleTimeliness = null;
+        foreach (Hash256 root in _blockTimeliness.Keys)
+        {
+            if (!_protoArray.ContainsBlock(root)) (staleTimeliness ??= []).Add(root);
+        }
+
+        if (staleTimeliness is not null)
+        {
+            foreach (Hash256 root in staleTimeliness) _blockTimeliness.Remove(root);
+        }
     }
 
     private static void PruneCheckpointCache<TValue>(Dictionary<CheckpointRef, TValue> cache, ulong finalizedEpoch)
@@ -153,8 +179,13 @@ public sealed class ForkChoiceRunner
     /// realized and unrealized checkpoints, and registers the block with the proto-array.
     /// </summary>
     /// <param name="executionStatus">The execution layer's verdict on the block's payload, usually <see cref="ExecutionStatus.Optimistic"/> until <c>newPayload</c> completes.</param>
-    /// <exception cref="ForkChoiceException">The block violates an <c>on_block</c> assertion.</exception>
-    public void OnBlock(SignedBeaconBlock signedBlock, BeaconStateFulu postState, ExecutionStatus executionStatus = ExecutionStatus.Optimistic)
+    /// <param name="dataColumns">
+    /// The data column sidecars available for this block's blob commitments (the spec's
+    /// <c>retrieve_column_sidecars</c>), checked by <see cref="IsDataAvailable"/>. <c>null</c> or empty is
+    /// only valid when the block carries no blob commitments.
+    /// </param>
+    /// <exception cref="ForkChoiceException">The block violates an <c>on_block</c> assertion, or its data is not available.</exception>
+    public void OnBlock(SignedBeaconBlock signedBlock, BeaconStateFulu postState, ExecutionStatus executionStatus = ExecutionStatus.Optimistic, IReadOnlyList<DataColumnSidecar>? dataColumns = null)
     {
         BeaconBlock block = signedBlock.Message!;
         Hash256 parentRoot = block.ParentRoot!;
@@ -170,12 +201,16 @@ public sealed class ForkChoiceRunner
             throw new ForkChoiceException($"Block at slot {block.Slot} does not descend from the finalized checkpoint {finalized}");
 
         Hash256 blockRoot = SszRoots.HashTreeRoot(block);
+        if (!IsDataAvailable(block, blockRoot, dataColumns, _spec))
+            throw new ForkChoiceException($"Block {blockRoot} at slot {block.Slot} does not have all its blob data available");
         ExtendPubkeys(postState);
 
         // Proposer boost for the first block of the slot arriving in the attesting interval.
         ulong timeIntoSlot = (Time - GenesisTime) % _spec.SecondsPerSlot;
         bool isBeforeAttestingInterval = timeIntoSlot < _spec.SecondsPerSlot / Presets.IntervalsPerSlot;
-        if (block.Slot == _store.CurrentSlot && isBeforeAttestingInterval && _store.ProposerBoostRoot == Hash256.Zero)
+        bool isTimely = block.Slot == _store.CurrentSlot && isBeforeAttestingInterval;
+        _blockTimeliness[blockRoot] = isTimely;
+        if (isTimely && _store.ProposerBoostRoot == Hash256.Zero)
             _store.ProposerBoostRoot = blockRoot;
 
         CheckpointRef stateJustified = CheckpointRef.From(postState.CurrentJustifiedCheckpoint!);
@@ -315,6 +350,156 @@ public sealed class ForkChoiceRunner
                 ? InvalidationOperation.InvalidateOne(blockRoot)
                 : InvalidationOperation.InvalidateMany(blockRoot, alwaysInvalidateHead: true, latestValidHash),
             _store.FinalizedCheckpoint);
+
+    /// <summary>
+    /// The spec's <c>get_proposer_head</c>: the block the proposer of <paramref name="proposalSlot"/> should
+    /// build on - <paramref name="headRoot"/>'s parent when <see cref="ShouldOverrideForkchoiceUpdate"/> says
+    /// to re-org the late, weakly-attested head out; <paramref name="headRoot"/> itself otherwise.
+    /// </summary>
+    public Hash256 GetProposerHead(Hash256 headRoot, ulong proposalSlot) =>
+        ShouldOverrideForkchoiceUpdate(headRoot, proposalSlot) ? _protoArray.GetParentRoot(headRoot)! : headRoot;
+
+    /// <summary>
+    /// The spec's <c>should_override_forkchoice_update</c>: whether the proposer of <paramref name="proposalSlot"/>
+    /// should re-org out <paramref name="headRoot"/> and build on its parent instead, because the head arrived
+    /// late, is weakly attested, and the parent is strong enough to safely take its place.
+    /// </summary>
+    /// <remarks>
+    /// Every condition below must hold for the re-org to happen; consensus-specs' <c>get_proposer_head</c>
+    /// fork-choice.md documents each one. Weights are refreshed via <see cref="GetHead"/> first: the spec's
+    /// own <c>get_weight</c> is a live computation over current votes and the (already-settled) proposer
+    /// boost, not a value cached from a stale <see cref="GetHead"/> call the caller happened to make earlier.
+    /// </remarks>
+    /// <exception cref="ForkChoiceException"><paramref name="headRoot"/> or its parent is unknown to fork choice, or the head still holds the proposer boost (its score has not settled).</exception>
+    public bool ShouldOverrideForkchoiceUpdate(Hash256 headRoot, ulong proposalSlot)
+    {
+        Hash256 parentRoot = _protoArray.GetParentRoot(headRoot)
+            ?? throw new ForkChoiceException($"Block {headRoot} is unknown to fork choice, or has no parent to reorg onto");
+        ulong headSlot = _protoArray.GetBlockSlot(headRoot) ?? throw new ForkChoiceException($"Block {headRoot} is unknown to fork choice");
+        ulong parentSlot = _protoArray.GetBlockSlot(parentRoot) ?? throw new ForkChoiceException($"Block {parentRoot} is unknown to fork choice");
+
+        if (_store.ProposerBoostRoot == headRoot)
+            throw new ForkChoiceException($"Cannot evaluate a proposer reorg for {headRoot}: it still holds the proposer boost");
+
+        // The spec's get_weight is a live computation, not a cached one; settle deltas and the
+        // (already-worn-off) boost before reading weights below.
+        GetHead();
+
+        bool headLate = IsHeadLate(headRoot);
+        bool shufflingStable = IsShufflingStable(proposalSlot, _spec.SlotsPerEpoch);
+        bool ffgCompetitive = _protoArray.GetUnrealizedJustifiedCheckpoint(headRoot) == _protoArray.GetUnrealizedJustifiedCheckpoint(parentRoot);
+        bool finalizationOk = IsFinalizationOk(proposalSlot, _store.FinalizedCheckpoint.Epoch, ReorgMaxEpochsSinceFinalization);
+        bool proposingOnTime = IsProposingOnTime();
+        bool singleSlotReorg = IsSingleSlotReorg(parentSlot, headSlot, proposalSlot);
+
+        JustifiedBalances justifiedBalances = GetJustifiedBalances(_store.JustifiedCheckpoint);
+        ulong headWeight = _protoArray.GetWeight(headRoot) ?? throw new ForkChoiceException($"Block {headRoot} is unknown to fork choice");
+        ulong parentWeight = _protoArray.GetWeight(parentRoot) ?? throw new ForkChoiceException($"Block {parentRoot} is unknown to fork choice");
+        bool headWeak = headWeight < _protoArray.CalculateCommitteeFraction(justifiedBalances, ReorgHeadWeightThresholdPercent);
+        bool parentStrong = parentWeight > _protoArray.CalculateCommitteeFraction(justifiedBalances, ReorgParentWeightThresholdPercent);
+
+        return headLate && shufflingStable && ffgCompetitive && finalizationOk && proposingOnTime && singleSlotReorg && headWeak && parentStrong;
+    }
+
+    /// <summary>The spec's <c>is_head_late</c>: a block with no recorded timeliness (unknown to this store) is treated as late, denying a reorg rather than allowing one on missing data.</summary>
+    private bool IsHeadLate(Hash256 headRoot) => !_blockTimeliness.TryGetValue(headRoot, out bool timely) || !timely;
+
+    /// <summary>The spec's <c>is_proposing_on_time</c>: whether the wall clock is still in the first half of the attesting interval.</summary>
+    private bool IsProposingOnTime()
+    {
+        ulong timeIntoSlot = (Time - GenesisTime) % _spec.SecondsPerSlot;
+        ulong cutoff = _spec.SecondsPerSlot / Presets.IntervalsPerSlot / 2;
+        return timeIntoSlot <= cutoff;
+    }
+
+    /// <summary>The spec's <c>is_shuffling_stable</c>: false only at an epoch's first slot, where the proposer shuffling could have just changed.</summary>
+    public static bool IsShufflingStable(ulong slot, ulong slotsPerEpoch) => slot % slotsPerEpoch != 0;
+
+    /// <summary>
+    /// The spec's <c>is_finalization_ok</c>: whether finality is recent enough, as of <paramref name="slot"/>,
+    /// to permit a proposer reorg. <paramref name="finalizedEpoch"/> can never exceed <paramref name="slot"/>'s
+    /// epoch in a consistent store, but if it somehow did, the ulong underflow yields a huge gap and this
+    /// fails closed (no reorg) rather than wrapping into a false "ok".
+    /// </summary>
+    public static bool IsFinalizationOk(ulong slot, ulong finalizedEpoch, ulong reorgMaxEpochsSinceFinalization) =>
+        BeaconStateAccessors.ComputeEpochAtSlot(slot) - finalizedEpoch <= reorgMaxEpochsSinceFinalization;
+
+    /// <summary>The spec's single-slot-reorg guard: the parent must directly precede the head, and the head must directly precede the proposal slot.</summary>
+    public static bool IsSingleSlotReorg(ulong parentSlot, ulong headSlot, ulong proposalSlot) =>
+        parentSlot + 1 == headSlot && headSlot + 1 == proposalSlot;
+
+    /// <summary>
+    /// The spec's <c>is_data_available</c>: every column sidecar the block's blob commitments require is
+    /// present, addressed to this exact block, matches its commitments exactly, and independently verifies
+    /// (structure, blob count, KZG proofs, inclusion proof). A block with no blob commitments needs no
+    /// columns and is trivially available.
+    /// </summary>
+    /// <remarks>
+    /// Requires the full <see cref="Eip7594DasConstants.NumberOfColumns"/> set: this driver has no partial
+    /// custody/sampling policy of its own (that seam - which columns a real node needs to sample rather than
+    /// hold in full - belongs to <see cref="DataAvailability.DataAvailabilitySampling"/>, which this method
+    /// does not call). Every check here is required to fail closed: a sidecar count match alone does not
+    /// prove availability if a sidecar were addressed to a different block, claimed the wrong commitments, or
+    /// failed its own KZG or inclusion proof.
+    /// </remarks>
+    public static bool IsDataAvailable(BeaconBlock block, Hash256 blockRoot, IReadOnlyList<DataColumnSidecar>? dataColumns, BeaconChainSpec spec)
+    {
+        SszKzgCommitment[] blobCommitments = block.Body?.BlobKzgCommitments ?? [];
+        if (blobCommitments.Length == 0) return true;
+
+        if (!HasExactlyOneSidecarPerColumn(dataColumns)) return false;
+
+        foreach (DataColumnSidecar sidecar in dataColumns!)
+        {
+            if (!MatchesBlock(sidecar, blockRoot, blobCommitments)) return false;
+            if (!DataColumnSidecarVerifier.Verify(sidecar, spec)) return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="dataColumns"/> covers every column index in
+    /// <c>[0, NumberOfColumns)</c> exactly once - no gaps (too few sidecars, or none at all), no
+    /// duplicates (many sidecars hoarding one index while another goes unfilled), no index outside
+    /// the valid range.
+    /// </summary>
+    public static bool HasExactlyOneSidecarPerColumn(IReadOnlyList<DataColumnSidecar>? dataColumns)
+    {
+        if (dataColumns is null || dataColumns.Count != Eip7594DasConstants.NumberOfColumns) return false;
+
+        bool[] seen = new bool[Eip7594DasConstants.NumberOfColumns];
+        foreach (DataColumnSidecar sidecar in dataColumns)
+        {
+            if (sidecar.Index >= (ulong)Eip7594DasConstants.NumberOfColumns || seen[sidecar.Index]) return false;
+            seen[sidecar.Index] = true;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="sidecar"/> is even addressed to this block: its header round-trips to
+    /// <paramref name="blockRoot"/>, and it claims exactly <paramref name="blobCommitments"/> - no more, no
+    /// fewer, no substitutions. This is required but not sufficient: a sidecar can pass this and still fail
+    /// its own KZG or inclusion proof, which <see cref="IsDataAvailable"/> checks separately. Split out so
+    /// this cross-check is provably exercised on its own, independent of real KZG cryptography.
+    /// </summary>
+    public static bool MatchesBlock(DataColumnSidecar sidecar, Hash256 blockRoot, IReadOnlyList<SszKzgCommitment> blobCommitments)
+    {
+        if (sidecar.SignedBlockHeader?.Message is not { } header || SszRoots.HashTreeRoot(header) != blockRoot)
+            return false;
+
+        if (sidecar.KzgCommitments is not { } commitments || commitments.Length != blobCommitments.Count)
+            return false;
+
+        for (int i = 0; i < commitments.Length; i++)
+        {
+            if (!commitments[i].AsSpan().SequenceEqual(blobCommitments[i].AsSpan())) return false;
+        }
+
+        return true;
+    }
 
     /// <summary>The spec's <c>get_checkpoint_block</c>: the ancestor of <paramref name="root"/> at the start of <paramref name="epoch"/>.</summary>
     private Hash256 GetCheckpointBlock(Hash256 root, ulong epoch) =>
