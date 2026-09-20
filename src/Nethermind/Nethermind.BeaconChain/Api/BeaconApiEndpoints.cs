@@ -14,6 +14,10 @@ namespace Nethermind.BeaconChain.Api;
 /// <summary>Wires every endpoint group onto the host, plus the shared error/500 safety net.</summary>
 internal static class BeaconApiEndpoints
 {
+    /// <summary>The whole of what an unauthenticated caller learns about an undecodable state: a fixed
+    /// sentence, not whatever the codec put in its exception.</summary>
+    internal const string UnsupportedForkMessage = "This node cannot decode the requested beacon state: its fork is not supported by this driver, which processes Fulu states only";
+
     public static void MapAll(WebApplication app, BeaconApiContext ctx)
     {
         ILogger logger = ctx.LogManager.GetClassLogger(typeof(BeaconApiEndpoints));
@@ -24,13 +28,14 @@ internal static class BeaconApiEndpoints
             {
                 await next(httpCtx);
             }
-            catch (NotSupportedException e) when (!httpCtx.RequestAborted.IsCancellationRequested)
+            catch (UnsupportedForkException e) when (!httpCtx.RequestAborted.IsCancellationRequested)
             {
-                // BeaconStateCodec throws this by name for a state whose fork this driver cannot
-                // decode (e.g. Gloas): the node lacks a capability, it is not malfunctioning, so the
-                // caller gets a labelled, actionable status rather than an opaque 500.
-                if (logger.IsWarn) logger.Warn($"Beacon API request for {httpCtx.Request.Method} {httpCtx.Request.Path} named a fork this driver cannot process: {e.Message}");
-                await ApiErrors.Write(httpCtx, StatusCodes.Status501NotImplemented, e.Message);
+                // Only the API's own boundary type (ApiStateDecoding) gets the 501: the node lacks a
+                // capability, it is not malfunctioning. Catching NotSupportedException itself here
+                // turned every unrelated one from any layer into a confident "not implemented" that
+                // also echoed its internal message to the caller.
+                if (logger.IsWarn) logger.Warn($"Beacon API request for {httpCtx.Request.Method} {httpCtx.Request.Path} named a fork this driver cannot process: {e.InnerException?.Message ?? e.Message}");
+                await ApiErrors.Write(httpCtx, StatusCodes.Status501NotImplemented, UnsupportedForkMessage);
             }
             catch (Exception e) when (!httpCtx.RequestAborted.IsCancellationRequested)
             {
