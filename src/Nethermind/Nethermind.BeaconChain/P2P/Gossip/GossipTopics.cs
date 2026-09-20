@@ -21,12 +21,28 @@ public static class GossipTopics
     public const string ProposerSlashing = "proposer_slashing";
     public const string AttesterSlashing = "attester_slashing";
 
-    /// <summary>The topic names the gossip router subscribes to on every digest.</summary>
+    /// <summary>
+    /// Gloas <c>execution_payload</c> (EIP-7732): the envelope a non-attesting follower needs.
+    /// Deliberately excludes <c>execution_payload_bid</c> and <c>proposer_preferences</c>, which
+    /// exist only for builders and proposers.
+    /// </summary>
+    public const string ExecutionPayload = "execution_payload";
+
+    /// <summary>Gloas <c>payload_attestation_message</c> (EIP-7732).</summary>
+    public const string PayloadAttestationMessage = "payload_attestation_message";
+
+    /// <summary>The topic names the gossip router subscribes to on every digest, pre-Gloas.</summary>
     public static readonly string[] SubscribedTopicNames =
         [BeaconBlock, BeaconAggregateAndProof, VoluntaryExit, ProposerSlashing, AttesterSlashing];
 
+    /// <summary>The additional topic names that only exist from the Gloas fork onward.</summary>
+    public static readonly string[] GloasTopicNames = [ExecutionPayload, PayloadAttestationMessage];
+
     /// <summary>Builds the full topic string for a fork digest and topic name.</summary>
     public static string Topic(byte[] forkDigest, string name) => $"/eth2/{forkDigest.ToHexString()}/{name}/ssz_snappy";
+
+    /// <summary>Builds the <c>data_column_sidecar_{subnet_id}</c> topic name for a subnet.</summary>
+    public static string DataColumnSidecarTopicName(ulong subnetId) => $"data_column_sidecar_{subnetId}";
 
     /// <summary>The fork digest in effect at <paramref name="epoch"/>.</summary>
     public static byte[] CurrentDigest(BeaconChainSpec spec, ulong epoch) => ForkDigest.Compute(spec, epoch);
