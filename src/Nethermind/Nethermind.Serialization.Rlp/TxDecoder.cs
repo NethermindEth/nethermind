@@ -21,7 +21,7 @@ public sealed class TxDecoder : TxDecoder<Transaction>
 
     static TxDecoder()
     {
-        // Retain a gossip batch across receive/processing threads. This caps lazy retention, not preallocation;
+        // Retain reusable gossip and owned block-body transactions across receive/processing threads. This caps lazy retention, not preallocation;
         // PoolPolicy clears payload references before retaining a transaction.
         TxObjectPool = new DefaultObjectPool<Transaction>(new Transaction.PoolPolicy(), MaxRetainedTransactions);
         Instance = new TxDecoder(static () => TxObjectPool.Get());

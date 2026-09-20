@@ -441,15 +441,17 @@ namespace Nethermind.Core
         internal PooledBlobBuffers? PooledBuffers { get; init; }
 
         /// <inheritdoc/>
+        /// <remarks>Pool ownership is excluded so equality depends only on the payload and record type.</remarks>
         public virtual bool Equals(ShardBlobNetworkWrapper? other) =>
-            other is not null
-            && EqualityContract == other.EqualityContract
-            && Blobs == other.Blobs
-            && Commitments == other.Commitments
-            && Proofs == other.Proofs
-            && Version == other.Version
-            && CellMask.Equals(other.CellMask)
-            && Cells == other.Cells;
+            ReferenceEquals(this, other)
+            || (other is not null
+                && EqualityContract == other.EqualityContract
+                && Blobs == other.Blobs
+                && Commitments == other.Commitments
+                && Proofs == other.Proofs
+                && Version == other.Version
+                && CellMask.Equals(other.CellMask)
+                && Cells == other.Cells);
 
         /// <inheritdoc/>
         public override int GetHashCode() => HashCode.Combine(EqualityContract, Blobs, Commitments, Proofs, Version, CellMask, Cells);

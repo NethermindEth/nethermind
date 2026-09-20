@@ -93,13 +93,16 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
             return null;
         }
 
-        return DecodeUnwrapped(ref ctx, startingPosition + sequenceLength);
+        return DecodeUnwrapped(ref ctx, startingPosition + sequenceLength, rlpBehaviors);
     }
 
     public BlockBody DecodeUnwrapped(ref RlpReader ctx, int lastPosition)
+        => DecodeUnwrapped(ref ctx, lastPosition, RlpBehaviors.None);
+
+    internal BlockBody DecodeUnwrapped(ref RlpReader ctx, int lastPosition, RlpBehaviors rlpBehaviors)
     {
-        Transaction[] transactions = ctx.DecodeNonNullArray(
-            static (ref RlpReader reader) => TxDecoder.Instance.DecodeGuardNotNull(ref reader, RlpBehaviors.SkipPooledTransactions),
+        Transaction[] transactions = _txDecoder.DecodeNonNullArray(
+            ref ctx, rlpBehaviors & RlpBehaviors.SkipPooledTransactions,
             limit: TransactionsCountLimit);
         BlockHeader[] uncles = ctx.DecodeNonNullArray(_headerDecoder, limit: UnclesCountLimit);
         Withdrawal[]? withdrawals = null;

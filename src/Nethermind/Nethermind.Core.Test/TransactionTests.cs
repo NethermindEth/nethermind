@@ -19,6 +19,7 @@ public class TransactionTests
         ShardBlobNetworkWrapper pooled = wrapper with { PooledBuffers = new(wrapper.Blobs) };
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(pooled.Equals(pooled), Is.True);
             Assert.That(pooled.Equals(wrapper), Is.True);
             Assert.That(wrapper.Equals(pooled), Is.True);
             Assert.That(pooled.GetHashCode(), Is.EqualTo(wrapper.GetHashCode()));

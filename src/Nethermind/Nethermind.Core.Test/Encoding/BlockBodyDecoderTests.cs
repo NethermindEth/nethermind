@@ -12,27 +12,34 @@ namespace Nethermind.Core.Test.Encoding;
 public class BlockBodyDecoderTests
 {
     [Test, NonParallelizable]
-    public void Block_body_transactions_do_not_consume_gossip_pool([Values] bool wrapped)
+    public void Transaction_pool_use_matches_decoder_ownership(
+        [Values("body", "unwrapped-body", "block")] string format,
+        [Values] bool skipPooledTransactions)
     {
         BlockBody body = new([Build.A.Transaction.Signed().TestObject], []);
-        byte[] bytes = new byte[BlockBodyDecoder.Instance.GetLength(body, RlpBehaviors.None)];
-        RlpWriter writer = new(bytes);
-        BlockBodyDecoder.Instance.Encode(ref writer, body);
+        BlockDecoder blockDecoder = new();
+        byte[] bytes = format == "block"
+            ? blockDecoder.Encode(new Block(Build.A.BlockHeader.TestObject, body)).Bytes
+            : BlockBodyDecoder.Instance.Encode(body).Bytes;
 
         HashSet<Transaction> pooled = new(System.Collections.Generic.ReferenceEqualityComparer.Instance);
         for (int i = 0; i < 2_048; i++) pooled.Add(TxDecoder.TxObjectPool.Get());
         foreach (Transaction transaction in pooled) TxDecoder.TxObjectPool.Return(transaction);
 
         RlpReader reader = new(bytes);
-        if (!wrapped) reader.ReadSequenceLength();
-        BlockBody decoded = wrapped
-            ? BlockBodyDecoder.Instance.DecodeGuardNotNull(ref reader)
-            : BlockBodyDecoder.Instance.DecodeUnwrapped(ref reader, bytes.Length);
+        RlpBehaviors behaviors = skipPooledTransactions ? RlpBehaviors.SkipPooledTransactions : RlpBehaviors.None;
+        if (format == "unwrapped-body") reader.ReadSequenceLength();
+        BlockBody decoded = format switch
+        {
+            "block" => blockDecoder.DecodeGuardNotNull(ref reader, behaviors).Body,
+            "body" => BlockBodyDecoder.Instance.DecodeGuardNotNull(ref reader, behaviors),
+            _ => BlockBodyDecoder.Instance.DecodeUnwrapped(ref reader, bytes.Length, behaviors)
+        };
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(decoded, Is.EqualTo(body).UsingBlockBodyComparer());
-            Assert.That(pooled.Contains(decoded.Transactions[0]), Is.False);
+            Assert.That(pooled.Contains(decoded.Transactions[0]), Is.EqualTo(format != "block" && !skipPooledTransactions));
         }
     }
 
