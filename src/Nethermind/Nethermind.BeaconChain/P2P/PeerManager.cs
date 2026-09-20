@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Multiformats.Address;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Attributes;
@@ -842,6 +843,12 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         {
             RecordMessageSent();
             return await p2p.RequestBlocksByRootAsync(Session, roots, token);
+        }
+
+        public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
+        {
+            RecordMessageSent();
+            return await p2p.RequestDataColumnSidecarsByRangeAsync(Session, startSlot, count, columns, token);
         }
 
         public void ReportFailure(PeerFailureReason reason, string? detail = null)
