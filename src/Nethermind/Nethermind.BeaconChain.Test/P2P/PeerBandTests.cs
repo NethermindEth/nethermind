@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Multiformats.Address;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
@@ -232,6 +233,182 @@ public class PeerBandTests
     }
 
     [Test]
+    [CancelAfter(60_000)]
+    public async Task Static_peer_reconnect_cannot_take_the_pool_past_the_peer_band_ceiling(CancellationToken token)
+    {
+        // Two reachable static peers against a ceiling of one. The static reconnect loop used to dial
+        // straight through ConnectAsync with no ceiling check at all, and TrimToPeerBandAsync exempts
+        // static peers, so nothing ever brought the count back down: a permanent overshoot.
+        Node server1 = CreateNode();
+        Node server2 = CreateNode();
+        Node client = CreateNode();
+        SetMatchingStatus(server1, server2, client);
+        client.Config.MaxPeerCount = 1;
+        client.Config.TargetPeerCount = 1;
+
+        await using (client.P2P)
+        await using (server1.P2P)
+        await using (server2.P2P)
+        {
+            await server1.P2P.StartAsync(token);
+            await server2.P2P.StartAsync(token);
+            await client.P2P.StartAsync(token);
+
+            client.Config.StaticPeers = $"{LoopbackAddress(server1.P2P)},{LoopbackAddress(server2.P2P)}";
+            PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+
+            await peerManager.RunMaintenanceRoundAsync(token);
+
+            Assert.That(peerManager.PeerCount, Is.EqualTo(1), "a static reconnect must go through the same ceiling reservation as a discovery dial");
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_session_the_remote_opened_is_admitted_and_reported_as_inbound_with_its_agent_string(CancellationToken token)
+    {
+        Node remote = CreateNode();
+        Node local = CreateNode();
+        SetMatchingStatus(remote, local);
+        // Distinguishable from our own identify literal, so the field provably carries what the remote sent.
+        remote.P2P.IdentifySettingsForTest.AgentVersion = "test-remote/inbound-1.2.3";
+
+        await using (local.P2P)
+        await using (remote.P2P)
+        {
+            await remote.P2P.StartAsync(token);
+            await local.P2P.StartAsync(token);
+            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+
+            await remote.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+
+            await WaitUntilAsync(() => peerManager.PeerCount == 1, token, "the manager never admitted the session the remote opened");
+            IPeerDirectory directory = peerManager;
+            PeerRecord record = directory.Peers.Single();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(record.PeerId, Is.EqualTo(remote.P2P.LocalPeerId!.ToString()));
+                Assert.That(record.Direction, Is.EqualTo(PeerDirection.Inbound), "the remote dialed us: reporting it as Outbound is the lie this closes");
+                Assert.That(record.State, Is.EqualTo(PeerConnectionState.Connected));
+                Assert.That(record.LastKnownMultiaddr, Does.Contain("127.0.0.1"));
+                Assert.That(record.AgentVersion, Is.EqualTo("test-remote/inbound-1.2.3"), "the identify agent string the remote advertised, not null and not our own");
+            }
+
+            Assert.That(directory.TryGetPeer(record.PeerId, out PeerRecord lookedUp), Is.True);
+            Assert.That(lookedUp.Direction, Is.EqualTo(PeerDirection.Inbound));
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task Dialing_a_peer_that_already_connected_to_us_reuses_its_session_and_keeps_it_inbound(CancellationToken token)
+    {
+        // BeaconP2P.DialPeerAsync hands back the existing session for an already-connected peer id, so
+        // a static/discovery dial of a peer that got in first must neither record it twice nor relabel
+        // it as Outbound.
+        Node remote = CreateNode();
+        Node local = CreateNode();
+        SetMatchingStatus(remote, local);
+
+        await using (local.P2P)
+        await using (remote.P2P)
+        {
+            await remote.P2P.StartAsync(token);
+            await local.P2P.StartAsync(token);
+            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+
+            await remote.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+            await WaitUntilAsync(() => peerManager.PeerCount == 1, token, "the inbound session was never admitted");
+
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(remote.P2P), token), Is.True, "already connected counts as success");
+
+            IPeerDirectory directory = peerManager;
+            Assert.That(peerManager.PeerCount, Is.EqualTo(1), "one session, one entry");
+            Assert.That(directory.Peers.Single().Direction, Is.EqualTo(PeerDirection.Inbound));
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_session_the_remote_opened_at_the_peer_band_ceiling_is_refused_and_torn_down(CancellationToken token)
+    {
+        Node dialed = CreateNode();
+        Node knocking = CreateNode();
+        Node local = CreateNode();
+        SetMatchingStatus(dialed, knocking, local);
+        local.Config.MaxPeerCount = 1;
+
+        await using (local.P2P)
+        await using (dialed.P2P)
+        await using (knocking.P2P)
+        {
+            await dialed.P2P.StartAsync(token);
+            await knocking.P2P.StartAsync(token);
+            await local.P2P.StartAsync(token);
+            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+            Assert.That(await peerManager.TryAddPeerAsync(LoopbackAddress(dialed.P2P), token), Is.True);
+
+            await knocking.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+
+            string knockingId = knocking.P2P.LocalPeerId!.ToString();
+            await WaitUntilAsync(() => peerManager.GetPeerDiagnostics().Any(d => d.PeerId == knockingId), token, "the refusal was never recorded");
+            await WaitUntilAsync(() => local.P2P.SessionCountForTest == 1, token, "the refused session was not torn down");
+            PeerManager.PeerDiagnostics refused = peerManager.GetPeerDiagnostics().Single(d => d.PeerId == knockingId);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peerManager.PeerCount, Is.EqualTo(1), "an inbound session must not take the pool past MaxPeerCount");
+                Assert.That(refused.Connected, Is.False);
+                Assert.That(refused.LastDisconnectReason, Is.EqualTo("TooManyPeers"));
+            }
+        }
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_banned_peer_that_connects_to_us_is_refused(CancellationToken token)
+    {
+        Node banned = CreateNode();
+        Node local = CreateNode();
+        SetMatchingStatus(banned, local);
+
+        await using (local.P2P)
+        await using (banned.P2P)
+        {
+            await banned.P2P.StartAsync(token);
+            await local.P2P.StartAsync(token);
+            PeerManager peerManager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
+
+            string bannedId = banned.P2P.LocalPeerId!.ToString();
+            peerManager.RecordDisconnect(bannedId, 0, 0, GoodbyeReason.Fault, "repeated failures");
+            peerManager.RecordDisconnect(bannedId, 0, 0, GoodbyeReason.Fault, "repeated failures");
+            peerManager.RecordDisconnect(bannedId, 0, 0, GoodbyeReason.Fault, "repeated failures");
+            Assert.That(peerManager.IsBannedForTest(bannedId), Is.True, "test setup: three faults must have banned it already");
+
+            await banned.P2P.DialPeerAsync(Multiaddress.Decode(LoopbackAddress(local.P2P)), token);
+
+            await WaitUntilAsync(() => peerManager.GetPeerDiagnostics().Single(d => d.PeerId == bannedId).LastDisconnectReason == "Banned", token, "the refusal was never recorded");
+            await WaitUntilAsync(() => local.P2P.SessionCountForTest == 0, token, "the refused session was not torn down");
+            Assert.That(peerManager.PeerCount, Is.EqualTo(0), "a ban must hold against a peer that connects to us, not only against our own dials");
+        }
+    }
+
+    /// <summary>Polls a condition with a short cadence; the caller's token bounds the wait.</summary>
+    private static async Task WaitUntilAsync(Func<bool> condition, CancellationToken token, string failure)
+    {
+        using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
+        bounded.CancelAfter(TimeSpan.FromSeconds(20));
+        while (!condition())
+        {
+            if (bounded.IsCancellationRequested)
+            {
+                Assert.Fail(failure);
+            }
+
+            await Task.Delay(50, CancellationToken.None);
+        }
+    }
+
+    [Test]
     public async Task Admission_capacity_wait_returns_immediately_below_target()
     {
         Node node = CreateNode();
@@ -345,11 +522,12 @@ public class PeerBandTests
 
     [Test]
     [CancelAfter(60_000)]
-    public async Task Peers_surface_reports_peer_id_direction_state_and_multiaddr_for_a_connected_peer(CancellationToken token)
+    public async Task Peers_surface_reports_peer_id_direction_state_multiaddr_and_agent_for_a_connected_peer(CancellationToken token)
     {
         Node server = CreateNode();
         Node client = CreateNode();
         SetMatchingStatus(server, client);
+        server.P2P.IdentifySettingsForTest.AgentVersion = "test-remote/outbound-4.5.6";
 
         await using (client.P2P)
         await using (server.P2P)
@@ -372,6 +550,7 @@ public class PeerBandTests
                 // Not just "non-empty": must be the real loopback remote address, not a placeholder
                 // or the pre-connect dial address (which uses 0.0.0.0, not 127.0.0.1, before rewrite).
                 Assert.That(record.LastKnownMultiaddr, Does.Contain("127.0.0.1"));
+                Assert.That(record.AgentVersion, Is.EqualTo("test-remote/outbound-4.5.6"), "the identify agent string the server advertised, not null and not our own");
             }
 
             Assert.That(directory.TryGetPeer(expectedPeerId, out PeerRecord lookedUp), Is.True);
