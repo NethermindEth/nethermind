@@ -77,6 +77,15 @@ public class GloasForkScheduleTests
             Assert.That(BeaconChainSpec.Hoodi.ForkAtEpoch(10_000_000), Is.EqualTo(BeaconFork.Fulu));
         });
 
+    [Test]
+    public void ForkAtEpoch_on_sepolia_selects_gloas_at_its_confirmed_epoch_and_fulu_immediately_before_it() =>
+        Assert.Multiple(() =>
+        {
+            Assert.That(BeaconChainSpec.Sepolia.ForkAtEpoch(353024), Is.EqualTo(BeaconFork.Gloas),
+                "Sepolia's confirmed GLOAS_FORK_EPOCH (ethereum/pm#2205, lodestar#10119)");
+            Assert.That(BeaconChainSpec.Sepolia.ForkAtEpoch(353023), Is.EqualTo(BeaconFork.Fulu));
+        });
+
     // Expected digest reproduced independently in Python: sha256(fork_version ++ 28 zero bytes ++
     // genesis_validators_root)[:4], XOR-masked per EIP-7892 with sha256(le64(419072) ++ le64(21))[:4]
     // (mainnet's own BPO2 blob params, the last scheduled one, still in effect past this synthetic
@@ -93,6 +102,26 @@ public class GloasForkScheduleTests
             Assert.That(gloasDigest, Is.Not.EqualTo(fuluDigest),
                 "a node computing the same digest across the boundary would silently keep talking Fulu's fork id");
             Assert.That(gloasDigest, Is.EqualTo(Bytes.FromHexString("0xce2153ed")));
+        });
+    }
+
+    // Expected digests reproduced independently in Python: sha256(fork_version ++ 28 zero bytes ++
+    // genesis_validators_root)[:4], XOR-masked per EIP-7892 with sha256(le64(blob_epoch) ++
+    // le64(max_blobs_per_block))[:4] using Sepolia's own confirmed genesis validators root and its
+    // published BPO2 blob params (275712, 21), which are still the params in effect at the Gloas
+    // boundary since BPO and hard-fork rotation are orthogonal (see ForkDigest's own remarks).
+    [Test]
+    public void Sepolia_fork_digest_rotates_at_the_gloas_boundary_and_matches_an_independent_computation()
+    {
+        byte[] fuluDigest = ForkDigest.Compute(BeaconChainSpec.Sepolia, 353023);
+        byte[] gloasDigest = ForkDigest.Compute(BeaconChainSpec.Sepolia, 353024);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(fuluDigest, Is.EqualTo(Bytes.FromHexString("0x74d01459")));
+            Assert.That(gloasDigest, Is.Not.EqualTo(fuluDigest),
+                "a node computing the same digest across the boundary would silently keep talking Fulu's fork id");
+            Assert.That(gloasDigest, Is.EqualTo(Bytes.FromHexString("0x669e6c11")));
         });
     }
 
@@ -127,6 +156,7 @@ public class GloasForkScheduleTests
     [
         ["Mainnet", BeaconChainSpec.Mainnet],
         ["Hoodi", BeaconChainSpec.Hoodi],
+        ["Sepolia", BeaconChainSpec.Sepolia],
         ["SyntheticGloas", SyntheticGloasSpec()],
     ];
 }

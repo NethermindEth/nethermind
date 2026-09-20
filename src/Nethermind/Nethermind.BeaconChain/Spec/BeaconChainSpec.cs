@@ -70,10 +70,10 @@ public class BeaconChainSpec
     /// The Gloas activation epoch, or <see cref="Presets.FarFutureEpoch"/> when this network has none
     /// scheduled yet. <see cref="Presets.FarFutureEpoch"/> is the spec's own placeholder for "TBD"
     /// (<c>specs/gloas/fork.md</c> config table: <c>GLOAS_FORK_EPOCH = Epoch(2**64 - 1) TBD</c>), so a
-    /// network with no confirmed date carries it honestly instead of a guessed epoch. As of 2026-09-19
-    /// only Sepolia has a confirmed Gloas epoch (353024); this driver does not model a Sepolia network
-    /// yet (see the task's 'unresolved' note), so <see cref="Mainnet"/> and <see cref="Hoodi"/> both
-    /// leave this at the far-future sentinel and add no matching entry to <see cref="Forks"/>.
+    /// network with no confirmed date carries it honestly instead of a guessed epoch. As of 2026-09-20
+    /// only <see cref="Sepolia"/> has a confirmed Gloas epoch (353024, 2026-10-06); <see cref="Mainnet"/>
+    /// and <see cref="Hoodi"/> both leave this at the far-future sentinel and add no matching entry to
+    /// <see cref="Forks"/>.
     /// </summary>
     public required ulong GloasForkEpoch { get; init; }
 
@@ -191,6 +191,60 @@ public class BeaconChainSpec
         GloasForkVersion = Bytes.FromHexString("0x07000000"),
     };
 
+    /// <summary>
+    /// Sepolia activates Glamsterdam (consensus fork Gloas) at epoch 353024 (2026-10-06). Every value
+    /// below was cross-checked against at least two independent sources as of 2026-09-20:
+    /// <list type="bullet">
+    /// <item>ChainId, GenesisTime, GenesisValidatorsRoot, GenesisForkVersion, and the Phase0-through-Fulu
+    /// fork schedule: <c>eth-clients/sepolia</c> <c>metadata/config.yaml</c>, cross-checked live against
+    /// a public beacon node's <c>/eth/v1/beacon/genesis</c> and <c>/eth/v1/config/fork_schedule</c>, and
+    /// against Prysm's <c>testnet_sepolia_config.go</c> (all three agree).</item>
+    /// <item><see cref="GloasForkVersion"/> (0x90000076): ChainSafe/lodestar PR #10119 (merged
+    /// 2026-09-17) and sigp/lighthouse's built-in Sepolia config, independently.</item>
+    /// <item><see cref="GloasForkEpoch"/> (353024): ethereum/pm PR #2205 (merged 2026-09-15, the
+    /// cross-client activation-time proposal) and ChainSafe/lodestar PR #10119 (merged), independently.</item>
+    /// <item><see cref="BlobSchedule"/> (BPO1 274176/15, BPO2 275712/21) and
+    /// <see cref="MaxBlobsPerBlockElectra"/> (9): <c>eth-clients/sepolia config.yaml</c> and
+    /// sigp/lighthouse's built-in Sepolia config, independently.</item>
+    /// <item>Bootnode ENRs (<see cref="P2P.Discovery.SepoliaBootnodes"/>): <c>eth-clients/sepolia</c>
+    /// <c>metadata/bootstrap_nodes.yaml</c> (the maintained registry, post PR #124's EF fleet
+    /// replacement) and OffchainLabs/prysm PR #17474 (merged 2026-09-11, the matching bootnode swap),
+    /// independently, for every entry.</item>
+    /// </list>
+    /// No value here was carried from only one source: see this driver's task notes for the fields that
+    /// could not clear that bar and were deliberately left out rather than guessed.
+    /// </summary>
+    public static BeaconChainSpec Sepolia { get; } = new()
+    {
+        ChainId = BlockchainIds.Sepolia,
+        CheckpointSyncUrl = "https://checkpoint-sync.sepolia.ethpandaops.io",
+        SecondsPerSlot = 12,
+        SlotsPerEpoch = 32,
+        GenesisTime = 1655733600,
+        GenesisValidatorsRoot = new Hash256(Bytes.FromHexString("0xd8ea171f3c94aea21ebc42a1ed61052acf3f9209c00e4efbaaddac09ed9b8078")),
+        Forks =
+        [
+            new(Bytes.FromHexString("0x90000069"), 0), // phase0
+            new(Bytes.FromHexString("0x90000070"), 50), // altair
+            new(Bytes.FromHexString("0x90000071"), 100), // bellatrix
+            new(Bytes.FromHexString("0x90000072"), 56832), // capella
+            new(Bytes.FromHexString("0x90000073"), 132608), // deneb
+            new(Bytes.FromHexString("0x90000074"), 222464), // electra
+            new(Bytes.FromHexString("0x90000075"), 272640), // fulu
+            new(Bytes.FromHexString("0x90000076"), 353024), // gloas
+        ],
+        BlobSchedule =
+        [
+            new(274176, 15), // BPO1
+            new(275712, 21), // BPO2
+        ],
+        ElectraForkEpoch = 222464,
+        FuluForkEpoch = 272640,
+        MaxBlobsPerBlockElectra = 9,
+        GloasForkEpoch = 353024, // confirmed: ethereum/pm#2205 and lodestar#10119, both merged
+        GloasForkVersion = Bytes.FromHexString("0x90000076"),
+    };
+
     /// <summary>Selects the beacon chain spec for the execution layer's chain id.</summary>
     /// <exception cref="UnsupportedBeaconNetworkException">
     /// <paramref name="chainId"/> is not a network the embedded beacon chain driver supports.
@@ -201,6 +255,7 @@ public class BeaconChainSpec
     {
         BlockchainIds.Mainnet => Mainnet,
         BlockchainIds.Hoodi => Hoodi,
+        BlockchainIds.Sepolia => Sepolia,
         _ => throw new UnsupportedBeaconNetworkException(chainId),
     };
 }
