@@ -275,6 +275,27 @@ public class BeaconApiHostTests
         Assert.That(response.StatusCode, Is.EqualTo((HttpStatusCode)406));
     }
 
+    [Test]
+    public async Task Dispose_removes_the_exit_token_registration_so_a_later_process_exit_never_reenters_the_host()
+    {
+        TestErrorLogManager logManager = new();
+        FakeProcessExitSource exitSource = new();
+        BeaconApiConfig apiConfig = new() { Enabled = true, Host = "127.0.0.1", Port = 0 };
+        BeaconApiHost host = new(apiConfig, new BeaconChainConfig(), Spec, _statusHolder, _slotClock, _store,
+            new LocalMetadataSource(), _engine, exitSource, logManager);
+
+        await host.StartAsync(CancellationToken.None);
+        await host.DisposeAsync();
+
+        // Before the fix, the registration outlives Dispose and this exit still calls StopAsync() on
+        // the already-disposed WebApplication; the failure is swallowed by StopAsync's own catch, so
+        // only the logger sees it. Disposing the registration in DisposeAsync must stop it firing at all.
+        exitSource.Exit(0);
+        await Task.Delay(200);
+
+        Assert.That(logManager.Errors, Is.Empty);
+    }
+
     private const string ContentTypeOctet = "application/octet-stream";
 
     private static Hash256 TestRoot(byte marker)
