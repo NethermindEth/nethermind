@@ -298,9 +298,6 @@ public class ForkchoiceUpdatedHandler(
             return false;
         }
 
-        // EIP-7843 imposes no ordering on the slot number at the EL: it is computed
-        // by the CL and passed through, so it is only validated for presence by fork,
-        // never compared against the head here.
         errorResult = null;
         return true;
     }
