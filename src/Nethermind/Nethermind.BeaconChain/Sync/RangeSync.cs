@@ -122,7 +122,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager)
         catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
             // Includes per-request timeouts, which cancel the request without cancelling the sync.
-            peer.ReportFailure($"Blocks-by-range [{startSlot}, {startSlot + count}) failed: {e.Message}");
+            peer.ReportFailure(ClassifyRequestFailure(e), $"Blocks-by-range [{startSlot}, {startSlot + count}) failed: {e.Message}");
             return null;
         }
 
@@ -132,7 +132,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager)
         {
             if (block.Message!.ParentRoot != expectedParent)
             {
-                peer.ReportFailure($"Block at slot {block.Message.Slot} has parent {block.Message.ParentRoot}, expected {expectedParent}");
+                peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Block at slot {block.Message.Slot} has parent {block.Message.ParentRoot}, expected {expectedParent}");
                 return null;
             }
 
@@ -141,4 +141,13 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager)
 
         return (batch, expectedParent);
     }
+
+    /// <summary>
+    /// A dead session must be reported as <see cref="PeerFailureReason.SessionClosed"/>, or the peer manager keeps
+    /// the zombie on a failure budget it can never work off; libp2p only surfaces that state through the message text.
+    /// </summary>
+    private static PeerFailureReason ClassifyRequestFailure(Exception e) =>
+        e.Message.Contains("Channel closed", StringComparison.OrdinalIgnoreCase) || e.Message.Contains("session", StringComparison.OrdinalIgnoreCase)
+            ? PeerFailureReason.SessionClosed
+            : PeerFailureReason.RequestFailed;
 }

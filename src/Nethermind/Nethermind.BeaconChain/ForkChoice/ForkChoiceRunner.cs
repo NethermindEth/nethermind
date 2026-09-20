@@ -180,12 +180,22 @@ public sealed class ForkChoiceRunner
     /// </summary>
     /// <param name="executionStatus">The execution layer's verdict on the block's payload, usually <see cref="ExecutionStatus.Optimistic"/> until <c>newPayload</c> completes.</param>
     /// <param name="dataColumns">
-    /// The data column sidecars available for this block's blob commitments (the spec's
-    /// <c>retrieve_column_sidecars</c>), checked by <see cref="IsDataAvailable"/>. <c>null</c> or empty is
-    /// only valid when the block carries no blob commitments.
+    /// The full column set retrieved for this block's blob commitments (the spec's
+    /// <c>retrieve_column_sidecars</c> as a supernode sees it). Calling this overload selects
+    /// <see cref="FullColumnSetAvailability"/>: every one of the 128 columns must be present and verify.
+    /// That is the consensus-spec vectors' rule and impossible for a partial-custody node; production
+    /// callers must use the <see cref="IDataAvailabilityRule"/> overload instead.
     /// </param>
     /// <exception cref="ForkChoiceException">The block violates an <c>on_block</c> assertion, or its data is not available.</exception>
-    public void OnBlock(SignedBeaconBlock signedBlock, BeaconStateFulu postState, ExecutionStatus executionStatus, IReadOnlyList<DataColumnSidecar>? dataColumns)
+    public void OnBlock(SignedBeaconBlock signedBlock, BeaconStateFulu postState, ExecutionStatus executionStatus, IReadOnlyList<DataColumnSidecar>? dataColumns) =>
+        OnBlock(signedBlock, postState, executionStatus, new FullColumnSetAvailability(dataColumns));
+
+    /// <inheritdoc cref="OnBlock(SignedBeaconBlock, BeaconStateFulu, ExecutionStatus, IReadOnlyList{DataColumnSidecar})"/>
+    /// <param name="availability">
+    /// The caller's explicit reading of <c>is_data_available</c>; see <see cref="IDataAvailabilityRule"/> for
+    /// why the two rules cannot be inferred from each other.
+    /// </param>
+    public void OnBlock(SignedBeaconBlock signedBlock, BeaconStateFulu postState, ExecutionStatus executionStatus, IDataAvailabilityRule availability)
     {
         BeaconBlock block = signedBlock.Message!;
         Hash256 parentRoot = block.ParentRoot!;
@@ -201,7 +211,7 @@ public sealed class ForkChoiceRunner
             throw new ForkChoiceException($"Block at slot {block.Slot} does not descend from the finalized checkpoint {finalized}");
 
         Hash256 blockRoot = SszRoots.HashTreeRoot(block);
-        if (!IsDataAvailable(block, blockRoot, dataColumns, _spec))
+        if (!availability.IsDataAvailable(block, blockRoot, _spec))
             throw new ForkChoiceException($"Block {blockRoot} at slot {block.Slot} does not have all its blob data available");
         ExtendPubkeys(postState);
 
@@ -427,79 +437,6 @@ public sealed class ForkChoiceRunner
     /// <summary>The spec's single-slot-reorg guard: the parent must directly precede the head, and the head must directly precede the proposal slot.</summary>
     public static bool IsSingleSlotReorg(ulong parentSlot, ulong headSlot, ulong proposalSlot) =>
         parentSlot + 1 == headSlot && headSlot + 1 == proposalSlot;
-
-    /// <summary>
-    /// The spec's <c>is_data_available</c>: every column sidecar the block's blob commitments require is
-    /// present, addressed to this exact block, matches its commitments exactly, and independently verifies
-    /// (structure, blob count, KZG proofs, inclusion proof). A block with no blob commitments needs no
-    /// columns and is trivially available.
-    /// </summary>
-    /// <remarks>
-    /// Requires the full <see cref="Eip7594DasConstants.NumberOfColumns"/> set: this driver has no partial
-    /// custody/sampling policy of its own (that seam - which columns a real node needs to sample rather than
-    /// hold in full - belongs to <see cref="DataAvailability.DataAvailabilitySampling"/>, which this method
-    /// does not call). Every check here is required to fail closed: a sidecar count match alone does not
-    /// prove availability if a sidecar were addressed to a different block, claimed the wrong commitments, or
-    /// failed its own KZG or inclusion proof.
-    /// </remarks>
-    public static bool IsDataAvailable(BeaconBlock block, Hash256 blockRoot, IReadOnlyList<DataColumnSidecar>? dataColumns, BeaconChainSpec spec)
-    {
-        SszKzgCommitment[] blobCommitments = block.Body?.BlobKzgCommitments ?? [];
-        if (blobCommitments.Length == 0) return true;
-
-        if (!HasExactlyOneSidecarPerColumn(dataColumns)) return false;
-
-        foreach (DataColumnSidecar sidecar in dataColumns!)
-        {
-            if (!MatchesBlock(sidecar, blockRoot, blobCommitments)) return false;
-            if (!DataColumnSidecarVerifier.Verify(sidecar, spec)) return false;
-        }
-
-        return true;
-    }
-
-    /// <summary>
-    /// Whether <paramref name="dataColumns"/> covers every column index in
-    /// <c>[0, NumberOfColumns)</c> exactly once - no gaps (too few sidecars, or none at all), no
-    /// duplicates (many sidecars hoarding one index while another goes unfilled), no index outside
-    /// the valid range.
-    /// </summary>
-    public static bool HasExactlyOneSidecarPerColumn(IReadOnlyList<DataColumnSidecar>? dataColumns)
-    {
-        if (dataColumns is null || dataColumns.Count != Eip7594DasConstants.NumberOfColumns) return false;
-
-        bool[] seen = new bool[Eip7594DasConstants.NumberOfColumns];
-        foreach (DataColumnSidecar sidecar in dataColumns)
-        {
-            if (sidecar.Index >= (ulong)Eip7594DasConstants.NumberOfColumns || seen[sidecar.Index]) return false;
-            seen[sidecar.Index] = true;
-        }
-
-        return true;
-    }
-
-    /// <summary>
-    /// Whether <paramref name="sidecar"/> is even addressed to this block: its header round-trips to
-    /// <paramref name="blockRoot"/>, and it claims exactly <paramref name="blobCommitments"/> - no more, no
-    /// fewer, no substitutions. This is required but not sufficient: a sidecar can pass this and still fail
-    /// its own KZG or inclusion proof, which <see cref="IsDataAvailable"/> checks separately. Split out so
-    /// this cross-check is provably exercised on its own, independent of real KZG cryptography.
-    /// </summary>
-    public static bool MatchesBlock(DataColumnSidecar sidecar, Hash256 blockRoot, IReadOnlyList<SszKzgCommitment> blobCommitments)
-    {
-        if (sidecar.SignedBlockHeader?.Message is not { } header || SszRoots.HashTreeRoot(header) != blockRoot)
-            return false;
-
-        if (sidecar.KzgCommitments is not { } commitments || commitments.Length != blobCommitments.Count)
-            return false;
-
-        for (int i = 0; i < commitments.Length; i++)
-        {
-            if (!commitments[i].AsSpan().SequenceEqual(blobCommitments[i].AsSpan())) return false;
-        }
-
-        return true;
-    }
 
     /// <summary>The spec's <c>get_checkpoint_block</c>: the ancestor of <paramref name="root"/> at the start of <paramref name="epoch"/>.</summary>
     private Hash256 GetCheckpointBlock(Hash256 root, ulong epoch) =>
