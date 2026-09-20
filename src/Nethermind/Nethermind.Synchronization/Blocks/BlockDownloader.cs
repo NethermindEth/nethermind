@@ -131,6 +131,11 @@ namespace Nethermind.Synchronization.Blocks
                 // catch-all below, so a single bad response cannot finish the feed.
                 throw;
             }
+            catch (BlockTreeNotReadyException)
+            {
+                if (_logger.IsDebug) _logger.Debug("Block download deferred while the block tree cannot accept blocks.");
+                return null;
+            }
             catch (Exception ex)
             {
                 _logger.DebugError($"Unhandled exception in {nameof(BlockDownloader)}: {ex}");
@@ -732,9 +737,7 @@ namespace Nethermind.Synchronization.Blocks
                     }
                 case AddBlockResult.CannotAccept:
                     {
-                        string message = $"Block tree rejected block/header from peer {peerInfo}: " +
-                                         $"#{block.Number} ({block.Hash}, parent {block.ParentHash})";
-                        throw new EthSyncException(message);
+                        throw new BlockTreeNotReadyException();
                     }
                 case AddBlockResult.InvalidBlock:
                     {

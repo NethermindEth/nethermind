@@ -436,6 +436,7 @@ public class FastHeadersSyncTests
     {
         const ulong pivotNumber = 1000UL;
         IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.CanAcceptNewBlocks.Returns(true);
         blockTree.SyncPivot.Returns((pivotNumber, TestItem.KeccakA));
 
         ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
@@ -473,6 +474,7 @@ public class FastHeadersSyncTests
     public async Task Finishes_when_all_downloaded()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.CanAcceptNewBlocks.Returns(true);
         blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1000).TestObject);
         blockTree.SyncPivot = (1000, Keccak.Zero);
 
@@ -505,6 +507,7 @@ public class FastHeadersSyncTests
     public async Task Can_resume_downloading_from_parent_of_lowest_inserted_header()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.CanAcceptNewBlocks.Returns(true);
         blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader
             .WithNumber(500)
             .WithTotalDifficulty(10_000_000)
@@ -1194,6 +1197,7 @@ public class FastHeadersSyncTests
     public async Task Will_never_lose_batch_on_invalid_batch()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.CanAcceptNewBlocks.Returns(true);
         blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1000).TestObject);
         blockTree.SyncPivot = (1000, Keccak.Zero);
         ISyncReport report = new NullSyncReport();
@@ -1279,21 +1283,31 @@ public class FastHeadersSyncTests
             FastSync = true,
             PivotNumber = 400,
             PivotHash = headers[400].Hash!.ToString(),
-            PivotTotalDifficulty = "1000"
+            PivotTotalDifficulty = "1000",
+            FastHeadersMemoryBudget = 1
         };
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsError.Returns(true);
+        ITotalDifficultyStrategy difficulty = Substitute.For<ITotalDifficultyStrategy>();
         await using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(config))
             .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
             .AddSingleton<ISyncPeerPool>(Substitute.For<ISyncPeerPool>())
             .AddSingleton<ISyncReport>(new NullSyncReport())
+            .AddSingleton<ITotalDifficultyStrategy>(difficulty)
             .AddSingleton<HeadersSyncFeed>()
             .Build();
         IBlockTree tree = container.Resolve<IBlockTree>();
+        CumulativeTotalDifficultyStrategy realDifficulty = new();
+        Action? beforeInsert = null;
+        difficulty.ParentTotalDifficulty(Arg.Any<BlockHeader>()).Returns(call =>
+        {
+            beforeInsert?.Invoke();
+            return realDifficulty.ParentTotalDifficulty(call.Arg<BlockHeader>());
+        });
         tree.SyncPivot = (400, headers[400].Hash!);
         if (path == HeaderInsertionPath.Persisted)
-            tree.BulkInsertHeader(headers.AsSpan(1).ToArray());
+            tree.BulkInsertHeader(headers.AsSpan(300).ToArray());
         HeadersSyncFeed feed = container.Resolve<HeadersSyncFeed>();
         feed.InitializeFeed();
 
@@ -1318,42 +1332,74 @@ public class FastHeadersSyncTests
         visitor.PreventsAcceptingNewBlocks.Returns(true);
         visitor.EndLevelExclusive.Returns(1UL);
         visitor.VisitLevelStart(Arg.Any<ChainLevelInfo>(), 0, Arg.Any<CancellationToken>()).Returns(release.Task);
-        Task visit = tree.Accept(visitor, CancellationToken.None);
-        HeadersSyncBatch? retry = null;
+        Task? visit = null;
+        beforeInsert = () =>
+        {
+            beforeInsert = null;
+            visit = tree.Accept(visitor, CancellationToken.None);
+        };
+        IOwnedReadOnlyList<BlockHeader?>? response = batch?.Response;
+        ulong expectedStart = path == HeaderInsertionPath.Persisted ? 300 : batch!.StartNumber;
+        ulong expectedEnd = path == HeaderInsertionPath.Persisted ? 400 : batch!.EndNumber;
         try
         {
-            Assert.That(tree.CanAcceptNewBlocks, Is.False);
-            if (path == HeaderInsertionPath.Response)
+            if (path is not (HeaderInsertionPath.Dependency or HeaderInsertionPath.Persisted))
                 Assert.That(feed.HandleResponse(batch), Is.EqualTo(SyncResponseHandlingResult.Ignored));
             else
-                retry = await feed.PrepareRequest();
+                Assert.That(await feed.PrepareRequest(), Is.Null);
 
+            Assert.That(visit, Is.Not.Null, "maintenance starts after request preparation's readiness check");
+            Assert.That(tree.CanAcceptNewBlocks, Is.False);
             Assert.That(tree.LowestInsertedHeader, Is.SameAs(lowestBefore));
-            Assert.That(logger.ReceivedCalls().Any(call => call.GetMethodInfo().Name == "Error"), Is.False);
+            logger.DidNotReceiveWithAnyArgs().Error(default!, default);
+            Assert.That(await feed.PrepareRequest(), Is.Null);
+            Assert.That(await feed.PrepareRequest(), Is.Null);
+            if (path is not (HeaderInsertionPath.Dependency or HeaderInsertionPath.Persisted))
+                Assert.DoesNotThrow(() => { response!.AsSpan(); });
+            if (path is HeaderInsertionPath.Reset or HeaderInsertionPath.Dispose)
+            {
+                if (path == HeaderInsertionPath.Reset) feed.InitializeFeed();
+                else feed.Dispose();
+                Assert.Throws<ObjectDisposedException>(() => { response!.AsSpan(); });
+                return;
+            }
         }
         finally
         {
             release.SetResult(LevelVisitOutcome.StopVisiting);
-            await visit;
+            if (visit is not null) await visit;
         }
 
-        retry ??= await feed.PrepareRequest();
-        Assert.That(retry, Is.Not.Null);
-        if (batch is not null)
+        if (path == HeaderInsertionPath.ReplayFailure)
         {
+            InvalidOperationException failure = new("storage failed");
+            beforeInsert = () => throw failure;
+            Assert.That(await feed.PrepareRequest(), Is.Null);
+            logger.Received().Error(Arg.Any<string>(), failure);
+            beforeInsert = null;
+            HeadersSyncBatch retry = (await feed.PrepareRequest())!;
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(retry!.StartNumber, Is.EqualTo(batch.StartNumber));
-                Assert.That(retry.RequestSize, Is.EqualTo(batch.RequestSize));
+                Assert.That(retry.StartNumber, Is.EqualTo(expectedStart));
+                Assert.That(retry.EndNumber, Is.EqualTo(expectedEnd));
             }
+            FillResponse(retry);
+            Assert.That(feed.HandleResponse(retry), Is.EqualTo(SyncResponseHandlingResult.OK));
         }
-        FillResponse(retry!);
-        Assert.That(feed.HandleResponse(retry), Is.EqualTo(SyncResponseHandlingResult.OK));
+        HeadersSyncBatch? nextRequest = await feed.PrepareRequest();
+        Assert.That(nextRequest, Is.Not.Null);
+        Assert.That(tree.LowestInsertedHeader, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(tree.LowestInsertedHeader!.Number, Is.EqualTo(retry!.StartNumber));
-            for (ulong number = retry.StartNumber; number <= retry.EndNumber; number++)
-                Assert.That(tree.FindHeader(number)!.Hash, Is.EqualTo(headers[number].Hash));
+            Assert.That(tree.LowestInsertedHeader!.Number, Is.EqualTo(expectedStart));
+            Assert.That(nextRequest!.EndNumber, Is.LessThan(expectedStart), "retained headers must not be fetched again");
+            if (path == HeaderInsertionPath.Persisted)
+            {
+                Assert.That(nextRequest.StartNumber, Is.EqualTo(209));
+                Assert.That(nextRequest.RequestSize, Is.EqualTo(91));
+            }
+            for (ulong number = expectedStart; number <= expectedEnd; number++)
+                Assert.That(tree.FindHeader(number)?.Hash, Is.EqualTo(headers[number].Hash));
         }
 
         void FillResponse(HeadersSyncBatch request)
@@ -1367,13 +1413,17 @@ public class FastHeadersSyncTests
     {
         Response,
         Dependency,
-        Persisted
+        Persisted,
+        Reset,
+        Dispose,
+        ReplayFailure
     }
 
     [Test]
     public async Task Will_never_lose_batch_when_insert_throws()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.CanAcceptNewBlocks.Returns(true);
         blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1000).TestObject);
         blockTree.SyncPivot = (1000, Keccak.Zero);
         using TestableHeadersSyncFeed feed = new(
@@ -1407,6 +1457,7 @@ public class FastHeadersSyncTests
     public void IsFinished_returns_false_when_headers_not_downloaded()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.CanAcceptNewBlocks.Returns(true);
         TestSyncConfig syncConfig = new()
         {
             FastSync = true,
@@ -1435,6 +1486,7 @@ public class FastHeadersSyncTests
     public void When_lowestInsertedHeaderHasNoTD_then_fetchFromBlockTreeAgain()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.CanAcceptNewBlocks.Returns(true);
         using HeadersSyncFeed feed = new(
             blockTree: blockTree,
             syncPeerPool: Substitute.For<ISyncPeerPool>(),
@@ -1470,6 +1522,7 @@ public class FastHeadersSyncTests
     public void When_cant_determine_pivot_total_difficulty_then_throw()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.CanAcceptNewBlocks.Returns(true);
         using HeadersSyncFeed feed = new(
             blockTree: blockTree,
             syncPeerPool: Substitute.For<ISyncPeerPool>(),
@@ -1496,6 +1549,7 @@ public class FastHeadersSyncTests
     public async Task Should_Limit_BatchSize_ToEstimate()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.CanAcceptNewBlocks.Returns(true);
         ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
         using HeadersSyncFeed feed = new(
             blockTree: blockTree,

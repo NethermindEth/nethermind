@@ -73,6 +73,7 @@ namespace Nethermind.Blockchain
         /// <param name="headers">Header batch to add</param>
         /// <param name="headerOptions"></param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
+        /// <exception cref="BlockTreeNotReadyException">The tree temporarily cannot accept headers; retry after it becomes available.</exception>
         void BulkInsertHeader(IReadOnlyList<BlockHeader> headers, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None);
 
         /// <summary>

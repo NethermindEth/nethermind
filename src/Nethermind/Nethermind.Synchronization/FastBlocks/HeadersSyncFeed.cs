@@ -119,6 +119,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 count += enumerator.Current.Value.Response?.Count ?? 0;
             }
+            foreach (HeadersSyncBatch batch in _pending) count += batch.Response?.Count ?? 0;
 
             return count;
         }
@@ -148,6 +149,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 amount += (ulong)enumerator.Current.Value?.ResponseSizeEstimate;
             }
+            foreach (HeadersSyncBatch batch in _pending) amount += (ulong)batch.ResponseSizeEstimate;
 
             return amount;
         }
@@ -337,7 +339,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     catch (BlockTreeNotReadyException)
                     {
                         if (_logger.IsDebug) _logger.Debug($"Deferring dependent batch {dependentBatch} while the block tree cannot accept headers.");
-                        RequeueAsNewBatch(dependentBatch);
+                        RetainResponse(dependentBatch);
                         return;
                     }
                     catch (Exception e)
@@ -371,17 +373,44 @@ namespace Nethermind.Synchronization.FastBlocks
             _resetLock.EnterReadLock();
             try
             {
+                if (!_blockTree.CanAcceptNewBlocks) return Task.FromResult<HeadersSyncBatch?>(null);
                 do
                 {
                     HandleDependentBatches(cancellationToken);
                 } while (_pending.IsEmpty && !ShouldBuildANewBatch() && HasDependencyToProcess);
 
-                if (_pending.TryDequeue(out HeadersSyncBatch? batch))
+                HeadersSyncBatch? batch;
+                while (_pending.TryDequeue(out batch))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Dequeue batch {batch}");
                     batch!.MarkRetry();
+                    MarkDirty();
+                    if (batch.Response is null) break;
+                    using (batch)
+                    {
+                        try
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            lock (_handlerLock) InsertHeaders(batch);
+                        }
+                        catch (BlockTreeNotReadyException)
+                        {
+                            RetainResponse(batch);
+                            return Task.FromResult<HeadersSyncBatch?>(null);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            throw;
+                        }
+                        catch (Exception e)
+                        {
+                            RequeueAsNewBatch(batch);
+                            if (_logger.IsError) _logger.Error($"Failed to insert retained batch {batch}", e);
+                            return Task.FromResult<HeadersSyncBatch?>(null);
+                        }
+                    }
                 }
-                else if (ShouldBuildANewBatch())
+                if (batch is null && ShouldBuildANewBatch())
                 {
                     // Set the request size depending on the approximate allocation strategy.
                     // NOTE: Cannot await because of the lock.
@@ -395,6 +424,12 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (batch is not null)
                 {
+                    if (!_blockTree.CanAcceptNewBlocks || batch.Response is not null)
+                    {
+                        _pending.Enqueue(batch);
+                        MarkDirty();
+                        return Task.FromResult<HeadersSyncBatch?>(null);
+                    }
                     _sent.Add(batch);
                     ulong lowestNumber = LowestInsertedBlockHeader?.Number ?? 0UL;
                     if (batch.StartNumber >= lowestNumber.SaturatingSub(FastBlocksPriorities.ForHeaders))
@@ -528,7 +563,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 catch (BlockTreeNotReadyException)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Deferring batch {batch} while the block tree cannot accept headers.");
-                    RequeueAsNewBatch(batch);
+                    RetainResponse(batch);
                     return SyncResponseHandlingResult.Ignored;
                 }
                 catch
@@ -607,6 +642,19 @@ namespace Nethermind.Synchronization.FastBlocks
             RequestSize = batch.RequestSize
         }, skipPersisted: true);
 
+        private void RetainResponse(HeadersSyncBatch batch)
+        {
+            _pending.Enqueue(new HeadersSyncBatch
+            {
+                StartNumber = batch.StartNumber,
+                RequestSize = batch.RequestSize,
+                ResponseSourcePeer = batch.ResponseSourcePeer,
+                Response = batch.Response
+            });
+            batch.Response = null;
+            MarkDirty();
+        }
+
         private void EnqueueBatch(HeadersSyncBatch batch, bool skipPersisted = false)
         {
             HeadersSyncBatch? left = skipPersisted ? batch : ProcessPersistedPortion(batch);
@@ -630,10 +678,14 @@ namespace Nethermind.Synchronization.FastBlocks
             Hash256? seedHash = level?.BlockInfos is { Length: > 0 } infos ? infos[0].BlockHash : null;
             if (seedHash is null) return batch;
 
-            using IOwnedReadOnlyList<BlockHeader> headers =
+            IOwnedReadOnlyList<BlockHeader> headers =
                 _headerStore.FindReversedHeaders(batch.EndNumber, seedHash, batch.RequestSize);
 
-            if (headers.Count == 0) return batch;
+            if (headers.Count == 0)
+            {
+                headers.Dispose();
+                return batch;
+            }
 
             int newRequestSize = batch.RequestSize - headers.Count;
             ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
@@ -649,6 +701,9 @@ namespace Nethermind.Synchronization.FastBlocks
             catch (BlockTreeNotReadyException)
             {
                 if (_logger.IsDebug) _logger.Debug($"Deferring persisted batch {batch} while the block tree cannot accept headers.");
+                RetainResponse(newBatchToProcess);
+                if (newRequestSize == 0) return null;
+                batch.RequestSize = newRequestSize;
                 return batch;
             }
             MarkDirty();
