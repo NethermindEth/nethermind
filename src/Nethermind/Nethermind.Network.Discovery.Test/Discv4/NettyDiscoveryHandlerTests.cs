@@ -526,7 +526,15 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             }
 
             public T Deserialize<T>(IByteBuffer buffer) where T : MessageBase
-                => innerService.Deserialize<T>(buffer);
+            {
+                if (typeof(T) == typeof(PingMsg) && Interlocked.Increment(ref _deserializeCalls) == 1)
+                {
+                    deserializeEntered.Set();
+                    unblockDeserialize.Wait(TimeSpan.FromSeconds(10));
+                }
+
+                return innerService.Deserialize<T>(buffer);
+            }
         }
     }
 }
