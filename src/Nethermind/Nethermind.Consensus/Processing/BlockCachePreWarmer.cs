@@ -671,6 +671,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (!addressWarmer.HasBal)
             {
                 WarmupTransactions(blockState, parallelOptions);
+                if (_logger.IsInfo)
+                {
+                    System.Text.StringBuilder reasons = new();
+                    foreach (KeyValuePair<string, int> kv in blockState.Reasons) reasons.Append(kv.Key.Replace(' ', '_')).Append('=').Append(kv.Value).Append(',');
+                    _logger.Info($"PrewarmOutcome block={blockState.Block.Number} txs={blockState.Block.Transactions.Length} ok={blockState.Ok} reverted={blockState.Reverted} invalid={blockState.Invalid} skipped={blockState.Skipped} main={MainThreadTxIndex} reasons={reasons}");
+                }
                 WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
             }
 
@@ -1042,7 +1048,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         try
         {
             // Already started by the main thread — warming it now is redundant and contends; skip.
-            if (blockState.PreWarmer.MainThreadTxIndex >= txIndex) return;
+            if (blockState.PreWarmer.MainThreadTxIndex >= txIndex) { Interlocked.Increment(ref blockState.Skipped); return; }
 
             // Non-null guaranteed: GroupTransactionsBySender filters null-sender txs
             Address senderAddress = tx.SenderAddress!;
@@ -1066,7 +1072,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.WarmUp(tx.AccessList, cancellationToken);
             }
 
-            TransactionResult result = scope.TransactionProcessor.Warmup(tx, NullTxTracer.Instance);
+            PrewarmOutcomeTracer outcome = PrewarmOutcomeTracer.Instance;
+            outcome.Reset();
+            TransactionResult result = scope.TransactionProcessor.Warmup(tx, outcome);
+            if (!result) { Interlocked.Increment(ref blockState.Invalid); blockState.Reasons.AddOrUpdate(result.ToString(), 1, static (_, c) => c + 1); }
+            else if (outcome.Failed) { Interlocked.Increment(ref blockState.Reverted); blockState.Reasons.AddOrUpdate("revert:" + (outcome.Error ?? "?"), 1, static (_, c) => c + 1); }
+            else Interlocked.Increment(ref blockState.Ok);
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
         }
@@ -1268,7 +1279,22 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public bool Return(IReadOnlyTxProcessorSource obj) => true;
     }
 
-    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null);
+    private record BlockState(BlockCachePreWarmer PreWarmer, Block Block, BlockHeader Parent, IReleaseSpec Spec, ISet<Hash256>? SpeculativelyWarmed = null)
+    {
+        public int Ok, Reverted, Invalid, Skipped;
+        public readonly ConcurrentDictionary<string, int> Reasons = new();
+    }
+
+    private sealed class PrewarmOutcomeTracer : TxTracer
+    {
+        [ThreadStatic] private static PrewarmOutcomeTracer? _instance;
+        public static PrewarmOutcomeTracer Instance => _instance ??= new();
+        public bool Failed;
+        public string? Error;
+        private PrewarmOutcomeTracer() => IsTracingReceipt = true;
+        public void Reset() { Failed = false; Error = null; }
+        public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) { Failed = true; Error = error; }
+    }
 
     /// <summary>
     /// Per-worker state for the transaction-warming loop: one env rented for the worker's
