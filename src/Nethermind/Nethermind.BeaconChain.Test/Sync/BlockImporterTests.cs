@@ -245,6 +245,35 @@ public class BlockImporterTests
         });
     }
 
+    /// <summary>
+    /// A block whose payload the execution layer never evaluated must stay importable. Two ways
+    /// this used to go wrong: the failed call was reported as SYNCING and the block was imported
+    /// optimistically anyway; and aborting the transition part-way leaves a trusted replay's
+    /// in-place state with <c>LatestBlockHeader</c> already advanced, so the retry fails its own
+    /// header check and the block is dropped as invalid for good.
+    /// </summary>
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Block_whose_engine_call_fails_is_deferred_and_stays_importable(bool verifySignatures)
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.Create();
+        NodeColumnCustody custody = BaseCustody();
+        DataColumnSidecarPool pool = new();
+        Hold(pool, chain, custody.SampledColumns);
+        BlockImporter importer = CreateImporter(chain, custody, pool, engine: new UnavailableThenValidEngine());
+
+        BlockImportResult deferred = importer.Import(chain.Block, chain.BlockRoot, verifySignatures);
+        bool knownWhileDeferred = importer.IsKnown(chain.BlockRoot);
+        BlockImportResult retried = importer.Import(chain.Block, chain.BlockRoot, verifySignatures);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(deferred, Is.EqualTo(BlockImportResult.EngineUnavailable), "an unevaluated payload is not an invalid block");
+            Assert.That(knownWhileDeferred, Is.False, "nothing may be recorded for a block the execution layer never saw");
+            Assert.That(retried, Is.EqualTo(BlockImportResult.Imported), "the same block must import once the engine answers again");
+        });
+    }
+
     private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, WarningCapture? warnings = null, IEngineDriver? engine = null) =>
         new(
             chain.Spec,
@@ -282,6 +311,31 @@ public class BlockImporterTests
         {
             HasAnsweredNewPayload = true;
             return ExecutionStatus.Valid;
+        }
+    }
+
+    /// <summary>Fails the first <c>newPayload</c> call and answers VALID afterwards: a transient engine outage.</summary>
+    private sealed class UnavailableThenValidEngine : IEngineDriver
+    {
+        private bool _failedOnce;
+
+        public SignedBeaconBlock? CurrentBlock { get; set; }
+
+        public bool HasAnsweredNewPayload { get; private set; }
+
+        public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
+            Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = headExecHash });
+
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
+        {
+            HasAnsweredNewPayload = true;
+            if (_failedOnce)
+            {
+                return ExecutionStatus.Valid;
+            }
+
+            _failedOnce = true;
+            throw new EngineUnavailableException("newPayloadV4", "engine unavailable");
         }
     }
 
