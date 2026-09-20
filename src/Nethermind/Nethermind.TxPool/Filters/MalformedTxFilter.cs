@@ -27,6 +27,11 @@ namespace Nethermind.TxPool.Filters
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
             IReleaseSpec spec = state.HeadSpec;
+            TxValidationOptions validationOptions = TxValidationOptions.SkipBlobProofs | TxValidationOptions.SkipIntrinsicGasMemo;
+            if ((txHandlingOptions & TxHandlingOptions.PersistentBroadcast) == 0)
+            {
+                validationOptions |= TxValidationOptions.SkipErrorDetails;
+            }
             ValidationResult result = Validate(tx, spec);
             bool retryAfterSenderRecovery = !result
                 && spec.IsEip2780Enabled
@@ -66,10 +71,11 @@ namespace Nethermind.TxPool.Filters
                     transaction,
                     releaseSpec,
                     blockGasLimit: 0,
-                    TxValidationOptions.SkipBlobProofs);
+                    validationOptions);
                 return validationResult
                     ? _incrementalSpecChangeTxValidator is null
-                        ? specChangeTxValidator.IsWellFormed(transaction, releaseSpec)
+                        ? specChangeTxValidator.IsWellFormed(transaction, releaseSpec, blockGasLimit: 0,
+                            validationOptions & ~TxValidationOptions.SkipBlobProofs)
                         : _incrementalSpecChangeTxValidator.IsWellFormedAfterFullValidation(transaction, releaseSpec)
                     : validationResult;
             }

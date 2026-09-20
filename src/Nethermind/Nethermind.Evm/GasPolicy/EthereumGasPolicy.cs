@@ -716,14 +716,14 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             return memo.Gas;
         }
 
-        IntrinsicGas<EthereumGasPolicy> gas = Calculate(tx, spec, blockGasLimit);
+        IntrinsicGas<EthereumGasPolicy> gas = CalculateIntrinsicGasWithoutMemo(tx, spec);
         Volatile.Write(ref tx.IntrinsicGasMemo, new IntrinsicGasMemo(spec, isEip2780SelfTransfer, gas));
         return gas;
     }
 
     internal static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGasAsEip2780SelfTransfer(Transaction tx, IReleaseSpec spec)
     {
-        IntrinsicGas<EthereumGasPolicy> gas = CalculateIntrinsicGas(tx, spec);
+        IntrinsicGas<EthereumGasPolicy> gas = CalculateIntrinsicGasWithoutMemo(tx, spec);
         ulong eip2780ExtraGas = Eip2780ExtraGas(tx, spec);
         EthereumGasPolicy standard = gas.Standard;
         standard.Value -= eip2780ExtraGas;
@@ -734,7 +734,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     private sealed record IntrinsicGasMemo(IReleaseSpec Spec, bool IsEip2780SelfTransfer, IntrinsicGas<EthereumGasPolicy> Gas) : IIntrinsicGasMemo;
 
-    private static IntrinsicGas<EthereumGasPolicy> Calculate(Transaction tx, IReleaseSpec spec, ulong blockGasLimit)
+    internal static IntrinsicGas<EthereumGasPolicy> CalculateIntrinsicGasWithoutMemo(Transaction tx, IReleaseSpec spec)
     {
         ulong tokensInCallData = IntrinsicGasCalculator.CalculateTokensInCallData(tx, spec);
         ulong floorTokensInAccessList = IntrinsicGasCalculator.CalculateFloorTokensInAccessList(tx, spec);

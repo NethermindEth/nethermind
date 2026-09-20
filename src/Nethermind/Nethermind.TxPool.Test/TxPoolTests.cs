@@ -170,6 +170,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(tx.SenderAddress, Is.EqualTo(sender));
                 Assert.That(result, Is.EqualTo(expected));
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(selfTransfer ? 1 : 0));
+                Assert.That(tx.IntrinsicGasMemo, Is.Null);
             }
         }
 
@@ -268,7 +269,34 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_validate_eip2780_intrinsic_cap_after_sender_recovery()
+        public void should_only_format_intrinsic_cap_details_for_local_transactions(
+            [Values(TxHandlingOptions.None, TxHandlingOptions.PersistentBroadcast)] TxHandlingOptions handlingOptions)
+        {
+            byte[] data = new byte[262_000];
+            data.AsSpan().Fill(0xff);
+            _txPool = CreatePool(new TxPoolConfig { MaxTxSize = 1_100_000 }, new TestSpecProvider(Amsterdam.Instance));
+            Transaction tx = Build.A.Transaction
+                .WithTo(TestItem.AddressC)
+                .WithData(data)
+                .WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap)
+                .Signed(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, handlingOptions);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+                Assert.That(result.ToString(), Does.Contain("intrinsic gas too low"));
+                Assert.That(tx.IntrinsicGasMemo, Is.Null);
+                Assert.That(result.ToString(), handlingOptions == TxHandlingOptions.PersistentBroadcast
+                    ? Does.Contain("exceeded cap of 16777216")
+                    : Does.Not.Contain("exceeded cap"));
+            }
+        }
+
+        [Test]
+        public void should_validate_eip2780_intrinsic_cap_after_sender_recovery([Values(TxHandlingOptions.None, TxHandlingOptions.PersistentBroadcast)] TxHandlingOptions handlingOptions)
         {
             const long maxTxSize = 1_100_000;
             OverridableReleaseSpec spec = new(Amsterdam.Instance)
@@ -293,7 +321,7 @@ namespace Nethermind.TxPool.Test
 
             TxValidator validator = new(_specProvider.ChainId);
             ValidationResult beforeRecovery = validator.IsWellFormed(tx, spec);
-            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = _txPool.SubmitTx(tx, handlingOptions);
             ValidationResult afterRecovery = validator.IsWellFormed(tx, spec);
 
             using (Assert.EnterMultipleScope())
