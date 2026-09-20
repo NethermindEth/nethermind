@@ -59,8 +59,10 @@ public class BeaconChainPluginTests
     [Test]
     public void Plugin_wiring_fails_loudly_for_an_unsupported_chain_id()
     {
+        // A synthetic id, not a real network: naming one here makes the test fail the day we model it.
+        const ulong unmodelledChainId = 0xDEADBEEF;
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.ChainId.Returns(BlockchainIds.Sepolia);
+        specProvider.ChainId.Returns(unmodelledChainId);
         ContainerBuilder builder = new ContainerBuilder()
             .AddModule(new BeaconChainModule())
             .AddSingleton<IBeaconChainConfig>(new BeaconChainConfig())
@@ -76,8 +78,8 @@ public class BeaconChainPluginTests
         UnsupportedBeaconNetworkException ex = (UnsupportedBeaconNetworkException)wrapped.GetBaseException();
         Assert.Multiple(() =>
         {
-            Assert.That(ex.ChainId, Is.EqualTo(BlockchainIds.Sepolia));
-            Assert.That(ex.Message, Does.Contain(BlockchainIds.Sepolia.ToString()));
+            Assert.That(ex.ChainId, Is.EqualTo(unmodelledChainId));
+            Assert.That(ex.Message, Does.Contain(unmodelledChainId.ToString()));
         });
     }
 }
