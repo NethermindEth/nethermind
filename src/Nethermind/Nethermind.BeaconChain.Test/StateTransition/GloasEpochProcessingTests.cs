@@ -7,7 +7,6 @@ using System.Linq;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using NUnit.Framework;
 using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;

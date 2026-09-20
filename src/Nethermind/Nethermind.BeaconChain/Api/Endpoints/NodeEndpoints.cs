@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.Api.Common;
-using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 
