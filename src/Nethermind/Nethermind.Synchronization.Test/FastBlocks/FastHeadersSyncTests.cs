@@ -1450,6 +1450,39 @@ public class FastHeadersSyncTests
         }
     }
 
+    [Test]
+    public async Task Retained_response_is_requeued_when_insert_cancels()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.CanAcceptNewBlocks.Returns(true);
+        blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(0).WithDifficulty(1).TestObject);
+        blockTree.SyncPivot = (2, Keccak.Zero);
+        using TestableHeadersSyncFeed feed = new(
+            blockTree,
+            Substitute.For<ISyncPeerPool>(),
+            new TestSyncConfig { FastSync = true, PivotNumber = 2, PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1" },
+            new NullSyncReport(),
+            LimboLogs.Instance);
+        feed.InitializeFeed();
+
+        HeadersSyncBatch batch = (await feed.PrepareRequest())!;
+        ArrayPoolList<BlockHeader?> response = new(batch.RequestSize)
+        {
+            Build.A.BlockHeader.WithNumber(batch.StartNumber).TestObject
+        };
+        batch.Response = response;
+        GetFeedMethod<Action<HeadersSyncBatch>>(feed, "RetainResponse")(batch);
+        feed.ThrowOnInsert = new OperationCanceledException();
+
+        Assert.ThrowsAsync<OperationCanceledException>(() => feed.PrepareRequest());
+        Assert.That(feed.Pending.Single().Response, Is.Null);
+        Assert.Throws<ObjectDisposedException>(() => response.AsSpan());
+        feed.ThrowOnInsert = null;
+        using HeadersSyncBatch? retry = await feed.PrepareRequest();
+        Assert.That(retry, Is.Not.Null);
+        Assert.That(retry!.StartNumber, Is.EqualTo(batch.StartNumber));
+    }
+
     private static T GetFeedMethod<T>(HeadersSyncFeed feed, string name) where T : Delegate =>
         typeof(HeadersSyncFeed).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance)!.CreateDelegate<T>(feed);
 

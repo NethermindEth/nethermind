@@ -389,7 +389,6 @@ namespace Nethermind.Synchronization.FastBlocks
                     if (_logger.IsTrace) _logger.Trace($"Dequeue batch {batch}");
                     if (batch.Response is null)
                     {
-                        batch.MarkRetry();
                         break;
                     }
                     if (cancellationToken.IsCancellationRequested)
@@ -411,6 +410,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         }
                         catch (OperationCanceledException)
                         {
+                            RequeueAsNewBatch(batch);
                             throw;
                         }
                         catch (Exception e)
@@ -687,6 +687,10 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 Interlocked.Decrement(ref _retainedResponseCount);
                 MarkDirty();
+            }
+            else
+            {
+                batch.MarkRetry();
             }
             return true;
         }
