@@ -28,6 +28,7 @@ public sealed class TransactionChangesetBuilder(
     internal static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan RepeatedFailureInterval = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan StopReportInterval = TimeSpan.FromSeconds(5);
 
     private readonly int _dutyCyclePercent = Math.Clamp(config.HistoryTransactionIndexDutyCyclePercent, 1, 100);
     private readonly ulong _retrofitFromBlock = config.HistoryTransactionIndexRetrofitFromBlock;
@@ -203,6 +204,9 @@ public sealed class TransactionChangesetBuilder(
 
     public Task StopAsync() => Task.Run(Dispose);
 
+    /// <summary>Waits for every thread: the databases they read close right after this, so a thread left running
+    /// would be a use after disposal, not a slow shutdown. A wait that drags on is said so, every few seconds, naming
+    /// the thread, so a step that stopped observing cancellation is visible in the log instead of a silent hang.</summary>
     public void Dispose()
     {
         lock (_shutdown)
@@ -211,7 +215,7 @@ public sealed class TransactionChangesetBuilder(
             _disposed = true;
 
             _cancellation.Cancel();
-            foreach (Thread thread in _threads) thread.Join();
+            foreach (Thread thread in _threads) Join(thread);
             try
             {
                 _tipExecutor?.Dispose();
@@ -220,6 +224,14 @@ public sealed class TransactionChangesetBuilder(
             {
                 _cancellation.Dispose();
             }
+        }
+    }
+
+    private void Join(Thread thread)
+    {
+        while (!thread.Join(StopReportInterval))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Still waiting for \"{thread.Name}\" to stop before the index databases close.");
         }
     }
 

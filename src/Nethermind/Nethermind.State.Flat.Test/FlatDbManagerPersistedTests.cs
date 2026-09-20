@@ -132,10 +132,10 @@ public class FlatDbManagerPersistedTests
 
     [TestCase(0, TestName = "DisposeAsync_WhenPersistenceSucceeds_DrainsQueuedCompactions")]
     [TestCase(1, TestName = "DisposeAsync_WhenPersistenceIsCanceled_ReleasesBlockedCompactor")]
-    [TestCase(2, TestName = "DisposeAsync_WhenPersistenceFails_ReleasesBlockedCompactorAndReportsFailure")]
+    [TestCase(2, TestName = "DisposeAsync_WhenAPersistFails_ReleasesBlockedCompactorAndPersistsTheRest")]
     public async Task DisposeAsync_WhenPersistenceStops_ReleasesBlockedCompactor(int completionMode)
     {
-        // Hold the first persist, fill its queue, then stop it with the next compaction waiting for space.
+        // Hold the first persist, fill its queue, then finish, cancel or fail it with the next compaction waiting for space.
         _config.InlineCompaction = false;
         using FlatTestContainer tier = new(_config, arenaFileSizeBytes: 4096);
         TaskCompletionSource persistenceStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -175,12 +175,7 @@ public class FlatDbManagerPersistedTests
             disposal = manager.DisposeAsync().AsTask();
             Assert.That(disposal.IsCompleted, Is.False, "the pending persist must keep disposal waiting");
 
-            if (completionMode == 2)
-            {
-                persistenceResult.SetException(new IOException("persist failed"));
-                Assert.ThrowsAsync<IOException>(async () => await disposal.WaitAsync(DisposeWaitLimit));
-            }
-            else if (completionMode == 1)
+            if (completionMode == 1)
             {
                 _cts.Cancel();
                 persistenceResult.SetCanceled(_cts.Token);
@@ -188,7 +183,8 @@ public class FlatDbManagerPersistedTests
             }
             else
             {
-                persistenceResult.SetResult();
+                if (completionMode == 2) persistenceResult.SetException(new IOException("persist failed"));
+                else persistenceResult.SetResult();
                 await disposal.WaitAsync(DisposeWaitLimit);
                 await persistence.Received((int)blockedBlock).AddToPersistence(Arg.Any<StateId>());
             }
@@ -201,6 +197,30 @@ public class FlatDbManagerPersistedTests
             await Task.WhenAny(disposal, Task.Delay(DisposeWaitLimit));
             _ = disposal.Exception;
         }
+    }
+
+    [Test]
+    public async Task AddSnapshot_WhenACompactionFails_CompactsAndPersistsTheNextSnapshot()
+    {
+        _config.InlineCompaction = false;
+        using FlatTestContainer tier = new(_config, arenaFileSizeBytes: 4096);
+        IPersistenceManager persistence = Substitute.For<IPersistenceManager>();
+        persistence.GetCurrentPersistedStateId().Returns(StateId.PreGenesis);
+        persistence.AddToPersistence(Arg.Any<StateId>()).Returns(Task.CompletedTask);
+        StateId failing = new(1, Keccak.Compute("1"));
+        StateId next = new(2, Keccak.Compute("2"));
+        ISnapshotCompactor compactor = Substitute.For<ISnapshotCompactor>();
+        compactor.DoCompactSnapshot(failing).Returns(_ => throw new IOException("compaction failed"));
+        FlatDbManager manager = new(tier.ResourcePool, _processExitSource,
+            Substitute.For<ITrieNodeCache>(), compactor, tier.Repository, persistence,
+            Substitute.For<IPersistedSnapshotLoader>(), _config, new BlocksConfig(), LimboLogs.Instance, false);
+
+        Commit(manager, tier.ResourcePool, new StateId(0, Keccak.EmptyTreeHash), failing, 1);
+        Commit(manager, tier.ResourcePool, failing, next, 2);
+        await manager.DisposeAsync().AsTask().WaitAsync(DisposeWaitLimit);
+
+        await persistence.DidNotReceive().AddToPersistence(failing);
+        await persistence.Received(1).AddToPersistence(next);
     }
 
     // The head-reset sequence: commit a branch, reset to its base, commit again from the base. The abandoned

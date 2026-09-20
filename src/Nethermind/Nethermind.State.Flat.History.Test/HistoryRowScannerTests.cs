@@ -93,7 +93,7 @@ public class HistoryRowScannerTests
         BlockHeader anchor = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject.Header;
         using (BulkFillSession session = new(factory, code, TestItem.KeccakA, anchor, false))
         {
-            Assert.Throws<InvalidDataException>(() => session.ImportGenesis([new(TestItem.AddressA, new Account(0, 1))], CancellationToken.None));
+            Assert.Throws<ScratchStateUnusableException>(() => session.ImportGenesis([new(TestItem.AddressA, new Account(0, 1))], CancellationToken.None));
             Assert.That(session.IsReady, Is.False);
         }
         using BulkFillSession reopened = new(factory, code, TestItem.KeccakA, anchor, false);
@@ -250,7 +250,7 @@ public class HistoryRowScannerTests
             ImportEmptyState(session);
             BlockHeader next = Build.A.Block.WithNumber(1).WithParentHash(anchor.Hash!).TestObject.Header;
             CommitScratch(session, next, writer => writer.Set(TestItem.AddressA, new Account(1, 100)));
-            session.ReleaseState();
+            session.ReleaseState(CancellationToken.None);
             Assert.That(session.IsReady, Is.False);
         }
 
@@ -258,6 +258,30 @@ public class HistoryRowScannerTests
         Assert.That(reopened.IsReady, Is.False);
         ImportEmptyState(reopened);
         Assert.That(reopened.CreateReader().GetAccount(TestItem.AddressA), Is.Null);
+    }
+
+    [Test]
+    public void BulkReplay_WhenReleaseIsCancelled_LeavesNoReplayBaseAndFinishesOnTheNextRelease()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using SnapshotableMemColumnsDb<BulkFillScratchState.Columns> memory = new();
+        using MemDb code = new();
+        IDbFactory factory = new ScratchDbFactory(directory.Path, memory, false);
+        BlockHeader anchor = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject.Header;
+        using (BulkFillSession session = new(factory, code, TestItem.KeccakA, anchor, false))
+        {
+            ImportEmptyState(session);
+            BlockHeader next = Build.A.Block.WithNumber(1).WithParentHash(anchor.Hash!).TestObject.Header;
+            CommitScratch(session, next, writer => writer.Set(TestItem.AddressA, new Account(1, 100)));
+
+            Assert.Throws<OperationCanceledException>(() => session.ReleaseState(new CancellationToken(true)));
+            Assert.That(session.IsReady, Is.False, "the checkpoint goes before the rows, so a cut-short release is never mistaken for a replay base");
+        }
+
+        using BulkFillSession reopened = new(factory, code, TestItem.KeccakA, anchor, false);
+        Assert.That(reopened.CreateReader().GetAccount(TestItem.AddressA), Is.Not.Null, "precondition: the rows outlive the cancelled release");
+        reopened.ReleaseState(CancellationToken.None);
+        Assert.That(reopened.CreateReader().GetAccount(TestItem.AddressA), Is.Null, "the next release finishes what the cancelled one started");
     }
 
     private static void ImportEmptyState(BulkFillSession session)
@@ -317,7 +341,8 @@ public class HistoryRowScannerTests
             scratch.GetColumnDb(BulkFillScratchState.Columns.Accounts).PutSpan(address.Bytes, AccountDecoder.Slim.EncodeAsBytes(account.WithChangedBalance(99)));
 
         if (corrupt)
-            Assert.Throws<InvalidDataException>(() => state.VerifyAnchor(accountsTree.RootHash, rlpWrapped, CancellationToken.None));
+            Assert.Throws<ScratchStateUnusableException>(() => state.VerifyAnchor(accountsTree.RootHash, rlpWrapped, CancellationToken.None),
+                "a base that fails verification stays wrong on every retry, so it must carry the type the replay stops on");
         else
             Assert.DoesNotThrow(() => state.VerifyAnchor(accountsTree.RootHash, rlpWrapped, CancellationToken.None));
     }
@@ -452,7 +477,7 @@ public class HistoryRowScannerTests
         using SnapshotableMemColumnsDb<BulkFillScratchState.Columns> scratch = new();
         _ = new BulkFillScratchState(scratch, Keccak.EmptyTreeHash, 5);
 
-        Assert.Throws<InvalidDataException>(() => new BulkFillScratchState(scratch,
+        Assert.Throws<ScratchStateUnusableException>(() => new BulkFillScratchState(scratch,
             changeAnchor ? Keccak.EmptyTreeHash : Keccak.Zero, changeAnchor ? 6UL : 5UL));
     }
 

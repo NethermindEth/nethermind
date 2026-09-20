@@ -15,7 +15,8 @@ namespace Nethermind.State.Flat.History.Changesets;
 
 internal sealed class BulkFillScratchVerifier(IColumnsDb<Columns> db, ulong anchor)
 {
-    /// <summary>Reconstructs every live storage root and the account root before allowing a scratch replay base.</summary>
+    /// <summary>Reconstructs every live storage root and the account root before allowing a scratch replay base.
+    /// Every disagreement is a <see cref="ScratchStateUnusableException"/>: the imported rows are wrong and stay wrong.</summary>
     public void VerifyAnchor(Hash256 expectedRoot, bool rlpWrappedSlots, CancellationToken token)
     {
         foreach (Columns column in new[] { Columns.Accounts, Columns.Storage, Columns.Clears })
@@ -37,26 +38,26 @@ internal sealed class BulkFillScratchVerifier(IColumnsDb<Columns> db, ulong anch
         {
             token.ThrowIfCancellationRequested();
             ReadOnlySpan<byte> key = accounts.CurrentKey;
-            if (key.Length != Hash256.Size) throw new InvalidDataException("Invalid scratch account key length.");
+            if (key.Length != Hash256.Size) throw new ScratchStateUnusableException("Invalid scratch account key length.");
             ValueHash256 path = new(key);
             if (hasPrevious && previous.Bytes[..HistoryKeyLayout.ScopeKeyLength].SequenceEqual(key[..HistoryKeyLayout.ScopeKeyLength]))
-                throw new InvalidDataException("Scratch account paths collide in the storage address prefix.");
+                throw new ScratchStateUnusableException("Scratch account paths collide in the storage address prefix.");
             previous = path;
             hasPrevious = true;
             ReadOnlySpan<byte> row = accounts.CurrentValue;
             if (row.IsEmpty) continue;
             RlpReader decoder = new(row);
             if (!AccountDecoder.Slim.TryDecodeStruct(ref decoder, out AccountStruct account) || decoder.Position != row.Length)
-                throw new InvalidDataException("Invalid scratch account value.");
+                throw new ScratchStateUnusableException("Invalid scratch account value.");
             ValueHash256 storage = VerifyStorage(path, rlpWrappedSlots, storageBuilder, token);
             if (storage != account.StorageRoot)
-                throw new InvalidDataException($"Scratch storage root mismatch for {path} at {anchor}: expected {account.StorageRoot}, actual {storage}.");
+                throw new ScratchStateUnusableException($"Scratch storage root mismatch for {path} at {anchor}: expected {account.StorageRoot}, actual {storage}.");
             state.Add(path, AccountRowRlp.Encode(row));
         }
         token.ThrowIfCancellationRequested();
         ValueHash256 actual = state.Finish();
         if (actual != expectedRoot.ValueHash256)
-            throw new InvalidDataException($"Scratch account root mismatch at {anchor}: expected {expectedRoot}, actual {actual}.");
+            throw new ScratchStateUnusableException($"Scratch account root mismatch at {anchor}: expected {expectedRoot}, actual {actual}.");
     }
 
     private ValueHash256 VerifyStorage(in ValueHash256 account, bool rlpWrapped, SortedStateRoot storage, CancellationToken token)
@@ -69,9 +70,9 @@ internal sealed class BulkFillScratchVerifier(IColumnsDb<Columns> db, ulong anch
         upper.Fill(0xFF);
         account.Bytes[..addressLength].CopyTo(upper);
         byte[]? clear = db.GetColumnDb(Columns.Clears)[account.Bytes];
-        if (clear is not null && clear.Length != sizeof(ulong)) throw new InvalidDataException("Invalid scratch storage clear.");
+        if (clear is not null && clear.Length != sizeof(ulong)) throw new ScratchStateUnusableException("Invalid scratch storage clear.");
         ulong clearedAt = clear is null ? 0 : BinaryPrimitives.ReadUInt64BigEndian(clear);
-        if (clearedAt > anchor) throw new InvalidDataException("Scratch storage clear is newer than its anchor.");
+        if (clearedAt > anchor) throw new ScratchStateUnusableException("Scratch storage clear is newer than its anchor.");
         using ISortedView slots = ((ISortedKeyValueStore)db.GetColumnDb(Columns.Storage)).GetViewBetween(lower, upper, ReadFlags.HintReadAhead);
         storage.Reset();
         Span<byte> encoded = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
@@ -79,12 +80,12 @@ internal sealed class BulkFillScratchVerifier(IColumnsDb<Columns> db, ulong anch
         {
             token.ThrowIfCancellationRequested();
             if (slots.CurrentKey.Length != BaseFlatPersistence.StorageKeyLength || !slots.CurrentKey[..addressLength].SequenceEqual(account.Bytes[..addressLength]))
-                throw new InvalidDataException("Invalid scratch storage key.");
+                throw new ScratchStateUnusableException("Invalid scratch storage key.");
             ReadOnlySpan<byte> record = slots.CurrentValue;
             if (record.Length < sizeof(ulong) || record.Length > sizeof(ulong) + BaseFlatPersistence.RlpSlotValueBufferSize)
-                throw new InvalidDataException("Invalid scratch storage value.");
+                throw new ScratchStateUnusableException("Invalid scratch storage value.");
             ulong writtenAt = BinaryPrimitives.ReadUInt64BigEndian(record);
-            if (writtenAt > anchor) throw new InvalidDataException("Scratch slot is newer than its anchor.");
+            if (writtenAt > anchor) throw new ScratchStateUnusableException("Scratch slot is newer than its anchor.");
             if (writtenAt < clearedAt) continue;
             ReadOnlySpan<byte> value = record[sizeof(ulong)..];
             if (value.IsEmpty) continue;
@@ -92,9 +93,9 @@ internal sealed class BulkFillScratchVerifier(IColumnsDb<Columns> db, ulong anch
             {
                 RlpReader decoder = new(value);
                 value = decoder.DecodeByteArraySpan();
-                if (decoder.Position != decoder.Length) throw new InvalidDataException("Trailing bytes in a scratch slot.");
+                if (decoder.Position != decoder.Length) throw new ScratchStateUnusableException("Trailing bytes in a scratch slot.");
             }
-            if (value.Length > Hash256.Size) throw new InvalidDataException("Scratch slot exceeds 256 bits.");
+            if (value.Length > Hash256.Size) throw new ScratchStateUnusableException("Scratch slot exceeds 256 bits.");
             value = value.TrimStart((byte)0);
             if (value.IsEmpty) continue;
             Rlp.Encode(encoded, 0, value);

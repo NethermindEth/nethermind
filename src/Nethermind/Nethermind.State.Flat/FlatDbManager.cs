@@ -88,7 +88,10 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _compactorStallTimeout = TimeSpan.FromSeconds(0.5 * blocksConfig.SecondsPerSlot * _compactSize);
         _inlineCompaction = config.InlineCompaction;
 
-        // Drain on normal disposal; if a consumer stops early, cancel its upstream producers too.
+        // Keep worker cancellation under this manager's control so process-exit cancellation cannot preempt the
+        // ordered channel drain in DisposeAsync. A job that fails is logged and the worker takes the next one; only
+        // a worker that stops, cancelled or failed outside its jobs, cancels the others, so no producer is left
+        // waiting for space on a channel nobody reads any more.
         _processExitToken = processExitSource.Token;
         _cancelTokenSource = new();
 
@@ -242,7 +245,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             catch (Exception ex)
             {
                 if (_logger.IsError) _logger.Error($"Error on {name}", ex);
-                throw;
             }
             if (_logger.IsTrace) _logger.Trace($"{name} took {Stopwatch.GetElapsedTime(sw)}");
         });
@@ -525,7 +527,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     /// drain first — before cancelling, so in-flight finality-driven persistence is not lost. It does not
     /// <see cref="FlushCache"/>: that would persist the unfinalized tail and break reorgs across the
     /// restart. The in-memory tier is re-executed from the persisted-snapshot tier on the next start.
-    /// If a worker fails or is cancelled before draining, sibling waits are cancelled instead.
+    /// If a worker stops before draining, sibling waits are cancelled instead; a failed job does not stop a worker.
     /// </remarks>
     public async ValueTask DisposeAsync()
     {

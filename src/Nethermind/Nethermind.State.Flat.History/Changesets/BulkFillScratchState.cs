@@ -45,7 +45,7 @@ internal sealed class BulkFillScratchState
         {
             if (stored.Length > 0 && stored[0] != FormatVersion)
                 throw new NotSupportedException("Bulk replay scratch version is incompatible; preserve the old scratch directory and restart from a fresh import.");
-            if (!manifest.SequenceEqual(stored)) throw new InvalidDataException("Scratch state belongs to a different bulk import.");
+            if (!manifest.SequenceEqual(stored)) throw new ScratchStateUnusableException("Scratch state belongs to a different bulk import.");
             db.SyncWal();
             return;
         }
@@ -53,7 +53,7 @@ internal sealed class BulkFillScratchState
         foreach (Columns column in Enum.GetValues<Columns>())
         {
             using IEnumerator<byte[]> keys = db.GetColumnDb(column).GetAllKeys(ordered: false).GetEnumerator();
-            if (keys.MoveNext()) throw new InvalidDataException("Refusing to initialize a nonempty scratch database without an identity.");
+            if (keys.MoveNext()) throw new ScratchStateUnusableException("Refusing to initialize a nonempty scratch database without an identity.");
         }
 
         metadata.PutSpan(IdentityKey, manifest);
@@ -77,10 +77,10 @@ internal sealed class BulkFillScratchState
         {
             int rowKeyLength = (column == FlatHistoryColumns.StorageHistory ? BaseFlatPersistence.StorageKeyLength : Hash256.Size) + sizeof(ulong);
             if (checkpoint.Length != 1 && checkpoint.Length != 1 + rowKeyLength || checkpoint[0] > 1)
-                throw new InvalidDataException($"Invalid scratch import checkpoint for {column}.");
+                throw new ScratchStateUnusableException($"Invalid scratch import checkpoint for {column}.");
             if (checkpoint.Length > 1) cursor = new HistoricalStateScan.Cursor(column, _anchor, checkpoint.AsSpan(1));
             if (checkpoint[0] == 1) return new HistoricalStateScan.Page(cursor, 0, Complete: true);
-            if (cursor is null) throw new InvalidDataException($"Incomplete scratch import checkpoint for {column} has no position.");
+            if (cursor is null) throw new ScratchStateUnusableException($"Incomplete scratch import checkpoint for {column} has no position.");
         }
 
         IColumnsWriteBatch<Columns> batch = _db.StartWriteBatch();

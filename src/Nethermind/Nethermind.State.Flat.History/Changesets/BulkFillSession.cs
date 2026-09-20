@@ -44,10 +44,10 @@ public sealed class BulkFillSession : IDisposable, IWorldStateScopeProvider.ICod
             byte[]? checkpoint = _db.GetColumnDb(Columns.Metadata)[CheckpointKey];
             if (checkpoint is not null)
             {
-                if (checkpoint.Length != sizeof(ulong) + 2 * Hash256.Size) throw new InvalidDataException("Invalid bulk replay checkpoint.");
+                if (checkpoint.Length != sizeof(ulong) + 2 * Hash256.Size) throw new ScratchStateUnusableException("Invalid bulk replay checkpoint.");
                 CurrentState = new StateId(BinaryPrimitives.ReadUInt64BigEndian(checkpoint), new ValueHash256(checkpoint.AsSpan(sizeof(ulong), Hash256.Size)));
                 BlockHash = new Hash256(checkpoint.AsSpan(sizeof(ulong) + Hash256.Size));
-                if (CurrentState.BlockNumber < anchor.Number) throw new InvalidDataException("Bulk replay checkpoint precedes its anchor.");
+                if (CurrentState.BlockNumber < anchor.Number) throw new ScratchStateUnusableException("Bulk replay checkpoint precedes its anchor.");
                 IsReady = true;
             }
         }
@@ -64,7 +64,9 @@ public sealed class BulkFillSession : IDisposable, IWorldStateScopeProvider.ICod
     public string DirectoryPath { get; }
     public long Size => _db.GatherMetric().Size;
 
-    public void ReleaseState()
+    /// <summary>Drops the replayed state once its coverage is published. The checkpoint goes first, so a release cut
+    /// short by cancellation leaves no replay base behind; the next start finds coverage complete and releases again.</summary>
+    public void ReleaseState(CancellationToken token)
     {
         RequireHealthy();
         if (_batch is not null) throw new InvalidOperationException("Cannot release an active replay block.");
@@ -75,6 +77,7 @@ public sealed class BulkFillSession : IDisposable, IWorldStateScopeProvider.ICod
         upper.Fill(0xFF);
         foreach (Columns column in new[] { Columns.Accounts, Columns.Storage, Columns.Clears, Columns.Code, Columns.Metadata })
         {
+            token.ThrowIfCancellationRequested();
             if (_db.GetColumnDb(column) is not IRangeRemovableKeyValueStore removable)
                 throw new NotSupportedException("Scratch cleanup requires range deletion support.");
             removable.RemoveRange([], upper);
@@ -82,6 +85,7 @@ public sealed class BulkFillSession : IDisposable, IWorldStateScopeProvider.ICod
         _db.SyncWal();
         foreach (Columns column in Enum.GetValues<Columns>())
         {
+            token.ThrowIfCancellationRequested();
             ((IRangeRemovableKeyValueStore)_db.GetColumnDb(column)).ReclaimRange([0], upper);
         }
     }

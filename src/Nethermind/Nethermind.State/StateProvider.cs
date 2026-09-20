@@ -933,19 +933,24 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     internal void SetState(Address address, Account? account)
     {
         _metrics.IncrementAccountWrites();
+        ref ChangeTrace accountChanges = ref GetOrAddBlockChange(address, out bool exists);
         if (account is null)
         {
             _metrics.IncrementAccountDeleted();
-            // Resolve what is being removed before the block change is added: a block that removes an account it
-            // never read would otherwise have nothing to compare against and record no removal, and the storage
-            // that goes with the account would stay readable to a cache that cannot infer the wipe from a root.
-            GetState(address);
+            // A block that removes an account it never read has nothing to compare against, so the removal would go
+            // unrecorded and the storage that goes with the account would stay readable to a cache that cannot infer
+            // the wipe from a root. Resolved here rather than through GetState: the block did not read this account,
+            // and the read counters must keep saying so.
+            if (!exists)
+            {
+                Account? removed = Tree.Get(address);
+                accountChanges = new(removed, removed);
+            }
+            // A removal takes the account's storage with it whichever path removed it; caches of that storage learn of it here.
+            if (accountChanges.After is { } previous && (previous.HasStorage || !Tree.StorageRootsAreAuthoritative))
+                _removedWithStorage.Add(address);
         }
 
-        ref ChangeTrace accountChanges = ref GetOrAddBlockChange(address, out _);
-        // A removal takes the account's storage with it whichever path removed it; caches of that storage learn of it here.
-        if (account is null && accountChanges.After is { } previous && (previous.HasStorage || !Tree.StorageRootsAreAuthoritative))
-            _removedWithStorage.Add(address);
         accountChanges.After = account;
         _needsStateRootUpdate = true;
     }

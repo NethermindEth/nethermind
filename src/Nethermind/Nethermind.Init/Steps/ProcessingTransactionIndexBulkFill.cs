@@ -56,13 +56,15 @@ public sealed class ProcessingTransactionIndexBulkFill(
             {
                 return;
             }
-            catch (Exception exception) when (exception is InvalidBlockException or NotSupportedException)
+            catch (Exception exception) when (exception is InvalidBlockException or NotSupportedException or ScratchStateUnusableException)
             {
                 if (_logger.IsError) _logger.Error("Bulk transaction index stopped until restart; checkpoint retained for diagnosis.", exception);
                 return;
             }
             catch (Exception exception)
             {
+                // Anything else is expected to clear on its own: a body still downloading, a source state still being
+                // captured, a disk that fills and is freed.
                 if (_logger.IsWarn) _logger.Warn($"Bulk transaction index paused with its checkpoint retained: {exception.Message}");
             }
             if (token.WaitHandle.WaitOne(TimeSpan.FromSeconds(30))) return;
@@ -79,7 +81,7 @@ public sealed class ProcessingTransactionIndexBulkFill(
         if (coveredFrom <= first)
         {
             index.SyncWal();
-            session.ReleaseState();
+            session.ReleaseState(token);
             return true;
         }
         RequireCanonical(anchor);
@@ -89,7 +91,7 @@ public sealed class ProcessingTransactionIndexBulkFill(
         RequireCanonical(anchor);
         BlockHeader checkpoint = FindHeader(session.CurrentState.BlockNumber);
         if (checkpoint.Hash != session.BlockHash || new StateId(checkpoint) != session.CurrentState)
-            throw new InvalidDataException("Bulk replay checkpoint no longer matches the canonical chain.");
+            throw new ScratchStateUnusableException("Bulk replay checkpoint no longer matches the canonical chain.");
         sessions.ValidateSource(checkpoint);
         session.CleanStorage(token);
         BulkFillScopeProvider provider = new(session, root.Resolve<ITrieNodeCache>(), root.Resolve<IResourcePool>(), config, logs);
@@ -129,7 +131,7 @@ public sealed class ProcessingTransactionIndexBulkFill(
         index.SyncWal();
         if (!index.TryClaim(first, session.CurrentState.BlockNumber)) throw new InvalidOperationException("Bulk replay has not joined contiguous coverage.");
         index.SyncWal();
-        session.ReleaseState();
+        session.ReleaseState(token);
         if (_logger.IsInfo) _logger.Info($"Bulk transaction index completed {first}-{checkpoint.Number}; scratch rows released, remaining files {session.Size / (1024 * 1024)} MiB pending compaction.");
         return true;
     }

@@ -115,6 +115,34 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void DeleteAccount_WhenTheBlockNeverReadTheAccount_RecordsTheRemovalWithItsStorage()
+    {
+        using Context ctx = new(useFlat);
+        WorldState state = (WorldState)ctx.WorldState;
+        BlockHeader baseBlock;
+        using (state.BeginScope(IWorldState.PreGenesis))
+        {
+            state.CreateAccount(_address1, 1);
+            state.Set(new StorageCell(_address1, 1), 5);
+            state.Commit(Frontier.Instance);
+            state.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(state.StateRoot).TestObject;
+        }
+
+        using IDisposable scope = state.BeginScope(baseBlock);
+        state.DeleteAccount(_address1);
+        state.Commit(Frontier.Instance);
+
+        List<AddressAsKey> removed = state._stateProvider.DetachRemovedAccountsWithStorage();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state.AccountExists(_address1), Is.False, "the delete must land without the block having read the account first");
+            Assert.That(removed, Is.EqualTo(new[] { (AddressAsKey)_address1 }), "a storage cache learns of the wipe only through the recorded removal");
+        }
+        state._stateProvider.ReturnRemovedAccounts(removed);
+    }
+
+    [Test]
     public void Eip_158_zero_value_transfer_deletes()
     {
         using Context ctx = new(useFlat);
