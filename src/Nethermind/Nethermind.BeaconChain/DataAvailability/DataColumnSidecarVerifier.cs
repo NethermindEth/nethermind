@@ -124,7 +124,7 @@ public static class DataColumnSidecarVerifier
 
         try
         {
-            return Ckzg.VerifyCellKzgProofBatch(flatCommitments, cellIndices, flatCells, flatProofs, count, DasKzgSetup.Handle);
+            return Ckzg.VerifyCellKzgProofBatch(flatCommitments, cellIndices, flatCells, flatProofs, count, DasKzg.Handle);
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
         {

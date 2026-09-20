@@ -31,11 +31,11 @@ internal static class DataColumnKzgFixture
     {
         byte[] blob = MakeBlob(seed);
         byte[] commitment = new byte[Ckzg.BytesPerCommitment];
-        Ckzg.BlobToKzgCommitment(commitment, blob, DasKzgSetup.Handle);
+        Ckzg.BlobToKzgCommitment(commitment, blob, DasKzg.Handle);
 
         byte[] cells = new byte[Ckzg.CellsPerExtBlob * Ckzg.BytesPerCell];
         byte[] proofs = new byte[Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof];
-        Ckzg.ComputeCellsAndKzgProofs(cells, proofs, blob, DasKzgSetup.Handle);
+        Ckzg.ComputeCellsAndKzgProofs(cells, proofs, blob, DasKzg.Handle);
 
         return new BlobFixture(commitment, cells, proofs);
     }
