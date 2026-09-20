@@ -234,8 +234,18 @@ public class GethStyleTracer(
     {
         ArgumentNullException.ThrowIfNull(block);
 
+        // A block trace filtered to one transaction is that transaction's trace: the sequential tracer replays the
+        // block and keeps one result, and the seeded single-transaction path produces the same result without the
+        // replay. The block-level options the sequential path ignores stay with it.
+        if (writer is null && options.TxHash is { } target && options.BlockOverrides is null && !options.NoBaseFee)
+        {
+            GethLikeTxTrace? single = TraceImpl(block, target, cancellationToken, options, allowIndexed: allowIndexed);
+            IReadOnlyCollection<GethLikeTxTrace> filtered = single is null ? [] : [single];
+            return new GethLikeTxTraceCollection(filtered);
+        }
+
         BlockHeader parent = FindParent(block);
-        if (allowIndexed && writer is null && options.StateOverrides is null && parallelTracer is not null && !IsJavaScriptTracer(options)
+        if (allowIndexed && writer is null && options.TxHash is null && options.StateOverrides is null && parallelTracer is not null && !IsJavaScriptTracer(options)
             && parallelTracer.TryTrace(block, parent,
                 (state, txHash) => CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, specProvider),
                 afterTransactions: null, cancellationToken, out IReadOnlyList<GethLikeTxTrace>? parallel))

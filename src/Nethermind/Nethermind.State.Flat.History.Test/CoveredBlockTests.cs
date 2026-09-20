@@ -47,18 +47,34 @@ public class CoveredBlockTests
     public void TearDown() => _columns.Dispose();
 
     [Test]
-    public void ABlockWithEveryRow_Opens_AndAnotherHashOrAShortBlockDoesNot()
+    public void ABlockWithEveryRow_Opens_AndAnotherHashDoesNot()
     {
         Block sibling = Build.A.Block.WithNumber(7).WithParentHash(TestItem.KeccakC).WithTransactions(Tx(0), Tx(1), Tx(2)).TestObject;
-        Block longer = Build.A.Block.WithNumber(7).WithTransactions(Tx(0), Tx(1), Tx(2), Tx(9)).TestObject;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(_index.TryOpenBlock(_seven, out ICoveredBlock? covered), Is.True);
             covered!.Dispose();
             Assert.That(_index.TryOpenBlock(sibling, out _), Is.False, "the rows describe another block at that height");
-            Assert.That(_index.TryOpenBlock(longer, out _), Is.False, "a row for every transaction, or nothing");
             Assert.That(_index.TryOpenBlock(Build.A.Block.WithNumber(9).WithTransactions(Tx(0)).TestObject, out _), Is.False, "outside the coverage");
+        }
+    }
+
+    [Test]
+    public void ABlockMissingTheRowOfItsLastTransaction_IsNotOpened()
+    {
+        Assert.That(_index.TryOpenBlock(_seven, out ICoveredBlock? whole), Is.True, "precondition: the block opens while every row is there");
+        whole!.Dispose();
+        Span<byte> key = stackalloc byte[ChangesetKeyLayout.RowKeyLength];
+        ChangesetKeyLayout.WriteRowKey(key, (ulong)_seven.Number, 2);
+        _columns.GetColumnDb(FlatHistoryColumns.TransactionChangesets).Remove(key);
+
+        bool opened = _index.TryOpenBlock(_seven, out ICoveredBlock? covered);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(opened, Is.False, "the hash still matches, so only the row count can refuse it: a row for every transaction, or nothing");
+            Assert.That(covered, Is.Null);
         }
     }
 

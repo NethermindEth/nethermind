@@ -41,6 +41,7 @@ using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 using System;
 using System.Collections.Concurrent;
 using System.Reflection;
@@ -430,8 +431,9 @@ public class BlockProcessorTests
         Block block = await AddThreeTransferBlock(chain);
         IndexThroughTheCapture(chain, index, block, parent, spec);
         GethTraceOptions traceOptions = new() { Tracer = tracerName! };
+        ExecutionCounter executions = new();
         using ParallelTraceBudget budget = new(2);
-        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, budget, LimboLogs.Instance);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain, executions: executions), seeds, budget, LimboLogs.Instance);
 
         string expected = chain.JsonSerializer.Serialize(new GethLikeTxTraceCollection(TraceWholeBlockThroughTraceEnvironment(chain, parent, block,
             state => GethStyleTracer.CreateOptionsTracer(block.Header, traceOptions, state, chain.SpecProvider))));
@@ -444,7 +446,93 @@ public class BlockProcessorTests
             Assert.That(traced, Is.True, "a covered block is traced in parallel");
             Assert.That(traces!, Has.Count.EqualTo(3));
             Assert.That(chain.JsonSerializer.Serialize(new GethLikeTxTraceCollection(traces!)), Is.EqualTo(expected), "each transaction traced alone on its seeded state equals the replay, prestate included");
+            Assert.That(executions.Calls, Is.EqualTo(3), "every transaction executes once: a worker whose seed was refused would replay its prefix and show up here");
         }
+    }
+
+    [TestCase(false, TestName = "ParallelBlockTracer_WhenALaterTransactionFails_DisposesTheResultsAlreadyFinished")]
+    [TestCase(true, TestName = "ParallelBlockTracer_WhenCancelled_DisposesTheResultsAlreadyFinished")]
+    public async Task ParallelBlockTracer_WhenTheRunDoesNotComplete_DisposesTheResultsAlreadyFinished(bool cancel)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using BasicTestBlockchain chain = await CreatePrefixReplayChain(spec, seeds);
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await AddThreeTransferBlock(chain);
+        IndexThroughTheCapture(chain, index, block, parent, spec);
+        using ParallelTraceBudget budget = new(2);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, budget, LimboLogs.Instance);
+        using CancellationTokenSource cancellation = new();
+        DisposalCounter sentinel = new();
+        GethTraceOptions traceOptions = new() { Tracer = "callTracer" };
+
+        // The first transaction runs on the calling thread before any worker starts, so its result is finished and
+        // parked when a later transaction fails.
+        Exception? escaped = Assert.Catch(() => parallel.TryTrace(block, parent, (state, txHash) =>
+        {
+            if (txHash == block.Transactions[0].Hash)
+                return new SentinelResultTracer(GethStyleTracer.CreateOptionsTracer(block.Header, traceOptions with { TxHash = txHash }, state, chain.SpecProvider), sentinel);
+            if (cancel)
+            {
+                cancellation.Cancel();
+                cancellation.Token.ThrowIfCancellationRequested();
+            }
+            throw new InvalidOperationException("state read failed");
+        }, afterTransactions: null, cancellation.Token, out _));
+
+        IResolveConstraint failure = cancel
+            ? Is.InstanceOf<OperationCanceledException>()
+            : Is.InstanceOf<InvalidOperationException>().With.Message.EqualTo("state read failed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(escaped, failure);
+            Assert.That(sentinel.Disposals, Is.EqualTo(1), "a result the caller never received is released exactly once, after the workers have stopped");
+        }
+    }
+
+    private sealed class DisposalCounter : IDisposable
+    {
+        private int _disposals;
+        public int Disposals => _disposals;
+        public void Dispose() => Interlocked.Increment(ref _disposals);
+    }
+
+    /// <summary>Traces like its inner tracer and hands back one trace owning the sentinel, so a test can see whether
+    /// the result was released.</summary>
+    private sealed class SentinelResultTracer(IBlockTracer<GethLikeTxTrace> inner, IDisposable sentinel) : IBlockTracer<GethLikeTxTrace>
+    {
+        public bool IsTracingRewards => inner.IsTracingRewards;
+        public void ReportReward(Address author, string rewardType, UInt256 rewardValue) => inner.ReportReward(author, rewardType, rewardValue);
+        public void StartNewBlockTrace(Block block) => inner.StartNewBlockTrace(block);
+        public ITxTracer StartNewTxTrace(Transaction? tx) => inner.StartNewTxTrace(tx);
+        public void EndTxTrace() => inner.EndTxTrace();
+        public void EndBlockTrace() => inner.EndBlockTrace();
+        public IReadOnlyCollection<GethLikeTxTrace> BuildResult()
+        {
+            inner.BuildResult().DisposeItems();
+            return [new GethLikeTxTrace(sentinel)];
+        }
+    }
+
+    private sealed class ExecutionCounter
+    {
+        private int _calls;
+        public int Calls => _calls;
+        public void Count() => Interlocked.Increment(ref _calls);
+    }
+
+    private sealed class CountingTransactionAdapter(ITransactionProcessorAdapter inner, ExecutionCounter counter) : ITransactionProcessorAdapter
+    {
+        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
+        {
+            counter.Count();
+            return inner.Execute(transaction, txTracer);
+        }
+
+        public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(context);
+        public void PrepareForInclusionCheck(Transaction transaction, ulong stateGasAvailable) => inner.PrepareForInclusionCheck(transaction, stateGasAvailable);
     }
 
     [Test]
@@ -835,7 +923,7 @@ public class BlockProcessorTests
     }
 
     private static ParallelBlockTracer.OwnedEnvironment BuildParallelEnvironment(
-        BasicTestBlockchain chain, bool? hideRewardBoundary = null, bool refuseOverlay = false, bool refuseNonEmpty = false)
+        BasicTestBlockchain chain, bool? hideRewardBoundary = null, bool refuseOverlay = false, bool refuseNonEmpty = false, ExecutionCounter? executions = null)
     {
         IBlockValidationModule[] validation = chain.Container.Resolve<IBlockValidationModule[]>();
         IOverridableEnv env = chain.Container.Resolve<IOverridableEnvFactory>().Create();
@@ -852,6 +940,7 @@ public class BlockProcessorTests
                 builder.AddDecorator<IBlockProcessor>((_, inner) => new BoundaryHidingBlockProcessor(inner, hideRewardBoundary.Value));
             if (refuseOverlay) builder.AddDecorator<IWorldState, OverlayRefusingState>();
             if (refuseNonEmpty) builder.AddDecorator<IWorldState, NonEmptyOverlayRefusingState>();
+            if (executions is not null) builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new CountingTransactionAdapter(inner, executions));
         });
         return new ParallelBlockTracer.OwnedEnvironment(scope.Resolve<IOverridableEnv<ParallelBlockTracer.Components>>(), scope);
     }

@@ -104,10 +104,12 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
             if (!_seeds.TryOpenBlock(block, out ICoveredBlock? covered)) return false;
             using ICoveredBlock coverage = covered;
 
+            Transaction[] transactions = block.Transactions;
+            IReadOnlyCollection<TTrace>?[] results = new IReadOnlyCollection<TTrace>?[transactions.Length + 1];
+            Emitter<TTrace> emitter = new(results, emit);
+            int workers;
+            try
             {
-                Transaction[] transactions = block.Transactions;
-                IReadOnlyCollection<TTrace>?[] results = new IReadOnlyCollection<TTrace>?[transactions.Length + 1];
-                Emitter<TTrace> emitter = new(results, emit);
                 using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
                 Cursor cursor = new();
 
@@ -116,6 +118,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 
                 int helpers = Math.Min(_degree, transactions.Length - 1) - 1;
                 Task[] tasks = new Task[Math.Max(0, helpers)];
+                workers = tasks.Length + 1;
                 int queued = 0;
                 ExceptionDispatchInfo? failure = null;
                 try
@@ -145,29 +148,52 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
                 }
 
                 covered.Complete();
-
-                if (emit is null)
-                {
-                    List<TTrace> all = new(transactions.Length + 1);
-                    foreach (IReadOnlyCollection<TTrace>? result in results)
-                    {
-                        if (result is not null) all.AddRange(result);
-                    }
-
-                    traces = all;
-                }
-                else
-                {
-                    traces = [];
-                }
-
-                if (_logger.IsTrace) _logger.Trace($"Traced block {block.Number} in parallel: {transactions.Length} transactions on {tasks.Length + 1} workers.");
-                return true;
             }
+            catch
+            {
+                // Every worker has returned by now: Await let the failure out only once they had. What they finished
+                // and nobody received is this run's to release.
+                DisposeUnpublished(results);
+                throw;
+            }
+
+            if (emit is null)
+            {
+                List<TTrace> all = new(transactions.Length + 1);
+                foreach (IReadOnlyCollection<TTrace>? result in results)
+                {
+                    if (result is not null) all.AddRange(result);
+                }
+
+                traces = all;
+            }
+            else
+            {
+                traces = [];
+            }
+
+            if (_logger.IsTrace) _logger.Trace($"Traced block {block.Number} in parallel: {transactions.Length} transactions on {workers} workers.");
+            return true;
         }
         finally
         {
             Leave();
+        }
+    }
+
+    /// <summary>A run that fails owns whatever its workers finished: a result the caller never received, or the
+    /// emitter never wrote, holds the tracer's frames and pooled buffers, and nothing else will let go of them.
+    /// A result the emitter did write was cleared from its slot as it went, so the caller keeps what it was handed.</summary>
+    private static void DisposeUnpublished<TTrace>(IReadOnlyCollection<TTrace>?[] results)
+    {
+        for (int i = 0; i < results.Length; i++)
+        {
+            IReadOnlyCollection<TTrace>? result = results[i];
+            if (result is null) continue;
+
+            results[i] = null;
+            foreach (TTrace trace in result) trace.TryDispose();
+            result.TryDispose();
         }
     }
 
