@@ -303,8 +303,11 @@ namespace Nethermind.Synchronization.FastBlocks
                                 _syncStatusList.MarkInserted(block.Number);
                                 validResponsesCount++;
                             }
-                            catch (InvalidDataException)
+                            catch (InvalidDataException e)
                             {
+                                // Receipts the header vouched for that the store still rejects are retried forever,
+                                // so this holds the frontier rather than costing one block.
+                                if (_logger.IsWarn) _logger.Warn($"Could not store the receipts of block {blockInfo.BlockNumber}. {e}");
                                 _syncStatusList.MarkPending(blockInfo);
                             }
                         }
