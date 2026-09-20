@@ -5,11 +5,14 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.Api.Common;
+using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition;
+using Nethermind.BeaconChain.Types;
 
 namespace Nethermind.BeaconChain.Api.Endpoints;
 
 /// <summary>
-/// <c>/eth/v1/debug/*</c>: raw SSZ state (the checkpoint-provider path) and fork choice.
+/// <c>/eth/v1/debug/*</c>: the persisted state as SSZ (the checkpoint-provider path) or JSON, and fork choice.
 /// </summary>
 internal static class DebugEndpoints
 {
@@ -25,8 +28,8 @@ internal static class DebugEndpoints
     }
 
     /// <summary>
-    /// Serves the node's persisted post-state as raw SSZ - this is what lets another client
-    /// checkpoint-sync from this node.
+    /// Serves the node's persisted post-state: as the raw stored SSZ bytes (what lets another client
+    /// checkpoint-sync from this node) or, decoded, as the beacon-api JSON representation.
     /// </summary>
     private static Task State(HttpContext c, string stateId, BeaconApiContext ctx)
     {
@@ -43,14 +46,40 @@ internal static class DebugEndpoints
 
         if (format == ContentNegotiation.ResponseFormat.Json)
         {
-            // A full multi-fork BeaconState is hundreds of SSZ fields (validator registry,
-            // balances, history vectors, PeerDAS/ePBS additions); hand-writing a correct JSON
-            // mapping for all of them was out of scope for this milestone.
-            return ApiErrors.Write(c, StatusCodes.Status501NotImplemented,
-                "JSON state bodies are not implemented; request 'Accept: application/octet-stream' for SSZ.", c.RequestAborted);
+            return StateJson(c, stateId, resolved, ctx);
+        }
+
+        // The raw path never decodes the state; the block it belongs to is the cheap source of its
+        // slot for the version header. Without that block the header is omitted, never guessed.
+        if (ctx.Store.TryGetBlock(resolved.Root, out SignedBeaconBlock? block))
+        {
+            ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, block.Message!.Slot);
         }
 
         c.Response.ContentType = ContentNegotiation.OctetStream;
         return c.Response.Body.WriteAsync(resolved.Ssz, c.RequestAborted).AsTask();
+    }
+
+    private static Task StateJson(HttpContext c, string stateId, ResolvedRawState resolved, BeaconApiContext ctx)
+    {
+        BeaconStateFulu state;
+        try
+        {
+            // Throws NotSupportedException for a fork this driver cannot decode (Gloas); the host
+            // middleware turns that into a labelled 501 rather than a fabricated Fulu-shaped body.
+            state = BeaconStateCodec.Decode(resolved.Ssz, ctx.Spec);
+        }
+        catch (BeaconStateException e)
+        {
+            return ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
+                $"The state persisted for '{stateId}' ({resolved.Root}) is not decodable: {e.Message}", c.RequestAborted);
+        }
+
+        BeaconFork fork = ctx.Spec.ForkAtEpoch(ctx.Spec.GetEpoch(state.Slot));
+        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, state.Slot);
+        return BeaconApiJson.WriteVersionedEnvelopeAsync(c, ResponseEnvelope.ForkName(fork),
+            ResponseEnvelope.ExecutionOptimistic(),
+            ResponseEnvelope.IsFinalized(ctx.Spec, ctx.StatusSource, state.Slot),
+            s => BeaconJsonWriter.WriteBeaconStateAsync(s, state));
     }
 }

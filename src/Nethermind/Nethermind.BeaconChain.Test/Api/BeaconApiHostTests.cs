@@ -205,7 +205,7 @@ public class BeaconApiHostTests
     }
 
     [Test]
-    public async Task Debug_state_json_is_501_not_a_best_effort_partial_body()
+    public async Task Debug_state_json_for_undecodable_stored_bytes_is_an_error_not_a_best_effort_partial_body()
     {
         Hash256 root = TestRoot(3);
         _statusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = root, HeadRoot = root, HeadSlot = 5 };
@@ -214,7 +214,11 @@ public class BeaconApiHostTests
         HttpRequestMessage request = new(HttpMethod.Get, "/eth/v2/debug/beacon/states/head");
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         HttpResponseMessage response = await _client.SendAsync(request);
-        Assert.That(response.StatusCode, Is.EqualTo((HttpStatusCode)501));
+        // Nine bytes cannot be a state; the JSON path decodes and must say so (BeaconJsonBodiesTests
+        // covers the real body), never emit a Fulu-shaped object built from garbage.
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.InternalServerError));
+        JsonDocument body = await ReadJsonAsync(response);
+        Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("not decodable"));
     }
 
     [Test]
