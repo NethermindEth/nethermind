@@ -106,6 +106,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Trie cache memory target", DefaultValue = "536870912")]
     ulong TrieCacheMemoryBudget { get; set; }
 
+    [ConfigItem(Description = "When the trie node cache is over its memory budget, drop only the nodes that were not read since the previous eviction sweep instead of clearing a whole cache shard. Aims at a higher hit rate for the same budget.", DefaultValue = "false")]
+    bool TrieCacheHitAwareEviction { get; set; }
+
     [ConfigItem(Description = "Trie warmer worker count (-1 for 3/4 of processor count, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
 

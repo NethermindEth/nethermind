@@ -45,6 +45,14 @@ namespace Nethermind.Trie.Pruning
         [Description("Nodes that have been removed from the cache during pruning because they were no longer needed.")]
         public static long PrunedTransientNodesCount { get; set; }
 
+        [CounterMetric]
+        [Description("Trie nodes dropped by an eviction sweep of the flat trie node cache because they were not read since the previous sweep.")]
+        public static long TrieCacheEvictedNodesCount;
+
+        [CounterMetric]
+        [Description("Trie nodes kept by an eviction sweep of the flat trie node cache because they were read since the previous sweep.")]
+        public static long TrieCacheRetainedNodesCount;
+
         // The block-processing thread keeps its dedicated padded word; every other thread (RPC
         // workers, prewarm workers) previously shared ONE "other" word per counter, making each
         // per-node increment a contended cross-core RMW under concurrent load — striped instead.

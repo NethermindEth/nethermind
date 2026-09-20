@@ -28,6 +28,9 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
     private readonly ILogger _logger;
     private readonly TrieNode?[][] _cacheShards;
+    // One byte per bucket, set when the node is read and cleared by an eviction sweep. Null unless hit-aware
+    // eviction is enabled, so the default path keeps the plain round-robin shard clear.
+    private readonly byte[][]? _shardAccessFlags;
     private readonly long[] _shardMemoryUsages;
     private readonly long _maxCacheMemoryThreshold;
     private readonly int _bucketSize;
@@ -50,6 +53,15 @@ public sealed class TrieNodeCache : ITrieNodeCache
         for (int i = 0; i < ShardCount; i++)
         {
             _cacheShards[i] = new TrieNode[_bucketSize];
+        }
+
+        if (flatDbConfig.TrieCacheHitAwareEviction)
+        {
+            _shardAccessFlags = new byte[ShardCount][];
+            for (int i = 0; i < ShardCount; i++)
+            {
+                _shardAccessFlags[i] = new byte[_bucketSize];
+            }
         }
 
         _shardMemoryUsages = new long[ShardCount];
@@ -90,6 +102,11 @@ public sealed class TrieNodeCache : ITrieNodeCache
         TrieNode? maybeNode = _cacheShards[shardIdx][bucketIdx];
         if (maybeNode is not null && maybeNode.Keccak == hash)
         {
+            // Give the node another round in the next eviction sweep. Skipping the store when the flag is already
+            // set keeps repeated reads of a hot node off the write path.
+            byte[][]? accessFlags = _shardAccessFlags;
+            if (accessFlags is not null && accessFlags[shardIdx][bucketIdx] == 0) accessFlags[shardIdx][bucketIdx] = 1;
+
             node = maybeNode;
             return true;
         }
@@ -121,6 +138,9 @@ public sealed class TrieNodeCache : ITrieNodeCache
             int bucketIdx = hashCode & _bucketMask;
             newNode.PrunePersistedRecursively(1);
             Interlocked.Add(ref _shardMemoryUsages[shardIdx], newNode.GetMemorySize(false));
+
+            // A new occupant starts cold, whatever the previous one's reads were.
+            if (_shardAccessFlags is not null) _shardAccessFlags[shardIdx][bucketIdx] = 0;
 
             TrieNode? oldNode = Interlocked.Exchange(ref _cacheShards[shardIdx][bucketIdx], newNode);
             if (oldNode is not null)
@@ -189,18 +209,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
             wasPruned = true;
             int shardToClear = _nextShardToClear;
 
-            // Prune any remaining reference
-            for (int i = 0; i < _bucketSize; i++)
-            {
-                _cacheShards[shardToClear][i]?.PrunePersistedRecursively(1);
-            }
-
-            // Clear the shard
-            Array.Clear(_cacheShards[shardToClear]);
-
-            // Reset shard memory
-            long freedMemory = Interlocked.Exchange(ref _shardMemoryUsages[shardToClear], 0);
-            currentTotalMemory -= freedMemory;
+            currentTotalMemory -= _shardAccessFlags is null ? ClearShard(shardToClear) : SweepShard(shardToClear);
 
             _nextShardToClear = (_nextShardToClear + 1) & 255; // Fast modulo 256
         }
@@ -208,6 +217,66 @@ public sealed class TrieNodeCache : ITrieNodeCache
         if (wasPruned && _logger.IsTrace) _logger.Trace($"Pruning trie cache from {prevMemory} to {currentTotalMemory}");
 
         Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = currentTotalMemory;
+    }
+
+    /// <summary>Drops every node of a shard and returns the memory it accounted for.</summary>
+    private long ClearShard(int shardIdx)
+    {
+        TrieNode?[] shard = _cacheShards[shardIdx];
+
+        // Prune any remaining reference
+        for (int i = 0; i < _bucketSize; i++)
+        {
+            shard[i]?.PrunePersistedRecursively(1);
+        }
+
+        Array.Clear(shard);
+        _shardAccessFlags?[shardIdx].AsSpan().Clear();
+
+        return Interlocked.Exchange(ref _shardMemoryUsages[shardIdx], 0);
+    }
+
+    /// <summary>
+    /// Drops the nodes of a shard that were not read since the previous sweep and gives the rest another round.
+    /// </summary>
+    /// <remarks>
+    /// The shard's accounted memory is rebuilt from the survivors, so it cannot drift as nodes grow after being
+    /// cached. When the sweep frees nothing — every node was read, or the survivors account for all of it — the
+    /// shard is cleared instead, so an eviction pass always makes progress and the loop above terminates.
+    /// </remarks>
+    private long SweepShard(int shardIdx)
+    {
+        TrieNode?[] shard = _cacheShards[shardIdx];
+        byte[] accessFlags = _shardAccessFlags![shardIdx];
+        long retainedMemory = 0;
+        int evicted = 0;
+        int retained = 0;
+
+        for (int i = 0; i < _bucketSize; i++)
+        {
+            TrieNode? node = shard[i];
+            if (node is null) continue;
+
+            if (accessFlags[i] != 0)
+            {
+                accessFlags[i] = 0;
+                retained++;
+                retainedMemory += node.GetMemorySize(false);
+                continue;
+            }
+
+            if (Interlocked.CompareExchange(ref shard[i], null, node) != node) continue;
+
+            node.PrunePersistedRecursively(1);
+            evicted++;
+        }
+
+        long freedMemory = Interlocked.Exchange(ref _shardMemoryUsages[shardIdx], retainedMemory) - retainedMemory;
+        if (freedMemory <= 0) return freedMemory + ClearShard(shardIdx);
+
+        Nethermind.Trie.Pruning.Metrics.TrieCacheEvictedNodesCount += evicted;
+        Nethermind.Trie.Pruning.Metrics.TrieCacheRetainedNodesCount += retained;
+        return freedMemory;
     }
 
     /// <summary>
@@ -222,6 +291,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
                 _cacheShards[i][j]?.PrunePersistedRecursively(1);
             }
             Array.Clear(_cacheShards[i]);
+            _shardAccessFlags?[i].AsSpan().Clear();
             Interlocked.Exchange(ref _shardMemoryUsages[i], 0);
         }
         _nextShardToClear = 0;

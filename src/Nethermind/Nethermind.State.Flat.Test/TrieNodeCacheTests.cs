@@ -277,6 +277,75 @@ public class TrieNodeCacheTests
         Assert.That(_cache.TryGet(null, in path3, hash3, out _), Is.False);
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Eviction_KeepsRecentlyReadNodes_OnlyWhenHitAware(bool hitAware)
+    {
+        (int readSurvivors, int unreadSurvivors) = RunEvictionScenario(hitAware);
+
+        TestContext.Out.WriteLine($"hitAware={hitAware} read={readSurvivors} unread={unreadSurvivors} of {ShardCount}");
+        int margin = readSurvivors - unreadSurvivors;
+        if (hitAware)
+        {
+            Assert.That(margin, Is.GreaterThan(ShardCount / 8), "a sweep must favour the nodes read since the previous one");
+        }
+        else
+        {
+            Assert.That(margin, Is.InRange(-ShardCount / 4, ShardCount / 4), "clearing whole shards cannot tell read from unread nodes");
+        }
+    }
+
+    private const int ShardCount = 256;
+
+    /// <summary>
+    /// Fills one node per shard, reads them all, then fills a second node per shard without reading it and lets the
+    /// second insert push the cache over its budget. Returns how many of each set survived the eviction.
+    /// </summary>
+    private static (int readSurvivors, int unreadSurvivors) RunEvictionScenario(bool hitAware)
+    {
+        static TreePath PathFor(int shard, int variant) => TreePath.FromHexString($"{shard:x2}{variant:x2}");
+        static Hash256 HashFor(int shard, int variant) => Keccak.Compute([(byte)shard, (byte)variant]);
+
+        // Room for more than the nodes read in the first round but for fewer than both rounds together, so the
+        // eviction has to choose between them.
+        long nodeSize = new TrieNode(NodeType.Leaf, HashFor(0, 0)).GetMemorySize(false);
+        FlatDbConfig config = new()
+        {
+            TrieCacheMemoryBudget = (ulong)(nodeSize * ShardCount * 3 / 2),
+            TrieCacheHitAwareEviction = hitAware
+        };
+        TrieNodeCache cache = new(config, LimboLogs.Instance);
+        ResourcePool resourcePool = new(config);
+
+        void AddRound(int variant)
+        {
+            TransientResource transientResource = resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+            for (int shard = 0; shard < ShardCount; shard++)
+            {
+                TreePath path = PathFor(shard, variant);
+                transientResource.Nodes.Set(null, in path, new TrieNode(NodeType.Leaf, HashFor(shard, variant)));
+            }
+            cache.Add(transientResource);
+        }
+
+        int Survivors(int variant)
+        {
+            int found = 0;
+            for (int shard = 0; shard < ShardCount; shard++)
+            {
+                TreePath path = PathFor(shard, variant);
+                if (cache.TryGet(null, in path, HashFor(shard, variant), out _)) found++;
+            }
+            return found;
+        }
+
+        AddRound(1);
+        Assert.That(Survivors(1), Is.EqualTo(ShardCount), "the first round must fit before the second one is added");
+        AddRound(2);
+
+        return (Survivors(1), Survivors(2));
+    }
+
     [Test]
     public void Clear_RemovesStateAndStorageNodes()
     {
