@@ -96,5 +96,9 @@ jobs:
           name: test-bin-${{ matrix.variant }}-${{ matrix.rid }}
           path: test-bin.tar
           compression-level: 1
-          retention-days: 1
+          # Pull-request workflows are often rerun days after the original build (for example
+          # after review changes or an infrastructure failure). Keep the producer artifact long
+          # enough for those reruns; a one-day lifetime makes required test jobs fail before tests
+          # start when the PR remains open overnight.
+          retention-days: 14
           if-no-files-found: error
