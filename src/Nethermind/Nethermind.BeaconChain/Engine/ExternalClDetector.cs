@@ -43,16 +43,16 @@ public sealed class ExternalClDetector(
     {
         get
         {
-            if (_inner is null)
+            if (Volatile.Read(ref _inner) is null)
             {
                 _ = engineRpcModule.Value;
             }
 
-            return _inner ?? throw new InvalidOperationException($"{nameof(ExternalClInterceptingEngineRpcModule)} is not decorating {nameof(IEngineRpcModule)}");
+            return Volatile.Read(ref _inner) ?? throw new InvalidOperationException($"{nameof(ExternalClInterceptingEngineRpcModule)} is not decorating {nameof(IEngineRpcModule)}");
         }
     }
 
-    public void SetInner(IEngineRpcModule inner) => _inner = inner;
+    public void SetInner(IEngineRpcModule inner) => Volatile.Write(ref _inner, inner);
 
     /// <summary>Called by the decorator on every externally visible <c>newPayload</c>/<c>forkchoiceUpdated</c>.</summary>
     public void OnExternalEngineCall()
