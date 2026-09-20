@@ -586,6 +586,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         {
             Dictionary<AddressAsKey, ChangeTrace> trace = [];
             CommitChanges<OnFlag>(changes, removeEmptyAccounts, isTracing, trace);
+            // Reporting code changes reads both the code DB and the lookup recycled by the flush worker.
+            AwaitCodeFlush(codeFlushTask);
             trace.ReportStateTrace(stateTracer, _nullAccountReads, this);
         }
         else
