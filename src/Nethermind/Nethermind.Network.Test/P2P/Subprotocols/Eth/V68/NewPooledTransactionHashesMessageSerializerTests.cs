@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -75,6 +77,82 @@ public class NewPooledTransactionHashesMessageSerializerTests
         byte[] bytes = serializer.Serialize(message);
 
         Assert.That(() => serializer.Deserialize(bytes), Throws.InstanceOf<RlpException>());
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void Reused_message_clears_fields_and_lists([Values(0, 3, 129)] int count)
+    {
+        NewPooledTransactionHashesMessageSerializer serializer = new();
+        using NewPooledTransactionHashesMessage68 source = new(
+            Enumerable.Repeat((byte)2, count).ToPooledList(count),
+            Enumerable.Repeat(100, count).ToPooledList(count),
+            Enumerable.Repeat(TestItem.KeccakA, count).ToPooledList(count));
+        byte[] bytes = serializer.Serialize(source);
+        NewPooledTransactionHashesMessage68 first = serializer.Deserialize(bytes);
+        first.AdaptivePacketType = 123;
+        first.Dispose();
+        first.Dispose();
+
+        using NewPooledTransactionHashesMessage68 empty = serializer.Deserialize(Convert.FromHexString("c380c0c0"));
+        using NewPooledTransactionHashesMessage68 next = serializer.Deserialize(bytes);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(empty.Hashes, Is.Empty);
+            Assert.That(empty.Types, Is.Empty);
+            Assert.That(empty.Sizes, Is.Empty);
+            Assert.That(empty.AdaptivePacketType, Is.Zero);
+            Assert.That(next.Hashes, Is.EqualTo(source.Hashes));
+            Assert.That(next.Types, Is.EqualTo(source.Types));
+            Assert.That(next.Sizes, Is.EqualTo(source.Sizes));
+            Assert.That(next, Is.Not.SameAs(empty));
+            Assert.That(empty, count <= 128 ? Is.SameAs(first) : Is.Not.SameAs(first));
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void Partial_decode_failure_does_not_contaminate_next_message(
+        [Values("c502c164c180", "c502c164c1c0", "c402c1c0c0", "c502c164c181")] string malformed)
+    {
+        NewPooledTransactionHashesMessageSerializer serializer = new();
+        Assert.That(() => serializer.Deserialize(Convert.FromHexString(malformed)), Throws.InstanceOf<RlpException>());
+        using NewPooledTransactionHashesMessage68 next = serializer.Deserialize(Convert.FromHexString("c380c0c0"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next.Types, Is.Empty);
+            Assert.That(next.Sizes, Is.Empty);
+            Assert.That(next.Hashes, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Concurrent_batches_keep_independent_message_leases()
+    {
+        NewPooledTransactionHashesMessageSerializer serializer = new();
+        byte[] bytes = Convert.FromHexString("c402c164c0");
+        Parallel.For(0, 8, _ =>
+        {
+            NewPooledTransactionHashesMessage68[] messages = new NewPooledTransactionHashesMessage68[64];
+            try
+            {
+                for (int i = 0; i < messages.Length; i++) messages[i] = serializer.Deserialize(bytes);
+                Assert.That(messages.Distinct().Count(), Is.EqualTo(messages.Length));
+                foreach (NewPooledTransactionHashesMessage68 message in messages)
+                {
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(message.Types, Is.EqualTo(new byte[] { 2 }));
+                        Assert.That(message.Sizes, Is.EqualTo(new[] { 100 }));
+                        Assert.That(message.Hashes, Is.Empty);
+                    }
+                }
+            }
+            finally
+            {
+                foreach (NewPooledTransactionHashesMessage68 message in messages) message?.Dispose();
+            }
+        });
     }
 
 }

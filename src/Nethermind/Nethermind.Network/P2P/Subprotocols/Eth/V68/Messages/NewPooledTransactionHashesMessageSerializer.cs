@@ -1,10 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
@@ -23,23 +26,100 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
         private static NewPooledTransactionHashesMessage68 Deserialize(ref RlpReader ctx)
         {
             ctx.ReadSequenceLength();
-            ArrayPoolList<byte>? types = null;
-            ArrayPoolList<int>? sizes = null;
-            ArrayPoolList<Hash256>? hashes = null;
+            PooledMessage message = PooledMessage.Rent();
             try
             {
-                types = ctx.DecodeByteArraySpan(TypesRlpLimit).ToPooledList();
-                sizes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeInt(), limit: SizesRlpLimit);
-                hashes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak(), limit: HashesRlpLimit);
-                return new NewPooledTransactionHashesMessage68(types, sizes, hashes);
+                message.TypeList.AddRange(ctx.DecodeByteArraySpan(TypesRlpLimit));
+                DecodeList(ref ctx, message.SizeList, static (ref RlpReader c) => c.DecodeInt(), SizesRlpLimit);
+                DecodeList(ref ctx, message.HashList, static (ref RlpReader c) => c.DecodeKeccak(), HashesRlpLimit);
+                return message;
             }
             catch
             {
-                types?.Dispose();
-                sizes?.Dispose();
-                hashes?.Dispose();
+                message.Dispose();
                 throw;
             }
+        }
+
+        private static void DecodeList<T>(ref RlpReader reader, ArrayPoolList<T> destination, DecodeRlpValue<T> decode, RlpLimit limit)
+        {
+            int end = reader.ReadSequenceLength() + reader.Position;
+            int count = reader.PeekNumberOfItemsRemaining(end, limit.Limit + 1);
+            reader.GuardLimit(count, limit);
+            try
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    if (reader.PeekByte() == Rlp.EmptyListByte)
+                        ThrowNullArrayElement(i);
+                    T value = decode(ref reader);
+                    if (value is null)
+                        ThrowNullArrayElement(i);
+                    destination.Add(value);
+                }
+                reader.Check(end);
+            }
+            catch (Exception exception) when (exception is not RlpException)
+            {
+                throw new RlpException($"Error decoding array of {typeof(T).Name}.", exception);
+            }
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowNullArrayElement(int index) =>
+            throw new RlpException($"Null array element at index {index}.");
+
+        private sealed class PooledMessage : NewPooledTransactionHashesMessage68
+        {
+            private const int MaxRetainedMessages = 32;
+            private const int MaxRetainedCapacity = 128;
+            // Like StripedLong, separate active slots by 128 bytes to avoid cross-core false sharing.
+            private static readonly int SlotStride = 128 / IntPtr.Size;
+            private static readonly PooledMessage?[] Pool = new PooledMessage[(MaxRetainedMessages + 1) * SlotStride];
+            private static ref PooledMessage? CurrentSlot => ref Pool[(Environment.CurrentManagedThreadId % MaxRetainedMessages + 1) * SlotStride];
+            internal readonly ArrayPoolList<byte> TypeList;
+            internal readonly ArrayPoolList<int> SizeList;
+            internal readonly ArrayPoolList<Hash256> HashList;
+            private int _returned;
+
+            private PooledMessage() : this(new(0), new(0), new(0)) { }
+
+            private PooledMessage(ArrayPoolList<byte> types, ArrayPoolList<int> sizes, ArrayPoolList<Hash256> hashes)
+                : base(types, sizes, hashes)
+            {
+                TypeList = types;
+                SizeList = sizes;
+                HashList = hashes;
+            }
+
+            internal static PooledMessage Rent()
+            {
+                PooledMessage? message = Interlocked.Exchange(ref CurrentSlot, null);
+                if (message is not null)
+                {
+                    message._returned = 0;
+                    return message;
+                }
+                return new();
+            }
+
+            public override void Dispose()
+            {
+                if (Interlocked.Exchange(ref _returned, 1) != 0) return;
+
+                // Keep small announcements warm without retaining burst-sized arrays or hash references.
+                if (TypeList.Capacity <= MaxRetainedCapacity && SizeList.Capacity <= MaxRetainedCapacity && HashList.Capacity <= MaxRetainedCapacity)
+                {
+                    TypeList.Clear();
+                    SizeList.Clear();
+                    HashList.Clear();
+                    AdaptivePacketType = 0;
+                    if (Interlocked.CompareExchange(ref CurrentSlot, this, null) is null)
+                        return;
+                }
+                base.Dispose();
+            }
+
         }
 
         public void Serialize(IByteBuffer byteBuffer, NewPooledTransactionHashesMessage68 message)
