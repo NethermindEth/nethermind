@@ -84,7 +84,9 @@ public class DebugBridgeTests
     }
 
     [Test]
-    public async Task Refused_running_mutation_does_not_interrupt_canonical_updates([Values] ChainMutation mutation)
+    public async Task Refused_mutation_does_not_interrupt_canonical_updates(
+        [Values] ChainMutation mutation,
+        [Values(ProcessingState.Running, ProcessingState.PausedExecuting, ProcessingState.PausedQueued)] ProcessingState processingState)
     {
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
         logger.IsWarn.Returns(true);
@@ -98,9 +100,14 @@ public class DebugBridgeTests
         AddToMainChain(tree, head);
         tree.SuggestBlock(next);
         IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
+        if (processingState != ProcessingState.Running) container.Resolve<IBlockProcessingPauseControl>().Pause();
+        tree.IsProcessingBlock = processingState == ProcessingState.PausedExecuting;
+        if (processingState == ProcessingState.PausedQueued)
+            await container.Resolve<IBlockProcessingQueue>().Enqueue(head, ProcessingOptions.None);
+        const string refusalWarning = "Cannot mutate the chain: pause block processing and wait for it to drain.";
         TaskCompletionSource refusing = new(TaskCreationOptions.RunContinuationsAsynchronously);
         using ManualResetEventSlim releaseRefusal = new();
-        logger.When(x => x.Warn("Cannot mutate the chain: pause block processing and wait for it to drain."))
+        logger.When(x => x.Warn(refusalWarning))
             .Do(_ =>
             {
                 refusing.SetResult();
@@ -110,17 +117,26 @@ public class DebugBridgeTests
         bool updated;
         try
         {
-            await refusing.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            try
+            {
+                await refusing.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            catch (TimeoutException exception)
+            {
+                throw new TimeoutException($"Did not observe the expected refusal warning: {refusalWarning}", exception);
+            }
             updated = tree.TryUpdateMainChain(next.Header, true, true, next);
         }
         finally
         {
             releaseRefusal.Set();
+            tree.IsProcessingBlock = false;
         }
         int result = await request.WaitAsync(TimeSpan.FromSeconds(10));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(updated, Is.True, "a refused debug request must not interrupt a live canonical update");
+            AssertCalls(() => logger.Received(1).Warn(refusalWarning));
+            Assert.That(updated, Is.True, "an ineligible request must not acquire maintenance and interrupt a live canonical update");
             Assert.That(result, Is.EqualTo(mutation == ChainMutation.DeleteSlice ? ErrorCodes.ResourceUnavailable : 0));
             Assert.That(tree.Head!.Hash, Is.EqualTo(next.Hash));
             Assert.That(container.Resolve<IDbProvider>().BlockInfosDb.Get(Keccak.Zero.Bytes), Is.EqualTo(next.Hash!.Bytes.ToArray()));
@@ -158,14 +174,8 @@ public class DebugBridgeTests
         {
             tree.IsProcessingBlock = false;
             pause.Pause();
-            Assert.That(MutateChain(debug, genesis, mutation), Is.EqualTo(1), "refusal must release the lock");
+            Assert.That(MutateChain(debug, genesis, mutation), Is.EqualTo(1), "retry must succeed after processing becomes paused and idle");
         }
-        if (processingState == ProcessingState.PausedQueued)
-            Assert.That(await Task.Run(() =>
-            {
-                bool entered = container.Resolve<BlockTreeMutationLock>().TryEnter(out BlockTreeMutationLock.Scope scope, maintenance: true);
-                using (scope) return entered;
-            }), Is.True, "queued refusal must release maintenance even before the queue drains");
     }
 
     [TestCase("latest", 2UL)]
@@ -411,7 +421,8 @@ public class DebugBridgeTests
         {
             try { resumed.SetResult((admin.admin_resumeBlockProcessing().Data, null)); }
             catch (Exception exception) { resumed.SetResult((false, exception)); }
-        }) { IsBackground = true };
+        })
+        { IsBackground = true };
         Exception? assertionFailure = null;
         try
         {

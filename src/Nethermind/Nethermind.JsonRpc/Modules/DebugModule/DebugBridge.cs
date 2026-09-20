@@ -116,7 +116,7 @@ public class DebugBridge : IDebugBridge
 
     public ResultWrapper<int> DeleteChainSlice(ulong startNumber, bool force = false)
     {
-        if (!CanMutateChain()) return ResultWrapper<int>.Fail("Pause block processing and wait for it to drain before deleting chain levels.", ErrorCodes.ResourceUnavailable);
+        if (!CanMutateChain()) return NotDrained();
 
         if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation, maintenance: true))
         {
@@ -124,7 +124,7 @@ public class DebugBridge : IDebugBridge
             return ResultWrapper<int>.Fail("Chain mutation contention or overlapping maintenance; retry the request.", ErrorCodes.ResourceUnavailable);
         }
         using BlockTreeMutationLock.Scope mutationScope = mutation;
-        if (!CanMutateChain()) return ResultWrapper<int>.Fail("Pause block processing and wait for it to drain before deleting chain levels.", ErrorCodes.ResourceUnavailable);
+        if (!CanMutateChain()) return NotDrained();
 
         if (startNumber > 0 && _blockTree.Head?.Number >= startNumber)
         {
@@ -133,6 +133,9 @@ public class DebugBridge : IDebugBridge
                 return ResultWrapper<int>.Fail("The new head body or state is unavailable for block processing.", ErrorCodes.ResourceUnavailable);
         }
         return ResultWrapper<int>.Success(_blockTree.DeleteChainSlice(startNumber, force: force));
+
+        static ResultWrapper<int> NotDrained() =>
+            ResultWrapper<int>.Fail("Pause block processing and wait for it to drain before deleting chain levels.", ErrorCodes.ResourceUnavailable);
     }
 
     public bool UpdateHeadBlock(Hash256 blockHash) => UpdateHeadBlock(new BlockParameter(blockHash));

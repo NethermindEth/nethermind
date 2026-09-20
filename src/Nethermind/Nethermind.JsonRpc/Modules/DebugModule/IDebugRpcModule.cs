@@ -22,7 +22,7 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "Retrieves a representation of tree branches on a given chain level (Nethermind specific).", IsImplemented = true, IsSharable = true)]
     ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number);
 
-    [JsonRpcMethod(Description = "Deletes a slice of a chain from the tree on all branches (Nethermind specific). Requires paused, drained block processing and a canonical block with available body and processable state immediately below the slice when replacing the head; returns a resource-unavailable error when maintenance is unsafe.", IsImplemented = true, IsSharable = true)]
+    [JsonRpcMethod(Description = "Deletes chain levels on all branches (Nethermind specific). Requires paused, drained processing. When replacing the head, the preceding block must be canonical with its body and processing state available.", IsImplemented = true, IsSharable = true)]
     ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false);
 
     /// <inheritdoc cref="IDebugBridge.UpdateHeadBlock(BlockParameter)" path="/member/remarks"/>
