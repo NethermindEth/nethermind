@@ -54,6 +54,12 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Concurrency for speculative mempool pre-warming (runs in the idle gap between blocks). Default (0) is half of PreWarmStateConcurrency, to leave cores for RPC.", DefaultValue = "0", HiddenFromDocs = true)]
     int MempoolPreWarmConcurrency { get; set; }
 
+    [ConfigItem(Description = "Experimental: warm the block's transactions in windows of this many consecutive transactions instead of per-sender groups. `0` keeps per-sender grouping.", DefaultValue = "0", HiddenFromDocs = true)]
+    int PreWarmWindowSize { get; set; }
+
+    [ConfigItem(Description = "Experimental: distance between the starts of consecutive pre-warm windows. `0` means the window size (non-overlapping windows); `1` slides one transaction at a time.", DefaultValue = "0", HiddenFromDocs = true)]
+    int PreWarmWindowStride { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

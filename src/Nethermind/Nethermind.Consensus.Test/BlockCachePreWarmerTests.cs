@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Linq;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
@@ -799,6 +800,32 @@ public class BlockCachePreWarmerTests
 
         Assert.That(speculativeWarmups, Is.GreaterThan(0), "precondition: the speculative pass warmed the transactions");
         Assert.That(Volatile.Read(ref warmups), Is.EqualTo(0), "the reactive pass must skip senders already fully warmed speculatively");
+    }
+
+    // Five transactions; expected windows listed as index runs.
+    [TestCase(2, 2, "01,23,4")]
+    [TestCase(3, 3, "012,34")]
+    [TestCase(2, 1, "01,12,23,34,4")]
+    [TestCase(3, 1, "012,123,234,34,4")]
+    public void GroupTransactionsByWindow_TilesOrSlidesInBlockOrder(int size, int stride, string expectedWindows)
+    {
+        Block block = Build.A.Block.WithTransactions(
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyA, nonce: 1, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyB, nonce: 1, gasLimit: 100_000)).TestObject;
+
+        ArrayPoolList<BlockCachePreWarmer.WarmupJob> windows = BlockCachePreWarmer.GroupTransactionsByWindow(block, size, stride);
+        try
+        {
+            string[] actual = windows.Select(static w => string.Concat(w.Transactions.Select(static t => t.Index))).ToArray();
+            Assert.That(actual, Is.EqualTo(expectedWindows.Split(',')));
+        }
+        finally
+        {
+            DisposeGroups(windows);
+        }
     }
 
     [Test]

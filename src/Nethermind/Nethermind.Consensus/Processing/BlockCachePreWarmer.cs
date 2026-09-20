@@ -70,6 +70,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private readonly PooledSet<Hash256> _warmedTxHashes = [];
     private readonly IHasAccessList[] _systemAccessLists;
+    private readonly int _warmWindowSize;
+    private readonly int _warmWindowStride;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -87,7 +89,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         preBlockCaches,
         logManager,
         blocksConfig.MempoolPreWarmConcurrency,
-        systemAccessLists) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        systemAccessLists,
+        blocksConfig.PreWarmWindowSize,
+        blocksConfig.PreWarmWindowStride) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
 
     internal BlockCachePreWarmer(
         IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
@@ -98,9 +102,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         PreBlockCaches preBlockCaches,
         ILogManager logManager,
         int speculativeConcurrency = 0,
-        IHasAccessList[]? systemAccessLists = null)
+        IHasAccessList[]? systemAccessLists = null,
+        int warmWindowSize = 0,
+        int warmWindowStride = 0)
     {
         _systemAccessLists = systemAccessLists ?? [];
+        _warmWindowSize = warmWindowSize;
+        _warmWindowStride = warmWindowStride > 0 ? warmWindowStride : warmWindowSize;
         _concurrencyLevel = concurrency == 0 ? Environment.ProcessorCount - 1 : concurrency;
         _speculativeConcurrencyLevel = speculativeConcurrency == 0 ? Math.Max(1, _concurrencyLevel / 2) : speculativeConcurrency;
         _parallelExecutionBatchRead = parallelExecutionBatchRead;
@@ -735,7 +743,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             // execution never consumes its writes — so the split only trades warm relevance for
             // parallelism, never correctness.
             using ArrayPoolList<WarmupJob> senderGroups =
-                GroupTransactionsBySender(block, parallelOptions.MaxDegreeOfParallelism, blockState.SpeculativelyWarmed);
+                blockState.PreWarmer._warmWindowSize > 0
+                    ? GroupTransactionsByWindow(block, blockState.PreWarmer._warmWindowSize, blockState.PreWarmer._warmWindowStride)
+                    : GroupTransactionsBySender(block, parallelOptions.MaxDegreeOfParallelism, blockState.SpeculativelyWarmed);
 
             try
             {
@@ -866,6 +876,37 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// <summary>Total gas limit above which a multi-tx sender group is warmed per-tx in parallel instead of sequentially.</summary>
     private const ulong SplitSenderGroupGasThreshold = 4_000_000;
 
+    /// <summary>
+    /// Groups the block's transactions into fixed-size windows of consecutive transactions, each warmed in one
+    /// scope so a transaction sees the speculative writes of the ones before it in the window. A stride below
+    /// the size makes the windows overlap (sliding); a stride equal to the size tiles the block.
+    /// </summary>
+    internal static ArrayPoolList<WarmupJob> GroupTransactionsByWindow(Block block, int size, int stride)
+    {
+        Transaction[] transactions = block.Transactions;
+        ArrayPoolList<WarmupJob> result = new(transactions.Length / stride + 1);
+        for (int start = 0; start < transactions.Length; start += stride)
+        {
+            int end = Math.Min(start + size, transactions.Length);
+            ArrayPoolList<(int, Transaction)> window = new(end - start);
+            for (int i = start; i < end; i++)
+            {
+                // Invalid signature leaves the sender null; the block will be rejected — nothing to warm.
+                if (transactions[i].SenderAddress is not null) window.Add((i, transactions[i]));
+            }
+
+            if (window.Count == 0)
+            {
+                window.Dispose();
+                continue;
+            }
+
+            result.Add(new WarmupJob(window, TotalGasLimit(window)));
+        }
+
+        return result;
+    }
+
     private static ulong TotalGasLimit(ArrayPoolList<(int Index, Transaction Tx)> group)
     {
         ulong totalGasLimit = 0;
@@ -930,6 +971,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (!worldState.AccountExists(senderAddress))
             {
                 worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
+
+            // Windows cut across sender chains: a sender whose earlier transaction sits outside this
+            // window is at the wrong nonce here, so align it rather than lose the warm to nonce validation.
+            if (blockState.PreWarmer._warmWindowSize > 0 && worldState.GetNonce(senderAddress) != tx.Nonce)
+            {
+                worldState.SetNonce(senderAddress, tx.Nonce);
+            }
             }
 
             // eip-2930; cancellation-responsive so an over-declared access list can't stall the end-of-block join.
