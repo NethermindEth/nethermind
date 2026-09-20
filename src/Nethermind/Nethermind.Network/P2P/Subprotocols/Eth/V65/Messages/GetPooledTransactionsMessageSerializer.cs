@@ -16,7 +16,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
     public class GetPooledTransactionsMessageSerializer<T> : IZeroInnerMessageSerializer<T>
         where T : GetPooledTransactionsMessage, INew<IOwnedReadOnlyList<ValueHash256>, T>
     {
-        private static readonly RlpLimit RlpLimit = RlpLimit.For<GetPooledTransactionsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(GetPooledTransactionsMessage.Hashes));
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<T>(NethermindSyncLimits.MaxHashesFetch, nameof(GetPooledTransactionsMessage.Hashes));
 
         public void Serialize(IByteBuffer byteBuffer, T message)
         {

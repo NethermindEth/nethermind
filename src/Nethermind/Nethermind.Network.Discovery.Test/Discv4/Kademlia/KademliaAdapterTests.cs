@@ -742,9 +742,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         [CancelAfter(10000)]
         public async Task Authenticated_requests_reuse_only_usable_endpoint_bonds(
             [Values("none", "expiry", "endpoint", "failures")] string invalidation,
-            [Values] bool receivedPong, CancellationToken token)
+            [Values] bool receivedPing, CancellationToken token)
         {
-            if (receivedPong) _adapter.GetSession(_receiver).OnPongReceived(_receiver.DiscoveryAddress);
+            NodeSession session = _adapter.GetSession(_receiver);
+            session.OnPongReceived(_receiver.DiscoveryAddress);
+            if (receivedPing) session.OnPingReceived(_receiver.DiscoveryAddress);
             ConfigureBondCallback();
             _msgSender.SendMsg(Arg.Any<EnrRequestMsg>()).Returns(ci =>
             {
@@ -756,7 +758,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
             Assert.That(await _adapter.SendEnrRequest(_receiver, token), Is.Not.Null);
             Assert.That(await _adapter.SendEnrRequest(_receiver, token), Is.Not.Null);
-            await _msgSender.Received(1).SendMsg(Arg.Any<PingMsg>());
+            await _msgSender.Received(receivedPing ? 0 : 2).SendMsg(Arg.Any<PingMsg>());
 
             switch (invalidation)
             {
@@ -769,13 +771,12 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                     _receiver = new Node(_receiver.Id, "192.168.1.3", 30304);
                     break;
                 case "failures":
-                    NodeSession session = _adapter.GetSession(_receiver);
                     for (int i = 0; i <= NodeSession.AuthenticatedRequestFailureLimit; i++) session.OnAuthenticatedRequestFailure();
                     break;
             }
 
             Assert.That(await _adapter.SendEnrRequest(_receiver, token), Is.Not.Null);
-            await _msgSender.Received(invalidation == "none" ? 1 : 2).SendMsg(Arg.Any<PingMsg>());
+            await _msgSender.Received(receivedPing ? (invalidation == "none" ? 0 : 1) : 3).SendMsg(Arg.Any<PingMsg>());
             await _msgSender.Received(3).SendMsg(Arg.Any<EnrRequestMsg>());
         }
 

@@ -23,8 +23,6 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
     private EndpointBondTable _receivedPongs;
     private EndpointBondTable _pendingBondingPings;
     private TaskCompletionSource? _endpointBondChanged;
-    private EndpointKey _outgoingBondEndpoint;
-    private long _outgoingBondStamp;
 
     public bool NotTooManyFailure => Volatile.Read(ref _authenticatedRequestFailureCount) <= AuthenticatedRequestFailureLimit;
     public bool HasTriedPingRecently => Volatile.Read(ref _lastPingSentTicks) + PingRetryTimeout.Ticks > Timestamper.UtcNow.Ticks;
@@ -61,26 +59,6 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
             long minValidStamp = StaleBondStamp;
             _receivedPings.PruneStale(minValidStamp);
             return _receivedPings.HasFresh(endpointKey, minValidStamp);
-        }
-    }
-
-    internal bool HasOutgoingBond(IPEndPoint endpoint)
-    {
-        EndpointKey key = new(endpoint);
-        lock (_endpointBondLock)
-        {
-            long minValidStamp = StaleBondStamp;
-            return _receivedPings.HasFresh(key, minValidStamp) ||
-                (_outgoingBondStamp > minValidStamp && _outgoingBondEndpoint.Equals(key));
-        }
-    }
-
-    internal void OnOutgoingBonded(IPEndPoint endpoint)
-    {
-        lock (_endpointBondLock)
-        {
-            _outgoingBondEndpoint = new(endpoint);
-            _outgoingBondStamp = Timestamper.UtcNow.Ticks;
         }
     }
 

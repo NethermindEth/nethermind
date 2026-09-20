@@ -77,26 +77,17 @@ public class KademliaAdapter(
     {
         if (token.IsCancellationRequested) return false;
         IPEndPoint endpoint = node.DiscoveryAddress;
-        // Reuse a received ping or a completed outgoing handshake for this endpoint.
-        if (nodeSession.NotTooManyFailure && nodeSession.HasOutgoingBond(endpoint)) return true;
+        if (nodeSession.NotTooManyFailure && nodeSession.HasReceivedPingFrom(endpoint)) return true;
 
         if (Logger.IsTrace) TraceEnsureSession(node);
-        PongMsg? pong = null;
-        if (!nodeSession.NotTooManyFailure || !nodeSession.HasReceivedPingFrom(endpoint))
-        {
-            pong = await TryBond(node, nodeSession, token);
-            if (pong is null) return false;
-        }
+        PongMsg? pong = await TryBond(node, nodeSession, token);
+        if (pong is null) return false;
         // Allow the remote peer's reciprocal ping/pong before sending an authenticated request.
         if (!await TaskExtensions.DelaySafe(_waitAfterPongDelay, token)) return false;
 
-        nodeSession.OnOutgoingBonded(endpoint);
-        if (pong is not null)
-        {
-            await RefreshRemoteRecordIfNewer(node, pong.EnrSequence, token);
-            if (token.IsCancellationRequested) return false;
-            PublishNode(node, nodeSession, signedPing: null, pong.EnrSequence);
-        }
+        await RefreshRemoteRecordIfNewer(node, pong.EnrSequence, token);
+        if (token.IsCancellationRequested) return false;
+        PublishNode(node, nodeSession, signedPing: null, pong.EnrSequence);
 
         if (Logger.IsTrace) TracePongSent(node);
         return true;

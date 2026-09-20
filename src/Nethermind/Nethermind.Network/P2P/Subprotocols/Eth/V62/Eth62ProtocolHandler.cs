@@ -344,7 +344,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 : _txPool.SubmitTx(tx, TxHandlingOptions.None);
             _floodController.Report(accepted);
             if (isTrace) Log(tx, accepted);
-            if (!accepted && canRecycle) TxDecoder.TxObjectPool.Return(tx);
+            if (!accepted && canRecycle) ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));
 
             void Log(Transaction tx, in AcceptTxResult accepted) => Logger.Trace($"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
         }

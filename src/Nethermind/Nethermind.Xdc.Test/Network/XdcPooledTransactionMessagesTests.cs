@@ -9,7 +9,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
+using Nethermind.Network.Test;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.SyncLimits;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.P2P.Messages;
 using NUnit.Framework;
@@ -77,6 +79,18 @@ public class XdcPooledTransactionMessagesTests
 
         Assert.That(deserialized.Hashes.AsSpan().ToArray(), Is.EqualTo(ValueHashes));
         Assert.That(deserialized.PacketType, Is.EqualTo(XdcMessageCode.GetPooledTransactions));
+    }
+
+    [Test]
+    public void GetPooledTransactions_limit_reports_concrete_message_type()
+    {
+        XdcGetPooledTransactionsMessageSerializer serializer = new();
+        using XdcGetPooledTransactionsMessage message = new(new ValueHash256[NethermindSyncLimits.MaxHashesFetch + 1].ToPooledList());
+        using DisposableByteBuffer buffer = Unpooled.Buffer().AsDisposable();
+        serializer.Serialize(buffer, message);
+
+        Assert.That(() => serializer.Deserialize(buffer),
+            Throws.InstanceOf<RlpException>().With.Message.Contains(nameof(XdcGetPooledTransactionsMessage)));
     }
 
     private static ArrayPoolList<Transaction> Transactions() =>
