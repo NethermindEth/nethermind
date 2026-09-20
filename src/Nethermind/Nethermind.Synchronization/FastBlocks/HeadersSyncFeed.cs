@@ -334,6 +334,12 @@ namespace Nethermind.Synchronization.FastBlocks
                     {
                         throw;
                     }
+                    catch (BlockTreeNotReadyException)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Deferring dependent batch {dependentBatch} while the block tree cannot accept headers.");
+                        RequeueAsNewBatch(dependentBatch);
+                        return;
+                    }
                     catch (Exception e)
                     {
                         // Propagating would end the dispatch loop and finish the feed, disposing the
@@ -519,6 +525,12 @@ namespace Nethermind.Synchronization.FastBlocks
                         return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
                     }
                 }
+                catch (BlockTreeNotReadyException)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Deferring batch {batch} while the block tree cannot accept headers.");
+                    RequeueAsNewBatch(batch);
+                    return SyncResponseHandlingResult.Ignored;
+                }
                 catch
                 {
                     RequeueAsNewBatch(batch);
@@ -630,7 +642,15 @@ namespace Nethermind.Synchronization.FastBlocks
             newBatchToProcess.RequestSize = headersSpan.Length;
             newBatchToProcess.Response = headers;
             if (_logger.IsDebug) _logger.Debug($"Handling header portion {newBatchToProcess.StartNumber} to {newBatchToProcess.EndNumber} with persisted headers.");
-            InsertHeaders(newBatchToProcess);
+            try
+            {
+                InsertHeaders(newBatchToProcess);
+            }
+            catch (BlockTreeNotReadyException)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Deferring persisted batch {batch} while the block tree cannot accept headers.");
+                return batch;
+            }
             MarkDirty();
             HeadersSyncProgressLoggerReport.CurrentQueued = HeadersInQueue;
             HeadersSyncProgressLoggerReport.IncrementSkipped(newBatchToProcess.RequestSize);

@@ -8,9 +8,11 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Visitors;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -18,6 +20,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
 using Nethermind.Stats;
@@ -1261,6 +1264,110 @@ public class FastHeadersSyncTests
         }
 
         Assert.That(batches.Count, Is.EqualTo(totalBatchCount));
+    }
+
+    [Test]
+    public async Task Retries_header_insertion_when_the_tree_is_temporarily_unavailable([Values] HeaderInsertionPath path)
+    {
+        BlockHeader[] headers = new BlockHeader[401];
+        headers[0] = Build.A.BlockHeader.WithNumber(0).WithDifficulty(1).TestObject;
+        for (int i = 1; i < headers.Length; i++)
+            headers[i] = Build.A.BlockHeader.WithParent(headers[i - 1]).WithDifficulty(1).TestObject;
+
+        SyncConfig config = new()
+        {
+            FastSync = true,
+            PivotNumber = 400,
+            PivotHash = headers[400].Hash!.ToString(),
+            PivotTotalDifficulty = "1000"
+        };
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsError.Returns(true);
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(config))
+            .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
+            .AddSingleton<ISyncPeerPool>(Substitute.For<ISyncPeerPool>())
+            .AddSingleton<ISyncReport>(new NullSyncReport())
+            .AddSingleton<HeadersSyncFeed>()
+            .Build();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        tree.SyncPivot = (400, headers[400].Hash!);
+        if (path == HeaderInsertionPath.Persisted)
+            tree.BulkInsertHeader(headers.AsSpan(1).ToArray());
+        HeadersSyncFeed feed = container.Resolve<HeadersSyncFeed>();
+        feed.InitializeFeed();
+
+        HeadersSyncBatch? batch = path == HeaderInsertionPath.Persisted ? null : await feed.PrepareRequest();
+        if (path == HeaderInsertionPath.Dependency)
+        {
+            HeadersSyncBatch dependent = (await feed.PrepareRequest())!;
+            FillResponse(dependent);
+            feed.HandleResponse(dependent);
+            FillResponse(batch!);
+            feed.HandleResponse(batch!);
+            batch = dependent;
+        }
+        else if (batch is not null)
+        {
+            FillResponse(batch);
+        }
+
+        BlockHeader? lowestBefore = tree.LowestInsertedHeader;
+        TaskCompletionSource<LevelVisitOutcome> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockTreeVisitor visitor = Substitute.For<IBlockTreeVisitor>();
+        visitor.PreventsAcceptingNewBlocks.Returns(true);
+        visitor.EndLevelExclusive.Returns(1UL);
+        visitor.VisitLevelStart(Arg.Any<ChainLevelInfo>(), 0, Arg.Any<CancellationToken>()).Returns(release.Task);
+        Task visit = tree.Accept(visitor, CancellationToken.None);
+        HeadersSyncBatch? retry = null;
+        try
+        {
+            Assert.That(tree.CanAcceptNewBlocks, Is.False);
+            if (path == HeaderInsertionPath.Response)
+                Assert.That(feed.HandleResponse(batch), Is.EqualTo(SyncResponseHandlingResult.Ignored));
+            else
+                retry = await feed.PrepareRequest();
+
+            Assert.That(tree.LowestInsertedHeader, Is.SameAs(lowestBefore));
+            Assert.That(logger.ReceivedCalls().Any(call => call.GetMethodInfo().Name == "Error"), Is.False);
+        }
+        finally
+        {
+            release.SetResult(LevelVisitOutcome.StopVisiting);
+            await visit;
+        }
+
+        retry ??= await feed.PrepareRequest();
+        Assert.That(retry, Is.Not.Null);
+        if (batch is not null)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(retry!.StartNumber, Is.EqualTo(batch.StartNumber));
+                Assert.That(retry.RequestSize, Is.EqualTo(batch.RequestSize));
+            }
+        }
+        FillResponse(retry!);
+        Assert.That(feed.HandleResponse(retry), Is.EqualTo(SyncResponseHandlingResult.OK));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.LowestInsertedHeader!.Number, Is.EqualTo(retry!.StartNumber));
+            for (ulong number = retry.StartNumber; number <= retry.EndNumber; number++)
+                Assert.That(tree.FindHeader(number)!.Hash, Is.EqualTo(headers[number].Hash));
+        }
+
+        void FillResponse(HeadersSyncBatch request)
+        {
+            ReadOnlySpan<BlockHeader?> response = headers.AsSpan((int)request.StartNumber, request.RequestSize);
+            request.Response = response.ToPooledList();
+        }
+    }
+
+    public enum HeaderInsertionPath
+    {
+        Response,
+        Dependency,
+        Persisted
     }
 
     [Test]

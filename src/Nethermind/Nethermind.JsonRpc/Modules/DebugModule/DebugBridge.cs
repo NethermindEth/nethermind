@@ -168,9 +168,15 @@ public class DebugBridge : IDebugBridge
             return ResultWrapper<int>.Fail($"The deletion range cannot span more than {IBlockTree.MaxDeletionSpan + 1} chain levels.", ErrorCodes.InvalidParams);
 
         SyncMode mode = _syncModeSelector.Current;
-        if (IsInitialSyncActive(mode) || (startNumber <= _blockTree.SyncPivot.BlockNumber &&
-            ((mode & SyncMode.FastBlocks) != 0 || !IsHistoricalSyncFinished())))
-            return ResultWrapper<int>.Fail("Historical sync is unfinished or initial synchronization is active; wait for synchronization to complete before deleting chain levels.", ErrorCodes.ResourceUnavailable);
+        if (IsInitialSyncActive(mode))
+            return ResultWrapper<int>.Fail("Initial synchronization is active; wait for it to complete before deleting chain levels.", ErrorCodes.ResourceUnavailable);
+        if (startNumber <= _blockTree.SyncPivot.BlockNumber)
+        {
+            if ((mode & SyncMode.FastBlocks) != 0)
+                return ResultWrapper<int>.Fail("Ancient backfill is running below the sync pivot; choose a startNumber above it.", ErrorCodes.ResourceUnavailable);
+            if (!IsHistoricalSyncFinished())
+                return ResultWrapper<int>.Fail("Historical sync is unfinished; wait for it to complete or choose a startNumber above the sync pivot.", ErrorCodes.ResourceUnavailable);
+        }
 
         ulong validatedEnd = endNumber;
         return IsDeleted(_blockTree.LowestInsertedHeader?.Number) ||

@@ -292,7 +292,7 @@ namespace Nethermind.Blockchain
         {
             if (!CanAcceptNewBlocks)
             {
-                throw new InvalidOperationException("Cannot accept new blocks at the moment.");
+                throw new BlockTreeNotReadyException();
             }
             _headerStore.BulkInsert(headers);
 

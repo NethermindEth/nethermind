@@ -49,7 +49,7 @@ public class DebugBridgeTests
 {
     public enum ProcessingState { Running, PausedExecuting, PausedQueued, PausedIdle }
 
-    public enum HistoricalSync { Complete, CompleteDeepRewind, CompleteWithoutRewind, Headers, Bodies, Receipts, AccessLists, DeleteProgressFloor, BodyFloor, ReceiptFloor, AccessListFloor, BodyAboveHead }
+    public enum HistoricalSync { Complete, CompleteDeepRewind, CompleteWithoutRewind, Headers, Bodies, Receipts, ReceiptsInactive, AccessLists, DeleteProgressFloor, BodyFloor, ReceiptFloor, AccessListFloor, BodyAboveHead }
 
     private static IEnumerable<TestCaseData> HistoricalSyncCases()
     {
@@ -100,7 +100,7 @@ public class DebugBridgeTests
         tree.LowestInsertedHeader = blocks[history == HistoricalSync.Headers ? 2 : 1].Header;
         ISyncPointers pointers = container.Resolve<ISyncPointers>();
         pointers.LowestInsertedBodyNumber = history is HistoricalSync.Bodies or HistoricalSync.BodyAboveHead ? 2UL : history == HistoricalSync.BodyFloor ? 3UL : 1;
-        pointers.LowestInsertedReceiptBlockNumber = history == HistoricalSync.Receipts ? 2UL : history == HistoricalSync.ReceiptFloor ? 3UL : 1;
+        pointers.LowestInsertedReceiptBlockNumber = history is HistoricalSync.Receipts or HistoricalSync.ReceiptsInactive ? 2UL : history == HistoricalSync.ReceiptFloor ? 3UL : 1;
         pointers.LowestInsertedBlockAccessListBlockNumber = history == HistoricalSync.AccessLists ? 2UL : history == HistoricalSync.AccessListFloor ? 3UL : 1;
         ((ActivatedSyncFeed<BodiesSyncBatch?>)container.Resolve<ISyncFeed<BodiesSyncBatch?>>()).InitializeFeed();
         ((ActivatedSyncFeed<ReceiptsSyncBatch?>)container.Resolve<ISyncFeed<ReceiptsSyncBatch?>>()).InitializeFeed();
@@ -110,14 +110,15 @@ public class DebugBridgeTests
         {
             Assert.That(progress.IsFastBlocksHeadersFinished(), Is.EqualTo(history != HistoricalSync.Headers));
             Assert.That(progress.IsFastBlocksBodiesFinished(), Is.EqualTo(history != HistoricalSync.Bodies));
-            Assert.That(progress.IsFastBlocksReceiptsFinished(), Is.EqualTo(history != HistoricalSync.Receipts));
+            Assert.That(progress.IsFastBlocksReceiptsFinished(), Is.EqualTo(history is not (HistoricalSync.Receipts or HistoricalSync.ReceiptsInactive)));
             Assert.That(progress.IsFastBlockAccessListsFinished(), Is.EqualTo(history != HistoricalSync.AccessLists));
         }
         IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
         ISyncModeSelector selector = container.Resolve<ISyncModeSelector>();
-        selector.Update();
+        if (history != HistoricalSync.ReceiptsInactive) selector.Update();
         SyncMode backfill = history switch
         {
+            HistoricalSync.Headers => SyncMode.FastHeaders,
             HistoricalSync.Bodies => SyncMode.FastBodies,
             HistoricalSync.Receipts => SyncMode.FastReceipts,
             HistoricalSync.AccessLists => SyncMode.FastBlockAccessLists,
@@ -173,7 +174,9 @@ public class DebugBridgeTests
                 string expectedError = history switch
                 {
                     HistoricalSync.Headers or HistoricalSync.Bodies or HistoricalSync.Receipts or HistoricalSync.AccessLists =>
-                        "Historical sync is unfinished or initial synchronization is active; wait for synchronization to complete before deleting chain levels.",
+                        "Ancient backfill is running below the sync pivot; choose a startNumber above it.",
+                    HistoricalSync.ReceiptsInactive =>
+                        "Historical sync is unfinished; wait for it to complete or choose a startNumber above the sync pivot.",
                     HistoricalSync.BodyAboveHead =>
                         "Historical sync progress is above the replacement head; rewind less deeply before deleting chain levels.",
                     _ => "Historical sync progress lies in the deletion range; choose a higher startNumber."
@@ -186,7 +189,7 @@ public class DebugBridgeTests
             Assert.That(tree.FindBlock(blocks[1].Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
             Assert.That(tree.LowestInsertedHeader!.Hash, Is.EqualTo(blocks[history == HistoricalSync.Headers ? 2 : 1].Hash));
             Assert.That(pointers.LowestInsertedBodyNumber, Is.EqualTo(history is HistoricalSync.Bodies or HistoricalSync.BodyAboveHead ? 2 : history == HistoricalSync.BodyFloor ? 3 : 1));
-            Assert.That(pointers.LowestInsertedReceiptBlockNumber, Is.EqualTo(history == HistoricalSync.Receipts ? 2 : history == HistoricalSync.ReceiptFloor ? 3 : 1));
+            Assert.That(pointers.LowestInsertedReceiptBlockNumber, Is.EqualTo(history is HistoricalSync.Receipts or HistoricalSync.ReceiptsInactive ? 2 : history == HistoricalSync.ReceiptFloor ? 3 : 1));
             Assert.That(pointers.LowestInsertedBlockAccessListBlockNumber, Is.EqualTo(history == HistoricalSync.AccessLists ? 2 : history == HistoricalSync.AccessListFloor ? 3 : 1));
             Assert.That(tree.SyncPivot, Is.EqualTo(accepted ? (retainedHead, blocks[retainedHead].Hash!) : (expectedPivot, blocks[expectedPivot].Hash!)));
             Assert.That(db.MetadataDb.Get(MetadataDbKeys.LowestInsertedFastHeaderHash), Is.EqualTo(headerProgress));
@@ -275,14 +278,16 @@ public class DebugBridgeTests
     [Test]
     public async Task Chain_mutation_during_backfill_respects_pivot(
         [Values] ChainMutation mutation,
-        [Values(SyncMode.FastBodies, SyncMode.FastReceipts, SyncMode.FastBlockAccessLists)] SyncMode backfill,
         [Values(1, 2, 3)] int target)
     {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
         ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
-        selector.Current.Returns(SyncMode.Full | backfill);
+        selector.Current.Returns(SyncMode.Full | SyncMode.FastHeaders);
         await using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new SyncConfig { FastSync = false }))
             .AddSingleton<ISyncModeSelector>(selector)
+            .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
             .Build();
         container.Resolve<IBlockProcessingPauseControl>().Pause();
         IBlockTree tree = container.Resolve<IBlockTree>();
@@ -299,10 +304,24 @@ public class DebugBridgeTests
         {
             ResultWrapper<int> result = debug.debug_deleteChainSlice(target + 1, force: true);
             if (accepted) Assert.That(result.Data, Is.EqualTo(4 - target));
-            else Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            else
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+                    Assert.That(result.Result.Error, Is.EqualTo("Ancient backfill is running below the sync pivot; choose a startNumber above it."));
+                }
+            }
         }
         else
+        {
             Assert.That(ResetHead(container, blocks[target], mutation == ChainMutation.ResetByHash).Data, Is.EqualTo(accepted));
+            if (!accepted)
+            {
+                string parameter = mutation == ChainMutation.ResetByHash ? blocks[target].Hash!.ToString() : target.ToString();
+                AssertCalls(() => logger.Received(1).Warn($"Cannot rewind the head to {parameter}: the sync pivot cannot follow it; rewind less deeply."));
+            }
+        }
 
         using (Assert.EnterMultipleScope())
         {
@@ -318,7 +337,7 @@ public class DebugBridgeTests
 
     private static IEnumerable<TestCaseData> InitialSyncCases()
     {
-        foreach (SyncMode mode in new[] { SyncMode.FastHeaders, SyncMode.BeaconHeaders, SyncMode.StateNodes, SyncMode.FastSync, SyncMode.UpdatingPivot, SyncMode.DbLoad })
+        foreach (SyncMode mode in new[] { SyncMode.BeaconHeaders, SyncMode.StateNodes, SyncMode.FastSync, SyncMode.UpdatingPivot, SyncMode.DbLoad })
             yield return new TestCaseData(mode, 1L);
         yield return new TestCaseData(SyncMode.StateNodes, 2L);
     }
@@ -347,6 +366,7 @@ public class DebugBridgeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            Assert.That(result.Result.Error, Is.EqualTo("Initial synchronization is active; wait for it to complete before deleting chain levels."));
             Assert.That(tree.FindBlock(pending.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
             Assert.That(tree.FindBlock(abovePivot.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
             Assert.That(tree.SyncPivot, Is.EqualTo((1UL, pending.Hash!)));

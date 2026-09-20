@@ -1961,7 +1961,7 @@ public partial class EngineModuleTests
     {
         using MergeTestBlockchain chain =
             await CreateBlockchain(null, new MergeConfig() { TerminalTotalDifficulty = "0" },
-                configurer: builder => builder.AddSingleton<ISyncModeSelector>(new StaticSelector(SyncMode.Full)));
+                configurer: builder => builder.AddSingleton<ISyncModeSelector>(StaticSelector.Full));
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         IReadOnlyList<ExecutionPayload> blocks = await ProduceBranchV1(rpc, chain, 4, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
