@@ -23,17 +23,19 @@ public sealed class BeaconNodeRecordProvider : INodeRecordProvider
     private readonly IPAddress _externalIp;
     private readonly int _tcpPort;
     private readonly int _udpPort;
+    private readonly ulong _custodyGroupCount;
     private readonly NodeRecordSigner _signer;
     private readonly Lock _updateLock = new();
     private volatile NodeRecord _current;
     private EnrForkId _forkId;
 
-    public BeaconNodeRecordProvider(PrivateKey key, IPAddress externalIp, int tcpPort, int udpPort, EnrForkId forkId)
+    public BeaconNodeRecordProvider(PrivateKey key, IPAddress externalIp, int tcpPort, int udpPort, EnrForkId forkId, ulong custodyGroupCount)
     {
         _key = key;
         _externalIp = externalIp;
         _tcpPort = tcpPort;
         _udpPort = udpPort;
+        _custodyGroupCount = custodyGroupCount;
         _signer = new NodeRecordSigner(new Ecdsa(), key);
         _forkId = forkId;
         _current = Build(forkId, sequence: 1);
@@ -82,6 +84,7 @@ public sealed class BeaconNodeRecordProvider : INodeRecordProvider
         record.SetEntry(new UdpEntry(_udpPort));
         record.SetEntry(new SecP256k1Entry(_key.CompressedPublicKey));
         record.SetEntry(new Eth2Entry(forkId.Encode()));
+        record.SetEntry(new CustodyGroupCountEntry(_custodyGroupCount));
         record.EnrSequence = sequence;
         _signer.Sign(record);
         return record;
