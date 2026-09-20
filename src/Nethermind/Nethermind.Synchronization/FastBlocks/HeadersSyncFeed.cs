@@ -512,14 +512,14 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void LogStateOnPrepare()
         {
-            if (_logger.IsDebug) _logger.Debug($"FastHeader LogStateOnPrepare: LOWEST_INSERTED {LowestInsertedBlockHeader?.Number}, LOWEST_REQUESTED {_lowestRequestedHeaderNumber}, DEPENDENCIES {_dependencies.Count}, SENT: {_sent.Count}, PENDING: {_pending.Count}");
+            if (_logger.IsDebug) _logger.Debug($"FastHeader LogStateOnPrepare: LOWEST_INSERTED {LowestInsertedBlockHeader?.Number}, LOWEST_REQUESTED {_lowestRequestedHeaderNumber}, DEPENDENCIES {_dependencies.Count}, SENT: {_sent.Count}, PENDING: {PendingCount}");
             if (_logger.IsTrace)
             {
                 lock (_handlerLock)
                 {
                     Dictionary<ulong, string> all = [];
                     StringBuilder builder = new();
-                    builder.AppendLine($"SENT {_sent.Count} PENDING {_pending.Count} DEPENDENCIES {_dependencies.Count}");
+                    builder.AppendLine($"SENT {_sent.Count} PENDING {PendingCount} DEPENDENCIES {_dependencies.Count}");
                     foreach (KeyValuePair<ulong, HeadersSyncBatch> headerDependency in _dependencies)
                     {
                         all.TryAdd(headerDependency.Value.EndNumber, $"  DEPENDENCY {headerDependency.Value}");
@@ -726,6 +726,8 @@ namespace Nethermind.Synchronization.FastBlocks
         }
 
         private bool PendingIsEmpty => _pending.IsEmpty && _retainedPending.IsEmpty;
+
+        private int PendingCount => _pending.Count + _retainedPending.Count;
 
         private void EnqueueBatch(HeadersSyncBatch batch, bool skipPersisted = false)
         {
@@ -1069,6 +1071,9 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             if (!_disposed)
             {
+                // Finish re-enters here through ActivatedSyncFeed's state-changed handler, so claim
+                // disposal first; otherwise the batches below would be disposed twice.
+                _disposed = true;
                 Finish();
                 _sent.DisposeItems();
                 ClearPending();
@@ -1077,7 +1082,6 @@ namespace Nethermind.Synchronization.FastBlocks
                     kvp.Value.Dispose();
                 }
                 base.Dispose();
-                _disposed = true;
             }
         }
     }

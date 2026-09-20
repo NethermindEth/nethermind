@@ -373,7 +373,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
             if (_logger.IsTrace) Trace();
             FireProcessingQueueEmpty();
-
         }
 
         if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
