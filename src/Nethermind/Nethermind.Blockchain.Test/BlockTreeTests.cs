@@ -2099,8 +2099,15 @@ public class BlockTreeTests
     public void Can_delete_a_future_slice()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+        Block pending = Build.A.Block.WithParent(blockTree.Head!).TestObject;
+        blockTree.SuggestBlock(pending);
         blockTree.DeleteChainSlice(1000, 2000);
-        Assert.That(blockTree.Head!.Number, Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.Head!.Number, Is.EqualTo(2));
+            Assert.That(blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(pending.Hash));
+            Assert.That(blockTree.BestSuggestedBody!.Hash, Is.EqualTo(pending.Hash));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2129,11 +2136,23 @@ public class BlockTreeTests
         }
     }
 
+    public enum SliceHead { CanonicalPredecessor, GenesisFallback, AboveHead }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Delete_slice_moves_head_to_canonical_predecessor_or_genesis([Values] bool precedingLevelCanonical, [Values] bool clearBlockCache)
+    public void Delete_slice_resets_deleted_suggestions([Values] SliceHead sliceHead, [Values] bool clearBlockCache, [Values(3UL, 4UL)] ulong endNumber)
     {
-        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(5);
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(sliceHead == SliceHead.AboveHead ? 2 : 5);
         BlockTree blockTree = builder.TestObject;
+        if (sliceHead == SliceHead.AboveHead)
+        {
+            Block pending = blockTree.Head!;
+            for (int i = 2; i <= 4; i++)
+            {
+                pending = Build.A.Block.WithParent(pending).TestObject;
+                blockTree.SuggestBlock(pending);
+            }
+        }
+        bool precedingLevelCanonical = sliceHead != SliceHead.GenesisFallback;
         Hash256 expectedHead = precedingLevelCanonical ? blockTree.FindHeader(1, BlockTreeLookupOptions.RequireCanonical)!.Hash! : blockTree.Genesis!.Hash!;
         builder.ChainLevelInfoRepository.PersistLevel(1, new ChainLevelInfo(precedingLevelCanonical, blockTree.FindLevel(1)!.BlockInfos));
         if (clearBlockCache)
@@ -2142,15 +2161,14 @@ public class BlockTreeTests
             ((IClearableCache)builder.BlockStore).ClearCache();
         }
 
-        int deleted = blockTree.DeleteChainSlice(2, 4);
-
-        Hash256? suggestedHeaderAfterDelete = blockTree.BestSuggestedHeader?.Hash;
-        Hash256? suggestedBodyAfterDelete = blockTree.BestSuggestedBody?.Hash;
+        int deleted = blockTree.DeleteChainSlice(2, endNumber);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(deleted, Is.EqualTo(3));
+            Assert.That(deleted, Is.EqualTo(endNumber - 1));
             Assert.That(blockTree.Head!.Hash, Is.EqualTo(expectedHead));
+            Assert.That(blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(expectedHead));
+            Assert.That(blockTree.BestSuggestedBody!.Hash, Is.EqualTo(expectedHead));
             Assert.That(blockTree.FindBlock(2, BlockTreeLookupOptions.None), Is.Null);
             Assert.That(blockTree.FindLevel(2), Is.Null);
             Assert.That(builder.BlockInfoDb.Get(Keccak.Zero.Bytes), Is.EqualTo(expectedHead.Bytes.ToArray()));
@@ -2161,8 +2179,6 @@ public class BlockTreeTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(suggestedHeaderAfterDelete, Is.EqualTo(expectedHead));
-            Assert.That(suggestedBodyAfterDelete, Is.EqualTo(expectedHead));
             Assert.That(blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(replacement.Hash));
             Assert.That(blockTree.BestSuggestedBody!.Hash, Is.EqualTo(replacement.Hash));
         }

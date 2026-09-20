@@ -1950,12 +1950,13 @@ namespace Nethermind.Blockchain
                 }
             }
 
+            // Suggestions above a deleted level also lose their ancestry.
+            if (newHeadBlock is not null || deleted > 0 && BestSuggestedHeader?.Number >= startNumber)
+                BestSuggestedHeader = newHeadBlock?.Header ?? Head?.Header;
+            if (newHeadBlock is not null || deleted > 0 && BestSuggestedBody?.Number >= startNumber)
+                BestSuggestedBody = newHeadBlock ?? Head;
             if (newHeadBlock is not null)
-            {
-                BestSuggestedHeader = newHeadBlock.Header;
-                BestSuggestedBody = newHeadBlock;
                 UpdateHeadBlock(newHeadBlock);
-            }
 
             return deleted;
         }
