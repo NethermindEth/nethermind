@@ -7,6 +7,11 @@ using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
 {
+    /// <summary>Announces transaction types, sizes, and hashes available from a peer.</summary>
+    /// <remarks>
+    /// Received instances may be pooled. Neither the message nor its lists may be accessed after disposal
+    /// or retained beyond the consumer's ownership scope.
+    /// </remarks>
     public class NewPooledTransactionHashesMessage68(
         IOwnedReadOnlyList<byte> types,
         IOwnedReadOnlyList<int> sizes,

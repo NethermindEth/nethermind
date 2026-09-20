@@ -434,7 +434,10 @@ namespace Nethermind.Core
         BlobCellMask CellMask = default,
         byte[][]? Cells = null)
     {
-        // Record copies share the ownership token so they cannot return the same buffers twice.
+        /// <remarks>
+        /// Record copies share this token. Disown the transaction before publishing any additional
+        /// reference to its wrapper or blob arrays; idempotent returns alone do not prevent use after return.
+        /// </remarks>
         internal PooledBlobBuffers? PooledBuffers { get; init; }
 
         /// <summary>

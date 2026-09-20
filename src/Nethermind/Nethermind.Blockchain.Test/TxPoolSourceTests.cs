@@ -70,7 +70,10 @@ public class TxPoolSourceTests
     }
 
     [Test]
-    public void Ordering_matches_frontier_merge([Values(0, 1, 2, 3, 4, 7, 16, 31, 32, 33, 257)] int senders)
+    public void Ordering_matches_frontier_merge(
+        [Values(0, 1, 2, 3, 4, 7, 16, 31, 32, 33, 257)] int senders,
+        [Values(ulong.MaxValue, 42_000UL)] ulong resourceLimit,
+        [Values] bool rejectByFilter)
     {
         Dictionary<AddressAsKey, Transaction[]> buckets = [];
         Dictionary<AddressAsKey, Queue<Transaction>> remaining = [];
@@ -90,16 +93,29 @@ public class TxPoolSourceTests
         }
 
         List<Transaction> expected = [];
+        Dictionary<AddressAsKey, ulong> resources = [];
+        bool Filter(Transaction tx) => !rejectByFilter || (ulong)tx.GasPrice % 3 != 0;
         while (remaining.Values.Any(queue => queue.Count != 0))
         {
             Transaction next = remaining.Values.Where(queue => queue.Count != 0).Select(queue => queue.Peek()).MaxBy(tx => tx.GasPrice)!;
             remaining[next.SenderAddress!].Dequeue();
+            resources.TryGetValue(next.SenderAddress!, out ulong resource);
+            resource += next.BlockGasUsed;
+            if (resource > resourceLimit || !Filter(next))
+            {
+                remaining[next.SenderAddress!].Clear();
+                continue;
+            }
+            resources[next.SenderAddress!] = resource;
             expected.Add(next);
         }
         IComparer<Transaction> comparer = Comparer<Transaction>.Create((x, y) => y.GasPrice.CompareTo(x.GasPrice));
-        IEnumerable<Transaction> ordered = TxPoolTxSource.Order(buckets, comparer, _ => true, ulong.MaxValue);
-        Assert.That(ordered.Take(1), Is.EqualTo(expected.Take(1)));
-        Assert.That(ordered, Is.EqualTo(expected));
+        IEnumerable<Transaction> ordered = TxPoolTxSource.Order(buckets, comparer, Filter, resourceLimit);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ordered.Take(1), Is.EqualTo(expected.Take(1)));
+            Assert.That(ordered, Is.EqualTo(expected));
+        }
     }
 
     [Test]

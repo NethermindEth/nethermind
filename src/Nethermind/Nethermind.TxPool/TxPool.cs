@@ -44,6 +44,7 @@ namespace Nethermind.TxPool
         private readonly RetryCache<PooledTransactionRequestMessage, ValueHash256> _retryCache;
 
         private readonly IIncomingTxFilter[] _preHashFilters;
+        private readonly IIncomingTxFilter[] _hashFilters;
         private readonly IIncomingTxFilter[] _postHashFilters;
 
         private readonly HashCache _hashCache = new();
@@ -208,10 +209,14 @@ namespace Nethermind.TxPool
                 new FeeTooLowFilter(_headInfo, _transactions, _blobTransactions, thereIsPriorityContract, _logger)
             ];
 
-            List<IIncomingTxFilter> postHashFilters =
+            _hashFilters =
             [
                 new NullHashTxFilter(), // needs to be first as it assigns the hash
                 new AlreadyKnownTxFilter(_hashCache, _logger),
+            ];
+
+            List<IIncomingTxFilter> postHashFilters =
+            [
                 new MalformedTxFilter(validator, _specChangeTxValidator, ecdsa, _logger),
                 new TxTypeTxFilter(_transactions,
                     _blobTransactions), // has to be after MalformedTxFilter as it uses the recovered sender
@@ -886,20 +891,23 @@ namespace Nethermind.TxPool
                 }
             }
 
+            foreach (IIncomingTxFilter filter in _hashFilters)
+            {
+                if (skipSamplingDeferredFilters && filter is AlreadyKnownTxFilter) continue;
+                AcceptTxResult accepted = filter.Accept(tx, ref state, handlingOptions);
+                if (!accepted) return accepted;
+            }
+
+            // Validators and later filters can be supplied by plugins and retain the transaction.
+            canRecycle = false;
+            PooledBlobBuffers.Disown(tx);
             filters = _postHashFilters;
             for (int i = 0; i < filters.Length; i++)
             {
                 if (skipSamplingDeferredFilters
-                    && filters[i] is AlreadyKnownTxFilter or BlobProofsTxFilter)
+                    && filters[i] is BlobProofsTxFilter)
                 {
                     continue;
-                }
-
-                // Validators and later filters can be supplied by plugins and retain the transaction.
-                if (filters[i] is MalformedTxFilter)
-                {
-                    canRecycle = false;
-                    PooledBlobBuffers.Disown(tx);
                 }
 
                 AcceptTxResult accepted = filters[i].Accept(tx, ref state, handlingOptions);

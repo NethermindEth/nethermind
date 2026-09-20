@@ -13,19 +13,22 @@ namespace Nethermind.Network.Rlpx
 {
     public class ZeroPacketSplitter() : MessageToByteEncoder<IByteBuffer>, IFramingAware
     {
-        public void DisableFraming() => MaxFrameSize = int.MaxValue;
+        private const int Framed = 0;
+        private const int Unframed = 1;
+        private const int Snappy = 2;
 
-        public int MaxFrameSize { get; private set; } = Frame.DefaultMaxFrameSize;
+        public void DisableFraming() => Interlocked.CompareExchange(ref _encodingMode, Unframed, Framed);
+
+        public int MaxFrameSize => Volatile.Read(ref _encodingMode) == Framed ? Frame.DefaultMaxFrameSize : int.MaxValue;
 
         private int _contextId;
         private ILogger _snappyLogger;
-        private bool _snappyEnabled;
+        private int _encodingMode;
 
         internal void EnableSnappy(ILogManager logManager)
         {
-            DisableFraming();
             _snappyLogger = logManager.GetClassLogger<ZeroSnappyEncoder>();
-            Volatile.Write(ref _snappyEnabled, true);
+            Volatile.Write(ref _encodingMode, Snappy);
         }
 
         private readonly IFrameCipher? _cipher;
@@ -41,7 +44,8 @@ namespace Nethermind.Network.Rlpx
 
         protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
         {
-            if (Volatile.Read(ref _snappyEnabled))
+            int encodingMode = Volatile.Read(ref _encodingMode);
+            if (encodingMode == Snappy)
             {
                 EncodeCompressed(input, output, _snappyLogger);
                 return;
@@ -50,12 +54,13 @@ namespace Nethermind.Network.Rlpx
             Interlocked.Increment(ref _contextId);
 
             int totalPayloadSize = input.ReadableBytes;
+            int maxFrameSize = encodingMode == Framed ? Frame.DefaultMaxFrameSize : int.MaxValue;
 
-            int framesCount = (totalPayloadSize - 1) / MaxFrameSize + 1;
+            int framesCount = (totalPayloadSize - 1) / maxFrameSize + 1;
             for (int i = 0; i < framesCount; i++)
             {
-                int totalPayloadOffset = MaxFrameSize * i;
-                int framePayloadSize = Math.Min(MaxFrameSize, totalPayloadSize - totalPayloadOffset);
+                int totalPayloadOffset = maxFrameSize * i;
+                int framePayloadSize = Math.Min(maxFrameSize, totalPayloadSize - totalPayloadOffset);
                 int paddingSize = i == framesCount - 1 ? Frame.CalculatePadding(totalPayloadSize) : 0;
                 int frameStart = output.WriterIndex;
                 output.EnsureWritable(Frame.HeaderSize + framePayloadSize + paddingSize + (_cipher is null ? 0 : 2 * Frame.MacSize));

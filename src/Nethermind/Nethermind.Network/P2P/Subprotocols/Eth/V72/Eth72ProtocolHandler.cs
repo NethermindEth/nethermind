@@ -879,7 +879,7 @@ public class Eth72ProtocolHandler(
 
                     if (!hasFullBlobs)
                     {
-                        TxDecoder.TxObjectPool.Return(tx);
+                        ReturnUnsubmittedTransactions(transactionsSpan.Slice(currentIdx - 1, 1));
                     }
                 }
                 else

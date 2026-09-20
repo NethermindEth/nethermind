@@ -120,6 +120,8 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
             finally
             {
                 // A retained downstream reference prevents reuse, including after a consumer throws.
+                // Consumers must retain the buffer for aliases that escape ReceiveMessage. Span-backed RLP
+                // readers copy transaction pre-hash bytes, so those transactions do not alias this buffer.
                 if (!_stopped && _outputPacket is null && output.ReferenceCount == 1 && output.Capacity <= MaxRetainedOutputCapacity)
                     _outputPacket = outputPacket;
                 else

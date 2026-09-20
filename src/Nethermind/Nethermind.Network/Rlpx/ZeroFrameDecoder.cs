@@ -102,29 +102,45 @@ namespace Nethermind.Network.Rlpx
 
         private bool TryDecodeInPlace(IByteBuffer input, List<object> output)
         {
+            // Pooled retained slices own their refcount while retaining the parent. DotNetty's cumulator
+            // and DiscardSomeReadBytes must not move storage while that parent has multiple references.
+            // Retaining the first frame makes subsequent frames in this decode use the copying path.
             if (input.ReadableBytes < _frameSize + Frame.MacSize || !input.HasArray ||
                 input.ReferenceCount != 1 || input.Unwrap() is not null || input is CompositeByteBuffer)
                 return false;
 
             int payloadIndex = input.ReaderIndex;
-            for (int offset = 0; offset < _frameSize; offset += Frame.BlockSize)
-            {
-                input.GetBytes(payloadIndex + offset, _frameBlockBytes);
-                _authenticator.UpdateIngressMac(_frameBlockBytes, false);
-            }
-            input.GetBytes(payloadIndex + _frameSize, _macBytes);
-            if (!_authenticator.CheckMac(_macBytes, false)) ThrowInvalidMac("payload");
-
-            // The authenticated header MAC is no longer needed; use its space for the plaintext header.
             int headerIndex = payloadIndex - Frame.HeaderSize;
-            input.SetBytes(headerIndex, _decryptedBytes);
-            byte[] array = input.Array;
-            int arrayIndex = input.ArrayOffset + payloadIndex;
-            _cipher.Decrypt(array, arrayIndex, _frameSize, array, arrayIndex);
             IByteBuffer frame = input.RetainedSlice(headerIndex, Frame.HeaderSize + _frameSize);
-            input.SkipBytes(_frameSize + Frame.MacSize);
-            output.Add(frame);
-            return true;
+            if (frame.ReferenceCount != 1)
+            {
+                frame.Release();
+                return false;
+            }
+            try
+            {
+                for (int offset = 0; offset < _frameSize; offset += Frame.BlockSize)
+                {
+                    input.GetBytes(payloadIndex + offset, _frameBlockBytes);
+                    _authenticator.UpdateIngressMac(_frameBlockBytes, false);
+                }
+                input.GetBytes(payloadIndex + _frameSize, _macBytes);
+                if (!_authenticator.CheckMac(_macBytes, false)) ThrowInvalidMac("payload");
+
+                // The authenticated header MAC is no longer needed; use its space for the plaintext header.
+                input.SetBytes(headerIndex, _decryptedBytes);
+                byte[] array = input.Array;
+                int arrayIndex = input.ArrayOffset + payloadIndex;
+                _cipher.Decrypt(array, arrayIndex, _frameSize, array, arrayIndex);
+                input.SkipBytes(_frameSize + Frame.MacSize);
+                output.Add(frame);
+                return true;
+            }
+            catch
+            {
+                frame.Release();
+                throw;
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

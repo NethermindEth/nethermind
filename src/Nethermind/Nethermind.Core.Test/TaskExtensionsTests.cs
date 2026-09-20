@@ -13,6 +13,45 @@ namespace Nethermind.Core.Test;
 public class TaskExtensionsTests
 {
     [Test]
+    public async Task DelaySafe_preserves_captured_context([Values] bool useTimeSpan)
+    {
+        using CancellationTokenSource cts = new();
+        RecordingContext context = new();
+        SynchronizationContext? previous = SynchronizationContext.Current;
+        Task<bool> delay;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(context);
+            delay = useTimeSpan
+                ? TaskExtensions.DelaySafe(Timeout.InfiniteTimeSpan, cts.Token)
+                : TaskExtensions.DelaySafe(Timeout.Infinite, cts.Token);
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+
+        await cts.CancelAsync();
+        bool result = await delay.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(context.Posts, Is.EqualTo(1));
+        }
+    }
+
+    private sealed class RecordingContext : SynchronizationContext
+    {
+        public int Posts;
+
+        public override void Post(SendOrPostCallback callback, object? state)
+        {
+            Interlocked.Increment(ref Posts);
+            base.Post(callback, state);
+        }
+    }
+
+    [Test]
     public async Task DelaySafe_returns_without_throwing(
         [Values] bool useTimeSpan,
         [Values(0, 1, 2)] int cancellation)

@@ -146,6 +146,11 @@ namespace Nethermind.TxPool.Collections
         }
 
         /// <summary>Gets a production snapshot whose bucket arrays must not be modified by callers.</summary>
+        /// <remarks>
+        /// Membership changes invalidate cached arrays. In-place value updates remain visible through their
+        /// references and must not reorder a bucket without invalidating its snapshot.
+        /// Unfiltered calls also cache the dictionary; filtered calls reuse only the bucket arrays.
+        /// </remarks>
         internal IDictionary<TGroupKey, TValue[]> GetProductionSnapshot(Predicate<(TGroupKey key, TValue first)>? where = null)
         {
             using McsLock.Disposable lockRelease = Lock.Acquire();

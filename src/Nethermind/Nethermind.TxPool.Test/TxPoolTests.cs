@@ -221,6 +221,34 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void Plugin_filter_rejection_cannot_recycle_retained_transaction()
+        {
+            RetainingRejectingFilter filter = new();
+            _txPool = CreatePool(incomingTxFilter: filter);
+            Transaction tx = GetTransaction(TestItem.PrivateKeyA, Address.Zero);
+
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out bool canRecycle);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+                Assert.That(filter.Retained, Is.SameAs(tx));
+                Assert.That(canRecycle, Is.False);
+            }
+        }
+
+        private sealed class RetainingRejectingFilter : IIncomingTxFilter
+        {
+            public Transaction Retained;
+
+            public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+            {
+                Retained = tx;
+                return AcceptTxResult.Invalid;
+            }
+        }
+
+        [Test]
         public void Validation_rejection_is_not_recyclable_but_its_duplicate_is()
         {
             _txPool = CreatePool();

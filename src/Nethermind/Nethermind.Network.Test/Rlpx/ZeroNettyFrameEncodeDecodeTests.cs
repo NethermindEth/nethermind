@@ -22,6 +22,40 @@ public class ZeroNettyFrameEncodeDecodeTests
     private const int TestLength = 10000;
 
     [Test]
+    public void Enabling_snappy_during_encoding_preserves_current_frames()
+    {
+        (EncryptionSecrets expectedSecrets, _) = NetTestVectors.GetSecretsPair();
+        (EncryptionSecrets actualSecrets, _) = NetTestVectors.GetSecretsPair();
+        using FrameMacProcessor expectedMac = new(TestItem.IgnoredPublicKey, expectedSecrets);
+        using FrameMacProcessor actualMac = new(TestItem.IgnoredPublicKey, actualSecrets);
+        FrameCipher actualCipher = new(actualSecrets.AesSecret);
+        IFrameCipher switchingCipher = Substitute.For<IFrameCipher>();
+        ZeroPacketSplitter splitter = new(switchingCipher, actualMac);
+        switchingCipher.When(x => x.Encrypt(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<byte[]>(), Arg.Any<int>()))
+            .Do(call =>
+            {
+                actualCipher.Encrypt(call.ArgAt<byte[]>(0), call.ArgAt<int>(1), call.ArgAt<int>(2), call.ArgAt<byte[]>(3), call.ArgAt<int>(4));
+                splitter.EnableSnappy(LimboLogs.Instance);
+            });
+        EmbeddedChannel expectedChannel = new(new ZeroPacketSplitter(new FrameCipher(expectedSecrets.AesSecret), expectedMac));
+        EmbeddedChannel actualChannel = new(splitter);
+        try
+        {
+            int length = Frame.DefaultMaxFrameSize * 2 + 1;
+            expectedChannel.WriteOutbound(Unpooled.Buffer(length).WriteZero(length));
+            actualChannel.WriteOutbound(Unpooled.Buffer(length).WriteZero(length));
+            using DisposableByteBuffer expected = expectedChannel.ReadOutbound<IByteBuffer>().AsDisposable();
+            using DisposableByteBuffer actual = actualChannel.ReadOutbound<IByteBuffer>().AsDisposable();
+            Assert.That(actual.AsSpan().ToArray(), Is.EqualTo(expected.AsSpan().ToArray()));
+        }
+        finally
+        {
+            expectedChannel.FinishAndReleaseAll();
+            actualChannel.FinishAndReleaseAll();
+        }
+    }
+
+    [Test]
     public void Combined_encoder_releases_buffers_when_encryption_fails([Values(1, 2)] int failingCall, [Values] bool snappy)
     {
         using PooledBufferLeakDetector detector = new();

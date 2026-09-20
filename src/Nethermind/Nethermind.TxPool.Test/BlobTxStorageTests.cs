@@ -24,6 +24,20 @@ namespace Nethermind.TxPool.Test;
 public class BlobTxStorageTests
 {
     [Test]
+    public void Empty_processed_block_is_a_cache_miss()
+    {
+        using MemColumnsDb<BlobTxsColumns> db = new();
+        BlobTxStorage storage = new(db);
+        db.GetColumnDb(BlobTxsColumns.ProcessedTxs).PutSpan(358UL.ToBigEndianSpanWithoutLeadingZeros(out _), []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out Transaction[] restored), Is.False);
+            Assert.That(restored, Is.Null);
+        }
+    }
+
+    [Test]
     public void Processed_transactions_survive_pool_deletion_and_storage_restart(
         [Values(1, 4, 16)] int count, [Values] bool stored)
     {

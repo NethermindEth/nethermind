@@ -69,15 +69,18 @@ public class ZeroNettyFrameDecoderTests
 
     [Test]
     public void Complete_and_fragmented_frames_preserve_plaintext_and_ownership(
-        [Values(0, 16, 32, 48, -1)] int split, [Values] bool shared)
+        [Values(0, 16, 32, 48, -1)] int split, [Values] bool shared, [Values] bool pooled)
     {
         using PooledBufferLeakDetector detector = new();
         EmbeddedChannel channel = new(new ZeroFrameDecoder(_frameCipher, _macProcessor));
-        channel.Configuration.Allocator = detector.Allocator;
+        IByteBufferAllocator allocator = pooled ? detector.Allocator : UnpooledByteBufferAllocator.Default;
+        channel.Configuration.Allocator = allocator;
         byte[] wire = Bytes.FromHexString(ShortNewBlockSingleFrame);
         byte[] expected = Bytes.FromHexString(ShortNewBlockSingleFrameDecrypted);
         int firstLength = split == 0 ? wire.Length : split == -1 ? wire.Length - 1 : split;
-        IByteBuffer input = detector.Allocator.Buffer(firstLength + 7).WriteZero(7).WriteBytes(wire, 0, firstLength).SkipBytes(7);
+        IByteBuffer input = allocator.Buffer(firstLength + 7).WriteZero(7).WriteBytes(wire, 0, firstLength).SkipBytes(7);
+        // Keep the cumulation alive when the decoded frame is delivered downstream.
+        if (split == 0) input.WriteByte(0);
         byte[] backing = input.Array;
         int arrayOffset = input.ArrayOffset + 7;
         bool wrapped = input.Unwrap() is not null;
@@ -88,12 +91,13 @@ public class ZeroNettyFrameDecoderTests
             if (split != 0)
             {
                 Assert.That(channel.ReadInbound<IByteBuffer>(), Is.Null, "partial frames must not be published");
-                channel.WriteInbound(detector.Allocator.Buffer(wire.Length - firstLength).WriteBytes(wire, firstLength, wire.Length - firstLength));
+                channel.WriteInbound(allocator.Buffer(wire.Length - firstLength).WriteBytes(wire, firstLength, wire.Length - firstLength));
             }
             using DisposableByteBuffer decoded = channel.ReadInbound<IByteBuffer>().AsDisposable();
             Assert.That(decoded.AsSpan().ToArray(), Is.EqualTo(expected));
+            Assert.That(decoded.ReferenceCount, Is.EqualTo(1), "the merger requires independently owned frames");
             if (split == 0)
-                Assert.That(ReferenceEquals(decoded.Array, backing) && decoded.ArrayOffset == arrayOffset + Frame.MacSize, Is.EqualTo(!shared && !wrapped));
+                Assert.That(ReferenceEquals(decoded.Array, backing) && decoded.ArrayOffset == arrayOffset + Frame.MacSize, Is.EqualTo(pooled && !shared && !wrapped));
             if (shared)
                 Assert.That(backing.AsSpan(arrayOffset, firstLength).ToArray(), Is.EqualTo(wire.AsSpan(0, firstLength).ToArray()), "shared ciphertext must not be modified");
         }

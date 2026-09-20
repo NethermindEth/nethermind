@@ -425,6 +425,11 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         if (bytes is not null)
         {
             ReadOnlySpan<byte> encoded = bytes.GetSpan();
+            if (encoded.IsEmpty)
+            {
+                blockBlobTransactions = null;
+                return false;
+            }
             if (encoded[0] != 0)
             {
                 RlpReader ctx = new(encoded);
