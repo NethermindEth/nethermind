@@ -16,7 +16,9 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 /// <see cref="BeaconStateAccessors.GetRandaoMix"/> must refuse an epoch outside the historical
 /// vector's window instead of silently wrapping into a different epoch's mix, and
 /// <see cref="EpochCache"/>'s total-active-balance memo must refuse reuse across two states that
-/// diverge before the memoized epoch's shuffling-decision slot.
+/// diverged anywhere before the memoized epoch's boundary - including inside the previous epoch,
+/// after the shuffling-decision slot, where the committee shuffling still agrees but the effective
+/// balances the boundary recomputed do not.
 /// </summary>
 public class RandaoMixAndEpochCacheTests
 {
@@ -127,6 +129,43 @@ public class RandaoMixAndEpochCacheTests
     }
 
     [Test]
+    public void GetTotalActiveBalance_refuses_reuse_across_two_branches_that_diverged_inside_the_previous_epoch()
+    {
+        // Same shuffling decision root (the fork happened after that slot), different boundary root:
+        // exactly the pair a decision-root key hands the wrong balance to without a word.
+        const ulong epoch = 5;
+        ulong forkSlot = DecisionSlot(epoch) + 5;
+        BeaconStateFulu branchA = CreateBranchState(epoch, forkSlot, branchRoot: Hash(0xAA), validatorCount: 10);
+        BeaconStateFulu branchB = CreateBranchState(epoch, forkSlot, branchRoot: Hash(0xBB), validatorCount: 20);
+        Assert.That(branchA.GetShufflingDecisionRoot(epoch), Is.EqualTo(branchB.GetShufflingDecisionRoot(epoch)), "test fixture bug: the branches must share the decision root");
+
+        EpochCache cache = new();
+        Assert.That(cache.GetTotalActiveBalance(branchA), Is.EqualTo(10UL * 32 * Gwei));
+        Assert.That(() => cache.GetTotalActiveBalance(branchB), Throws.TypeOf<BeaconStateException>().With.Message.Contains("epoch boundary root"),
+            "branch B recomputed its effective balances from its own blocks at the boundary; it must not be handed branch A's total");
+    }
+
+    [Test]
+    public void GetTotalActiveBalance_shares_the_memo_between_siblings_that_diverged_inside_the_memoized_epoch()
+    {
+        // Blocks inside the epoch move raw balances only; the active set and effective balances the
+        // total is built from were fixed at the boundary both siblings share.
+        // One slot into the epoch, so the sibling blocks at the epoch's first slot have their roots recorded.
+        const ulong epoch = 5;
+        ulong startSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch);
+        BeaconStateFulu siblingA = CreateBranchState(epoch, startSlot, branchRoot: Hash(0xAA), validatorCount: 10, slotsIntoEpoch: 1);
+        BeaconStateFulu siblingB = CreateBranchState(epoch, startSlot, branchRoot: Hash(0xBB), validatorCount: 10, slotsIntoEpoch: 1);
+        Assert.That(siblingA.GetBlockRootAtSlot(startSlot), Is.Not.EqualTo(siblingB.GetBlockRootAtSlot(startSlot)), "test fixture bug: siblings must differ at the first slot of the epoch");
+
+        EpochCache cache = new();
+        ulong balanceA = cache.GetTotalActiveBalance(siblingA);
+        Assert.That(() => cache.GetTotalActiveBalance(siblingB), Is.EqualTo(balanceA), "same-epoch siblings legitimately share the total");
+        // The sharing is only legitimate while the memo hands B what B would compute alone; this is
+        // the assertion that goes red if a sibling collision ever becomes possible.
+        Assert.That(cache.GetTotalActiveBalance(siblingB), Is.EqualTo(siblingB.GetTotalBalance(siblingB.GetActiveValidatorIndices(epoch))));
+    }
+
+    [Test]
     public void GetTotalActiveBalance_reuses_the_memo_across_repeated_calls_on_the_same_branch()
     {
         const ulong epoch = 5;
@@ -173,24 +212,35 @@ public class RandaoMixAndEpochCacheTests
         };
     }
 
-    /// <summary>A state at <paramref name="epoch"/> whose shuffling-decision-slot block root is
-    /// <paramref name="decisionSlotRoot"/>, standing in for two states that diverged at or before
-    /// that slot (a "conflicting fork" for <see cref="EpochCache"/> purposes).</summary>
+    /// <summary>A state at <paramref name="epoch"/> on a branch that forked from the common history
+    /// at the shuffling-decision slot, so its decision root is <paramref name="decisionSlotRoot"/>
+    /// (a "conflicting fork" for <see cref="EpochCache"/> purposes).</summary>
     private static BeaconStateFulu CreateBranchState(ulong epoch, Hash256 decisionSlotRoot, int validatorCount)
     {
-        BeaconStateFulu state = CreateState(epoch, validatorCount);
-        Hash256 decisionRootBefore = state.GetShufflingDecisionRoot(epoch);
-        Assert.That(decisionRootBefore, Is.Not.EqualTo(decisionSlotRoot), "test fixture bug: pick a distinctive root");
-
-        ulong decisionSlot = epoch >= Presets.MinSeedLookahead
-            ? BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch - Presets.MinSeedLookahead)
-            : 0;
-        if (decisionSlot > 0)
-            decisionSlot--;
-        state.BlockRoots![(int)(decisionSlot % Presets.SlotsPerHistoricalRoot)] = decisionSlotRoot;
-
+        BeaconStateFulu state = CreateBranchState(epoch, DecisionSlot(epoch), decisionSlotRoot, validatorCount);
         Assert.That(state.GetShufflingDecisionRoot(epoch), Is.EqualTo(decisionSlotRoot), "test fixture bug: root did not land on the decision slot");
         return state;
+    }
+
+    /// <summary>
+    /// A state at the first slot of <paramref name="epoch"/> on a branch that forked from the common
+    /// history at <paramref name="forkSlot"/>: every block root from that slot on is
+    /// <paramref name="branchRoot"/>, since forked block roots never re-converge.
+    /// </summary>
+    private static BeaconStateFulu CreateBranchState(ulong epoch, ulong forkSlot, Hash256 branchRoot, int validatorCount, ulong slotsIntoEpoch = 0)
+    {
+        BeaconStateFulu state = CreateState(epoch, validatorCount);
+        state.Slot += slotsIntoEpoch;
+        Assert.That(state.BlockRoots![0], Is.Not.EqualTo(branchRoot), "test fixture bug: pick a distinctive root");
+        for (ulong slot = forkSlot; slot < state.Slot; slot++)
+            state.BlockRoots[(int)(slot % Presets.SlotsPerHistoricalRoot)] = branchRoot;
+        return state;
+    }
+
+    private static ulong DecisionSlot(ulong epoch)
+    {
+        ulong decisionSlot = epoch >= Presets.MinSeedLookahead ? BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch - Presets.MinSeedLookahead) : 0;
+        return decisionSlot > 0 ? decisionSlot - 1 : 0;
     }
 
     private static Hash256[] CreateFilledBlockRoots()

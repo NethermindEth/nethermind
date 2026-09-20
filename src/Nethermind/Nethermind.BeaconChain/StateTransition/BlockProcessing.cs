@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Security.Cryptography;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
@@ -28,12 +29,37 @@ public interface INewPayloadNotifier
 
     /// <summary>
     /// Gloas <c>ExecutionEngine.verify_and_notify_new_payload</c> for an execution payload envelope
-    /// (spec <c>verify_execution_payload_envelope</c>, EIP-7732). Default-implemented so an existing
-    /// implementer of this interface (e.g. the plugin's engine adapter) keeps compiling without
-    /// change; it throws by name until a real engine adapter is wired up for envelopes.
+    /// (spec <c>verify_execution_payload_envelope</c>, EIP-7732). The plugin's engine adapter
+    /// implements it for real; the default exists only so pre-Gloas test doubles keep compiling,
+    /// and <see cref="RequireEnvelopeSupport"/> turns a production notifier still relying on it into
+    /// a startup failure instead of a throw at the first Gloas envelope.
     /// </summary>
     bool NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests) =>
-        throw new NotSupportedException("Execution-layer notification for a Gloas execution payload envelope is not wired up: no engine adapter implements it yet.");
+        throw new NotSupportedException($"{GetType().Name} does not implement execution-layer notification for Gloas execution payload envelopes");
+
+    /// <summary>
+    /// Refuses a notifier whose runtime type still uses the interface's throwing default for the
+    /// envelope overload. Run once at startup against the production notifier: a node that passes
+    /// this can not discover at Gloas activation that it never had an engine path for envelopes.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The notifier does not implement the envelope overload.</exception>
+    static void RequireEnvelopeSupport(INewPayloadNotifier notifier)
+    {
+        Type type = notifier.GetType();
+        InterfaceMapping map = type.GetInterfaceMap(typeof(INewPayloadNotifier));
+        for (int i = 0; i < map.InterfaceMethods.Length; i++)
+        {
+            MethodInfo declared = map.InterfaceMethods[i];
+            if (declared.Name != nameof(NotifyNewPayload) || declared.GetParameters()[0].ParameterType != typeof(ExecutionPayloadGloas))
+                continue;
+            if (map.TargetMethods[i].DeclaringType == typeof(INewPayloadNotifier))
+                throw new InvalidOperationException(
+                    $"{type.FullName} does not implement execution-layer notification for Gloas execution payload envelopes; " +
+                    "a Gloas node cannot follow the chain without one");
+            return;
+        }
+        throw new InvalidOperationException($"{nameof(INewPayloadNotifier)} envelope overload not found in the interface map of {type.FullName}");
+    }
 }
 
 /// <summary>
