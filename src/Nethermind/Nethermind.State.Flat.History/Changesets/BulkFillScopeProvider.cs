@@ -71,6 +71,7 @@ public sealed class BulkFillScopeProvider(
     private sealed class Scope(FlatWorldStateScope inner, BulkFillSession session) : IWorldStateScopeProvider.IScope
     {
         public Hash256 RootHash => inner.RootHash;
+        public bool StorageRootsAreAuthoritative => false;
         public IWorldStateScopeProvider.ICodeDb CodeDb => session;
         public Account? Get(Address address) => inner.Get(address);
         public void HintGet(Address address, Account? account) => inner.HintGet(address, account);

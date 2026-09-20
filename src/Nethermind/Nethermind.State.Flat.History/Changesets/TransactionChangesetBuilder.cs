@@ -360,9 +360,12 @@ public sealed class TransactionChangesetBuilder(
 
         long built = Interlocked.Exchange(ref _builtSinceReport, 0);
         double blocksPerSecond = built / elapsed.TotalSeconds;
-        _logger.Info(
-            $"Transaction changeset index covers {from}-{to}, {blocksPerSecond:F1} blocks/s, {from - _retrofitFromBlock} blocks to {_retrofitFromBlock}, " +
-            $"about {TimeSpan.FromSeconds((from - _retrofitFromBlock) / Math.Max(blocksPerSecond, 0.001)):d\\.hh\\:mm}");
+        if (bulkFill is { Enabled: true })
+            _logger.Info($"Transaction changeset index covers {from}-{to}; tip-following {blocksPerSecond:F1} blocks/s. Historical bulk replay reports progress separately.");
+        else
+            _logger.Info(
+                $"Transaction changeset index covers {from}-{to}, {blocksPerSecond:F1} blocks/s, {from - _retrofitFromBlock} blocks to {_retrofitFromBlock}, " +
+                $"about {TimeSpan.FromSeconds((from - _retrofitFromBlock) / Math.Max(blocksPerSecond, 0.001)):d\\.hh\\:mm}");
         _progressReportedAt = now;
     }
 

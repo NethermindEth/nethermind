@@ -16,7 +16,7 @@ namespace Nethermind.State.Flat.History.Changesets;
 /// </remarks>
 internal sealed class BulkFillScratchState
 {
-    private const byte FormatVersion = 2;
+    private const byte FormatVersion = 3;
     private static ReadOnlySpan<byte> IdentityKey => "bulk-fill-identity"u8;
     private readonly IColumnsDb<Columns> _db;
     private readonly ulong _anchor;
@@ -43,6 +43,8 @@ internal sealed class BulkFillScratchState
         byte[]? stored = metadata[IdentityKey];
         if (stored is not null)
         {
+            if (stored.Length > 0 && stored[0] != FormatVersion)
+                throw new NotSupportedException("Bulk replay scratch version is incompatible; preserve the old scratch directory and restart from a fresh import.");
             if (!manifest.SequenceEqual(stored)) throw new InvalidDataException("Scratch state belongs to a different bulk import.");
             db.SyncWal();
             return;

@@ -457,6 +457,26 @@ public class HistoryRowScannerTests
     }
 
     [Test]
+    public void ScratchImport_WhenReplayVersionIsObsolete_RefusesResumeWithoutChangingRows()
+    {
+        using SnapshotableMemColumnsDb<BulkFillScratchState.Columns> scratch = new();
+        _ = new BulkFillScratchState(scratch, Keccak.EmptyTreeHash, 5);
+        IDb metadata = scratch.GetColumnDb(BulkFillScratchState.Columns.Metadata);
+        byte[] manifest = metadata["bulk-fill-identity"u8]!;
+        manifest[0] = 2;
+        metadata.PutSpan("bulk-fill-identity"u8, manifest);
+        IDb accounts = scratch.GetColumnDb(BulkFillScratchState.Columns.Accounts);
+        accounts.PutSpan(TestItem.KeccakA.Bytes, [1, 2, 3]);
+
+        Assert.Throws<NotSupportedException>(() => new BulkFillScratchState(scratch, Keccak.EmptyTreeHash, 5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadata["bulk-fill-identity"u8], Is.EqualTo(manifest));
+            Assert.That(accounts[TestItem.KeccakA.Bytes], Is.EqualTo(new byte[] { 1, 2, 3 }));
+        }
+    }
+
+    [Test]
     public void ReadPage_WhenNoVersionExistsAtAnchor_EmitsNothing(
         [Values(FlatHistoryColumns.AccountHistory, FlatHistoryColumns.StorageHistory, FlatHistoryColumns.StorageClears)] FlatHistoryColumns column,
         [Values] bool empty)

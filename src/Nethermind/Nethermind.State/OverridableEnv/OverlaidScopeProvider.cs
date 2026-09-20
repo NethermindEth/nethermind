@@ -25,6 +25,7 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
     private sealed class Scope(IWorldStateScopeProvider.IScope inner, StateReadOverlaySlot slot) : IWorldStateScopeProvider.IScope
     {
         public Hash256 RootHash => inner.RootHash;
+        public bool StorageRootsAreAuthoritative => inner.StorageRootsAreAuthoritative;
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => inner.CodeDb;
 

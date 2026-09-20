@@ -6,6 +6,7 @@ using System.Threading;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
@@ -15,6 +16,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -32,6 +34,7 @@ using Nethermind.State.Flat.History;
 using Nethermind.State.Flat.History.Changesets;
 using Nethermind.State.OverridableEnv;
 using NUnit.Framework;
+using WorldStateSnapshot = Nethermind.Evm.State.Snapshot;
 
 namespace Nethermind.Runner.Test.Module;
 
@@ -92,8 +95,12 @@ public class TransactionChangesetIndexModuleTests
         Assert.That(bootstrap.TryImport(session, CancellationToken.None), Is.True);
     }
 
-    [Test]
-    public void BulkReplay_WhenProcessingConsecutiveBlocks_PreservesWithdrawalsAndTransactionState()
+    [TestCase(0, TestName = "BulkReplay_AcrossBlocks_PreservesStorage")]
+    [TestCase(1, TestName = "BulkReplay_AfterClear_DiscardsUnreadStorage")]
+    [TestCase(2, TestName = "BulkReplay_AfterRevertedClear_PreservesStorage")]
+    [TestCase(3, TestName = "BulkReplay_AfterDeleteAndRecreate_DiscardsUnreadStorage")]
+    [TestCase(4, TestName = "BulkReplay_AfterNestedClearRevert_PreservesEarlierClear")]
+    public void BulkReplay_WhenProcessingConsecutiveBlocks_PreservesWithdrawalsAndTransactionState(int clearMode)
     {
         FlatDbConfig config = new() { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = true };
         using IContainer container = new ContainerBuilder()
@@ -126,8 +133,23 @@ public class TransactionChangesetIndexModuleTests
             .WithGasLimit(21000).WithNonce(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Block second = Build.A.Block.WithNumber(2).WithParent(first).WithPostMergeFlag(true)
             .WithBlobGasUsed(0).WithExcessBlobGas(0).WithBaseFeePerGas(0).WithTransactions(transfer).WithWithdrawals().TestObject;
+        byte[] runtime = Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD).PushData(1)
+            .Op(Instruction.ADD).PushData(0).Op(Instruction.SSTORE)
+            .PushData(0).PushData(0).PushData(0).PushData(0)
+            .PushData(0).Op(Instruction.SLOAD).PushData(TestItem.AddressB).PushData(30000)
+            .Op(Instruction.CALL).Op(Instruction.POP).Done;
+        Transaction deployment = Build.A.Transaction.WithCode(Prepare.EvmCode.ForInitOf(runtime).Done)
+            .WithValue(10).WithGasPrice(0).WithGasLimit(200000).WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block third = NextBlock(second, deployment);
+        Address contract = ContractAddress.From(TestItem.AddressA, 1);
+        Transaction firstCall = Build.A.Transaction.WithTo(contract).WithGasPrice(0).WithGasLimit(100000)
+            .WithNonce(2).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block fourth = NextBlock(third, firstCall);
+        Transaction secondCall = Build.A.Transaction.WithTo(contract).WithGasPrice(0).WithGasLimit(100000)
+            .WithNonce(3).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block fifth = NextBlock(fourth, secondCall);
 
-        foreach (Block block in new[] { first, second })
+        foreach (Block block in new[] { first, second, third, fourth, fifth })
         {
             Assert.That(tree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader), Is.EqualTo(AddBlockResult.Added));
             Assert.That(block.TotalDifficulty, Is.Not.Null);
@@ -136,7 +158,7 @@ public class TransactionChangesetIndexModuleTests
             Block isolated = block.WithReplacedHeader(block.Header.Clone());
             try
             {
-                Assert.That(processor.Process(isolated, TraceProcessingOptions.ReadOnlyReplay | ProcessingOptions.ForceSequentialBlockAccessList, capture.Tracer), Is.Not.Null);
+                Assert.That(processor.Process(isolated, ProcessingTransactionIndexBulkFill.ReplayOptions, capture.Tracer), Is.Not.Null);
                 Assert.That(capture.Commit(), Is.True);
                 index.SyncWal();
                 session.CommitBlock();
@@ -149,15 +171,71 @@ public class TransactionChangesetIndexModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(provider.TryGetAccount(second.Header, TestItem.AddressA, out AccountStruct sender), Is.True);
-            Assert.That(sender.Balance, Is.EqualTo(withdrawal.AmountInWei - 7));
-            Assert.That(sender.Nonce, Is.EqualTo(1UL));
-            Assert.That(provider.TryGetAccount(second.Header, TestItem.AddressB, out AccountStruct recipient), Is.True);
-            Assert.That(recipient.Balance, Is.EqualTo(new UInt256(7)));
-            Assert.That(session.CurrentState.BlockNumber, Is.EqualTo(2UL));
+            Assert.That(provider.TryGetAccount(fifth.Header, TestItem.AddressA, out AccountStruct sender), Is.True);
+            Assert.That(sender.Balance, Is.EqualTo(withdrawal.AmountInWei - 17));
+            Assert.That(sender.Nonce, Is.EqualTo(4UL));
+            Assert.That(provider.TryGetAccount(fifth.Header, TestItem.AddressB, out AccountStruct recipient), Is.True);
+            Assert.That(recipient.Balance, Is.EqualTo(new UInt256(10)));
+            provider.GetStorage(fifth.Header, contract, UInt256.Zero, out UInt256 stored);
+            Assert.That(stored, Is.EqualTo(new UInt256(2)));
+            Assert.That(session.CurrentState.BlockNumber, Is.EqualTo(5UL));
             Assert.That(scope.Resolve<IWorldState>().IsInScope, Is.False);
         }
+
+        IWorldState state = scope.Resolve<IWorldState>();
+        Block sixth = NextBlock(fifth, transfer);
+        Assert.That(tree.Insert(sixth, BlockTreeInsertBlockOptions.SaveHeader), Is.EqualTo(AddBlockResult.Added));
+        session.BeginBlock(sixth.Header);
+        using (state.BeginScope(fifth.Header))
+        {
+            if (clearMode == 3)
+            {
+                state.DeleteAccount(contract);
+                state.Commit(Cancun.Instance);
+                state.CreateAccount(contract, UInt256.Zero, 1);
+            }
+            else if (clearMode != 0)
+            {
+                if (clearMode == 4)
+                {
+                    state.ClearStorage(contract);
+                    state.Commit(Cancun.Instance);
+                }
+                WorldStateSnapshot snapshot = state.TakeSnapshot();
+                state.ClearStorage(contract);
+                if (clearMode is 2 or 4) state.Restore(snapshot);
+            }
+            state.Set(new StorageCell(contract, 1), 9);
+            state.Commit(Cancun.Instance);
+            state.CommitTree(sixth.Number);
+        }
+        session.CommitBlock();
+        session.CleanStorage(CancellationToken.None);
+        using (state.BeginScope(sixth.Header))
+        {
+            state.Get(new StorageCell(contract, 0), out UInt256 previous);
+            state.Get(new StorageCell(contract, 1), out UInt256 added);
+            Assert.That(previous, Is.EqualTo(new UInt256(clearMode is 0 or 2 ? 2u : 0u)));
+            Assert.That(added, Is.EqualTo(new UInt256(9)));
+        }
+
+        Transaction wrongNonce = Build.A.Transaction.WithTo(TestItem.AddressB).WithGasPrice(0).WithGasLimit(21000)
+            .WithNonce(100).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Block invalid = NextBlock(sixth, wrongNonce);
+        Assert.That(tree.Insert(invalid, BlockTreeInsertBlockOptions.SaveHeader), Is.EqualTo(AddBlockResult.Added));
+        session.BeginBlock(invalid.Header);
+        Assert.That(processor.Process(invalid, ProcessingTransactionIndexBulkFill.ReplayOptions, NullBlockTracer.Instance), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrongNonce.Nonce, Is.EqualTo(100UL));
+            Assert.That(session.CurrentState.BlockNumber, Is.EqualTo(sixth.Number));
+        }
     }
+
+    private static Block NextBlock(Block parent, Transaction transaction) => Build.A.Block
+        .WithNumber(parent.Number + 1).WithParent(parent).WithPostMergeFlag(true)
+        .WithBlobGasUsed(0).WithExcessBlobGas(0).WithBaseFeePerGas(0)
+        .WithTransactions(transaction).WithWithdrawals().TestObject;
 
     [TestCase(-1, 1)]
     [TestCase(1, 1)]

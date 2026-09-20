@@ -8,9 +8,9 @@ using System.Threading;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -32,6 +32,9 @@ public sealed class ProcessingTransactionIndexBulkFill(
     IBlockValidationModule[] validationModules,
     ILogManager logs) : ITransactionIndexBulkFill
 {
+    internal const ProcessingOptions ReplayOptions = ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain
+        | ProcessingOptions.NoValidation | ProcessingOptions.ForceSequentialBlockAccessList;
+
     private readonly ILogger _logger = logs.GetClassLogger<ProcessingTransactionIndexBulkFill>();
     public bool Enabled => config.HistoryTransactionIndexBulkFillEnabled;
 
@@ -51,6 +54,11 @@ public sealed class ProcessingTransactionIndexBulkFill(
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
+                return;
+            }
+            catch (Exception exception) when (exception is InvalidBlockException or NotSupportedException)
+            {
+                if (_logger.IsError) _logger.Error("Bulk transaction index stopped until restart; checkpoint retained for diagnosis.", exception);
                 return;
             }
             catch (Exception exception)
@@ -110,7 +118,7 @@ public sealed class ProcessingTransactionIndexBulkFill(
             if (Stopwatch.GetElapsedTime(reportedAt) >= TimeSpan.FromSeconds(30))
             {
                 double rate = (session.CurrentState.BlockNumber - reportedBlock) / Stopwatch.GetElapsedTime(reportedAt).TotalSeconds;
-                if (_logger.IsInfo) _logger.Info($"Bulk transaction index replay {session.CurrentState.BlockNumber}/{coveredFrom - 1}: {rate:F1} blocks/s, scratch {session.Size / (1024 * 1024)} MiB.");
+                if (_logger.IsInfo) _logger.Info($"Bulk transaction index replay {session.CurrentState.BlockNumber}/{coveredFrom - 1}: {rate:F1} blocks/s, scratch SST/blob {session.Size / (1024 * 1024)} MiB.");
                 reportedAt = Stopwatch.GetTimestamp();
                 reportedBlock = session.CurrentState.BlockNumber;
             }
@@ -135,8 +143,8 @@ public sealed class ProcessingTransactionIndexBulkFill(
         Block isolated = block.WithReplacedHeader(block.Header.Clone());
         try
         {
-            if (processor.Process(isolated, TraceProcessingOptions.ReadOnlyReplay | ProcessingOptions.ForceSequentialBlockAccessList, capture.Tracer, token) is null)
-                throw new InvalidDataException($"Bulk replay failed at {block.Number}.");
+            if (processor.Process(isolated, ReplayOptions, capture.Tracer, token) is null)
+                throw new InvalidBlockException(block, $"Bulk replay failed at {block.Number}.");
             token.ThrowIfCancellationRequested();
             RequireCanonical(block.Header);
             sessions.ValidateSource(block.Header);

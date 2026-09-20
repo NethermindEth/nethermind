@@ -938,7 +938,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         ref ChangeTrace accountChanges = ref GetOrAddBlockChange(address, out _);
         // A removal takes the account's storage with it whichever path removed it; caches of that storage learn of it here.
-        if (account is null && accountChanges.After?.HasStorage == true) _removedWithStorage.Add(address);
+        if (account is null && accountChanges.After is { } previous && (previous.HasStorage || !Tree.StorageRootsAreAuthoritative))
+            _removedWithStorage.Add(address);
         accountChanges.After = account;
         _needsStateRootUpdate = true;
     }
