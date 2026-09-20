@@ -38,7 +38,12 @@ public static class ReconstructionBroadcast
     /// <returns>
     /// Empty if <paramref name="fullMatrix"/> is empty or its first entry carries no block header:
     /// with no header there is no anti-equivocation key to publish under, and guessing one would
-    /// corrupt the cache rather than merely skip a publish.
+    /// corrupt the cache rather than merely skip a publish. Also empty if any entry of
+    /// <paramref name="heldColumns"/> carries a different block's header: pairing columns by index
+    /// alone, with no check that both arguments came from the same <c>TryReconstruct</c> call, is
+    /// exactly the defect <see cref="DataColumnReconstruction"/> was already fixed for once (two
+    /// blocks sharing a blob count recovering into a matrix belonging to neither); trusting the
+    /// caller to have paired them correctly here would reopen it one layer up.
     /// </returns>
     public static IReadOnlyList<ReconstructedSidecarToPublish> SelectNewlyReconstructed(
         IReadOnlyList<DataColumnSidecar> heldColumns, DataColumnSidecar[] fullMatrix)
@@ -51,6 +56,11 @@ public static class ReconstructionBroadcast
         bool[] alreadyHeld = new bool[Eip7594DasConstants.NumberOfColumns];
         foreach (DataColumnSidecar held in heldColumns)
         {
+            if (held.SignedBlockHeader?.Message?.BodyRoot != header.BodyRoot)
+            {
+                return [];
+            }
+
             if (held.Index < (ulong)Eip7594DasConstants.NumberOfColumns)
             {
                 alreadyHeld[(int)held.Index] = true;

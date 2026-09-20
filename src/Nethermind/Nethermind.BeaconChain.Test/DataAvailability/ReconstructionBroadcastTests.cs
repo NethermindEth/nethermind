@@ -94,6 +94,35 @@ public class ReconstructionBroadcastTests
     }
 
     [Test]
+    public void A_held_column_from_a_different_block_than_the_matrix_is_refused_rather_than_paired_by_index_alone()
+    {
+        DataColumnSidecar[] fullMatrix = FullMatrix();
+        // Same slot/proposer, different block (different body root): the exact shape that was
+        // already found and fixed once in DataColumnReconstruction, one layer down from here.
+        DataColumnSidecar foreignColumn = new()
+        {
+            Index = 1,
+            SignedBlockHeader = new SignedBeaconBlockHeader
+            {
+                Message = new BeaconBlockHeader
+                {
+                    Slot = Slot,
+                    ProposerIndex = ProposerIndex,
+                    ParentRoot = Hash256.Zero,
+                    StateRoot = Hash256.Zero,
+                    BodyRoot = new Hash256([.. Enumerable.Repeat((byte)0x99, 32)]),
+                },
+                Signature = new BlsSignature(new byte[BlsSignature.Length]),
+            },
+        };
+        DataColumnSidecar[] held = [fullMatrix[0], foreignColumn];
+
+        IReadOnlyList<ReconstructedSidecarToPublish> newlyReconstructed = ReconstructionBroadcast.SelectNewlyReconstructed(held, fullMatrix);
+
+        Assert.That(newlyReconstructed, Is.Empty, "a mismatched pair must be refused outright, not partially trusted");
+    }
+
+    [Test]
     public void Held_entries_with_an_out_of_range_index_are_ignored_rather_than_indexed_directly()
     {
         DataColumnSidecar[] fullMatrix = FullMatrix();
