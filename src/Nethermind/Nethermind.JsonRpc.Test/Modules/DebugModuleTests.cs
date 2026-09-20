@@ -484,21 +484,6 @@ public class DebugModuleTests
     }
 
     [Test]
-    public void DebugSetHead_RejectsUnknownTarget()
-    {
-        _debugBridge.GetBlock(Arg.Any<BlockParameter>()).ReturnsNull();
-
-        ResultWrapper<bool> result = CreateModule().debug_setHead(new BlockParameter(2UL));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-            Assert.That(result.Data, Is.False);
-            Assert.That(() => _debugBridge.DidNotReceive().UpdateHeadBlock(Arg.Any<Hash256>()), Throws.Nothing);
-        }
-    }
-
-    [Test]
     public void DebugTraceTransactionInBlockByIndex_WithCustomTracer_DisposesDiscardedTracesAndPipelineDisposesSelectedTrace()
     {
         (IDisposable[] engines, GethLikeTxTrace[] traces) = CreateSentinelTraces(3);

@@ -148,7 +148,7 @@ public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
                 Assert.That(result.Data, Is.EqualTo(chain.BlockTree.Head.Hash));
         }
 
-        ResultWrapper<Hash256> repeated = await module.testing_commitBlockV1(NextPayloadAttributes(head.Header), [], []);
+        ResultWrapper<Hash256> repeated = await module.testing_commitBlockV1(NextPayloadAttributes(chain.BlockTree.Head!.Header), [], []);
 
         Assert.That(repeated.Result.ResultType, Is.EqualTo(ResultType.Success), repeated.Result.Error);
         using (Assert.EnterMultipleScope())
@@ -191,7 +191,7 @@ public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(maintenance ? head.Hash : produced.Hash));
             Assert.That(chain.BlockTree.IsMainChain(produced.Hash!), Is.EqualTo(!maintenance));
         }
-        logger.Received(maintenance && warningsEnabled ? 1 : 0).Warn(Arg.Is<string>(message => message.Contains(produced.Hash!.ToString())));
+        logger.Received(maintenance ? 1 : 0).Warn(Arg.Is<string>(message => message.Contains(produced.Hash!.ToString())));
     }
 
     private static async Task WithMaintenance(BlockTreeMutationLock mutationLock, bool maintenance, Func<Task> action)
