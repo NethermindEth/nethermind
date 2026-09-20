@@ -55,4 +55,20 @@ public sealed class EpochCache
 
     /// <summary>Returns the committee shuffling for <paramref name="epoch"/>, building and caching it if absent.</summary>
     public CommitteeCache GetCommitteeCache(BeaconStateFulu state, ulong epoch) => _committees.GetOrBuild(state, epoch);
+
+    /// <summary>
+    /// <see cref="GetTotalActiveBalance(BeaconStateFulu)"/> for a post-fork <see cref="BeaconStateGloas"/>.
+    /// Shares this cache's single memo slot: an instance is owned per state lineage (see the type
+    /// remarks), and a lineage that has crossed the Gloas fork never calls the Fulu overload again.
+    /// </summary>
+    public ulong GetTotalActiveBalance(BeaconStateGloas state)
+    {
+        ulong epoch = state.GetCurrentEpoch();
+        if (_totalActiveBalance is not { } cached || cached.Epoch != epoch)
+        {
+            ulong balance = state.GetTotalBalance(state.GetActiveValidatorIndices(epoch));
+            _totalActiveBalance = cached = (epoch, balance);
+        }
+        return cached.Balance;
+    }
 }
