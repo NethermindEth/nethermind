@@ -701,8 +701,8 @@
   },
   {
     "pname": "Nethermind.GmpBindings",
-    "version": "1.0.3",
-    "hash": "sha256-qYE1TkmlbItCszf7XTjvt4mVQncXjoXUBOD7J+nTu5U="
+    "version": "2.0.0",
+    "hash": "sha256-jY+p+Pg3PcZqMBDHG691dvNBNX0K3GuUg7mvFtnmQn8="
   },
   {
     "pname": "Nethermind.Libp2p",
