@@ -38,14 +38,21 @@ public static class TestFixtureDownloader
     /// .tar.gz cannot be seeked - this saves disk footprint and extraction time, not download bandwidth.
     /// Omit it (or pass null) to extract every entry, as before.
     /// </param>
+    /// <param name="extractionTag">
+    /// Identifies what <paramref name="shouldExtract"/> keeps. It is written into the completion
+    /// marker, and a cached marker carrying a different tag is treated as absent, so widening the
+    /// filter re-downloads instead of leaving the new subtrees silently missing from a "complete"
+    /// cache. Callers that extract everything can leave it null; their marker then holds the version,
+    /// as it always has, and its content is not checked.
+    /// </param>
     /// <returns>The path to the extracted fixtures directory.</returns>
-    public static string EnsureDownloaded(string suiteName, string urlTemplate, string version, string archiveName, Func<string, bool>? shouldExtract = null)
+    public static string EnsureDownloaded(string suiteName, string urlTemplate, string version, string archiveName, Func<string, bool>? shouldExtract = null, string? extractionTag = null)
     {
         string archiveStem = StripExtensions(archiveName);
         string targetDir = Path.Combine(CacheRoot, suiteName, version, archiveStem);
         string markerPath = Path.Combine(targetDir, MarkerFileName);
 
-        if (IsComplete(targetDir, markerPath))
+        if (IsComplete(targetDir, markerPath, extractionTag))
             return targetDir;
 
         string mutexName = $"{suiteName}_{version}_{archiveName}".Replace('/', '_').Replace('\\', '_');
@@ -55,7 +62,7 @@ public static class TestFixtureDownloader
             throw new TimeoutException($"Timed out waiting for {suiteName} fixture mutex ({mutexName})");
         try
         {
-            if (IsComplete(targetDir, markerPath))
+            if (IsComplete(targetDir, markerPath, extractionTag))
             {
                 Console.WriteLine($"{suiteName} fixtures were downloaded by another process.");
                 return targetDir;
@@ -63,7 +70,7 @@ public static class TestFixtureDownloader
 
             Console.WriteLine($"Downloading {suiteName} fixtures ({archiveName} {version})...");
             DownloadAndExtract(urlTemplate, version, archiveName, targetDir, shouldExtract);
-            File.WriteAllText(markerPath, version);
+            File.WriteAllText(markerPath, extractionTag ?? version);
             Console.WriteLine($"{suiteName} fixtures extracted to {targetDir}");
         }
         finally
@@ -77,11 +84,19 @@ public static class TestFixtureDownloader
     /// <summary>
     /// A marker over an emptied or never-populated directory was seen in the wild, and every suite over
     /// it ran zero vectors and passed; only a marker over at least one real file counts as complete.
+    /// A marker written for a different extraction filter is equally hollow for the subtrees the
+    /// current filter keeps, so it is refused too when a tag is given.
     /// </summary>
-    private static bool IsComplete(string targetDir, string markerPath)
+    private static bool IsComplete(string targetDir, string markerPath, string? extractionTag)
     {
         if (!File.Exists(markerPath))
             return false;
+
+        if (extractionTag is not null && !string.Equals(File.ReadAllText(markerPath), extractionTag, StringComparison.Ordinal))
+        {
+            Console.WriteLine($"Ignoring completion marker written for a different extraction filter ({targetDir}); re-downloading.");
+            return false;
+        }
 
         if (HasExtractedContent(targetDir))
             return true;
