@@ -168,6 +168,12 @@ public partial class BlockProcessor(
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
         TransactionsExecuted?.Invoke();
+        if (_logger.IsInfo)
+        {
+            int failed = 0;
+            foreach (TxReceipt receipt in receipts) if (receipt.StatusCode == 0) failed++;
+            _logger.Info($"MainOutcome block={block.Number} txs={receipts.Length} reverted={failed}");
+        }
 
         return FinalizeBlock(block, blockTracer, options, spec, receipts);
     }
