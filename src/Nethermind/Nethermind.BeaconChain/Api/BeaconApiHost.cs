@@ -42,11 +42,13 @@ public sealed class BeaconApiHost(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconApiHost>();
     private WebApplication? _app;
+    private int _port;
+    private CancellationTokenRegistration _exitRegistration;
     private int _disposed;
 
     /// <summary>The port actually bound; differs from <see cref="IBeaconApiConfig.Port"/> only when
     /// that config requested an ephemeral port (0), as tests do.</summary>
-    public int Port { get; private set; }
+    public int Port => Volatile.Read(ref _port);
 
     public async Task StartAsync(CancellationToken token)
     {
@@ -59,19 +61,23 @@ public sealed class BeaconApiHost(
         BeaconApiEndpoints.MapAll(app, ctx);
 
         await app.StartAsync(token);
-        _app = app;
-        Port = new Uri(app.Urls.First()).Port;
+        int port = new Uri(app.Urls.First()).Port;
+        // Publish the port before the app: a thread that observes _app via the volatile read below
+        // must also see the already-final Port.
+        Volatile.Write(ref _port, port);
+        Volatile.Write(ref _app, app);
 
         // The API must not outlive the node: stop it the moment the process starts exiting, rather
         // than waiting for whatever step in the shutdown sequence eventually disposes the plugin.
-        processExitSource.Token.Register(static state => _ = ((BeaconApiHost)state!).StopAsync(), this);
+        // The registration is disposed in DisposeAsync so a later exit never re-enters a disposed host.
+        _exitRegistration = processExitSource.Token.Register(static state => _ = ((BeaconApiHost)state!).StopAsync(), this);
 
-        if (_logger.IsInfo) _logger.Info($"Beacon API listening on http://{apiConfig.Host}:{Port}");
+        if (_logger.IsInfo) _logger.Info($"Beacon API listening on http://{apiConfig.Host}:{port}");
     }
 
     public async Task StopAsync()
     {
-        WebApplication? app = _app;
+        WebApplication? app = Volatile.Read(ref _app);
         if (app is not null)
         {
             try
@@ -92,9 +98,12 @@ public sealed class BeaconApiHost(
             return;
         }
 
-        if (_app is not null)
+        await _exitRegistration.DisposeAsync();
+
+        WebApplication? app = Volatile.Read(ref _app);
+        if (app is not null)
         {
-            await _app.DisposeAsync();
+            await app.DisposeAsync();
         }
     }
 }
