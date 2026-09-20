@@ -41,6 +41,8 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private int _slotMainHit, _slotMainMiss, _slotOtherHit, _slotOtherMiss, _slotLate, _slotBypass;
     private int _accMainHit, _accMainMiss, _accOtherHit, _accOtherMiss, _accLate, _accBypass;
     private int _clears;
+    private readonly int[] _slotMainMissByPhase = new int[3];
+    private readonly int[] _accMainMissByPhase = new int[3];
     private readonly ConcurrentDictionary<Address, int> _mainMissedSlotsByAddress = new();
     private readonly ConcurrentDictionary<Address, int> _mainMissedAccountsByAddress = new();
 
@@ -128,6 +130,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         if (main)
         {
             Interlocked.Increment(ref _slotMainMiss);
+            Interlocked.Increment(ref _slotMainMissByPhase[Math.Clamp(ProcessingThread.Phase, 0, 2)]);
             _mainMissedSlots.TryAdd(key, 0);
             _mainMissedSlotsByAddress.AddOrUpdate(key.Item1, 1, static (_, c) => c + 1);
         }
@@ -143,6 +146,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         if (main)
         {
             Interlocked.Increment(ref _accMainMiss);
+            Interlocked.Increment(ref _accMainMissByPhase[Math.Clamp(ProcessingThread.Phase, 0, 2)]);
             _mainMissedAccounts.TryAdd(address, 0);
             _mainMissedAccountsByAddress.AddOrUpdate(address, 1, static (_, c) => c + 1);
         }
@@ -167,7 +171,9 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
     private void LogAndResetProbeCore(in StateId to)
     {
-        if (_logger.IsInfo) _logger.Info($"FlatReadProbe block={to} slots main={_slotMainHit}/{_slotMainMiss} other={_slotOtherHit}/{_slotOtherMiss} late={_slotLate} bypass={_slotBypass} acc main={_accMainHit}/{_accMainMiss} other={_accOtherHit}/{_accOtherMiss} late={_accLate} bypass={_accBypass} cache={_slotCount}/{_accountCount} clears={_clears}");
+        if (_logger.IsInfo) _logger.Info($"FlatReadProbe block={to} slots main={_slotMainHit}/{_slotMainMiss} other={_slotOtherHit}/{_slotOtherMiss} late={_slotLate} bypass={_slotBypass} acc main={_accMainHit}/{_accMainMiss} other={_accOtherHit}/{_accOtherMiss} late={_accLate} bypass={_accBypass} cache={_slotCount}/{_accountCount} clears={_clears} slotPhase={_slotMainMissByPhase[0]}/{_slotMainMissByPhase[1]}/{_slotMainMissByPhase[2]} accPhase={_accMainMissByPhase[0]}/{_accMainMissByPhase[1]}/{_accMainMissByPhase[2]}");
+        Array.Clear(_slotMainMissByPhase);
+        Array.Clear(_accMainMissByPhase);
         _slotMainHit = _slotMainMiss = _slotOtherHit = _slotOtherMiss = _slotLate = _slotBypass = 0;
         _accMainHit = _accMainMiss = _accOtherHit = _accOtherMiss = _accLate = _accBypass = 0;
         _clears = 0;
