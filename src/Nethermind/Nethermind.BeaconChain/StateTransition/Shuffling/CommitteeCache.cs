@@ -56,6 +56,20 @@ public sealed class CommitteeCache
         return new CommitteeCache(epoch, activeIndices, GetCommitteeCountPerSlot(activeIndices.Length));
     }
 
+    /// <summary><see cref="Build(BeaconStateFulu, ulong)"/> for a post-fork <see cref="BeaconStateGloas"/> (the shuffling itself is unchanged in Gloas).</summary>
+    /// <exception cref="BeaconStateException">No validator is active at <paramref name="epoch"/>.</exception>
+    public static CommitteeCache Build(BeaconStateGloas state, ulong epoch)
+    {
+        int[] activeIndices = state.GetActiveValidatorIndices(epoch);
+        if (activeIndices.Length == 0)
+            throw new BeaconStateException($"No active validators at epoch {epoch}");
+
+        Hash256 seed = state.GetSeed(epoch, DomainType.BeaconAttester);
+        SwapOrNotShuffle.ShuffleList(activeIndices, seed.Bytes);
+
+        return new CommitteeCache(epoch, activeIndices, GetCommitteeCountPerSlot(activeIndices.Length));
+    }
+
     /// <summary>Returns the spec <c>get_committee_count_per_slot</c> for the given active validator count.</summary>
     public static int GetCommitteeCountPerSlot(int activeValidatorCount) =>
         Math.Clamp(activeValidatorCount / (int)Presets.SlotsPerEpoch / Presets.TargetCommitteeSize, 1, Presets.MaxCommitteesPerSlot);
@@ -93,9 +107,15 @@ public sealed class CommitteeCacheLru(int capacity = CommitteeCacheLru.DefaultCa
     private readonly List<(ulong Epoch, Hash256 DecisionRoot, CommitteeCache Cache)> _entries = new(capacity);
 
     /// <summary>Returns the cached committees for <paramref name="epoch"/>, building them if absent.</summary>
-    public CommitteeCache GetOrBuild(BeaconStateFulu state, ulong epoch)
+    public CommitteeCache GetOrBuild(BeaconStateFulu state, ulong epoch) =>
+        TryGet(epoch, state.GetShufflingDecisionRoot(epoch)) ?? Add(epoch, state.GetShufflingDecisionRoot(epoch), CommitteeCache.Build(state, epoch));
+
+    /// <summary><see cref="GetOrBuild(BeaconStateFulu, ulong)"/> for a post-fork <see cref="BeaconStateGloas"/>; the two overloads share one LRU, keyed identically.</summary>
+    public CommitteeCache GetOrBuild(BeaconStateGloas state, ulong epoch) =>
+        TryGet(epoch, state.GetShufflingDecisionRoot(epoch)) ?? Add(epoch, state.GetShufflingDecisionRoot(epoch), CommitteeCache.Build(state, epoch));
+
+    private CommitteeCache? TryGet(ulong epoch, Hash256 decisionRoot)
     {
-        Hash256 decisionRoot = state.GetShufflingDecisionRoot(epoch);
         for (int i = 0; i < _entries.Count; i++)
         {
             if (_entries[i].Epoch == epoch && _entries[i].DecisionRoot == decisionRoot)
@@ -106,8 +126,11 @@ public sealed class CommitteeCacheLru(int capacity = CommitteeCacheLru.DefaultCa
                 return entry.Cache;
             }
         }
+        return null;
+    }
 
-        CommitteeCache built = CommitteeCache.Build(state, epoch);
+    private CommitteeCache Add(ulong epoch, Hash256 decisionRoot, CommitteeCache built)
+    {
         if (_entries.Count == capacity)
             _entries.RemoveAt(0);
         _entries.Add((epoch, decisionRoot, built));
