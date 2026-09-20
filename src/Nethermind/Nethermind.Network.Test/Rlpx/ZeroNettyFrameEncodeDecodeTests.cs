@@ -22,7 +22,7 @@ public class ZeroNettyFrameEncodeDecodeTests
     private const int TestLength = 10000;
 
     [Test]
-    public void Combined_encoder_releases_buffers_when_encryption_fails([Values(1, 2)] int failingCall)
+    public void Combined_encoder_releases_buffers_when_encryption_fails([Values(1, 2)] int failingCall, [Values] bool snappy)
     {
         using PooledBufferLeakDetector detector = new();
         IFrameCipher cipher = Substitute.For<IFrameCipher>();
@@ -33,6 +33,7 @@ public class ZeroNettyFrameEncodeDecodeTests
                 if (++calls == failingCall) throw new InvalidOperationException("Encryption failed");
             });
         ZeroPacketSplitter splitter = new(cipher, Substitute.For<IFrameMacProcessor>());
+        if (snappy) splitter.EnableSnappy(LimboLogs.Instance);
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
         context.Allocator.Returns(detector.Allocator);
         IByteBuffer input = detector.Allocator.Buffer(17).WriteZero(17);
@@ -44,7 +45,7 @@ public class ZeroNettyFrameEncodeDecodeTests
 
     [Test]
     public void Combined_encoder_matches_separate_stages(
-        [Values(1, 15, 16, 17, 1023, 1024, 1025, 2048, 4097)] int length,
+        [Values(1, 15, 16, 17, 1023, 1024, 1025, 2048, 4097, 65536)] int length,
         [Values] bool disableFraming)
     {
         (EncryptionSecrets oldSecrets, _) = NetTestVectors.GetSecretsPair();
@@ -64,7 +65,7 @@ public class ZeroNettyFrameEncodeDecodeTests
         if (disableFraming)
         {
             oldChannel.Pipeline.AddLast(new ZeroSnappyEncoder(LimboLogs.Instance));
-            newChannel.Pipeline.AddLast(new ZeroSnappyEncoder(LimboLogs.Instance));
+            newSplitter.EnableSnappy(LimboLogs.Instance);
         }
         byte[] payload = new byte[length];
         new Random(42).NextBytes(payload);
@@ -75,7 +76,7 @@ public class ZeroNettyFrameEncodeDecodeTests
             for (int i = 0; i < 130; i++)
             {
                 IByteBuffer oldInput = Unpooled.Buffer(length + 7).WriteZero(7).WriteBytes(payload).SkipBytes(7);
-                IByteBuffer newInput = oldInput.Copy();
+                IByteBuffer newInput = Unpooled.Buffer(length + 7).WriteZero(7).WriteBytes(payload).SkipBytes(7);
                 oldChannel.WriteOutbound(oldInput);
                 newChannel.WriteOutbound(newInput);
                 using DisposableByteBuffer expected = oldChannel.ReadOutbound<IByteBuffer>().AsDisposable();

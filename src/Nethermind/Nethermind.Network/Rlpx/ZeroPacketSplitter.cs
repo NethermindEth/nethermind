@@ -5,6 +5,7 @@ using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Logging;
 using System;
 using System.Threading;
 
@@ -17,6 +18,15 @@ namespace Nethermind.Network.Rlpx
         public int MaxFrameSize { get; private set; } = Frame.DefaultMaxFrameSize;
 
         private int _contextId;
+        private ILogger _snappyLogger;
+        private bool _snappyEnabled;
+
+        internal void EnableSnappy(ILogManager logManager)
+        {
+            DisableFraming();
+            _snappyLogger = logManager.GetClassLogger<ZeroSnappyEncoder>();
+            Volatile.Write(ref _snappyEnabled, true);
+        }
 
         private readonly IFrameCipher? _cipher;
         private readonly IFrameMacProcessor? _macProcessor;
@@ -31,6 +41,12 @@ namespace Nethermind.Network.Rlpx
 
         protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
         {
+            if (Volatile.Read(ref _snappyEnabled))
+            {
+                EncodeCompressed(input, output, _snappyLogger);
+                return;
+            }
+
             Interlocked.Increment(ref _contextId);
 
             int totalPayloadSize = input.ReadableBytes;
@@ -110,6 +126,28 @@ namespace Nethermind.Network.Rlpx
                     output.WriteZero(Frame.MacSize);
                     EncryptFrame(output, frameStart, framePayloadSize + paddingSize);
                 }
+            }
+        }
+
+        private void EncodeCompressed(IByteBuffer input, IByteBuffer output, ILogger logger)
+        {
+            int frameStart = output.WriterIndex;
+            output.WriteZero(Frame.HeaderSize + (_cipher is null ? 0 : Frame.MacSize));
+            int payloadStart = output.WriterIndex;
+            ZeroSnappyEncoder.Compress(input, output, logger);
+            int payloadSize = output.WriterIndex - payloadStart;
+            output.SetByte(frameStart, payloadSize >> 16);
+            output.SetByte(frameStart + 1, payloadSize >> 8);
+            output.SetByte(frameStart + 2, payloadSize);
+            output.SetByte(frameStart + 3, 194);
+            output.SetByte(frameStart + 4, 128);
+            output.SetByte(frameStart + 5, 128);
+            int padding = Frame.CalculatePadding(payloadSize);
+            output.WriteZero(padding);
+            if (_cipher is not null)
+            {
+                output.WriteZero(Frame.MacSize);
+                EncryptFrame(output, frameStart, payloadSize + padding);
             }
         }
 
