@@ -12,7 +12,7 @@ public sealed class BlockTreeMutationLock
     private readonly Lock _lock = new();
     private int _maintenanceVersion;
 
-    /// <summary>Waits for any current mutation to finish.</summary>
+    /// <summary>Acquires the mutation lock; dispose the returned scope on the acquiring thread.</summary>
     public Scope Enter()
     {
         _lock.Enter();
@@ -20,13 +20,19 @@ public sealed class BlockTreeMutationLock
     }
 
     /// <summary>Enters a chain mutation, refusing overlap with debug maintenance.</summary>
-    /// <remarks>Maintenance is non-reentrant and never waits; ordinary mutations serialize with each other.</remarks>
+    /// <remarks>Maintenance is non-reentrant and waits at most one second for an ordinary mutation. Overlapping maintenance is refused. Ordinary mutations serialize with each other.</remarks>
     public bool TryEnter(out Scope scope, bool maintenance = false)
     {
         scope = default;
         if (maintenance)
         {
-            if (_lock.IsHeldByCurrentThread || !_lock.TryEnter()) return false;
+            int version = Volatile.Read(ref _maintenanceVersion);
+            if (_lock.IsHeldByCurrentThread || (version & 1) != 0 || !_lock.TryEnter(TimeSpan.FromSeconds(1))) return false;
+            if (version != Volatile.Read(ref _maintenanceVersion))
+            {
+                _lock.Exit();
+                return false;
+            }
             Interlocked.Increment(ref _maintenanceVersion);
         }
         else if (!_lock.IsHeldByCurrentThread)
@@ -49,7 +55,8 @@ public sealed class BlockTreeMutationLock
         return true;
     }
 
-    /// <summary>Releases the mutation lock on the acquiring thread.</summary>
+    /// <summary>Owns one acquisition of the mutation lock.</summary>
+    /// <remarks>Dispose exactly once, on the acquiring thread.</remarks>
     public readonly struct Scope : IDisposable
     {
         private readonly BlockTreeMutationLock? _owner;

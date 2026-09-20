@@ -103,12 +103,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         ILogManager logManager,
         Options options,
         IProcessingStats processingStats,
-        IEnumerable<IBlockTracer>? blockTracers = null,
-        BlockTreeMutationLock? mutationLock = null)
+        BlockTreeMutationLock mutationLock,
+        IEnumerable<IBlockTracer>? blockTracers = null)
     {
         _logger = logManager.GetClassLogger<BlockchainProcessor>();
         _blockTree = blockTree;
-        _mutationLock = mutationLock ?? new BlockTreeMutationLock();
+        _mutationLock = mutationLock;
         _branchProcessor = branchProcessor;
         _specProvider = specProvider;
         _options = options;

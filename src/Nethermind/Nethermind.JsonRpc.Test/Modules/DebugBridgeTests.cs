@@ -17,6 +17,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Test.Modules;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
 using Nethermind.Blockchain.Blocks;
@@ -42,6 +43,36 @@ namespace Nethermind.JsonRpc.Test.Modules;
 public class DebugBridgeTests
 {
     public enum ProcessingState { Running, PausedExecuting, PausedQueued, PausedIdle }
+
+    [Test]
+    public async Task Maintenance_waits_for_transient_ordinary_mutation([Values] bool releaseBeforeTimeout)
+    {
+        BlockTreeMutationLock mutationLock = new();
+        TaskCompletionSource<bool> completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Thread contender = new(() =>
+        {
+            try
+            {
+                bool entered = mutationLock.TryEnter(out BlockTreeMutationLock.Scope scope, maintenance: true);
+                using (scope) completed.SetResult(entered);
+            }
+            catch (Exception exception) { completed.SetException(exception); }
+        });
+        using (mutationLock.Enter())
+        {
+            contender.Start();
+            Assert.That(SpinWait.SpinUntil(() => completed.Task.IsCompleted ||
+                (contender.ThreadState & ThreadState.WaitSleepJoin) != 0, TimeSpan.FromSeconds(10)), Is.True);
+            if (releaseBeforeTimeout)
+                Assert.That(completed.Task.IsCompleted, Is.False, "transient contention must wait instead of refusing immediately");
+            else
+                Assert.That(contender.Join(TimeSpan.FromSeconds(10)), Is.True, "maintenance must have a bounded wait");
+        }
+        Assert.That(await completed.Task.WaitAsync(TimeSpan.FromSeconds(10)), Is.EqualTo(releaseBeforeTimeout));
+        Assert.That(contender.Join(TimeSpan.FromSeconds(10)), Is.True);
+        Assert.That(mutationLock.TryEnter(out BlockTreeMutationLock.Scope retry, maintenance: true), Is.True);
+        retry.Dispose();
+    }
 
     [Test]
     public async Task Chain_mutation_requires_paused_and_drained_processing(
@@ -76,6 +107,12 @@ public class DebugBridgeTests
             pause.Pause();
             Assert.That(MutateChain(debug, genesis, mutation), Is.EqualTo(1), "refusal must release the lock");
         }
+        if (processingState == ProcessingState.PausedQueued)
+            Assert.That(await Task.Run(() =>
+            {
+                bool entered = container.Resolve<BlockTreeMutationLock>().TryEnter(out BlockTreeMutationLock.Scope scope, maintenance: true);
+                using (scope) return entered;
+            }), Is.True, "queued refusal must release maintenance even before the queue drains");
     }
 
     [TestCase("latest", 2UL)]
@@ -315,6 +352,13 @@ public class DebugBridgeTests
         Hash256? headWhileBlocked = null;
         byte[]? persistedHeadWhileBlocked = null;
         bool targetRetained = false;
+        IAdminRpcModule admin = container.Resolve<IRpcModuleFactory<IAdminRpcModule>>().Create();
+        TaskCompletionSource<bool> resumed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Thread resumeThread = new(() =>
+        {
+            try { resumed.SetResult(admin.admin_resumeBlockProcessing().Data); }
+            catch (Exception exception) { resumed.SetException(exception); }
+        });
         (int? Result, Exception? Failure) firstOutcome;
         try
         {
@@ -322,6 +366,8 @@ public class DebugBridgeTests
             overlappingResult = MutateChain(second, blocks[0], secondMutation);
             Assert.That(blockTree.TryUpdateMainChain(blocks[2].Header, true, true, blocks[2]), Is.False,
                 "forkchoice and downloader writes must not move the head during maintenance");
+            Assert.That(() => blockTree.DeleteChainSlice(1, force: true), Throws.InvalidOperationException,
+                "direct tree deletion must report maintenance refusal without deleting levels");
             string refusal = secondMutation == ChainMutation.DeleteSlice
                 ? "Cannot delete the chain slice from 1: another chain mutation is in progress."
                 : $"Cannot rewind the head to {(secondMutation == ChainMutation.ResetByHash ? blocks[0].Hash!.ToString() : "0")}: another chain mutation is in progress.";
@@ -339,12 +385,20 @@ public class DebugBridgeTests
             headWhileBlocked = blockTree.Head?.Hash;
             persistedHeadWhileBlocked = container.Resolve<IDbProvider>().BlockInfosDb.Get(Keccak.Zero.Bytes);
             targetRetained = blockTree.FindBlock(blocks[1].Hash!, BlockTreeLookupOptions.None) is not null;
+            resumeThread.Start();
+            Assert.That(SpinWait.SpinUntil(() => resumed.Task.IsCompleted ||
+                (resumeThread.ThreadState & ThreadState.WaitSleepJoin) != 0, TimeSpan.FromSeconds(10)), Is.True);
+            Assert.That(resumed.Task.IsCompleted, Is.False, "admin resume must wait for state cleanup");
+            Assert.That(container.Resolve<IBlockProcessingPauseControl>().IsPaused, Is.True);
         }
         finally
         {
             releaseMutation.Set();
             firstOutcome = await firstTask;
+            if ((resumeThread.ThreadState & ThreadState.Unstarted) == 0)
+                Assert.That(await resumed.Task.WaitAsync(TimeSpan.FromSeconds(10)), Is.True);
         }
+        container.Resolve<IBlockProcessingPauseControl>().Pause();
         int retryResult = MutateChain(second, blocks[0], secondMutation);
 
         using (Assert.EnterMultipleScope())

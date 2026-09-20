@@ -119,8 +119,8 @@ namespace Nethermind.Blockchain
             ISyncConfig? syncConfig,
             IStateBoundary? stateBoundary,
             ILogManager? logManager,
-            ulong genesisBlockNumber = 0,
-            BlockTreeMutationLock? mutationLock = null)
+            BlockTreeMutationLock mutationLock,
+            ulong genesisBlockNumber = 0)
         {
             Logger = logManager?.GetClassLogger<BlockTree>() ?? throw new ArgumentNullException(nameof(logManager));
             _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
@@ -134,7 +134,7 @@ namespace Nethermind.Blockchain
             _chainLevelInfoRepository = chainLevelInfoRepository ??
                                         throw new ArgumentNullException(nameof(chainLevelInfoRepository));
             _stateBoundary = stateBoundary ?? throw new ArgumentNullException(nameof(stateBoundary));
-            _mutationLock = mutationLock ?? new BlockTreeMutationLock();
+            _mutationLock = mutationLock;
             _oldestBlock = syncConfig.AncientBodiesBarrierCalc;
 
             _genesisBlockNumber = genesisBlockNumber;
@@ -1870,6 +1870,7 @@ namespace Nethermind.Blockchain
         /// <param name="endNumber">End level of the slice to delete</param>
         /// <param name="force">Should it force of deletion of valid blocks</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="startNumber"/> ot <paramref name="endNumber"/> do not satisfy the slice position rules</exception>
+        /// <exception cref="InvalidOperationException">Chain maintenance overlaps the deletion.</exception>
         public int DeleteChainSlice(in ulong startNumber, ulong? endNumber = null, bool force = false)
         {
             if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation)) throw new InvalidOperationException("Another chain mutation is in progress.");
