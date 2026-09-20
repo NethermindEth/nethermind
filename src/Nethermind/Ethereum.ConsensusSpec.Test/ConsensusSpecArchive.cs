@@ -40,11 +40,10 @@ public static class ConsensusSpecArchive
 
     /// <summary>
     /// The suite subtrees this driver knows how to run: ssz_static for every fork this repo models a
-    /// container for, and operations/epoch_processing/sanity for the fulu fork only (the only fork
-    /// whose beacon state this repo's process_block/process_epoch pipeline accepts - see
-    /// ForkedStateTransition's remarks). fork_choice is kept to its per-case manifest.yaml only, which
-    /// is enough to name and count every vector as not-implemented without pulling its (potentially
-    /// many) block fixtures.
+    /// container for, and operations/epoch_processing/sanity/fork_choice for the fulu fork only (the
+    /// only fork whose beacon state this repo's process_block/process_epoch pipeline accepts - see
+    /// ForkedStateTransition's remarks). fork_choice needs its full fixture set (steps.yaml plus the
+    /// anchor/block/attestation SSZ files it references), not just manifest.yaml.
     /// </summary>
     private static bool ShouldExtract(string entryPath)
     {
@@ -59,8 +58,7 @@ public static class ConsensusSpecArchive
         return suite switch
         {
             "ssz_static" => true,
-            "operations" or "epoch_processing" or "sanity" => fork == "fulu",
-            "fork_choice" => fork == "fulu" && entryPath.EndsWith("/manifest.yaml", StringComparison.Ordinal),
+            "operations" or "epoch_processing" or "sanity" or "fork_choice" => fork == "fulu",
             _ => false,
         };
     }
