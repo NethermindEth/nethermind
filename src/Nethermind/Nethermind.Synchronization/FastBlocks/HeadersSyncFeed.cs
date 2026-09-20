@@ -1038,6 +1038,8 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             if (headersToAdd.Count == 0) return;
             if (headersToAdd[0].IsGenesis) headersToAdd = headersToAdd.Slice(1);
+            // Genesis is already stored, so a batch holding only it must not be deferred while the tree is busy.
+            if (headersToAdd.Count == 0) return;
 
             _blockTree.BulkInsertHeader(headersToAdd);
         }
