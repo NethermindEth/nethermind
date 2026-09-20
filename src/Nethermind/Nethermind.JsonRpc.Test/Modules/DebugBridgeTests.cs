@@ -35,6 +35,7 @@ using Nethermind.Db;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.State;
 using Nethermind.Logging;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -44,6 +45,72 @@ namespace Nethermind.JsonRpc.Test.Modules;
 public class DebugBridgeTests
 {
     public enum ProcessingState { Running, PausedExecuting, PausedQueued, PausedIdle }
+
+    [Test]
+    public async Task Delete_slice_preserves_historical_sync_progress(
+        [Values] bool throughRpc, [Values] bool force, [Values(1UL, 2UL, 3UL)] ulong startNumber)
+    {
+        await using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        container.Resolve<IBlockProcessingPauseControl>().Pause();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        AddToMainChain(tree, genesis);
+        Block[] pending = new Block[3];
+        Block parent = genesis;
+        for (int i = 0; i < pending.Length; i++)
+        {
+            pending[i] = Build.A.Block.WithParent(parent).TestObject;
+            tree.SuggestBlock(pending[i], BlockTreeSuggestOptions.ForceDontSetAsMain);
+            parent = pending[i];
+        }
+        tree.SyncPivot = (2, pending[1].Hash!);
+        tree.LowestInsertedHeader = pending[0].Header;
+        ISyncPointers pointers = container.Resolve<ISyncPointers>();
+        pointers.LowestInsertedBodyNumber = 1;
+        pointers.LowestInsertedBlockAccessListBlockNumber = 1;
+        IDbProvider db = container.Resolve<IDbProvider>();
+        byte[]? headerProgress = db.MetadataDb.Get(MetadataDbKeys.LowestInsertedFastHeaderHash);
+        byte[]? bodyProgress = db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber);
+        byte[]? accessListProgress = db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(headerProgress, Is.Not.Null);
+            Assert.That(bodyProgress, Is.Not.Null);
+            Assert.That(accessListProgress, Is.Not.Null);
+        }
+        bool refused = startNumber <= 2;
+
+        if (throughRpc)
+        {
+            ResultWrapper<int> result = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create()
+                .debug_deleteChainSlice((long)startNumber, force);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Result.ResultType, Is.EqualTo(refused ? ResultType.Failure : ResultType.Success));
+                if (refused) Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+                else Assert.That(result.Data, Is.EqualTo(1));
+            }
+        }
+        else if (refused)
+            Assert.That(() => tree.DeleteChainSlice(startNumber, force: force), Throws.InvalidOperationException
+                .With.Message.EqualTo("Cannot delete chain levels at or below the sync pivot."));
+        else
+            Assert.That(tree.DeleteChainSlice(startNumber, force: force), Is.EqualTo(1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.Head!.Hash, Is.EqualTo(genesis.Hash));
+            Assert.That(tree.LowestInsertedHeader!.Hash, Is.EqualTo(pending[0].Hash));
+            Assert.That(pointers.LowestInsertedBodyNumber, Is.EqualTo(1));
+            Assert.That(pointers.LowestInsertedBlockAccessListBlockNumber, Is.EqualTo(1));
+            Assert.That(db.MetadataDb.Get(MetadataDbKeys.LowestInsertedFastHeaderHash), Is.EqualTo(headerProgress));
+            Assert.That(db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBodyNumber), Is.EqualTo(bodyProgress));
+            Assert.That(db.MetadataDb.Get(MetadataDbKeys.LowestInsertedBlockAccessListBlockNumber), Is.EqualTo(accessListProgress));
+            Assert.That(tree.FindBlock(pending[0].Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(tree.FindBlock(pending[1].Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(tree.FindBlock(pending[2].Hash!, BlockTreeLookupOptions.None), refused ? Is.Not.Null : Is.Null);
+        }
+    }
 
     [Test]
     public async Task Delete_slice_refuses_missing_new_head_body([Values] bool throughRpc)

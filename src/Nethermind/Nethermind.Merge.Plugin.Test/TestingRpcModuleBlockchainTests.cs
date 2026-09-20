@@ -129,9 +129,10 @@ public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
         ITestingRpcModule module = chain.Container.Resolve<ITestingRpcModule>();
         Block head = chain.BlockTree.Head!;
         ResultWrapper<Hash256>? result = null;
+        PayloadAttributes attributes = NextPayloadAttributes(head.Header);
 
         await WithMaintenance(chain.Container.Resolve<BlockTreeMutationLock>(), maintenance, async () =>
-            result = await module.testing_commitBlockV1(NextPayloadAttributes(head.Header), [], []));
+            result = await module.testing_commitBlockV1(attributes, [], []));
 
         Hash256 suggestedHash = chain.BlockTree.BestSuggestedHeader!.Hash!;
         using (Assert.EnterMultipleScope())
@@ -148,7 +149,8 @@ public class TestingRpcModuleBlockchainTests : BaseEngineModuleTests
                 Assert.That(result.Data, Is.EqualTo(chain.BlockTree.Head.Hash));
         }
 
-        ResultWrapper<Hash256> repeated = await module.testing_commitBlockV1(NextPayloadAttributes(chain.BlockTree.Head!.Header), [], []);
+        ResultWrapper<Hash256> repeated = await module.testing_commitBlockV1(
+            maintenance ? attributes : NextPayloadAttributes(chain.BlockTree.Head!.Header), [], []);
 
         Assert.That(repeated.Result.ResultType, Is.EqualTo(ResultType.Success), repeated.Result.Error);
         using (Assert.EnterMultipleScope())

@@ -1870,7 +1870,7 @@ namespace Nethermind.Blockchain
         /// <param name="endNumber">End level of the slice to delete</param>
         /// <param name="force">Should it force of deletion of valid blocks</param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="startNumber"/> ot <paramref name="endNumber"/> do not satisfy the slice position rules</exception>
-        /// <exception cref="InvalidOperationException">Chain maintenance overlaps the deletion or the replacement head block is unavailable.</exception>
+        /// <exception cref="InvalidOperationException">The range reaches the sync pivot, chain maintenance overlaps the deletion, or the replacement head block is unavailable.</exception>
         public int DeleteChainSlice(in ulong startNumber, ulong? endNumber = null, bool force = false)
         {
             if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation)) throw new InvalidOperationException("Chain mutation contention or overlapping maintenance; retry the request.");
@@ -1907,6 +1907,10 @@ namespace Nethermind.Blockchain
             {
                 throw new ArgumentException("Start number must be strictly greater than 0", nameof(startNumber));
             }
+
+            // Historical feeds retain cached and persisted progress through the pivot; clearing a pointer cannot repair holes.
+            if (startNumber <= SyncPivot.BlockNumber)
+                throw new InvalidOperationException("Cannot delete chain levels at or below the sync pivot.");
 
             Block? newHeadBlock = null;
 
@@ -1964,6 +1968,8 @@ namespace Nethermind.Blockchain
                 BestSuggestedBeaconHeader = BestSuggestedBeaconBody?.Header;
             if (LowestInsertedBeaconHeader?.Number >= startNumber && LowestInsertedBeaconHeader.Number <= endNumber)
                 LowestInsertedBeaconHeader = null;
+            if (LowestInsertedHeader?.Number >= startNumber && LowestInsertedHeader.Number <= endNumber)
+                LowestInsertedHeader = null;
             if (newHeadBlock is not null)
                 UpdateHeadBlock(newHeadBlock);
 

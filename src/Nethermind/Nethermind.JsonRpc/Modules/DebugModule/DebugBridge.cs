@@ -117,6 +117,7 @@ public class DebugBridge : IDebugBridge
     public ResultWrapper<int> DeleteChainSlice(ulong startNumber, bool force = false)
     {
         if (!CanMutateChain()) return NotDrained();
+        if (startNumber > 0 && startNumber <= _blockTree.SyncPivot.BlockNumber) return SyncHistoryUnavailable();
 
         if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation, maintenance: true))
         {
@@ -125,6 +126,7 @@ public class DebugBridge : IDebugBridge
         }
         using BlockTreeMutationLock.Scope mutationScope = mutation;
         if (!CanMutateChain()) return NotDrained();
+        if (startNumber > 0 && startNumber <= _blockTree.SyncPivot.BlockNumber) return SyncHistoryUnavailable();
 
         if (startNumber > 0 && _blockTree.Head?.Number >= startNumber)
         {
@@ -133,6 +135,9 @@ public class DebugBridge : IDebugBridge
                 return ResultWrapper<int>.Fail("The new head body or state is unavailable for block processing.", ErrorCodes.ResourceUnavailable);
         }
         return ResultWrapper<int>.Success(_blockTree.DeleteChainSlice(startNumber, force: force));
+
+        static ResultWrapper<int> SyncHistoryUnavailable() =>
+            ResultWrapper<int>.Fail("Cannot delete chain levels at or below the sync pivot.", ErrorCodes.ResourceUnavailable);
 
         static ResultWrapper<int> NotDrained() =>
             ResultWrapper<int>.Fail("Pause block processing and wait for it to drain before deleting chain levels.", ErrorCodes.ResourceUnavailable);

@@ -2140,6 +2140,26 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Delete_slice_clears_only_deleted_execution_header_pointer([Values(2UL, 3UL, 4UL)] ulong pointerLevel)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(5);
+        BlockTree tree = builder.TestObject;
+        BlockHeader pointer = tree.FindHeader(pointerLevel, BlockTreeLookupOptions.None)!;
+        tree.LowestInsertedHeader = pointer;
+        byte[]? persistedPointer = builder.MetadataDb.Get(MetadataDbKeys.LowestInsertedFastHeaderHash);
+        Assert.That(persistedPointer, Is.Not.Null);
+
+        tree.DeleteChainSlice(3, 3);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.LowestInsertedHeader?.Hash, Is.EqualTo(pointerLevel == 3 ? null : pointer.Hash));
+            Assert.That(builder.MetadataDb.Get(MetadataDbKeys.LowestInsertedFastHeaderHash),
+                Is.EqualTo(pointerLevel == 3 ? new byte[] { 0x80 } : persistedPointer));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Delete_slice_resets_header_only_suggestions([Values] bool beacon)
     {
         BlockTree tree = Build.A.BlockTree().OfChainLength(2).TestObject;
