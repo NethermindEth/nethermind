@@ -85,6 +85,30 @@ public class ReqRespFramingTests
         Assert.ThrowsAsync<Eth2ReqRespException>(() => ReqRespFraming.ReadRequestAsync(stream, maxSize, default));
     }
 
+    // A peer that repeats the stream-identifier frame forever never advances uncompressedTotal (the
+    // loop's only exit condition before the fix), so it would buffer without bound. The 20,000
+    // repeats here supply far more than the compressed-size bound for an 8-byte payload; asserting
+    // the stream position stops well short of the end proves the read aborts on the bound rather
+    // than merely hitting end of stream once the (attacker-controlled) input runs out.
+    [Test]
+    public void Rejects_endless_stream_identifier_frames_before_exhausting_input()
+    {
+        byte[] streamIdentifierFrame = Bytes.FromHexString("0xff060000734e61507059");
+        using MemoryStream stream = new();
+        stream.WriteByte(0x08); // varint(8): declared payload length
+        for (int i = 0; i < 20_000; i++)
+        {
+            stream.Write(streamIdentifierFrame);
+        }
+
+        stream.Position = 0;
+
+        Eth2ReqRespException exception = Assert.ThrowsAsync<Eth2ReqRespException>(
+            () => ReqRespFraming.ReadRequestAsync(stream, maxSize: 8, default));
+        Assert.That(exception.Message, Does.Contain("bound"));
+        Assert.That(stream.Position, Is.LessThan(stream.Length));
+    }
+
     private static Task<ResponseChunk?> ReadChunkAsync(Stream stream) =>
         ReqRespFraming.ReadResponseChunkAsync(stream, ReqRespFraming.ForkContextLength, ReqRespFraming.MaxPayloadSize, default);
 
