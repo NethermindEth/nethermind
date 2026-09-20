@@ -383,7 +383,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 } while (_pending.IsEmpty && !ShouldBuildANewBatch() && HasDependencyToProcess);
 
                 HeadersSyncBatch? batch;
-                bool retryPending = false;
+                bool retryPending;
                 int retainedBatchesProcessed = 0;
                 int maxRetainedBatchesToProcess = MemoryInQueue < _fastHeadersMemoryBudget / 2 ? 2 : 4;
                 while (TryDequeuePending(out batch, out retryPending))
@@ -680,6 +680,12 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void EnqueuePending(HeadersSyncBatch batch)
         {
+            if (CurrentState == SyncFeedState.Finished)
+            {
+                batch.Dispose();
+                return;
+            }
+
             bool hasResponse = batch.Response is not null;
             // Publish the count before the response so queue accounting cannot skip a retained buffer.
             if (hasResponse) Interlocked.Increment(ref _retainedResponseCount);
@@ -687,6 +693,7 @@ namespace Nethermind.Synchronization.FastBlocks
             if (hasResponse) MarkDirty();
         }
 
+        /// <param name="retryPending">Whether the dequeued batch is a queued range awaiting re-download, so dispatching it counts as a retry.</param>
         private bool TryDequeuePending(out HeadersSyncBatch? batch, out bool retryPending)
         {
             retryPending = false;
