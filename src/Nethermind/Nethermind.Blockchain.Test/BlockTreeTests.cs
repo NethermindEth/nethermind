@@ -2096,14 +2096,17 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_delete_a_future_slice()
+    public void Can_delete_a_future_slice([Values] bool insertBeaconHeader)
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
         Block pending = Build.A.Block.WithParent(blockTree.Head!).TestObject;
         blockTree.SuggestBlock(pending);
-        blockTree.DeleteChainSlice(1000, 2000);
+        if (insertBeaconHeader)
+            blockTree.Insert(Build.A.BlockHeader.WithNumber(1500).TestObject, BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        int deleted = blockTree.DeleteChainSlice(1000, 2000);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(deleted, Is.EqualTo(insertBeaconHeader ? 1 : 0));
             Assert.That(blockTree.Head!.Number, Is.EqualTo(2));
             Assert.That(blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(pending.Hash));
             Assert.That(blockTree.BestSuggestedBody!.Hash, Is.EqualTo(pending.Hash));
@@ -2136,11 +2139,44 @@ public class BlockTreeTests
         }
     }
 
+    [Test]
+    public void Delete_slice_resets_header_only_suggestions([Values] bool beacon)
+    {
+        BlockTree tree = Build.A.BlockTree().OfChainLength(2).TestObject;
+        Block pending = Build.A.Block.WithParent(tree.Head!).TestObject;
+        tree.SuggestBlock(pending);
+        BlockHeader header = Build.A.BlockHeader.WithParent(pending.Header).TestObject;
+        tree.Insert(header, beacon ? BlockTreeInsertHeaderOptions.BeaconHeaderInsert : BlockTreeInsertHeaderOptions.None);
+
+        tree.DeleteChainSlice(3, 3);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(tree.BestSuggestedBody!.Hash));
+            Assert.That(tree.BestSuggestedBody.Hash, Is.EqualTo(beacon ? pending.Hash : tree.Head!.Hash));
+            if (beacon)
+            {
+                Assert.That(tree.BestSuggestedBeaconHeader, Is.Null);
+                Assert.That(tree.LowestInsertedBeaconHeader, Is.Null);
+                Assert.That(tree.BestKnownBeaconNumber, Is.EqualTo(3));
+                Assert.That(tree.IsKnownBeaconBlock(3, header.Hash!), Is.False);
+            }
+        }
+    }
+
     public enum SliceHead { CanonicalPredecessor, GenesisFallback, AboveHead }
 
+    private static readonly (SliceHead Head, bool ClearCache)[] SliceHeads =
+    [
+        (SliceHead.CanonicalPredecessor, false), (SliceHead.CanonicalPredecessor, true),
+        (SliceHead.GenesisFallback, false), (SliceHead.GenesisFallback, true),
+        (SliceHead.AboveHead, false)
+    ];
+
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Delete_slice_resets_deleted_suggestions([Values] SliceHead sliceHead, [Values] bool clearBlockCache, [Values(3UL, 4UL)] ulong endNumber)
+    public void Delete_slice_resets_deleted_suggestions([ValueSource(nameof(SliceHeads))] (SliceHead Head, bool ClearCache) scenario, [Values(3UL, 4UL)] ulong endNumber)
     {
+        (SliceHead sliceHead, bool clearBlockCache) = scenario;
         BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(sliceHead == SliceHead.AboveHead ? 2 : 5);
         BlockTree blockTree = builder.TestObject;
         if (sliceHead == SliceHead.AboveHead)
@@ -2161,11 +2197,14 @@ public class BlockTreeTests
             ((IClearableCache)builder.BlockStore).ClearCache();
         }
 
+        Hash256 lastHash = blockTree.BestSuggestedHeader!.Hash!;
         int deleted = blockTree.DeleteChainSlice(2, endNumber);
+        ((IClearableCache)builder.ChainLevelInfoRepository).ClearCache();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(deleted, Is.EqualTo(endNumber - 1));
+            Assert.That(blockTree.IsMainChain(lastHash, throwOnMissingHash: false), Is.False);
             Assert.That(blockTree.Head!.Hash, Is.EqualTo(expectedHead));
             Assert.That(blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(expectedHead));
             Assert.That(blockTree.BestSuggestedBody!.Hash, Is.EqualTo(expectedHead));

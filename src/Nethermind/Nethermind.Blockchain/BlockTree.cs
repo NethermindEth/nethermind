@@ -1926,8 +1926,11 @@ namespace Nethermind.Blockchain
                     ?? throw new InvalidOperationException("The replacement head block is unavailable.");
             }
 
-            using (_chainLevelInfoRepository.StartBatch())
+            using (BatchWrite batch = _chainLevelInfoRepository.StartBatch())
             {
+                if (newHeadBlock is not null)
+                    ClearStaleMarkersAbove(newHeadBlock.Number, batch);
+
                 for (ulong i = endNumber.Value; i >= startNumber; i--)
                 {
                     ChainLevelInfo? chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
@@ -1936,7 +1939,7 @@ namespace Nethermind.Blockchain
                         continue;
                     }
 
-                    _chainLevelInfoRepository.Delete(i);
+                    _chainLevelInfoRepository.Delete(i, batch);
                     deleted++;
 
                     foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
@@ -1951,10 +1954,19 @@ namespace Nethermind.Blockchain
             }
 
             // Suggestions above a deleted level also lose their ancestry.
-            if (newHeadBlock is not null || deleted > 0 && BestSuggestedHeader?.Number >= startNumber)
+            if (newHeadBlock is not null || (deleted > 0 &&
+                (BestSuggestedHeader?.Number >= startNumber || BestSuggestedBody?.Number >= startNumber)))
+            {
                 BestSuggestedHeader = newHeadBlock?.Header ?? Head?.Header;
-            if (newHeadBlock is not null || deleted > 0 && BestSuggestedBody?.Number >= startNumber)
                 BestSuggestedBody = newHeadBlock ?? Head;
+            }
+            if (deleted > 0 && (BestSuggestedBeaconHeader?.Number >= startNumber || BestSuggestedBeaconBody?.Number >= startNumber))
+            {
+                BestSuggestedBeaconHeader = null;
+                BestSuggestedBeaconBody = null;
+            }
+            if (LowestInsertedBeaconHeader?.Number >= startNumber && LowestInsertedBeaconHeader.Number <= endNumber)
+                LowestInsertedBeaconHeader = null;
             if (newHeadBlock is not null)
                 UpdateHeadBlock(newHeadBlock);
 
