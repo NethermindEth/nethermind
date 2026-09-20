@@ -68,4 +68,65 @@ public class ProtoArrayForkChoiceTests
             UnrealizedJustifiedCheckpoint: null,
             UnrealizedFinalizedCheckpoint: null);
     }
+
+    /// <summary>
+    /// The proposer reorg tie-break (<see cref="ForkChoiceRunner.ShouldOverrideForkchoiceUpdate"/>) reads a
+    /// block's parent and unrealized-justified checkpoint straight from the proto-array rather than keeping
+    /// a second copy, so these accessors are the only thing standing between it and silently reading the
+    /// wrong node.
+    /// </summary>
+    [Test]
+    public void GetParentRoot_and_GetUnrealizedJustifiedCheckpoint_read_the_registered_node()
+    {
+        CheckpointRef anchor = new(0, GetRoot(0));
+        CheckpointRef unrealized = new(1, GetRoot(1));
+        ProtoArrayForkChoice forkChoice = new(0, 0, Hash256.Zero, anchor, anchor, ExecutionStatus.Optimistic, Hash256.Zero);
+
+        forkChoice.ProcessBlock(
+            new ProtoBlock(
+                Slot: 1,
+                Root: GetRoot(2),
+                ParentRoot: GetRoot(0),
+                StateRoot: Hash256.Zero,
+                TargetRoot: Hash256.Zero,
+                JustifiedCheckpoint: anchor,
+                FinalizedCheckpoint: anchor,
+                ExecutionStatus: ExecutionStatus.Optimistic,
+                ExecutionBlockHash: GetRoot(2),
+                UnrealizedJustifiedCheckpoint: unrealized,
+                UnrealizedFinalizedCheckpoint: anchor),
+            1, anchor, anchor);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkChoice.GetParentRoot(GetRoot(2)), Is.EqualTo(GetRoot(0)), "child's parent");
+            Assert.That(forkChoice.GetParentRoot(GetRoot(0)), Is.Null, "anchor has no parent");
+            Assert.That(forkChoice.GetParentRoot(GetRoot(9)), Is.Null, "unknown block");
+            Assert.That(forkChoice.GetUnrealizedJustifiedCheckpoint(GetRoot(2)), Is.EqualTo(unrealized), "carried through from ProcessBlock");
+            Assert.That(forkChoice.GetUnrealizedJustifiedCheckpoint(GetRoot(9)), Is.Null, "unknown block");
+        }
+    }
+
+    /// <summary>
+    /// <see cref="ProtoArrayForkChoice.CalculateCommitteeFraction"/> is the only source the proposer reorg's
+    /// head-weak/parent-strong thresholds have for "a percentage of one committee's share of the total
+    /// active balance" - a wrong formula here silently shifts every reorg decision without failing any
+    /// existing proposer-boost test, since boost already exercises it at a single fixed percentage (40).
+    /// </summary>
+    [Test]
+    public void CalculateCommitteeFraction_is_percent_of_one_committees_share()
+    {
+        CheckpointRef anchor = new(0, GetRoot(0));
+        ProtoArrayForkChoice forkChoice = new(
+            0, 0, Hash256.Zero, anchor, anchor, ExecutionStatus.Optimistic, Hash256.Zero,
+            slotsPerEpoch: 32);
+        JustifiedBalances balances = JustifiedBalances.FromEffectiveBalances([3200, 3200]);
+
+        // total = 6400; one committee's share = 6400 / 32 = 200; 20% of that = 40, 160% of that = 320.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkChoice.CalculateCommitteeFraction(balances, ForkChoiceRunner.ReorgHeadWeightThresholdPercent), Is.EqualTo(40ul));
+            Assert.That(forkChoice.CalculateCommitteeFraction(balances, ForkChoiceRunner.ReorgParentWeightThresholdPercent), Is.EqualTo(320ul));
+        }
+    }
 }
