@@ -85,7 +85,7 @@ public class PrewarmerScopeProvider(
         return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, storageReadCapture, metrics, baseBlock?.StateRoot);
     }
 
-    private sealed class ScopeWrapper(
+    internal sealed class ScopeWrapper(
         IWorldStateScopeProvider.IScope baseScope,
         PreBlockCaches preBlockCaches,
         ILogManager logManager,
@@ -96,6 +96,10 @@ public class PrewarmerScopeProvider(
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         private readonly PreBlockCaches preBlockCaches = preBlockCaches;
+
+        /// <summary>The block-processing consumer, whose per-transaction commits feed lookahead re-warming.</summary>
+        internal bool IsConsumer => !isPrewarmer;
+        internal PreBlockCaches Caches => preBlockCaches;
         private readonly SeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
         private readonly SeqlockCache<StorageCell, UInt256> storageCache = preBlockCaches.StorageCache;
         private readonly bool isPrewarmer = isPrewarmer;
@@ -153,18 +157,15 @@ public class PrewarmerScopeProvider(
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
-            IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = baseScope.StartWriteBatch(estimatedAccountNum);
-            // Only the consumer commits state; its per-transaction writes feed the lookahead re-warming.
-            if (!isPrewarmer) writeBatch = preBlockCaches.WrapCommittedWrites(writeBatch);
             if (!_measureMetric)
             {
-                return writeBatch;
+                return baseScope.StartWriteBatch(estimatedAccountNum);
             }
 
             _writeBatchTime = Stopwatch.GetTimestamp();
             long sw = Stopwatch.GetTimestamp();
             return new WriteBatchLifetimeMeasurer(
-                writeBatch,
+                baseScope.StartWriteBatch(estimatedAccountNum),
                 _metricObserver,
                 sw,
                 isPrewarmer);

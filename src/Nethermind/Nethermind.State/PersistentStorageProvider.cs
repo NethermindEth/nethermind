@@ -51,6 +51,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     // The low bit belongs to StorageChangeTrace.IsInitialValue; zero means never captured.
     private ulong _originalsRound = 2;
 
+    /// <summary>Copies the pending transaction's slot writes into <paramref name="writes"/> before they are committed.</summary>
+    internal void CollectCommitted(PreBlockCaches.CommittedWriteSet writes)
+    {
+        foreach (ref readonly Change change in CollectionsMarshal.AsSpan(_changes))
+        {
+            if (change.ChangeType == StorageChangeType.Update) writes.Slots.Add((change.StorageCell, change.Value));
+        }
+    }
+
     private void EndOriginalsRound()
     {
         _lastCapturedCell = default;

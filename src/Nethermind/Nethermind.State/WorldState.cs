@@ -379,6 +379,16 @@ namespace Nethermind.State
         public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
         {
             GuardInScope();
+            // Per-transaction commits keep the block in the providers; hand their journals to the prewarmer
+            // before they are folded in, so speculation can follow this block's committed state.
+            if (!commitRoots && _currentScope is PrewarmerScopeProvider.ScopeWrapper { IsConsumer: true } consumer)
+            {
+                PreBlockCaches.CommittedWriteSet writes = consumer.Caches.BeginWriteSet();
+                _stateProvider.CollectCommitted(writes);
+                _persistentStorageProvider.CollectCommitted(writes);
+                consumer.Caches.Publish(writes);
+            }
+
             _transientStorageProvider.Commit(tracer);
             _persistentStorageProvider.Commit(tracer);
             _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);

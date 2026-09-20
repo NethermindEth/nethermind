@@ -1026,6 +1026,17 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         }
     }
 
+    /// <summary>Copies the pending transaction's account writes into <paramref name="writes"/> before they are committed.</summary>
+    internal void CollectCommitted(PreBlockCaches.CommittedWriteSet writes)
+    {
+        foreach (ref readonly Change change in CollectionsMarshal.AsSpan(_changes))
+        {
+            // Reads are journaled as JustCache; every other kind changed the account (a delete leaves it null).
+            if (change.ChangeType is ChangeType.Null or ChangeType.JustCache) continue;
+            writes.Accounts.Add((change.Address, change.Account));
+        }
+    }
+
     public void Reset(bool resetBlockChanges = true)
     {
         if (_logger.IsTrace) Trace();

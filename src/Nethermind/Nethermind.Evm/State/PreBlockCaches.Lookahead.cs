@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Collections.Pooled;
@@ -20,13 +19,15 @@ namespace Nethermind.Evm.State;
 /// <remarks>
 /// Speculative warming runs every transaction against the parent state, so a transaction whose reads depend on
 /// what an earlier one in the same block wrote warms the wrong keys. Re-running it against the committed values
-/// once such a write lands reads what the main thread is about to read.
+/// once such a write lands reads what the main thread is about to read. The main thread only copies its journal
+/// into a write set at commit; the prewarmer applies it to the overlay off the processing thread.
 /// </remarks>
 public partial class PreBlockCaches
 {
     private readonly ConcurrentDictionary<AddressAsKey, Account?> _committedAccounts = new();
     private readonly ConcurrentDictionary<StorageCell, UInt256> _committedSlots = new();
     private readonly ConcurrentQueue<CommittedWriteSet> _committedWriteSets = new();
+    private readonly SemaphoreSlim _commitSignal = new(0);
     private int _mainTxIndex = -1;
 
     [ThreadStatic]
@@ -43,12 +44,34 @@ public partial class PreBlockCaches
 
     public bool TryGetCommitted(in StorageCell cell, out UInt256 value) => _committedSlots.TryGetValue(cell, out value);
 
+    /// <summary>Starts the write set of the transaction the main thread is committing.</summary>
+    public CommittedWriteSet BeginWriteSet() => new(MainTxIndex);
+
+    /// <summary>Queues a committed transaction's write set for the prewarmer; an empty one is dropped.</summary>
+    public void Publish(CommittedWriteSet writes)
+    {
+        if (writes.IsEmpty)
+        {
+            writes.Dispose();
+            return;
+        }
+
+        _committedWriteSets.Enqueue(writes);
+        _commitSignal.Release();
+    }
+
     /// <summary>Takes the next committed transaction's write set, in commit order; the caller disposes it.</summary>
     public bool TryDequeueCommitted([MaybeNullWhen(false)] out CommittedWriteSet writeSet) => _committedWriteSets.TryDequeue(out writeSet);
 
-    /// <summary>Wraps the consumer scope's write batch so each committed transaction's writes reach the overlay and the queue.</summary>
-    public IWorldStateScopeProvider.IWorldStateWriteBatch WrapCommittedWrites(IWorldStateScopeProvider.IWorldStateWriteBatch inner) =>
-        new CommittedWriteBatch(this, inner);
+    /// <summary>Blocks until a write set is published, the timeout passes, or the token is cancelled.</summary>
+    public bool WaitForCommit(TimeSpan timeout, CancellationToken token) => _commitSignal.Wait(timeout, token);
+
+    /// <summary>Makes a committed write set visible to populator scopes.</summary>
+    public void ApplyCommitted(CommittedWriteSet writes)
+    {
+        foreach ((AddressAsKey address, Account? account) in writes.Accounts) _committedAccounts[address] = account;
+        foreach ((StorageCell cell, UInt256 value) in writes.Slots) _committedSlots[cell] = value;
+    }
 
     /// <summary>Starts recording the keys the current thread's populator scope reads until the set is disposed.</summary>
     /// <exception cref="InvalidOperationException">A read set is already being recorded on this thread.</exception>
@@ -80,23 +103,14 @@ public partial class PreBlockCaches
         MainTxIndex = -1;
     }
 
-    /// <summary>The keys one committed transaction wrote.</summary>
-    /// <remarks>Storage batches of one commit run on the parallel storage-root workers, so they add under <see cref="Merge"/>.</remarks>
+    /// <summary>The keys and values one committed transaction wrote.</summary>
     public sealed class CommittedWriteSet(int txIndex) : IDisposable
     {
         public int TxIndex { get; } = txIndex;
-        public PooledList<AddressAsKey> Accounts { get; } = [];
-        public PooledList<StorageCell> Slots { get; } = [];
+        public PooledList<(AddressAsKey Address, Account? Account)> Accounts { get; } = [];
+        public PooledList<(StorageCell Cell, UInt256 Value)> Slots { get; } = [];
 
         public bool IsEmpty => Accounts.Count == 0 && Slots.Count == 0;
-
-        public void Merge(PooledList<StorageCell> slots)
-        {
-            lock (Slots)
-            {
-                Slots.AddRange(slots);
-            }
-        }
 
         public void Dispose()
         {
@@ -131,77 +145,6 @@ public partial class PreBlockCaches
             if (ReferenceEquals(_currentReadSet, this)) _currentReadSet = null;
             Accounts.Dispose();
             Slots.Dispose();
-        }
-    }
-
-    private sealed class CommittedWriteBatch(PreBlockCaches caches, IWorldStateScopeProvider.IWorldStateWriteBatch inner)
-        : IWorldStateScopeProvider.IWorldStateWriteBatch
-    {
-        private readonly CommittedWriteSet _writes = new(caches.MainTxIndex);
-
-        public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
-        {
-            add => inner.OnAccountUpdated += value;
-            remove => inner.OnAccountUpdated -= value;
-        }
-
-        public bool AcceptsStorageWrites => inner.AcceptsStorageWrites;
-
-        public void Set(Address key, Account? account)
-        {
-            inner.Set(key, account);
-            AddressAsKey address = key;
-            caches._committedAccounts[address] = account;
-            _writes.Accounts.Add(address);
-        }
-
-        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>
-            new CommittedStorageWriteBatch(caches, inner.CreateStorageWriteBatch(key, estimatedEntries), key, _writes);
-
-        public void Dispose()
-        {
-            inner.Dispose();
-            if (_writes.IsEmpty)
-            {
-                _writes.Dispose();
-                return;
-            }
-
-            caches._committedWriteSets.Enqueue(_writes);
-        }
-    }
-
-    private sealed class CommittedStorageWriteBatch(
-        PreBlockCaches caches,
-        IWorldStateScopeProvider.IStorageWriteBatch inner,
-        Address address,
-        CommittedWriteSet writes) : IWorldStateScopeProvider.IStorageWriteBatch
-    {
-        private readonly PooledList<StorageCell> _slots = [];
-
-        public void Set(in UInt256 index, in UInt256 value)
-        {
-            inner.Set(in index, in value);
-            StorageCell cell = new(address, in index);
-            caches._committedSlots[cell] = value;
-            _slots.Add(cell);
-        }
-
-        public void Clear()
-        {
-            inner.Clear();
-            // A destroyed contract's committed slots must not serve speculation; the scan is rare (self-destruct only).
-            foreach (KeyValuePair<StorageCell, UInt256> slot in caches._committedSlots)
-            {
-                if (slot.Key.Address == address) caches._committedSlots.TryRemove(slot.Key, out _);
-            }
-        }
-
-        public void Dispose()
-        {
-            inner.Dispose();
-            if (_slots.Count > 0) writes.Merge(_slots);
-            _slots.Dispose();
         }
     }
 }

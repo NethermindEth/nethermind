@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Blockchain;
@@ -57,8 +58,8 @@ public partial class BlockCachePreWarmer
         public void OnCommitted(PreBlockCaches.CommittedWriteSet writes)
         {
             int minIndex = writes.TxIndex + MinLead;
-            foreach (AddressAsKey address in writes.Accounts) MarkReaders(_accountReaders, address, minIndex);
-            foreach (StorageCell cell in writes.Slots) MarkReaders(_slotReaders, cell, minIndex);
+            foreach ((AddressAsKey address, Account? _) in writes.Accounts) MarkReaders(_accountReaders, address, minIndex);
+            foreach ((StorageCell cell, UInt256 _) in writes.Slots) MarkReaders(_slotReaders, cell, minIndex);
         }
 
         /// <summary>Moves the pending transactions the main thread has not reached into <paramref name="batch"/>.</summary>
@@ -121,6 +122,7 @@ public partial class BlockCachePreWarmer
 
     /// <summary>Commit silence after which the re-warm loop assumes the block is not being executed and stops.</summary>
     private static readonly TimeSpan RewarmIdleTimeout = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan CommitPoll = TimeSpan.FromMilliseconds(1);
 
     private void RewarmOnCommits(BlockState blockState, ParallelOptions parallelOptions)
     {
@@ -128,7 +130,6 @@ public partial class BlockCachePreWarmer
         CancellationToken token = parallelOptions.CancellationToken;
         int lastIndex = blockState.Block.Transactions.Length - 1;
         using ArrayPoolList<int> batch = new(16);
-        SpinWait spinner = default;
         long lastProgress = Stopwatch.GetTimestamp();
         // The consumer scope closing means the block is done; a long silence means no main thread is executing it.
         while (!token.IsCancellationRequested && _preBlockCaches!.ConsumerScopeOpen && MainThreadTxIndex < lastIndex)
@@ -136,7 +137,12 @@ public partial class BlockCachePreWarmer
             bool progressed = false;
             while (_preBlockCaches!.TryDequeueCommitted(out PreBlockCaches.CommittedWriteSet? writes))
             {
-                using (writes) lookahead.OnCommitted(writes);
+                using (writes)
+                {
+                    _preBlockCaches.ApplyCommitted(writes);
+                    lookahead.OnCommitted(writes);
+                }
+
                 progressed = true;
             }
 
@@ -155,7 +161,7 @@ public partial class BlockCachePreWarmer
             else
             {
                 if (Stopwatch.GetElapsedTime(lastProgress) > RewarmIdleTimeout) break;
-                spinner.SpinOnce(sleep1Threshold: -1);
+                _preBlockCaches.WaitForCommit(CommitPoll, token);
             }
         }
 

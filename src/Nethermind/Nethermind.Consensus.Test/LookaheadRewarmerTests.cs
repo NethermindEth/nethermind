@@ -3,6 +3,8 @@
 
 #nullable enable
 
+using System;
+using System.Threading;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -23,7 +25,7 @@ public class LookaheadRewarmerTests
     private static PreBlockCaches.CommittedWriteSet WriteSet(int txIndex, params StorageCell[] slots)
     {
         PreBlockCaches.CommittedWriteSet writes = new(txIndex);
-        foreach (StorageCell slot in slots) writes.Slots.Add(slot);
+        foreach (StorageCell slot in slots) writes.Slots.Add((slot, UInt256.One));
         return writes;
     }
 
@@ -99,78 +101,42 @@ public class LookaheadRewarmerTests
     }
 
     [Test]
-    public void Consumer_write_batch_feeds_the_committed_overlay_and_the_queue()
+    public void Published_write_set_is_signalled_stamped_and_applied_to_the_overlay()
     {
         PreBlockCaches caches = CreateCaches();
         caches.MainTxIndex = 3;
-        RecordingWriteBatch inner = new();
+        Account account = TestItem.GenerateRandomAccount();
 
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = caches.WrapCommittedWrites(inner))
-        {
-            batch.Set(TestItem.AddressA, TestItem.GenerateRandomAccount());
-            using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressA, 1);
-            storage.Set(1, 42);
-        }
+        PreBlockCaches.CommittedWriteSet writes = caches.BeginWriteSet();
+        writes.Accounts.Add((TestItem.AddressA, account));
+        writes.Slots.Add((SlotA, 42));
+        caches.Publish(writes);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(inner.Accounts, Is.EqualTo(1), "writes still reach the wrapped batch");
-            Assert.That(inner.Slots, Is.EqualTo(1));
+            Assert.That(caches.WaitForCommit(TimeSpan.FromSeconds(1), CancellationToken.None), Is.True);
+            Assert.That(caches.TryGetCommitted(in SlotA, out _), Is.False, "the overlay is filled by the consumer of the queue, not by the publisher");
+            Assert.That(caches.TryDequeueCommitted(out PreBlockCaches.CommittedWriteSet? dequeued), Is.True);
+            Assert.That(dequeued!.TxIndex, Is.EqualTo(3));
+            caches.ApplyCommitted(dequeued);
+            dequeued.Dispose();
             Assert.That(caches.TryGetCommitted(in SlotA, out UInt256 value) && value == 42, Is.True);
-            Assert.That(caches.TryGetCommitted(new AddressAsKey(TestItem.AddressA), out Account? account) && account is not null, Is.True);
-            Assert.That(caches.TryDequeueCommitted(out PreBlockCaches.CommittedWriteSet? writes), Is.True);
-            Assert.That(writes!.TxIndex, Is.EqualTo(3));
-            Assert.That(writes.Slots.Count, Is.EqualTo(1));
-            Assert.That(writes.Accounts.Count, Is.EqualTo(1));
-            writes.Dispose();
+            Assert.That(caches.TryGetCommitted(new AddressAsKey(TestItem.AddressA), out Account? committed) && ReferenceEquals(committed, account), Is.True);
         }
 
         caches.BeginConsumerScope();
         Assert.That(caches.TryGetCommitted(in SlotA, out _), Is.False, "a new block starts from an empty overlay");
         caches.EndConsumerScope();
+        Assert.That(caches.WaitForCommit(TimeSpan.Zero, CancellationToken.None), Is.False, "an empty write set is not published");
     }
 
     [Test]
-    public void Concurrent_storage_batches_of_one_commit_all_reach_the_write_set()
+    public void Empty_write_set_is_dropped_without_a_signal()
     {
         PreBlockCaches caches = CreateCaches();
-        RecordingWriteBatch inner = new();
-        const int Contracts = 32;
-        const int SlotsPerContract = 64;
+        caches.Publish(caches.BeginWriteSet());
 
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = caches.WrapCommittedWrites(inner))
-        {
-            // Storage batches of one commit are written by the parallel storage-root workers.
-            System.Threading.Tasks.Parallel.For(0, Contracts, contract =>
-            {
-                using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(Address.FromNumber((UInt256)(contract + 1)), SlotsPerContract);
-                for (int slot = 0; slot < SlotsPerContract; slot++) storage.Set((UInt256)slot, (UInt256)(slot + 1));
-            });
-        }
-
-        Assert.That(caches.TryDequeueCommitted(out PreBlockCaches.CommittedWriteSet? writes), Is.True);
-        Assert.That(writes!.Slots.Count, Is.EqualTo(Contracts * SlotsPerContract));
-        writes.Dispose();
-    }
-
-    private sealed class RecordingWriteBatch : IWorldStateScopeProvider.IWorldStateWriteBatch
-    {
-        public int Accounts;
-        public int Slots;
-
-        public event System.EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated { add { } remove { } }
-
-        public void Set(Address key, Account? account) => Accounts++;
-
-        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) => new RecordingStorageWriteBatch(this);
-
-        public void Dispose() { }
-
-        private sealed class RecordingStorageWriteBatch(RecordingWriteBatch owner) : IWorldStateScopeProvider.IStorageWriteBatch
-        {
-            public void Set(in UInt256 index, in UInt256 value) => owner.Slots++;
-            public void Clear() { }
-            public void Dispose() { }
-        }
+        Assert.That(caches.WaitForCommit(TimeSpan.Zero, CancellationToken.None), Is.False);
+        Assert.That(caches.TryDequeueCommitted(out _), Is.False);
     }
 }
