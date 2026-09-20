@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 
@@ -34,6 +35,8 @@ public interface IBeaconSyncPeer
     Task<IReadOnlyList<SignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token);
 
     Task<IReadOnlyList<SignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token);
+
+    Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token);
 
     /// <summary>Records a protocol violation or failure with a closed-cardinality reason; repeated
     /// reports get the peer pruned. Prefer this over the free-text overload below.</summary>

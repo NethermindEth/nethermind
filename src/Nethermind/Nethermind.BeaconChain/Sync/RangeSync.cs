@@ -6,10 +6,14 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.P2P.Discovery;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.SszRest;
 using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.BeaconChain.Sync;
@@ -19,6 +23,7 @@ namespace Nethermind.BeaconChain.Sync;
 /// <c>beacon_blocks_by_range</c>, yielding parent-linked blocks in import order.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Peers are taken round-robin from the pool and blocks are imported sequentially by the caller.
 /// Every batch is verified by root linkage before anything is yielded: the first block's
 /// <c>parent_root</c> must be the hash tree root of the last yielded block (initially the anchor),
@@ -26,8 +31,17 @@ namespace Nethermind.BeaconChain.Sync;
 /// offending peer penalized, and the range re-requested from another peer — starting again from the
 /// slot after the last yielded block, which also recovers from a peer that falsely returned an
 /// empty range. Repeated failures halve the batch size down to a single slot.
+/// </para>
+/// <para>
+/// A verified batch containing blob-carrying blocks additionally requests this node's sampled data
+/// column sidecars for the same slot window from the same peer before yielding, so the gossip-fed
+/// <see cref="DataAvailability.CustodySamplingAvailability"/> gate has something to check against for
+/// a range-synced block. A column-fetch failure penalizes the peer but does not fail the batch: a
+/// block whose columns are still missing simply fails the importer's availability gate and is
+/// retried next round, since the sync tip only advances past a successfully imported block.
+/// </para>
 /// </remarks>
-public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager)
+public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, DataColumnSidecarPool sidecarPool, BeaconChainSpec spec, BeaconDiscovery? discovery = null)
 {
     /// <summary>
     /// Half an epoch per request. Larger batches trip peers' response rate limits, time out, and
@@ -39,6 +53,9 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager)
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(1);
 
     private readonly ILogger _logger = logManager.GetClassLogger<RangeSync>();
+
+    /// <summary>Resolved lazily and cached internally, the same pattern <see cref="BlockImporterFactory"/> uses: discovery has not started when this object is constructed.</summary>
+    private readonly INodeColumnCustodySource _custodySource = new DiscoveryNodeCustodySource(discovery);
 
     /// <summary>
     /// Streams verified-order blocks from <paramref name="anchorSlot"/> (exclusive) up to the target
@@ -91,6 +108,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager)
 
             consecutiveFailures = 0;
             batchSize = DefaultBatchSize;
+            await FetchColumnsForBatchAsync(peer, batch.Value.Blocks, token);
             foreach (SignedBeaconBlock block in batch.Value.Blocks)
             {
                 yield return block;
@@ -140,6 +158,77 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager)
         }
 
         return (batch, expectedParent);
+    }
+
+    /// <summary>
+    /// Requests and verifies this node's sampled data column sidecars for every blob-carrying block in
+    /// <paramref name="blocks"/> from <paramref name="peer"/>, adding verified sidecars to
+    /// <see cref="sidecarPool"/> so <see cref="DataAvailability.CustodySamplingAvailability"/> can see
+    /// them when the importer checks a range-synced block. Never fails the batch: a request failure or
+    /// an unverifiable sidecar only penalizes the peer, mirroring <see cref="FetchAndVerifyBatchAsync"/>'s
+    /// parent-linkage handling.
+    /// </summary>
+    private async Task FetchColumnsForBatchAsync(IBeaconSyncPeer peer, IReadOnlyList<SignedBeaconBlock> blocks, CancellationToken token)
+    {
+        Dictionary<Hash256, BeaconBlock> blobBlocksByRoot = [];
+        foreach (SignedBeaconBlock block in blocks)
+        {
+            SszKzgCommitment[]? commitments = block.Message!.Body?.BlobKzgCommitments;
+            if (commitments is { Length: > 0 })
+            {
+                blobBlocksByRoot[SszRoots.HashTreeRoot(block.Message)] = block.Message;
+            }
+        }
+
+        if (blobBlocksByRoot.Count == 0)
+        {
+            return;
+        }
+
+        // Discovery has not resolved this node's identity yet; nothing to demand columns as.
+        if (_custodySource.Current is not { } custody)
+        {
+            return;
+        }
+
+        ulong[] sampledColumns = new ulong[custody.SampledColumns.Count];
+        for (int i = 0; i < sampledColumns.Length; i++)
+        {
+            sampledColumns[i] = custody.SampledColumns[i];
+        }
+
+        ulong startSlot = blocks[0].Message!.Slot;
+        ulong count = blocks[^1].Message!.Slot - startSlot + 1;
+
+        IReadOnlyList<DataColumnSidecar> sidecars;
+        try
+        {
+            sidecars = await peer.RequestDataColumnSidecarsByRangeAsync(startSlot, count, sampledColumns, token);
+        }
+        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+        {
+            peer.ReportFailure(ClassifyRequestFailure(e), $"Data-column-sidecars-by-range [{startSlot}, {startSlot + count}) failed: {e.Message}");
+            return;
+        }
+
+        foreach (DataColumnSidecar sidecar in sidecars)
+        {
+            if (sidecar.SignedBlockHeader?.Message is not { } header)
+            {
+                peer.ReportFailure(PeerFailureReason.ProtocolViolation, "Data column sidecar has no block header");
+                continue;
+            }
+
+            Hash256 sidecarBlockRoot = SszRoots.HashTreeRoot(header);
+            if (!blobBlocksByRoot.TryGetValue(sidecarBlockRoot, out BeaconBlock? block)
+                || !DataColumnAvailability.IsVerifiedColumnOf(sidecar, sidecarBlockRoot, block.Body!.BlobKzgCommitments!, spec))
+            {
+                peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Data column sidecar at slot {header.Slot} column {sidecar.Index} failed verification");
+                continue;
+            }
+
+            sidecarPool.Add(sidecarBlockRoot, header.Slot, sidecar);
+        }
     }
 
     /// <summary>
