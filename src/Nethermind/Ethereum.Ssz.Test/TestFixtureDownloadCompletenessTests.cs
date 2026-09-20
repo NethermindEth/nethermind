@@ -138,6 +138,73 @@ public class TestFixtureDownloadCompletenessTests
         }
     }
 
+    // A cache extracted under a narrower filter is populated, so the content check alone cannot tell
+    // it apart from a current one; only the tag written into the marker can.
+    [Test]
+    public void A_marker_written_for_a_different_extraction_tag_is_treated_as_absent_and_the_archive_is_downloaded_again()
+    {
+        byte[] archive = BuildArchive();
+        using StubArchiveServer server = new(archive, contentLength: archive.Length);
+        string suite = "StaleTagCacheTest";
+        string target = CachePathFor(suite);
+
+        try
+        {
+            string staleEntry = Path.Combine(target, "tests", "general", "phase0", "ssz_generic", "stale.data");
+            Directory.CreateDirectory(Path.GetDirectoryName(staleEntry)!);
+            File.WriteAllBytes(staleEntry, [9]);
+            File.WriteAllText(Path.Combine(target, ".completed"), "ssz_static=*");
+
+            TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz", _ => true, "ssz_static=*;operations=fulu");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(server.RequestCount, Is.EqualTo(1),
+                    "a marker for a narrower filter must not short-circuit the download: the subtrees the wider filter keeps are missing");
+                Assert.That(File.Exists(staleEntry), Is.False, "the stale extraction must be replaced, not merged into");
+                Assert.That(File.ReadAllText(Path.Combine(target, ".completed")), Is.EqualTo("ssz_static=*;operations=fulu"),
+                    "the marker must record the filter that produced the extraction");
+            });
+        }
+        finally
+        {
+            Cleanup(target);
+        }
+    }
+
+    // Untagged callers (extract everything) keep the marker's historical content, the version, and a
+    // cache they wrote before tags existed must stay valid for them; a tagged caller over the same
+    // marker must not, since the version says nothing about which subtrees were kept.
+    [TestCase(null, 0)]
+    [TestCase("ssz_static=*", 1)]
+    public void A_marker_holding_the_version_is_honored_only_by_untagged_callers(string? extractionTag, int expectedDownloads)
+    {
+        byte[] archive = BuildArchive();
+        using StubArchiveServer server = new(archive, contentLength: archive.Length);
+        string suite = extractionTag is null ? "VersionMarkerUntaggedTest" : "VersionMarkerTaggedTest";
+        string target = CachePathFor(suite);
+
+        try
+        {
+            string entryOnDisk = Path.Combine(target, EntryPath.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(entryOnDisk)!);
+            File.WriteAllBytes(entryOnDisk, EntryContent);
+            File.WriteAllText(Path.Combine(target, ".completed"), "v0");
+
+            TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz", null, extractionTag);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(server.RequestCount, Is.EqualTo(expectedDownloads));
+                Assert.That(File.ReadAllText(Path.Combine(target, ".completed")), Is.EqualTo(extractionTag ?? "v0"));
+            });
+        }
+        finally
+        {
+            Cleanup(target);
+        }
+    }
+
     // Selective: the filter rejects every entry. Full: the tar carries only a directory entry. Both
     // leave the target with nothing a suite could enumerate, so both must refuse to mark it complete.
     [TestCase(true)]
