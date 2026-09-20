@@ -9,7 +9,6 @@ using NSubstitute;
 using Nethermind.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using System;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core.Crypto;
