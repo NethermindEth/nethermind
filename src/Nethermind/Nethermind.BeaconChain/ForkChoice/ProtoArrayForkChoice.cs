@@ -154,6 +154,20 @@ public sealed class ProtoArrayForkChoice
     public ulong? GetBlockSlot(Hash256 blockRoot) =>
         _protoArray.Indices.TryGetValue(blockRoot, out int index) ? _protoArray.Nodes[index].Slot : null;
 
+    /// <summary>The parent of <paramref name="blockRoot"/>, or <c>null</c> when the block is unknown or is a tree root.</summary>
+    public Hash256? GetParentRoot(Hash256 blockRoot) =>
+        _protoArray.Indices.TryGetValue(blockRoot, out int index) && _protoArray.Nodes[index].Parent is int parentIndex
+            ? _protoArray.Nodes[parentIndex].Root
+            : null;
+
+    /// <summary>The unrealized justified checkpoint the block carried when registered, or <c>null</c> when the block is unknown.</summary>
+    public CheckpointRef? GetUnrealizedJustifiedCheckpoint(Hash256 blockRoot) =>
+        _protoArray.Indices.TryGetValue(blockRoot, out int index) ? _protoArray.Nodes[index].UnrealizedJustifiedCheckpoint : null;
+
+    /// <inheritdoc cref="ProtoArray.CalculateCommitteeFraction"/>
+    public ulong CalculateCommitteeFraction(JustifiedBalances justifiedBalances, ulong percent) =>
+        _protoArray.CalculateCommitteeFraction(justifiedBalances, percent);
+
     /// <summary>
     /// Returns the ancestor of <paramref name="blockRoot"/> at or before <paramref name="slot"/>
     /// (the spec's <c>get_ancestor</c>), or <c>null</c> when the block is unknown.
