@@ -316,6 +316,28 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
+    /// Withdrawals are credited at block end, so their recipients are warmed in the address warmer's
+    /// immediate phase rather than in a pass that only starts once every transaction has been warmed.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_WarmsWithdrawalRecipients()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+
+        Block block = Build.A.Block
+            .WithTransactions(BuildReactiveWarmBlock().Transactions)
+            .WithWithdrawals(Build.A.Withdrawal.WithRecipient(TestItem.AddressE).WithAmount(1).TestObject)
+            .WithGasLimit(30_000_000)
+            .TestObject;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressE, out _), Is.True,
+            "withdrawal recipients are warmed for the main thread");
+    }
+
+    /// <summary>
     /// The system access lists are registered through an <c>as IHasAccessList</c> cast, so a decorator over
     /// <see cref="IExecutionRequestsProcessor"/> that stops implementing it would drop the hint with no error.
     /// </summary>
