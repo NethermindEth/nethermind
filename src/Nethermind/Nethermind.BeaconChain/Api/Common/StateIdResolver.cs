@@ -48,7 +48,7 @@ internal static class StateIdResolver
             return false;
         }
 
-        BeaconStateFulu.Decode(raw.Ssz, out BeaconStateFulu state);
+        BeaconStateFulu state = BeaconStateCodec.Decode(raw.Ssz, ctx.Spec);
         resolved = new ResolvedState(raw.Root, state);
         return true;
     }
