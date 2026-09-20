@@ -242,7 +242,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (admitted.Count == 0) return;
 
             int cellBudget = MaxDiscoveredCells - allDiscoveredCells.Count;
-            DiscoveryRound roundState = new(block, parent, spec, cellBudget, new StrongBox<int>(cellBudget), roundCells, roundCellsLock, nextRoundCandidates);
+            StrongBox<int> pendingSenders = new(0);
+            DiscoveryRound roundState = new(block, parent, spec, cellBudget, new StrongBox<int>(cellBudget), roundCells, roundCellsLock, nextRoundCandidates, pendingSenders);
             ParallelOptions parallelOptions = new()
             {
                 MaxDegreeOfParallelism = Math.Min(_concurrencyLevel, admitted.Count),
@@ -268,9 +269,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 if (!WarmDiscoveredStorage(parent, roundCells, cancellationToken)) return;
                 if (allDiscoveredCells.Count >= MaxDiscoveredCells) return;
             }
-            else if (deferred.Count == 0 || nextRoundCandidates.Count == admitted.Count)
+            else if (pendingSenders.Value == 0 && (deferred.Count == 0 || nextRoundCandidates.Count == admitted.Count))
             {
                 // No progress and no budget freed for the deferred — the next round would repeat this one.
+                // A candidate still waiting on its sender is the exception: the next round may find it there.
                 return;
             }
 
@@ -321,7 +323,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         StrongBox<int> remainingCaptureCells,
         PooledSet<StorageCell> cells,
         Lock cellsLock,
-        List<(int Index, Transaction Tx)> nextRoundCandidates)
+        List<(int Index, Transaction Tx)> nextRoundCandidates,
+        StrongBox<int> pendingSenders)
     {
         public readonly Block Block = block;
         public readonly BlockHeader Parent = parent;
@@ -331,6 +334,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         public readonly PooledSet<StorageCell> Cells = cells;
         public readonly Lock CellsLock = cellsLock;
         public readonly List<(int Index, Transaction Tx)> NextRoundCandidates = nextRoundCandidates;
+        public readonly StrongBox<int> PendingSenders = pendingSenders;
     }
 
     private void DiscoverTransactionStorageReads((int Index, Transaction Tx) candidate, DiscoveryRound round)
@@ -339,8 +343,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         if (MainThreadTxIndex >= candidate.Index) return;
 
         Transaction tx = candidate.Tx;
-        // Still not recovered: a later round picks it up.
-        if (tx.SenderAddress is null) return;
+        if (tx.SenderAddress is null)
+        {
+            // Not recovered yet: carry the candidate into the next round rather than dropping it for the block.
+            using (round.CellsLock.EnterScope())
+            {
+                round.NextRoundCandidates.Add(candidate);
+                round.PendingSenders.Value++;
+            }
+
+            return;
+        }
 
         IReadOnlyTxProcessorSource env = _envPool.Get();
         try
@@ -741,7 +754,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return false;
     }
 
-    /// <returns><c>false</c> when the pass ended early, so the caller must not run another.</returns>
     /// <summary>Sleeps a millisecond unless the block finishes first; <c>true</c> once it has.</summary>
     /// <remarks>
     /// BranchProcessor disposes the token source before it joins the prewarm task, so a disposed source is
@@ -759,6 +771,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         }
     }
 
+    /// <returns><c>false</c> when the pass ended early, so the caller must not run another.</returns>
     private bool WarmupRecoveredTransactions(BlockState blockState, ParallelOptions parallelOptions, bool[] claimed)
     {
         if (parallelOptions.CancellationToken.IsCancellationRequested) return false;
@@ -1159,21 +1172,23 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         /// Waiting for a sender rather than re-testing at once is what keeps a steady trickle of arrivals from
         /// queueing a fresh fan-out, and a scope build per worker, to warm a single address.
         /// </remarks>
-        private static bool WaitForMoreSenders(Block block, bool[] warmed, int count, CancellationToken cancellationToken)
+        private bool WaitForMoreSenders(Block block, bool[] warmed, int count, CancellationToken cancellationToken)
         {
             long start = Stopwatch.GetTimestamp();
             SpinWait spinner = default;
             while (!cancellationToken.IsCancellationRequested)
             {
-                bool anyPending = false;
+                int lastPending = -1;
                 for (int i = 0; i < count; i++)
                 {
                     if (warmed[i]) continue;
                     if (TransactionAt(block, i).SenderAddress is not null) return true;
-                    anyPending = true;
+                    lastPending = i;
                 }
 
-                if (!anyPending) return false;
+                // Nothing left, or the main thread has executed everything still pending — warming an account
+                // it has already read only contends with it. A sender that never arrives exits here too.
+                if (lastPending < 0 || PreWarmer.MainThreadTxIndex >= lastPending) return false;
 
                 if (Stopwatch.GetElapsedTime(start) < SenderArrivalWindow) spinner.SpinOnce(sleep1Threshold: -1);
                 else if (SleepUnlessDone(cancellationToken)) return false;

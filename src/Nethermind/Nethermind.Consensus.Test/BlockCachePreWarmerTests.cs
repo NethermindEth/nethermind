@@ -1076,12 +1076,15 @@ public class BlockCachePreWarmerTests
             .SignedAndResolved(TestItem.PrivateKeyC).TestObject;
         Transaction belowThreshold = Build.A.Transaction.WithGasLimit(5_000_000).WithTo(TestItem.AddressC)
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        Block block = Build.A.Block.WithTransactions(heavy, heavyCreate, heavyWarmed, belowThreshold).TestObject;
+        // Selection runs while recovery is still in flight, so a pending sender must not drop the candidate.
+        Transaction heavyUnrecovered = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressD)
+            .SignedAndResolved(TestItem.PrivateKeyD).WithSenderAddress(null).TestObject;
+        Block block = Build.A.Block.WithTransactions(heavy, heavyCreate, heavyWarmed, belowThreshold, heavyUnrecovered).TestObject;
 
         List<(int Index, Transaction Tx)>? candidates = BlockCachePreWarmer.SelectDiscoveryCandidates(
             block, speculativelyWarmed: new HashSet<Hash256> { heavyWarmed.Hash! });
 
-        Assert.That(candidates, Is.EqualTo(new[] { (0, heavy) }));
+        Assert.That(candidates, Is.EqualTo(new[] { (0, heavy), (4, heavyUnrecovered) }));
     }
 
     [Test]
