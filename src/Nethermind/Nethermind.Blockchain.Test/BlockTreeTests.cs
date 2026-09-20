@@ -2164,18 +2164,26 @@ public class BlockTreeTests
         }
     }
 
+    // A gap below a canonical predecessor is never scanned.
     [TestCase(1UL, false)]
     [TestCase(4UL, false)]
     [TestCase(4UL, true)]
     [MaxTime(Timeout.MaxTestTime)]
-    public void Delete_slice_clears_surviving_markers_across_gaps(ulong missingLevel, bool canonicalPredecessor)
+    public void Delete_slice_clears_markers_through_old_head_and_preserves_isolated_markers_above_it(ulong missingLevel, bool canonicalPredecessor)
     {
         BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(7);
         BlockTree tree = builder.TestObject;
-        Hash256[] survivingHashes = [tree.FindHeader(5, BlockTreeLookupOptions.RequireCanonical)!.Hash!, tree.Head!.Hash!];
+        Hash256[] survivingHashes = Enumerable.Range(4, 3)
+            .Where(level => (ulong)level != missingLevel)
+            .Select(level => tree.FindHeader((ulong)level, BlockTreeLookupOptions.RequireCanonical)!.Hash!)
+            .ToArray();
         BlockHeader isolatedHeader = Build.A.BlockHeader.WithNumber(8).WithTotalDifficulty(1).TestObject;
         tree.Insert(isolatedHeader);
-        Assert.That(tree.IsMainChain(isolatedHeader.Hash!), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.IsMainChain(isolatedHeader.Hash!), Is.True);
+            Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(isolatedHeader.Hash));
+        }
         Hash256 expectedHead = canonicalPredecessor ? tree.FindHeader(2, BlockTreeLookupOptions.RequireCanonical)!.Hash! : tree.Genesis!.Hash!;
         builder.ChainLevelInfoRepository.PersistLevel(2, new ChainLevelInfo(canonicalPredecessor, tree.FindLevel(2)!.BlockInfos));
         builder.ChainLevelInfoRepository.Delete(missingLevel);
@@ -2188,6 +2196,8 @@ public class BlockTreeTests
         {
             Assert.That(deleted, Is.EqualTo(1));
             Assert.That(tree.Head!.Hash, Is.EqualTo(expectedHead));
+            Assert.That(tree.BestSuggestedHeader!.Hash, Is.EqualTo(expectedHead));
+            Assert.That(tree.BestSuggestedBody!.Hash, Is.EqualTo(expectedHead));
             Assert.That(tree.IsMainChain(isolatedHeader.Hash!), Is.True, "stop at the gap above the old head");
             Assert.That(tree.FindLevel(3), Is.Null);
         }
