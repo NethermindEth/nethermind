@@ -67,7 +67,7 @@ internal static class DebugEndpoints
         {
             // Throws NotSupportedException for a fork this driver cannot decode (Gloas); the host
             // middleware turns that into a labelled 501 rather than a fabricated Fulu-shaped body.
-            state = BeaconStateCodec.Decode(resolved.Ssz, ctx.Spec);
+            state = ApiStateDecoding.Decode(resolved.Ssz, ctx.Spec);
         }
         catch (BeaconStateException e)
         {
