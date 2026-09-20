@@ -316,25 +316,76 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
-    /// Withdrawals are credited at block end, so their recipients are warmed in the address warmer's
-    /// immediate phase rather than in a pass that only starts once every transaction has been warmed.
+    /// Withdrawals are credited at block end, so their recipients must be warmed in the address warmer's
+    /// immediate phase, not in a pass that can only start once every transaction has been warmed.
     /// </summary>
+    /// <remarks>
+    /// Cache presence after the prewarm completes cannot tell the two apart. The transaction warmers are
+    /// therefore parked inside their scope setup, which a pass sequenced after them could never outlive,
+    /// and the recipient must already be warm while they are still in flight.
+    /// </remarks>
     [Test]
-    public async Task PreWarmCaches_WarmsWithdrawalRecipients()
+    [CancelAfter(30_000)]
+    public void PreWarmCaches_WarmsWithdrawalRecipients_WhileTransactionWarmingIsStillInFlight(CancellationToken testToken)
     {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
-        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
 
+        using ManualResetEventSlim gate = new(initialState: false);
+        using CountdownEvent txScopesInFlight = new(2);
+        TxWarmGatePolicy policy = new(envFactory, preBlockCaches, gate, txScopesInFlight,
+            onTxScope: static () => { },
+            onWarmup: static () => { });
+
+        using BlockCachePreWarmer preWarmer = new(
+            policy,
+            minPoolSize: 4,
+            concurrency: 2,
+            parallelExecutionBatchRead: true,
+            nodeStorageCache,
+            preBlockCaches,
+            LimboLogs.Instance);
+
+        // Four senders so both warm workers claim a job and park; the recipient is touched by nothing else.
+        Transaction[] txs =
+        [
+            GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000),
+            GroupingTx(TestItem.PrivateKeyD, nonce: 0, gasLimit: 100_000),
+        ];
         Block block = Build.A.Block
-            .WithTransactions(BuildReactiveWarmBlock().Transactions)
+            .WithTransactions(txs)
             .WithWithdrawals(Build.A.Withdrawal.WithRecipient(TestItem.AddressE).WithAmount(1).TestObject)
             .WithGasLimit(30_000_000)
             .TestObject;
 
-        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+        bool warmedWhileTxsParked;
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        BlockHeader parent = BuildParentHeader();
+        using (mainWorldState.BeginScope(parent))
+        {
+            Task warmTask = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
+            try
+            {
+                Assert.That(txScopesInFlight.Wait(TimeSpan.FromSeconds(10), testToken), Is.True,
+                    "precondition: both warm workers must be parked inside their first job's scope setup");
 
-        Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressE, out _), Is.True,
-            "withdrawal recipients are warmed for the main thread");
+                warmedWhileTxsParked = SpinWait.SpinUntil(
+                    () => preBlockCaches.StateCache.TryGetValue(TestItem.AddressE, out _),
+                    TimeSpan.FromSeconds(10));
+            }
+            finally
+            {
+                gate.Set();
+            }
+
+            warmTask.GetAwaiter().GetResult();
+        }
+
+        Assert.That(warmedWhileTxsParked, Is.True,
+            "withdrawal recipients are warmed in the address warmer's immediate phase, not after the transaction pass");
     }
 
     /// <summary>
