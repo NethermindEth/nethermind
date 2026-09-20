@@ -52,4 +52,36 @@ public class ForkChoiceStoreTests
             Assert.That(store.UnrealizedFinalizedCheckpoint, Is.EqualTo(GetCheckpoint(1)), "stale unrealized finalized ignored");
         }
     }
+
+    /// <summary>
+    /// The spec_tests cover head selection and proposer boost but never advance a checkpoint: only
+    /// one mainnet fork_choice vector reaches a non-genesis justified epoch and it is classified
+    /// not-implemented, so freezing update_checkpoints leaves all 17 passing vectors passing.
+    /// </summary>
+    [Test]
+    public void Update_checkpoints_advances_only_on_a_later_epoch()
+    {
+        ForkChoiceStore store = new(slotsPerEpoch: 8, currentSlot: 9, GetCheckpoint(3), GetCheckpoint(2));
+
+        store.UpdateCheckpoints(GetCheckpoint(2), GetCheckpoint(1));
+        Assert.Multiple(() =>
+        {
+            Assert.That(store.JustifiedCheckpoint.Epoch, Is.EqualTo(3ul), "an earlier justified epoch must not roll the store back");
+            Assert.That(store.FinalizedCheckpoint.Epoch, Is.EqualTo(2ul), "an earlier finalized epoch must not roll the store back");
+        });
+
+        store.UpdateCheckpoints(GetCheckpoint(3), GetCheckpoint(2));
+        Assert.Multiple(() =>
+        {
+            Assert.That(store.JustifiedCheckpoint.Epoch, Is.EqualTo(3ul), "an equal epoch is not a later one");
+            Assert.That(store.FinalizedCheckpoint.Epoch, Is.EqualTo(2ul));
+        });
+
+        store.UpdateCheckpoints(GetCheckpoint(5), GetCheckpoint(4));
+        Assert.Multiple(() =>
+        {
+            Assert.That(store.JustifiedCheckpoint, Is.EqualTo(GetCheckpoint(5)), "a later justified epoch advances, root and all");
+            Assert.That(store.FinalizedCheckpoint, Is.EqualTo(GetCheckpoint(4)));
+        });
+    }
 }
