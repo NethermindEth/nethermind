@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -199,6 +200,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
             warmed = senderGroup.Value.Count;
         }
 
+        Debug.Assert(position == deltaCount, "Sizing and filling must select the same number of transactions.");
         bySender.Clear();
         return delta;
     }

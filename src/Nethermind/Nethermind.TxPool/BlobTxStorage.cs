@@ -437,7 +437,11 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
                 return true;
             }
 
-            int count = DecodeProcessedTransactionCount(encoded);
+            if (!TryDecodeProcessedTransactionCount(encoded, out int count))
+            {
+                blockBlobTransactions = null;
+                return false;
+            }
             Transaction[] transactions = new Transaction[count];
             Unsafe.SkipInit(out Vector128<byte> keyStorage);
             Span<byte> key = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref keyStorage, 1))[..ProcessedTransactionKeyLength];
@@ -498,11 +502,17 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         }
     }
 
-    private static int DecodeProcessedTransactionCount(ReadOnlySpan<byte> index)
+    private static int DecodeProcessedTransactionCount(ReadOnlySpan<byte> index) =>
+        TryDecodeProcessedTransactionCount(index, out int count)
+            ? count
+            : throw new RlpException("Invalid processed blob transaction index.");
+
+    private static bool TryDecodeProcessedTransactionCount(ReadOnlySpan<byte> index, out int count)
     {
-        if (index.Length != ProcessedBlockIndexLength || BinaryPrimitives.ReadInt32BigEndian(index[1..]) <= 0)
-            throw new RlpException("Invalid processed blob transaction index.");
-        return BinaryPrimitives.ReadInt32BigEndian(index[1..]);
+        count = 0;
+        if (index.Length != ProcessedBlockIndexLength) return false;
+        count = BinaryPrimitives.ReadInt32BigEndian(index[1..]);
+        return count > 0;
     }
 
     private static void RemoveProcessedTransactionRecords(IWriteBatch batch, Span<byte> key, int start, int count)

@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
@@ -41,7 +39,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             }
         }
 
-        private static void DecodeList<T>(ref RlpReader reader, ArrayPoolList<T> destination, DecodeRlpValue<T> decode, RlpLimit limit)
+        private static void DecodeList<T>(ref RlpReader reader, ArrayPoolList<T> destination, DecodeRlpValue<T> decode, RlpLimit limit) where T : struct
         {
             int end = reader.ReadSequenceLength() + reader.Position;
             int count = reader.PeekNumberOfItemsRemaining(end, limit.Limit + 1);
@@ -50,12 +48,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             {
                 for (int i = 0; i < count; i++)
                 {
-                    if (reader.PeekByte() == Rlp.EmptyListByte)
-                        ThrowNullArrayElement(i);
-                    T value = decode(ref reader);
-                    if (value is null)
-                        ThrowNullArrayElement(i);
-                    destination.Add(value);
+                    destination.Add(decode(ref reader));
                 }
                 reader.Check(end);
             }
@@ -64,10 +57,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
                 throw new RlpException($"Error decoding array of {typeof(T).Name}.", exception);
             }
         }
-
-        [DoesNotReturn, StackTraceHidden]
-        private static void ThrowNullArrayElement(int index) =>
-            throw new RlpException($"Null array element at index {index}.");
 
         private sealed class PooledMessage : NewPooledTransactionHashesMessage68
         {
@@ -81,6 +70,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
 
             internal static PooledMessage Rent() => new(MessageLists.Rent());
 
+            /// <inheritdoc/>
+            /// <remarks>MessageLists owns the three base-class lists; base.Dispose would dispose arrays retained for reuse.</remarks>
             public override void Dispose() => Interlocked.Exchange(ref _lists, null)?.Return();
         }
 

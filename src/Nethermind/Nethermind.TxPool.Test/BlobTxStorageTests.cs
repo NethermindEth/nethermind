@@ -44,16 +44,21 @@ public class BlobTxStorageTests
     }
 
     [Test]
-    public void Empty_processed_block_is_a_cache_miss()
+    public void Invalid_processed_index_is_a_cache_miss(
+        [Values("", "00", "000000", "000000000001", "0000000000", "00ffffffff")] string encodedIndex)
     {
         using MemColumnsDb<BlobTxsColumns> db = new();
         BlobTxStorage storage = new(db);
-        db.GetColumnDb(BlobTxsColumns.ProcessedTxs).PutSpan(358UL.ToBigEndianSpanWithoutLeadingZeros(out _), []);
+        db.GetColumnDb(BlobTxsColumns.ProcessedTxs).PutSpan(358UL.ToBigEndianSpanWithoutLeadingZeros(out _), Convert.FromHexString(encodedIndex));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out Transaction[] restored), Is.False);
             Assert.That(restored, Is.Null);
+        }
+        if (encodedIndex.Length > 0)
+        {
+            Assert.That(() => storage.DeleteBlobTransactionsFromBlock(358), Throws.TypeOf<RlpException>());
         }
     }
 

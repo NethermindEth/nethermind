@@ -148,7 +148,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             HashSet<ValueHash256> seenHashes = ResponseHashesPool.Get();
             try
             {
-
                 // Eth/68 and later use the 2 MiB pooled-transactions soft response limit from the devp2p eth capability.
                 int packetSizeLeft = ProtocolVersion >= EthVersions.Eth68
                     ? PooledTransactionsResponseSoftLimit
