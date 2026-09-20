@@ -151,6 +151,61 @@ public class BeaconStatesValidatorsAndCommitteesTests
         Assert.That(badId.StatusCode, Is.EqualTo((HttpStatusCode)400));
     }
 
+    /// <summary>
+    /// The beacon-api spec declares both <c>id</c> and <c>status</c> as array-typed query
+    /// parameters; the repeated-key form (<c>id=a&amp;id=b</c>) is the array's canonical wire
+    /// encoding, and comma-joined is a common client shorthand this driver also accepts. Only the
+    /// mixed-id, repeated-key case had a test before this one - this proves comma-joining alone,
+    /// and repetition of a comma-joined status filter, independently of that existing case.
+    /// </summary>
+    [Test]
+    public async Task Validators_list_id_and_status_filters_accept_both_comma_joined_and_repeated_forms()
+    {
+        Hash256 root = TestRoot(18);
+        Validator[] validators = [.. StatusFixture.Select(f => f.Validator)];
+        ulong[] balances = [.. validators.Select(v => v.EffectiveBalance)];
+        PutState(root, validators, balances);
+
+        // id=0,2 (comma-joined) must select the same two validators as the repeated-key form does.
+        HttpResponseMessage commaId = await _client.GetAsync($"/eth/v1/beacon/states/{root}/validators?id=0,2");
+        JsonDocument commaIdBody = JsonDocument.Parse(await commaId.Content.ReadAsStringAsync());
+        List<string> commaIndices = [.. commaIdBody.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty("index").GetString()!)];
+        Assert.That(commaIndices, Is.EquivalentTo(new[] { "0", "2" }), "comma-joined id list must be split, not treated as one unmatched id");
+
+        // status=active_ongoing&status=exited_slashed (repeated key, not comma) must union both groups.
+        HttpResponseMessage repeatedStatus = await _client.GetAsync($"/eth/v1/beacon/states/{root}/validators?status=active_ongoing&status=exited_slashed");
+        JsonDocument repeatedStatusBody = JsonDocument.Parse(await repeatedStatus.Content.ReadAsStringAsync());
+        List<string> statuses = [.. repeatedStatusBody.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty("status").GetString()!)];
+        Assert.That(statuses, Is.EquivalentTo(new[] { "active_ongoing", "exited_slashed" }),
+            "a repeated status= key is the array parameter's canonical form and must union, not overwrite or reject");
+    }
+
+    /// <summary>
+    /// Unlike <c>id</c> and <c>status</c>, the committees endpoint's <c>index</c> parameter is
+    /// declared as a single <c>Uint64</c> in the beacon-api spec, not an array. Sending it twice is
+    /// caller error, not a filter to union - this driver rejects the ambiguity as 400 rather than
+    /// silently picking one occurrence, which would be confidently wrong the other half of the time.
+    /// </summary>
+    [Test]
+    public async Task Committees_repeated_index_key_is_400_not_a_silently_picked_value()
+    {
+        const int validatorCount = 50;
+        Validator[] validators = new Validator[validatorCount];
+        ulong[] balances = new ulong[validatorCount];
+        for (int i = 0; i < validatorCount; i++)
+        {
+            validators[i] = MakeValidator(0, 0, Presets.FarFutureEpoch, Presets.FarFutureEpoch, false, 32_000_000_000);
+            balances[i] = 32_000_000_000;
+        }
+
+        Hash256 root = TestRoot(19);
+        PutState(root, validators, balances);
+
+        HttpResponseMessage response = await _client.GetAsync($"/eth/v1/beacon/states/{root}/committees?index=0&index=1");
+        Assert.That(response.StatusCode, Is.EqualTo((HttpStatusCode)400),
+            "index is a single Uint64 per the beacon-api spec; two occurrences is ambiguous input, not a two-element filter");
+    }
+
     [Test]
     public async Task ValidatorById_is_404_for_an_out_of_range_index_and_400_for_a_malformed_id()
     {
