@@ -671,6 +671,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     {
         try
         {
+            // Probe: Task.Wait can inline this task on the processing thread; its reads must not count as main-thread reads.
+            bool wasProcessingThread = ProcessingThread.IsBlockProcessingThread;
+            ProcessingThread.IsBlockProcessingThread = false;
+            try
+            {
             if (cancellationToken.IsCancellationRequested) return;
 
             if (_logger.IsDebug) DebugPreWarming("Started", suggestedBlock.Number, isPreparation, transactionCount);
@@ -693,6 +698,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             _logger.DebugWarn($"Error pre-warming {suggestedBlock.Number}. {ex}");
         }
+            }
+            finally
+            {
+                ProcessingThread.IsBlockProcessingThread = wasProcessingThread;
+            }
         finally
         {
             // Don't complete the task until address warmer is also done.
