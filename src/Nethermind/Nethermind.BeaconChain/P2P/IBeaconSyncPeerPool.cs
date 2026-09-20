@@ -9,6 +9,20 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.P2P;
 
+/// <summary>Closed-cardinality reasons a peer can be reported as failing, so the failure metric label
+/// cannot grow without bound the way a free-text reason would.</summary>
+public enum PeerFailureReason
+{
+    /// <summary>A blocks-by-range/by-root (or similar) request threw or timed out.</summary>
+    RequestFailed,
+
+    /// <summary>The peer returned content that fails a check the caller enforces, such as bad parent-root linkage.</summary>
+    ProtocolViolation,
+
+    /// <summary>The underlying session or channel is already gone; every further request would fail too.</summary>
+    SessionClosed,
+}
+
 /// <summary>A connected, status-exchanged beacon chain peer usable by range sync.</summary>
 public interface IBeaconSyncPeer
 {
@@ -21,7 +35,14 @@ public interface IBeaconSyncPeer
 
     Task<IReadOnlyList<SignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token);
 
-    /// <summary>Records a protocol violation or failure; repeated reports get the peer pruned.</summary>
+    /// <summary>Records a protocol violation or failure with a closed-cardinality reason; repeated
+    /// reports get the peer pruned. Prefer this over the free-text overload below.</summary>
+    void ReportFailure(PeerFailureReason reason, string? detail = null);
+
+    /// <summary>Legacy free-text overload, kept only for call sites outside this change's file
+    /// boundary. Classifies <paramref name="reason"/> into <see cref="PeerFailureReason"/> by the
+    /// same substring rule the fatal-session detection always used, so the failure metric stays
+    /// bounded even for callers not yet migrated to the typed overload above.</summary>
     void ReportFailure(string reason);
 }
 
@@ -30,4 +51,51 @@ public interface IBeaconSyncPeerPool
 {
     /// <summary>Returns peers advertising a head at or past <paramref name="minHeadSlot"/>, best head first.</summary>
     IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot);
+}
+
+/// <summary>Connection direction of a tracked beacon chain peer.</summary>
+public enum PeerDirection
+{
+    Inbound,
+    Outbound,
+}
+
+/// <summary>Connection state of a tracked beacon chain peer, matching the Beacon API's
+/// <c>node/peers</c> state set. Not every value is necessarily reachable through every
+/// <see cref="IPeerDirectory"/> implementation - see the implementer's own documentation.</summary>
+public enum PeerConnectionState
+{
+    Disconnected,
+    Connecting,
+    Connected,
+    Disconnecting,
+}
+
+/// <summary>
+/// A read-only snapshot of what this plugin knows about one peer, shaped for the Beacon API's
+/// <c>/eth/v1/node/peers</c> and <c>/eth/v1/node/peers/{peer_id}</c> endpoints. This type only
+/// describes the data; no endpoint reads it yet.
+/// </summary>
+/// <param name="PeerId">The libp2p peer id, not the transport address.</param>
+/// <param name="LastKnownMultiaddr">The most recently known multiaddr for this peer id.</param>
+/// <param name="AgentVersion">The identify protocol's agent/client-version string, when the
+/// implementer has it available; <c>null</c> otherwise.</param>
+public readonly record struct PeerRecord(
+    string PeerId,
+    PeerDirection Direction,
+    PeerConnectionState State,
+    string LastKnownMultiaddr,
+    string? AgentVersion);
+
+/// <summary>Read-only peer directory the Beacon API's <c>node/peers</c> endpoints need. Kept separate
+/// from <see cref="IBeaconSyncPeerPool"/> so a range-sync consumer does not have to depend on
+/// API-shaped surface it never reads.</summary>
+public interface IPeerDirectory
+{
+    /// <summary>Every peer this implementer currently knows about.</summary>
+    IReadOnlyList<PeerRecord> Peers { get; }
+
+    /// <summary>Looks up one peer by its libp2p peer id. Returns <c>false</c> for an empty id or an
+    /// id this implementer has no record of - never a record for an unresolved identity.</summary>
+    bool TryGetPeer(string peerId, out PeerRecord peer);
 }
