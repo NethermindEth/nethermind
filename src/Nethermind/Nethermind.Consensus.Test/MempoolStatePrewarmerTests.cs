@@ -28,6 +28,14 @@ namespace Nethermind.Consensus.Test;
 [TestFixture]
 public class MempoolStatePrewarmerTests
 {
+    // Slot 12: mid-slot and exactly on the boundary predict the next boundary; a passed boundary skips to the one after; a clock behind the parent still moves forward.
+    [TestCase(100UL, 105UL, 112UL)]
+    [TestCase(100UL, 112UL, 112UL)]
+    [TestCase(100UL, 113UL, 124UL)]
+    [TestCase(100UL, 90UL, 112UL)]
+    public void PredictNextTimestamp_ReturnsTheFirstSlotBoundaryNotYetPassed(ulong parent, ulong now, ulong expected) =>
+        Assert.That(MempoolStatePrewarmer.PredictNextTimestamp(parent, now, secondsPerSlot: 12), Is.EqualTo(expected));
+
     [Test]
     public void SelectDelta_WhenEmpty_ReturnsEmpty()
     {

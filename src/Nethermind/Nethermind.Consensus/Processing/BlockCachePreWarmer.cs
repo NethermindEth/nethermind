@@ -461,7 +461,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private void WarmDeltaSync(Block delta, BlockHeader head, IReleaseSpec spec, CancellationToken token)
     {
-        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(delta, head, spec, speculativelyWarmed: null, _speculativeConcurrencyLevel, token, systemAccessLists: default);
+        (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(delta, head, spec, speculativelyWarmed: null, _speculativeConcurrencyLevel, token, _systemAccessLists);
         ThreadPool.UnsafeQueueUserWorkItem(addressWarmer, preferLocal: false);
         PreWarmCachesParallel(
             blockState,

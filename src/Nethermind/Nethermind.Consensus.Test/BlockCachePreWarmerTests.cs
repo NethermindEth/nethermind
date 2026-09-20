@@ -37,6 +37,7 @@ using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test;
@@ -641,6 +642,33 @@ public class BlockCachePreWarmerTests
             Assert.That(preBlockCaches.StateCache.TryGetValue(in untouched, out _), Is.True, "entries the block did not touch carry over");
             Assert.That(preBlockCaches.ValidFor, Is.EqualTo(parent.StateRoot));
         }
+    }
+
+    /// <summary>
+    /// The block-start system calls race the reactive warm of their own slots; warming them in the idle gap, for
+    /// the predicted next header, is the only way they are warm when the block arrives.
+    /// </summary>
+    [Test]
+    public void StartSpeculativePreWarm_WarmsTheSystemAccessListsForThePredictedBlock()
+    {
+        PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        NodeStorageCache nodeStorageCache = _processingScope.Resolve<NodeStorageCache>();
+        IHasAccessList systemAccessList = Substitute.For<IHasAccessList>();
+        BlocksConfig config = new() { PreWarming = PreWarmMode.BlockAndMempool, PreWarmStateConcurrency = 2 };
+        using BlockCachePreWarmer preWarmer = new(envFactory, config, nodeStorageCache, preBlockCaches, LimboLogs.Instance, [systemAccessList]);
+
+        BlockHeader head = BuildParentHeader();
+        Block delta = BuildChildBlock(head);
+        int deliveries = 0;
+        using CancellationTokenSource cancellation = new();
+        Task session = preWarmer.StartSpeculativePreWarm(
+            head, Osaka.Instance, generation: 1, _ => Interlocked.Increment(ref deliveries) == 1 ? delta : null, idlePassDelayMs: 5, cancellation.Token);
+
+        Assert.That(() => System.Linq.Enumerable.Count(systemAccessList.ReceivedCalls()), Is.GreaterThan(0).After(5000, 20), "the idle pass must request the system access lists");
+        systemAccessList.Received().GetAccessList(delta, Osaka.Instance);
+        cancellation.Cancel();
+        session.GetAwaiter().GetResult();
     }
 
     /// <summary>

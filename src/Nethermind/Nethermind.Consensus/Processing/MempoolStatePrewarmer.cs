@@ -38,6 +38,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
 
     // Monotonic: a queued pass runs only while it still reflects the latest head.
     private long _generation;
+    private readonly ulong _secondsPerSlot;
 
     public MempoolStatePrewarmer(
         IBlockCachePreWarmer preWarmer,
@@ -54,7 +55,8 @@ public sealed class MempoolStatePrewarmer : IDisposable
         _specProvider = specProvider;
         _timestamper = timestamper;
         _logger = logManager.GetClassLogger<MempoolStatePrewarmer>();
-        _maxHeadAgeSeconds = Math.Max(1UL, blocksConfig.SecondsPerSlot) * 4;
+        _secondsPerSlot = Math.Max(1UL, blocksConfig.SecondsPerSlot);
+        _maxHeadAgeSeconds = _secondsPerSlot * 4;
         _enabled = blocksConfig.PreWarming == PreWarmMode.BlockAndMempool;
 
         if (_enabled)
@@ -109,12 +111,23 @@ public sealed class MempoolStatePrewarmer : IDisposable
     private NextBlockContext PrepareNextBlockContext(BlockHeader parent)
     {
         ulong number = parent.Number + 1;
-        ulong timestamp = Math.Max(parent.Timestamp + 1, _timestamper.UnixTime.Seconds);
+        ulong timestamp = PredictNextTimestamp(parent.Timestamp, _timestamper.UnixTime.Seconds, _secondsPerSlot);
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(number, timestamp));
 
         return new NextBlockContext(BuildNextBlockHeader(parent, timestamp, spec), spec);
     }
 
+
+    /// <summary>
+    /// The next block's timestamp is the first slot boundary after the parent that has not passed yet, so the
+    /// EIP-4788 ring-buffer slots the system call touches, indexed by timestamp, are the ones being warmed.
+    /// </summary>
+    internal static ulong PredictNextTimestamp(ulong parentTimestamp, ulong now, ulong secondsPerSlot)
+    {
+        ulong elapsed = now > parentTimestamp ? now - parentTimestamp : 0;
+        ulong slots = Math.Max(1, (elapsed + secondsPerSlot - 1) / secondsPerSlot);
+        return parentTimestamp + slots * secondsPerSlot;
+    }
     /// <summary>
     /// Builds the synthetic "next block" header for warming.
     /// </summary>
