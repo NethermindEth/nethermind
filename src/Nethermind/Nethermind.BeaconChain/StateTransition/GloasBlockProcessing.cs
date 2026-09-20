@@ -58,10 +58,9 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// RANDAO, bid processing, envelope verification, withdrawals computed from state, and the builder
 /// payment/deposit/exit machinery - including a parent payload whose execution requests are
 /// non-empty, via the full deposit/withdrawal/consolidation/builder-deposit/builder-exit request
-/// pipeline in <see cref="ApplyParentExecutionPayload"/> - are all fully implemented, simplified
-/// only where this driver's absence of Gloas epoch processing forces a choice (see that method's own
-/// remarks on payment-window addressing, and the one collision it therefore has
-/// <see cref="ProcessExecutionPayloadBid"/> throw on by name rather than resolve silently wrong).
+/// pipeline in <see cref="ApplyParentExecutionPayload"/> - are all fully implemented, with the
+/// payment window addressed exactly as the spec does now that <see cref="GloasEpochProcessing"/>
+/// rotates it at every epoch boundary.
 /// Left as a declared, by-name gap rather than a partial or approximated implementation: attester/
 /// proposer slashings, attestations, voluntary exits, BLS-to-execution changes and payload
 /// attestations inside a Gloas block body - attestation and PTC processing pull in the whole
@@ -314,21 +313,10 @@ public static class GloasBlockProcessing
 
         if (amount > 0)
         {
-            // See ApplyParentExecutionPayload's remarks: this driver addresses the payment window
-            // purely by slot % SLOTS_PER_EPOCH, with no epoch-boundary rotation to clear old entries
-            // out of the way first. A still-unsettled payment already at this address means settling
-            // it was skipped (e.g. its own parent payload was never delivered - see the empty-parent
-            // path in ProcessParentExecutionPayload) more than one epoch ago; overwriting it here
-            // would silently destroy a real, unpaid amount, so fail loudly by name instead.
+            // The upper half of the window is the current epoch's; GloasEpochProcessing zeroes it at
+            // every boundary, so within an epoch each slot's address is written at most once.
             int index = (int)(Presets.SlotsPerEpoch + bid.Slot % Presets.SlotsPerEpoch);
-            BuilderPendingPayment existing = state.BuilderPendingPayments![index];
-            if (existing.Withdrawal!.Amount > 0)
-                throw new NotSupportedException(
-                    $"Builder payment slot {index} still holds an unsettled amount from an earlier, same-slot-in-epoch " +
-                    "block; this driver does not implement Gloas epoch processing (builder_pending_payments rotation), " +
-                    "which is what the spec relies on to make this collision impossible");
-
-            state.BuilderPendingPayments[index] = new BuilderPendingPayment
+            state.BuilderPendingPayments![index] = new BuilderPendingPayment
             {
                 Weight = 0,
                 Withdrawal = new BuilderPendingWithdrawal
@@ -358,11 +346,32 @@ public static class GloasBlockProcessing
 
     /// <summary>
     /// Spec <c>verify_execution_payload_envelope</c>, the entry point for a received envelope
-    /// (fork-choice's <c>on_execution_payload_envelope</c>). A pure verification against the state
-    /// that already committed the envelope's bid - it does not mutate <paramref name="state"/>; see
-    /// this type's remarks on why application happens one block later instead.
+    /// (fork-choice's <c>on_execution_payload_envelope</c>), bound to the frozen post-state of
+    /// <c>envelope.beacon_block_root</c> the way the spec's <c>store.block_states[...]</c> lookup
+    /// binds it. A pure verification against the state that already committed the envelope's bid -
+    /// it mutates nothing; see this type's remarks on why application happens one block later.
     /// </summary>
-    public static void VerifyExecutionPayloadEnvelope(BeaconStateGloas state, SignedExecutionPayloadEnvelope signedEnvelope, INewPayloadNotifier notifier, PubkeyCache pubkeys)
+    /// <remarks>
+    /// The state is resolved here, not accepted from the caller, because the per-field checks below
+    /// can only ever compare the envelope with the state they are handed: a self-consistent envelope
+    /// built against a state that is not any known block's post-state passes them all. The only
+    /// thing that catches it is refusing every root <paramref name="states"/> does not know.
+    /// </remarks>
+    /// <exception cref="BeaconStateException">The envelope names an unknown block, or fails any spec check.</exception>
+    public static void VerifyExecutionPayloadEnvelope(IGloasBlockStateProvider states, SignedExecutionPayloadEnvelope signedEnvelope, INewPayloadNotifier notifier, PubkeyCache pubkeys)
+    {
+        Hash256 blockRoot = signedEnvelope.Message!.BeaconBlockRoot ?? throw new BeaconStateException("Envelope carries no beacon block root");
+        BeaconStateGloas state = states.GetGloasBlockState(blockRoot)
+            ?? throw new BeaconStateException($"Envelope names beacon block {blockRoot}, whose post-state is not known");
+        VerifyExecutionPayloadEnvelopeAgainst(state, signedEnvelope, notifier, pubkeys);
+    }
+
+    /// <summary>
+    /// The spec's <c>verify_execution_payload_envelope(state, ...)</c> body. Private on purpose: the
+    /// only way in is <see cref="VerifyExecutionPayloadEnvelope"/>, which chooses <paramref name="state"/>
+    /// by the envelope's own block root instead of trusting whatever a caller has to hand.
+    /// </summary>
+    private static void VerifyExecutionPayloadEnvelopeAgainst(BeaconStateGloas state, SignedExecutionPayloadEnvelope signedEnvelope, INewPayloadNotifier notifier, PubkeyCache pubkeys)
     {
         ExecutionPayloadEnvelope envelope = signedEnvelope.Message!;
         ExecutionPayloadGloas payload = envelope.Payload!;
@@ -487,27 +496,11 @@ public static class GloasBlockProcessing
     /// child's slot, settles the parent's builder payment, and advances the chain's execution tip.
     /// </summary>
     /// <remarks>
-    /// <b>Payment settlement without epoch processing.</b> The spec addresses
-    /// <c>builder_pending_payments</c> (a <c>2 * SLOTS_PER_EPOCH</c> vector) through a window that
-    /// <c>process_builder_pending_payments</c> rotates at every epoch boundary - the current epoch's
-    /// half becomes the previous epoch's half, and a fresh half is zeroed - so a payment written at
-    /// slot-in-epoch <c>K</c> is read back through a different index depending how many epochs have
-    /// since passed. This driver does not implement Gloas epoch processing, so nothing ever rotates.
-    /// Reading the spec's three branches (current epoch / previous epoch / evicted-and-appended) as
-    /// written would therefore read stale, always-empty slots and silently settle nothing where the
-    /// real spec would pay - exactly the silent-divergence failure this task's contract forbids.
-    /// <para/>
-    /// Instead, both <see cref="ProcessExecutionPayloadBid"/> and this method address
-    /// <c>builder_pending_payments</c> the same way regardless of epoch: purely by
-    /// <c>slot % SLOTS_PER_EPOCH</c> (the upper half's own indexing, spec's "current epoch" case).
-    /// Write and read always agree on where a given slot's payment lives, so settlement is correct no
-    /// matter how many epochs elapse before it runs - <em>as long as</em> nothing else has since
-    /// written a new payment to that same <c>slot % SLOTS_PER_EPOCH</c> address (which the real
-    /// spec's rotation exists to make safe, by moving old data out of the way first). Since this
-    /// driver cannot rotate, <see cref="ProcessExecutionPayloadBid"/> instead throws by name should a
-    /// still-unsettled payment ever occupy the slot a new one would overwrite, rather than silently
-    /// destroying it. That is the one gap this simplification leaves, and it is the only case this
-    /// method's own contract could otherwise violate.
+    /// The payment is read back through the window <see cref="GloasEpochProcessing.ProcessBuilderPendingPayments"/>
+    /// rotates at every boundary: the upper half while the parent's epoch is still current, the lower
+    /// half one epoch later, and once the entry has been evicted altogether the bid's own value is
+    /// queued directly. Each branch reads a different address for the same slot, which is why the
+    /// rotation and this method must agree on the layout and are tested together.
     /// </remarks>
     private static void ApplyParentExecutionPayload(BeaconStateGloas state, ExecutionRequestsGloas requests, ulong parentSlot, ExecutionPayloadBid parentBid, EpochCache cache)
     {
@@ -531,9 +524,24 @@ public static class GloasBlockProcessing
         foreach (BuilderExitRequest request in requests.BuilderExits ?? [])
             ProcessBuilderExitRequest(state, request);
 
-        // See this method's remarks: always the upper-half address, regardless of how many epochs
-        // separate the parent block's payment from this settlement.
-        SettleBuilderPayment(state, Presets.SlotsPerEpoch + parentSlot % Presets.SlotsPerEpoch);
+        ulong parentEpoch = BeaconStateAccessors.ComputeEpochAtSlot(parentSlot);
+        if (parentEpoch == state.GetCurrentEpoch())
+        {
+            SettleBuilderPayment(state, Presets.SlotsPerEpoch + parentSlot % Presets.SlotsPerEpoch);
+        }
+        else if (parentEpoch == state.GetPreviousEpoch())
+        {
+            SettleBuilderPayment(state, parentSlot % Presets.SlotsPerEpoch);
+        }
+        else if (parentBid.Value > 0)
+        {
+            state.BuilderPendingWithdrawals = [.. state.BuilderPendingWithdrawals ?? [], new BuilderPendingWithdrawal
+            {
+                FeeRecipient = parentBid.FeeRecipient,
+                Amount = parentBid.Value,
+                BuilderIndex = parentBid.BuilderIndex,
+            }];
+        }
 
         state.ExecutionPayloadAvailability![(int)(parentSlot % Presets.SlotsPerHistoricalRoot)] = true;
         state.LatestBlockHash = parentBid.BlockHash;
