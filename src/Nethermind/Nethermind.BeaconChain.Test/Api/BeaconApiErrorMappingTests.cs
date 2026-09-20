@@ -3,12 +3,18 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using Nethermind.BeaconChain.Api;
+using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
@@ -26,9 +32,9 @@ using NUnit.Framework;
 namespace Nethermind.BeaconChain.Test.Api;
 
 /// <summary>
-/// Gap 31: a Gloas-fork state must reach the caller as a labelled, actionable status, not the
-/// global handler's generic 500 - and the JSON-only endpoints must not claim an SSZ representation
-/// they do not serve.
+/// A Gloas-fork state must reach the caller as a labelled, actionable 501 and nothing else may: an
+/// unrelated <see cref="NotSupportedException"/> is a 500 that echoes no internal text. The JSON-only
+/// endpoints must also not claim an SSZ representation they do not serve.
 /// </summary>
 public class BeaconApiErrorMappingTests
 {
@@ -36,10 +42,15 @@ public class BeaconApiErrorMappingTests
     // only spec that can actually drive BeaconStateCodec into its NotSupportedException branch.
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Sepolia;
 
+    // Text that must never reach the wire: an unrelated layer's exception message.
+    private const string UnrelatedInternalDetail = "internal detail from an unrelated layer";
+
     private BeaconApiHost _host = null!;
     private BeaconChainStatusHolder _statusHolder = null!;
     private BeaconChainStore _store = null!;
     private HttpClient _client = null!;
+    private WebApplication _pipeline = null!;
+    private HttpClient _pipelineClient = null!;
 
     [OneTimeSetUp]
     public async Task StartHost()
@@ -55,13 +66,55 @@ public class BeaconApiErrorMappingTests
 
         await _host.StartAsync(CancellationToken.None);
         _client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{_host.Port}"), Timeout = TimeSpan.FromSeconds(5) };
+
+        // The real endpoint pipeline (MapAll, with its error middleware) plus routes it does not own,
+        // so exceptions no real endpoint raises can still be pushed through the real error mapping.
+        WebApplicationBuilder builder = WebApplication.CreateBuilder();
+        builder.Logging.ClearProviders();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        _pipeline = builder.Build();
+        BeaconApiEndpoints.MapAll(_pipeline, new BeaconApiContext(new BeaconChainConfig(), Spec, _statusHolder, slotClock, _store,
+            new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null));
+        _pipeline.MapGet("/test/not-supported", (HttpContext _) => { throw new NotSupportedException(UnrelatedInternalDetail); });
+        _pipeline.MapGet("/test/unsupported-fork", (HttpContext _) => { throw new UnsupportedForkException(new NotSupportedException(UnrelatedInternalDetail)); });
+        await _pipeline.StartAsync();
+        _pipelineClient = new HttpClient { BaseAddress = new Uri(_pipeline.Urls.First()), Timeout = TimeSpan.FromSeconds(5) };
     }
 
     [OneTimeTearDown]
     public async Task StopHost()
     {
         _client.Dispose();
+        _pipelineClient.Dispose();
         await _host.DisposeAsync();
+        await _pipeline.DisposeAsync();
+    }
+
+    [Test]
+    public async Task An_unrelated_NotSupportedException_is_a_500_that_leaks_nothing()
+    {
+        // Catching NotSupportedException by type turned every such exception from any layer into a
+        // "not implemented" 501 carrying the exception's own text: a wrong answer that reads as a
+        // considered one, and an internal message handed to an unauthenticated caller.
+        HttpResponseMessage response = await _pipelineClient.GetAsync("/test/not-supported");
+        string raw = await response.Content.ReadAsStringAsync();
+
+        Assert.That((int)response.StatusCode, Is.EqualTo(500), $"an unrelated NotSupportedException is a malfunction, not a capability gap; body: {raw}");
+        Assert.That(raw, Does.Not.Contain(UnrelatedInternalDetail), "an exception's own text must never reach the caller");
+        JsonDocument body = JsonDocument.Parse(raw);
+        Assert.That(body.RootElement.GetProperty("message").GetString(), Is.EqualTo("Internal server error"));
+    }
+
+    [Test]
+    public async Task The_API_owned_unsupported_fork_exception_is_a_501_with_the_fixed_message()
+    {
+        HttpResponseMessage response = await _pipelineClient.GetAsync("/test/unsupported-fork");
+        string raw = await response.Content.ReadAsStringAsync();
+
+        Assert.That((int)response.StatusCode, Is.EqualTo(501), $"body: {raw}");
+        Assert.That(raw, Does.Not.Contain(UnrelatedInternalDetail), "the codec's own text is for the log, not the wire");
+        JsonDocument body = JsonDocument.Parse(raw);
+        Assert.That(body.RootElement.GetProperty("message").GetString(), Is.EqualTo(BeaconApiEndpoints.UnsupportedForkMessage));
     }
 
     /// <summary>Minimal bytes for BeaconStateCodec to read a slot: it never reaches the full decode
@@ -76,7 +129,7 @@ public class BeaconApiErrorMappingTests
     [TestCase("/eth/v1/beacon/states/{0}/finality_checkpoints")]
     [TestCase("/eth/v1/beacon/states/{0}/validators")]
     [TestCase("/eth/v1/beacon/states/{0}/committees")]
-    public async Task Gloas_state_is_501_naming_the_fork_not_a_bare_500(string routeTemplate)
+    public async Task Gloas_state_is_501_with_the_fixed_capability_message_not_a_bare_500(string routeTemplate)
     {
         ulong gloasSlot = Spec.GloasForkEpoch * Presets.SlotsPerEpoch;
         Hash256 root = TestRoot(21);
@@ -85,11 +138,14 @@ public class BeaconApiErrorMappingTests
         HttpResponseMessage response = await _client.GetAsync(string.Format(routeTemplate, root));
         string raw = await response.Content.ReadAsStringAsync();
 
+        // Only ApiStateDecoding turns the codec's refusal into the API-owned UnsupportedForkException the
+        // middleware maps to 501, so a 500 here means StateIdResolver is still calling BeaconStateCodec directly.
         Assert.That((int)response.StatusCode, Is.EqualTo(501), $"a fork this driver cannot decode is a labelled capability gap, not a 500; body: {raw}");
         JsonDocument body = JsonDocument.Parse(raw);
         Assert.That(body.RootElement.GetProperty("code").GetInt32(), Is.EqualTo(501));
         string message = body.RootElement.GetProperty("message").GetString()!;
-        Assert.That(message, Does.Contain("Gloas").IgnoreCase, $"the message must name the offending fork; got: {message}");
+        Assert.That(message, Is.EqualTo(BeaconApiEndpoints.UnsupportedForkMessage), "the caller gets the fixed sentence, not BeaconStateCodec's exception text");
+        Assert.That(message, Does.Not.Contain("belongs to the"), "BeaconStateCodec's own wording must not leak");
     }
 
     [TestCase("/eth/v1/beacon/states/{0}/validators")]
