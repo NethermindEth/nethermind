@@ -177,7 +177,9 @@ public sealed class BlockImporter : IBlockImporter
         OnSlotTick(block.Slot); // a timely gossip block can be marginally ahead of the last tick
         try
         {
-            _runner.OnBlock(signedBlock, state, payloadValid ? ExecutionStatus.Valid : ExecutionStatus.Optimistic);
+            // Null, not the columns this node holds: the availability rule wants every column, which a
+            // base-custody node never has, so passing a partial set would reject every blob block.
+            _runner.OnBlock(signedBlock, state, payloadValid ? ExecutionStatus.Valid : ExecutionStatus.Optimistic, dataColumns: null);
         }
         catch (ForkChoiceException e)
         {
