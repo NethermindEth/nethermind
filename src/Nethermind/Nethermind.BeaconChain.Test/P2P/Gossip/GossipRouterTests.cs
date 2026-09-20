@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using Google.Protobuf;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
@@ -166,6 +167,75 @@ public class GossipRouterTests
             Assert.That(blocks, Is.EqualTo(2), "only the new digest topic delivers after rotation");
         }
     }
+
+    [Test]
+    public void ActivateGloasTopics_requires_start()
+    {
+        GossipRouter router = CreateRouter();
+        Assert.That(() => router.ActivateGloasTopics(), Throws.InvalidOperationException);
+    }
+
+    [Test]
+    public void Gloas_topics_are_not_subscribed_until_activated_and_survive_digest_rotation()
+    {
+        byte[] bpo1Digest = ForkDigest.Compute(Spec, 412_672);
+        byte[] bpo2Digest = ForkDigest.Compute(Spec, 419_072);
+        Dictionary<string, FakeTopic> topics = [];
+        GossipRouter router = CreateRouter();
+        int envelopes = 0;
+        int attestations = 0;
+        router.ExecutionPayloadEnvelopeReceived += _ => envelopes++;
+        router.PayloadAttestationMessageReceived += _ => attestations++;
+
+        router.Start(id => topics[id] = new FakeTopic(), bpo1Digest);
+        Assert.That(topics.Keys, Has.None.Contain(GossipTopics.ExecutionPayload), "Gloas topics are not part of the fixed pre-Gloas set");
+
+        router.ActivateGloasTopics();
+        string envelopeTopicBpo1 = GossipTopics.Topic(bpo1Digest, GossipTopics.ExecutionPayload);
+        string attestationTopicBpo1 = GossipTopics.Topic(bpo1Digest, GossipTopics.PayloadAttestationMessage);
+        Assert.That(topics.Keys, Does.Contain(envelopeTopicBpo1).And.Contain(attestationTopicBpo1));
+
+        topics[envelopeTopicBpo1].Deliver(Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(CreateEnvelope())));
+        topics[attestationTopicBpo1].Deliver(Snappy.CompressToArray(PayloadAttestationMessage.Encode(CreateAttestationMessage(CurrentSlot))));
+        Assert.That((envelopes, attestations), Is.EqualTo((1, 1)), "activated Gloas topics deliver to their typed events");
+
+        // A second activation must not double-subscribe.
+        router.ActivateGloasTopics();
+        Assert.That(topics.Keys.Count(k => k == envelopeTopicBpo1), Is.EqualTo(1));
+
+        router.RotateDigest(bpo2Digest);
+        string envelopeTopicBpo2 = GossipTopics.Topic(bpo2Digest, GossipTopics.ExecutionPayload);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(topics[envelopeTopicBpo1].IsSubscribed, Is.False, "old Gloas topics are unsubscribed on rotation");
+            Assert.That(topics.Keys, Does.Contain(envelopeTopicBpo2), "Gloas topics rotate to the new digest automatically, not fixed at ActivateGloasTopics time");
+        }
+
+        // A distinct builder index, so the message differs from the BPO1 delivery and is not
+        // suppressed as a duplicate of it (dedup keys on topic name + payload, not the digest).
+        topics[envelopeTopicBpo2].Deliver(Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(CreateEnvelope(builderIndex: 4))));
+        Assert.That(envelopes, Is.EqualTo(2), "the rotated Gloas topic still delivers");
+    }
+
+    private static SignedExecutionPayloadEnvelope CreateEnvelope(ulong builderIndex = 3) => new()
+    {
+        Message = new ExecutionPayloadEnvelope
+        {
+            Payload = new ExecutionPayloadGloas { SlotNumber = CurrentSlot },
+            ExecutionRequests = new ExecutionRequestsGloas(),
+            BuilderIndex = builderIndex,
+            BeaconBlockRoot = Hash256.Zero,
+            ParentBeaconBlockRoot = Hash256.Zero,
+        },
+        Signature = new BlsSignature(new byte[BlsSignature.Length]),
+    };
+
+    private static PayloadAttestationMessage CreateAttestationMessage(ulong slot) => new()
+    {
+        ValidatorIndex = 17,
+        Data = new PayloadAttestationData { BeaconBlockRoot = Hash256.Zero, Slot = slot, PayloadPresent = true, BlobDataAvailable = false },
+        Signature = new BlsSignature(new byte[BlsSignature.Length]),
+    };
 
     private static SignedAggregateAndProof CreateAggregate(ulong slot) => new()
     {
