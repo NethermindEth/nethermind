@@ -5,7 +5,6 @@ using System;
 using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using System.Security.Cryptography;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
@@ -503,7 +502,12 @@ public static class GloasEpochProcessing
     public static ulong[] GetBeaconProposerIndices(BeaconStateGloas state, ulong epoch)
     {
         Validator[] validators = state.Validators!;
-        int[] indices = [.. state.GetActiveValidatorIndices(epoch).Where(i => !validators[i].Slashed)];
+        List<int> indices = [];
+        foreach (int i in state.GetActiveValidatorIndices(epoch))
+        {
+            if (!validators[i].Slashed)
+                indices.Add(i);
+        }
         Hash256 epochSeed = state.GetSeed(epoch, DomainType.BeaconProposer);
 
         Span<byte> preimage = stackalloc byte[32 + 8];
@@ -557,11 +561,16 @@ public static class GloasEpochProcessing
 
         List<int> indices = [];
         for (int i = 0; i < committees.CommitteesPerSlot; i++)
-            indices.AddRange(committees.GetBeaconCommittee(slot, i).ToArray());
+            indices.AddRange(committees.GetBeaconCommittee(slot, i));
+
+        int[] selected = GloasForkTransition.ComputeBalanceWeightedSelection(state.Validators!, indices, seed, (int)Presets.PtcSize, shuffleIndices: false);
+        ulong[] ptcIndices = new ulong[selected.Length];
+        for (int i = 0; i < selected.Length; i++)
+            ptcIndices[i] = (ulong)selected[i];
 
         return new PayloadTimelinessCommittee
         {
-            Indices = [.. GloasForkTransition.ComputeBalanceWeightedSelection(state.Validators!, indices, seed, (int)Presets.PtcSize, shuffleIndices: false).Select(static i => (ulong)i)],
+            Indices = ptcIndices,
         };
     }
 
