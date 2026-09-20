@@ -16,7 +16,8 @@ namespace Nethermind.BeaconChain.Engine;
 /// <summary>
 /// Drives the execution layer through in-process engine API calls — <c>engine_newPayloadV4</c> and
 /// <c>engine_forkchoiceUpdatedV3</c>, the methods an external consensus client uses on Fulu-era
-/// mainnet.
+/// mainnet, and <c>engine_newPayloadV5</c> for the execution payload envelopes Gloas delivers
+/// separately from the block.
 /// </summary>
 /// <remarks>
 /// Calls go through <see cref="ExternalClDetector.InnerEngine"/> so the driver's own traffic never
@@ -87,6 +88,30 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
             throw new InvalidOperationException($"The body being processed does not belong to {nameof(CurrentBlock)}");
 
         PayloadStatusV1 status = NewPayload(block).GetAwaiter().GetResult();
+        return status.Status is not PayloadStatus.Invalid;
+    }
+
+    /// <summary>
+    /// Submits a Gloas execution payload envelope's payload via <c>engine_newPayloadV5</c> and
+    /// returns the execution layer's verdict. Unlike <see cref="NewPayload(SignedBeaconBlock)"/> it
+    /// needs no <see cref="CurrentBlock"/>: the envelope carries its own parent beacon block root.
+    /// </summary>
+    public async Task<PayloadStatusV1> NewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests)
+    {
+        Metrics.BeaconChainNewPayloadCalls++;
+        ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV5(
+            PayloadConverter.ToExecutionPayloadV4(payload),
+            versionedHashes,
+            parentBeaconBlockRoot,
+            PayloadConverter.ToExecutionRequestsList(executionRequests));
+        return LastNewPayloadStatus = Unwrap(result.Result, result.Data, "newPayloadV5");
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Same acceptance rule as the block-body overload: only INVALID rejects the envelope.</remarks>
+    public bool NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests)
+    {
+        PayloadStatusV1 status = NewPayload(payload, versionedHashes, parentBeaconBlockRoot, executionRequests).GetAwaiter().GetResult();
         return status.Status is not PayloadStatus.Invalid;
     }
 
