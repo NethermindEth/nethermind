@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -52,8 +55,25 @@ public sealed class BeaconP2P : IAsyncDisposable
     private readonly ILogger _logger;
     private readonly ServiceProvider _serviceProvider;
 
+    // What the libp2p layer learns about each session that the session object itself does not tell:
+    // which side dialed, and the identify agent string. A slot opens the moment the library adds the
+    // session, completes once identify and the agent probe are done (see BeaconLocalPeer), and is
+    // cancelled when the library drops the session. It is a slot and not a value because a dial
+    // returns as soon as the library's identify completes, while the probe is still in flight.
+    private readonly ConcurrentDictionary<ISession, TaskCompletionSource<SessionInfo>> _sessionInfo = new();
+
     private LocalPeer? _localPeer;
     private PubsubRouter? _router;
+
+    /// <summary>The per-session facts <see cref="PeerManager"/> cannot read off an <see cref="ISession"/>.
+    /// <paramref name="AgentVersion"/> is <c>null</c> only when the peer did not answer the identify
+    /// probe (see <see cref="IdentifyAgentVersionProbe"/>), never as a stand-in for "not wired".</summary>
+    public readonly record struct SessionInfo(PeerDirection Direction, string? AgentVersion);
+
+    /// <summary>Raised once a session is fully established (identify done) in either direction. This is
+    /// the only way a session the remote side opened, which no local dial will ever return, reaches the
+    /// peer manager's admission gate.</summary>
+    public event Action<ISession, SessionInfo>? SessionEstablished;
 
     public BeaconP2P(
         IBeaconChainConfig config,
@@ -96,7 +116,24 @@ public sealed class BeaconP2P : IAsyncDisposable
                 .AddAppLayerProtocol<DataColumnSidecarsByRangeProtocol>()
                 .AddAppLayerProtocol<DataColumnSidecarsByRootProtocol>()
                 .AddAppLayerProtocol<ExecutionPayloadEnvelopesByRangeProtocol>()
-                .AddAppLayerProtocol<ExecutionPayloadEnvelopesByRootProtocol>())
+                .AddAppLayerProtocol<ExecutionPayloadEnvelopesByRootProtocol>()
+                .AddAppLayerProtocol<IdentifyAgentVersionProbe>())
+            // One identify instance: the library's own stack slot and the probe's listen fallback
+            // both resolve to it, so an inbound identify request is answered the same way whichever
+            // of the two same-id protocols multistream picks.
+            .AddSingleton<IdentifyProtocol>()
+            .AddSingleton<IdentifyAgentVersionProbe>()
+            // The library's peer class is internal; this one does the same identify handshake and also
+            // records the session direction and agent string (see BeaconLocalPeer).
+            .AddSingleton<Libp2pPeerFactory>(sp =>
+            {
+                IProtocolStackSettings settings = sp.GetRequiredService<IProtocolStackSettings>();
+                PeerStore peerStore = sp.GetRequiredService<PeerStore>();
+                IdentifyNotifier notifier = sp.GetRequiredService<IdentifyNotifier>();
+                ILoggerFactory? loggerFactory = sp.GetService<ILoggerFactory>();
+                return new BeaconPeerFactory(settings, peerStore, notifier, loggerFactory,
+                    identity => new BeaconLocalPeer(identity, peerStore, settings, notifier, loggerFactory, this));
+            })
             .AddSingleton(new IdentifyProtocolSettings
             {
                 ProtocolVersion = "eth2/1.0.0",
@@ -132,6 +169,8 @@ public sealed class BeaconP2P : IAsyncDisposable
     public async Task StartAsync(CancellationToken token)
     {
         _localPeer = (LocalPeer)_serviceProvider.GetRequiredService<IPeerFactory>().Create(LoadOrCreateIdentity());
+        _localPeer.OnConnected += OnSessionConnected;
+        _localPeer.Sessions.CollectionChanged += OnSessionsChanged;
         await _localPeer.StartListenAsync([$"/ip4/0.0.0.0/tcp/{_config.P2PPort}"], token);
         _router = _serviceProvider.GetRequiredService<PubsubRouter>();
         await _router.StartAsync(_localPeer, token);
@@ -145,28 +184,79 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// <summary>Feeds known peer addresses to the peer store so the pubsub router connects to them.</summary>
     public void Discover(Multiaddress[] addresses) => _serviceProvider.GetRequiredService<PeerStore>().Discover(addresses);
 
+    /// <summary>The direction and agent string recorded for a live session, waiting for the identify
+    /// handshake and agent probe when the session is that fresh. Throws once the library has dropped
+    /// the session, including while waiting.</summary>
+    public async Task<SessionInfo> GetSessionInfoAsync(ISession session, CancellationToken token)
+    {
+        if (!_sessionInfo.TryGetValue(session, out TaskCompletionSource<SessionInfo>? slot))
+        {
+            throw new InvalidOperationException("Session is no longer tracked by the libp2p layer");
+        }
+
+        try
+        {
+            return await slot.Task.WaitAsync(token);
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            throw new InvalidOperationException("Session closed before identify completed");
+        }
+    }
+
+    /// <summary>The live session whose handshake established <paramref name="peerId"/>, whichever side opened it.</summary>
+    public bool TryGetEstablishedSession(PeerId peerId, [NotNullWhen(true)] out ISession? session)
+    {
+        LocalPeer localPeer = _localPeer ?? throw new InvalidOperationException($"{nameof(BeaconP2P)} is not started");
+        // Snapshot: the collection can change concurrently as connections come and go.
+        LocalPeer.Session[] sessions = [.. localPeer.Sessions];
+        foreach (LocalPeer.Session candidate in sessions)
+        {
+            if (candidate.State.RemotePublicKey is not null && peerId.Equals(candidate.State.RemotePeerId))
+            {
+                session = candidate;
+                return true;
+            }
+        }
+
+        session = null;
+        return false;
+    }
+
+    /// <summary>The peer id the session's handshake actually established, as opposed to whatever the dial address claimed.</summary>
+    public static PeerId? RemotePeerIdOf(ISession session) => (session as LocalPeer.Session)?.State.RemotePeerId;
+
+    /// <summary>Internal so a test can give one node a distinguishable agent string before it connects.</summary>
+    internal IdentifyProtocolSettings IdentifySettingsForTest => _serviceProvider.GetRequiredService<IdentifyProtocolSettings>();
+
+    /// <summary>Internal so a test can observe a refused inbound session being torn down, not just never admitted.</summary>
+    internal int SessionCountForTest => _localPeer?.Sessions.Count ?? 0;
+
     /// <summary>Dials the peer, or returns the existing session when one is already established (for example inbound).</summary>
     /// <remarks>
     /// The existing-session check mirrors newer dotnet-libp2p behavior; in the pinned preview a
     /// second dial to an already-connected peer fails the upgrade with a session-exists error
-    /// instead of reusing the connection.
+    /// instead of reusing the connection. The same check runs again after a failed dial: when both
+    /// sides dial at once ours loses the upgrade to the session the remote opened, and that session
+    /// is the connection to hand back, not a failure.
     /// </remarks>
-    public Task<ISession> DialPeerAsync(Multiaddress address, CancellationToken token)
+    public async Task<ISession> DialPeerAsync(Multiaddress address, CancellationToken token)
     {
         LocalPeer localPeer = _localPeer ?? throw new InvalidOperationException($"{nameof(BeaconP2P)} is not started");
         PeerId? remotePeerId = address.GetPeerId();
-        // Snapshot: the collection can change concurrently as connections come and go.
-        LocalPeer.Session[] sessions = [.. localPeer.Sessions];
-        foreach (ISession session in sessions)
+        if (remotePeerId is not null && TryGetEstablishedSession(remotePeerId, out ISession? existing))
         {
-            if (session is LocalPeer.Session { State.RemotePublicKey: not null } established
-                && remotePeerId is not null && remotePeerId.Equals(established.State.RemotePeerId))
-            {
-                return Task.FromResult(session);
-            }
+            return existing;
         }
 
-        return localPeer.DialAsync(address, token);
+        try
+        {
+            return await localPeer.DialAsync(address, token);
+        }
+        catch (Exception) when (remotePeerId is not null && TryGetEstablishedSession(remotePeerId, out ISession? raced))
+        {
+            return raced;
+        }
     }
 
     /// <summary>Exchanges <c>status</c> with the peer, preferring v2 and falling back to v1 (with <c>earliest_available_slot</c> of 0).</summary>
@@ -272,6 +362,78 @@ public sealed class BeaconP2P : IAsyncDisposable
         return identity;
     }
 
+    private Task OnSessionConnected(ISession session)
+    {
+        // Runs on the library's continuation after ConnectedTo completed, so the slot is filled by now;
+        // a throwing subscriber must not cost the session.
+        try
+        {
+            if (_sessionInfo.TryGetValue(session, out TaskCompletionSource<SessionInfo>? slot) && slot.Task.IsCompletedSuccessfully)
+            {
+                SessionEstablished?.Invoke(session, slot.Task.Result);
+            }
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error($"Session-established handler failed for {session.RemoteAddress}", e);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void OnSessionsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        // Raised inside the library's Sessions lock, before ConnectedTo starts and before any dial can
+        // observe the session: every session a caller can see has a slot, so a missing one means dropped.
+        switch (e.Action)
+        {
+            case NotifyCollectionChangedAction.Add when e.NewItems is not null:
+                foreach (object? added in e.NewItems)
+                {
+                    if (added is ISession session)
+                    {
+                        _sessionInfo.TryAdd(session, new TaskCompletionSource<SessionInfo>(TaskCreationOptions.RunContinuationsAsynchronously));
+                    }
+                }
+
+                break;
+            case NotifyCollectionChangedAction.Remove when e.OldItems is not null:
+                foreach (object? removed in e.OldItems)
+                {
+                    if (removed is ISession session && _sessionInfo.TryRemove(session, out TaskCompletionSource<SessionInfo>? slot))
+                    {
+                        slot.TrySetCanceled();
+                    }
+                }
+
+                break;
+            case NotifyCollectionChangedAction.Reset:
+                foreach (KeyValuePair<ISession, TaskCompletionSource<SessionInfo>> slot in _sessionInfo)
+                {
+                    slot.Value.TrySetCanceled();
+                }
+
+                _sessionInfo.Clear();
+                break;
+        }
+    }
+
+    /// <summary>Best effort: an unanswered probe leaves the agent string unknown, it never costs the session.
+    /// Bounded tighter than a request because every admission waits on it.</summary>
+    private async Task<string?> ProbeAgentVersionAsync(ISession session)
+    {
+        try
+        {
+            using CancellationTokenSource cts = Timeout(CancellationToken.None, IdentifyAgentVersionProbe.ReadTimeout);
+            return await session.DialAsync<IdentifyAgentVersionProbe, ulong, string?>(0, cts.Token);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Identify agent-version probe of {session.RemoteAddress} failed: {e.Message}");
+            return null;
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_localPeer is not null)
@@ -280,5 +442,43 @@ public sealed class BeaconP2P : IAsyncDisposable
         }
 
         await _serviceProvider.DisposeAsync();
+    }
+
+    /// <summary>
+    /// Stands in for the library's own (internal) peer class, whose whole job is the identify handshake
+    /// on every new session. This one also records which side dialed and the peer's agent string: the
+    /// two facts a session does not tell after the fact, which is why inbound sessions used to be
+    /// invisible to <see cref="PeerManager"/> and every directory entry read as Outbound with no client string.
+    /// </summary>
+    private sealed class BeaconLocalPeer : LocalPeer
+    {
+        private readonly BeaconP2P _owner;
+
+        public BeaconLocalPeer(Identity identity, PeerStore peerStore, IProtocolStackSettings settings, IdentifyNotifier notifier, ILoggerFactory? loggerFactory, BeaconP2P owner)
+            : base(identity, peerStore, settings, loggerFactory: loggerFactory)
+        {
+            _owner = owner;
+            notifier.TrackChanges(this);
+        }
+
+        protected override async Task ConnectedTo(ISession session, bool isDialer)
+        {
+            // The library's identify dial first: it verifies the remote identity and fills the peer store,
+            // and a failure here disconnects the session, exactly as the library's own peer class behaves.
+            await session.DialAsync<IdentifyProtocol>();
+            string? agentVersion = await _owner.ProbeAgentVersionAsync(session);
+            if (_owner._sessionInfo.TryGetValue(session, out TaskCompletionSource<SessionInfo>? slot))
+            {
+                slot.TrySetResult(new SessionInfo(isDialer ? PeerDirection.Outbound : PeerDirection.Inbound, agentVersion));
+            }
+        }
+    }
+
+    /// <summary>Only the creation delegate is captured: the stack settings and peer store go to the base
+    /// class alone, which is what lets this stay a primary constructor without double-capturing them.</summary>
+    private sealed class BeaconPeerFactory(IProtocolStackSettings settings, PeerStore peerStore, IdentifyNotifier notifier, ILoggerFactory? loggerFactory, Func<Identity, ILocalPeer> create)
+        : Libp2pPeerFactory(settings, peerStore, notifier, loggerFactory: loggerFactory)
+    {
+        public override ILocalPeer Create(Identity? identity = null) => create(identity ?? new Identity(privateKey: null, KeyType.Secp256K1));
     }
 }

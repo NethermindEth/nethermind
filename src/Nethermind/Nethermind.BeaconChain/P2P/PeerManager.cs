@@ -19,9 +19,10 @@ using ILogger = Nethermind.Logging.ILogger;
 namespace Nethermind.BeaconChain.P2P;
 
 /// <summary>
-/// Maintains connections to the configured static peers and to peers discovered via discv5: dials
-/// them, exchanges <c>status</c> and <c>ping</c> periodically, prunes peers on a fork digest
-/// mismatch or repeated failures, and keeps the connected count within the configured peer band.
+/// Maintains connections to the configured static peers, to peers discovered via discv5, and to
+/// peers that connected to us: dials or admits them, exchanges <c>status</c> and <c>ping</c>
+/// periodically, prunes peers on a fork digest mismatch or repeated failures, and keeps the
+/// connected count within the configured peer band.
 /// </summary>
 /// <remarks>
 /// The libp2p stack this plugin consumes has no gossipsub peer scoring at all, so this class is the
@@ -31,11 +32,7 @@ namespace Nethermind.BeaconChain.P2P;
 /// list and diagnostics), as opposed to <see cref="ManagedPeer"/>, which only lives as long as the
 /// session does.
 /// </remarks>
-public class PeerManager(
-    BeaconP2P p2p,
-    IBeaconChainConfig config,
-    IBeaconChainStatusSource statusSource,
-    ILogManager logManager) : IBeaconSyncPeerPool, IPeerDirectory
+public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 {
     // Generous: a slow peer hammered by range-sync batches can rack up transient timeouts
     // without being useless, and dialable mainnet peers are scarce.
@@ -58,7 +55,10 @@ public class PeerManager(
     // if every tracked id happens to be banned, which FaultDisconnectsBeforeBan makes rare.
     private const int MaxTrackedPeerIds = 8192;
 
-    private readonly ILogger _logger = logManager.GetClassLogger<PeerManager>();
+    private readonly BeaconP2P _p2p;
+    private readonly IBeaconChainConfig _config;
+    private readonly IBeaconChainStatusSource _statusSource;
+    private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, ManagedPeer> _peers = new();
 
     // Keyed by peer id (not dial address), so a ban and the message/failure history behind it
@@ -66,18 +66,34 @@ public class PeerManager(
     private readonly ConcurrentDictionary<string, BanRecord> _peerRecords = new();
     private long _nextRecordSequence;
 
-    // The one outbound-dial limiter for this plugin: both the static-peer loop below and
-    // discovery-driven dials from TryAddPeerAsync fund through it, so it is where
-    // MaxConcurrentOutboundDials is actually enforced, not a second copy of it.
-    private readonly SemaphoreSlim _outboundDialGate = new(Math.Max(1, config.MaxConcurrentOutboundDials));
+    // The one outbound-dial limiter for this plugin: both the static-peer loop and discovery-driven
+    // dials fund through ConnectAsync and so through it, so it is where MaxConcurrentOutboundDials
+    // is actually enforced, not a second copy of it.
+    private readonly SemaphoreSlim _outboundDialGate;
 
-    // Admission reservations: an address is present here from the moment a discovery-driven dial is
-    // allowed to proceed until its outcome (success or failure) is known, so a concurrent dial cannot
-    // read a stale _peers.Count and admit past MaxPeerCount (see TryReserveAdmissionSlot). Guarded by
-    // _admissionLock rather than left as independent atomics, because the ceiling check and the
-    // reservation must happen as one step, not two.
-    private readonly ConcurrentDictionary<string, byte> _dialing = new();
+    // Admission reservations by address: an entry is present from the moment any admission
+    // (a static reconnect, a discovery dial, or a session the remote opened) is allowed to proceed
+    // until its outcome is known, so a concurrent one cannot read a stale _peers.Count and admit past
+    // MaxPeerCount (see TryReserveAdmissionSlot). Guarded by _admissionLock rather than left as
+    // independent atomics, because the ceiling check and the reservation must happen as one step.
+    private readonly ConcurrentDictionary<string, Reservation> _dialing = new();
     private readonly object _admissionLock = new();
+
+    /// <summary>What an admission in flight already knows about its peer: enough for the directory's
+    /// <see cref="PeerConnectionState.Connecting"/> entry and for the peer-id dedup in <see cref="IsKnown"/>.</summary>
+    private readonly record struct Reservation(string PeerId, PeerDirection Direction);
+
+    public PeerManager(BeaconP2P p2p, IBeaconChainConfig config, IBeaconChainStatusSource statusSource, ILogManager logManager)
+    {
+        _p2p = p2p;
+        _config = config;
+        _statusSource = statusSource;
+        _logger = logManager.GetClassLogger<PeerManager>();
+        _outboundDialGate = new SemaphoreSlim(Math.Max(1, config.MaxConcurrentOutboundDials));
+
+        // A session the remote side opened has no dial here to admit it through; this is its only way in.
+        p2p.SessionEstablished += OnSessionEstablished;
+    }
 
     /// <summary>Raised with the dropped peer's id so dial dedup can allow a later re-dial.</summary>
     public event Action<string>? PeerDropped;
@@ -104,7 +120,7 @@ public class PeerManager(
 
     /// <summary>The low watermark's one real effect: maintenance (static-peer reconnect, health
     /// checks) runs more often while under-peered instead of the knob being read nowhere.</summary>
-    private TimeSpan NextMaintenanceInterval => _peers.Count < config.MinPeerCount ? UnderPeeredMaintenanceInterval : MaintenanceInterval;
+    private TimeSpan NextMaintenanceInterval => _peers.Count < _config.MinPeerCount ? UnderPeeredMaintenanceInterval : MaintenanceInterval;
 
     /// <summary>Internal so a test can assert the cadence choice without waiting out a real interval.</summary>
     internal TimeSpan NextMaintenanceIntervalForTest => NextMaintenanceInterval;
@@ -118,7 +134,7 @@ public class PeerManager(
     /// </summary>
     public async Task WaitForAdmissionCapacityAsync(CancellationToken token)
     {
-        while (_peers.Count + _dialing.Count >= config.TargetPeerCount)
+        while (_peers.Count + _dialing.Count >= _config.TargetPeerCount)
         {
             await Task.Delay(AdmissionPollInterval, token);
         }
@@ -133,7 +149,7 @@ public class PeerManager(
         string[] staticAddresses = StaticPeerAddresses();
         foreach (string address in staticAddresses)
         {
-            if (!_peers.ContainsKey(address))
+            if (!IsConnected(address))
             {
                 await ConnectAsync(address, token);
             }
@@ -159,7 +175,7 @@ public class PeerManager(
     /// </remarks>
     private async Task TrimToPeerBandAsync(string[] staticAddresses, CancellationToken token)
     {
-        int overflow = _peers.Count - config.MaxPeerCount;
+        int overflow = _peers.Count - _config.MaxPeerCount;
         if (overflow <= 0)
         {
             return;
@@ -181,7 +197,7 @@ public class PeerManager(
             return byFailures != 0 ? byFailures : a.HeadSlot.CompareTo(b.HeadSlot);
         });
 
-        int target = Math.Min(config.TargetPeerCount, config.MaxPeerCount);
+        int target = Math.Min(_config.TargetPeerCount, _config.MaxPeerCount);
         int toDrop = Math.Min(trimmable.Count, _peers.Count - target);
         for (int i = 0; i < toDrop; i++)
         {
@@ -212,65 +228,102 @@ public class PeerManager(
     /// <returns><c>true</c> when the peer is (already) connected and on our fork.</returns>
     public async Task<bool> TryAddPeerAsync(string address, CancellationToken token)
     {
-        if (_peers.ContainsKey(address))
+        if (IsConnected(address))
         {
             return true;
         }
 
-        // The dial address is always a concrete string here (never an unresolved/absent identity):
-        // ExtractPeerId falls back to the whole address when it has no /p2p/ component, so the ban
-        // and admission checks below always have something concrete to key on.
-        string peerId = ExtractPeerId(address);
-        if (IsBanned(peerId))
-        {
-            if (_logger.IsDebug) _logger.Debug($"Refusing to dial banned beacon chain peer {peerId}");
-            return false;
-        }
-
-        if (!TryReserveAdmissionSlot(address))
-        {
-            if (_logger.IsDebug) _logger.Debug($"Refusing to dial {address}: already in flight or at the configured peer band ceiling ({config.MaxPeerCount})");
-            return false;
-        }
-
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        cts.CancelAfter(DialTimeout);
         try
         {
-            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
-            cts.CancelAfter(DialTimeout);
-            try
-            {
-                return await ConnectAsync(address, cts.Token);
-            }
-            catch (OperationCanceledException) when (!token.IsCancellationRequested)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Dialing beacon chain peer {address} timed out");
-                return false;
-            }
+            return await ConnectAsync(address, cts.Token);
         }
-        finally
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
         {
-            _dialing.TryRemove(address, out _);
+            if (_logger.IsDebug) _logger.Debug($"Dialing beacon chain peer {address} timed out");
+            return false;
         }
     }
 
     /// <summary>
     /// Atomically checks the ceiling and reserves <paramref name="address"/> as one step, so
-    /// concurrent dials cannot all observe the same stale count and all pass (the exact overshoot
-    /// this closes: up to MaxConcurrentOutboundDials could previously admit past MaxPeerCount).
-    /// Also refuses a second concurrent dial to the same address rather than double-reserving it.
+    /// concurrent admissions cannot all observe the same stale count and all pass (the exact
+    /// overshoot this closes: up to MaxConcurrentOutboundDials could previously admit past
+    /// MaxPeerCount). Also refuses a peer id already connected or in flight under any address, so
+    /// one session can never be recorded twice; <paramref name="atCeiling"/> tells the two refusals
+    /// apart, because only the ceiling one may cost the remote its session.
     /// </summary>
-    private bool TryReserveAdmissionSlot(string address)
+    private bool TryReserveAdmissionSlot(string address, string peerId, PeerDirection direction, out bool atCeiling)
     {
         lock (_admissionLock)
         {
-            if (_dialing.ContainsKey(address) || _peers.Count + _dialing.Count >= config.MaxPeerCount)
+            if (_dialing.ContainsKey(address) || IsKnown(peerId))
+            {
+                atCeiling = false;
+                return false;
+            }
+
+            atCeiling = _peers.Count + _dialing.Count >= _config.MaxPeerCount;
+            if (atCeiling)
             {
                 return false;
             }
 
-            _dialing[address] = 0;
+            _dialing[address] = new Reservation(peerId, direction);
             return true;
         }
+    }
+
+    /// <summary>Connected under <paramref name="address"/>, or under any other address as the same peer id.</summary>
+    private bool IsConnected(string address) => _peers.ContainsKey(address) || TryFindConnected(ExtractPeerId(address), out _);
+
+    /// <summary>Connected or in flight, by peer id: the identity check behind every admission path's dedup.</summary>
+    private bool IsKnown(string peerId)
+    {
+        if (TryFindConnected(peerId, out _))
+        {
+            return true;
+        }
+
+        foreach (KeyValuePair<string, Reservation> dialing in _dialing)
+        {
+            if (string.Equals(dialing.Value.PeerId, peerId, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Already in the pool as this exact session or as the same established peer id under any address.</summary>
+    private bool IsRecorded(ISession session, string establishedId)
+    {
+        foreach (KeyValuePair<string, ManagedPeer> connected in _peers)
+        {
+            if (ReferenceEquals(connected.Value.Session, session) || string.Equals(connected.Value.PeerId, establishedId, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryFindConnected(string peerId, out ManagedPeer? peer)
+    {
+        foreach (KeyValuePair<string, ManagedPeer> connected in _peers)
+        {
+            if (string.Equals(connected.Value.PeerId, peerId, StringComparison.Ordinal))
+            {
+                peer = connected.Value;
+                return true;
+            }
+        }
+
+        peer = null;
+        return false;
     }
 
     /// <summary>A point-in-time snapshot of what this plugin can observe about one peer id, for diagnostics.</summary>
@@ -322,15 +375,15 @@ public class PeerManager(
         return snapshot;
     }
 
-    /// <summary>The Beacon API's <c>node/peers</c> surface. Only outbound-dialed peers exist here:
-    /// this manager has no inbound-admission path, so <see cref="PeerDirection.Inbound"/> and
-    /// <see cref="PeerConnectionState.Disconnected"/>/<see cref="PeerConnectionState.Disconnecting"/>
-    /// are never produced today, even though the enums model the API's full set. A dial in flight
-    /// (reserved but not yet resolved - see <see cref="TryReserveAdmissionSlot"/>) reports as
+    /// <summary>The Beacon API's <c>node/peers</c> surface. An admission in flight (reserved but not
+    /// yet resolved - see <see cref="TryReserveAdmissionSlot"/>) reports as
     /// <see cref="PeerConnectionState.Connecting"/>; everything in <c>_peers</c> is already
-    /// status-exchanged and reports as <see cref="PeerConnectionState.Connected"/>. <c>AgentVersion</c>
-    /// is always <c>null</c>: the identify protocol's per-peer data lives inside <c>BeaconP2P</c>,
-    /// which is out of reach from here without wiring this manager could not add.</summary>
+    /// status-exchanged and reports as <see cref="PeerConnectionState.Connected"/> with the direction
+    /// the libp2p layer recorded for its session (<see cref="BeaconP2P.SessionInfo"/>), so a peer that
+    /// connected to us is <see cref="PeerDirection.Inbound"/>. <see cref="PeerConnectionState.Disconnected"/>
+    /// and <see cref="PeerConnectionState.Disconnecting"/> are never produced: a dropped peer is simply
+    /// forgotten here (its history lives in <see cref="BanRecord"/>). <c>AgentVersion</c> is the identify
+    /// agent string the libp2p layer captured, <c>null</c> only when that probe went unanswered.</summary>
     public IReadOnlyList<PeerRecord> Peers
     {
         get
@@ -341,11 +394,11 @@ public class PeerManager(
                 result.Add(ToConnectedRecord(peer.Value));
             }
 
-            foreach (KeyValuePair<string, byte> dialing in _dialing)
+            foreach (KeyValuePair<string, Reservation> dialing in _dialing)
             {
                 if (!_peers.ContainsKey(dialing.Key))
                 {
-                    result.Add(ToConnectingRecord(dialing.Key));
+                    result.Add(ToConnectingRecord(dialing.Key, dialing.Value));
                 }
             }
 
@@ -364,20 +417,17 @@ public class PeerManager(
             return false;
         }
 
-        foreach (KeyValuePair<string, ManagedPeer> connected in _peers)
+        if (TryFindConnected(peerId, out ManagedPeer? connected))
         {
-            if (string.Equals(connected.Value.PeerId, peerId, StringComparison.Ordinal))
-            {
-                peer = ToConnectedRecord(connected.Value);
-                return true;
-            }
+            peer = ToConnectedRecord(connected!);
+            return true;
         }
 
-        foreach (KeyValuePair<string, byte> dialing in _dialing)
+        foreach (KeyValuePair<string, Reservation> dialing in _dialing)
         {
-            if (!_peers.ContainsKey(dialing.Key) && string.Equals(ExtractPeerId(dialing.Key), peerId, StringComparison.Ordinal))
+            if (!_peers.ContainsKey(dialing.Key) && string.Equals(dialing.Value.PeerId, peerId, StringComparison.Ordinal))
             {
-                peer = ToConnectingRecord(dialing.Key);
+                peer = ToConnectingRecord(dialing.Key, dialing.Value);
                 return true;
             }
         }
@@ -388,14 +438,14 @@ public class PeerManager(
 
     private static PeerRecord ToConnectedRecord(ManagedPeer peer) => new(
         peer.PeerId,
-        PeerDirection.Outbound,
+        peer.Direction,
         PeerConnectionState.Connected,
         peer.Session.RemoteAddress?.ToString() ?? peer.Id,
-        AgentVersion: null);
+        peer.AgentVersion);
 
-    private static PeerRecord ToConnectingRecord(string address) => new(
-        ExtractPeerId(address),
-        PeerDirection.Outbound,
+    private static PeerRecord ToConnectingRecord(string address, Reservation reservation) => new(
+        reservation.PeerId,
+        reservation.Direction,
         PeerConnectionState.Connecting,
         address,
         AgentVersion: null);
@@ -413,7 +463,7 @@ public class PeerManager(
     };
 
     private string[] StaticPeerAddresses() =>
-        config.StaticPeers?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
+        _config.StaticPeers?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
 
     /// <summary>The stable part of a dial address to key the ban list and diagnostics on: the libp2p
     /// peer id after the last <c>/p2p/</c> component, or the whole address when it has none.</summary>
@@ -468,42 +518,163 @@ public class PeerManager(
         }
     }
 
+    /// <summary>
+    /// The one outbound admission path: the static-peer reconnect loop and discovery dials both come
+    /// through here, so the ban check and the ceiling reservation live here and not in one caller
+    /// (the static path used to skip the reservation and could take the pool past MaxPeerCount).
+    /// Refuses a banned id, a peer already connected or in flight, or one that would overshoot the
+    /// ceiling, all without attempting a dial.
+    /// </summary>
     private async Task<bool> ConnectAsync(string address, CancellationToken token)
     {
         string peerId = ExtractPeerId(address);
         if (IsBanned(peerId))
         {
-            // Reached from the static-peer reconnect loop, which does not go through
-            // TryAddPeerAsync's own ban check: this is what makes the ban survive reconnection
-            // attempts against a statically configured address too.
-            if (_logger.IsDebug) _logger.Debug($"Refusing to reconnect banned beacon chain peer {peerId}");
+            if (_logger.IsDebug) _logger.Debug($"Refusing to dial banned beacon chain peer {peerId}");
             return false;
         }
 
-        await _outboundDialGate.WaitAsync(token);
+        if (!TryReserveAdmissionSlot(address, peerId, PeerDirection.Outbound, out bool atCeiling))
+        {
+            if (_logger.IsDebug) _logger.Debug($"Refusing to dial {address}: {(atCeiling ? $"at the configured peer band ceiling ({_config.MaxPeerCount})" : "already connected or in flight")}");
+            return false;
+        }
+
         try
         {
-            ISession session = await p2p.DialPeerAsync(Multiaddress.Decode(address), token);
-            ManagedPeer peer = new(this, p2p, address, peerId, session);
-            if (!await UpdateStatusAsync(peer, token))
+            await _outboundDialGate.WaitAsync(token);
+            try
             {
+                ISession session = await _p2p.DialPeerAsync(Multiaddress.Decode(address), token);
+                // The dial returns before the agent probe has answered, and may hand back a session that
+                // already existed (the peer connected to us first): wait for what the libp2p layer
+                // recorded instead of assuming "we dialed it, no client string".
+                BeaconP2P.SessionInfo info = await _p2p.GetSessionInfoAsync(session, token);
+                return await AdmitSessionAsync(address, peerId, session, info, token);
+            }
+            catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Failed to connect to beacon chain peer {address}: {e.Message}");
                 return false;
             }
-
-            _peers[address] = peer;
-            Metrics.BeaconChainPeersConnected++;
-            Metrics.BeaconChainPeerCount = _peers.Count;
-            if (_logger.IsInfo) _logger.Info($"Connected to beacon chain peer {address} (head slot {peer.HeadSlot})");
-            return true;
-        }
-        catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Failed to connect to beacon chain peer {address}: {e.Message}");
-            return false;
+            finally
+            {
+                _outboundDialGate.Release();
+            }
         }
         finally
         {
-            _outboundDialGate.Release();
+            _dialing.TryRemove(address, out _);
+        }
+    }
+
+    /// <summary>Status-exchanges an established session and, when it is on our fork, records it under
+    /// <paramref name="address"/>. Shared by every admission path; the caller holds the reservation.</summary>
+    private async Task<bool> AdmitSessionAsync(string address, string peerId, ISession session, BeaconP2P.SessionInfo info, CancellationToken token)
+    {
+        // A dial address without a /p2p/ component keys on the whole address, so the session's real
+        // peer id is the only reliable way to notice it is already admitted under another address.
+        string establishedId = BeaconP2P.RemotePeerIdOf(session)?.ToString() ?? peerId;
+        if (IsRecorded(session, establishedId))
+        {
+            return true;
+        }
+
+        ManagedPeer peer = new(this, _p2p, address, peerId, session, info.Direction, info.AgentVersion);
+        if (!await UpdateStatusAsync(peer, token))
+        {
+            return false;
+        }
+
+        lock (_admissionLock)
+        {
+            // A dial address without /p2p/ cannot be matched by id to the remote-opened session until
+            // now, so two admissions can hold the same session and both pass the check above: one
+            // session, one entry, decided under the same lock the ceiling reads _peers.Count under.
+            if (IsRecorded(session, establishedId))
+            {
+                return true;
+            }
+
+            _peers[address] = peer;
+        }
+
+        Metrics.BeaconChainPeersConnected++;
+        Metrics.BeaconChainPeerCount = _peers.Count;
+        if (_logger.IsInfo) _logger.Info($"Connected to beacon chain peer {address} ({info.Direction.ToString().ToLowerInvariant()}, head slot {peer.HeadSlot})");
+        return true;
+    }
+
+    private void OnSessionEstablished(ISession session, BeaconP2P.SessionInfo info)
+    {
+        // A session this manager is dialing itself is admitted by that dial once it returns; only a
+        // session nobody here asked for (the remote connected to us) is admitted from the event.
+        string address = session.RemoteAddress.ToString();
+        string peerId = BeaconP2P.RemotePeerIdOf(session)?.ToString() ?? ExtractPeerId(address);
+        if (IsKnown(peerId))
+        {
+            return;
+        }
+
+        _ = AdmitUnclaimedSessionAsync(session, address, peerId, info);
+    }
+
+    /// <summary>
+    /// The inbound admission path: the same ban check and ceiling reservation as a dial, but with the
+    /// session already open, so a refusal has to actively send <c>goodbye</c> and disconnect rather
+    /// than just not dial. A duplicate (the dial path claimed the same peer id meanwhile) is left alone:
+    /// that is the very session the dial is about to record.
+    /// </summary>
+    private async Task AdmitUnclaimedSessionAsync(ISession session, string address, string peerId, BeaconP2P.SessionInfo info)
+    {
+        try
+        {
+            if (IsBanned(peerId))
+            {
+                await RefuseSessionAsync(session, peerId, GoodbyeReason.Banned, $"banned peer {peerId} connected to us");
+                return;
+            }
+
+            if (!TryReserveAdmissionSlot(address, peerId, info.Direction, out bool atCeiling))
+            {
+                if (atCeiling)
+                {
+                    await RefuseSessionAsync(session, peerId, GoodbyeReason.TooManyPeers, $"{address} connected to us at the configured peer band ceiling ({_config.MaxPeerCount})");
+                }
+
+                return;
+            }
+
+            try
+            {
+                await AdmitSessionAsync(address, peerId, session, info, CancellationToken.None);
+            }
+            finally
+            {
+                _dialing.TryRemove(address, out _);
+            }
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Admitting beacon chain peer {address} failed: {e.Message}");
+        }
+    }
+
+    /// <summary>Sends <c>goodbye</c> and disconnects a session that was never admitted. Recorded in the
+    /// peer id's disconnect history like any other drop, so who keeps knocking while we are full or
+    /// after a ban is visible in the diagnostics rather than only in a debug log.</summary>
+    private async Task RefuseSessionAsync(ISession session, string peerId, ulong reason, string detail)
+    {
+        if (_logger.IsDebug) _logger.Debug($"Refusing beacon chain peer: {detail}");
+        RecordDisconnect(peerId, messagesSent: 0, failuresReported: 0, reason, detail);
+        await _p2p.GoodbyeAsync(session, reason, CancellationToken.None);
+        try
+        {
+            await session.DisconnectAsync();
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Disconnect from {session.RemoteAddress} failed: {e.Message}");
         }
     }
 
@@ -516,7 +687,7 @@ public class PeerManager(
                 return;
             }
 
-            await p2p.PingAsync(peer.Session, token);
+            await _p2p.PingAsync(peer.Session, token);
             peer.RecordMessageSent();
             peer.ConsecutiveFailures = 0;
         }
@@ -534,9 +705,9 @@ public class PeerManager(
     /// <returns><c>false</c> when the peer was dropped for being on a different fork.</returns>
     private async Task<bool> UpdateStatusAsync(ManagedPeer peer, CancellationToken token)
     {
-        StatusMessageV2 status = await p2p.RequestStatusAsync(peer.Session, token);
+        StatusMessageV2 status = await _p2p.RequestStatusAsync(peer.Session, token);
         peer.RecordMessageSent();
-        if (!status.ForkDigest.AsSpan().SequenceEqual(statusSource.CurrentStatus.ForkDigest))
+        if (!status.ForkDigest.AsSpan().SequenceEqual(_statusSource.CurrentStatus.ForkDigest))
         {
             await DropAsync(peer, GoodbyeReason.IrrelevantNetwork, "fork digest mismatch", token);
             return false;
@@ -555,7 +726,7 @@ public class PeerManager(
         Metrics.BeaconChainPeerCount = _peers.Count;
         RecordDisconnect(peer, reason, detail);
         PeerDropped?.Invoke(peer.Id);
-        await p2p.GoodbyeAsync(peer.Session, reason, token);
+        await _p2p.GoodbyeAsync(peer.Session, reason, token);
         try
         {
             await peer.Session.DisconnectAsync();
@@ -598,7 +769,7 @@ public class PeerManager(
         }
 
         int consecutiveFaults = Interlocked.Increment(ref record.ConsecutiveFaultDisconnects);
-        if (consecutiveFaults >= config.FaultDisconnectsBeforeBan && !record.Banned)
+        if (consecutiveFaults >= _config.FaultDisconnectsBeforeBan && !record.Banned)
         {
             record.Banned = true;
             if (_logger.IsWarn) _logger.Warn($"Banned beacon chain peer {peerId} after {consecutiveFaults} consecutive fault disconnects");
@@ -610,7 +781,7 @@ public class PeerManager(
 
     /// <summary>Internal so a test can put an address straight into the "dialing" reservation set,
     /// to exercise <see cref="TryGetPeer"/>'s own guard without racing a real dial's transient window.</summary>
-    internal void ReserveDialingForTest(string address) => _dialing[address] = 0;
+    internal void ReserveDialingForTest(string address) => _dialing[address] = new Reservation(ExtractPeerId(address), PeerDirection.Outbound);
 
     /// <summary>The durable, peer-id-keyed half of a peer's history: outlives any one
     /// <see cref="ManagedPeer"/> session so a ban and disconnect history survive reconnection attempts.
@@ -629,7 +800,7 @@ public class PeerManager(
         public string? LastDisconnectDetail;
     }
 
-    private sealed class ManagedPeer(PeerManager manager, BeaconP2P p2p, string address, string peerId, ISession session) : IBeaconSyncPeer
+    private sealed class ManagedPeer(PeerManager manager, BeaconP2P p2p, string address, string peerId, ISession session, PeerDirection direction, string? agentVersion) : IBeaconSyncPeer
     {
         private int _consecutiveFailures;
         private long _messagesSent;
@@ -640,6 +811,12 @@ public class PeerManager(
 
         /// <summary>The libp2p peer id this session was dialed as (see <see cref="PeerManager.ExtractPeerId"/>).</summary>
         public string PeerId { get; } = peerId;
+
+        /// <summary>Which side opened the session, as the libp2p layer saw it happen.</summary>
+        public PeerDirection Direction { get; } = direction;
+
+        /// <summary>The identify agent string, <c>null</c> when the peer left the probe unanswered.</summary>
+        public string? AgentVersion { get; } = agentVersion;
 
         public int ConsecutiveFailures
         {
