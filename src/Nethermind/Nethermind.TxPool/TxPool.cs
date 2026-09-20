@@ -742,7 +742,7 @@ namespace Nethermind.TxPool
         }
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
-            => SubmitTx(tx, handlingOptions, out _);
+            => SubmitTx(tx, handlingOptions, ownsTransaction: false, out _);
 
         AcceptTxResult IRecyclableTxPool.SubmitOwnedTx(Transaction tx, out bool canRecycle)
         {
@@ -752,13 +752,13 @@ namespace Nethermind.TxPool
                 canRecycle = false;
                 return ((ITxPool)this).SubmitTx(tx, TxHandlingOptions.None);
             }
-            return SubmitTx(tx, TxHandlingOptions.None, out canRecycle);
+            return SubmitTx(tx, TxHandlingOptions.None, ownsTransaction: true, out canRecycle);
         }
 
-        private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions, out bool canRecycle)
+        private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions, bool ownsTransaction, out bool canRecycle)
         {
-            canRecycle = handlingOptions == TxHandlingOptions.None;
-            if (handlingOptions != TxHandlingOptions.None)
+            canRecycle = ownsTransaction && handlingOptions == TxHandlingOptions.None;
+            if (!canRecycle)
                 PooledBlobBuffers.Disown(tx);
             bool startBroadcast = _txPoolConfig.PersistentBroadcastEnabled
                                   && (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==

@@ -98,7 +98,7 @@ namespace Nethermind.TxPool.Test
 
         [Test, NonParallelizable]
         public void Rejected_blob_buffers_are_reused_only_without_discovery_subscribers(
-            [Values(0, 1, 2)] int listenerMode, [Values] bool pooled)
+            [Values(0, 1, 2)] int listenerMode, [Values] bool pooled, [Values] bool ownsTransaction)
         {
             _txPool = CreatePool(new TxPoolConfig { MaxBlobTxSize = 1 });
             Transaction tx = DecodeReceivedBlob(0x11, pooled);
@@ -112,14 +112,22 @@ namespace Nethermind.TxPool.Test
             };
             if (listenerMode != 0) _txPool.NewDiscovered += listener;
 
-            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.MaxTxSizeExceeded));
+            AcceptTxResult result = ownsTransaction
+                ? ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out _)
+                : _txPool.SubmitTx(tx, TxHandlingOptions.None);
+            Assert.That(result, Is.EqualTo(AcceptTxResult.MaxTxSizeExceeded));
 
             Transaction next = DecodeReceivedBlob(0x22, pooled);
             byte[] nextBlob = ((ShardBlobNetworkWrapper)next.NetworkWrapper).Blobs[0];
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(ReferenceEquals(original, nextBlob), Is.EqualTo(pooled && listenerMode == 0));
+                Assert.That(ReferenceEquals(original, nextBlob), Is.EqualTo(ownsTransaction && pooled && listenerMode == 0));
                 Assert.That(nextBlob, Is.All.EqualTo(0x22));
+                if (!ownsTransaction)
+                {
+                    Assert.That(((ShardBlobNetworkWrapper)tx.NetworkWrapper).Blobs[0], Is.SameAs(original));
+                    Assert.That(original, Is.All.EqualTo(0x11));
+                }
                 if (listenerMode != 0)
                 {
                     Assert.That(retained, Is.SameAs(tx));
@@ -139,7 +147,7 @@ namespace Nethermind.TxPool.Test
 
             Transaction duplicate = DecodeReceivedBlob(0x11, pooled: true);
             byte[] duplicateBlob = ((ShardBlobNetworkWrapper)duplicate.NetworkWrapper).Blobs[0];
-            Assert.That(_txPool.SubmitTx(duplicate, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+            Assert.That(((IRecyclableTxPool)_txPool).SubmitOwnedTx(duplicate, out _), Is.EqualTo(AcceptTxResult.AlreadyKnown));
 
             Transaction next = DecodeReceivedBlob(0x22, pooled: true);
             using (Assert.EnterMultipleScope())

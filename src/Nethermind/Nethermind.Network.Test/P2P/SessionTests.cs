@@ -144,16 +144,23 @@ public class SessionTests
     }
 
     [Test]
-    public void Can_enable_snappy()
+    public void Can_enable_snappy_only_with_outbound_splitter([Values] bool hasSplitter)
     {
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         _pipeline.Get<ZeroNettyP2PHandler>().Returns(handler);
-        _pipeline.Get<ZeroPacketSplitter>().Returns(new ZeroPacketSplitter());
+        _pipeline.Get<ZeroPacketSplitter>().Returns(hasSplitter ? new ZeroPacketSplitter() : null);
         Assert.That(handler.SnappyEnabled, Is.False);
         session.Handshake(TestItem.PublicKeyA);
         session.Init(5, _channelHandlerContext, _packetSender);
-        session.EnableSnappy();
+        if (hasSplitter)
+        {
+            Assert.That(() => session.EnableSnappy(), Throws.Nothing);
+        }
+        else
+        {
+            Assert.That(() => session.EnableSnappy(), Throws.InvalidOperationException.With.Message.Contains(nameof(ZeroPacketSplitter)));
+        }
         Assert.That(handler.SnappyEnabled, Is.True);
         _pipeline.Received().Get<ZeroPacketSplitter>();
         _pipeline.DidNotReceive().AddBefore(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<ZeroSnappyEncoder>());

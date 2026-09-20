@@ -11,6 +11,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
     /// <remarks>
     /// Received instances may be pooled. Neither the message nor its lists may be accessed after disposal
     /// or retained beyond the consumer's ownership scope.
+    /// Disposal ends that ownership scope, including the right to dispose the instance again after it may have been rented elsewhere.
     /// </remarks>
     public class NewPooledTransactionHashesMessage68(
         IOwnedReadOnlyList<byte> types,

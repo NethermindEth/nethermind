@@ -143,7 +143,9 @@ namespace Nethermind.Network.P2P
 
             // since groups were used, we are on a different thread
             _context.Channel.Pipeline.Get<ZeroNettyP2PHandler>()?.EnableSnappy();
-            _context.Channel.Pipeline.Get<ZeroPacketSplitter>().EnableSnappy(_logManager);
+            ZeroPacketSplitter splitter = _context.Channel.Pipeline.Get<ZeroPacketSplitter>()
+                ?? throw new InvalidOperationException("Cannot enable Snappy without the outbound ZeroPacketSplitter.");
+            splitter.EnableSnappy(_logManager);
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceEnablingSnappy() => _logger.Trace($"Enabling Snappy compression and disabling framing in {this}");
