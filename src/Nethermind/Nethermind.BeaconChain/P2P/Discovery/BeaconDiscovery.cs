@@ -15,6 +15,7 @@ using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Google.Protobuf;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.Core;
@@ -88,6 +89,9 @@ public sealed class BeaconDiscovery(
 
     /// <summary>The local signed ENR, exposed for logging and diagnostics. Only valid once <see cref="Start"/> has returned.</summary>
     public NodeRecord LocalNodeRecord => _localEnr!.Current;
+
+    /// <summary>This node's own custody groups and gossip subnets. Only valid once <see cref="Start"/> has returned.</summary>
+    public LocalCustody LocalCustody { get; private set; } = null!;
 
     /// <summary>Binds the discv5 UDP port and starts the Kademlia bootstrap and maintenance loops.</summary>
     public async Task Start(CancellationToken token)
@@ -358,7 +362,8 @@ public sealed class BeaconDiscovery(
     {
         CryptoRandom cryptoRandom = new();
         PrivateKey nodeKey = LoadOrCreateIdentity(cryptoRandom);
-        BeaconNodeRecordProvider localEnr = new(nodeKey, externalIp, config.P2PPort, config.Discv5Port, EnrForkId.Compute(spec, CurrentEpoch));
+        LocalCustody = new LocalCustody(nodeKey.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement);
+        BeaconNodeRecordProvider localEnr = new(nodeKey, externalIp, config.P2PPort, config.Discv5Port, EnrForkId.Compute(spec, CurrentEpoch), LocalCustody.CustodyGroupCount);
         Node currentNode = new(nodeKey.PublicKey, externalIp.ToString(), config.P2PPort, config.Discv5Port, true);
 
         IContainer discv5Services = new ContainerBuilder()
