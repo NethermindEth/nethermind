@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -671,7 +672,6 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 StartNumber = batch.StartNumber,
                 RequestSize = batch.RequestSize,
-                ResponseSourcePeer = batch.ResponseSourcePeer,
                 Response = batch.Response
             };
             batch.Response = null;
@@ -694,7 +694,7 @@ namespace Nethermind.Synchronization.FastBlocks
         }
 
         /// <param name="retryPending">Whether the dequeued batch is a queued range awaiting re-download, so dispatching it counts as a retry.</param>
-        private bool TryDequeuePending(out HeadersSyncBatch? batch, out bool retryPending)
+        private bool TryDequeuePending([NotNullWhen(true)] out HeadersSyncBatch? batch, out bool retryPending)
         {
             retryPending = false;
             if (!_pending.TryDequeue(out batch)) return false;
@@ -709,7 +709,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void ClearPending()
         {
-            while (TryDequeuePending(out HeadersSyncBatch? batch, out _)) batch!.Dispose();
+            while (TryDequeuePending(out HeadersSyncBatch? batch, out _)) batch.Dispose();
         }
 
         private void EnqueueBatch(HeadersSyncBatch batch, bool skipPersisted = false)
