@@ -6,6 +6,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
+using Nethermind.BeaconChain.Api;
+using Nethermind.Config;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
@@ -54,6 +56,33 @@ public class BeaconChainPluginTests
             Assert.That(new BeaconChainPlugin(new BeaconChainConfig()).Enabled, Is.False);
             Assert.That(new BeaconChainPlugin(new BeaconChainConfig { Enabled = true }).Enabled, Is.True);
         });
+    }
+
+    [Test]
+    public void Plugin_wiring_resolves_the_beacon_api_host()
+    {
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        ipResolver.Resolve(Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Loopback)));
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.ChainId.Returns(BlockchainIds.Mainnet);
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new BeaconChainModule())
+            .AddSingleton<IBeaconChainConfig>(new BeaconChainConfig())
+            .AddSingleton<IBeaconApiConfig>(new BeaconApiConfig())
+            .AddSingleton(Substitute.For<IProcessExitSource>()) // registered by the runner in production
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton(Substitute.For<IEngineRpcModule>())
+            .AddSingleton<ITimestamper>(Timestamper.Default)
+            .AddSingleton(ipResolver)
+            .AddSingleton(specProvider)
+            .AddSingleton<IDbFactory, MemDbFactory>();
+
+        using IContainer container = builder.Build();
+
+        // The host's own tests build it by hand, which cannot see a missing registration: the
+        // discovery container threw at startup once for exactly that reason behind a green suite.
+        Assert.That(container.Resolve<BeaconApiHost>(), Is.Not.Null);
     }
 
     [Test]
