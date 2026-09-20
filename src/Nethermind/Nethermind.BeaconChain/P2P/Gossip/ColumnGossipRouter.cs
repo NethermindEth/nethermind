@@ -38,10 +38,10 @@ public enum ColumnGossipDropReason
 /// order (p2p-interface.md), cheapest structural checks first: decode, per-(slot, proposer_index,
 /// index) duplicate suppression, the structural part of <c>verify_data_column_sidecar</c>, subnet
 /// correctness, not-from-a-future-slot, then the two cryptographic checks (merkle inclusion proof,
-/// KZG cell-proof batch). The remaining conditions — the sidecar's block parent has been seen and
+/// KZG cell-proof batch). The remaining conditions - the sidecar's block parent has been seen and
 /// passes validation, the proposer index is valid and its signature verifies, the sidecar's slot is
 /// higher than its parent's, the current finalized checkpoint is an ancestor of the sidecar's block,
-/// and the sidecar is proposed by the expected proposer — all need the head state and fork choice.
+/// and the sidecar is proposed by the expected proposer - all need the head state and fork choice.
 /// Exactly like <see cref="GossipRouter"/> leaves full block validation to the orchestrator import
 /// pipeline, this router does not implement them: <see cref="DataColumnSidecarReceived"/> firing is
 /// not spec-complete acceptance, and a caller must run those checks before trusting an adversarial
@@ -63,7 +63,7 @@ public sealed class ColumnGossipRouter(BeaconChainSpec spec, SlotClock slotClock
 
     /// <summary>
     /// Raised for a sidecar that passed every check this router can do without beacon state (see
-    /// remarks) — not full spec acceptance.
+    /// remarks) - not full spec acceptance.
     /// </summary>
     public event Action<DataColumnSidecar>? DataColumnSidecarReceived;
 
@@ -199,7 +199,7 @@ public sealed class ColumnGossipRouter(BeaconChainSpec spec, SlotClock slotClock
         // on this call stack. Unlike every check above, this is real cryptographic work rather than a
         // hash or a field comparison; the pubsub library invokes this validator inline on its message
         // read loop, so this call blocks that loop for however long the native batch verify takes
-        // (not benchmarked here — it scales with the sidecar's commitment count, unlike the O(1) checks
+        // (not benchmarked here - it scales with the sidecar's commitment count, unlike the O(1) checks
         // above).
         if (!DataColumnSidecarVerifier.VerifyKzgProofs(sidecar))
         {
