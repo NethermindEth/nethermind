@@ -51,8 +51,16 @@ public class DebugBridgeTests
 
     public enum HistoricalSync { Complete, Headers, Bodies, Receipts, AccessLists, DeleteProgressFloor, BodyFloor, ReceiptFloor, AccessListFloor, BodyAboveHead }
 
-    [Test]
-    public async Task Delete_slice_after_rewind_below_advanced_pivot([Values] bool force, [Values] HistoricalSync history)
+    private static IEnumerable<TestCaseData> HistoricalSyncCases()
+    {
+        foreach (HistoricalSync history in Enum.GetValues<HistoricalSync>())
+            yield return new TestCaseData(false, history);
+        yield return new TestCaseData(true, HistoricalSync.Complete);
+        yield return new TestCaseData(true, HistoricalSync.Headers);
+    }
+
+    [TestCaseSource(nameof(HistoricalSyncCases))]
+    public async Task Delete_slice_after_rewind_below_advanced_pivot(bool force, HistoricalSync history)
     {
         TestStateBoundary boundary = new();
         ISyncPeer peer = Substitute.For<ISyncPeer>();
@@ -121,7 +129,19 @@ public class DebugBridgeTests
         {
             Assert.That(result.Result.ResultType, Is.EqualTo(accepted ? ResultType.Success : ResultType.Failure));
             if (accepted) Assert.That(result.Data, Is.EqualTo(2));
-            else Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            else
+            {
+                Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+                string expectedError = history switch
+                {
+                    HistoricalSync.Headers or HistoricalSync.Bodies or HistoricalSync.Receipts or HistoricalSync.AccessLists =>
+                        "Historical sync is unfinished or initial synchronization is active; wait for synchronization to complete before deleting chain levels.",
+                    HistoricalSync.BodyAboveHead =>
+                        "Historical sync progress is above the replacement head; rewind less deeply before deleting chain levels.",
+                    _ => "Historical sync progress lies in the deletion range; choose a higher startNumber."
+                };
+                Assert.That(result.Result.Error, Is.EqualTo(expectedError));
+            }
             Assert.That(tree.Head!.Hash, Is.EqualTo(blocks[retainedHead].Hash));
             Assert.That(tree.FindBlock(blocks[3].Hash!, BlockTreeLookupOptions.None), accepted ? Is.Null : Is.Not.Null);
             Assert.That(tree.FindBlock(blocks[4].Hash!, BlockTreeLookupOptions.None), accepted ? Is.Null : Is.Not.Null);

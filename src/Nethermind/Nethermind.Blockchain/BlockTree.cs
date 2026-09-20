@@ -1964,6 +1964,8 @@ namespace Nethermind.Blockchain
                 BestSuggestedBeaconHeader = BestSuggestedBeaconBody?.Header;
             if (LowestInsertedBeaconHeader?.Number >= startNumber && LowestInsertedBeaconHeader.Number <= endNumber)
                 LowestInsertedBeaconHeader = null;
+            if (LowestInsertedHeader?.Number >= startNumber && LowestInsertedHeader.Number <= endNumber)
+                LowestInsertedHeader = null;
             if (newHeadBlock is not null)
                 UpdateHeadBlock(newHeadBlock);
 

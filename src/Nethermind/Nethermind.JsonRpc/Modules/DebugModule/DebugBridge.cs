@@ -124,7 +124,8 @@ public class DebugBridge : IDebugBridge
     public ResultWrapper<int> DeleteChainSlice(ulong startNumber, bool force = false)
     {
         if (!CanMutateChain()) return NotDrained();
-        if (!CanDeleteWithoutInvalidatingSyncProgress(startNumber)) return SyncHistoryUnavailable();
+        string? syncError = GetSyncDeletionError(startNumber);
+        if (syncError is not null) return ResultWrapper<int>.Fail(syncError, ErrorCodes.ResourceUnavailable);
 
         if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation, maintenance: true))
         {
@@ -133,9 +134,11 @@ public class DebugBridge : IDebugBridge
         }
         using BlockTreeMutationLock.Scope mutationScope = mutation;
         if (!CanMutateChain()) return NotDrained();
-        if (!CanDeleteWithoutInvalidatingSyncProgress(startNumber)) return SyncHistoryUnavailable();
+        syncError = GetSyncDeletionError(startNumber);
+        if (syncError is not null) return ResultWrapper<int>.Fail(syncError, ErrorCodes.ResourceUnavailable);
 
         bool replacesHead = startNumber > 0 && _blockTree.Head?.Number >= startNumber;
+        // The implicit deletion end is BestKnownNumber, which can be below a configured pivot.
         bool replacesPivot = startNumber <= _blockTree.SyncPivot.BlockNumber &&
                              _blockTree.SyncPivot.BlockNumber <= _blockTree.BestKnownNumber;
         Block? target = replacesHead
@@ -149,20 +152,19 @@ public class DebugBridge : IDebugBridge
              _syncPointers.LowestInsertedBodyNumber > target.Number ||
              _syncPointers.LowestInsertedReceiptBlockNumber > target.Number ||
              _syncPointers.LowestInsertedBlockAccessListBlockNumber > target.Number))
-            return SyncHistoryUnavailable();
+            return ResultWrapper<int>.Fail("Historical sync progress is above the replacement head; rewind less deeply before deleting chain levels.", ErrorCodes.ResourceUnavailable);
 
         int deleted = _blockTree.DeleteChainSlice(startNumber, force: force);
+        // Completed history remains contiguous from its retained floors to target, below the deleted range.
+        // Relocate only after deletion succeeds so a rejected deletion leaves the pivot unchanged.
         if (replacesPivot) _blockTree.SyncPivot = (target!.Number, target.Hash!);
         return ResultWrapper<int>.Success(deleted);
-
-        static ResultWrapper<int> SyncHistoryUnavailable() =>
-            ResultWrapper<int>.Fail("Cannot delete chain levels while historical sync is unfinished or its progress pointers would be invalidated.", ErrorCodes.ResourceUnavailable);
 
         static ResultWrapper<int> NotDrained() =>
             ResultWrapper<int>.Fail("Pause block processing and wait for it to drain before deleting chain levels.", ErrorCodes.ResourceUnavailable);
     }
 
-    private bool CanDeleteWithoutInvalidatingSyncProgress(ulong startNumber)
+    private string? GetSyncDeletionError(ulong startNumber)
     {
         const SyncMode initialSyncModes = SyncMode.FastBlocks | SyncMode.BeaconHeaders | SyncMode.StateNodes |
                                           SyncMode.FastSync | SyncMode.UpdatingPivot | SyncMode.DbLoad;
@@ -172,13 +174,15 @@ public class DebugBridge : IDebugBridge
              !_syncProgressResolver.IsFastBlocksReceiptsFinished() ||
              !_syncProgressResolver.IsFastBlockAccessListsFinished() ||
              (_syncModeSelector.Current & initialSyncModes) != 0))
-            return false;
+            return "Historical sync is unfinished or initial synchronization is active; wait for synchronization to complete before deleting chain levels.";
 
         ulong endNumber = _blockTree.BestKnownNumber;
-        return !IsDeleted(_blockTree.LowestInsertedHeader?.Number) &&
-               !IsDeleted(_syncPointers.LowestInsertedBodyNumber) &&
-               !IsDeleted(_syncPointers.LowestInsertedReceiptBlockNumber) &&
-               !IsDeleted(_syncPointers.LowestInsertedBlockAccessListBlockNumber);
+        return IsDeleted(_blockTree.LowestInsertedHeader?.Number) ||
+               IsDeleted(_syncPointers.LowestInsertedBodyNumber) ||
+               IsDeleted(_syncPointers.LowestInsertedReceiptBlockNumber) ||
+               IsDeleted(_syncPointers.LowestInsertedBlockAccessListBlockNumber)
+            ? "Historical sync progress lies in the deletion range; choose a higher startNumber."
+            : null;
 
         bool IsDeleted(ulong? number) => number >= startNumber && number <= endNumber;
     }

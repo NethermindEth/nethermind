@@ -2140,6 +2140,33 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Direct_delete_clears_only_removed_historical_header_pointer([Values(2UL, 3UL, 4UL)] ulong pointerLevel)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(5);
+        BlockTree tree = builder.TestObject;
+        builder.StateBoundary.BestPersistedState = 4;
+        tree.ForkChoiceUpdated(tree.Head!.Hash!, tree.Head.Hash!);
+        Assert.That(tree.SyncPivot.BlockNumber, Is.EqualTo(4));
+        BlockHeader pointer = tree.FindHeader(pointerLevel, BlockTreeLookupOptions.None)!;
+        tree.LowestInsertedHeader = pointer;
+        byte[]? persistedPointer = builder.MetadataDb.Get(MetadataDbKeys.LowestInsertedFastHeaderHash);
+        Assert.That(persistedPointer, Is.Not.Null);
+        Hash256 deletedHash = tree.FindHeader(3, BlockTreeLookupOptions.None)!.Hash!;
+
+        Assert.That(tree.DeleteChainSlice(3, 3), Is.EqualTo(1));
+
+        BlockTree reloaded = Build.A.BlockTree().WithDatabaseFrom(builder).TestObject;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.FindHeader(deletedHash, BlockTreeLookupOptions.None), Is.Null);
+            Assert.That(tree.LowestInsertedHeader?.Hash, Is.EqualTo(pointerLevel == 3 ? null : pointer.Hash));
+            Assert.That(builder.MetadataDb.Get(MetadataDbKeys.LowestInsertedFastHeaderHash),
+                Is.EqualTo(pointerLevel == 3 ? new byte[] { 0x80 } : persistedPointer));
+            Assert.That(reloaded.LowestInsertedHeader?.Hash, Is.EqualTo(pointerLevel == 3 ? null : pointer.Hash));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Delete_slice_resets_header_only_suggestions([Values] bool beacon)
     {
         BlockTree tree = Build.A.BlockTree().OfChainLength(2).TestObject;
