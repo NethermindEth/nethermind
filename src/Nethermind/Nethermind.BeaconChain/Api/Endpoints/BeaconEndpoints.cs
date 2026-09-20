@@ -2,18 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.Api.Common;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.BeaconChain.Api.Endpoints;
 
-/// <summary><c>/eth/v1/beacon/*</c>: genesis, headers, block root, and (SSZ-only) block content.</summary>
+/// <summary><c>/eth/v1/beacon/*</c>: genesis, headers (by id, slot or parent), block root, and block content as SSZ or JSON.</summary>
 internal static class BeaconEndpoints
 {
     public static void Map(WebApplication app, BeaconApiContext ctx)
@@ -46,13 +48,9 @@ internal static class BeaconEndpoints
             return ContentNegotiation.WriteNotAcceptable(c);
         }
 
-        if (c.Request.Query.ContainsKey("parent_root"))
+        if (c.Request.Query.TryGetValue("parent_root", out Microsoft.Extensions.Primitives.StringValues parentRootValue))
         {
-            // Would need a root -> children index this store does not maintain (it only indexes
-            // canonical-slot -> root); answering "no matches" would be indistinguishable from a
-            // genuine empty result, so this is refused rather than silently ignored.
-            return ApiErrors.Write(c, StatusCodes.Status501NotImplemented,
-                "Filtering headers by parent_root is not implemented: the store has no root-to-children index.", c.RequestAborted);
+            return HeadersByParent(c, parentRootValue.ToString(), ctx);
         }
 
         string id = c.Request.Query.TryGetValue("slot", out Microsoft.Extensions.Primitives.StringValues slotValue)
@@ -76,6 +74,75 @@ internal static class BeaconEndpoints
         return BeaconApiJson.WriteEnvelopeAsync(c, new[] { entry },
             ResponseEnvelope.ExecutionOptimistic(),
             ResponseEnvelope.IsFinalized(ctx.Spec, ctx.StatusSource, resolved.Block.Message.Slot),
+            c.RequestAborted);
+    }
+
+    /// <summary>
+    /// <c>headers?parent_root=...[&amp;slot=...]</c>: every stored child of the parent, from the store's
+    /// children index. Served only when that index is complete for the parent; a parent stored before
+    /// the index existed is refused, because an empty or shorter list would read as a real answer.
+    /// </summary>
+    private static Task HeadersByParent(HttpContext c, string parentRootRaw, BeaconApiContext ctx)
+    {
+        if (!HexConvert.TryParseHash(parentRootRaw, out Hash256? parentRoot))
+        {
+            return ApiErrors.Write(c, StatusCodes.Status400BadRequest, "Invalid parent_root: expected a 0x-prefixed 32-byte root.", c.RequestAborted);
+        }
+
+        ulong? slotFilter = null;
+        if (c.Request.Query.TryGetValue("slot", out Microsoft.Extensions.Primitives.StringValues slotRaw))
+        {
+            if (!ulong.TryParse(slotRaw.ToString(), out ulong parsedSlot))
+            {
+                return ApiErrors.Write(c, StatusCodes.Status400BadRequest, $"Invalid slot '{slotRaw}'.", c.RequestAborted);
+            }
+
+            slotFilter = parsedSlot;
+        }
+
+        if (!ctx.Store.TryGetBlock(parentRoot!, out _))
+        {
+            return ApiErrors.Write(c, StatusCodes.Status404NotFound, $"Block {parentRoot} is not retained by this node.", c.RequestAborted);
+        }
+
+        if (!ctx.Store.TryGetChildren(parentRoot!, out Hash256[] childRoots, out bool complete) || !complete)
+        {
+            return ApiErrors.Write(c, StatusCodes.Status501NotImplemented,
+                $"Children of block {parentRoot} are not indexed: it was stored before this node kept a root-to-children index, so any list would be incomplete.", c.RequestAborted);
+        }
+
+        List<HeaderEntryDto> entries = [];
+        bool finalized = childRoots.Length > 0;
+        BeaconFork? fork = null;
+        bool mixedForks = false;
+        foreach (Hash256 childRoot in childRoots)
+        {
+            if (!ctx.Store.TryGetBlock(childRoot, out SignedBeaconBlock? child))
+            {
+                // The index and the block column disagree (a prune raced this request); skipping the
+                // entry would hand back a shorter list that looks complete.
+                return ApiErrors.Write(c, StatusCodes.Status500InternalServerError,
+                    $"The children index names block {childRoot}, which is not retained; retry the request.", c.RequestAborted);
+            }
+
+            ulong childSlot = child.Message!.Slot;
+            if (slotFilter is not null && childSlot != slotFilter) continue;
+
+            entries.Add(BuildHeaderEntry(ctx, new ResolvedBlock(childRoot, child)));
+            finalized &= ResponseEnvelope.IsFinalized(ctx.Spec, ctx.StatusSource, childSlot);
+            BeaconFork childFork = ctx.Spec.ForkAtEpoch(ctx.Spec.GetEpoch(childSlot));
+            mixedForks |= fork is not null && fork != childFork;
+            fork = childFork;
+        }
+
+        if (fork is not null && !mixedForks)
+        {
+            c.Response.Headers[ResponseEnvelope.ConsensusVersionHeader] = ResponseEnvelope.ForkName(fork.Value);
+        }
+
+        return BeaconApiJson.WriteEnvelopeAsync(c, entries,
+            ResponseEnvelope.ExecutionOptimistic(),
+            finalized && entries.Count > 0,
             c.RequestAborted);
     }
 
@@ -131,7 +198,8 @@ internal static class BeaconEndpoints
             return ContentNegotiation.WriteNotAcceptable(c);
         }
 
-        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, resolved.Block.Message!.Slot);
+        ulong slot = resolved.Block.Message!.Slot;
+        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, slot);
         if (format == ContentNegotiation.ResponseFormat.Ssz)
         {
             c.Response.ContentType = ContentNegotiation.OctetStream;
@@ -139,11 +207,23 @@ internal static class BeaconEndpoints
             return c.Response.Body.WriteAsync(encoded, c.RequestAborted).AsTask();
         }
 
-        // JSON serialization of the full, fork-specific block body (hundreds of SSZ fields across
-        // Electra/Fulu/Gloas) is not implemented; use `Accept: application/octet-stream` for the
-        // SSZ representation this endpoint does serve.
-        return ApiErrors.Write(c, StatusCodes.Status501NotImplemented,
-            "JSON block bodies are not implemented; request 'Accept: application/octet-stream' for SSZ.", c.RequestAborted);
+        BeaconFork fork = ctx.Spec.ForkAtEpoch(ctx.Spec.GetEpoch(slot));
+        if (fork == BeaconFork.Gloas)
+        {
+            // The store decodes every block with the Electra/Fulu body layout; a Gloas body (no
+            // execution_payload, a signed bid instead) would come out as a plausible wrong object.
+            return ApiErrors.Write(c, StatusCodes.Status501NotImplemented,
+                $"JSON bodies for {ResponseEnvelope.ForkName(fork)} blocks are not implemented; only the Electra/Fulu body layout is serialized.", c.RequestAborted);
+        }
+
+        return BeaconApiJson.WriteVersionedEnvelopeAsync(c, ResponseEnvelope.ForkName(fork),
+            ResponseEnvelope.ExecutionOptimistic(),
+            ResponseEnvelope.IsFinalized(ctx.Spec, ctx.StatusSource, slot),
+            s =>
+            {
+                BeaconJsonWriter.WriteSignedBeaconBlock(s.Writer, resolved.Block);
+                return Task.CompletedTask;
+            });
     }
 
     private static HeaderEntryDto BuildHeaderEntry(BeaconApiContext ctx, ResolvedBlock resolved)
