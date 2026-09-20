@@ -1,0 +1,94 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.BeaconChain.P2P;
+using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.P2P;
+using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
+using Nethermind.Logging;
+using NUnit.Framework;
+
+namespace Nethermind.BeaconChain.Test.Sync;
+
+/// <summary>
+/// <see cref="RangeSync"/> reports peer failures through the closed-cardinality overload only. The
+/// free-text overload is what let the failure metric's label grow without bound, and the peer
+/// manager's fatal-session fast path keys off the typed reason, so a range-sync caller falling
+/// back to free text would both leak label cardinality and keep zombie sessions on a budget.
+/// </summary>
+public class RangeSyncFailureReportingTests
+{
+    private const ulong AnchorSlot = 10;
+    private const ulong TargetSlot = 12;
+
+    public enum BadPeerBehavior
+    {
+        WrongParentBatch,
+        RequestTimesOut,
+        SessionIsGone,
+    }
+
+    [TestCase(BadPeerBehavior.WrongParentBatch, PeerFailureReason.ProtocolViolation)]
+    [TestCase(BadPeerBehavior.RequestTimesOut, PeerFailureReason.RequestFailed)]
+    [TestCase(BadPeerBehavior.SessionIsGone, PeerFailureReason.SessionClosed)]
+    [CancelAfter(30_000)]
+    public async Task Every_failure_is_reported_with_a_typed_reason_and_never_as_free_text(BadPeerBehavior behavior, PeerFailureReason expected, CancellationToken token)
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 11, 12);
+        StubPeer badPeer = new("bad", headSlot: TargetSlot + 1, (startSlot, count) => behavior switch
+        {
+            BadPeerBehavior.RequestTimesOut => throw new TimeoutException("request timed out"),
+            BadPeerBehavior.SessionIsGone => throw new IOException("Channel closed"),
+            _ => [TestChain.CreateBlock(startSlot, parentRoot: Hash256.Zero), .. chain.Skip(1)],
+        });
+        StubPeer goodPeer = new("good", headSlot: TargetSlot, (startSlot, count) => [.. chain.Where(b => b.Message!.Slot >= startSlot && b.Message.Slot < startSlot + count)]);
+        RangeSync sync = new(new StubPool(badPeer, goodPeer), LimboLogs.Instance);
+
+        List<SignedBeaconBlock> imported = [];
+        await foreach (SignedBeaconBlock block in sync.Run(anchorRoot, AnchorSlot, () => TargetSlot, token))
+        {
+            imported.Add(block);
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(imported.Select(b => b.Message!.Slot), Is.EqualTo(chain.Select(b => b.Message!.Slot)), "the good peer still completes the range");
+            Assert.That(badPeer.TypedReports, Is.Not.Empty.And.All.EqualTo(expected), "the bad peer is penalized under the reason that describes what it did");
+            Assert.That(badPeer.FreeTextReports + goodPeer.FreeTextReports, Is.Zero, "the free-text overload is legacy and must have no callers here");
+            Assert.That(goodPeer.TypedReports, Is.Empty);
+        });
+    }
+
+    private sealed class StubPeer(string id, ulong headSlot, Func<ulong, ulong, SignedBeaconBlock[]> handler) : IBeaconSyncPeer
+    {
+        public List<PeerFailureReason> TypedReports { get; } = [];
+
+        public int FreeTextReports { get; private set; }
+
+        public string Id => id;
+
+        public ulong HeadSlot => headSlot;
+
+        public Task<IReadOnlyList<SignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<SignedBeaconBlock>>(handler(startSlot, count));
+
+        public Task<IReadOnlyList<SignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token) =>
+            Task.FromResult<IReadOnlyList<SignedBeaconBlock>>([]);
+
+        public void ReportFailure(PeerFailureReason reason, string? detail = null) => TypedReports.Add(reason);
+
+        public void ReportFailure(string reason) => FreeTextReports++;
+    }
+
+    private sealed class StubPool(params IBeaconSyncPeer[] peers) : IBeaconSyncPeerPool
+    {
+        public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot) => [.. peers.Where(p => p.HeadSlot >= minHeadSlot)];
+    }
+}
