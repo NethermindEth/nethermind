@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using CkzgLib;
 using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Network.P2P.Subprotocols.Eth.V72;
@@ -452,6 +454,61 @@ public class Eth72MessageSerializerTests
         writer.Encode(Hash256.Zero);
 
         Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void Announcement_matches_canonical_wire_vector()
+    {
+        const string hashHex = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+        const string maskHex = "01000000000000000000000000000080";
+        byte[] wire = Convert.FromHexString("f603c101e1a0" + hashHex + "90" + maskHex);
+        Hash256 hash = new(Convert.FromHexString(hashHex));
+        byte[] mask = Convert.FromHexString(maskHex);
+        NewPooledTransactionHashesMessageSerializer72 serializer = new();
+        using NewPooledTransactionHashesMessage72 message = new(new byte[] { 3 }, new int[] { 1 }, new[] { hash }, mask);
+        using DisposableByteBuffer encoded = PooledByteBufferAllocator.Default.Buffer().AsDisposable();
+        serializer.Serialize(encoded, message);
+        byte[] actual = new byte[encoded.ReadableBytes];
+        encoded.ReadBytes(actual);
+        Assert.That(actual, Is.EqualTo(wire));
+
+        using DisposableByteBuffer input = Unpooled.WrappedBuffer(wire).AsDisposable();
+        using NewPooledTransactionHashesMessage72 decoded = serializer.Deserialize(input);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Types, Is.EqualTo(new byte[] { 3 }));
+            Assert.That(decoded.Sizes, Is.EqualTo(new int[] { 1 }));
+            Assert.That(decoded.Hashes, Is.EqualTo(new[] { hash }));
+            Assert.That(decoded.CellMask, Is.EqualTo(mask));
+            Assert.That(input.ReadableBytes, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Announcement_disposal_returns_each_rented_array_once()
+    {
+        ArrayPool<byte> typesPool = Substitute.For<ArrayPool<byte>>();
+        ArrayPool<int> sizesPool = Substitute.For<ArrayPool<int>>();
+        ArrayPool<Hash256> hashesPool = Substitute.For<ArrayPool<Hash256>>();
+        byte[] typesArray = new byte[1];
+        int[] sizesArray = new int[1];
+        Hash256[] hashesArray = new Hash256[1];
+        typesPool.Rent(1).Returns(typesArray);
+        sizesPool.Rent(1).Returns(sizesArray);
+        hashesPool.Rent(1).Returns(hashesArray);
+        using NewPooledTransactionHashesMessage72 message = new(
+            new ArrayPoolList<byte>(typesPool, 1) { 3 },
+            new ArrayPoolList<int>(sizesPool, 1) { 1 },
+            new ArrayPoolList<Hash256>(hashesPool, 1) { Hash256.Zero }, new byte[16]);
+
+        typesPool.DidNotReceive().Return(Arg.Any<byte[]>(), Arg.Any<bool>());
+        sizesPool.DidNotReceive().Return(Arg.Any<int[]>(), Arg.Any<bool>());
+        hashesPool.DidNotReceive().Return(Arg.Any<Hash256[]>(), Arg.Any<bool>());
+        message.Dispose();
+        message.Dispose();
+        typesPool.Received(1).Return(typesArray, Arg.Any<bool>());
+        sizesPool.Received(1).Return(sizesArray, Arg.Any<bool>());
+        hashesPool.Received(1).Return(hashesArray, Arg.Any<bool>());
     }
 
     private static byte[] CreateCell(byte value)

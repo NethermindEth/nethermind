@@ -161,6 +161,93 @@ public class ZeroNettyP2PHandlerTests
             .SetName("Declared_length_overflows_int");
     }
 
+    [Test]
+    public void Snappy_releases_buffers_when_consumer_finishes([Values] bool retain, [Values] bool throws)
+    {
+        using PooledBufferLeakDetector detector = new();
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(detector.Allocator);
+        ISession session = Substitute.For<ISession>();
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        handler.EnableSnappy();
+        byte[] payload = [1, 2, 3, 4, 5];
+        ZeroPacket received = null;
+        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(call =>
+        {
+            received = call.Arg<ZeroPacket>();
+            if (retain) received.Retain();
+            AssertPacket(received, payload, 7);
+            if (throws) throw new InvalidOperationException("Consumer failed");
+        });
+        ZeroPacket input = CreateCompressedPacket(detector.Allocator, payload, 7);
+        try
+        {
+            if (throws)
+                Assert.That(() => handler.ChannelRead(context, input), Throws.TypeOf<InvalidOperationException>());
+            else
+                handler.ChannelRead(context, input);
+
+            Assert.That(input.ReferenceCount, Is.Zero);
+            Assert.That(received, Is.Not.Null);
+            Assert.That(received.ReferenceCount, Is.EqualTo(retain ? 1 : 0));
+            if (retain) AssertPacket(received, payload, 7);
+        }
+        finally
+        {
+            if (retain) received?.Release();
+        }
+    }
+
+    [Test]
+    public void Retained_snappy_message_survives_later_messages()
+    {
+        using PooledBufferLeakDetector detector = new();
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(detector.Allocator);
+        ISession session = Substitute.For<ISession>();
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        handler.EnableSnappy();
+        ZeroPacket retained = null;
+        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(call =>
+        {
+            ZeroPacket packet = call.Arg<ZeroPacket>();
+            if (retained is null)
+            {
+                packet.Retain();
+                retained = packet;
+            }
+            else AssertPacket(packet, [9, 8, 7], 8);
+        });
+        try
+        {
+            handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, [1, 2, 3], 7));
+            handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, [9, 8, 7], 8));
+            session.Received(2).ReceiveMessage(Arg.Any<ZeroPacket>());
+            AssertPacket(retained, [1, 2, 3], 7);
+        }
+        finally
+        {
+            retained?.Release();
+        }
+    }
+
+    private static ZeroPacket CreateCompressedPacket(IByteBufferAllocator allocator, byte[] payload, byte packetType)
+    {
+        IByteBuffer buffer = allocator.Buffer();
+        buffer.WriteInt(0x12345678);
+        buffer.WriteBytes(Snappy.CompressToArray(payload));
+        buffer.SkipBytes(4);
+        return new ZeroPacket(buffer) { PacketType = packetType };
+    }
+
+    private static void AssertPacket(ZeroPacket packet, byte[] payload, byte packetType)
+    {
+        byte[] actual = new byte[packet.Content.ReadableBytes];
+        packet.Content.GetBytes(packet.Content.ReaderIndex, actual);
+        Assert.That(actual, Is.EqualTo(payload));
+        Assert.That(packet.PacketType, Is.EqualTo(packetType));
+    }
+
     private class TestInternalNethermindException : Exception, IInternalNethermindException
     {
 

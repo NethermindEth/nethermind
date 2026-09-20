@@ -171,7 +171,7 @@ public class Eth72ProtocolHandlerTests
         _handler.SendNewTransaction(tx);
 
         _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage72>(m =>
-            m.Hashes.Length == 1 &&
+            m.Hashes.Count == 1 &&
             m.Hashes[0] == tx.Hash &&
             m.CellMask.SequenceEqual(cellMask.ToBytes())));
     }
@@ -187,7 +187,7 @@ public class Eth72ProtocolHandlerTests
         _handler.SendNewTransactions([tx], sendFullTx: false);
 
         _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage72>(m =>
-            m.Hashes.Length == 1 &&
+            m.Hashes.Count == 1 &&
             m.Hashes[0] == tx.Hash &&
             m.CellMask.SequenceEqual(BlobCellMask.Empty.ToBytes())));
     }
@@ -204,7 +204,7 @@ public class Eth72ProtocolHandlerTests
         _handler.SendNewTransaction(tx);
 
         _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage72>(m =>
-            m.Hashes.Length == 1 &&
+            m.Hashes.Count == 1 &&
             m.Hashes[0] == tx.Hash &&
             m.CellMask.SequenceEqual(BlobCellMask.Empty.ToBytes())));
     }
@@ -243,11 +243,11 @@ public class Eth72ProtocolHandlerTests
         _handler.SendNewTransaction(tx);
 
         _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage72>(m =>
-            m.Hashes.Length == 1 &&
+            m.Hashes.Count == 1 &&
             m.Hashes[0] == tx.Hash &&
             m.CellMask.SequenceEqual(firstMask.ToBytes())));
         _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage72>(m =>
-            m.Hashes.Length == 1 &&
+            m.Hashes.Count == 1 &&
             m.Hashes[0] == tx.Hash &&
             m.CellMask.SequenceEqual(expandedMask.ToBytes())));
     }
@@ -279,7 +279,7 @@ public class Eth72ProtocolHandlerTests
         _handler.SendNewTransactions([lightTx], sendFullTx: false);
 
         _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage72>(m =>
-            m.Hashes.Length == 1 &&
+            m.Hashes.Count == 1 &&
             m.Hashes[0] == tx.Hash &&
             m.Sizes[0] == elidedWireSize &&
             m.Sizes[0] < tx.GetLength()));
@@ -833,9 +833,9 @@ public class Eth72ProtocolHandlerTests
         _handler.SendNewTransaction(tx);
 
         _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage72>(m =>
-            m.Hashes.Length == 1
+            m.Hashes.Count == 1
             && m.Hashes[0] == tx.Hash
-            && m.Sizes.Length == 1
+            && m.Sizes.Count == 1
             && m.Sizes[0] == elidedWireSize
             && m.Sizes[0] < tx.GetLength()));
     }
@@ -992,9 +992,9 @@ public class Eth72ProtocolHandlerTests
         _handler.SendNewTransaction(tx);
 
         _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage72>(m =>
-            m.Hashes.Length == 1 &&
+            m.Hashes.Count == 1 &&
             m.Hashes[0] == tx.Hash &&
-            m.Sizes.Length == 1 &&
+            m.Sizes.Count == 1 &&
             m.Sizes[0] == elidedWireSize &&
             m.Sizes[0] < fullTxLength));
     }
