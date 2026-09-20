@@ -100,16 +100,64 @@ public static class TestFixtureDownloader
         using HttpResponseMessage response = httpClient.Send(request, HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
 
-        using Stream contentStream = response.Content.ReadAsStream();
+        long? expectedLength = response.Content.Headers.ContentLength;
+        using CountingStream contentStream = new(response.Content.ReadAsStream());
         using GZipStream gzStream = new(contentStream, CompressionMode.Decompress);
 
         if (shouldExtract is null)
         {
             TarFile.ExtractToDirectory(gzStream, targetDir, overwriteFiles: true);
-            return;
+        }
+        else
+        {
+            ExtractSelective(gzStream, targetDir, shouldExtract);
         }
 
-        ExtractSelective(gzStream, targetDir, shouldExtract);
+        // A dropped connection can leave GZipStream reporting a clean end-of-stream on a truncated
+        // body instead of a CRC/length error, and TarReader then just sees "no more entries" - so a
+        // partial archive silently looks complete and gets marked done. Checking bytes actually read
+        // against Content-Length (when the server sent one) catches that before the marker is written.
+        if (expectedLength is { } expected && contentStream.TotalBytesRead != expected)
+        {
+            throw new IOException(
+                $"Download of '{url}' was truncated: expected {expected} bytes but the stream yielded {contentStream.TotalBytesRead} before EOF.");
+        }
+    }
+
+    /// <summary>Wraps a stream to track how many bytes were actually read off it, so a truncated download can be detected even when the decompressor itself does not notice.</summary>
+    private sealed class CountingStream(Stream inner) : Stream
+    {
+        public long TotalBytesRead { get; private set; }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            int read = inner.Read(buffer, offset, count);
+            TotalBytesRead += read;
+            return read;
+        }
+
+        public override int Read(Span<byte> buffer)
+        {
+            int read = inner.Read(buffer);
+            TotalBytesRead += read;
+            return read;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) inner.Dispose();
+            base.Dispose(disposing);
+        }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() => inner.Flush();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     /// <summary>
