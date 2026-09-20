@@ -187,6 +187,7 @@ public class ZeroNettyP2PHandlerTests
             else
                 handler.ChannelRead(context, input);
 
+            handler.HandlerRemoved(context);
             Assert.That(input.ReferenceCount, Is.Zero);
             Assert.That(received, Is.Not.Null);
             Assert.That(received.ReferenceCount, Is.EqualTo(retain ? 1 : 0));
@@ -194,6 +195,7 @@ public class ZeroNettyP2PHandlerTests
         }
         finally
         {
+            handler.HandlerRemoved(context);
             if (retain) received?.Release();
         }
     }
@@ -257,11 +259,12 @@ public class ZeroNettyP2PHandlerTests
         session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>()))
             .Do(call => AssertPacket(call.Arg<ZeroPacket>(), payload, 7));
         handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, payload, 7));
+        handler.HandlerRemoved(context);
         session.Received(1).ReceiveMessage(Arg.Any<ZeroPacket>());
     }
 
     [Test]
-    public void Retained_snappy_message_survives_later_messages()
+    public void Retained_snappy_message_survives_later_messages([Values] bool slice)
     {
         using PooledBufferLeakDetector detector = new();
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
@@ -275,8 +278,13 @@ public class ZeroNettyP2PHandlerTests
             ZeroPacket packet = call.Arg<ZeroPacket>();
             if (retained is null)
             {
-                packet.Retain();
-                retained = packet;
+                if (slice)
+                    retained = new ZeroPacket(packet.Content.RetainedSlice()) { PacketType = packet.PacketType };
+                else
+                {
+                    packet.Retain();
+                    retained = packet;
+                }
             }
             else AssertPacket(packet, [9, 8, 7], 8);
         });
@@ -289,7 +297,119 @@ public class ZeroNettyP2PHandlerTests
         }
         finally
         {
+            handler.HandlerRemoved(context);
             retained?.Release();
+        }
+    }
+
+    [Test]
+    public void Snappy_reuses_bounded_output_and_resets_readable_range([Values(1, 65536, 65537)] int length)
+    {
+        using PooledBufferLeakDetector detector = new();
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(detector.Allocator);
+        ISession session = Substitute.For<ISession>();
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        handler.EnableSnappy();
+        IByteBuffer first = null;
+        byte[] payload = new byte[length];
+        new Random(42).NextBytes(payload);
+        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(call =>
+        {
+            ZeroPacket packet = call.Arg<ZeroPacket>();
+            if (first is null)
+            {
+                first = packet.Content;
+                AssertPacket(packet, payload, 7);
+                packet.Content.SkipBytes(length);
+                packet.Content.MarkReaderIndex().MarkWriterIndex();
+            }
+            else
+            {
+                AssertPacket(packet, [9, 8, 7], 8);
+                Assert.That(ReferenceEquals(first, packet.Content), Is.EqualTo(length == 65536));
+                packet.Content.SkipBytes(1).ResetReaderIndex();
+                AssertPacket(packet, [9, 8, 7], 8);
+                packet.Content.ResetWriterIndex();
+                Assert.That(packet.Content.WriterIndex, Is.Zero);
+            }
+        });
+        try
+        {
+            handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, payload, 7));
+            if (length > 65536) Assert.That(first.ReferenceCount, Is.Zero);
+            ZeroPacket malformed = new(Unpooled.WrappedBuffer(new byte[] { 1 }));
+            Assert.That(() => handler.ChannelRead(context, malformed), Throws.InstanceOf<CorruptedFrameException>());
+            Assert.That(malformed.ReferenceCount, Is.Zero);
+            handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, [9, 8, 7], 8));
+        }
+        finally
+        {
+            handler.HandlerRemoved(context);
+        }
+    }
+
+    [Test]
+    public void Snappy_reentrant_delivery_does_not_overwrite_outer_message()
+    {
+        using PooledBufferLeakDetector detector = new();
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(detector.Allocator);
+        ISession session = Substitute.For<ISession>();
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        handler.EnableSnappy();
+        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(call =>
+        {
+            ZeroPacket packet = call.Arg<ZeroPacket>();
+            if (packet.PacketType == 7)
+            {
+                handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, [9, 8, 7], 8));
+                AssertPacket(packet, [1, 2, 3], 7);
+            }
+            else AssertPacket(packet, [9, 8, 7], 8);
+        });
+        try
+        {
+            handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, [1, 2, 3], 7));
+            session.Received(2).ReceiveMessage(Arg.Any<ZeroPacket>());
+        }
+        finally
+        {
+            handler.HandlerRemoved(context);
+        }
+    }
+
+    [Test]
+    public void Snappy_cleanup_releases_output_even_during_callback([Values] bool inactive, [Values] bool duringCallback)
+    {
+        using PooledBufferLeakDetector detector = new();
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(detector.Allocator);
+        ISession session = Substitute.For<ISession>();
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        handler.EnableSnappy();
+        IByteBuffer output = null;
+        void Cleanup()
+        {
+            if (inactive) handler.ChannelInactive(context);
+            else handler.HandlerRemoved(context);
+        }
+        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(call =>
+        {
+            ZeroPacket packet = call.Arg<ZeroPacket>();
+            output = packet.Content;
+            if (duringCallback) Cleanup();
+            AssertPacket(packet, [1, 2, 3], 7);
+        });
+        try
+        {
+            handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, [1, 2, 3], 7));
+            Cleanup();
+            Assert.That(output.ReferenceCount, Is.Zero);
+        }
+        finally
+        {
+            handler.HandlerRemoved(context);
         }
     }
 

@@ -23,6 +23,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers;
 
 public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : SimpleChannelInboundHandler<ZeroPacket>
 {
+    private const int MaxRetainedOutputCapacity = 64 * 1024;
+    private IByteBuffer? _outputBuffer;
+    private bool _stopped;
     private readonly ISession _session = session ?? throw new ArgumentNullException(nameof(session));
     private readonly ILogger _logger = logManager?.GetClassLogger<ZeroNettyP2PHandler>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly SnappyOutputWriter _snappyOutputWriter = new();
@@ -81,7 +84,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
                 if (_logger.IsTrace) _logger.Trace($"Uncompressing with Snappy a message of length {readableBytes}");
             }
 
-            IByteBuffer output = ctx.Allocator.Buffer(uncompressedLength);
+            IByteBuffer output = TakeOutputBuffer(ctx, uncompressedLength);
 
             try
             {
@@ -115,13 +118,49 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
             }
             finally
             {
-                outputPacket.SafeRelease();
+                // A retained downstream reference prevents reuse, including after a consumer throws.
+                if (!_stopped && _outputBuffer is null && output.ReferenceCount == 1 && output.Capacity <= MaxRetainedOutputCapacity)
+                    _outputBuffer = output;
+                else
+                    outputPacket.SafeRelease();
             }
         }
         else
         {
             _session.ReceiveMessage(input);
         }
+    }
+
+    private IByteBuffer TakeOutputBuffer(IChannelHandlerContext context, int length)
+    {
+        IByteBuffer? buffer = _outputBuffer;
+        if (buffer is not null && length <= MaxRetainedOutputCapacity)
+        {
+            _outputBuffer = null;
+            if (buffer.Capacity >= length) return buffer.Clear().MarkReaderIndex().MarkWriterIndex();
+            buffer.SafeRelease();
+        }
+        return context.Allocator.Buffer(length);
+    }
+
+    public override void ChannelInactive(IChannelHandlerContext context)
+    {
+        ReleaseOutputBuffer();
+        base.ChannelInactive(context);
+    }
+
+    public override void HandlerRemoved(IChannelHandlerContext context)
+    {
+        ReleaseOutputBuffer();
+        base.HandlerRemoved(context);
+    }
+
+    private void ReleaseOutputBuffer()
+    {
+        _stopped = true;
+        IByteBuffer? buffer = _outputBuffer;
+        _outputBuffer = null;
+        buffer?.SafeRelease();
     }
 
     public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
