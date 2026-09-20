@@ -1629,9 +1629,9 @@ public class RetryCacheTests
     }
 
     [Test]
-    public async Task OverflowStorage_ReusesBoundedCapacityAcrossRepeatedBursts()
+    public async Task OverflowStorage_ReusesBoundedCapacityAcrossRepeatedBursts(
+        [Values(1024, 8192, 32768)] int resourceCount, [Values(2, 6)] int idlePeriods)
     {
-        const int resourceCount = 1024;
         ManualTimeProvider timeProvider = new();
         await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(
             LimboLogs.Instance,
@@ -1645,11 +1645,12 @@ public class RetryCacheTests
         Assert.That(AnnounceBurst(), Is.EqualTo(resourceCount));
         Assert.That(AnnounceBurst(), Is.Zero);
 
-        for (int burst = 0; burst < 3; burst++)
+        for (int burst = 0; burst < 4; burst++)
         {
             timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs * 2));
             long before = GC.GetAllocatedBytesForCurrentThread();
             cache.ProcessRetryTick();
+            int retainedAfterExpiry = cache.OverflowRetainedCapacity;
             int requested = AnnounceBurst();
             long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
@@ -1657,10 +1658,24 @@ public class RetryCacheTests
             {
                 Assert.That(requested, Is.EqualTo(resourceCount));
                 Assert.That(cache.OverflowRequestsInUse, Is.EqualTo(resourceCount));
-                Assert.That(allocated, Is.LessThan(56_000), "repeated bursts should not rebuild the smallest hash-set growth steps");
+                if (resourceCount == 32768)
+                    Assert.That(retainedAfterExpiry, Is.LessThanOrEqualTo(1024), "repeated oversized bursts must not bypass the retention cap");
+                else if (burst > 0)
+                    Assert.That(allocated, Is.LessThan(4_000), "repeated bursts should reuse the grown set after the warm spare proves useful");
             }
             Assert.That(AnnounceBurst(), Is.Zero);
         }
+
+        timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs * idlePeriods));
+        cache.ProcessRetryTick();
+        Assert.That(cache.OverflowRequestsInUse, Is.Zero);
+        if (idlePeriods == 2 && resourceCount < 32768)
+            Assert.That(cache.OverflowRetainedCapacity, Is.GreaterThanOrEqualTo(resourceCount));
+        else
+            Assert.That(cache.OverflowRetainedCapacity, Is.LessThanOrEqualTo(1024), "a long idle interval must discard learned capacity");
+        timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs * 2));
+        cache.ProcessRetryTick();
+        Assert.That(cache.OverflowRetainedCapacity, Is.Zero, "retention must fall after a generation without demand");
 
         int AnnounceBurst()
         {

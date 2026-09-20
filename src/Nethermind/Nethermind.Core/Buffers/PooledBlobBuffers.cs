@@ -12,9 +12,10 @@ namespace Nethermind.Core.Buffers;
 /// </summary>
 internal sealed class PooledBlobBuffers(byte[][] buffers)
 {
-    // EIP-4844: 4096 field elements of 32 bytes. Retain at most 4 MiB.
+    // EIP-4844: 4096 field elements of 32 bytes. Retain at most 8 MiB.
     internal const int BlobSize = 4096 * 32;
-    private static readonly ArrayPool<byte> Pool = ArrayPool<byte>.Create(BlobSize, 32);
+    internal const int MaxRetainedBlobs = 64;
+    private static readonly ArrayPool<byte> Pool = ArrayPool<byte>.Create(BlobSize, MaxRetainedBlobs);
     private byte[][]? _buffers = buffers;
 
     internal static byte[] Copy(ReadOnlySpan<byte> source)

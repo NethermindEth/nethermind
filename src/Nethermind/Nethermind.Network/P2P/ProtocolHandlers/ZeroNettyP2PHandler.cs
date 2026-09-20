@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.IO;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
@@ -24,6 +25,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
 {
     private readonly ISession _session = session ?? throw new ArgumentNullException(nameof(session));
     private readonly ILogger _logger = logManager?.GetClassLogger<ZeroNettyP2PHandler>() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly SnappyOutputWriter _snappyOutputWriter = new();
 
     public bool SnappyEnabled { get; private set; }
 
@@ -83,10 +85,10 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
 
             try
             {
-                int length = Snappy.Decompress(
-                    snappyInput,
-                    output.Array.AsSpan(output.ArrayOffset + output.WriterIndex, uncompressedLength));
-                output.SetWriterIndex(output.WriterIndex + length);
+                _snappyOutputWriter.Buffer = output;
+                // The writer overload decompresses directly into our buffer, avoiding Snappier's temporary rental and copy.
+                Snappy.Decompress(new ReadOnlySequence<byte>(content.Array.AsMemory(content.ArrayOffset + content.ReaderIndex, readableBytes)),
+                    _snappyOutputWriter);
             }
             catch (InvalidDataException exception)
             {
@@ -98,6 +100,10 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
             {
                 output.SafeRelease();
                 throw;
+            }
+            finally
+            {
+                _snappyOutputWriter.Buffer = null;
             }
 
             content.SkipBytes(readableBytes);
@@ -164,4 +170,20 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
     }
 
     public void EnableSnappy() => SnappyEnabled = true;
+
+    private sealed class SnappyOutputWriter : IBufferWriter<byte>
+    {
+        public IByteBuffer? Buffer { get; set; }
+
+        public void Advance(int count) => Buffer!.SetWriterIndex(Buffer.WriterIndex + count);
+
+        public Memory<byte> GetMemory(int sizeHint = 0)
+        {
+            IByteBuffer buffer = Buffer!;
+            buffer.EnsureWritable(Math.Max(1, sizeHint));
+            return buffer.Array.AsMemory(buffer.ArrayOffset + buffer.WriterIndex, buffer.WritableBytes);
+        }
+
+        public Span<byte> GetSpan(int sizeHint = 0) => GetMemory(sizeHint).Span;
+    }
 }

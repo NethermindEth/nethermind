@@ -17,7 +17,7 @@ public class TransactionTests
     {
         byte[] data = new byte[PooledBlobBuffers.BlobSize];
         // Drain the bounded pool so duplicate returns cannot be hidden by a full bucket.
-        byte[][] held = new byte[32][];
+        byte[][] held = new byte[PooledBlobBuffers.MaxRetainedBlobs][];
         for (int i = 0; i < held.Length; i++) held[i] = PooledBlobBuffers.Copy(data);
         byte[][] blobs = [PooledBlobBuffers.Copy(data)];
         ShardBlobNetworkWrapper wrapper = new(blobs, [], [], ProofVersion.V0)

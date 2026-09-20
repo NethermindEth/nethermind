@@ -199,6 +199,68 @@ public class ZeroNettyP2PHandlerTests
     }
 
     [Test]
+    public void Snappy_decodes_into_offset_output_and_recovers_after_malformed_message(
+        [Values(0, 1, 17, 65536)] int length, [Values] bool repeated)
+    {
+        using PooledBufferLeakDetector detector = new();
+        using DisposableByteBuffer backing = detector.Allocator.Buffer(length + 11).AsDisposable();
+        IByteBuffer output = backing.Slice(7, length + 4).Clear();
+        output.WriteInt(0x12345678).SkipBytes(4);
+        IByteBufferAllocator allocator = Substitute.For<IByteBufferAllocator>();
+        allocator.Buffer(length).Returns(_ => (IByteBuffer)output.Retain());
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(allocator);
+        ISession session = Substitute.For<ISession>();
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        handler.EnableSnappy();
+        byte[] payload = new byte[length];
+        if (repeated) payload.AsSpan().Fill(42);
+        else new Random(42).NextBytes(payload);
+        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>()))
+            .Do(call => AssertPacket(call.Arg<ZeroPacket>(), payload, 7));
+
+        for (int i = 0; i < 2; i++)
+        {
+            output.SetWriterIndex(4);
+            handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, payload, 7));
+            Assert.That(output.GetInt(0), Is.EqualTo(0x12345678), "output prefix must remain intact");
+            ZeroPacket malformed = new(Unpooled.WrappedBuffer(new byte[] { 1 }));
+            Assert.That(() => handler.ChannelRead(context, malformed), Throws.InstanceOf<CorruptedFrameException>());
+            Assert.That(malformed.ReferenceCount, Is.Zero);
+        }
+        session.Received(2).ReceiveMessage(Arg.Any<ZeroPacket>());
+    }
+
+    [Test]
+    public void Snappy_releases_output_when_writer_fails_and_accepts_next_message()
+    {
+        using PooledBufferLeakDetector detector = new();
+        IByteBuffer failedOutput = detector.Allocator.Buffer(1, 1);
+        IByteBufferAllocator allocator = Substitute.For<IByteBufferAllocator>();
+        int allocations = 0;
+        allocator.Buffer(5).Returns(_ => allocations++ == 0 ? failedOutput : detector.Allocator.Buffer(5));
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(allocator);
+        ISession session = Substitute.For<ISession>();
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        handler.EnableSnappy();
+        byte[] payload = [1, 2, 3, 4, 5];
+        ZeroPacket input = CreateCompressedPacket(detector.Allocator, payload, 7);
+
+        Assert.That(() => handler.ChannelRead(context, input), Throws.InstanceOf<IndexOutOfRangeException>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(input.ReferenceCount, Is.Zero);
+            Assert.That(failedOutput.ReferenceCount, Is.Zero);
+        }
+        session.DidNotReceive().ReceiveMessage(Arg.Any<ZeroPacket>());
+        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>()))
+            .Do(call => AssertPacket(call.Arg<ZeroPacket>(), payload, 7));
+        handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, payload, 7));
+        session.Received(1).ReceiveMessage(Arg.Any<ZeroPacket>());
+    }
+
+    [Test]
     public void Retained_snappy_message_survives_later_messages()
     {
         using PooledBufferLeakDetector detector = new();
