@@ -18,6 +18,12 @@ public enum BlockImportResult
 
     /// <summary>The block failed the state transition or a fork-choice assertion and was dropped.</summary>
     Invalid,
+
+    /// <summary>
+    /// The execution layer could not be consulted, so the payload has no verdict. The block is not
+    /// invalid and must be retried once the engine answers; nothing about it has been recorded.
+    /// </summary>
+    EngineUnavailable,
 }
 
 /// <summary>The current fork-choice head and checkpoints mapped to execution block hashes for <c>forkchoiceUpdated</c>.</summary>
