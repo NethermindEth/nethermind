@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.Storage;
@@ -22,6 +23,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Network;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
@@ -210,12 +212,45 @@ public class BlockImporterTests
         }
     }
 
-    private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, WarningCapture? warnings = null) =>
+    /// <summary>
+    /// An import must take the execution verdict from the <c>newPayload</c> call it made itself.
+    /// Taking it from state shared with every other caller of the engine binds it to whichever
+    /// call ran last, which can admit a block to fork choice as <see cref="ExecutionStatus.Valid"/>
+    /// when the execution layer only accepted it optimistically. Fork choice cannot undo that:
+    /// invalidating a node it already holds as valid throws, so the block is stuck in the tree.
+    /// </summary>
+    [TestCase(ExecutionStatus.Optimistic, false)]
+    [TestCase(ExecutionStatus.Valid, true)]
+    public void Import_takes_the_verdict_from_its_own_engine_call(ExecutionStatus verdict, bool sealedAgainstInvalidation)
+    {
+        ImportableBlobBlock chain = ImportableBlobBlock.Create();
+        NodeColumnCustody custody = BaseCustody();
+        DataColumnSidecarPool pool = new();
+        Hold(pool, chain, custody.SampledColumns);
+        ScriptedPayloadEngine engine = new(ExecutionStatus.Valid, verdict);
+        // Another caller's block was answered VALID on this same engine just before the import.
+        engine.NotifyNewPayload(chain.Block.Message!.Body!);
+        BlockImporter importer = CreateImporter(chain, custody, pool, engine: engine);
+
+        BlockImportResult result = importer.Import(chain.Block, chain.BlockRoot, verifySignatures: true);
+
+        IResolveConstraint invalidation = sealedAgainstInvalidation
+            ? Throws.TypeOf<ProtoArrayException>()
+            : Throws.Nothing;
+        Assert.Multiple(() =>
+        {
+            Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
+            Assert.That(() => importer.OnInvalidExecutionPayload(chain.BlockRoot, null), invalidation,
+                "a block admitted as valid is sealed against invalidation; one admitted optimistically must stay invalidatable");
+        });
+    }
+
+    private static BlockImporter CreateImporter(ImportableBlobBlock chain, NodeColumnCustody? custody, DataColumnSidecarPool pool, WarningCapture? warnings = null, IEngineDriver? engine = null) =>
         new(
             chain.Spec,
             new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
             chain.Pubkeys,
-            new ValidPayloadEngine(),
+            engine ?? new ValidPayloadEngine(),
             new BeaconChainConfig(),
             warnings is null ? LimboLogs.Instance : new OneLoggerLogManager(new ILogger(warnings)),
             new CustodySamplingAvailability(new FixedCustodySource(custody), new DataColumnPoolSource(pool)),
@@ -238,15 +273,39 @@ public class BlockImporterTests
     {
         public SignedBeaconBlock? CurrentBlock { get; set; }
 
-        public PayloadStatusV1? LastNewPayloadStatus { get; private set; }
+        public bool HasAnsweredNewPayload { get; private set; }
 
         public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
             Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = headExecHash });
 
-        public bool NotifyNewPayload(BeaconBlockBody body)
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
         {
-            LastNewPayloadStatus = new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = body.ExecutionPayload!.BlockHash };
-            return true;
+            HasAnsweredNewPayload = true;
+            return ExecutionStatus.Valid;
+        }
+    }
+
+    /// <summary>
+    /// Answers each <c>newPayload</c> call with the next scripted verdict, so a test can put an
+    /// unrelated answer on the engine before the one the import under test should record.
+    /// </summary>
+    private sealed class ScriptedPayloadEngine(params ExecutionStatus[] verdicts) : IEngineDriver
+    {
+        private int _call;
+
+        public SignedBeaconBlock? CurrentBlock { get; set; }
+
+        public bool HasAnsweredNewPayload { get; private set; }
+
+        public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
+            Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = headExecHash });
+
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
+        {
+            HasAnsweredNewPayload = true;
+            return _call < verdicts.Length
+                ? verdicts[_call++]
+                : throw new InvalidOperationException($"The engine was called {_call + 1} times but only {verdicts.Length} verdicts were scripted");
         }
     }
 
