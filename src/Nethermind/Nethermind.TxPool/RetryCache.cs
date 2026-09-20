@@ -307,6 +307,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private sealed class OverflowRequestStripe(int initialGenerationCapacity)
     {
         private const int MaxRetainedGenerationCapacity = 1_024;
+        // HashSet grows 431 to 919, still below the retention cap; requesting 512 rounds to 521 and grows to 1103.
         public const int MaxWarmSpareCapacity = 431;
 
         public readonly HashSet<TResourceId>[] Generations = [[], []];
