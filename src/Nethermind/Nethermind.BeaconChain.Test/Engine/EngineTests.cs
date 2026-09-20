@@ -291,21 +291,40 @@ public class EngineTests
     }
 
     [Test]
-    public async Task Engine_driver_treats_a_failed_newPayloadV5_call_as_syncing_not_as_a_verdict()
+    public void Engine_driver_refuses_to_turn_a_failed_newPayloadV5_call_into_a_verdict()
     {
         IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
         engine.engine_newPayloadV5(default!, default!, default, default)
             .ReturnsForAnyArgs(Task.FromResult(ResultWrapper<PayloadStatusV1>.Fail("engine unavailable")));
         EngineDriver driver = new(CreateDetector(engine, out _), LimboLogs.Instance);
 
-        ExecutionStatus verdict = driver.NotifyNewPayload(GloasPayload(slotNumber: 5), [], TestHash, new ExecutionRequestsGloas());
-        PayloadStatusV1 status = await driver.NewPayload(GloasPayload(slotNumber: 5), [], TestHash, new ExecutionRequestsGloas());
+        Assert.Multiple(() =>
+        {
+            Assert.That(() => driver.NotifyNewPayload(GloasPayload(slotNumber: 5), [], TestHash, new ExecutionRequestsGloas()),
+                Throws.TypeOf<EngineUnavailableException>(),
+                "a failed call is not a verdict; reporting it as SYNCING made the caller accept the block");
+            Assert.That(driver.HasAnsweredNewPayload, Is.True, "a failed call still drove the newPayload path");
+        });
+    }
+
+    /// <summary>
+    /// A failed <c>forkchoiceUpdated</c> keeps reporting SYNCING. It is a statement about the head,
+    /// not a verdict on a block about to be imported, and its three call sites do not expect a throw.
+    /// </summary>
+    [Test]
+    public async Task Engine_driver_still_reports_a_failed_forkchoiceUpdated_call_as_syncing()
+    {
+        IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
+        engine.engine_forkchoiceUpdatedV3(default!, default)
+            .ReturnsForAnyArgs(Task.FromResult(ResultWrapper<ForkchoiceUpdatedV1Result>.Fail("engine unavailable")));
+        EngineDriver driver = new(CreateDetector(engine, out _), LimboLogs.Instance);
+
+        PayloadStatusV1 status = await driver.ForkchoiceUpdated(TestHash, TestHash, TestHash);
 
         Assert.Multiple(() =>
         {
-            Assert.That(verdict, Is.EqualTo(ExecutionStatus.Optimistic), "an engine error is not INVALID, and it is not a validation either");
             Assert.That(status.Status, Is.EqualTo(PayloadStatus.Syncing));
-            Assert.That(driver.HasAnsweredNewPayload, Is.True, "a failed call still drove the newPayload path");
+            Assert.That(driver.HasAnsweredNewPayload, Is.False, "forkchoiceUpdated says nothing about whether a payload was ever submitted");
         });
     }
 
