@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
@@ -320,8 +321,8 @@ internal static class GloasTestFixtures
 
     public sealed class AcceptingNotifier : INewPayloadNotifier
     {
-        public bool NotifyNewPayload(BeaconBlockBody body) => true;
-        public bool NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests) => true;
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
+        public ExecutionStatus NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests) => ExecutionStatus.Valid;
     }
 
     /// <summary>The spec store's <c>block_states</c> as a plain dictionary: exactly the roots a test says exist, nothing else.</summary>

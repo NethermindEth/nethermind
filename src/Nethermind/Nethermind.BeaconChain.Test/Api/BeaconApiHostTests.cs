@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeaconChain.Api;
 using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
@@ -77,7 +78,7 @@ public class BeaconApiHostTests
         // than depend on whatever the previous test left it as.
         Metrics.BeaconChainElInSync = 0;
         _statusHolder.CurrentStatus = new StatusMessageV2 { ForkDigest = [], FinalizedRoot = Hash256.Zero, HeadRoot = Hash256.Zero };
-        _engine.LastNewPayloadStatus = null;
+        _engine.HasAnsweredNewPayload = false;
         _timestamper.Set(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
     }
 
@@ -129,7 +130,7 @@ public class BeaconApiHostTests
         JsonDocument beforeBody = await ReadJsonAsync(before);
         Assert.That(beforeBody.RootElement.GetProperty("data").GetProperty("el_offline").GetBoolean(), Is.True);
 
-        _engine.LastNewPayloadStatus = PayloadStatusV1.Invalid(null);
+        _engine.HasAnsweredNewPayload = true;
         HttpResponseMessage after = await _client.GetAsync("/eth/v1/node/syncing");
         JsonDocument afterBody = await ReadJsonAsync(after);
         Assert.That(afterBody.RootElement.GetProperty("data").GetProperty("el_offline").GetBoolean(), Is.False);
@@ -334,12 +335,12 @@ public class BeaconApiHostTests
     private sealed class FakeEngineDriver : IEngineDriver
     {
         public SignedBeaconBlock? CurrentBlock { get; set; }
-        public PayloadStatusV1? LastNewPayloadStatus { get; set; }
+        public bool HasAnsweredNewPayload { get; set; }
 
         public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
             Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid });
 
-        public bool NotifyNewPayload(BeaconBlockBody body) => true;
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
     }
 
     private sealed class FakeProcessExitSource : IProcessExitSource

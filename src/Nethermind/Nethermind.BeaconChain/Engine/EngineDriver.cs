@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -34,8 +35,15 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// </summary>
     public SignedBeaconBlock? CurrentBlock { get; set; }
 
-    /// <summary>The status returned by the most recent <see cref="NewPayload"/> call.</summary>
-    public PayloadStatusV1? LastNewPayloadStatus { get; private set; }
+    /// <summary>
+    /// Whether the execution layer has ever answered a <see cref="NewPayload(SignedBeaconBlock)"/>
+    /// call, including one that failed in process.
+    /// </summary>
+    /// <remarks>
+    /// A failed call counts as answered: <see cref="Unwrap"/> cannot tell an unreachable execution
+    /// layer from one that is genuinely syncing, so this reports only that the path has been driven.
+    /// </remarks>
+    public bool HasAnsweredNewPayload { get; private set; }
 
     /// <summary>The status returned by the most recent <see cref="ForkchoiceUpdated"/> call.</summary>
     public PayloadStatusV1? LastForkchoiceStatus { get; private set; }
@@ -57,7 +65,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
             PayloadConverter.ToBlobVersionedHashes(body.BlobKzgCommitments),
             message.ParentRoot,
             PayloadConverter.ToExecutionRequestsList(body.ExecutionRequests));
-        return LastNewPayloadStatus = Unwrap(result.Result, result.Data, "newPayloadV4");
+        return UnwrapNewPayload(result.Result, result.Data, "newPayloadV4");
     }
 
     /// <summary>
@@ -77,17 +85,17 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// Bridges the synchronous transition hook onto <see cref="NewPayload"/> for
     /// <see cref="CurrentBlock"/>. Blocking on the call is acceptable here: the state transition
     /// runs on a dedicated worker thread and the in-process engine call never re-enters it.
-    /// SYNCING/ACCEPTED count as (optimistic) acceptance per the spec's
+    /// SYNCING/ACCEPTED map to <see cref="ExecutionStatus.Optimistic"/> per the spec's
     /// <c>verify_and_notify_new_payload</c>; only INVALID rejects the block.
     /// </remarks>
-    public bool NotifyNewPayload(BeaconBlockBody body)
+    public ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
     {
         SignedBeaconBlock block = CurrentBlock ?? throw new InvalidOperationException($"{nameof(CurrentBlock)} must be set before running the state transition");
         if (!ReferenceEquals(block.Message?.Body, body))
             throw new InvalidOperationException($"The body being processed does not belong to {nameof(CurrentBlock)}");
 
         PayloadStatusV1 status = NewPayload(block).GetAwaiter().GetResult();
-        return status.Status is not PayloadStatus.Invalid;
+        return ToExecutionStatus(status.Status);
     }
 
     /// <summary>
@@ -103,15 +111,43 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
             versionedHashes,
             parentBeaconBlockRoot,
             PayloadConverter.ToExecutionRequestsList(executionRequests));
-        return LastNewPayloadStatus = Unwrap(result.Result, result.Data, "newPayloadV5");
+        return UnwrapNewPayload(result.Result, result.Data, "newPayloadV5");
     }
 
     /// <inheritdoc/>
-    /// <remarks>Same acceptance rule as the block-body overload: only INVALID rejects the envelope.</remarks>
-    public bool NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests)
+    /// <remarks>Same mapping as the block-body overload: only INVALID rejects the envelope.</remarks>
+    public ExecutionStatus NotifyNewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests)
     {
         PayloadStatusV1 status = NewPayload(payload, versionedHashes, parentBeaconBlockRoot, executionRequests).GetAwaiter().GetResult();
-        return status.Status is not PayloadStatus.Invalid;
+        return ToExecutionStatus(status.Status);
+    }
+
+    /// <summary>Maps an engine API payload status onto the fork choice execution status.</summary>
+    /// <remarks>
+    /// Anything that is neither VALID nor INVALID is optimistic acceptance: the payload was not
+    /// rejected and was not validated either. That covers SYNCING, ACCEPTED and
+    /// INCLUSION_LIST_UNSATISFIED (EIP-7805). Collapsing them onto VALID would admit a block to
+    /// fork choice as validated when it was not, which cannot be unwound once fork choice holds a
+    /// <see cref="ExecutionStatus.Valid"/> node.
+    /// </remarks>
+    private static ExecutionStatus ToExecutionStatus(string? status) => status switch
+    {
+        PayloadStatus.Valid => ExecutionStatus.Valid,
+        PayloadStatus.Invalid => ExecutionStatus.Invalid,
+        _ => ExecutionStatus.Optimistic,
+    };
+
+    /// <summary>
+    /// Unwraps a <c>newPayload</c> result and records that the execution layer answered.
+    /// </summary>
+    /// <remarks>
+    /// Both <c>newPayload</c> overloads go through here so neither can record the answer and the
+    /// other forget to; <see cref="ForkchoiceUpdated"/> deliberately does not.
+    /// </remarks>
+    private PayloadStatusV1 UnwrapNewPayload(Result result, PayloadStatusV1? status, string method)
+    {
+        HasAnsweredNewPayload = true;
+        return Unwrap(result, status, method);
     }
 
     /// <remarks>

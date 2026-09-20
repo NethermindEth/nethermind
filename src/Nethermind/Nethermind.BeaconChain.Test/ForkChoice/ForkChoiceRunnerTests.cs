@@ -125,6 +125,6 @@ public class ForkChoiceRunnerTests
 
     private sealed class AcceptingNotifier : INewPayloadNotifier
     {
-        public bool NotifyNewPayload(BeaconBlockBody body) => true;
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
     }
 }

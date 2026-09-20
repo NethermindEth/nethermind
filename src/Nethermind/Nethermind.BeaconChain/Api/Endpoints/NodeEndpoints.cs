@@ -113,12 +113,11 @@ internal static class NodeEndpoints
             distance.ToString(),
             distance > ReadySyncDistance,
             ResponseEnvelope.ExecutionOptimistic(),
-            // IEngineDriver only exposes LastNewPayloadStatus, not the forkchoiceUpdated result, and
             // EngineDriver swallows engine-call exceptions and reports SYNCING instead (see
             // EngineDriver.Unwrap's remarks) - real EL outages and genuine EL sync are
             // indistinguishable from any signal available here. The one thing this can say
             // truthfully is whether the engine has ever answered a newPayload call at all.
-            ctx.Engine.LastNewPayloadStatus is null);
+            !ctx.Engine.HasAnsweredNewPayload);
 
         return BeaconApiJson.WriteDataAsync(c, dto, c.RequestAborted);
     }

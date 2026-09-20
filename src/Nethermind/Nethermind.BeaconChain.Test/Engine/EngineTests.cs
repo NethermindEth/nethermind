@@ -8,6 +8,7 @@ using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
@@ -113,11 +114,12 @@ public class EngineTests
         });
     }
 
-    [TestCase(PayloadStatus.Valid, true)]
-    [TestCase(PayloadStatus.Syncing, true)]
-    [TestCase(PayloadStatus.Accepted, true)]
-    [TestCase(PayloadStatus.Invalid, false)]
-    public async Task Engine_driver_maps_statuses_and_bridges_the_transition_hook(string status, bool acceptable)
+    [TestCase(PayloadStatus.Valid, ExecutionStatus.Valid)]
+    [TestCase(PayloadStatus.Syncing, ExecutionStatus.Optimistic)]
+    [TestCase(PayloadStatus.Accepted, ExecutionStatus.Optimistic)]
+    [TestCase(PayloadStatus.InclusionListUnsatisfied, ExecutionStatus.Optimistic)]
+    [TestCase(PayloadStatus.Invalid, ExecutionStatus.Invalid)]
+    public async Task Engine_driver_maps_statuses_and_bridges_the_transition_hook(string status, ExecutionStatus expected)
     {
         IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
         engine.engine_newPayloadV4(default!, default!, default, default)
@@ -136,7 +138,7 @@ public class EngineTests
         Assert.Multiple(() =>
         {
             Assert.That(newPayloadStatus.Status, Is.EqualTo(status));
-            Assert.That(driver.NotifyNewPayload(block.Message!.Body!), Is.EqualTo(acceptable));
+            Assert.That(driver.NotifyNewPayload(block.Message!.Body!), Is.EqualTo(expected));
             Assert.That(forkchoiceStatus.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(detector.IsExternalClDetected, Is.False, "driver calls must not trip external-CL detection");
         });
@@ -254,11 +256,12 @@ public class EngineTests
         });
     }
 
-    [TestCase(PayloadStatus.Valid, true)]
-    [TestCase(PayloadStatus.Syncing, true)]
-    [TestCase(PayloadStatus.Accepted, true)]
-    [TestCase(PayloadStatus.Invalid, false)]
-    public void Engine_driver_notifies_a_gloas_envelope_payload_through_newPayloadV5_and_maps_its_status(string status, bool acceptable)
+    [TestCase(PayloadStatus.Valid, ExecutionStatus.Valid)]
+    [TestCase(PayloadStatus.Syncing, ExecutionStatus.Optimistic)]
+    [TestCase(PayloadStatus.Accepted, ExecutionStatus.Optimistic)]
+    [TestCase(PayloadStatus.InclusionListUnsatisfied, ExecutionStatus.Optimistic)]
+    [TestCase(PayloadStatus.Invalid, ExecutionStatus.Invalid)]
+    public void Engine_driver_notifies_a_gloas_envelope_payload_through_newPayloadV5_and_maps_its_status(string status, ExecutionStatus expected)
     {
         IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
         engine.engine_newPayloadV5(default!, default!, default, default)
@@ -271,12 +274,12 @@ public class EngineTests
 
         // No CurrentBlock is set: an envelope carries its own parent beacon block root, so the
         // driver must not reach for the block the Fulu path needs.
-        bool accepted = driver.NotifyNewPayload(GloasPayload(slotNumber: 91), versionedHashes, parentBeaconBlockRoot, requests);
+        ExecutionStatus verdict = driver.NotifyNewPayload(GloasPayload(slotNumber: 91), versionedHashes, parentBeaconBlockRoot, requests);
 
         Assert.Multiple(() =>
         {
-            Assert.That(accepted, Is.EqualTo(acceptable));
-            Assert.That(driver.LastNewPayloadStatus!.Status, Is.EqualTo(status));
+            Assert.That(verdict, Is.EqualTo(expected));
+            Assert.That(driver.HasAnsweredNewPayload, Is.True);
             Assert.That(detector.IsExternalClDetected, Is.False, "driver calls must not trip external-CL detection");
             engine.Received(1).engine_newPayloadV5(
                 Arg.Is<ExecutionPayloadV4>(p => p.BlockHash == TestHash && p.SlotNumber == 91ul && p.BlockAccessList!.Length == 3),
@@ -288,17 +291,22 @@ public class EngineTests
     }
 
     [Test]
-    public void Engine_driver_treats_a_failed_newPayloadV5_call_as_syncing_not_as_a_verdict()
+    public async Task Engine_driver_treats_a_failed_newPayloadV5_call_as_syncing_not_as_a_verdict()
     {
         IEngineRpcModule engine = Substitute.For<IEngineRpcModule>();
         engine.engine_newPayloadV5(default!, default!, default, default)
             .ReturnsForAnyArgs(Task.FromResult(ResultWrapper<PayloadStatusV1>.Fail("engine unavailable")));
         EngineDriver driver = new(CreateDetector(engine, out _), LimboLogs.Instance);
 
-        bool accepted = driver.NotifyNewPayload(GloasPayload(slotNumber: 5), [], TestHash, new ExecutionRequestsGloas());
+        ExecutionStatus verdict = driver.NotifyNewPayload(GloasPayload(slotNumber: 5), [], TestHash, new ExecutionRequestsGloas());
+        PayloadStatusV1 status = await driver.NewPayload(GloasPayload(slotNumber: 5), [], TestHash, new ExecutionRequestsGloas());
 
-        Assert.That(accepted, Is.True, "an engine error is not INVALID; the caller proceeds optimistically");
-        Assert.That(driver.LastNewPayloadStatus!.Status, Is.EqualTo(PayloadStatus.Syncing));
+        Assert.Multiple(() =>
+        {
+            Assert.That(verdict, Is.EqualTo(ExecutionStatus.Optimistic), "an engine error is not INVALID, and it is not a validation either");
+            Assert.That(status.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(driver.HasAnsweredNewPayload, Is.True, "a failed call still drove the newPayload path");
+        });
     }
 
     /// <summary>
@@ -335,7 +343,7 @@ public class EngineTests
 
     private sealed class BodyOnlyNotifier : INewPayloadNotifier
     {
-        public bool NotifyNewPayload(BeaconBlockBody body) => true;
+        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
     }
 
     private static ExternalClDetector CreateDetector(IEngineRpcModule inner, out ExternalClInterceptingEngineRpcModule decorator)
