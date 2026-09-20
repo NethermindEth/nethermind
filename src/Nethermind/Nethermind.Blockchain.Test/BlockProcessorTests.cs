@@ -42,6 +42,8 @@ using NUnit.Framework;
 using System;
 using System.Collections.Concurrent;
 using System.Reflection;
+using System.Diagnostics;
+using System.Text.Json;
 using System.Collections.Generic;
 using System.Security;
 using System.Threading;
@@ -59,6 +61,95 @@ namespace Nethermind.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class BlockProcessorTests
 {
+    [TestCase(false)]
+    [TestCase(true)]
+    [NonParallelizable]
+    public async Task ProcessingPhaseTrace_RecordsActualBoundariesAndClearsFailedAttempt(bool enabled)
+    {
+        const string variable = "NETHERMIND_PROCESSING_PHASE_TRACE";
+        string? previous = Environment.GetEnvironmentVariable(variable);
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, enabled ? "1" : null);
+            ConcurrentQueue<string> records = new();
+            InterfaceLogger sink = Substitute.For<InterfaceLogger>();
+            sink.IsInfo.Returns(true);
+            sink.When(logger => logger.Info(Arg.Any<string>())).Do(call =>
+            {
+                string text = call.Arg<string>();
+                if (text.StartsWith("{\"msg\":\"Processing phases\"", StringComparison.Ordinal)) records.Enqueue(text);
+            });
+            using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton<ILogManager>(new PhaseTraceLogManager(sink)));
+            BlockHeader parent = chain.BlockTree.Head!.Header;
+            Block block = await AddThreeTransferBlock(chain);
+            IBlockTracer failingTracer = Substitute.For<IBlockTracer>();
+            failingTracer.When(tracer => tracer.StartNewBlockTrace(Arg.Any<Block>()))
+                .Do(_ => throw new InvalidOperationException("phase trace test failure"));
+
+            foreach (bool fail in new[] { true, false })
+            {
+                records.Clear();
+                using IDisposable scope = chain.MainWorldState.BeginScope(parent);
+                if (fail)
+                {
+                    Assert.Throws<InvalidOperationException>(() => chain.BlockProcessor.ProcessOne(block,
+                        TraceProcessingOptions.ReadOnlyReplay, failingTracer, Prague.Instance, CancellationToken.None));
+                }
+                else
+                {
+                    (Block processed, _) = chain.BlockProcessor.ProcessOne(block, TraceProcessingOptions.ReadOnlyReplay,
+                        NullBlockTracer.Instance, Prague.Instance, CancellationToken.None);
+                    Assert.That(processed.StateRoot, Is.EqualTo(block.StateRoot));
+                }
+
+                Assert.That(records.Count, Is.EqualTo(enabled ? 1 : 0));
+                if (!enabled) continue;
+                Assert.That(records.TryDequeue(out string? record), Is.True);
+                using JsonDocument document = JsonDocument.Parse(record!);
+                JsonElement data = document.RootElement;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(data.GetProperty("block_hash").GetString(), Is.EqualTo(block.Hash!.ToString()));
+                    Assert.That(data.GetProperty("completed").GetBoolean(), Is.EqualTo(!fail));
+                    Assert.That(data.GetProperty("bal_enabled").GetBoolean(), Is.False);
+                    Assert.That(data.GetProperty("stopwatch_frequency").GetInt64(), Is.EqualTo(Stopwatch.Frequency));
+                    Assert.That(data.GetProperty("utc_ticks").GetInt64(), Is.LessThanOrEqualTo(DateTime.UtcNow.Ticks));
+                }
+                string[] expected = fail
+                    ? ["process_one_start", "process_one_end"]
+                    : ["process_one_start", "transactions_start", "transactions_end", "commit_roots_start",
+                        "commit_roots_end", "account_root_start", "account_root_end", "process_one_end"];
+                JsonElement points = data.GetProperty("points");
+                Assert.That(points.GetArrayLength(), Is.EqualTo(expected.Length));
+                long last = data.GetProperty("calibration_after_ticks").GetInt64();
+                Assert.That(last, Is.GreaterThanOrEqualTo(data.GetProperty("calibration_before_ticks").GetInt64()));
+                for (int i = 0; i < expected.Length; i++)
+                {
+                    JsonElement point = points[i];
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(point.GetProperty("name").GetString(), Is.EqualTo(expected[i]));
+                        Assert.That(point.GetProperty("managed_thread_id").GetInt32(), Is.EqualTo(Environment.CurrentManagedThreadId));
+                        Assert.That(point.GetProperty("ticks").GetInt64(), Is.InRange(last, Stopwatch.GetTimestamp()));
+                    }
+                    last = point.GetProperty("ticks").GetInt64();
+                }
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, previous);
+        }
+    }
+
+    private sealed class PhaseTraceLogManager(InterfaceLogger logger) : ILogManager
+    {
+        public ILogger GetClassLogger<T>() => new(logger);
+        public ILogger GetLogger(string loggerName) => new(logger);
+    }
+
     public static IEnumerable<TestCaseData> TransactionTraceBoundaryCases()
     {
         foreach (string tracerName in new[] { "callTracer", "prestateTracer" })

@@ -75,6 +75,10 @@ public partial class BlockProcessor(
 
     public virtual (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
+        IDisposable? phaseTrace = null;
+        BeginPhaseTrace(ref phaseTrace, suggestedBlock, spec, options);
+        using IDisposable? phaseTraceScope = phaseTrace;
+
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
         _balManager.PrepareForProcessing(suggestedBlock, spec, options);
@@ -110,8 +114,13 @@ public partial class BlockProcessor(
             StoreTxReceipts(block, receipts, spec);
         }
 
+        CompletePhaseTrace();
         return (block, receipts);
     }
+
+    partial void BeginPhaseTrace(ref IDisposable? scope, Block block, IReleaseSpec spec, ProcessingOptions options);
+    partial void MarkProcessingPhase(string name);
+    partial void CompletePhaseTrace();
 
     private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
     {
@@ -163,7 +172,9 @@ public partial class BlockProcessor(
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         CommitState(spec);
 
+        MarkProcessingPhase("transactions_start");
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        MarkProcessingPhase("transactions_end");
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
@@ -212,7 +223,9 @@ public partial class BlockProcessor(
 
             ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: bloomsAndReceiptsRootTask is null);
 
+            MarkProcessingPhase("commit_roots_start");
             CommitStateAndStorageRoots(spec);
+            MarkProcessingPhase("commit_roots_end");
 
             if (BlockchainProcessor.IsMainProcessingThread)
             {
@@ -221,7 +234,9 @@ public partial class BlockProcessor(
 
             if (ShouldComputeStateRoot(header))
             {
+                MarkProcessingPhase("account_root_start");
                 ComputeStateRoot(header);
+                MarkProcessingPhase("account_root_end");
             }
 
             if (bloomsAndReceiptsRootTask is not null)
