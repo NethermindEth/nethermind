@@ -25,7 +25,7 @@ public abstract class ExecutionPayloadEnvelopesProtocolBase(BeaconChainSpec spec
     /// <summary>
     /// The context bytes of an envelope chunk: the fork digest of the envelope's slot epoch. The
     /// envelope container itself carries no slot field, so this reads <c>payload.slot_number</c>
-    /// (EIP-7843's <c>SLOTNUM</c>: "the beacon chain slot number of the current block" — the same
+    /// (EIP-7843's <c>SLOTNUM</c>: "the beacon chain slot number of the current block" - the same
     /// value as the envelope's beacon block's slot).
     /// </summary>
     /// <remarks>Callers must ensure <paramref name="envelope"/> has a non-null <c>Message.Payload</c> first (see <see cref="ReadEnvelopeChunksAsync"/>); this indexes into it unconditionally.</remarks>
