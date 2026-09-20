@@ -1270,6 +1270,74 @@ public class FastHeadersSyncTests
         Assert.That(batches.Count, Is.EqualTo(totalBatchCount));
     }
 
+    public enum RejectedResponse { Empty, TooLong, WrongNumber }
+
+    [Test]
+    public async Task Rejected_response_retries_without_replaying_released_headers([Values] RejectedResponse rejection)
+    {
+        BlockHeader[] headers = new BlockHeader[33];
+        headers[0] = Build.A.BlockHeader.WithNumber(0).WithDifficulty(1).TestObject;
+        for (int i = 1; i < headers.Length; i++)
+            headers[i] = Build.A.BlockHeader.WithParent(headers[i - 1]).WithDifficulty(1).TestObject;
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsError.Returns(true);
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new SyncConfig
+            {
+                FastSync = true,
+                PivotNumber = 32,
+                PivotHash = headers[32].Hash!.ToString(),
+                PivotTotalDifficulty = "1000"
+            }))
+            .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
+            .AddSingleton<ISyncPeerPool>(Substitute.For<ISyncPeerPool>())
+            .AddSingleton<ISyncReport>(new NullSyncReport())
+            .AddSingleton<HeadersSyncFeed>()
+            .Build();
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        tree.SyncPivot = (32, headers[32].Hash!);
+        HeadersSyncFeed feed = container.Resolve<HeadersSyncFeed>();
+        feed.InitializeFeed();
+        HeadersSyncBatch batch = (await feed.PrepareRequest())!;
+        ArrayPoolList<BlockHeader?> response = new(batch.RequestSize + 1);
+        if (rejection == RejectedResponse.TooLong)
+        {
+            response.AddRange(headers);
+            response.Add(headers[32]);
+        }
+        else if (rejection == RejectedResponse.WrongNumber)
+            response.Add(Build.A.BlockHeader.WithNumber(999).WithDifficulty(1).TestObject);
+        batch.Response = response;
+        batch.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
+        Assert.That(feed.HandleResponse(batch), Is.EqualTo(SyncResponseHandlingResult.NoProgress));
+        HeadersSyncBatch? retry = await feed.PrepareRequest();
+        Assert.That(retry, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch.Response, Is.Null);
+            Assert.That(batch.ResponseSizeEstimate, Is.Zero);
+            Assert.Throws<ObjectDisposedException>(() => { response.AsSpan(); });
+            Assert.That(retry!.StartNumber, Is.Zero);
+            Assert.That(retry.RequestSize, Is.EqualTo(33));
+            Assert.That(retry.Response, Is.Null);
+            Assert.That(tree.LowestInsertedHeader, Is.Null);
+            Assert.That(() => logger.DidNotReceiveWithAnyArgs().Error(default!, default), Throws.Nothing);
+        }
+
+        ReadOnlySpan<BlockHeader?> validHeaders = headers;
+        retry!.Response = validHeaders.ToPooledList();
+        batch.Dispose();
+        Assert.That(feed.HandleResponse(retry), Is.EqualTo(SyncResponseHandlingResult.OK),
+            "cleanup of the previous response must not dispose the retry's new response");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.LowestInsertedHeader!.Number, Is.Zero);
+            for (ulong number = 1; number <= 32; number++)
+                Assert.That(tree.FindHeader(number)!.Hash, Is.EqualTo(headers[number].Hash));
+            Assert.That(() => logger.DidNotReceiveWithAnyArgs().Error(default!, default), Throws.Nothing);
+        }
+    }
+
     [Test]
     public async Task Retries_header_insertion_when_the_tree_is_temporarily_unavailable([Values] HeaderInsertionPath path)
     {
@@ -1335,6 +1403,7 @@ public class FastHeadersSyncTests
         Task? visit = null;
         beforeInsert = () =>
         {
+            // Difficulty is evaluated after the readiness check but before BulkInsertHeader.
             beforeInsert = null;
             visit = tree.Accept(visitor, CancellationToken.None);
         };

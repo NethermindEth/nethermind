@@ -320,6 +320,7 @@ public partial class BlockDownloaderTests
                 Assert.That(ctx.BlockTree.BestSuggestedHeader!.Hash, Is.EqualTo(headBefore));
                 Assert.That(() => logger.Received(1).Debug("Block download deferred while the block tree cannot accept blocks."), Throws.Nothing);
                 Assert.That(() => logger.DidNotReceiveWithAnyArgs().Error(default!, default), Throws.Nothing);
+                Assert.That(() => logger.DidNotReceiveWithAnyArgs().Error(default!, default, default), Throws.Nothing);
             }
         }
         finally

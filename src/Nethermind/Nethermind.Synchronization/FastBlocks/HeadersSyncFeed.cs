@@ -544,7 +544,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     {
                         batch.MarkHandlingStart();
                         if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
-                        EnqueueBatch(batch);
+                        RequeueAsNewBatch(batch, skipPersisted: false);
                         return batch.ResponseSourcePeer is null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress;
                     }
 
@@ -627,20 +627,20 @@ namespace Nethermind.Synchronization.FastBlocks
         }
 
         /// <summary>
-        /// Queues <paramref name="batch"/>'s range for download again, after inserting it failed.
+        /// Queues <paramref name="batch"/>'s range for download again.
         /// </summary>
         /// <remarks>
-        /// A new batch is used because <c>InsertHeaders</c> may already have queued this one, and one
-        /// instance in <c>_pending</c> twice would be dispatched twice. A range it already queued a
-        /// filler for is therefore requested twice; the duplicate is dropped as already inserted.
-        /// <see cref="ProcessPersistedPortion"/> is skipped: it inserts headers too, so it can fail
+        /// The original batch remains owned by its handler and is disposed on completion, so the retry
+        /// needs independent ownership. A range already queued as a filler may be requested twice;
+        /// the duplicate is dropped as already inserted.
+        /// By default, <see cref="ProcessPersistedPortion"/> is skipped: it inserts headers too, so it can fail
         /// the same way. The range may therefore include headers already on disk.
         /// </remarks>
-        private void RequeueAsNewBatch(HeadersSyncBatch batch) => EnqueueBatch(new HeadersSyncBatch
+        private void RequeueAsNewBatch(HeadersSyncBatch batch, bool skipPersisted = true) => EnqueueBatch(new HeadersSyncBatch
         {
             StartNumber = batch.StartNumber,
             RequestSize = batch.RequestSize
-        }, skipPersisted: true);
+        }, skipPersisted);
 
         private void RetainResponse(HeadersSyncBatch batch)
         {
@@ -700,7 +700,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             catch (BlockTreeNotReadyException)
             {
-                if (_logger.IsDebug) _logger.Debug($"Deferring persisted batch {batch} while the block tree cannot accept headers.");
+                if (_logger.IsDebug) _logger.Debug($"Deferring persisted batch {newBatchToProcess} while the block tree cannot accept headers.");
                 RetainResponse(newBatchToProcess);
                 if (newRequestSize == 0) return null;
                 batch.RequestSize = newRequestSize;
@@ -736,7 +736,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         $"response too long ({response.Length})");
                 }
 
-                EnqueueBatch(batch);
+                RequeueAsNewBatch(batch, skipPersisted: false);
                 return 0;
             }
 
@@ -841,9 +841,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 if (added <= 0)
                 {
-                    batch.Response?.Dispose();
-                    batch.Response = null;
-                    EnqueueBatch(batch, true);
+                    RequeueAsNewBatch(batch);
                 }
                 else
                 {
