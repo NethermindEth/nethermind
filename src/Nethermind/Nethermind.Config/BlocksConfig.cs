@@ -78,6 +78,8 @@ namespace Nethermind.Config
 
         public int PreWarmStateCacheSetsBits { get; set; } = 16;
 
+        public bool PreWarmWaitForCompletion { get; set; } = false;
+
         public int BlockProductionTimeoutMs { get; set; } = 4_000;
 
         // The 0.25 default emits an FP constant load the guest's ISA gate rejects; only block production reads it.

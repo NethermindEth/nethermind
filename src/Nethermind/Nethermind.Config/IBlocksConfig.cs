@@ -69,6 +69,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Experimental: log2 of the pre-block account cache set count (2 ways per set).", DefaultValue = "16", HiddenFromDocs = true)]
     int PreWarmStateCacheSetsBits { get; set; }
 
+    [ConfigItem(Description = "Experimental: block the processing thread until transaction pre-warming completes (measurement only).", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PreWarmWaitForCompletion { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

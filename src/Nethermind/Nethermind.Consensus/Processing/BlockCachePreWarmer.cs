@@ -73,6 +73,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly int _warmWindowSize;
     private readonly int _warmWindowStride;
     private readonly bool _warmWindowKeepSenders;
+    private bool _waitForWarm;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -93,7 +94,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         systemAccessLists,
         blocksConfig.PreWarmWindowSize,
         blocksConfig.PreWarmWindowStride,
-        blocksConfig.PreWarmWindowKeepSenders) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        blocksConfig.PreWarmWindowKeepSenders)
+    {
+        _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        _waitForWarm = blocksConfig.PreWarmWaitForCompletion;
+    }
 
     internal BlockCachePreWarmer(
         IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,
@@ -190,6 +195,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             isPreparation,
             transactionCount,
             cancellationToken));
+
+        if (_waitForWarm) normalWarmTask.Wait();
 
         if (discoveryCandidates is null) return normalWarmTask;
 
