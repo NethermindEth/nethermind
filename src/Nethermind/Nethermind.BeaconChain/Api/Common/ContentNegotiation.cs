@@ -10,7 +10,7 @@ using Microsoft.Extensions.Primitives;
 
 namespace Nethermind.BeaconChain.Api.Common;
 
-/// <summary>RFC 9110 §12.5.1 <c>Accept</c> negotiation between the beacon-api's two wire formats.</summary>
+/// <summary>RFC 9110 section 12.5.1 <c>Accept</c> negotiation between the beacon-api's two wire formats.</summary>
 internal static class ContentNegotiation
 {
     public const string Json = "application/json";
@@ -22,13 +22,13 @@ internal static class ContentNegotiation
     /// Picks a response representation from the request's <c>Accept</c> header.
     /// </summary>
     /// <param name="sszSupported">Whether the endpoint can serve <see cref="OctetStream"/> at all.</param>
-    /// <returns><c>null</c> when nothing offered is acceptable — the caller must answer 406.</returns>
+    /// <returns><c>null</c> when nothing offered is acceptable - the caller must answer 406.</returns>
     public static ResponseFormat? Negotiate(HttpContext ctx, bool sszSupported)
     {
         StringValues acceptValues = ctx.Request.Headers.Accept;
         if (acceptValues.Count == 0)
         {
-            // No header: any representation is acceptable (RFC 9110 §12.5.1); JSON is the default.
+            // No header: any representation is acceptable (RFC 9110 section 12.5.1); JSON is the default.
             return ResponseFormat.Json;
         }
 

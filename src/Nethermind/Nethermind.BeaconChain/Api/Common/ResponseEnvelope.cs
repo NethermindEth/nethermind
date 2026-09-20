@@ -25,8 +25,8 @@ internal static class ResponseEnvelope
     /// True while the current head has not been confirmed VALID by the execution layer.
     /// </summary>
     /// <remarks>
-    /// Reads <see cref="Metrics.BeaconChainElInSync"/> — the same flag
-    /// <see cref="Sync.BeaconSyncOrchestrator"/> itself flips after a forkchoiceUpdated verdict —
+    /// Reads <see cref="Metrics.BeaconChainElInSync"/> - the same flag
+    /// <see cref="Sync.BeaconSyncOrchestrator"/> itself flips after a forkchoiceUpdated verdict,
     /// rather than a value computed independently, so this can never disagree with what the driver
     /// believes about its own head. Before the driver has completed its first head step the gauge
     /// defaults to 0, which reports optimistic=true: nothing has been confirmed yet, and that is the

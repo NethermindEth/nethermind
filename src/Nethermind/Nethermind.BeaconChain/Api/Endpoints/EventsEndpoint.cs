@@ -19,9 +19,9 @@ namespace Nethermind.BeaconChain.Api.Endpoints;
 /// </summary>
 /// <remarks>
 /// The driver has no publish/subscribe hook for these transitions (adding one means editing
-/// <see cref="Sync.BeaconSyncOrchestrator"/>, which is outside this change's allowed files — see the
+/// <see cref="Sync.BeaconSyncOrchestrator"/>, which is outside this change's allowed files - see the
 /// report), so this polls <see cref="IBeaconChainStatusSource.CurrentStatus"/> and emits an event
-/// whenever the observed root changes. Every emitted event still carries a real, current root/slot —
+/// whenever the observed root changes. Every emitted event still carries a real, current root/slot;
 /// it is coarser-grained (bounded by <see cref="PollInterval"/>) than a true push feed, not fabricated.
 /// </remarks>
 internal static class EventsEndpoint
