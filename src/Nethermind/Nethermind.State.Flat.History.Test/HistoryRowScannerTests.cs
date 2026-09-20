@@ -327,7 +327,7 @@ public class HistoryRowScannerTests
         byte[] rowKey = new byte[key.Length + sizeof(ulong)];
         key.CopyTo(rowKey);
         BinaryPrimitives.WriteUInt64BigEndian(rowKey.AsSpan(key.Length), column == FlatHistoryColumns.StorageClears ? block : ~block);
-        source.PutSpan(rowKey, value);
+        source.Set(rowKey, value.ToArray());
     }
 
     private static ISortedKeyValueStore Store(IColumnsDb<FlatHistoryColumns> columns, FlatHistoryColumns column) => (ISortedKeyValueStore)columns.GetColumnDb(column);

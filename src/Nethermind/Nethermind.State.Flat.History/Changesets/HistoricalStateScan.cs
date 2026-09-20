@@ -4,7 +4,6 @@
 using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat.History.Changesets;
