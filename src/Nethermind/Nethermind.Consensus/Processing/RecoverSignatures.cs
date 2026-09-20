@@ -76,8 +76,9 @@ namespace Nethermind.Consensus.Processing
         /// Recovery runs in ascending transaction order, so consumers that tolerate a not-yet-recovered sender
         /// (the transaction processor recovers inline, the prewarmer warms transactions as their senders arrive)
         /// rarely wait. A failure is logged and left to the processing path, whose own attempt rejects the block.
-        /// <paramref name="blockHash"/> only suppresses a duplicate start, so a hash that does not match the
-        /// transactions costs at most one redundant recovery.
+        /// <paramref name="blockHash"/> only suppresses a duplicate start. A resent payload decodes its own
+        /// transaction objects, which the identity check will not match, so those are left to the pipeline's
+        /// own recovery rather than recovered twice.
         /// </remarks>
         public void StartRecovery(Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec)
         {
@@ -100,7 +101,10 @@ namespace Nethermind.Consensus.Processing
         internal bool IsRecoveryInFlight(Transaction[] txs)
         {
             Recovery? current = Volatile.Read(ref _current);
-            return current is not null && !current.IsCompleted && ReferenceEquals(current.Transactions[0], txs[0]);
+            return current is not null
+                && !current.IsCompleted
+                && current.Transactions.Length == txs.Length
+                && ReferenceEquals(current.Transactions[0], txs[0]);
         }
 
         /// <summary>Recovers senders and EIP-7702 authorities for transactions not yet attached to a <see cref="Block"/>.</summary>
@@ -204,7 +208,9 @@ namespace Nethermind.Consensus.Processing
             {
                 try
                 {
-                    owner.RecoverData(txs, releaseSpec);
+                    // Skip errors: one malformed signature must not abort the parallel loop and leave every
+                    // later sender to the processing thread. A null sender still rejects the block.
+                    owner.RecoverData(txs, releaseSpec, skipErrors: true);
                 }
                 catch (Exception e)
                 {
@@ -213,6 +219,7 @@ namespace Nethermind.Consensus.Processing
                 finally
                 {
                     _completed = true;
+                    Interlocked.CompareExchange(ref owner._current, null, this);
                 }
             }
         }
