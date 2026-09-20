@@ -14,7 +14,6 @@ using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using NUnit.Framework;

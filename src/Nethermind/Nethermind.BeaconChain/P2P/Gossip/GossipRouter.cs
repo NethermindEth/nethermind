@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
-using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
