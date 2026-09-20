@@ -181,6 +181,25 @@ public class GloasEpochProcessingTests
         });
     }
 
+    // ---- get_beacon_proposer_indices (EIP-8045: slashed validators excluded) ----
+
+    /// <summary>
+    /// The fixture states used elsewhere in this file never slash anyone, so they cannot catch a
+    /// broken or dropped exclusion; this pins it directly by slashing every candidate but one.
+    /// </summary>
+    [Test]
+    public void GetBeaconProposerIndices_never_selects_a_slashed_validator()
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        Validator[] validators = state.Validators!;
+        for (int i = 1; i < validators.Length; i++)
+            validators[i].Slashed = true;
+
+        ulong[] proposerIndices = GloasEpochProcessing.GetBeaconProposerIndices(state, state.GetCurrentEpoch());
+
+        Assert.That(proposerIndices, Has.All.EqualTo(0ul), "validator 0 is the only unslashed candidate, so every slot must land on it");
+    }
+
     // ---- Everything Gloas left unchanged must agree with the Fulu pipeline ----
 
     [Test]
