@@ -97,6 +97,80 @@ public class ColumnGossipRouterTests
         Assert.That(pooled!.Index, Is.EqualTo(ColumnIndex));
     }
 
+    [Test]
+    public void Crossing_the_reconstruction_threshold_reconstructs_and_publishes_the_missing_columns_exactly_once_with_the_cache_marked_first()
+    {
+        // Held directly over gossip: columns 0..63 (crosses the 64-column threshold on the last one).
+        // Subscribed but held: subnets 64..70, so publishing-only-when-subscribed is actually exercised
+        // rather than vacuously true. Subnets 71..127 are neither held nor subscribed.
+        const int required = Eip7594DasConstants.RequiredColumnsForReconstruction;
+        ulong[] subscribedSubnets = [.. Enumerable.Range(0, required + 7).Select(i => (ulong)i)];
+        DataColumnSidecarPool pool = new();
+        ColumnGossipRouter router = CreateRouter(pool);
+        Dictionary<string, FakeTopic> topics = [];
+        byte[] digest = ForkDigest.Compute(Spec, 419_072);
+        router.Start(id => topics[id] = new FakeTopic(), digest, subscribedSubnets);
+
+        List<DataColumnSidecar> receivedEvents = [];
+        router.DataColumnSidecarReceived += receivedEvents.Add;
+
+        for (ulong column = 0; column < (ulong)required; column++)
+        {
+            DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(column, CurrentSlot);
+            topics[GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(column))].Deliver(Message(sidecar));
+        }
+
+        // Never called TryReconstruct/SelectNewlyReconstructed directly: everything below is only
+        // observable if ColumnGossipRouter itself drives reconstruction from real gossip arrivals.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receivedEvents, Has.Count.EqualTo(Eip7594DasConstants.NumberOfColumns),
+                "64 directly-received plus 64 reconstructed columns, each raised exactly once");
+            Assert.That(receivedEvents.Select(s => s.Index), Is.Unique, "no column is ever raised twice");
+            Assert.That(receivedEvents.Select(s => s.Index), Is.EquivalentTo(Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(i => (ulong)i)));
+        }
+
+        // Published exactly on the reconstructed columns whose own subnet is subscribed (64..70), and
+        // nowhere else: not on the 0..63 already held directly, not on the unsubscribed 71..127.
+        List<(string Topic, DataColumnSidecar Sidecar)> published = [.. topics
+            .SelectMany(kv => kv.Value.Published.Select(m => (kv.Key, Decode(m))))];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(published, Has.Count.EqualTo(7), "only the subscribed-but-missing subnets 64..70 are published to");
+            Assert.That(published.Select(p => p.Sidecar.Index), Is.EquivalentTo(Enumerable.Range(required, 7).Select(i => (ulong)i)));
+            foreach ((string topic, DataColumnSidecar sidecar) in published)
+            {
+                Assert.That(topic, Is.EqualTo(GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(sidecar.Index))),
+                    "published on the reconstructed sidecar's own subnet, not some other one");
+            }
+        }
+
+        // The anti-equivocation cache was marked for the reconstructed columns: a genuine gossip
+        // arrival for one of them afterward is rejected as a duplicate, not re-accepted or re-raised.
+        int receivedBeforeReplay = receivedEvents.Count;
+        DataColumnSidecar replay = DataColumnSidecarTestFixture.BuildValidSidecar((ulong)required, CurrentSlot);
+        topics[GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName((ulong)required))].Deliver(Message(replay));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receivedEvents, Has.Count.EqualTo(receivedBeforeReplay), "the reconstructed column's cache entry rejects the concurrent gossip copy");
+            Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.EqualTo(1));
+        }
+
+        // Exposed exactly as if received over the network: also present in the serving pool.
+        Hash256 blockRoot = SszRoots.HashTreeRoot(replay.SignedBlockHeader!.Message!);
+        Assert.That(pool.TryGet(blockRoot, (ulong)required, out DataColumnSidecar? pooled), Is.True);
+        Assert.That(pooled!.Index, Is.EqualTo((ulong)required));
+    }
+
+    private static DataColumnSidecar Decode(byte[] wireMessage)
+    {
+        Eth2MessageId.TryDecompress(wireMessage, Eth2MessageId.MaxGossipSize, out byte[]? payload);
+        DataColumnSidecar.Decode(payload!, out DataColumnSidecar sidecar);
+        return sidecar;
+    }
+
     private static IEnumerable<TestCaseData> DroppedCases()
     {
         yield return new TestCaseData(new Func<DataColumnSidecar>(() =>
@@ -198,11 +272,13 @@ public class ColumnGossipRouterTests
 
         public bool IsSubscribed { get; private set; }
 
+        public List<byte[]> Published { get; } = [];
+
         public void Subscribe() => IsSubscribed = true;
 
         public void Unsubscribe() => IsSubscribed = false;
 
-        public void Publish(byte[] value) { }
+        public void Publish(byte[] value) => Published.Add(value);
 
         public void Publish(IMessage value) { }
 
