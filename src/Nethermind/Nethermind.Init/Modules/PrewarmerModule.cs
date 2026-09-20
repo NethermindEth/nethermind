@@ -33,7 +33,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 .AddSingleton<NodeStorageCache>()
 
                 // Parent scope so test modules can override; child scope's PreBlockCaches falls through here.
-                .AddSingleton<PreBlockCachesConfig>()
+                .AddSingleton(new PreBlockCachesConfig { StorageCacheSetsBits = blocksConfig.PreWarmStorageCacheSetsBits, StateCacheSetsBits = blocksConfig.PreWarmStateCacheSetsBits })
 
                 // Note: Need a small modification to have this work on all branch processor due to the shared
                 // NodeStorageCache and the FrozenDictionary and the fact that some processing does not have

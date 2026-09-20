@@ -63,6 +63,12 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Experimental: merge pre-warm windows that share a sender into one job so nonce chains stay in order. Requires PreWarmWindowSize; ignores PreWarmWindowStride.", DefaultValue = "false", HiddenFromDocs = true)]
     bool PreWarmWindowKeepSenders { get; set; }
 
+    [ConfigItem(Description = "Experimental: log2 of the pre-block storage cache set count (2 ways per set).", DefaultValue = "18", HiddenFromDocs = true)]
+    int PreWarmStorageCacheSetsBits { get; set; }
+
+    [ConfigItem(Description = "Experimental: log2 of the pre-block account cache set count (2 ways per set).", DefaultValue = "16", HiddenFromDocs = true)]
+    int PreWarmStateCacheSetsBits { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 
