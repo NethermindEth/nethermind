@@ -5,6 +5,7 @@ using System;
 using System.Formats.Tar;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 
@@ -19,6 +20,7 @@ namespace Ethereum.Test.Base;
 public static class TestFixtureDownloader
 {
     private static readonly string CacheRoot = Path.Combine(Path.GetTempPath(), "nethermind-eest");
+    private const string MarkerFileName = ".completed";
 
     /// <summary>
     /// Ensures that the archive identified by <paramref name="urlTemplate"/>,
@@ -41,9 +43,9 @@ public static class TestFixtureDownloader
     {
         string archiveStem = StripExtensions(archiveName);
         string targetDir = Path.Combine(CacheRoot, suiteName, version, archiveStem);
-        string markerPath = Path.Combine(targetDir, ".completed");
+        string markerPath = Path.Combine(targetDir, MarkerFileName);
 
-        if (File.Exists(markerPath))
+        if (IsComplete(targetDir, markerPath))
             return targetDir;
 
         string mutexName = $"{suiteName}_{version}_{archiveName}".Replace('/', '_').Replace('\\', '_');
@@ -53,7 +55,7 @@ public static class TestFixtureDownloader
             throw new TimeoutException($"Timed out waiting for {suiteName} fixture mutex ({mutexName})");
         try
         {
-            if (File.Exists(markerPath))
+            if (IsComplete(targetDir, markerPath))
             {
                 Console.WriteLine($"{suiteName} fixtures were downloaded by another process.");
                 return targetDir;
@@ -71,6 +73,28 @@ public static class TestFixtureDownloader
 
         return targetDir;
     }
+
+    /// <summary>
+    /// A marker over an emptied or never-populated directory was seen in the wild, and every suite over
+    /// it ran zero vectors and passed; only a marker over at least one real file counts as complete.
+    /// </summary>
+    private static bool IsComplete(string targetDir, string markerPath)
+    {
+        if (!File.Exists(markerPath))
+            return false;
+
+        if (HasExtractedContent(targetDir))
+            return true;
+
+        Console.WriteLine($"Ignoring completion marker over a content-free fixture directory ({targetDir}); re-downloading.");
+        return false;
+    }
+
+    /// <summary>True when something other than the marker itself exists under <paramref name="targetDir"/>. Stops at the first hit, so it is cheap even on a 200k-file cache.</summary>
+    private static bool HasExtractedContent(string targetDir) =>
+        Directory.Exists(targetDir)
+        && Directory.EnumerateFiles(targetDir, "*", SearchOption.AllDirectories)
+            .Any(file => !string.Equals(Path.GetFileName(file), MarkerFileName, StringComparison.Ordinal));
 
     /// <summary>
     /// Strips archive extensions (e.g. ".tar.gz", ".zip") to derive the directory stem.
@@ -121,6 +145,15 @@ public static class TestFixtureDownloader
         {
             throw new IOException(
                 $"Download of '{url}' was truncated: expected {expected} bytes but the stream yielded {contentStream.TotalBytesRead} before EOF.");
+        }
+
+        // An archive that unpacks to nothing (filter matched no entry, hollowed-out asset, bare directories)
+        // must not be marked complete, or every suite over it enumerates zero vectors and passes.
+        if (!HasExtractedContent(targetDir))
+        {
+            throw new IOException(
+                $"Download of '{url}' extracted no files into '{targetDir}'" +
+                (shouldExtract is null ? "." : " after filtering; the archive holds nothing the filter accepts."));
         }
     }
 
