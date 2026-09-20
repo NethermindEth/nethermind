@@ -114,7 +114,7 @@ public static class DataColumnReconstruction
 
             try
             {
-                Ckzg.RecoverCellsAndKzgProofs(recoveredCells, recoveredProofs, heldColumnIndices, heldCellsForRow, distinct, DasKzgSetup.Handle);
+                Ckzg.RecoverCellsAndKzgProofs(recoveredCells, recoveredProofs, heldColumnIndices, heldCellsForRow, distinct, DasKzg.Handle);
             }
             catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
             {
