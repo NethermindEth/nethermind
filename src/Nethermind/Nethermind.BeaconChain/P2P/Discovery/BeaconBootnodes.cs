@@ -14,6 +14,7 @@ public static class BeaconBootnodes
     {
         BlockchainIds.Mainnet => MainnetBootnodes.Enrs,
         BlockchainIds.Hoodi => HoodiBootnodes.Enrs,
+        BlockchainIds.Sepolia => SepoliaBootnodes.Enrs,
         _ => throw new UnsupportedBeaconNetworkException(chainId),
     };
 }
