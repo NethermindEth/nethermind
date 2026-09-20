@@ -25,7 +25,7 @@ internal static class DebugEndpoints
     }
 
     /// <summary>
-    /// Serves the node's persisted post-state as raw SSZ — this is what lets another client
+    /// Serves the node's persisted post-state as raw SSZ - this is what lets another client
     /// checkpoint-sync from this node.
     /// </summary>
     private static Task State(HttpContext c, string stateId, BeaconApiContext ctx)

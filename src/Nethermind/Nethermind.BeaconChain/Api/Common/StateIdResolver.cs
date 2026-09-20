@@ -14,7 +14,7 @@ internal readonly record struct ResolvedState(Hash256 Root, BeaconStateFulu Stat
 /// Only a minority of roots have a persisted state: <see cref="Storage.BeaconChainStore"/> only
 /// gets one written at finalization or on the periodic snapshot interval (see
 /// <c>BlockImporter.PutState</c> call sites), not for every imported block. Resolving "head" for a
-/// live, not-yet-finalized head will usually miss — that is reported as 503, not fabricated.
+/// live, not-yet-finalized head will usually miss - that is reported as 503, not fabricated.
 /// </remarks>
 internal static class StateIdResolver
 {
