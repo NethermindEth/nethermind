@@ -781,13 +781,13 @@ public class Eth72ProtocolHandlerTests
                 return true;
             });
 
-        using GetPooledTransactionsMessage request = new(new[] { tx.Hash! }.ToPooledList());
+        using GetPooledTransactionsMessage request = new(new[] { tx.Hash! }.Select(static h => h.ValueHash256).ToArray().ToPooledList());
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(request, Eth66MessageCode.GetPooledTransactions);
 
         _transactionPool.Received(1).TryGetPendingTransactionWithoutBlobs(tx.Hash!, out Arg.Any<Transaction>());
-        _transactionPool.DidNotReceive().TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>());
+        _transactionPool.DidNotReceive().TryGetPendingTransaction(Arg.Any<ValueHash256>(), out Arg.Any<Transaction>());
         _session.Received(1).DeliverMessage(Arg.Is<PooledTransactionsMessage>(m =>
             IsElidedBlobResponse(m, fullTxLength, ProofVersion.V1)));
     }
@@ -809,13 +809,13 @@ public class Eth72ProtocolHandlerTests
                 return true;
             });
 
-        using GetPooledTransactionsMessage request = new(new[] { tx.Hash! }.ToPooledList());
+        using GetPooledTransactionsMessage request = new(new[] { tx.Hash! }.Select(static h => h.ValueHash256).ToArray().ToPooledList());
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(request, Eth66MessageCode.GetPooledTransactions);
 
         _transactionPool.Received(1).TryGetPendingTransactionWithoutBlobs(tx.Hash!, out Arg.Any<Transaction>());
-        _transactionPool.DidNotReceive().TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>());
+        _transactionPool.DidNotReceive().TryGetPendingTransaction(Arg.Any<ValueHash256>(), out Arg.Any<Transaction>());
         _session.Received(1).DeliverMessage(Arg.Is<PooledTransactionsMessage>(m =>
             IsElidedBlobResponse(m, fullTxLength, ProofVersion.V0)));
     }
@@ -861,14 +861,14 @@ public class Eth72ProtocolHandlerTests
             hashes[i] = tx.Hash;
         }
 
-        _transactionPool.TryGetPendingTransactionWithoutBlobs(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
+        _transactionPool.TryGetPendingTransactionWithoutBlobs(Arg.Any<ValueHash256>(), out Arg.Any<Transaction>())
             .Returns(call =>
             {
-                bool found = transactions.TryGetValue(call.ArgAt<Hash256>(0).ValueHash256, out Transaction? tx);
+                bool found = transactions.TryGetValue(call.ArgAt<ValueHash256>(0), out Transaction? tx);
                 call[1] = tx!;
                 return found;
             });
-        using GetPooledTransactionsMessage request = new(hashes.ToPooledList());
+        using GetPooledTransactionsMessage request = new(hashes.Select(static h => h.ValueHash256).ToArray().ToPooledList());
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(request, Eth66MessageCode.GetPooledTransactions);
@@ -883,7 +883,7 @@ public class Eth72ProtocolHandlerTests
     {
         Transaction first = Build.A.Transaction.WithNonce(1UL).SignedAndResolved().TestObject;
         Transaction second = Build.A.Transaction.WithNonce(2UL).SignedAndResolved().TestObject;
-        _transactionPool.NotifyAboutTx(Arg.Any<Hash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+        _transactionPool.NotifyAboutTx(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
             .Returns(AnnounceResult.RequestRequired);
         using NewPooledTransactionHashesMessage72 announcement = new(
             [(byte)first.Type, (byte)second.Type],
@@ -1411,7 +1411,7 @@ public class Eth72ProtocolHandlerTests
     public void locally_complete_blob_announcements_should_count_toward_cell_request_allowance()
     {
         BlobCellMask fullMask = BlobCellMask.Full;
-        _transactionPool.TryGetPendingBlobCellMask(Arg.Any<Hash256>(), out Arg.Any<BlobCellMask>())
+        _transactionPool.TryGetPendingBlobCellMask(Arg.Any<ValueHash256>(), out Arg.Any<BlobCellMask>())
             .Returns(call =>
             {
                 call[1] = fullMask;
@@ -2808,13 +2808,13 @@ public class Eth72ProtocolHandlerTests
         BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
         Assert.That(BlobCellsHelper.TryGetFlattenedCells((ShardBlobNetworkWrapper)tx.NetworkWrapper!, cellMask, out byte[][] cells), Is.True);
 
-        _transactionPool.NotifyAboutTx(Arg.Any<Hash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+        _transactionPool.NotifyAboutTx(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
             .Returns(AnnounceResult.RequestRequired);
         bool txAvailable = false;
         _transactionPool.TryGetPendingBlobTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
             .Returns(x =>
             {
-                Hash256 hash = x.Arg<Hash256>();
+                ValueHash256 hash = x.Arg<ValueHash256>();
                 x[1] = txAvailable && hash == tx.Hash ? tx : null!;
                 return txAvailable && hash == tx.Hash;
             });
@@ -3634,7 +3634,7 @@ public class Eth72ProtocolHandlerTests
         BlobCellMask initialMask = BlobCellMask.FromIndices([4]);
         BlobCellMask expandedMask = BlobCellMask.FromIndices([4, 9]);
         bool throwOnLookup = false;
-        _transactionPool.TryGetPendingBlobCellMask(Arg.Any<Hash256>(), out Arg.Any<BlobCellMask>())
+        _transactionPool.TryGetPendingBlobCellMask(Arg.Any<ValueHash256>(), out Arg.Any<BlobCellMask>())
             .Returns(call =>
             {
                 if (throwOnLookup)
@@ -3678,7 +3678,7 @@ public class Eth72ProtocolHandlerTests
         Hash256 secondHash = HashFromInt(2);
         using CancellationTokenSource cancellation = new();
         bool cancelOnLookup = false;
-        _transactionPool.TryGetPendingBlobCellMask(Arg.Any<Hash256>(), out Arg.Any<BlobCellMask>())
+        _transactionPool.TryGetPendingBlobCellMask(Arg.Any<ValueHash256>(), out Arg.Any<BlobCellMask>())
             .Returns(call =>
             {
                 call[1] = BlobCellMask.Empty;
@@ -4936,7 +4936,7 @@ public class Eth72ProtocolHandlerTests
         for (int i = _deliveredMessages.Count - 1; i >= 0; i--)
         {
             if (_deliveredMessages[i] is GetPooledTransactionsMessage message
-                && ContainsHash(message.EthMessage.Hashes, hash))
+                && message.EthMessage.Hashes.Contains(hash.ValueHash256))
             {
                 return message.RequestId;
             }
@@ -4950,7 +4950,7 @@ public class Eth72ProtocolHandlerTests
         for (int i = 0; i < _deliveredMessages.Count; i++)
         {
             if (_deliveredMessages[i] is GetPooledTransactionsMessage message
-                && ContainsHash(message.EthMessage.Hashes, hash))
+                && message.EthMessage.Hashes.Contains(hash.ValueHash256))
             {
                 return true;
             }

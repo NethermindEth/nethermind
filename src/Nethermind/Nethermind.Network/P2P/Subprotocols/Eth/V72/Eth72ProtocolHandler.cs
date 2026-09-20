@@ -421,7 +421,7 @@ public class Eth72ProtocolHandler(
 
         int packetSizeLeft = TransactionsMessage.MaxPacketSize;
         int toRequestCount = 0;
-        ArrayPoolList<Hash256>? hashesToRequest = null;
+        ArrayPoolList<ValueHash256>? hashesToRequest = null;
 
         for (int i = 0; i < hashes.Length; i++)
         {
@@ -457,7 +457,7 @@ public class Eth72ProtocolHandler(
             }
 
             bool shouldRequestTx = !_txPool.IsKnown(hash)
-                && _txPool.NotifyAboutTx(hash, this) is AnnounceResult.RequestRequired;
+                && _txPool.NotifyAboutTx(in hash.ValueHash256, this) is AnnounceResult.RequestRequired;
 
             if (shouldRequestTx
                 && (_blobSupportEnabled || !supportsBlobs))
@@ -468,7 +468,7 @@ public class Eth72ProtocolHandler(
                 if ((txSize > packetSizeLeft && toRequestCount > 0) || toRequestCount >= 256)
                 {
                     SendPooledTransactionsRequest(hashesToRequest);
-                    hashesToRequest = new ArrayPoolList<Hash256>(Math.Min(hashes.Length - i, 256));
+                    hashesToRequest = new ArrayPoolList<ValueHash256>(Math.Min(hashes.Length - i, 256));
                     packetSizeLeft = TransactionsMessage.MaxPacketSize;
                     toRequestCount = 0;
                 }
@@ -511,15 +511,11 @@ public class Eth72ProtocolHandler(
         return new PooledTransactionsMessage66(message.RequestId, pooledTransactions);
     }
 
-    private void SendPooledTransactionsRequest(IOwnedReadOnlyList<Hash256> hashes)
+    private void SendPooledTransactionsRequest(IOwnedReadOnlyList<ValueHash256> hashes)
     {
         GetPooledTransactionsMessage66 message = GetPooledTransactionsMessage66.New(hashes);
-        ValueHash256[] requestedHashes = new ValueHash256[hashes.Count];
-        ReadOnlySpan<Hash256> hashesSpan = hashes.AsSpan();
-        for (int i = 0; i < hashesSpan.Length; i++)
-        {
-            requestedHashes[i] = hashesSpan[i].ValueHash256;
-        }
+        ReadOnlySpan<ValueHash256> hashesSpan = hashes.AsSpan();
+        ValueHash256[] requestedHashes = hashesSpan.ToArray();
 
         _sentPooledTransactionRequests.Set(message.RequestId, requestedHashes);
         ReportPooledTransactionRequest(hashesSpan);
@@ -561,13 +557,13 @@ public class Eth72ProtocolHandler(
 
     // eth/72 strips blob payloads from pooled transaction responses, so they are served from
     // the sidecar-free record instead of materializing blobs from persistent storage.
-    protected override bool TryGetPooledTransactionToServe(Hash256 hash, [NotNullWhen(true)] out Transaction? tx)
+    protected override bool TryGetPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? tx)
         => _txPool.TryGetPendingTransactionWithoutBlobs(hash, out tx);
 
     /// <inheritdoc/>
     public override void HandleMessage(PooledTransactionRequestMessage message)
     {
-        ArrayPoolList<Hash256> hashes = new(1) { new Hash256(message.TxHash) };
+        ArrayPoolList<ValueHash256> hashes = new(1) { message.TxHash };
         SendPooledTransactionsRequest(hashes);
     }
 
@@ -1106,7 +1102,7 @@ public class Eth72ProtocolHandler(
             return false;
         }
 
-        ArrayPoolList<Hash256> hashes = new(1) { hash };
+        ArrayPoolList<ValueHash256> hashes = new(1) { hash };
         SendPooledTransactionsRequest(hashes);
         return true;
     }

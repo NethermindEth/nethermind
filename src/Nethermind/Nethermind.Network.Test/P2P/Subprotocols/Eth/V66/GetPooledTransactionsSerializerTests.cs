@@ -20,7 +20,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Trailing_data_disposes_decoded_message([Values(false, true)] bool trailingData)
         {
-            IOwnedReadOnlyList<Hash256> hashes = Substitute.For<IOwnedReadOnlyList<Hash256>>();
+            IOwnedReadOnlyList<ValueHash256> hashes = Substitute.For<IOwnedReadOnlyList<ValueHash256>>();
             InnerMessage inner = new(hashes);
             IZeroInnerMessageSerializer<InnerMessage> innerSerializer = Substitute.For<IZeroInnerMessageSerializer<InnerMessage>>();
             innerSerializer.Deserialize(Arg.Any<IByteBuffer>()).Returns(call =>
@@ -52,9 +52,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Roundtrip()
         {
-            Hash256 a = new("0x00000000000000000000000000000000000000000000000000000000deadc0de");
-            Hash256 b = new("0x00000000000000000000000000000000000000000000000000000000feedbeef");
-            Hash256[] keys = { a, b };
+            ValueHash256 a = new("0x00000000000000000000000000000000000000000000000000000000deadc0de");
+            ValueHash256 b = new("0x00000000000000000000000000000000000000000000000000000000feedbeef");
+            ValueHash256[] keys = { a, b };
 
             using GetPooledTransactionsMessage message = new(keys.ToPooledList()) { RequestId = 1111 };
 

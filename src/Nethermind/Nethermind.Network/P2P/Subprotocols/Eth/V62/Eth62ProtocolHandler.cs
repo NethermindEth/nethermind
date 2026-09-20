@@ -64,7 +64,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private protected bool IsTransactionGossipAllowed() => _floodController.IsAllowed();
 
-        private protected void ReportPooledTransactionRequest(ReadOnlySpan<Hash256> hashes) =>
+        private protected void ReportPooledTransactionRequest(ReadOnlySpan<ValueHash256> hashes) =>
             _floodController.ReportPooledTransactionRequest(hashes);
 
         internal long RequestedPooledTransactionHashes => _floodController.RequestedPooledTransactionHashes;

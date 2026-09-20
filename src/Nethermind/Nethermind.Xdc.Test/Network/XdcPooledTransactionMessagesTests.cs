@@ -28,6 +28,7 @@ namespace Nethermind.Xdc.Test.Network;
 public class XdcPooledTransactionMessagesTests
 {
     private static readonly Hash256[] Hashes = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC];
+    private static readonly ValueHash256[] ValueHashes = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC];
 
     [Test]
     public void NewPooledTransactionHashes_uses_relocated_code_and_upstream_payload()
@@ -44,8 +45,8 @@ public class XdcPooledTransactionMessagesTests
     [Test]
     public void GetPooledTransactions_uses_relocated_code_and_upstream_payload()
     {
-        using XdcGetPooledTransactionsMessage message = new(Hashes.ToPooledList());
-        using GetPooledTransactionsMessage upstream = new(Hashes.ToPooledList());
+        using XdcGetPooledTransactionsMessage message = new(ValueHashes.ToPooledList());
+        using GetPooledTransactionsMessage upstream = new(ValueHashes.ToPooledList());
 
         Assert.That(message.PacketType, Is.EqualTo(XdcMessageCode.GetPooledTransactions));
         Assert.That(Hex(buffer => new XdcGetPooledTransactionsMessageSerializer().Serialize(buffer, message)),
@@ -68,13 +69,13 @@ public class XdcPooledTransactionMessagesTests
     public void Hashes_survive_a_roundtrip()
     {
         XdcGetPooledTransactionsMessageSerializer serializer = new();
-        using XdcGetPooledTransactionsMessage message = new(Hashes.ToPooledList());
+        using XdcGetPooledTransactionsMessage message = new(ValueHashes.ToPooledList());
 
         IByteBuffer buffer = Unpooled.Buffer();
         serializer.Serialize(buffer, message);
         using XdcGetPooledTransactionsMessage deserialized = serializer.Deserialize(buffer);
 
-        Assert.That(deserialized.Hashes.AsSpan().ToArray(), Is.EqualTo(Hashes));
+        Assert.That(deserialized.Hashes.AsSpan().ToArray(), Is.EqualTo(ValueHashes));
         Assert.That(deserialized.PacketType, Is.EqualTo(XdcMessageCode.GetPooledTransactions));
     }
 

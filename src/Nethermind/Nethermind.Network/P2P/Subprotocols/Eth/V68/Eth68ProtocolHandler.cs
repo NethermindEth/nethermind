@@ -166,13 +166,15 @@ public class Eth68ProtocolHandler(ISession session,
         int responseSizeLimit = registerForRetry ? PooledTransactionsResponseSoftLimit : TransactionsMessage.MaxPacketSize;
         int responseSizeLeft = responseSizeLimit;
         int requestCapacity = Math.Min(newTxHashesIndexes.Count, MaxPooledTransactionHashesPerRequest);
-        ArrayPoolList<Hash256>? hashesToRequest = null;
+        ArrayPoolList<ValueHash256>? hashesToRequest = null;
         int toRequestCount = 0;
         bool hasOversizedTransaction = false;
 
         foreach (int index in newTxHashesIndexes.AsSpan())
         {
-            Hash256 hash = hashes[start + index];
+            ref readonly ValueHash256 hash = ref hashes is AnnouncementHashes announcementHashes
+                ? ref announcementHashes.Values.AsSpan()[start + index]
+                : ref hashes[start + index].ValueHash256;
             (int Size, TxType Type) txShape = TxShapeAnnouncements.TryGet(hash, out (int Size, TxType Type) announcedShape)
                 ? announcedShape
                 : (sizes[index], (TxType)types[index]);
@@ -184,7 +186,7 @@ public class Eth68ProtocolHandler(ISession session,
                 SendHashesToRequest();
             }
 
-            hashesToRequest ??= new ArrayPoolList<Hash256>(requestCapacity);
+            hashesToRequest ??= new ArrayPoolList<ValueHash256>(requestCapacity);
             hashesToRequest.Add(hash);
             toRequestCount++;
 
@@ -206,7 +208,7 @@ public class Eth68ProtocolHandler(ISession session,
 
         void SendHashesToRequest()
         {
-            ArrayPoolList<Hash256> request = hashesToRequest!;
+            ArrayPoolList<ValueHash256> request = hashesToRequest!;
             hashesToRequest = null;
             SendPooledTransactionRequest<V66.Messages.GetPooledTransactionsMessage>(request);
             packetSizeLeft = TransactionsMessage.MaxPacketSize;
@@ -227,7 +229,7 @@ public class Eth68ProtocolHandler(ISession session,
 
     private void HandleMessagesPage(ReadOnlySpan<ValueHash256> txHashes)
     {
-        ArrayPoolList<Hash256>? hashesWithShape = null;
+        AnnouncementHashes? hashesWithShape = null;
         ArrayPoolList<int>? sizes = null;
         ArrayPoolList<byte>? types = null;
         ArrayPoolList<ValueHash256>? hashesWithoutShape = null;
@@ -239,11 +241,11 @@ public class Eth68ProtocolHandler(ISession session,
                 ValueHash256 txHash = txHashes[i];
                 if (TxShapeAnnouncements.TryGet(txHash, out (int Size, TxType Type) txShape))
                 {
-                    hashesWithShape ??= new ArrayPoolList<Hash256>(txHashes.Length);
+                    hashesWithShape ??= new AnnouncementHashes();
                     sizes ??= new ArrayPoolList<int>(txHashes.Length);
                     types ??= new ArrayPoolList<byte>(txHashes.Length);
 
-                    hashesWithShape.Add(new Hash256(txHash));
+                    hashesWithShape.Values.Add(txHash);
                     sizes.Add(txShape.Size);
                     types.Add((byte)txShape.Type);
                 }
@@ -309,9 +311,10 @@ public class Eth68ProtocolHandler(ISession session,
         ArrayPoolListRef<int> discoveredTxHashesAndSizes = new(sizes.Length);
         for (int i = 0; i < sizes.Length; i++)
         {
-            bool isKnown = hashes is AnnouncementHashes announcementHashes
-                ? _txPool.IsKnown(in announcementHashes.Values.AsSpan()[start + i])
-                : _txPool.IsKnown(hashes[start + i]);
+            ref readonly ValueHash256 hash = ref hashes is AnnouncementHashes announcementHashes
+                ? ref announcementHashes.Values.AsSpan()[start + i]
+                : ref hashes[start + i].ValueHash256;
+            bool isKnown = _txPool.IsKnown(in hash);
             if (!isKnown)
             {
                 (int Size, TxType Type) txShape = (sizes[i], (TxType)types[i]);
@@ -319,8 +322,6 @@ public class Eth68ProtocolHandler(ISession session,
                 {
                     continue;
                 }
-
-                Hash256 hash = hashes[start + i];
 
                 // Delivered transactions must match their first decodable announcement even when that announcement was not requestable.
                 if (!TxShapeAnnouncements.TryGet(hash, out (int Size, TxType Type) retainedShape))
@@ -336,7 +337,7 @@ public class Eth68ProtocolHandler(ISession session,
                     continue;
                 }
 
-                if (!registerForRetry || _txPool.NotifyAboutTx(hash, this) is AnnounceResult.RequestRequired)
+                if (!registerForRetry || _txPool.NotifyAboutTx(in hash, this) is AnnounceResult.RequestRequired)
                 {
                     discoveredTxHashesAndSizes.Add(i);
                 }
@@ -417,7 +418,7 @@ public class Eth68ProtocolHandler(ISession session,
     protected override bool CanServePooledTransaction(Transaction tx) => !IsSparseBlobTransaction(tx);
 
     /// <inheritdoc/>
-    protected override bool TryGetPooledTransactionToServe(Hash256 hash, [NotNullWhen(true)] out Transaction? tx)
+    protected override bool TryGetPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? tx)
     {
         if (_txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask availableMask) && !availableMask.IsFull)
         {
