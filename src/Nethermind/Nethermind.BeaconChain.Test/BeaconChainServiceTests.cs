@@ -1,0 +1,103 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
+using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.Engine;
+using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Sync;
+using Nethermind.Core;
+using Nethermind.Core.ServiceStopper;
+using Nethermind.Core.Specs;
+using Nethermind.Db;
+using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
+using Nethermind.Network;
+using NSubstitute;
+using NUnit.Framework;
+
+namespace Nethermind.BeaconChain.Test;
+
+public class BeaconChainServiceTests
+{
+    private static IContainer BuildContainer()
+    {
+        IIPResolver ipResolver = Substitute.For<IIPResolver>(); // registered by NetworkModule in production
+        ipResolver.Resolve(Arg.Any<CancellationToken>())
+            .Returns(new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Loopback)));
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>(); // registered by NethermindModule in production
+        specProvider.ChainId.Returns(BlockchainIds.Mainnet);
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new BeaconChainModule())
+            .AddSingleton<IBeaconChainConfig>(new BeaconChainConfig())
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .AddSingleton(Substitute.For<IEngineRpcModule>()) // registered by MergePlugin in production
+            .AddSingleton<ITimestamper>(Timestamper.Default) // registered by NethermindModule in production
+            .AddSingleton(ipResolver)
+            .AddSingleton(specProvider)
+            .AddSingleton<IDbFactory, MemDbFactory>();
+
+        return builder.Build();
+    }
+
+    // Regression for gap 113: Stop() (re-entered from the ExternalClDetected event, raised on
+    // whatever thread serviced the engine call) used to check `_disposed` and cancel the token
+    // source as two unsynchronised steps. A concurrent Dispose() (container teardown) could pass
+    // its own check, set the flag and dispose the source in between, so Stop()'s Cancel() call
+    // landed on an already-disposed CancellationTokenSource and threw ObjectDisposedException
+    // instead of shutting down quietly. Never calls Start(), matching the note that this stream
+    // must not let a real orchestrator run reach network/socket code.
+    [Test]
+    public void Stop_and_Dispose_do_not_throw_when_invoked_concurrently()
+    {
+        using IContainer container = BuildContainer();
+        IBeaconChainConfig config = container.Resolve<IBeaconChainConfig>();
+        BeaconChainSpec spec = container.Resolve<BeaconChainSpec>();
+        BeaconChainStore store = container.Resolve<BeaconChainStore>();
+        PubkeyCache pubkeyCache = container.Resolve<PubkeyCache>();
+        CheckpointSync checkpointSync = container.Resolve<CheckpointSync>();
+        BeaconSyncOrchestrator orchestrator = container.Resolve<BeaconSyncOrchestrator>();
+        ExternalClDetector externalClDetector = container.Resolve<ExternalClDetector>();
+        ILogManager logManager = container.Resolve<ILogManager>();
+
+        for (int i = 0; i < 300; i++)
+        {
+            BeaconChainService service = new(config, spec, store, pubkeyCache, checkpointSync, orchestrator, externalClDetector, logManager);
+            using Barrier barrier = new(2);
+            Task stopTask = Task.Run(() =>
+            {
+                barrier.SignalAndWait();
+                service.Stop();
+            });
+            Task disposeTask = Task.Run(() =>
+            {
+                barrier.SignalAndWait();
+                service.Dispose();
+            });
+
+            Assert.DoesNotThrowAsync(async () => await Task.WhenAll(stopTask, disposeTask));
+        }
+    }
+
+    // Regression for gap 113: ServiceStopper.StopAllServices() resolves every registered
+    // IStoppableService and awaits its StopAsync(), including a driver that was resolved into the
+    // container but never started (e.g. an earlier startup step failed before StartBeaconChain
+    // ran). Before the fix BeaconChainService did not implement IStoppableService at all, so
+    // shutdown could only reach the synchronous Stop() and Dispose() never had anything to await.
+    [Test]
+    public async Task StopAsync_on_an_unstarted_service_does_not_throw_and_still_allows_dispose()
+    {
+        using IContainer container = BuildContainer();
+        BeaconChainService service = container.Resolve<BeaconChainService>();
+
+        Assert.That(service, Is.InstanceOf<IStoppableService>());
+
+        await ((IStoppableService)service).StopAsync();
+
+        Assert.DoesNotThrow(() => service.Dispose());
+    }
+}
