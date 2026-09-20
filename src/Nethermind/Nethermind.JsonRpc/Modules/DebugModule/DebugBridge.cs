@@ -24,6 +24,7 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -45,6 +46,8 @@ public class DebugBridge : IDebugBridge
     private readonly IReceiptsMigration _receiptsMigration;
     private readonly ISpecProvider _specProvider;
     private readonly ISyncModeSelector _syncModeSelector;
+    private readonly ISyncProgressResolver _syncProgressResolver;
+    private readonly ISyncPointers _syncPointers;
     private readonly IBadBlockStore _badBlockStore;
     private readonly IBlockStore _blockStore;
     private readonly IWorldStateManager _worldStateManager;
@@ -66,12 +69,16 @@ public class DebugBridge : IDebugBridge
         ILogManager logManager,
         BlockTreeMutationLock mutationLock,
         IBlockProcessingPauseControl pauseControl,
-        IBlockProcessingQueue processingQueue)
+        IBlockProcessingQueue processingQueue,
+        ISyncProgressResolver syncProgressResolver,
+        ISyncPointers syncPointers)
     {
         _logger = logManager.GetClassLogger<DebugBridge>();
         _mutationLock = mutationLock;
         _pauseControl = pauseControl;
         _processingQueue = processingQueue;
+        _syncProgressResolver = syncProgressResolver;
+        _syncPointers = syncPointers;
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -117,7 +124,7 @@ public class DebugBridge : IDebugBridge
     public ResultWrapper<int> DeleteChainSlice(ulong startNumber, bool force = false)
     {
         if (!CanMutateChain()) return NotDrained();
-        if (startNumber > 0 && startNumber <= _blockTree.SyncPivot.BlockNumber) return SyncHistoryUnavailable();
+        if (!CanDeleteWithoutInvalidatingSyncProgress(startNumber)) return SyncHistoryUnavailable();
 
         if (!_mutationLock.TryEnter(out BlockTreeMutationLock.Scope mutation, maintenance: true))
         {
@@ -126,21 +133,54 @@ public class DebugBridge : IDebugBridge
         }
         using BlockTreeMutationLock.Scope mutationScope = mutation;
         if (!CanMutateChain()) return NotDrained();
-        if (startNumber > 0 && startNumber <= _blockTree.SyncPivot.BlockNumber) return SyncHistoryUnavailable();
+        if (!CanDeleteWithoutInvalidatingSyncProgress(startNumber)) return SyncHistoryUnavailable();
 
-        if (startNumber > 0 && _blockTree.Head?.Number >= startNumber)
-        {
-            Block? target = _blockTree.FindBlock(startNumber - 1, BlockTreeLookupOptions.RequireCanonical);
-            if (target is null || !HasProcessingState(target.Header))
-                return ResultWrapper<int>.Fail("The new head body or state is unavailable for block processing.", ErrorCodes.ResourceUnavailable);
-        }
-        return ResultWrapper<int>.Success(_blockTree.DeleteChainSlice(startNumber, force: force));
+        bool replacesHead = startNumber > 0 && _blockTree.Head?.Number >= startNumber;
+        bool replacesPivot = startNumber <= _blockTree.SyncPivot.BlockNumber &&
+                             _blockTree.SyncPivot.BlockNumber <= _blockTree.BestKnownNumber;
+        Block? target = replacesHead
+            ? _blockTree.FindBlock(startNumber - 1, BlockTreeLookupOptions.RequireCanonical)
+            : _blockTree.Head;
+        if ((replacesHead || replacesPivot) && (target is null || !HasProcessingState(target.Header)))
+            return ResultWrapper<int>.Fail("The new head body or state is unavailable for block processing.", ErrorCodes.ResourceUnavailable);
+
+        if (replacesPivot &&
+            (_blockTree.LowestInsertedHeader?.Number > target!.Number ||
+             _syncPointers.LowestInsertedBodyNumber > target.Number ||
+             _syncPointers.LowestInsertedReceiptBlockNumber > target.Number ||
+             _syncPointers.LowestInsertedBlockAccessListBlockNumber > target.Number))
+            return SyncHistoryUnavailable();
+
+        int deleted = _blockTree.DeleteChainSlice(startNumber, force: force);
+        if (replacesPivot) _blockTree.SyncPivot = (target!.Number, target.Hash!);
+        return ResultWrapper<int>.Success(deleted);
 
         static ResultWrapper<int> SyncHistoryUnavailable() =>
-            ResultWrapper<int>.Fail("Cannot delete chain levels at or below the sync pivot.", ErrorCodes.ResourceUnavailable);
+            ResultWrapper<int>.Fail("Cannot delete chain levels while historical sync is unfinished or its progress pointers would be invalidated.", ErrorCodes.ResourceUnavailable);
 
         static ResultWrapper<int> NotDrained() =>
             ResultWrapper<int>.Fail("Pause block processing and wait for it to drain before deleting chain levels.", ErrorCodes.ResourceUnavailable);
+    }
+
+    private bool CanDeleteWithoutInvalidatingSyncProgress(ulong startNumber)
+    {
+        const SyncMode initialSyncModes = SyncMode.FastBlocks | SyncMode.BeaconHeaders | SyncMode.StateNodes |
+                                          SyncMode.FastSync | SyncMode.UpdatingPivot | SyncMode.DbLoad;
+        if (startNumber <= _blockTree.SyncPivot.BlockNumber &&
+            (!_syncProgressResolver.IsFastBlocksHeadersFinished() ||
+             !_syncProgressResolver.IsFastBlocksBodiesFinished() ||
+             !_syncProgressResolver.IsFastBlocksReceiptsFinished() ||
+             !_syncProgressResolver.IsFastBlockAccessListsFinished() ||
+             (_syncModeSelector.Current & initialSyncModes) != 0))
+            return false;
+
+        ulong endNumber = _blockTree.BestKnownNumber;
+        return !IsDeleted(_blockTree.LowestInsertedHeader?.Number) &&
+               !IsDeleted(_syncPointers.LowestInsertedBodyNumber) &&
+               !IsDeleted(_syncPointers.LowestInsertedReceiptBlockNumber) &&
+               !IsDeleted(_syncPointers.LowestInsertedBlockAccessListBlockNumber);
+
+        bool IsDeleted(ulong? number) => number >= startNumber && number <= endNumber;
     }
 
     public bool UpdateHeadBlock(Hash256 blockHash) => UpdateHeadBlock(new BlockParameter(blockHash));

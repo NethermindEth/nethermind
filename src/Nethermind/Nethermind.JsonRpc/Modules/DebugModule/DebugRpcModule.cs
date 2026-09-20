@@ -65,8 +65,8 @@ public class DebugRpcModule(
     }
 
     public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false) =>
-        startNumber < 0
-            ? ResultWrapper<int>.Fail($"startNumber must be non-negative (got {startNumber})", ErrorCodes.InvalidParams)
+        startNumber <= 0
+            ? ResultWrapper<int>.Fail($"startNumber must be positive (got {startNumber})", ErrorCodes.InvalidParams)
             : debugBridge.DeleteChainSlice((ulong)startNumber, force);
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions? options = null)
